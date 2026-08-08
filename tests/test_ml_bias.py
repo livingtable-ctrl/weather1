@@ -1095,3 +1095,128 @@ class TestEmos:
         assert 0.0 < prob < 0.5, (
             f"Expected prob < 0.5 when threshold > mean; got {prob}"
         )
+
+
+class TestTrainAllTemperatureScalingSkipLogging:
+    """Regression test: _fit_T's callers used to log a generic "T fit no
+    better than T=1.0 — skipping" whenever _fit_T returned None, even when
+    the real reason was hitting the T upper bound (directional bias) —
+    misattributing the skip reason. The upper-bound warning itself also had
+    no label, so a real cron run couldn't tell which pool (global/above/
+    below/sameday/hourly) it was even about."""
+
+    def _seed(
+        self,
+        tracker,
+        ticker,
+        city,
+        market_date,
+        our_prob,
+        settled_yes,
+        condition_type="above",
+    ):
+        analysis = {
+            "condition": {"type": condition_type, "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "ensemble",
+        }
+        tracker.log_prediction(ticker, city, market_date, analysis)
+        tracker.log_outcome(ticker, settled_yes)
+
+    def test_directional_bias_warning_labels_global_and_condition(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """24 rows all predicting 0.4 while the actual settle rate is 0.75 --
+        unfixable by T-scaling (which can only push a prediction toward 0.5,
+        never past it) -- so both the 'global' and 'above' fits are expected
+        to hit the T upper bound."""
+        from datetime import date, timedelta
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        tracker.init_db()
+
+        market_date = date.today() + timedelta(days=11)
+        for i in range(24):
+            self._seed(
+                tracker,
+                f"KXHIGHNY-26AUG{i:02d}-T75",
+                "NYC",
+                market_date,
+                0.4,
+                1 if i < 18 else 0,  # 18/24 = 0.75 actual settle rate
+                "above",
+            )
+
+        with caplog.at_level("INFO", logger="ml_bias"):
+            ml_bias.train_all_temperature_scaling(
+                min_samples_global=1, min_samples_condition=1
+            )
+
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        infos = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
+
+        for label in ("global", "above"):
+            assert any(
+                f"{label} T=" in m and "hit upper bound" in m for m in warnings
+            ), f"expected a labeled upper-bound warning for '{label}', got: {warnings}"
+            assert not any(f"{label} T fit no better than T=1.0" in m for m in infos), (
+                f"'{label}' skip must not ALSO log the misattributed "
+                f"'no better than T=1.0' message, got: {infos}"
+            )
+
+        # Neither fit produced a T (both hit the bound and returned None),
+        # so nothing should have been written to disk.
+        assert not (tmp_path / "temperature_scale.json").exists()
+
+    def test_directional_bias_warning_labels_sameday_and_hourly(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """Same directional-bias shape as above, seeded into the sameday and
+        hourly pools (both days_out=0, distinguished only by ticker prefix)
+        -- these are two more independent _fit_T call sites that had the
+        same unlabeled-warning / misattributed-skip bug."""
+        from datetime import date
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        tracker.init_db()
+
+        def _seed_days_out_0(ticker, settled_yes):
+            self._seed(tracker, ticker, "NYC", date.today(), 0.4, settled_yes, "above")
+            with tracker._conn() as con:
+                con.execute(
+                    "UPDATE predictions SET days_out = 0 WHERE ticker = ?", (ticker,)
+                )
+
+        for i in range(24):
+            settled = 1 if i < 18 else 0  # 18/24 = 0.75 actual settle rate
+            _seed_days_out_0(f"KXHIGHNY-26AUG{i:02d}-T75", settled)
+            _seed_days_out_0(f"KXTEMPNYCH-26JUL20{i:02d}-T75.99", settled)
+
+        with caplog.at_level("INFO", logger="ml_bias"):
+            ml_bias.train_all_temperature_scaling(
+                min_samples_global=1, min_samples_condition=1
+            )
+
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        infos = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
+
+        for label in ("sameday", "hourly"):
+            assert any(
+                f"{label} T=" in m and "hit upper bound" in m for m in warnings
+            ), f"expected a labeled upper-bound warning for '{label}', got: {warnings}"
+            assert not any(f"{label} T fit no better than T=1.0" in m for m in infos), (
+                f"'{label}' skip must not ALSO log the misattributed "
+                f"'no better than T=1.0' message, got: {infos}"
+            )

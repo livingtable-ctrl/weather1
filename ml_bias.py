@@ -516,8 +516,16 @@ def train_all_temperature_scaling(
 
     _T_UPPER_BOUND = 8.0
 
-    def _fit_T(probs_raw: list[float], labels_raw: list[float]) -> float | None:
+    def _fit_T(
+        probs_raw: list[float], labels_raw: list[float], label: str
+    ) -> float | None:
         """Fit T via NLL minimisation; return T or None if fit fails / doesn't improve.
+
+        `label` identifies the condition bucket (e.g. "global", "above", "sameday")
+        for logging only. Every skip reason is logged here, with the label, so
+        callers don't need their own generic "fit no better than T=1.0" fallback —
+        which previously fired even when the real reason was hitting the T upper
+        bound (directional bias), misattributing the skip reason in the logs.
 
         If T hits the upper bound, that signals directional bias (mean_pred != mean_actual)
         rather than a confidence-calibration problem.  T-scaling can't fix directional bias —
@@ -547,9 +555,10 @@ def train_all_temperature_scaling(
             mean_pred = float(np.mean(probs_raw))
             mean_actual = float(np.mean(labels_raw))
             _log.warning(
-                "train_all_temperature_scaling: T=%.4f hit upper bound (%.1f) on %d samples "
+                "train_all_temperature_scaling: %s T=%.4f hit upper bound (%.1f) on %d samples "
                 "— directional bias suspected (mean_pred=%.3f vs mean_actual=%.3f); "
                 "T-scaling cannot fix this; keeping existing T",
+                label,
                 T,
                 _T_UPPER_BOUND,
                 len(probs_raw),
@@ -559,6 +568,10 @@ def train_all_temperature_scaling(
             return None
 
         if nll(T) >= nll(1.0):
+            _log.info(
+                "train_all_temperature_scaling: %s T fit no better than T=1.0 — skipping",
+                label,
+            )
             return None
         return T
 
@@ -671,7 +684,7 @@ def train_all_temperature_scaling(
 
     # Global fit
     if len(all_probs) >= min_samples_global:
-        T_global = _fit_T(all_probs, all_labels)
+        T_global = _fit_T(all_probs, all_labels, "global")
         if T_global is not None:
             existing["global"] = {"T": T_global, "n": len(all_probs)}
             trained["global"] = T_global
@@ -679,10 +692,6 @@ def train_all_temperature_scaling(
                 "train_all_temperature_scaling: global T=%.4f on %d samples",
                 T_global,
                 len(all_probs),
-            )
-        else:
-            _log.info(
-                "train_all_temperature_scaling: global T fit no better than T=1.0 — skipping"
             )
     else:
         _log.info(
@@ -710,7 +719,7 @@ def train_all_temperature_scaling(
                 min_samples_condition,
             )
             continue
-        T_cond = _fit_T(cprobs, clabels)
+        T_cond = _fit_T(cprobs, clabels, ctype)
         if T_cond is not None:
             existing[ctype] = {"T": T_cond, "n": len(cprobs)}
             trained[ctype] = T_cond
@@ -719,11 +728,6 @@ def train_all_temperature_scaling(
                 ctype,
                 T_cond,
                 len(cprobs),
-            )
-        else:
-            _log.info(
-                "train_all_temperature_scaling: %s T fit no better than T=1.0 — skipping",
-                ctype,
             )
 
     # Same-day T — fit on METAR-derived probabilities only.
@@ -734,7 +738,7 @@ def train_all_temperature_scaling(
     sd_probs = [float(r[0]) for r in sameday_rows]
     sd_labels = [float(r[1]) for r in sameday_rows]
     if len(sd_probs) >= _SAMEDAY_MIN:
-        T_sameday = _fit_T(sd_probs, sd_labels)
+        T_sameday = _fit_T(sd_probs, sd_labels, "sameday")
         if T_sameday is not None:
             existing["sameday"] = {"T": T_sameday, "n": len(sd_probs)}
             trained["sameday"] = T_sameday
@@ -742,10 +746,6 @@ def train_all_temperature_scaling(
                 "train_all_temperature_scaling: sameday T=%.4f on %d samples",
                 T_sameday,
                 len(sd_probs),
-            )
-        else:
-            _log.info(
-                "train_all_temperature_scaling: sameday T fit no better than T=1.0 — skipping"
             )
     else:
         _log.info(
@@ -763,7 +763,7 @@ def train_all_temperature_scaling(
     hr_probs = [float(r[0]) for r in hourly_rows]
     hr_labels = [float(r[1]) for r in hourly_rows]
     if len(hr_probs) >= _HOURLY_MIN:
-        T_hourly = _fit_T(hr_probs, hr_labels)
+        T_hourly = _fit_T(hr_probs, hr_labels, "hourly")
         if T_hourly is not None:
             existing["hourly"] = {"T": T_hourly, "n": len(hr_probs)}
             trained["hourly"] = T_hourly
@@ -771,10 +771,6 @@ def train_all_temperature_scaling(
                 "train_all_temperature_scaling: hourly T=%.4f on %d samples",
                 T_hourly,
                 len(hr_probs),
-            )
-        else:
-            _log.info(
-                "train_all_temperature_scaling: hourly T fit no better than T=1.0 — skipping"
             )
     else:
         _log.info(
