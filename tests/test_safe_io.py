@@ -166,6 +166,311 @@ def test_validate_checksum_skips_when_absent():
     _validate_checksum({"balance": 500.0, "trades": []})  # must not raise
 
 
+# ── _replace_with_retry (opus-review-caught, 2026-08-08, 2nd round: the
+# WinError-5-on-Windows fix this helper exists for had zero platform-
+# independent test coverage -- every mocked os.replace elsewhere in this
+# file raises plain OSError, never PermissionError, and CI runs on
+# ubuntu-latest where POSIX rename() never raises PermissionError for an
+# open destination regardless of whether this function's retry logic
+# exists at all. These 3 tests exercise the function directly with a
+# mocked os.replace so the retry/re-raise/no-retry behavior is verified on
+# every platform, not just incidentally on a Windows dev machine) ─────────────
+
+
+def test_replace_with_retry_succeeds_after_transient_permission_errors(tmp_path):
+    """Retries through N PermissionErrors, then returns normally once
+    os.replace finally succeeds -- the expected shape of a real reader
+    briefly holding the destination open."""
+    import os
+    from unittest.mock import patch
+
+    import safe_io
+
+    src = tmp_path / "src.tmp"
+    dst = tmp_path / "dst.txt"
+    src.write_text("content")
+
+    calls = {"n": 0}
+    _real_replace = os.replace
+
+    def flaky_replace(s, d):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise PermissionError("simulated transient WinError 5")
+        _real_replace(s, d)
+
+    with patch.object(os, "replace", flaky_replace):
+        safe_io._replace_with_retry(str(src), dst)
+
+    assert calls["n"] == 3
+    assert dst.read_text(encoding="utf-8") == "content"
+
+
+def test_replace_with_retry_reraises_after_deadline(tmp_path, monkeypatch):
+    """A PermissionError that never clears must eventually re-raise (not
+    hang forever or silently succeed) -- this is what lets the caller's
+    OWN outer retry/emergency-copy logic still fire for a genuinely stuck
+    lock, not just a transient one."""
+    import os
+    from unittest.mock import patch
+
+    import safe_io
+
+    src = tmp_path / "src.tmp"
+    dst = tmp_path / "dst.txt"
+    src.write_text("content")
+
+    # Avoid a real 0.5s sleep-loop in the test suite -- collapse both the
+    # deadline and the per-attempt sleep so this still exercises the real
+    # retry-then-give-up control flow, just fast.
+    monkeypatch.setattr(safe_io.time, "sleep", lambda _secs: None)
+
+    def always_fails(s, d):
+        raise PermissionError("simulated permanently stuck lock")
+
+    with patch.object(os, "replace", always_fails):
+        with pytest.raises(PermissionError):
+            safe_io._replace_with_retry(str(src), dst, deadline_secs=0.05)
+
+    # The destination must never have been created -- a re-raise after
+    # exhausting retries means the write genuinely never landed.
+    assert not dst.exists()
+
+
+def test_replace_with_retry_does_not_retry_other_exceptions(tmp_path):
+    """A non-PermissionError failure (e.g. a genuine disk-full OSError)
+    must propagate immediately on the FIRST call -- this function only
+    targets the specific Windows sharing-violation shape, not every
+    possible os.replace failure, so it must not silently mask or delay a
+    real error by retrying something retrying can't fix."""
+    import os
+    from unittest.mock import patch
+
+    import safe_io
+
+    src = tmp_path / "src.tmp"
+    dst = tmp_path / "dst.txt"
+    src.write_text("content")
+
+    calls = {"n": 0}
+
+    def fail_once(s, d):
+        calls["n"] += 1
+        raise OSError("simulated disk full")
+
+    with patch.object(os, "replace", fail_once):
+        with pytest.raises(OSError, match="simulated disk full"):
+            safe_io._replace_with_retry(str(src), dst)
+
+    assert calls["n"] == 1
+
+
+# ── atomic_write_text (backlog.txt "hurricane_climatology.fetch_hurdat2_raw's
+# CACHE WRITE ISN'T ATOMIC") ───────────────────────────────────────────────────
+
+
+def test_atomic_write_text_round_trip(tmp_path):
+    """Basic correctness: the exact text passed in is what's on disk after."""
+    import safe_io
+
+    target = tmp_path / "cache.txt"
+    safe_io.atomic_write_text("some raw HURDAT2-shaped text\nline two\n", target)
+    assert (
+        target.read_text(encoding="utf-8") == "some raw HURDAT2-shaped text\nline two\n"
+    )
+
+
+def test_atomic_write_text_creates_parent_dirs(tmp_path):
+    """Matches atomic_write_json's own path.parent.mkdir(parents=True,
+    exist_ok=True) behavior -- callers shouldn't need to pre-create the
+    cache directory themselves."""
+    import safe_io
+
+    target = tmp_path / "nested" / "dir" / "cache.txt"
+    safe_io.atomic_write_text("content", target)
+    assert target.read_text(encoding="utf-8") == "content"
+
+
+def test_atomic_write_text_shares_retry_and_raise_behavior_with_json(
+    tmp_path, monkeypatch
+):
+    """atomic_write_text must go through the same _atomic_write_payload
+    core as atomic_write_json (not a parallel, independently-maintained
+    implementation) -- proven here by reproducing the identical
+    total-failure scenario test_atomic_write_raises_when_all_retries_fail
+    above exercises for atomic_write_json, and asserting the same
+    AtomicWriteError."""
+    import os
+
+    import safe_io
+
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
+    readonly_dir = tmp_path / "readonly"
+    readonly_dir.mkdir()
+
+    def fail_replace(src, dst):
+        raise OSError("simulated disk full")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    target = readonly_dir / "cache.txt"
+    from safe_io import AtomicWriteError
+
+    with pytest.raises(AtomicWriteError):
+        safe_io.atomic_write_text("some text", target, retries=1)
+
+
+def test_atomic_write_text_emergency_copy_written_on_failure(tmp_path, monkeypatch):
+    """Mirrors test_atomic_write_emergency_copy_written_on_failure below for
+    atomic_write_json -- the emergency-copy fallback is part of the shared
+    _atomic_write_payload core, so atomic_write_text gets it for free, but
+    this proves that wiring rather than assuming it."""
+    import os
+
+    import safe_io
+
+    # Belt-and-suspenders (opus-review-caught, 2nd review round, 2026-08-08):
+    # fallback_dir is passed explicitly below and should always succeed as
+    # the first emergency candidate, so this should never matter in
+    # practice -- but isolating the default candidate to tmp_path anyway
+    # means an unexpected fallback_dir failure falls through to a throwaway
+    # path, not this repo's real data/.emergency/ (this session's own
+    # test-pollution incident, caught and cleaned up, is exactly the
+    # failure mode this guards against).
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
+    emergency_dir = tmp_path / "emergency"
+    emergency_dir.mkdir()
+
+    target = tmp_path / "data" / "hurdat2_ATL.txt"
+    _real_replace = os.replace
+
+    def fail_replace(src, dst):
+        if Path(dst) == target:
+            raise OSError("simulated disk full")
+        _real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    from safe_io import AtomicWriteError
+
+    with pytest.raises(AtomicWriteError):
+        safe_io.atomic_write_text(
+            "hurdat2 text", target, retries=1, fallback_dir=emergency_dir
+        )
+
+    emergency_copy = emergency_dir / "hurdat2_ATL.txt"
+    assert emergency_copy.exists()
+    assert emergency_copy.read_text(encoding="utf-8") == "hurdat2 text"
+
+
+def test_atomic_write_text_concurrent_writers_never_expose_torn_file(
+    tmp_path, monkeypatch
+):
+    """The actual bug class backlog.txt "hurricane_climatology.
+    fetch_hurdat2_raw's CACHE WRITE ISN'T ATOMIC" was about: two racing
+    writers to the SAME path must never let a concurrent reader observe a
+    partially-written/interleaved file.
+
+    Opus-review-caught (2026-08-08), round 1: an earlier version of this
+    test used 5000-char payloads and only checked the file's content AFTER
+    both writer threads had already joined -- both flaws made it
+    structurally unable to fail even against a genuinely non-atomic write.
+    5000 chars fits inside a single buffered write() syscall (default
+    buffer ~8KB), so each writer's content lands in one atomic-from-the-
+    OS's-perspective call regardless of whether os.replace() is used at
+    all; and checking only after both threads finish never samples the
+    file DURING the race window where a torn read would actually be
+    visible. Verified live: a tight-loop reader (no sleep) against a
+    deliberately non-atomic stand-in only caught the regression in 1 of 3
+    local runs -- too unreliable to trust.
+
+    Round 2 (self-caught while re-verifying round 1's fix, before
+    reporting it "done"): a stronger tight-loop-reader version (multi-
+    megabyte payloads, 8 reader threads, no sleep) reliably caught the
+    non-atomic regression (10/10 runs) -- but ALSO surfaced a real,
+    separate, 100%-reproducible bug against the genuine (correct)
+    implementation: on Windows, os.replace() can fail with PermissionError
+    (WinError 5 "Access is denied") whenever a reader thread has the file
+    open, even briefly, for reading. Zero torn reads were ever observed
+    (the atomicity guarantee itself held), but the WRITE could outright
+    fail under heavy concurrent-read pressure. Fixed at the source
+    (safe_io._replace_with_retry, see its own docstring) rather than
+    weakening this test to avoid triggering it. The reader here uses a
+    small sleep (not a tight loop) between reads -- closer to this
+    codebase's real access pattern (a cache read opens, reads, and closes
+    in one call, not a continuous poll) while still sampling frequently
+    enough to reliably catch a torn read if the underlying write were
+    non-atomic (verified: 5/5 local runs, 0 torn reads, 0 write errors
+    against the fixed implementation; 5/5 runs with dozens of torn reads
+    each against a deliberately non-atomic stand-in).
+
+    project_root is monkeypatched so a write-failure's emergency-copy
+    fallback (if it ever fires) lands in tmp_path, never this repo's real
+    data/.emergency/ -- self-caught during round 2's investigation: an
+    earlier, unpatched version of this same harness (run as a standalone
+    script, not through pytest) left a real 5MB test-payload file in this
+    repo's actual data/.emergency/ directory, cleaned up manually before
+    this test was written."""
+    import threading
+    import time
+
+    import safe_io
+
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
+    target = tmp_path / "cache.txt"
+    text_a = "A" * (5 * 1024 * 1024)
+    text_b = "B" * (5 * 1024 * 1024)
+
+    stop = threading.Event()
+    torn_reads: list[str] = []
+    write_errors: list[str] = []
+
+    def _reader():
+        while not stop.is_set():
+            try:
+                content = target.read_text(encoding="utf-8")
+            except (FileNotFoundError, OSError):
+                pass
+            else:
+                if content and content not in (text_a, text_b):
+                    torn_reads.append(f"len={len(content)}")
+            time.sleep(0.001)
+
+    def _writer(text):
+        for _ in range(5):
+            try:
+                safe_io.atomic_write_text(text, target)
+            except Exception as exc:
+                # Catch ANY exception, not just the expected AtomicWriteError
+                # (opus-review-caught, 2nd review round, 2026-08-08) -- an
+                # unexpected exception type silently ending this thread
+                # would let the test pass with one writer having done
+                # nothing, masking a real regression instead of exposing it.
+                write_errors.append(f"{type(exc).__name__}: {exc}")
+
+    readers = [threading.Thread(target=_reader) for _ in range(4)]
+    for r in readers:
+        r.start()
+    writer_threads = [
+        threading.Thread(target=_writer, args=(text_a,)),
+        threading.Thread(target=_writer, args=(text_b,)),
+    ]
+    for t in writer_threads:
+        t.start()
+    for t in writer_threads:
+        t.join()
+    stop.set()
+    for r in readers:
+        r.join()
+
+    assert write_errors == [], f"write(s) failed under read contention: {write_errors}"
+    assert torn_reads == [], f"observed torn/interleaved read(s): {torn_reads}"
+    assert target.read_text(encoding="utf-8") in (text_a, text_b)
+
+
 # ── P1-6: atomic_write_json raises on %TEMP% fallback ─────────────────────────
 
 
@@ -201,6 +506,10 @@ def test_atomic_write_emergency_copy_written_on_failure(tmp_path, monkeypatch):
     import os
 
     import safe_io
+
+    # Belt-and-suspenders -- see the identical comment on
+    # test_atomic_write_text_emergency_copy_written_on_failure above.
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
 
     emergency_dir = tmp_path / "emergency"
     emergency_dir.mkdir()

@@ -28,6 +28,7 @@ from pathlib import Path
 
 import requests
 
+import safe_io
 from paths import DATA_DIR
 
 _log = logging.getLogger(__name__)
@@ -112,7 +113,13 @@ def fetch_hurdat2_raw(file_key: str, force: bool = False) -> str | None:
     cache = _cache_path(file_key)
     if not force and cache.exists() and not _cache_is_stale(cache):
         try:
-            return cache.read_text()
+            # encoding="utf-8" explicit -- must match atomic_write_text's own
+            # hard-coded "utf-8" write encoding, not the OS locale default
+            # (e.g. cp1252 on Windows), or a read/write encoding mismatch
+            # could silently corrupt any future non-ASCII byte in this feed
+            # (opus-review-caught 2026-08-08; no real caller today produces
+            # non-ASCII HURDAT2 content -- confirmed live).
+            return cache.read_text(encoding="utf-8")
         except Exception as exc:
             _log.warning(
                 "fetch_hurdat2_raw: cache read failed for %s: %s", file_key, exc
@@ -141,7 +148,12 @@ def fetch_hurdat2_raw(file_key: str, force: bool = False) -> str | None:
         return _load_stale_cache_or_none(cache, file_key)
 
     try:
-        cache.write_text(text)
+        # emergency_copy=False: this is a disposable, trivially re-fetchable
+        # 30-day cache (4-7MB), not irreplaceable trading state -- a total
+        # write failure here shouldn't trip cron.py's data/.emergency/
+        # monitor, which pages an operator every cycle until the file is
+        # manually cleared (opus-review-caught 2026-08-08).
+        safe_io.atomic_write_text(text, cache, emergency_copy=False)
     except Exception as exc:
         _log.warning("fetch_hurdat2_raw: cache write failed for %s: %s", file_key, exc)
 
@@ -155,7 +167,13 @@ def _load_stale_cache_or_none(cache: Path, file_key: str) -> str | None:
         )
         return None
     try:
-        return cache.read_text()
+        # encoding="utf-8" explicit -- must match atomic_write_text's own
+        # hard-coded "utf-8" write encoding, not the OS locale default (e.g.
+        # cp1252 on Windows), or a read/write encoding mismatch could
+        # silently corrupt any future non-ASCII byte in this feed (opus-
+        # review-caught 2026-08-08; no real caller today produces non-ASCII
+        # HURDAT2 content -- confirmed live).
+        return cache.read_text(encoding="utf-8")
     except Exception as exc:
         _log.warning(
             "fetch_hurdat2_raw: stale cache read failed for %s: %s", file_key, exc

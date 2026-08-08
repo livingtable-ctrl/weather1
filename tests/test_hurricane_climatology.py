@@ -740,3 +740,100 @@ class TestFirstHurricanePositionOutcomes:
         lo, hi = hc.bootstrap_ci_next_event(tiled)
         assert (lo, hi) != (0.0, 1.0)  # confirms the real resampling path ran
         assert lo <= prob <= hi
+
+
+class TestFetchHurdat2RawCacheWrite:
+    """backlog.txt "hurricane_climatology.fetch_hurdat2_raw's CACHE WRITE
+    ISN'T ATOMIC": fetch_hurdat2_raw used to write its disk cache with a
+    plain cache.write_text(text) -- unlike acis_precip.py/climatology.py
+    (both use safe_io.atomic_write_json), it skipped safe_io's atomic write
+    discipline (temp file + fsync + os.replace) entirely. NOT the only such
+    gap in the whole codebase -- opus-review-caught 2026-08-08:
+    climate_indices.py's PDO/PNA cache and backtest.py's own cache both
+    also write via plain write_text(), filed as a separate follow-up
+    backlog entry rather than fixed here (different module, out of this
+    entry's own scope). Fixed here by adding safe_io.atomic_write_text
+    (shares safe_io.atomic_write_json's own retry/emergency-copy core via a
+    new internal _atomic_write_payload helper, not a parallel
+    reimplementation) and swapping this one write call to use it."""
+
+    def _valid_hurdat2_response(self):
+        from unittest.mock import MagicMock
+
+        fake_resp = MagicMock()
+        fake_resp.text = _FIXTURE  # contains "AL0..." -- passes the
+        # "looks like real HURDAT2 data" content-sniff guard
+        fake_resp.raise_for_status.return_value = None
+        return fake_resp
+
+    def test_successful_fetch_writes_cache_via_atomic_write_text(
+        self, tmp_path, monkeypatch
+    ):
+        """The real, non-mocked safe_io.atomic_write_text must be what
+        lands the cache file on disk (not a bare Path.write_text) -- spies
+        on it directly rather than only asserting on the end file content,
+        since a regression back to cache.write_text would produce
+        byte-identical output and slip past a content-only assertion."""
+        from unittest.mock import patch
+
+        import safe_io
+
+        monkeypatch.setattr(hc, "DATA_DIR", tmp_path)
+        with (
+            patch.object(
+                hc._session, "get", return_value=self._valid_hurdat2_response()
+            ),
+            patch.object(
+                safe_io, "atomic_write_text", wraps=safe_io.atomic_write_text
+            ) as spy_write,
+        ):
+            result = hc.fetch_hurdat2_raw("ATL")
+
+        assert result == _FIXTURE
+        spy_write.assert_called_once()
+        cache_path = tmp_path / "hurdat2_ATL.txt"
+        assert cache_path.read_text() == _FIXTURE
+
+    def test_cache_write_failure_still_returns_fetched_text(
+        self, tmp_path, monkeypatch
+    ):
+        """A cache-write failure (disk full, permissions, or -- the actual
+        motivating scenario -- safe_io.atomic_write_text exhausting its own
+        retries and emergency-copy attempts) must not crash the fetch or
+        lose the freshly-fetched data to the caller -- this write is a
+        best-effort durability layer on top of an already-successful
+        network fetch, mirroring every other cache write in this codebase's
+        fail-open philosophy (acis_precip.fetch_historical_daily's own
+        documented shape, referenced in fetch_hurdat2_raw's own docstring)."""
+        from unittest.mock import patch
+
+        import safe_io
+
+        monkeypatch.setattr(hc, "DATA_DIR", tmp_path)
+        with (
+            patch.object(
+                hc._session, "get", return_value=self._valid_hurdat2_response()
+            ),
+            patch.object(
+                safe_io,
+                "atomic_write_text",
+                side_effect=safe_io.AtomicWriteError("simulated total write failure"),
+            ),
+        ):
+            result = hc.fetch_hurdat2_raw("ATL")
+
+        assert result == _FIXTURE
+        assert not (tmp_path / "hurdat2_ATL.txt").exists()
+
+    # A real-threads concurrent-write/torn-read test for the atomicity
+    # guarantee itself lives in tests/test_safe_io.py (opus-review-caught
+    # 2026-08-08: an earlier version of it lived here but never actually
+    # exercised hurricane_climatology.py's own code -- it built its own
+    # cache_path and called safe_io.atomic_write_text directly, making the
+    # monkeypatch.setattr(hc, "DATA_DIR", ...) in it dead code, and its
+    # 5000-char payloads fit inside a single buffered write() syscall,
+    # meaning the test could not have detected a non-atomic-write
+    # regression even in principle -- see test_safe_io.py::
+    # test_atomic_write_text_concurrent_writers_never_expose_torn_file for
+    # the corrected version with real multi-megabyte payloads and a live
+    # polling reader thread).

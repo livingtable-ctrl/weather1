@@ -2209,7 +2209,7 @@ When to revisit:
     their yes/no result), then key occurred_this_season off "any qualifying
     storm since this event's own open_time" instead of season-wide count.
 
-[OPEN 2026-08-07 -- found while thinking through implementation-workflow risks raised by this project's now-routine parallel-worktree-session pattern, not during the hurricane work itself] hurricane_climatology.fetch_hurdat2_raw's CACHE WRITE ISN'T ATOMIC -- THE ONLY RAW-TEXT CACHE IN THIS CODEBASE THAT SKIPS safe_io
+[RESOLVED 2026-08-08] hurricane_climatology.fetch_hurdat2_raw's CACHE WRITE ISN'T ATOMIC -- THE ONLY RAW-TEXT CACHE IN THIS CODEBASE THAT SKIPS safe_io
 Priority: Low -- currently low-probability (needs two processes racing to
   refresh the SAME stale HURDAT2 cache file within the same narrow window),
   but a real corruption path this project has already been burned by once
@@ -2274,6 +2274,276 @@ When to revisit:
     corrupted mid-write cache read could produce a hard crash rather than a
     silently-degraded probability; worth re-checking this entry's own risk
     assessment if that changes.
+
+RESOLVED 2026-08-08: Re-verified every claim in this entry live before
+  touching code -- all held (hurricane_climatology.py:144's plain
+  `cache.write_text(text)`; acis_precip.py/climatology.py both exclusively
+  use safe_io.atomic_write_json; safe_io.py had exactly 2 WRITE-shaped
+  public functions, atomic_write_json and atomic_write_json_with_history --
+  both JSON-only, no raw-text/bytes variant existed). Correction (opus-
+  review-caught 2026-08-08): the "2 public functions" phrasing above
+  originally undercounted -- safe_io.py actually had 4 public functions
+  total (project_root and check_emergency_copies are real, unrelated to
+  writing); the substantive claim (no non-JSON atomic-write helper existed)
+  was and is correct, the count of ALL public functions was not. Also
+  confirmed atomic_write_json_with_history is itself already a thin wrapper
+  around atomic_write_json (history-backup, then delegates) rather than a
+  duplicate implementation -- the existing precedent for exactly the
+  composition this entry's own "What it would look like" asked for.
+
+  Shipped safe_io.atomic_write_text(text, path, retries=3,
+  fallback_dir=None, emergency_copy=True) by extracting atomic_write_json's
+  write-temp/fsync/rename/retry/emergency-copy core (previously all inline
+  in atomic_write_json's own body) into a
+  new private _atomic_write_payload(payload: str, ...) helper, then having
+  BOTH atomic_write_json (serializes to JSON first) and the new
+  atomic_write_text (uses the raw text as-is) call it -- not a parallel,
+  independently-maintained implementation. atomic_write_json's external
+  behavior is unchanged (all 31 pre-existing safe_io tests pass unmodified).
+  Two of the shared helper's own log messages were still hardcoded to say
+  "atomic_write_json" even though atomic_write_text now goes through the
+  same path -- caught and fixed before it became a real caller-misleading-log
+  issue in production, not just a review finding.
+
+  Swapped hurricane_climatology.py's `cache.write_text(text)` for
+  `safe_io.atomic_write_text(text, cache)`, matching the exact bare-call
+  (no local try/except around just that line, an outer function-level
+  try/except already provides the same fail-open safety net) convention
+  already used by every safe_io.atomic_write_json call site in
+  acis_precip.py/climatology.py.
+
+  fetch_hurdat2_raw had ZERO existing test coverage of any kind before this
+  session (confirmed via repo-wide grep). Added a new TestFetchHurdat2Raw
+  CacheWrite class (2 tests: successful-fetch-writes-via-atomic_write_text,
+  cache-write-failure-still-returns-fetched-text) plus new tests in
+  test_safe_io.py: round-trip correctness, parent-dir auto-creation, shared
+  retry/raise behavior with atomic_write_json (same total-failure scenario,
+  same AtomicWriteError), and emergency-copy-on-failure. A 3rd
+  hurricane_climatology test (racing writers never produce a torn cache
+  file) was written but moved to test_safe_io.py during opus review round
+  1 -- it never actually exercised hurricane_climatology.py's own code, see
+  below.
+
+  Mutation-tested the wiring specifically (not just the underlying
+  primitive): temporarily reverted hurricane_climatology.py's call back to
+  the original bare `cache.write_text(text)`, confirmed 2 of the 3 new
+  hurricane_climatology tests correctly failed (the spy-based "atomic_write_
+  text was actually called" assertion, and the write-failure-must-not-write-
+  a-file assertion, which failed because the mocked failure path no longer
+  applied to the reverted code), then restored the fix.
+
+  Independent opus review (effort: high) of that state found the fix was
+  sound but incomplete, 6 findings:
+
+  - MEDIUM: the emergency-copy machinery is unconditional, and cron.py's
+    check_emergency_copies() monitor pages an operator (notify.
+    send_system_alert()) every cycle for ANY file in data/.emergency/,
+    described as needing manual attention -- a disposable, trivially
+    re-fetchable 4-7MB HURDAT2 cache tripping all 3 retries would falsely
+    trigger that alert for data that isn't actually at risk. Fixed by
+    adding an `emergency_copy: bool = True` opt-out to atomic_write_text
+    (and the shared _atomic_write_payload core), with hurricane_climatology.
+    py passing emergency_copy=False. AtomicWriteError still raises on
+    total failure either way -- only the recovery-copy attempt is skipped.
+  - MEDIUM: the "two racing writers never produce a torn file" test was
+    structurally unable to fail. Its 5000-char payloads fit inside a
+    single buffered write() syscall regardless of atomicity, and it only
+    checked file content AFTER both writers had already joined, never
+    sampling DURING the race window. Rewritten with multi-megabyte payloads
+    (matching real HURDAT2 cache sizes) and a reader thread polling
+    continuously while writers race -- moved to test_safe_io.py since the
+    original never actually exercised hurricane_climatology.py's own code
+    (it built its own cache_path and called safe_io.atomic_write_text
+    directly, making its DATA_DIR monkeypatch dead code).
+  - LOW: read/write encoding asymmetry -- atomic_write_text hard-codes
+    utf-8, but hurricane_climatology.py's 2 cache.read_text() call sites
+    were still locale-default (cp1252 on this box). Fixed both to pass
+    encoding="utf-8" explicitly.
+  - LOW: the renamed shared-helper log messages lost the calling public
+    function's name AND broke a documented operator grep pattern
+    (backlog.txt's own FORECAST_SIGMA.JSON ATOMIC WRITE CONTENTION entry
+    documents `atomic_write_json attempt.*failed` as the exact recurrence-
+    check grep). Fixed by threading a `caller_name` parameter through
+    _atomic_write_payload so JSON callers keep the byte-identical original
+    message and text callers get an accurate "atomic_write_text attempt..."
+    instead.
+  - LOW: _atomic_write_payload's own docstring wrongly said `path` was
+    "assumed to already exist" and "resolved" -- neither true (it's the
+    write target, not resolved until the emergency-candidate comparison
+    later). Reworded.
+  - LOW (2 narrative-accuracy issues): this note's own "safe_io.py had
+    exactly 2 public functions" undercounted (4 exist total; only 2 are
+    WRITE-shaped, which was the actual claim) -- corrected above. The new
+    test class's docstring claimed hurricane_climatology was "the only
+    raw-text cache in this codebase" skipping safe_io -- false:
+    climate_indices.py's PDO/PNA cache (feeds apply_pdo_pna_correction(),
+    called live from weather_markets.py's analyze_trade) and backtest.py's
+    own cache both also write via plain write_text(). Re-scoped the
+    docstring's wording; filed as a separate follow-up entry rather than
+    fixed here (different module, genuinely out of this entry's own
+    scope) -- see "climate_indices.py's PDO/PNA CACHE AND backtest.py's
+    OWN CACHE ALSO SKIP safe_io" below.
+
+  While re-verifying the rewritten concurrent-writers test's own
+  discriminating power (per this project's mutation-testing discipline --
+  temporarily swap in a deliberately non-atomic write, confirm the test
+  actually catches it), self-caught TWO further issues before they ever
+  reached review:
+
+  - A first version of the harness (tight-loop reader, no sleep, isolating
+    nothing) only caught a deliberately non-atomic write 1 of 3 local runs
+    -- too unreliable to ship. A stronger version (multi-MB payloads, 8
+    reader threads, no sleep) caught it reliably (10/10) -- but a bare run
+    of this harness as a standalone script (not yet wired through pytest's
+    tmp_path/monkeypatch) left a real 5MB test-payload file in THIS
+    repo's actual data/.emergency/ directory (project_root() wasn't
+    mocked). Found and deleted immediately; the shipped test always
+    monkeypatches safe_io.project_root to tmp_path.
+  - The same 8-reader-thread harness, run against the REAL (correct)
+    atomic_write_text, surfaced a genuine, 100%-reproducible NEW bug, not
+    an artifact of the test: on Windows, os.replace() can fail with
+    PermissionError (WinError 5 "Access is denied") whenever another
+    thread has the target file open for reading, even briefly -- a
+    transient-contention failure unrelated to a real disk-full/permissions
+    problem (POSIX rename() has no such restriction). Zero torn reads were
+    ever observed (the atomicity guarantee itself held), but the WRITE
+    could fail outright under concurrent-read pressure -- exhausting all 3
+    retries and firing the emergency-copy path for no real reason. Given
+    this project's own routine multi-parallel-worktree-session pattern on
+    Windows sharing one physical data/ directory, this is a live risk, not
+    a theoretical one. Raised via AskUserQuestion rather than silently
+    filing it as yet another follow-up or silently fixing a shared
+    primitive with 14 other callers -- user chose fix now. Added
+    safe_io._replace_with_retry() (a short, bounded 0.5s retry loop on
+    PermissionError specifically, same "retry briefly, don't treat
+    transient contention as a hard failure" approach paper.py's own
+    msvcrt.locking retry loop already uses for the identical Windows
+    file-sharing-contention class), wired into both os.replace() call
+    sites (primary write, emergency copy). Re-verified: 5/5 runs, 0 write
+    errors, 0 torn reads against the fixed implementation; mutation-tested
+    by reverting to bare os.replace(), confirmed the shipped concurrent-
+    writers test correctly fails 3/3 runs, then restored.
+
+  Independent opus review round 2 (effort: high) of that state found 9
+  more findings (1 MEDIUM-HIGH, 2 MEDIUM, 6 LOW). Most significant:
+  _replace_with_retry had ZERO platform-independent test coverage -- every
+  mocked os.replace elsewhere in the file raised plain OSError, never
+  PermissionError, and this repo's CI runs on ubuntu-latest where POSIX
+  rename() never raises PermissionError for an open destination regardless
+  of whether the retry logic exists at all. Reviewer proved the gap by
+  mutation (swallowing a permanent PermissionError and returning silent
+  "success" left 97/97 tests passing on Windows). Fixed with 3 new
+  platform-independent unit tests exercising _replace_with_retry directly
+  via a mocked os.replace: succeeds after N transient PermissionErrors,
+  re-raises after exhausting deadline_secs (destination never created),
+  and does NOT retry a non-PermissionError OSError (propagates
+  immediately, unretried). Also fixed: worst-case latency compounding
+  (documented in _replace_with_retry's own docstring; the emergency-copy
+  call site now passes a shorter deadline_secs=0.1, since read contention
+  on a data/.emergency/ or system-temp destination isn't the expected
+  failure mode there -- caps total worst-case latency at ~3.7s instead of
+  ~4.5s); a docstring that misattributed the WinError-5 discovery to the
+  review process when it was actually self-caught during mutation-testing;
+  4 more unprotected bare os.replace() sites elsewhere in the codebase
+  (tracker.py x2, weather_markets.py, alerts.py) -- filed as a separate
+  follow-up entry rather than fixed here, out of this entry's own scope
+  (see "OTHER bare os.replace() CALL SITES OUTSIDE safe_io.py ALSO
+  EXPOSED TO THE SAME WINDOWS SHARING-VIOLATION FAILURE MODE" below); the
+  concurrent-writers test's own writer thread only caught
+  AtomicWriteError, not any exception, which could have silently let one
+  writer do nothing and the test still pass -- broadened to catch
+  Exception generally; the new emergency-copy test (and, for consistency,
+  its pre-existing JSON sibling) didn't isolate project_root() even though
+  an explicit fallback_dir should make that path unreachable in practice --
+  added the same belt-and-suspenders monkeypatch this session's own
+  data/.emergency/ pollution incident argues for; several new/rewritten
+  tests read without explicit encoding="utf-8", the exact asymmetry LOW #3
+  above fixed in production code -- fixed in the tests too; and this
+  note's own test counts were wrong (measured directly via `pytest
+  --collect-only`: 61 hurricane_climatology tests, not 62; 39 safe_io
+  tests, not 36).
+
+  Final (re-measured, not estimated): 61 hurricane_climatology.py tests +
+  39 safe_io.py tests pass (was 59/31 -- +2/+8 new). Broader sweep
+  (test_acis_precip.py, test_climatology.py, test_alerts.py, the other
+  real safe_io.atomic_write_json consumers) 106 passed, no regressions.
+  ruff + ruff format + mypy clean on all 4 changed files.
+
+======================================================
+[OPEN 2026-08-08 -- found via 2nd opus review round of the resolved hurricane_climatology.fetch_hurdat2_raw's CACHE WRITE ISN'T ATOMIC entry above] OTHER bare os.replace() CALL SITES OUTSIDE safe_io.py ALSO EXPOSED TO THE SAME WINDOWS SHARING-VIOLATION FAILURE MODE
+Priority: Low -- same real Windows PermissionError/WinError 5 failure mode
+  safe_io.py's own os.replace() calls were just fixed for (see
+  hurricane_climatology.py's CACHE WRITE ISN'T ATOMIC entry above), but
+  none of these 4 sites are currently known to be hit by concurrent-reader
+  contention in practice -- filed for completeness, not because a live
+  incident has been observed at any of them.
+
+  Found 2026-08-08 (2nd opus review round of the entry above) via a
+  repo-wide grep for bare `os.replace(`/`_os.replace(` calls outside
+  safe_io.py itself: tracker.py:5622 (_PINS_PATH), tracker.py:5751
+  (_RETIRED_PATH), weather_markets.py:3109, and alerts.py:42 all write via
+  a direct os.replace() with no retry-on-PermissionError, meaning any of
+  them could exhaust and fail outright if something else has the target
+  file open for reading at the exact wrong instant, on Windows -- the
+  identical failure mode safe_io._replace_with_retry was just added to
+  guard against. circuit_breaker.py:60-80 and tests/test_p1_remaining.py:335
+  already show this project is aware of the READER side of this Windows
+  behavior; this is the WRITER side of the same underlying OS quirk.
+
+  What it would look like: either (a) route all 4 through
+  safe_io.atomic_write_json/atomic_write_text (a larger change --
+  verify each site's own retry/emergency-copy needs first, since not all 4
+  may want the same defaults, e.g. tracker.py's _PINS_PATH/_RETIRED_PATH
+  are small config-shaped files unlike a multi-MB cache), or (b) extract
+  safe_io._replace_with_retry into a narrower public helper
+  (safe_io.replace_with_retry, no leading underscore) these 4 sites can
+  call directly without adopting the full atomic_write_json/text
+  retry+emergency-copy machinery. Re-verify each site's own current
+  behavior/callers live before choosing -- don't assume all 4 have the
+  same shape or the same risk profile as the HURDAT2 cache this pattern
+  was first fixed for.
+
+======================================================
+[OPEN 2026-08-08 -- found via opus review of the resolved hurricane_climatology.fetch_hurdat2_raw's CACHE WRITE ISN'T ATOMIC entry above] climate_indices.py's PDO/PNA CACHE AND backtest.py's OWN CACHE ALSO SKIP safe_io
+Priority: Medium -- climate_indices.py's own gap is live-reachable
+  (apply_pdo_pna_correction() is called from weather_markets.py's
+  analyze_trade(), not a shadow-only/disposable path like the HURDAT2
+  cache this entry's sibling was about); backtest.py's is Low (research
+  tooling, not a live trading path).
+
+  Found 2026-08-08 (opus review of the resolved "hurricane_climatology.
+  fetch_hurdat2_raw's CACHE WRITE ISN'T ATOMIC" entry above) while
+  checking whether that fix's own new test docstring's claim -- "the only
+  raw-text cache in this codebase that skips safe_io" -- was actually
+  true. It wasn't: `climate_indices.py:497` writes `_PDO_PNA_PATH` via a
+  plain `_PDO_PNA_PATH.write_text(json.dumps(payload))` (read back at
+  `climate_indices.py:511` via `get_pdo_pna()`, which
+  `apply_pdo_pna_correction()` -- called live from weather_markets.py
+  `analyze_trade()` -- calls directly), and `backtest.py:129` does the
+  same shape for its own bootstrap-distribution cache
+  (`cache_file.write_text(json.dumps(result))`, wrapped in a swallowed
+  `try/except: pass`). Neither goes through safe_io.atomic_write_json,
+  despite both being JSON payloads -- unlike acis_precip.py/climatology.py,
+  which already use it correctly.
+
+  Not fixed inline as part of the sibling entry above -- genuinely a
+  different module/call path, deserving its own scoped audit (does
+  climate_indices.py's own write have the same concurrent-writer-torn-file
+  exposure the HURDAT2 entry was about? does backtest.py's swallowed
+  except mask a write failure that should at least log?) rather than a
+  drive-by fix bolted onto an unrelated entry's diff.
+
+  What it would look like: swap both call sites to
+  safe_io.atomic_write_json(payload, path) (already available, no new
+  safe_io.py work needed -- both payloads are real JSON, unlike the
+  HURDAT2 entry's raw-text case). For climate_indices.py specifically,
+  consider whether emergency_copy=False fits (PDO/PNA is refetchable from
+  NOAA like HURDAT2 was) or whether a live-model-input cache should keep
+  the default emergency-copy behavior (arguably yes, unlike the disposable
+  HURDAT2 case -- worth a real judgment call, not a copy-paste of the
+  sibling entry's choice). backtest.py's swallowed except should probably
+  at least log a warning on write failure, matching every other cache
+  write in this codebase's convention.
 
 [RESOLVED 2026-07-25] NEAR-SETTLEMENT LOG (near_settlement_log) SILENTLY BROKEN SINCE IT SHIPPED -- WRONG FIELD NAMES ON THE TRADE-RECORD DICT
 Priority: was Medium -- a shipped calibration-data feature had been a

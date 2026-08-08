@@ -19,6 +19,52 @@ class AtomicWriteError(Exception):
     pass
 
 
+def _replace_with_retry(src: str, dst: Path, deadline_secs: float = 0.5) -> None:
+    """os.replace(src, dst), retrying briefly on PermissionError.
+
+    Self-caught (2026-08-08) while mutation-testing an unrelated regression
+    test's own discriminating power -- confirmed live and 100% reproducible
+    under concurrent read pressure: on Windows, os.replace() (MoveFileEx)
+    can fail with PermissionError/WinError 5 "Access is denied" whenever
+    ANY other thread/process has `dst` open, even just for reading -- a
+    transient condition unrelated to a real disk-full/permissions problem
+    (POSIX rename() has no such restriction; a reader there never blocks a
+    concurrent rename). Real reader handles in this codebase are held only
+    briefly (cache.read_text() opens, reads, and closes in one call), so a
+    short bounded retry here resolves the vast majority of these before
+    ever reaching the caller's own slower (1s-backoff, 3-attempt) outer
+    retry loop -- same "retry briefly, don't treat transient contention as
+    a hard failure" approach paper.py's own msvcrt.locking retry loop
+    already uses for the identical class of Windows file-sharing
+    contention. Any exception OTHER than PermissionError propagates
+    immediately, unretried -- this function only targets the specific
+    Windows sharing-violation shape, not genuine failures.
+
+    Worst-case latency (opus-review-caught, 2nd review round, 2026-08-08):
+    this adds up to `deadline_secs` per outer attempt on top of the
+    existing 1s inter-attempt backoff -- at the default retries=3 and
+    deadline_secs=0.5, worst case is 3*0.5 + 2*1.0 = 3.5s for the primary
+    write (was 2.0s before this function existed), plus up to 0.1s per
+    emergency-copy candidate (that call site deliberately passes a shorter
+    deadline_secs=0.1 -- read contention on a data/.emergency/ or system-
+    temp destination isn't the expected failure mode there) if the primary
+    write exhausts all retries. paper.py's own cross-process lock
+    (_acquire_file_lock) gives up after a fixed 10s budget -- callers that
+    hold that lock across an atomic_write_json/atomic_write_text call
+    should account for this function's contribution to worst-case latency,
+    not just the write itself.
+    """
+    start = time.monotonic()
+    while True:
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if time.monotonic() - start >= deadline_secs:
+                raise
+            time.sleep(0.01)
+
+
 def project_root() -> Path:
     """
     Return the main project root directory, resolving git worktrees correctly.
@@ -69,6 +115,75 @@ def atomic_write_json(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(data, indent=2, default=str)
+    _atomic_write_payload(
+        payload, path, retries, fallback_dir, caller_name="atomic_write_json"
+    )
+
+
+def atomic_write_text(
+    text: str,
+    path: Path,
+    retries: int = 3,
+    fallback_dir: Path | None = None,
+    emergency_copy: bool = True,
+) -> None:
+    """
+    Write raw text to path atomically -- same write-temp/fsync/rename,
+    retry, and (by default) emergency-copy-on-total-failure behavior as
+    atomic_write_json above, for callers whose payload isn't JSON (e.g.
+    hurricane_climatology.py's raw HURDAT2 text cache). Shares the same
+    internal _atomic_write_payload helper rather than duplicating the
+    retry/fsync/emergency-copy logic -- see atomic_write_json_with_history
+    below for the existing precedent of composing on top of that shared
+    core instead of reimplementing it.
+
+    Set emergency_copy=False for disposable/re-fetchable data (e.g. a
+    30-day HTTP cache that will simply be re-downloaded next call) --
+    opus-review-caught (2026-08-08): the emergency-copy machinery exists
+    for irreplaceable trading state, but cron.py's check_emergency_copies()
+    monitor treats ANY file landing in data/.emergency/ as needing manual
+    operator attention, re-alerting every cycle until someone deletes it --
+    a multi-megabyte, trivially-refetchable text cache tripping all 3
+    retries would page an operator for data that isn't actually at risk of
+    loss. AtomicWriteError is still raised on total failure either way
+    (the caller's own fail-open handling is unaffected) -- this flag only
+    controls whether a best-effort recovery copy is ALSO attempted.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_payload(
+        text,
+        path,
+        retries,
+        fallback_dir,
+        emergency_copy,
+        caller_name="atomic_write_text",
+    )
+
+
+def _atomic_write_payload(
+    payload: str,
+    path: Path,
+    retries: int = 3,
+    fallback_dir: Path | None = None,
+    emergency_copy: bool = True,
+    *,
+    caller_name: str,
+) -> None:
+    """Shared write-temp/fsync/rename/retry/emergency-copy core for
+    atomic_write_json and atomic_write_text -- both public functions only
+    differ in how `payload` is produced (json.dumps vs. raw text), not in
+    how it's durably written. `path` is already coerced to a Path with its
+    parent directory created by the caller; it does not need to (and
+    normally does not) already exist -- it's the write target.
+
+    caller_name identifies the public function in this module's own log
+    messages (opus-review-caught 2026-08-08: the messages used to hard-code
+    "atomic_write_json" even for a failed atomic_write_text call, AND
+    backlog.txt documents an operator grep pattern -- `atomic_write_json
+    attempt.*failed` -- against the exact original wording; threading the
+    real caller through keeps that pattern matching for JSON callers while
+    giving text callers an accurate name instead of a private helper's)."""
     last_exc: Exception | None = None
 
     for attempt in range(retries):
@@ -100,7 +215,7 @@ def atomic_write_json(
                         tmp_path_str,
                         _fsync_err,
                     )
-            os.replace(tmp_path_str, path)
+            _replace_with_retry(tmp_path_str, path)
             return
         except Exception as exc:
             if tmp_path_str:
@@ -110,7 +225,8 @@ def atomic_write_json(
                     pass
             last_exc = exc
             _log.warning(
-                "atomic_write_json attempt %d/%d failed for %s: %s",
+                "%s attempt %d/%d failed for %s: %s",
+                caller_name,
                 attempt + 1,
                 retries,
                 path,
@@ -119,96 +235,116 @@ def atomic_write_json(
             if attempt < retries - 1:
                 time.sleep(1.0)
 
-    # All retries exhausted — write emergency copy for manual operator recovery only.
-    # This is NOT a transparent fallback; the caller will still get an error.
+    # All retries exhausted — write emergency copy for manual operator recovery only
+    # (unless the caller opted out via emergency_copy=False -- see atomic_write_text's
+    # own docstring for why a disposable/re-fetchable payload should skip this).
+    # This is NOT a transparent fallback; the caller will still get an error either way.
     emergency_path: Path | None = None
-    emergency_candidates = []
-    if fallback_dir:
-        emergency_candidates.append(Path(fallback_dir))
-    # P2-H: prefer a project data subdir so the emergency copy is in a monitored,
-    # operator-visible location. Deliberately a dedicated ".emergency" subdir, NOT
-    # project_root()/"data" itself -- every real caller's own `path` already lives
-    # in data/ (DATA_DIR), so that candidate used to resolve to the exact same file
-    # that just failed 3 atomic-write attempts, silently degrading to a non-atomic
-    # same-path overwrite for every one of this function's 20+ callers (none pass
-    # fallback_dir). System temp is kept as a last-resort fallback.
-    # NOTE (accepted limitation): candidates are keyed by path.name (basename)
-    # only, not the full relative path -- data/foo.json and data/ab_tests/
-    # foo.json would share one emergency slot. No real caller today has an
-    # actual basename collision (verified live against every atomic_write_json
-    # call site 2026-07-27; re-verified 2026-07-31 after notify.py's new
-    # .notify_cooldowns.json call site -- still unique), and the emergency
-    # copy is a best-effort recovery aid, not the source of truth, so this is
-    # deliberately left as-is rather than adding relative-path encoding
-    # complexity for a theoretical case.
-    emergency_candidates.append(project_root() / "data" / ".emergency")
-    emergency_candidates.append(Path(tempfile.gettempdir()))
-    resolved_target = path.resolve()
-
-    for fb_dir in emergency_candidates:
-        candidate_path = fb_dir / path.name
-        candidate_tmp: str | None = None
-        try:
-            if candidate_path.resolve() == resolved_target:
-                # Belt-and-suspenders: never overwrite the exact file that
-                # just failed to write, even if an explicit fallback_dir
-                # collides with it -- that would silently defeat this
-                # function's entire crash-safety guarantee instead of
-                # surfacing the failure.
-                _log.warning(
-                    "Skipping emergency-copy candidate %s — resolves to the "
-                    "same path as the original write target",
-                    candidate_path,
-                )
-                continue
-            candidate_path.parent.mkdir(parents=True, exist_ok=True)
-            # Same temp+fsync+replace discipline as the primary write above --
-            # the emergency copy exists specifically to survive the failure
-            # that just occurred, so it needs the same durability, not weaker.
-            candidate_tmp = str(
-                candidate_path.parent
-                / f".{candidate_path.name}_{os.getpid()}_{threading.get_ident()}.emergency.tmp"
-            )
-            with open(candidate_tmp, "w", encoding="utf-8") as f:
-                f.write(payload)
-                f.flush()
-                try:
-                    os.fsync(f.fileno())
-                except OSError as _fsync_err:
-                    _log.warning(
-                        "fsync failed for emergency copy %s: %s",
-                        candidate_tmp,
-                        _fsync_err,
-                    )
-            os.replace(candidate_tmp, candidate_path)
-            emergency_path = candidate_path
-            _log.error(
-                "Emergency copy written to %s for manual recovery (original write failed)",
-                emergency_path,
-            )
-            break
-        except Exception as fb_exc:
-            if candidate_tmp:
-                try:
-                    os.unlink(candidate_tmp)
-                except OSError:
-                    pass
-            _log.error("Emergency copy also failed for %s: %s", candidate_path, fb_exc)
-
-    if emergency_path is not None:
+    if not emergency_copy:
         emergency_note = (
-            f"Emergency copy written to {emergency_path} for manual recovery."
+            "Emergency copy was skipped (caller passed emergency_copy=False -- "
+            "this data is considered disposable/re-fetchable, not irreplaceable)."
         )
     else:
-        emergency_note = (
-            "NO emergency copy could be written anywhere -- this write's data is lost."
-        )
-        _log.error(
-            "atomic_write_json: %s could not be written and no emergency copy "
-            "could be written to any candidate location either: %s",
-            path,
-            [str(c) for c in emergency_candidates],
-        )
+        emergency_candidates = []
+        if fallback_dir:
+            emergency_candidates.append(Path(fallback_dir))
+        # P2-H: prefer a project data subdir so the emergency copy is in a monitored,
+        # operator-visible location. Deliberately a dedicated ".emergency" subdir, NOT
+        # project_root()/"data" itself -- every real caller's own `path` already lives
+        # in data/ (DATA_DIR), so that candidate used to resolve to the exact same file
+        # that just failed 3 atomic-write attempts, silently degrading to a non-atomic
+        # same-path overwrite for every one of this function's 20+ callers (none pass
+        # fallback_dir). System temp is kept as a last-resort fallback.
+        # NOTE (accepted limitation): candidates are keyed by path.name (basename)
+        # only, not the full relative path -- data/foo.json and data/ab_tests/
+        # foo.json would share one emergency slot. No real caller today has an
+        # actual basename collision (verified live against every atomic_write_json
+        # call site 2026-07-27; re-verified 2026-07-31 after notify.py's new
+        # .notify_cooldowns.json call site -- still unique), and the emergency
+        # copy is a best-effort recovery aid, not the source of truth, so this is
+        # deliberately left as-is rather than adding relative-path encoding
+        # complexity for a theoretical case.
+        emergency_candidates.append(project_root() / "data" / ".emergency")
+        emergency_candidates.append(Path(tempfile.gettempdir()))
+        resolved_target = path.resolve()
+
+        for fb_dir in emergency_candidates:
+            candidate_path = fb_dir / path.name
+            candidate_tmp: str | None = None
+            try:
+                if candidate_path.resolve() == resolved_target:
+                    # Belt-and-suspenders: never overwrite the exact file that
+                    # just failed to write, even if an explicit fallback_dir
+                    # collides with it -- that would silently defeat this
+                    # function's entire crash-safety guarantee instead of
+                    # surfacing the failure.
+                    _log.warning(
+                        "Skipping emergency-copy candidate %s — resolves to the "
+                        "same path as the original write target",
+                        candidate_path,
+                    )
+                    continue
+                candidate_path.parent.mkdir(parents=True, exist_ok=True)
+                # Same temp+fsync+replace discipline as the primary write above --
+                # the emergency copy exists specifically to survive the failure
+                # that just occurred, so it needs the same durability, not weaker.
+                candidate_tmp = str(
+                    candidate_path.parent
+                    / f".{candidate_path.name}_{os.getpid()}_{threading.get_ident()}.emergency.tmp"
+                )
+                with open(candidate_tmp, "w", encoding="utf-8") as f:
+                    f.write(payload)
+                    f.flush()
+                    try:
+                        os.fsync(f.fileno())
+                    except OSError as _fsync_err:
+                        _log.warning(
+                            "fsync failed for emergency copy %s: %s",
+                            candidate_tmp,
+                            _fsync_err,
+                        )
+                # Shorter deadline than the primary write's default (0.1s
+                # vs. 0.5s) -- emergency-copy destinations (data/.emergency/,
+                # system temp) aren't read by anything else in this codebase,
+                # so sustained reader contention isn't the expected failure
+                # mode here; keeping this bounded caps the worst-case total
+                # latency this whole function can add on top of the primary
+                # write's own already-exhausted retries (opus-review-caught,
+                # 2nd review round, 2026-08-08).
+                _replace_with_retry(candidate_tmp, candidate_path, deadline_secs=0.1)
+                emergency_path = candidate_path
+                _log.error(
+                    "Emergency copy written to %s for manual recovery (original write failed)",
+                    emergency_path,
+                )
+                break
+            except Exception as fb_exc:
+                if candidate_tmp:
+                    try:
+                        os.unlink(candidate_tmp)
+                    except OSError:
+                        pass
+                _log.error(
+                    "Emergency copy also failed for %s: %s", candidate_path, fb_exc
+                )
+
+        if emergency_path is not None:
+            emergency_note = (
+                f"Emergency copy written to {emergency_path} for manual recovery."
+            )
+        else:
+            emergency_note = (
+                "NO emergency copy could be written anywhere -- this write's "
+                "data is lost."
+            )
+            _log.error(
+                "%s: %s could not be written and no emergency copy could be "
+                "written to any candidate location either: %s",
+                caller_name,
+                path,
+                [str(c) for c in emergency_candidates],
+            )
 
     raise AtomicWriteError(
         f"Failed to write {path} after {retries} attempts. "
@@ -222,11 +358,14 @@ def check_emergency_copies(base_dir: Path | None = None) -> list[dict]:
     """Return info about any real recovery copies sitting in the emergency-
     copy fallback location(s) (backlog.txt "SAFE_IO -- NOTHING MONITORS
     data/.emergency/ FOR REAL RECOVERY COPIES"). A file existing here means
-    some real caller's atomic_write_json() exhausted all `retries` attempts
-    and fell back here -- the caller still raised AtomicWriteError, so
-    nothing else ever reads this copy; only a human manually recovering it
-    closes the loop. Previously the only signal was one buried ERROR log
-    line at write time.
+    some real caller's atomic_write_json() or atomic_write_text() (opus-
+    review-caught 2026-08-08: the latter added a per-call emergency_copy
+    opt-out for disposable payloads, so not every atomic_write_text failure
+    lands here -- only callers that left it at the True default) exhausted
+    all `retries` attempts and fell back here -- the caller still raised
+    AtomicWriteError, so nothing else ever reads this copy; only a human
+    manually recovering it closes the loop. Previously the only signal was
+    one buried ERROR log line at write time.
 
     Returns one dict per file, oldest first:
     {"filename": str, "path": str, "mtime": ISO 8601 UTC string, "size_bytes": int}.
