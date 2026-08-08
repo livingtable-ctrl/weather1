@@ -365,6 +365,49 @@ def test_atomic_write_text_emergency_copy_written_on_failure(tmp_path, monkeypat
     assert emergency_copy.read_text(encoding="utf-8") == "hurdat2 text"
 
 
+def test_atomic_write_text_emergency_copy_opt_out_skips_recovery_copy(
+    tmp_path, monkeypatch
+):
+    """backlog.txt "climate_indices.py's PDO/PNA CACHE AND backtest.py's OWN
+    CACHE ALSO SKIP safe_io" 2nd opus review round: emergency_copy=False was
+    exercised end-to-end only via a mocked safe_io.atomic_write_json in
+    tests/test_backtest.py -- the real, non-mocked opt-out behavior (added
+    for hurricane_climatology.fetch_hurdat2_raw, commit 94d3640) had zero
+    direct test coverage. A mutation deleting the emergency_copy plumbing in
+    _atomic_write_payload would have shipped invisibly."""
+    import os
+
+    import safe_io
+
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
+    emergency_dir = tmp_path / "emergency"
+    emergency_dir.mkdir()
+
+    target = tmp_path / "data" / "hurdat2_ATL.txt"
+    _real_replace = os.replace
+
+    def fail_replace(src, dst):
+        if Path(dst) == target:
+            raise OSError("simulated disk full")
+        _real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    from safe_io import AtomicWriteError
+
+    with pytest.raises(AtomicWriteError):
+        safe_io.atomic_write_text(
+            "hurdat2 text",
+            target,
+            retries=1,
+            fallback_dir=emergency_dir,
+            emergency_copy=False,
+        )
+
+    assert list(emergency_dir.iterdir()) == []
+
+
 def test_atomic_write_text_concurrent_writers_never_expose_torn_file(
     tmp_path, monkeypatch
 ):
@@ -537,6 +580,49 @@ def test_atomic_write_emergency_copy_written_on_failure(tmp_path, monkeypatch):
 
     # Emergency copy must exist for manual recovery
     assert (emergency_dir / "paper_trades.json").exists()
+
+
+def test_atomic_write_json_emergency_copy_opt_out_skips_recovery_copy(
+    tmp_path, monkeypatch
+):
+    """backlog.txt "climate_indices.py's PDO/PNA CACHE AND backtest.py's OWN
+    CACHE ALSO SKIP safe_io" 2nd opus review round: atomic_write_json's own
+    emergency_copy=False opt-out (added this same session, mirroring
+    atomic_write_text's) had zero direct test coverage -- backtest.py's
+    fetch_archive_temps passes it, but only through a mocked
+    safe_io.atomic_write_json in tests/test_backtest.py, never against the
+    real function."""
+    import os
+
+    import safe_io
+
+    monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+
+    emergency_dir = tmp_path / "emergency"
+    emergency_dir.mkdir()
+
+    target = tmp_path / "data" / "archive_cache" / "cache_key.json"
+    _real_replace = os.replace
+
+    def fail_replace(src, dst):
+        if Path(dst) == target:
+            raise OSError("simulated disk full")
+        _real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    from safe_io import AtomicWriteError
+
+    with pytest.raises(AtomicWriteError):
+        safe_io.atomic_write_json(
+            {"values": [1.0, 2.0]},
+            target,
+            retries=1,
+            fallback_dir=emergency_dir,
+            emergency_copy=False,
+        )
+
+    assert list(emergency_dir.iterdir()) == []
 
 
 def test_atomic_write_default_fallback_does_not_clobber_original(tmp_path, monkeypatch):

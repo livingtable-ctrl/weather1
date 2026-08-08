@@ -2618,46 +2618,109 @@ RESOLVED 2026-08-08: Re-verified every claim in this entry live before
   skipped, no regressions.
 
 ======================================================
-[OPEN 2026-08-08 -- found via opus review of the resolved hurricane_climatology.fetch_hurdat2_raw's CACHE WRITE ISN'T ATOMIC entry above] climate_indices.py's PDO/PNA CACHE AND backtest.py's OWN CACHE ALSO SKIP safe_io
-Priority: Medium -- climate_indices.py's own gap is live-reachable
+[RESOLVED 2026-08-08] climate_indices.py's PDO/PNA CACHE AND backtest.py's OWN CACHE ALSO SKIP safe_io
+Priority: was Medium -- climate_indices.py's own gap is live-reachable
   (apply_pdo_pna_correction() is called from weather_markets.py's
   analyze_trade(), not a shadow-only/disposable path like the HURDAT2
-  cache this entry's sibling was about); backtest.py's is Low (research
+  cache this entry's sibling was about); backtest.py's was Low (research
   tooling, not a live trading path).
 
   Found 2026-08-08 (opus review of the resolved "hurricane_climatology.
   fetch_hurdat2_raw's CACHE WRITE ISN'T ATOMIC" entry above) while
   checking whether that fix's own new test docstring's claim -- "the only
   raw-text cache in this codebase that skips safe_io" -- was actually
-  true. It wasn't: `climate_indices.py:497` writes `_PDO_PNA_PATH` via a
-  plain `_PDO_PNA_PATH.write_text(json.dumps(payload))` (read back at
-  `climate_indices.py:511` via `get_pdo_pna()`, which
-  `apply_pdo_pna_correction()` -- called live from weather_markets.py
-  `analyze_trade()` -- calls directly), and `backtest.py:129` does the
-  same shape for its own bootstrap-distribution cache
-  (`cache_file.write_text(json.dumps(result))`, wrapped in a swallowed
-  `try/except: pass`). Neither goes through safe_io.atomic_write_json,
-  despite both being JSON payloads -- unlike acis_precip.py/climatology.py,
-  which already use it correctly.
+  true. It wasn't: `climate_indices.py:497` wrote `_PDO_PNA_PATH` via a
+  plain `_PDO_PNA_PATH.write_text(json.dumps(payload))` (read back via
+  `get_pdo_pna()`, which `apply_pdo_pna_correction()` -- called live from
+  weather_markets.py `analyze_trade()` -- calls directly), and
+  `backtest.py:129`'s `fetch_archive_temps()` did the same shape for its
+  own synthetic-ensemble cache (`cache_file.write_text(json.dumps(result))`,
+  wrapped in a swallowed `try/except: pass`). Neither went through
+  safe_io.atomic_write_json, despite both being JSON payloads -- unlike
+  acis_precip.py/climatology.py, which already used it correctly.
 
-  Not fixed inline as part of the sibling entry above -- genuinely a
-  different module/call path, deserving its own scoped audit (does
-  climate_indices.py's own write have the same concurrent-writer-torn-file
-  exposure the HURDAT2 entry was about? does backtest.py's swallowed
-  except mask a write failure that should at least log?) rather than a
-  drive-by fix bolted onto an unrelated entry's diff.
+  Fixed: both call sites swapped to safe_io.atomic_write_json. backtest.py's
+  cache is a bare list[float], not a dict, so the payload is wrapped as
+  {"values": [...]} on write (and unwrapped on read, with a fallback for
+  pre-existing on-disk caches still in the old raw-list shape -- they fall
+  through to a refetch instead of crashing). Two judgment calls raised via
+  AskUserQuestion rather than assumed:
+  - climate_indices.py keeps atomic_write_json's default emergency_copy=True
+    (an operator-visible recovery copy is worth a rare false page, since
+    this cache feeds a live trade input -- unlike backtest.py's cache,
+    which opted OUT via a new emergency_copy=False parameter added to
+    atomic_write_json's own signature, mirroring atomic_write_text's
+    existing opt-out from the HURDAT2 sibling fix).
+  - backtest.py's swallowed except became a logged warning, matching an
+    existing in-file convention (save_walk_forward_params, a few dozen
+    lines below fetch_archive_temps, already does exactly this).
 
-  What it would look like: swap both call sites to
-  safe_io.atomic_write_json(payload, path) (already available, no new
-  safe_io.py work needed -- both payloads are real JSON, unlike the
-  HURDAT2 entry's raw-text case). For climate_indices.py specifically,
-  consider whether emergency_copy=False fits (PDO/PNA is refetchable from
-  NOAA like HURDAT2 was) or whether a live-model-input cache should keep
-  the default emergency-copy behavior (arguably yes, unlike the disposable
-  HURDAT2 case -- worth a real judgment call, not a copy-paste of the
-  sibling entry's choice). backtest.py's swallowed except should probably
-  at least log a warning on write failure, matching every other cache
-  write in this codebase's convention.
+  Two rounds of opus review (effort: high; 18 findings total, all
+  addressed) surfaced real issues beyond the mechanical swap:
+  - MEDIUM/live-repro: an UNRELATED pre-existing test
+    (tests/test_backtest_stratified.py's TestFetchArchiveTempsEnsembleCenter)
+    patched backtest.ARCHIVE_CACHE_DIR with a bare MagicMock -- since
+    MagicMock auto-mocks __fspath__ and is therefore a valid os.PathLike,
+    safe_io.atomic_write_json's own path.parent.mkdir(...) started silently
+    creating a real "MagicMock/mock/<id>/" directory tree with real JSON
+    files in the repo working directory on every test run (verified live).
+    Fixed by giving that test a real tempfile.TemporaryDirectory() instead.
+  - MEDIUM: atomic_write_json had no emergency_copy parameter at all before
+    this fix (only atomic_write_text did) -- so backtest.py's disposable
+    cache would have been silently opted INTO the operator-paging
+    emergency-copy machinery with no way out. Fixed by extending
+    atomic_write_json's own signature (now keyword-only for emergency_copy
+    on both writers, matching how every real caller already invokes it) and
+    adding direct end-to-end test coverage in test_safe_io.py for both
+    functions' opt-out (previously only exercised through mocks).
+  - MEDIUM: climate_indices.py's write failure used to propagate out of
+    fetch_pdo_pna() and get silently swallowed by get_pdo_pna()'s own
+    except Exception, discarding a successfully-fetched NOAA payload.
+    Fixed with a fail-open wrap (mirroring hurricane_climatology.
+    fetch_hurdat2_raw's own shape) that logs a warning and still returns
+    the fetched payload -- reachable only once a stale pdo_pna.json already
+    exists and a refresh write then fails, since
+    weather_markets._pdopna_blend_active() requires the file to exist
+    before this path ever runs at all. A first-round review comment
+    justifying this fix cited a wrong TTL (24h instead of the real 7 days)
+    and an unreachable-on-cold-start scenario -- corrected in both the code
+    comment and the test docstring. The added safe_io retry/emergency-copy
+    latency (~3.5s worst case) on this live per-market path was considered
+    and deliberately left at the default retries=3, matching every other
+    atomic_write_json caller's convention -- it only manifests once the
+    disk is already failing writes persistently, a state already treated
+    as degraded.
+  - Several LOW findings: a swallowed AssertionError inside a test's mocked
+    network call (indistinguishable from a real cache-miss once caught by
+    fetch_archive_temps's own broad except), weak path assertions, a
+    duplicate test name across two classes in the same file, rec.message
+    vs. the stable rec.getMessage() API, a stale docstring in
+    check_emergency_copies() about which writer got the emergency_copy
+    opt-out first, and test coverage gaps (get_pdo_pna()'s own
+    user-visible fail-open behavior, not just fetch_pdo_pna()'s, plus the
+    PDO/PNA test never asserting emergency_copy stayed at its True
+    default) -- all fixed, each new/changed assertion mutation-tested by
+    reverting the corresponding production code and confirming the test
+    actually fails.
+
+  Also checked live (an open question the entry itself raised): does
+  climate_indices.py's write have the same concurrent-writer torn-file
+  exposure the HURDAT2 entry was about? Yes, structurally identical (same
+  paths.py-shared-data-directory-across-worktrees pattern) -- and this fix
+  is exactly the mitigation, inheriting safe_io's already-tested,
+  path-agnostic concurrent-writer guarantee
+  (test_atomic_write_concurrent_threads_same_target_no_collision) rather
+  than needing a new dedicated test, matching the sibling entry's own
+  precedent of not duplicating that coverage per caller.
+
+  Final (re-measured, not estimated): 187 passed across
+  tests/test_backtest.py, tests/test_backtest_stratified.py,
+  tests/test_climate_indices.py, tests/test_forecasting.py, and
+  tests/test_safe_io.py (was ~181 before this session's new/renamed
+  tests). Broader sweep (test_paper.py, test_alerts.py,
+  test_circuit_breaker.py, test_notify.py, test_climatology.py,
+  test_acis_precip.py, test_hurricane_climatology.py) 547 passed, no
+  regressions. ruff + ruff format + mypy clean on all 7 changed files.
 
 [RESOLVED 2026-07-25] NEAR-SETTLEMENT LOG (near_settlement_log) SILENTLY BROKEN SINCE IT SHIPPED -- WRONG FIELD NAMES ON THE TRADE-RECORD DICT
 Priority: was Medium -- a shipped calibration-data feature had been a

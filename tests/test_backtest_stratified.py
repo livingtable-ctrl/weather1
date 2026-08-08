@@ -11,7 +11,9 @@ class TestFetchArchiveTempsEnsembleCenter(unittest.TestCase):
         Monkeypatch requests.get so fetch_archive_temps uses controlled data,
         then return the synthetic ensemble list.
         """
+        import tempfile
         from datetime import date
+        from pathlib import Path
         from unittest.mock import MagicMock, patch
 
         from backtest import fetch_archive_temps
@@ -41,15 +43,17 @@ class TestFetchArchiveTempsEnsembleCenter(unittest.TestCase):
             "daily": {"time": times, "temperature_2m_max": vals}
         }
 
+        # A real (empty) temp dir disables the disk cache for this run without
+        # resorting to a MagicMock stand-in for ARCHIVE_CACHE_DIR -- a MagicMock
+        # is a valid os.PathLike (via its auto-mocked __fspath__), so
+        # safe_io.atomic_write_json's own path.parent.mkdir(...) silently created
+        # a real "MagicMock/mock/<id>/" directory tree in the repo working
+        # directory on every test run before this fix.
         with (
             patch("backtest.requests.get", return_value=mock_resp),
-            patch("backtest.ARCHIVE_CACHE_DIR") as mock_dir,
+            tempfile.TemporaryDirectory() as _td,
+            patch("backtest.ARCHIVE_CACHE_DIR", Path(_td)),
         ):
-            # Disable disk cache
-            mock_cache_file = MagicMock()
-            mock_cache_file.exists.return_value = False
-            mock_cache_file.write_text = MagicMock()
-            mock_dir.__truediv__ = MagicMock(return_value=mock_cache_file)
             result = fetch_archive_temps(40.7, -74.0, "America/New_York", target, "max")
         return result
 

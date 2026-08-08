@@ -23,6 +23,7 @@ from pathlib import Path
 
 import requests
 
+import safe_io
 from paths import DATA_DIR
 from utils import KALSHI_FEE_RATE, KALSHI_MAKER_FEE_RATE
 from utils import prob_threshold as _prob_threshold
@@ -60,7 +61,12 @@ def fetch_archive_temps(
     cache_file = ARCHIVE_CACHE_DIR / f"{cache_key}.json"
     if cache_file.exists():
         try:
-            return json.loads(cache_file.read_text())
+            _cached = json.loads(cache_file.read_text())
+            # Pre-fix caches (written before this cache moved to the
+            # {"values": [...]} wrapper safe_io.atomic_write_json needs) are a
+            # bare list -- treat that shape as valid too instead of raising and
+            # silently losing the cached values to a full refetch.
+            return _cached["values"] if isinstance(_cached, dict) else _cached
         except Exception:
             pass
 
@@ -126,9 +132,13 @@ def fetch_archive_temps(
         _rng = random.Random(int(hashlib.md5(target_str.encode()).hexdigest()[:8], 16))
         result = [forecast_mean + _rng.gauss(0, sigma) for _ in range(50)]
         try:
-            cache_file.write_text(json.dumps(result))
-        except Exception:
-            pass
+            safe_io.atomic_write_json(
+                {"values": result}, cache_file, emergency_copy=False
+            )
+        except Exception as _e:
+            _log.warning(
+                "fetch_archive_temps: cache write failed for %s: %s", cache_key, _e
+            )
         return result
     except Exception:
         return []
@@ -908,8 +918,6 @@ def save_walk_forward_params(results: dict, path: Path | None = None) -> None:
         "saved_at": time.time(),
     }
     try:
-        import safe_io
-
         safe_io.atomic_write_json(out, p)
     except Exception as _e:
         _log.warning("save_walk_forward_params: could not save results: %s", _e)

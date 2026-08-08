@@ -22,13 +22,17 @@ Temperature adjustment logic (applied to climatological baseline only):
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from datetime import UTC, date, datetime
 
 import requests
 
+import safe_io
 from forecast_cache import ForecastCache
 from paths import PDO_PNA_PATH as _PDO_PNA_PATH
+
+_log = logging.getLogger(__name__)
 
 CPC_BASE = "https://www.cpc.ncep.noaa.gov"
 
@@ -179,9 +183,7 @@ def get_indices(
         # for the next 24 hours — skip the _indices_cache.set() call below so the
         # next call retries immediately instead of hitting a frozen zero result.
         if result["ao"] == 0.0 and result["nao"] == 0.0 and result["enso"] == 0.0:
-            import logging as _ci_log
-
-            _ci_log.getLogger(__name__).warning(
+            _log.warning(
                 "climate_indices: all three NOAA fetches returned empty — "
                 "NOT caching zero result; will retry on next call"
             )
@@ -493,8 +495,37 @@ def fetch_pdo_pna() -> dict:
         "pna": pna,
         "fetched_at": datetime.now(UTC).isoformat(),
     }
-    _PDO_PNA_PATH.parent.mkdir(exist_ok=True)
-    _PDO_PNA_PATH.write_text(json.dumps(payload))
+    try:
+        # Default retries=3 (up to ~3.5s worst case, see safe_io._replace_
+        # with_retry's own docstring) is kept rather than lowered for this
+        # call specifically (opus-review-caught 2026-08-08: this write sits
+        # on the live per-market analyze_trade() path, so a persistent disk
+        # failure here compounds across every market scanned) -- consistent
+        # with every other atomic_write_json call site in this codebase,
+        # including several others also reachable from the same per-market
+        # path (e.g. weather_markets.py's HOURLY_TARGET_HOURS_PATH write).
+        # The added latency only manifests when the disk is ALREADY failing
+        # writes persistently, a state this fail-open handling already
+        # accepts as degraded; singling out this one site with a shorter
+        # retry budget would trade a small amount of write reliability for
+        # negligible benefit in the common case.
+        safe_io.atomic_write_json(payload, _PDO_PNA_PATH)
+    except Exception as _e:
+        # A cache-write failure must not discard data already fetched
+        # successfully from NOAA -- mirrors hurricane_climatology.
+        # fetch_hurdat2_raw's own fail-open shape for the identical
+        # situation. Without this, the exception would propagate to
+        # get_pdo_pna()'s own except Exception (below), silently returning
+        # {"pdo": 0.0, "pna": 0.0} to apply_pdo_pna_correction() -- a live
+        # model-input path. This only bites once a stale pdo_pna.json
+        # already exists and a refresh write then fails (the file must
+        # exist for weather_markets._pdopna_blend_active() to ever let this
+        # path run at all -- a first-ever write failure is unreachable from
+        # the live path) -- but in that state, WITHOUT this fail-open, every
+        # call would return zeros for as long as writes kept failing, not
+        # just for one TTL window (a failed write never lands the file, so
+        # there's no successful refresh to start a new TTL cycle from).
+        _log.warning("fetch_pdo_pna: cache write failed for %s: %s", _PDO_PNA_PATH, _e)
     return payload
 
 

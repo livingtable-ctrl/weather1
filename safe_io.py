@@ -97,7 +97,12 @@ def project_root() -> Path:
 
 
 def atomic_write_json(
-    data: dict, path: Path, retries: int = 3, fallback_dir: Path | None = None
+    data: dict,
+    path: Path,
+    retries: int = 3,
+    fallback_dir: Path | None = None,
+    *,
+    emergency_copy: bool = True,
 ) -> None:
     """
     Write data to path atomically (write temp → fsync → rename).
@@ -111,12 +116,23 @@ def atomic_write_json(
     is a dedicated `<project_root>/data/.emergency/` subdirectory, then
     system temp as a last resort. The emergency copy is itself written
     atomically (temp + fsync + rename), same as the primary write.
+
+    Set emergency_copy=False for disposable/re-fetchable JSON data -- same
+    opt-out atomic_write_text already exposes (see its own docstring for
+    why: cron.py's check_emergency_copies() monitor re-alerts an operator
+    every cycle until a landed emergency copy is manually deleted, which a
+    trivially-refetchable cache shouldn't trigger).
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(data, indent=2, default=str)
     _atomic_write_payload(
-        payload, path, retries, fallback_dir, caller_name="atomic_write_json"
+        payload,
+        path,
+        retries,
+        fallback_dir,
+        emergency_copy,
+        caller_name="atomic_write_json",
     )
 
 
@@ -125,6 +141,7 @@ def atomic_write_text(
     path: Path,
     retries: int = 3,
     fallback_dir: Path | None = None,
+    *,
     emergency_copy: bool = True,
 ) -> None:
     """
@@ -362,12 +379,14 @@ def check_emergency_copies(base_dir: Path | None = None) -> list[dict]:
     """Return info about any real recovery copies sitting in the emergency-
     copy fallback location(s) (backlog.txt "SAFE_IO -- NOTHING MONITORS
     data/.emergency/ FOR REAL RECOVERY COPIES"). A file existing here means
-    some real caller's atomic_write_json() or atomic_write_text() (opus-
-    review-caught 2026-08-08: the latter added a per-call emergency_copy
-    opt-out for disposable payloads, so not every atomic_write_text failure
-    lands here -- only callers that left it at the True default) exhausted
-    all `retries` attempts and fell back here -- the caller still raised
-    AtomicWriteError, so nothing else ever reads this copy; only a human
+    some real caller's atomic_write_json() or atomic_write_text() (both now
+    expose a per-call emergency_copy opt-out for disposable payloads --
+    atomic_write_text got it first, 2026-08-08; atomic_write_json followed
+    the same day once a second disposable-cache caller needed it -- so not
+    every failure lands here, only callers that left it at the True
+    default) exhausted all `retries` attempts and fell back here -- the
+    caller still raised AtomicWriteError, so nothing else ever reads this
+    copy; only a human
     manually recovering it closes the loop. Previously the only signal was
     one buried ERROR log line at write time.
 
@@ -448,6 +467,11 @@ def atomic_write_json_with_history(
     path: Path,
     max_history: int = 10,
 ) -> None:
+    """Does not expose emergency_copy -- this function exists specifically
+    to preserve a recoverable history of state worth backing up, so keeping
+    atomic_write_json's own emergency_copy=True default (not forwarding a
+    caller override) matches its own purpose; no real caller needs the
+    opt-out today."""
     import time as _time
     from datetime import UTC, datetime
     from pathlib import Path

@@ -46,6 +46,145 @@ class TestSaveWalkForwardParams:
         )
 
 
+class TestFetchArchiveTempsCacheWrite:
+    """backlog.txt "climate_indices.py's PDO/PNA CACHE AND backtest.py's OWN
+    CACHE ALSO SKIP safe_io": fetch_archive_temps used to write its disk
+    cache with a plain cache_file.write_text(json.dumps(result)) wrapped in
+    a swallowed except: pass -- unlike save_walk_forward_params later in the
+    same module (backtest.py, around line 900; already on
+    safe_io.atomic_write_json), this write skipped both the atomic-write
+    discipline AND any failure signal. Fixed by routing through
+    safe_io.atomic_write_json (payload wrapped as {"values": [...]} since
+    atomic_write_json requires a dict and fetch_archive_temps's cache is a
+    bare list[float]; emergency_copy=False since this cache is a
+    disposable, re-fetchable Open-Meteo archive query, not irreplaceable
+    trading state) and replacing the swallowed except with a logged
+    warning, matching save_walk_forward_params' own convention."""
+
+    def _mock_daily_response(self, target_date):
+        from datetime import timedelta
+
+        days = [target_date + timedelta(days=d) for d in range(-5, 6)]
+        return {
+            "daily": {
+                "time": [d.isoformat() for d in days],
+                "temperature_2m_max": [70.0 + i for i in range(len(days))],
+            }
+        }
+
+    def _mock_resp(self, daily_payload):
+        class MockResp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return daily_payload
+
+        return MockResp()
+
+    def test_fetch_archive_temps_writes_via_atomic_helper(self, monkeypatch, tmp_path):
+        """fetch_archive_temps must use safe_io.atomic_write_json, not a plain
+        write_text -- a plain write leaves a window where a concurrent reader
+        (a parallel backtest run against the same cache dir) can see a
+        partially-written file."""
+        from datetime import date
+        from unittest.mock import MagicMock
+
+        import backtest
+
+        monkeypatch.setattr(backtest, "ARCHIVE_CACHE_DIR", tmp_path)
+        target = date(2026, 6, 20)
+
+        mock_resp = self._mock_resp(self._mock_daily_response(target))
+        monkeypatch.setattr("backtest.requests.get", lambda *a, **k: mock_resp)
+
+        mock_atomic_write = MagicMock()
+        monkeypatch.setattr("safe_io.atomic_write_json", mock_atomic_write)
+
+        result = backtest.fetch_archive_temps(40.7, -74.0, "America/New_York", target)
+
+        assert len(result) == 50
+        mock_atomic_write.assert_called_once()
+        written_data, written_path = mock_atomic_write.call_args[0]
+        assert written_data == {"values": result}
+        assert written_path == tmp_path / "40.7_-74.0_2026-06-20_max.json"
+        assert mock_atomic_write.call_args.kwargs == {"emergency_copy": False}
+
+    def test_fetch_archive_temps_survives_write_failure(
+        self, monkeypatch, tmp_path, caplog
+    ):
+        """A failed cache write (e.g. AtomicWriteError) must not crash the
+        fetch or lose the freshly-fetched data to the caller -- and, unlike
+        before this fix, must now log a warning instead of silently
+        swallowing the failure (matches save_walk_forward_params' own
+        convention later in this same module)."""
+        import logging
+        from datetime import date
+
+        import backtest
+
+        monkeypatch.setattr(backtest, "ARCHIVE_CACHE_DIR", tmp_path)
+        target = date(2026, 6, 20)
+
+        mock_resp = self._mock_resp(self._mock_daily_response(target))
+        monkeypatch.setattr("backtest.requests.get", lambda *a, **k: mock_resp)
+
+        def _raise(*a, **kw):
+            raise OSError("disk full")
+
+        monkeypatch.setattr("safe_io.atomic_write_json", _raise)
+
+        with caplog.at_level(logging.WARNING):
+            result = backtest.fetch_archive_temps(
+                40.7, -74.0, "America/New_York", target
+            )
+
+        assert len(result) == 50  # fetched data still returned despite write failure
+        cache_key = "40.7_-74.0_2026-06-20_max"
+        assert not (tmp_path / f"{cache_key}.json").exists()  # no cache file written
+        assert any(
+            "fetch_archive_temps: cache write failed" in rec.getMessage()
+            for rec in caplog.records
+        )
+
+    def test_reads_cache_round_trip(self, monkeypatch, tmp_path):
+        """A cache file written by the real (non-mocked) safe_io.atomic_write_json
+        must be readable back by fetch_archive_temps's own read path -- guards
+        against the {"values": [...]} wrap/unwrap shape drifting out of sync."""
+        from datetime import date
+
+        import backtest
+        import safe_io
+
+        # Belt-and-suspenders: this test calls the real (non-mocked)
+        # atomic_write_json -- if the write ever failed unexpectedly (e.g.
+        # under CI's own transient disk conditions) without this, an
+        # emergency copy would land in project_root()'s real data/.emergency/
+        # (the main clone, not this worktree) rather than tmp_path.
+        monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+        monkeypatch.setattr(backtest, "ARCHIVE_CACHE_DIR", tmp_path)
+        target = date(2026, 6, 20)
+        cache_key = f"{round(40.7, 4)}_{round(-74.0, 4)}_{target.isoformat()}_max"
+        cache_file = tmp_path / f"{cache_key}.json"
+        safe_io.atomic_write_json({"values": [1.0, 2.0, 3.0]}, cache_file)
+
+        # A raised AssertionError here would be swallowed by
+        # fetch_archive_temps's own outer `except Exception: return []` --
+        # indistinguishable from a genuine cache-miss/refetch-failure and
+        # losing the real diagnostic. Record the call instead of asserting
+        # inside the mock.
+        network_calls = []
+        monkeypatch.setattr(
+            "backtest.requests.get", lambda *a, **k: network_calls.append(1)
+        )
+
+        result = backtest.fetch_archive_temps(40.7, -74.0, "America/New_York", target)
+        assert not network_calls, "should not hit the network — cache should be used"
+        assert result == [1.0, 2.0, 3.0]
+
+
 class TestCmdSimulateStatusParam:
     def test_simulate_uses_series_fetch_not_get_markets(self, monkeypatch):
         """cmd_simulate must use _fetch_settled_markets (series-based), not get_markets."""

@@ -1582,6 +1582,162 @@ class TestPDOPNA:
         assert "202601" in result["pdo"]
         assert result["pdo"]["202601"] == pytest.approx(0.85, abs=0.001)
 
+    def test_fetch_pdo_pna_writes_via_atomic_helper(self, monkeypatch, tmp_path):
+        """backlog.txt "climate_indices.py's PDO/PNA CACHE AND backtest.py's
+        OWN CACHE ALSO SKIP safe_io": fetch_pdo_pna used to write
+        _PDO_PNA_PATH with a plain write_text(json.dumps(payload)) -- unlike
+        acis_precip.py/climatology.py (both already on
+        safe_io.atomic_write_json). apply_pdo_pna_correction() reads this
+        cache and is called live from weather_markets.analyze_trade(), so
+        a torn/partial write here is a live-model-input risk, not a
+        disposable one (unlike the sibling HURDAT2 cache) -- spies on
+        safe_io.atomic_write_json directly rather than only asserting on
+        the end file content, since a regression back to a bare write_text
+        would produce byte-identical output and slip past a content-only
+        assertion."""
+        from unittest.mock import patch
+
+        import climate_indices as ci
+        import safe_io
+
+        # Belt-and-suspenders: this spy wraps the real (non-mocked)
+        # atomic_write_json -- isolate any unexpected write failure's
+        # emergency copy to tmp_path rather than this repo's real
+        # data/.emergency/ (the main clone, not this worktree).
+        monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+        monkeypatch.setattr(ci, "_PDO_PNA_PATH", tmp_path / "pdo_pna.json")
+
+        csv_content = "Date,Value\n202601,0.85\n202602,-0.32\n"
+        mock_resp = type(
+            "R",
+            (),
+            {
+                "text": csv_content,
+                "raise_for_status": lambda self: None,
+            },
+        )()
+        monkeypatch.setattr(ci.requests, "get", lambda *a, **k: mock_resp)
+
+        with patch.object(
+            safe_io, "atomic_write_json", wraps=safe_io.atomic_write_json
+        ) as spy_write:
+            result = ci.fetch_pdo_pna()
+
+        spy_write.assert_called_once()
+        written_data, written_path = spy_write.call_args[0]
+        assert written_data == result
+        assert written_path == tmp_path / "pdo_pna.json"
+        # emergency_copy must stay at its True default here -- unlike
+        # backtest.py's disposable archive cache, this cache feeds a live
+        # model input and a regression opting it into emergency_copy=False
+        # would pass every other assertion in this test.
+        assert spy_write.call_args.kwargs == {}
+        # The real (non-mocked) atomic_write_json must have actually landed
+        # the file -- confirms the spy wraps rather than replaces it.
+        assert (tmp_path / "pdo_pna.json").exists()
+
+    def test_fetch_pdo_pna_write_failure_still_returns_fetched_data(
+        self, monkeypatch, tmp_path, caplog
+    ):
+        """A cache-write failure (opus-review-caught 2026-08-08: the initial
+        version of this fix let a write failure propagate out of
+        fetch_pdo_pna and get silently swallowed by get_pdo_pna's own
+        except Exception, discarding successfully-fetched NOAA data and
+        returning {"pdo": 0.0, "pna": 0.0} on every call for as long as
+        writes kept failing -- reachable only once a stale pdo_pna.json
+        already exists and a refresh write then fails, since
+        weather_markets._pdopna_blend_active() requires the file to exist
+        before this path ever runs) must not lose the freshly-fetched
+        payload to the caller -- mirrors hurricane_climatology.
+        fetch_hurdat2_raw's own fail-open shape for the identical
+        situation, and must log a warning instead of failing silently."""
+        import logging
+
+        import climate_indices as ci
+        import safe_io
+
+        monkeypatch.setattr(ci, "_PDO_PNA_PATH", tmp_path / "pdo_pna.json")
+
+        csv_content = "Date,Value\n202601,0.85\n202602,-0.32\n"
+        mock_resp = type(
+            "R",
+            (),
+            {
+                "text": csv_content,
+                "raise_for_status": lambda self: None,
+            },
+        )()
+        monkeypatch.setattr(ci.requests, "get", lambda *a, **k: mock_resp)
+        monkeypatch.setattr(
+            safe_io,
+            "atomic_write_json",
+            lambda *a, **kw: (_ for _ in ()).throw(
+                safe_io.AtomicWriteError("simulated total write failure")
+            ),
+        )
+
+        with caplog.at_level(logging.WARNING):
+            result = ci.fetch_pdo_pna()
+
+        assert "202601" in result["pdo"]
+        assert result["pdo"]["202601"] == pytest.approx(0.85, abs=0.001)
+        assert not (tmp_path / "pdo_pna.json").exists()
+        assert any(
+            "fetch_pdo_pna: cache write failed" in rec.getMessage()
+            for rec in caplog.records
+        )
+
+    def test_get_pdo_pna_survives_refresh_write_failure_with_stale_cache(
+        self, monkeypatch, tmp_path
+    ):
+        """The user-visible behavior test_fetch_pdo_pna_write_failure_still_
+        returns_fetched_data only proves at the fetch_pdo_pna() layer:
+        get_pdo_pna() (the actual public entry point apply_pdo_pna_correction
+        calls) must return the freshly-refetched value, not the stale one AND
+        not zeros, when a stale pdo_pna.json exists and its refresh write
+        fails -- the only state weather_markets._pdopna_blend_active() ever
+        lets this path run in."""
+        import json
+        from datetime import UTC, datetime, timedelta
+
+        import climate_indices as ci
+        import safe_io
+
+        pdo_pna_path = tmp_path / "pdo_pna.json"
+        stale_fetched_at = datetime.now(UTC) - timedelta(days=ci._PDO_PNA_TTL_DAYS + 1)
+        pdo_pna_path.write_text(
+            json.dumps(
+                {
+                    "pdo": {"202601": -5.0},  # stale value -- must NOT be returned
+                    "pna": {"202601": -5.0},
+                    "fetched_at": stale_fetched_at.isoformat(),
+                }
+            )
+        )
+        monkeypatch.setattr(ci, "_PDO_PNA_PATH", pdo_pna_path)
+
+        csv_content = "Date,Value\n202601,0.85\n202602,-0.32\n"
+        mock_resp = type(
+            "R",
+            (),
+            {
+                "text": csv_content,
+                "raise_for_status": lambda self: None,
+            },
+        )()
+        monkeypatch.setattr(ci.requests, "get", lambda *a, **k: mock_resp)
+        monkeypatch.setattr(
+            safe_io,
+            "atomic_write_json",
+            lambda *a, **kw: (_ for _ in ()).throw(
+                safe_io.AtomicWriteError("simulated total write failure")
+            ),
+        )
+
+        result = ci.get_pdo_pna(year=2026, month=1)
+
+        assert result["pdo"] == pytest.approx(0.85, abs=0.001)  # fresh, not stale/zero
+
     def test_pdopna_inactive_below_threshold(self, monkeypatch):
         """_pdopna_blend_active returns False when west-coast count < 20."""
         import weather_markets as wm
