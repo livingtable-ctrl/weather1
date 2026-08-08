@@ -54,6 +54,7 @@ from utils import (
     MIN_MARKET_PROB_TO_BET_WITH,
     MIN_PROB_EDGE,
     STRONG_EDGE,
+    get_min_edge_for_confidence,
     get_paper_min_edge,
     is_trading_paused,
     min_prob_edge_for_days_out,
@@ -152,8 +153,9 @@ def run_trade_cycle(
     market liquidity to fill, so cron passes ``False`` (default) and
     strong_opps/med_opps include every threshold-passing candidate that also
     clears validate()'s deterministic edge gates (net_edge sign, raw-edge
-    sign/magnitude -- see the ``_clears_placement_gate`` computation below),
-    regardless of liquidity -- matching cron's
+    sign/magnitude, Kelly floor, confidence-tiered min_edge -- see the
+    ``_clears_placement_gate`` computation below), regardless of liquidity --
+    matching cron's
     pre-extraction behavior exactly. Watch's orders can be live, so it passes
     ``True`` to additionally require ``weather_markets.is_liquid()`` before a
     candidate is eligible for strong_opps/med_opps -- matching watch's
@@ -393,10 +395,11 @@ def run_trade_cycle(
         "prob_edge": 0,
         "passed": 0,
         # Passed the net_edge/prob_edge threshold above but denied a tier
-        # because it fails one of validate()'s deterministic edge pre-checks
-        # (net_edge sign or raw-edge sign/magnitude) -- would have been
-        # announced STRONG/MED before this gate existed but could
-        # never actually have placed. See "placement_gate" comment below.
+        # because it fails one of validate()'s deterministic pre-checks
+        # (net_edge sign, raw-edge sign/magnitude, Kelly floor, or
+        # confidence-tiered min_edge) -- would have been announced STRONG/MED
+        # before this gate existed but could never actually have placed. See
+        # "placement_gate" comment below.
         "placement_gate": 0,
     }
 
@@ -453,8 +456,22 @@ def run_trade_cycle(
                         enriched.get("_date"),
                         m.get("ticker", ""),
                     )
-                    net_edge = analysis.get("net_edge", analysis.get("edge", 0.0))
-                    adjusted_edge = analysis.get("adjusted_edge", net_edge)
+                    # None-safe versions of `.get(key, default)`: a caller
+                    # that sets either key present-but-None (the same real
+                    # shape web_app.py:2874 shows for net_edge elsewhere in
+                    # this codebase -- see backlog.txt's "[RESOLVED
+                    # 2026-08-08] _validate_trade_opportunity() HAS 2 MORE
+                    # LATENT None-VALUE CRASH SITES..." entry) must not
+                    # silently skip the fallback and crash downstream on
+                    # `net_edge <= 0` / `abs(adjusted_edge)`.
+                    net_edge = analysis.get("net_edge")
+                    if net_edge is None:
+                        net_edge = analysis.get("edge")
+                    if net_edge is None:
+                        net_edge = 0.0
+                    adjusted_edge = analysis.get("adjusted_edge")
+                    if adjusted_edge is None:
+                        adjusted_edge = net_edge
 
                     from weather_markets import _liquidity_edge_scale as _liq_scale
 
@@ -571,45 +588,37 @@ def run_trade_cycle(
                     #      qualifying. Skipped (defaults to passing) when "edge"
                     #      is absent, matching validate()'s own `if "edge" in
                     #      opp:` guard.
-                    # Deliberately NOT mirrored, both real per-candidate gaps
-                    # documented in a backlog.txt follow-up entry filed
-                    # 2026-08-07 rather than fixed here:
-                    #   - validate()'s ci_adjusted_kelly/fee_adjusted_kelly floor
-                    #     (>= 0.002) -- also opus-review-caught, equally
-                    #     deterministic, and cheap to mirror in principle. NOT
-                    #     added here because every existing STRONG/MED-tier test
-                    #     fixture across this suite (this file's
-                    #     _strong_market_analysis/_med_market_analysis,
-                    #     test_cron_integration.py's fake_analysis, and likely
-                    #     others not yet audited) hand-builds its analysis dict
-                    #     without ever setting ci_adjusted_kelly/fee_adjusted_kelly
-                    #     -- real analyze_trade() output always populates it, but
-                    #     these mocks stand in for analyze_trade entirely, so the
-                    #     gate would default every one of them to kelly=0.0 and
-                    #     silently zero out their tier, a much larger blast
-                    #     radius than this fix's own scope and one this suite's
-                    #     pre-existing test hangs (see backlog.txt) make
-                    #     impractical to fully audit for right now.
-                    #   - validate()'s confidence-tiered/A-B-test min_edge check
-                    #     (get_min_edge_for_confidence + _MIN_EDGE_AB_TEST.
-                    #     pick_variant()). Not because pick_variant() is stateful
-                    #     (it isn't -- ab_test.py's pick_variant() reads state but
-                    #     only mutates it in record_outcome(), called on trade
-                    #     settlement, not here), but because it's *provably
-                    #     subsumed* today: edge_confidence() in weather_markets.py
-                    #     always returns a factor in (0, 1], so adjusted_edge =
-                    #     net_edge * edge_confidence never exceeds net_edge in
-                    #     magnitude. A candidate can only reach this point with
-                    #     abs(adjusted_edge) >= MED_EDGE (0.15 default), so
-                    #     abs(net_edge) >= 0.15 too -- at or above every
-                    #     confidence-tiered/AB-test threshold that exists today
-                    #     (max is the LOW-confidence live tier at 0.15; see
-                    #     utils.py's _EDGE_TIERS and _MIN_EDGE_AB_TEST's variants,
-                    #     all <= 0.15). This is a real dependency on MED_EDGE
-                    #     staying >= those thresholds, not a coincidence-proof
-                    #     general guarantee -- if MED_EDGE is ever lowered below
-                    #     the highest confidence-tier/AB-test threshold via env
-                    #     override, this gap reopens silently.
+                    # validate()'s ci_adjusted_kelly/fee_adjusted_kelly floor
+                    # (>= 0.002) is mirrored below via clears_kelly_floor --
+                    # backlog.txt follow-up entry filed 2026-08-07, resolved
+                    # 2026-08-08 after auditing every STRONG/MED-tier-qualifying
+                    # test fixture across the suite (this file's
+                    # _strong_market_analysis/_med_market_analysis,
+                    # test_cron_integration.py's 5 fake_analysis dicts) and
+                    # adding a realistic ci_adjusted_kelly to each that lacked
+                    # one -- real analyze_trade() output always populates it,
+                    # these mocks stand in for it entirely.
+                    #
+                    # validate()'s confidence-tiered min_edge check
+                    # (get_min_edge_for_confidence, keyed off ensemble_spread)
+                    # is mirrored below using `live` -- already threaded
+                    # through run_trade_cycle's own signature -- exactly as
+                    # validate() computes it. Resolved 2026-08-08 (explicit
+                    # user choice over the cheaper alternative: a regression
+                    # test asserting MED_EDGE's numeric domination, with no
+                    # runtime code change). Deliberately NOT mirrored:
+                    # validate()'s A/B-test min_edge override
+                    # (_MIN_EDGE_AB_TEST.pick_variant()) -- not because
+                    # pick_variant() is stateful (it isn't -- ab_test.py's
+                    # pick_variant() reads state but only mutates it in
+                    # record_outcome(), called on trade settlement, not here),
+                    # but because its random tie-breaking makes a second call
+                    # here genuinely nondeterministic relative to the real
+                    # call validate() makes at placement time -- mirroring it
+                    # would just be a second, disagreeing coin flip, not a
+                    # meaningful structural check. (Numerically it stays a
+                    # non-issue regardless: _MIN_EDGE_AB_TEST's variants max
+                    # out at 0.09, well under MED_EDGE's 0.15 default.)
                     # Local import (not module-level) matching order_executor's
                     # own `from utils import MIN_EDGE as _MIN_EDGE` inside
                     # _validate_trade_opportunity -- a module-level value-import
@@ -646,6 +655,56 @@ def run_trade_cycle(
                             clears_placement_gate = False
                         elif abs(raw_edge) < _MIN_EDGE:
                             clears_placement_gate = False
+                    # Mirrors validate()'s confidence-tiered min_edge check
+                    # (same ensemble_spread key, same is_live flag, same
+                    # get_min_edge_for_confidence call). Compared against
+                    # net_edge (not adjusted_edge, which this loop's own
+                    # passes_threshold gate above already used) -- not a
+                    # byte-for-byte match of validate()'s own `edge` variable
+                    # at this point, though: this `net_edge` (assigned above)
+                    # falls back to the raw `edge` field when the `net_edge`
+                    # key is absent, while validate()'s `edge` defaults
+                    # straight to 0.0 with no such fallback. That divergence
+                    # predates this check (shared with the net_edge<=0 gate
+                    # right above) and only ever makes tier classification
+                    # MORE permissive than placement's real gate, never less
+                    # -- validate() remains the final, authoritative check
+                    # before any order is placed. On lookup failure, this
+                    # falls back to the freshly-imported `_MIN_EDGE` (not
+                    # module-level `MIN_EDGE`, which order_executor.py's own
+                    # equivalent fallback uses and which can go stale after a
+                    # live Settings-screen edit+reload) -- matches this
+                    # file's own existing anti-staleness convention (see
+                    # `_MIN_EDGE`'s own import comment above) rather than
+                    # replicating that known order_executor.py quirk.
+                    _ens_spread = analysis.get("ensemble_spread")
+                    if _ens_spread is not None:
+                        try:
+                            _confidence_min_edge = get_min_edge_for_confidence(
+                                float(_ens_spread), is_live=bool(live)
+                            )
+                        except Exception:
+                            _confidence_min_edge = (
+                                get_paper_min_edge() if not live else _MIN_EDGE
+                            )
+                    else:
+                        _confidence_min_edge = (
+                            get_paper_min_edge() if not live else _MIN_EDGE
+                        )
+                    if net_edge < _confidence_min_edge:
+                        clears_placement_gate = False
+                    # Mirrors validate()'s Kelly floor exactly, including its
+                    # None-safe ci_adjusted_kelly -> fee_adjusted_kelly -> 0.0
+                    # fallback chain (order_executor.py's _validate_trade_
+                    # opportunity, fixed for the same None-crash bug class
+                    # 2026-08-08).
+                    candidate_kelly = analysis.get("ci_adjusted_kelly")
+                    if candidate_kelly is None:
+                        candidate_kelly = analysis.get("fee_adjusted_kelly")
+                    if candidate_kelly is None:
+                        candidate_kelly = 0.0
+                    if candidate_kelly < 0.002:
+                        clears_placement_gate = False
                     analysis["_clears_placement_gate"] = clears_placement_gate
                     if passes_threshold and not clears_placement_gate:
                         dbg["placement_gate"] += 1

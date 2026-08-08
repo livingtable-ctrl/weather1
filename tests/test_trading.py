@@ -438,6 +438,82 @@ def test_auto_place_trades_med_tier_uses_20_cap(monkeypatch):
     assert captured_caps[0] == 20.0, f"Expected cap=20.0, got cap={captured_caps[0]}"
 
 
+def test_auto_place_trades_none_ci_kelly_falls_back_without_crashing(monkeypatch):
+    """opp["ci_adjusted_kelly"] present but None must not raise TypeError from
+    `ci_kelly *= _ticker_edge_share...` -- falls back to fee_adjusted_kelly,
+    same None-crash bug class as _validate_trade_opportunity's own fix.
+    Opus-review-caught 2026-08-08: this session's fix to validate()'s Kelly
+    floor (falling through a None ci_adjusted_kelly to a real
+    fee_adjusted_kelly instead of rejecting outright) newly lets exactly this
+    shape reach this line, which had the identical unguarded pattern."""
+    import main
+
+    captured_ci_kelly = []
+
+    def fake_kelly_quantity(kf, price, min_dollars=1.0, cap=None, method=None):
+        return 10
+
+    def fake_portfolio_kelly_fraction(ci_kelly, city, target_date, side=None):
+        captured_ci_kelly.append(ci_kelly)
+        return ci_kelly
+
+    monkeypatch.setattr("order_executor.place_paper_order", lambda *a, **kw: {"id": 1})
+    monkeypatch.setattr(
+        "order_executor.execution_log.was_ordered_this_cycle",
+        lambda ticker, side, cycle: False,
+    )
+
+    import paper
+
+    monkeypatch.setattr(paper, "kelly_quantity", fake_kelly_quantity)
+    monkeypatch.setattr(
+        paper, "portfolio_kelly_fraction", fake_portfolio_kelly_fraction
+    )
+    monkeypatch.setattr(paper, "get_open_trades", lambda: [])
+    monkeypatch.setattr(paper, "is_paused_drawdown", lambda: False)
+    monkeypatch.setattr(paper, "is_daily_loss_halted", lambda client=None: False)
+    monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
+    monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
+    import order_executor as _oe
+
+    monkeypatch.setattr(_oe, "_daily_paper_spend", lambda: 0.0)
+    monkeypatch.setattr(
+        _oe,
+        "_validate_trade_opportunity",
+        lambda opp, live=False, market=None: (True, "ok"),
+    )
+    monkeypatch.setattr(
+        _oe.execution_log, "was_traded_today", lambda ticker, side: False
+    )
+
+    opps = [
+        (
+            {"ticker": "KXHIGH-26APR15-NYC", "_city": "NYC", "_date": None},
+            {
+                "net_signal": "STRONG BUY",
+                "time_risk": "LOW",
+                "recommended_side": "yes",
+                "ci_adjusted_kelly": None,  # present but None
+                "fee_adjusted_kelly": 0.08,  # real fallback value
+                "market_prob": 0.40,
+                "forecast_prob": 0.60,
+                "net_edge": 0.18,
+                "method": "ensemble",
+                "model_consensus": True,
+                "near_threshold": False,
+            },
+        )
+    ]
+
+    placed = main._auto_place_trades(opps, client=None, cap=20.0)
+
+    assert placed == 1, "trade should place using the fee_adjusted_kelly fallback"
+    assert captured_ci_kelly == [0.08], (
+        f"expected ci_kelly to fall back to fee_adjusted_kelly=0.08, "
+        f"got {captured_ci_kelly}"
+    )
+
+
 def test_auto_place_trades_stops_at_daily_spend_cap(monkeypatch):
     """Should not place trades when MAX_DAILY_SPEND is already reached."""
     import paper

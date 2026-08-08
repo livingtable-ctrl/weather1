@@ -136,6 +136,43 @@ def test_validate_none_edge_value_does_not_crash():
     assert ok, f"Expected valid opp but got: {reason}"
 
 
+def test_validate_none_net_edge_value_does_not_crash():
+    """opp["net_edge"] present but None must not raise TypeError from
+    `edge <= 0` — treated as 0.0 (same as a missing key), so the opp is
+    rejected on the edge gate rather than crashing."""
+    from main import _validate_trade_opportunity
+
+    opp = _opp()
+    opp["net_edge"] = None
+    ok, reason = _validate_trade_opportunity(opp)
+    assert not ok
+    assert "edge" in reason.lower()
+
+
+def test_validate_none_kelly_values_fall_back_then_do_not_crash():
+    """ci_adjusted_kelly present but None must fall back to fee_adjusted_kelly
+    rather than crash on `kelly < 0.002`."""
+    from main import _validate_trade_opportunity
+
+    opp = _opp(kelly=0.10)
+    opp["ci_adjusted_kelly"] = None
+    ok, reason = _validate_trade_opportunity(opp)
+    assert ok, f"Expected fallback to fee_adjusted_kelly but got: {reason}"
+
+
+def test_validate_none_kelly_values_both_missing_rejects_without_crash():
+    """Both ci_adjusted_kelly and fee_adjusted_kelly present but None must not
+    raise TypeError from `kelly < 0.002` — treated as 0.0 and rejected."""
+    from main import _validate_trade_opportunity
+
+    opp = _opp()
+    opp["ci_adjusted_kelly"] = None
+    opp["fee_adjusted_kelly"] = None
+    ok, reason = _validate_trade_opportunity(opp)
+    assert not ok
+    assert "kelly" in reason.lower()
+
+
 class TestFlashCrashPriceFeed:
     """F3: the flash-crash circuit breaker read opp.get("yes_bid")/opp.get("yes_ask")
     directly, but opp (analyze_trade's result) never carries those keys — it had

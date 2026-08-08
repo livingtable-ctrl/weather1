@@ -39,6 +39,10 @@ def _fake_strong_signal():
         "market_prob": 0.40,  # ratio=1.875 — passes MAX_MARKET_DIVERGENCE_RATIO (2.0)
         "days_out": 1,
         "target_date": "2026-04-17",
+        # Clears validate()'s Kelly floor (>= 0.002) — real analyze_trade()
+        # output always populates both; this mock stands in for it entirely.
+        "ci_adjusted_kelly": 0.10,
+        "fee_adjusted_kelly": 0.10,
     }
     return fake_market, fake_enriched, fake_analysis
 
@@ -245,6 +249,8 @@ def test_cron_skips_stale_markets_before_analysis(cron_env):
         "market_prob": 0.40,
         "days_out": 1,
         "target_date": "2026-04-17",
+        "ci_adjusted_kelly": 0.10,
+        "fee_adjusted_kelly": 0.10,
     }
 
     enriched_tickers: list[str] = []
@@ -329,6 +335,8 @@ def test_cron_drawdown_guard_blocks_auto_trades(cron_env):
         "market_prob": 0.30,
         "days_out": 1,
         "target_date": "2026-04-17",
+        "ci_adjusted_kelly": 0.10,
+        "fee_adjusted_kelly": 0.10,
     }
 
     auto_place_returns: list[int] = []
@@ -455,6 +463,8 @@ def test_cron_gate_blocks_when_adjusted_edge_below_threshold(cron_env):
         "market_prob": 0.30,
         "days_out": 5,
         "target_date": "2026-04-25",
+        "ci_adjusted_kelly": 0.10,
+        "fee_adjusted_kelly": 0.10,
     }
 
     placed_calls: list = []
@@ -504,6 +514,8 @@ def test_cron_gate_allows_when_adjusted_edge_above_threshold(cron_env):
         "market_prob": 0.45,  # ratio=1.78 — passes MAX_MARKET_DIVERGENCE_RATIO (2.0)
         "days_out": 1,
         "target_date": "2026-04-26",
+        "ci_adjusted_kelly": 0.10,
+        "fee_adjusted_kelly": 0.10,
     }
 
     placed_calls: list = []

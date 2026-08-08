@@ -15270,7 +15270,7 @@ When to revisit:
     manual refresh" convention as HURDAT2_URLS.
 
 ======================================================
-[STRONG/MED TIER: REMAINING VALIDATE() GATES NOT MIRRORED (KELLY FLOOR, CONFIDENCE-TIER/AB-TEST MIN_EDGE)]
+[RESOLVED 2026-08-08] STRONG/MED TIER: REMAINING VALIDATE() GATES NOT MIRRORED (KELLY FLOOR, CONFIDENCE-TIER/AB-TEST MIN_EDGE)
 Priority: Low -- both gaps are real but narrow. The confidence-tier/AB-test
   gap is provably unreachable at current env values (see below); the Kelly
   floor gap is reachable in principle but needs a real audit, not a
@@ -15338,10 +15338,127 @@ Priority: Low -- both gaps are real but narrow. The confidence-tier/AB-test
   than the `tier` field -- so a candidate the resolved entry above now
   untiers can still show 2-3 stars or fire watch's desktop STRONG alert.
   Would need its own pass to make both read `tier` instead of re-deriving
-  from signal text.
+  from signal text. Filed as its own entry below (kept out of scope here,
+  matching this repo's convention for genuinely separate scope) -- see
+  "[DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF SIGNAL TEXT, NOT THE
+  tier FIELD]".
+
+RESOLVED 2026-08-08: Both gaps closed.
+
+  Kelly floor: audited every STRONG/MED-tier-qualifying test fixture that
+  reaches trade_cycle.run_trade_cycle()/main.cmd_cron()/main.cmd_watch()
+  with a mocked analyze_trade() result (13 files call one of those three;
+  cross-referenced against every file already setting ci_adjusted_kelly/
+  fee_adjusted_kelly anywhere). Found exactly the 2 gaps the entry named --
+  tests/test_trade_cycle_engine.py's shared _strong_market_analysis()/
+  _med_market_analysis() builders (used by ~30 call sites in that file) and
+  test_cron_integration.py's 5 separate fake_analysis dicts -- plus
+  confirmed every OTHER run_trade_cycle/cmd_cron/cmd_watch-calling test
+  either never reaches real candidate classification (empty market list,
+  or cmd_cron itself mocked out) or already sets kelly. Added a realistic
+  ci_adjusted_kelly/fee_adjusted_kelly=0.10 to both builder functions and
+  all 5 fake_analysis dicts. Then mirrored validate()'s Kelly floor into
+  trade_cycle.py's classification loop (clears_placement_gate), same
+  None-safe ci_adjusted_kelly -> fee_adjusted_kelly -> 0.0 fallback chain
+  as the sibling None-crash fix below.
+
+  Confidence-tiered/A-B-test min_edge: re-verified live before deciding --
+  MED_EDGE (0.15 default) exactly equals _EDGE_TIERS' own maximum threshold
+  (LOW-confidence live tier, also 0.15 -- an exact equality, not a margin);
+  _MIN_EDGE_AB_TEST's max variant is 0.09, well below. Per AskUserQuestion,
+  user chose the real mirror over the cheap regression-test-only option:
+  threaded `live` (already a run_trade_cycle parameter) through the
+  candidate loop and called utils.get_min_edge_for_confidence for real,
+  comparing against net_edge (the same variable validate() calls `edge` at
+  this point in its own checks) -- structurally matches validate() instead
+  of relying on the numeric-domination proof staying true. The A/B-test
+  variant stays deliberately unmirrored: pick_variant()'s random tie-
+  breaking makes a second call here genuinely nondeterministic relative to
+  the real call validate() makes at placement time, so mirroring it would
+  just be a second, disagreeing coin flip.
+
+  A pre-existing fixture-completeness gap self-caught while testing: adding
+  ci_adjusted_kelly to _strong_market_analysis() let one test
+  (TestCmdWatchDisplayScanUnification::test_auto_watch_cycle_result_tags_
+  is_hedge) reach real placement math for the first time (previously
+  rejected earlier by validate()'s own kelly=0.0 floor before ever getting
+  there) -- its mocked existing-open-position dict lacked a "cost" field
+  that portfolio_kelly_fraction's exposure calculation needs; added one.
+
+  10 new regression tests added: 4 for the Kelly floor
+  (TestPlacementKellyFloorGateTierClassification -- low kelly untiers,
+  boundary-at-0.002 clears, fee_adjusted_kelly fallback, both-keys-missing
+  defaults to 0.0), 3 for the confidence-tier mirror
+  (TestPlacementConfidenceTierGateTierClassification -- LOW-tier net_edge
+  below threshold untiers, boundary clears, missing ensemble_spread falls
+  back to flat get_paper_min_edge()), plus the 3 in tests/
+  test_trade_validation.py shared with the sibling None-crash entry below.
+  tests/test_trade_cycle_engine.py (64 tests), tests/test_cron_integration.py
+  (23 tests), and 10 other test files touching run_trade_cycle/cmd_cron/
+  cmd_watch (154 tests) all pass. ruff + mypy clean.
+
+  Independent opus review (effort: high) found 7 issues, all fixed:
+  - CONFIRMED (found by tracing the sibling None-crash entry's fix forward,
+    not by reading this entry's own diff): order_executor.py's
+    _auto_place_trades has the IDENTICAL `.get(key, default)`-doesn't-
+    substitute-on-None bug ~700 lines downstream of validate(), at `ci_kelly
+    = a.get("ci_adjusted_kelly", a.get("fee_adjusted_kelly", 0.0))`. Before
+    this session, an opp with ci_adjusted_kelly=None + a real
+    fee_adjusted_kelly would have crashed INSIDE validate() itself (the bug
+    the sibling entry just fixed) before ever reaching this line. This
+    session's own fix now lets that exact shape through validate() via the
+    fee_adjusted_kelly fallback -- relocating the crash here instead of
+    eliminating it. Reproduced live (TypeError on `ci_kelly *=
+    _ticker_edge_share...`), uncaught (no try in the per-item placement
+    loop), aborting the whole cycle before settlement/sync ever run. Fixed
+    with the same None-safe 3-step fallback; regression test added
+    (tests/test_trading.py::
+    test_auto_place_trades_none_ci_kelly_falls_back_without_crashing).
+  - CONFIRMED: the new confidence-tier mirror's `net_edge` (assigned via
+    `analysis.get("net_edge", analysis.get("edge", 0.0))`, a pre-existing
+    line from the earlier edge-gate mirror fix, not new this session) has
+    the same None-vs-absent gap -- a present-but-None net_edge would crash
+    `net_edge <= 0` two lines below AND the new confidence-tier comparison,
+    silently aborting the rest of the scan via the loop's broad exception
+    handler. Fixed at the root (net_edge and adjusted_edge both made
+    None-safe at their point of assignment); 2 regression tests added
+    (test_none_net_edge_value_does_not_crash_the_scan,
+    test_none_adjusted_edge_value_does_not_crash_the_scan).
+  - CONFIRMED: the new confidence-tier mirror's comment overclaimed exact
+    fidelity to validate()'s own `edge` variable at that point (trade_cycle's
+    net_edge falls back to raw `edge` when the `net_edge` key is absent;
+    validate()'s doesn't) -- a pre-existing characteristic of the shared
+    net_edge variable, not newly introduced, and permissive-direction-only
+    (validate() remains the real gate before placement). Comment corrected
+    to state the divergence and why it's acceptable instead of overclaiming.
+  - CONFIRMED (test-coverage gap): TestPlacementGateMirrorsValidateOpportunity
+    -- built specifically to bind trade_cycle's mirror to validate() so the
+    two can't silently drift -- wasn't extended to the 2 newly-mirrored
+    gates, and its docstring still claimed Kelly floor/confidence-tier were
+    deliberately unmirrored. Extended its parametrize matrix with `kelly`/
+    `ensemble_spread` dimensions (2 new cases: Kelly at the 0.002 boundary,
+    net_edge at the LOW-tier 0.10 boundary) and corrected the docstring.
+  - PLAUSIBLE: the confidence-tier mirror's lookup-failure fallback uses the
+    freshly-imported `_MIN_EDGE` rather than order_executor.py's own
+    module-level (import-time-frozen) `MIN_EDGE` -- deliberate (matches this
+    file's own established anti-staleness convention, and surfaces a
+    pre-existing inconsistency inside validate() itself, which uses both
+    the fresh and frozen versions at different points). Comment clarified to
+    state this reasoning explicitly.
+  - CONFIRMED (stale docs): 2 comments (dbg["placement_gate"]'s own
+    docstring, run_trade_cycle's require_liquid_for_placement docstring)
+    still enumerated only the original 2 mirrored gates. Updated both to
+    list all 4.
+  - CONFIRMED (stale docs): this entry's own resolution note claimed "All 19
+    tests" for tests/test_trade_validation.py; live collect shows 16.
+    Corrected in the sibling entry below.
+
+  tests/test_trade_cycle_engine.py (68 tests, +4 from the review's own
+  fixes), tests/test_trading.py (46 tests, +1), full relevant suite (153
+  tests) re-verified passing after every review fix. ruff + mypy clean.
 
 ======================================================
-[_validate_trade_opportunity() HAS 2 MORE LATENT None-VALUE CRASH SITES (net_edge, kelly) -- SAME BUG CLASS AS THE edge FIX]
+[RESOLVED 2026-08-08] _validate_trade_opportunity() HAS 2 MORE LATENT None-VALUE CRASH SITES (net_edge, kelly) -- SAME BUG CLASS AS THE edge FIX
 Priority: Low -- latent, not currently reachable. No real production code
   path sets `opp["net_edge"]` or `opp["ci_adjusted_kelly"]`/
   `opp["fee_adjusted_kelly"]` to `None` today; `web_app.py:2874` does show
@@ -15373,4 +15490,88 @@ Problem:
   test_validate_none_edge_value_does_not_crash for each (opp with
   net_edge=None / ci_adjusted_kelly=None+fee_adjusted_kelly=None), ruff+
   mypy clean, scoped test run of tests/test_trade_validation.py.
+
+RESOLVED 2026-08-08: Re-verified both line numbers live before editing (had
+  drifted from the entry's own ~1871-1872/~1917-1918 to 1873-1874/1919-1920
+  by the time this session started). Applied the prescribed `is not None`
+  guard to both:
+  - net_edge: `edge = opp.get("net_edge")` then `if edge is None: edge =
+    0.0` before the `edge <= 0` check -- None now fails closed exactly like
+    a missing key (rejected, not crashed).
+  - kelly: `kelly = opp.get("ci_adjusted_kelly")` then `if kelly is None:
+    kelly = opp.get("fee_adjusted_kelly")` then `if kelly is None: kelly =
+    0.0` before the `kelly < 0.002` check -- preserves the original
+    fallback-chain intent (a None ci_adjusted_kelly now falls through to a
+    real fee_adjusted_kelly instead of short-circuiting straight to 0.0).
+
+  3 regression tests added to tests/test_trade_validation.py, mirroring
+  test_validate_none_edge_value_does_not_crash exactly:
+  test_validate_none_net_edge_value_does_not_crash (net_edge=None ->
+  rejected, not crashed), test_validate_none_kelly_values_fall_back_then_
+  do_not_crash (ci_adjusted_kelly=None with a real fee_adjusted_kelly ->
+  accepted via fallback), test_validate_none_kelly_values_both_missing_
+  rejects_without_crash (both kelly keys None -> rejected, not crashed).
+  All 16 tests in the file pass. ruff + mypy clean.
+
+  Same session also mirrored both fixed gates into trade_cycle.py's tier
+  classification -- see "[RESOLVED 2026-08-08] STRONG/MED TIER: REMAINING
+  VALIDATE() GATES NOT MIRRORED..." above, the sibling entry this one's own
+  fix pattern was reused for.
+
+======================================================
+[DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF SIGNAL TEXT, NOT THE tier FIELD]
+Priority: Low -- cosmetic/notification-only, not a placement-path bug. A
+  candidate untiered by validate()'s gates still can't actually get placed
+  (strong_opps/med_opps membership is gated on `tier`, not on this text) --
+  the only consequence is a misleading star rating or an unwarranted desktop
+  alert.
+
+Problem:
+  Filed 2026-08-08 as an explicit follow-up, surfaced by the same opus
+  review that produced both the "[RESOLVED 2026-08-08] STRONG/MED TIER:
+  REMAINING VALIDATE() GATES NOT MIRRORED..." and "[RESOLVED 2026-08-08]
+  _validate_trade_opportunity() HAS 2 MORE LATENT None-VALUE CRASH SITES..."
+  entries above, deliberately kept out of scope for both (genuinely separate
+  concern: display/notification, not the placement gate itself).
+
+  Two sites key off `"STRONG" in signal`-style text instead of the `tier`
+  field trade_cycle.py's classification loop actually assigns:
+  - trade_cycle.py's dashboard "stars" rating (~line 696-703 as of
+    2026-08-08): `stars = "★★★" if passes_threshold and "STRONG" in
+    signal and time_risk == "LOW" else "★★" if passes_threshold and
+    "STRONG" in signal else "★" if passes_threshold else ""` -- `signal` is
+    `analysis.get("net_signal", analysis.get("signal", ""))`, driven by
+    adjusted_edge magnitude alone (weather_markets.py's _edge_label), with
+    no awareness of whether the candidate actually cleared any of
+    validate()'s placement gates (raw-edge sign/magnitude, net_edge sign,
+    Kelly floor, confidence-tiered min_edge -- all now mirrored into `tier`
+    as of the two entries above).
+  - main.py's watch-mode auto-trade STRONG desktop alert (~line 3548 as of
+    2026-08-08): `if "STRONG" in _cw_alert_analysis.get("net_signal", "")
+    and _cw_alert_ticker not in previous: alert_strong_signal(...)` -- same
+    text-based check, independent of `tier`.
+
+  Net effect: a candidate that trade_cycle.py's classification loop now
+  correctly leaves `tier=None` (because it fails the raw-edge, net_edge,
+  Kelly-floor, or confidence-tier placement gate) can still show 2-3 stars
+  on the dashboard and still fire watch's desktop "STRONG signal" alert --
+  both read as "this is a real, placeable STRONG/MED opportunity" to an
+  operator, when validate() would actually reject it. Not a live-money risk
+  (placement itself is correctly gated on `tier`), but misleading UX/
+  notification surface that could waste an operator's attention or erode
+  trust in the STRONG alert.
+
+  What it would look like: change both sites to read
+  `analysis.get("tier") == trade_cycle.TIER_STRONG` /
+  `analysis.get("tier") == trade_cycle.TIER_MED` instead of re-deriving from
+  `signal`/`net_signal` text. For the dashboard stars, this changes the
+  3-tier "★★★/★★/★" ladder to key off (tier==STRONG and
+  time_risk==LOW) / (tier==STRONG or tier==MED) / passes_threshold instead
+  of the current (STRONG-text and LOW risk) / STRONG-text / passes_threshold
+  -- a real behavior change for candidates where signal-text and tier now
+  disagree, worth a regression test asserting the untiered-but-STRONG-text
+  case no longer shows 2-3 stars. For the watch alert, straightforward:
+  `analysis.get("tier") == trade_cycle.TIER_STRONG` in place of the
+  `"STRONG" in ...net_signal` check, same `not in previous` dedup logic
+  unchanged.
 

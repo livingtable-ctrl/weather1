@@ -102,6 +102,10 @@ def _strong_market_analysis():
         "market_prob": 0.40,  # ratio=1.875 — passes MAX_MARKET_DIVERGENCE_RATIO (2.0)
         "days_out": 1,
         "target_date": "2026-04-17",
+        # Clears validate()'s Kelly floor (>= 0.002) — real analyze_trade()
+        # output always populates both; this mock stands in for it entirely.
+        "ci_adjusted_kelly": 0.10,
+        "fee_adjusted_kelly": 0.10,
     }
     return market, enriched, analysis
 
@@ -637,6 +641,12 @@ class TestCmdWatchDisplayScanUnification:
             "target_date": "2026-04-17",
             "side": "no",  # opposite of analysis's recommended_side="yes"
             "settled": False,
+            # Real shape needed now that the fixture's ci_adjusted_kelly
+            # clears validate()'s Kelly floor: the candidate reaches real
+            # placement math (portfolio_kelly_fraction -> get_total_exposure,
+            # which sums "cost" over every open trade) instead of being
+            # rejected by validate() before ever getting there.
+            "cost": 10.0,
         }
 
         monkeypatch.setattr(main, "get_weather_markets", lambda c: [market])
@@ -1261,6 +1271,232 @@ class TestPlacementEdgeGateTierClassification:
         assert out_analysis["tier"] is None
         assert out_analysis["_clears_placement_gate"] is False
 
+    def test_none_net_edge_value_does_not_crash_the_scan(self, engine_env):
+        """opp["net_edge"] present but None (as opposed to simply absent)
+        must not raise TypeError from `net_edge <= 0` and abort the whole
+        remaining scan -- same None-crash bug class as order_executor.py's
+        _validate_trade_opportunity fix, opus-review-caught 2026-08-08 in
+        this loop's own net_edge/adjusted_edge assignment. Treated the same
+        as a missing key: falls back to `edge`, then 0.0."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(analysis, net_edge=None)
+        del analysis["edge"]
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert result is not None
+        assert len(result.strong_opps) == 0
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] is None
+        assert out_analysis["_clears_placement_gate"] is False
+
+    def test_none_adjusted_edge_value_does_not_crash_the_scan(self, engine_env):
+        """opp["adjusted_edge"] present but None must not raise TypeError
+        from `abs(adjusted_edge)` -- falls back to net_edge, same as a
+        missing key."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(analysis, adjusted_edge=None)
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert result is not None
+        assert len(result.strong_opps) == 1
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] == trade_cycle.TIER_STRONG
+
+
+class TestPlacementKellyFloorGateTierClassification:
+    """backlog.txt '[STRONG/MED TIER: REMAINING VALIDATE() GATES NOT
+    MIRRORED (KELLY FLOOR, CONFIDENCE-TIER/AB-TEST MIN_EDGE)]' -- a
+    candidate must also clear order_executor._validate_trade_opportunity's
+    ci_adjusted_kelly/fee_adjusted_kelly floor (>= 0.002) to earn STRONG/MED,
+    resolved 2026-08-08."""
+
+    def test_low_kelly_untiers_an_otherwise_strong_candidate(self, engine_env):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(analysis, ci_adjusted_kelly=0.001, fee_adjusted_kelly=0.001)
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert len(result.strong_opps) == 0
+        assert len(result.med_opps) == 0
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] is None
+        assert out_analysis["_clears_placement_gate"] is False
+        assert out_analysis["_passes_threshold"] is True
+
+    def test_kelly_at_floor_boundary_still_clears_gate(self, engine_env):
+        """validate() rejects strictly-below 0.002, so exactly 0.002 clears."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(analysis, ci_adjusted_kelly=0.002, fee_adjusted_kelly=0.002)
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert len(result.strong_opps) == 1
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] == trade_cycle.TIER_STRONG
+        assert out_analysis["_clears_placement_gate"] is True
+
+    def test_missing_ci_kelly_falls_back_to_fee_adjusted_kelly(self, engine_env):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(analysis, fee_adjusted_kelly=0.10)
+        del analysis["ci_adjusted_kelly"]
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert len(result.strong_opps) == 1
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] == trade_cycle.TIER_STRONG
+        assert out_analysis["_clears_placement_gate"] is True
+
+    def test_both_kelly_keys_missing_defaults_to_zero_and_untiers(self, engine_env):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(analysis)
+        del analysis["ci_adjusted_kelly"]
+        del analysis["fee_adjusted_kelly"]
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert len(result.strong_opps) == 0
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] is None
+        assert out_analysis["_clears_placement_gate"] is False
+
+
+class TestPlacementConfidenceTierGateTierClassification:
+    """Sibling of the Kelly floor gate above, same backlog.txt entry --
+    validate()'s confidence-tiered min_edge check (get_min_edge_for_
+    confidence, keyed off ensemble_spread) is mirrored using net_edge, the
+    same variable validate() calls `edge` at this point in its own checks
+    (not adjusted_edge, which the pre-existing passes_threshold gate above
+    already used against a flat effective_min_edge)."""
+
+    def test_low_spread_tier_untiers_when_net_edge_below_confidence_threshold(
+        self, engine_env
+    ):
+        """LOW-confidence tier (spread>=0.15) requires paper edge >= 0.10.
+        net_edge=0.08 fails that even though adjusted_edge independently
+        clears the STRONG tier bar -- the exact gap this mirror closes."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(
+            analysis,
+            net_edge=0.08,
+            adjusted_edge=STRONG_EDGE + 0.05,
+            ensemble_spread=0.20,  # LOW tier
+        )
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert len(result.strong_opps) == 0
+        assert len(result.med_opps) == 0
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] is None
+        assert out_analysis["_clears_placement_gate"] is False
+        assert out_analysis["_passes_threshold"] is True
+
+    def test_low_spread_tier_at_boundary_still_clears_gate(self, engine_env):
+        """validate() rejects strictly-below min_edge, so net_edge exactly
+        at the LOW-tier paper threshold (0.10) must still clear."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(
+            analysis,
+            net_edge=0.10,
+            adjusted_edge=STRONG_EDGE + 0.05,
+            ensemble_spread=0.20,  # LOW tier
+        )
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert len(result.strong_opps) == 1
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] == trade_cycle.TIER_STRONG
+        assert out_analysis["_clears_placement_gate"] is True
+
+    def test_missing_ensemble_spread_falls_back_to_flat_paper_min_edge(
+        self, engine_env, monkeypatch
+    ):
+        """No ensemble_spread key -- matches validate()'s own fallback to
+        get_paper_min_edge() (paper mode) rather than a confidence tier."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        monkeypatch.setattr(trade_cycle, "get_paper_min_edge", lambda: 0.12)
+
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(
+            analysis,
+            net_edge=0.09,  # below the patched flat 0.12 floor
+            adjusted_edge=STRONG_EDGE + 0.05,
+        )
+        assert "ensemble_spread" not in analysis
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert len(result.strong_opps) == 0
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] is None
+        assert out_analysis["_clears_placement_gate"] is False
+
 
 class TestPlacementGateMirrorsValidateOpportunity:
     """Opus review (2026-08-07): four one-directional assertions on
@@ -1268,10 +1504,17 @@ class TestPlacementGateMirrorsValidateOpportunity:
     mirrors. This binds the two together directly -- for a range of
     candidates, if trade_cycle tiers a candidate, order_executor's real
     _validate_trade_opportunity must not reject it for any of the specific
-    reasons this fix addresses (net_edge<=0, raw-edge sign/magnitude). Does
-    NOT assert the converse (validate() ok implies tiered) since validate()
-    has its own gates (Kelly floor, confidence-tiered min_edge) this fix
-    deliberately doesn't mirror -- see the follow-up backlog entry."""
+    reasons this fix addresses. Originally net_edge<=0 and raw-edge sign/
+    magnitude only; extended 2026-08-08 (opus review of the Kelly-floor/
+    confidence-tier follow-up) to also vary `kelly` and `ensemble_spread` so
+    a future drift in validate()'s Kelly floor (order_executor.py's `< 0.002`)
+    or utils._EDGE_TIERS would break THIS test, not just the one-directional
+    tests in TestPlacementKellyFloorGateTierClassification/
+    TestPlacementConfidenceTierGateTierClassification above (which hard-code
+    the mirror side only and can't detect the two drifting apart). Still does
+    NOT assert the full converse (validate() ok implies tiered) since
+    validate() has one gate this fix deliberately doesn't mirror
+    (_MIN_EDGE_AB_TEST's variant) -- see the follow-up backlog entry."""
 
     @pytest.fixture(autouse=True)
     def _healthy_system(self):
@@ -1285,15 +1528,18 @@ class TestPlacementGateMirrorsValidateOpportunity:
             yield
 
     @pytest.mark.parametrize(
-        "edge,net_edge,adjusted_edge,side",
+        "edge,net_edge,adjusted_edge,side,kelly,ensemble_spread",
         [
-            (0.35, 0.35, STRONG_EDGE + 0.05, "yes"),  # clean STRONG, both clear
-            (0.20, 0.20, 0.20, "yes"),  # clean MED, both clear
-            (-0.20, 0.30, STRONG_EDGE + 0.05, "no"),  # correct sign, real value
+            (0.35, 0.35, STRONG_EDGE + 0.05, "yes", 0.10, None),  # clean STRONG
+            (0.20, 0.20, 0.20, "yes", 0.10, None),  # clean MED
+            (-0.20, 0.30, STRONG_EDGE + 0.05, "no", 0.10, None),  # correct sign
+            (0.35, 0.35, STRONG_EDGE + 0.05, "yes", 0.002, None),  # kelly at floor
+            (0.35, 0.10, STRONG_EDGE + 0.05, "yes", 0.10, 0.20),  # LOW-tier net_edge
+            # at its own 0.10 paper boundary
         ],
     )
     def test_tiered_candidate_clears_validates_own_edge_gates(
-        self, engine_env, edge, net_edge, adjusted_edge, side
+        self, engine_env, edge, net_edge, adjusted_edge, side, kelly, ensemble_spread
     ):
         tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
         from main import _validate_trade_opportunity
@@ -1305,8 +1551,10 @@ class TestPlacementGateMirrorsValidateOpportunity:
             net_edge=net_edge,
             adjusted_edge=adjusted_edge,
             recommended_side=side,
-            ci_adjusted_kelly=0.10,  # clears validate()'s own Kelly floor
+            ci_adjusted_kelly=kelly,
         )
+        if ensemble_spread is not None:
+            analysis["ensemble_spread"] = ensemble_spread
 
         with (
             patch.object(main, "get_weather_markets", return_value=[market]),
@@ -1319,7 +1567,8 @@ class TestPlacementGateMirrorsValidateOpportunity:
         [(_, out_analysis)] = result.all_results
         assert out_analysis["tier"] is not None, (
             f"expected this candidate to tier (edge={edge}, net_edge={net_edge}, "
-            f"adjusted_edge={adjusted_edge}, side={side})"
+            f"adjusted_edge={adjusted_edge}, side={side}, kelly={kelly}, "
+            f"ensemble_spread={ensemble_spread})"
         )
 
         ok, reason = _validate_trade_opportunity(
@@ -1327,7 +1576,7 @@ class TestPlacementGateMirrorsValidateOpportunity:
         )
         assert ok, (
             f"trade_cycle tiered this candidate as {out_analysis['tier']} but "
-            f"validate() rejects it: {reason} -- the placement-edge gate this "
+            f"validate() rejects it: {reason} -- the placement gate this "
             f"fix added has drifted from what it's supposed to mirror"
         )
 

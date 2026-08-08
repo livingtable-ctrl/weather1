@@ -1870,7 +1870,9 @@ def _validate_trade_opportunity(
     # raw edge must clear MIN_EDGE so near-zero-price contracts don't slip through
     from utils import MIN_EDGE as _MIN_EDGE
 
-    edge = opp.get("net_edge", 0.0)
+    edge = opp.get("net_edge")
+    if edge is None:
+        edge = 0.0
     if edge <= 0:
         return False, f"edge={edge:.4f} <= 0"
     if opp.get("edge") is not None:
@@ -1916,7 +1918,11 @@ def _validate_trade_opportunity(
         return False, f"edge {edge:.1%} < {min_edge:.1%} (spread={_ens_spread})"
 
     # Kelly check
-    kelly = opp.get("ci_adjusted_kelly", opp.get("fee_adjusted_kelly", 0.0))
+    kelly = opp.get("ci_adjusted_kelly")
+    if kelly is None:
+        kelly = opp.get("fee_adjusted_kelly")
+    if kelly is None:
+        kelly = 0.0
     if kelly < 0.002:
         _ep = opp.get("entry_price", "?")
         _fp = opp.get("forecast_prob", "?")
@@ -2622,7 +2628,11 @@ def _auto_place_trades(
             )
             continue
 
-        ci_kelly = a.get("ci_adjusted_kelly", a.get("fee_adjusted_kelly", 0.0))
+        ci_kelly = a.get("ci_adjusted_kelly")
+        if ci_kelly is None:
+            ci_kelly = a.get("fee_adjusted_kelly")
+        if ci_kelly is None:
+            ci_kelly = 0.0
         # Redistributes room WITHIN the existing MAX_CITY_DATE_EXPOSURE cap
         # (still enforced below, unchanged) -- never raises it. Share is
         # always <=1.0, so this only ever shrinks or holds ci_kelly.
