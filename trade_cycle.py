@@ -725,13 +725,19 @@ def run_trade_cycle(
                         "net_signal", analysis.get("signal", "")
                     ).strip()
                     time_risk = analysis.get("time_risk", "—")
+                    # backlog.txt "DASHBOARD STARS + WATCH-MODE STRONG ALERT
+                    # KEY OFF SIGNAL TEXT, NOT THE tier FIELD": stars now key
+                    # off the authoritative `tier` this loop itself just set
+                    # above (None unless the candidate cleared passes_
+                    # threshold + every placement gate), not signal text
+                    # alone, which is driven only by adjusted_edge magnitude
+                    # and has no awareness of the placement gates.
+                    star_tier = analysis.get("tier")
                     stars = (
                         "★★★"
-                        if passes_threshold
-                        and "STRONG" in signal
-                        and time_risk == "LOW"
+                        if star_tier == TIER_STRONG and time_risk == "LOW"
                         else "★★"
-                        if passes_threshold and "STRONG" in signal
+                        if star_tier in (TIER_STRONG, TIER_MED)
                         else "★"
                         if passes_threshold
                         else ""
@@ -759,6 +765,7 @@ def run_trade_cycle(
                             "side": analysis.get("recommended_side", "—").upper(),
                             "signal": signal,
                             "stars": stars,
+                            "tier": star_tier,
                             "edge_pct": round(net_edge * 100, 1),
                             "net_edge": round(net_edge, 6),
                             "yes_bid": prices["yes_bid"],

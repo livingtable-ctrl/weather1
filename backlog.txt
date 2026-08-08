@@ -15789,7 +15789,7 @@ RESOLVED 2026-08-08: Re-verified both line numbers live before editing (had
   fix pattern was reused for.
 
 ======================================================
-[DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF SIGNAL TEXT, NOT THE tier FIELD]
+[RESOLVED 2026-08-08] DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF SIGNAL TEXT, NOT THE tier FIELD
 Priority: Low -- cosmetic/notification-only, not a placement-path bug. A
   candidate untiered by validate()'s gates still can't actually get placed
   (strong_opps/med_opps membership is gated on `tier`, not on this text) --
@@ -15844,4 +15844,192 @@ Problem:
   `analysis.get("tier") == trade_cycle.TIER_STRONG` in place of the
   `"STRONG" in ...net_signal` check, same `not in previous` dedup logic
   unchanged.
+
+RESOLVED 2026-08-08: Both sites converted exactly as specified above.
+
+  trade_cycle.py's dashboard stars (~line 728, confirmed moved from the
+  entry's originally-cited ~696-703 by earlier same-day commits before this
+  session started): `star_tier = analysis.get("tier")`, then
+  `"★★★" if star_tier == TIER_STRONG and time_risk == "LOW" else "★★" if
+  star_tier in (TIER_STRONG, TIER_MED) else "★" if passes_threshold else
+  ""`. main.py's watch-mode auto-trade STRONG alert (~line 3552, inside
+  cmd_watch's `cycle_result is not None` branch, fed by run_trade_cycle()'s
+  own cycle_result.liquid_opps): `_cw_alert_analysis.get("tier") ==
+  TIER_STRONG` in place of the old `"STRONG" in ...net_signal` check, same
+  `not in previous` dedup logic unchanged (`TIER_STRONG` added to the
+  existing local `from trade_cycle import run_trade_cycle`, which only
+  imports inside `if auto_trade:` -- a plain read-only watch session still
+  never imports trade_cycle at all).
+
+  Confirmed live (research step) that `_analyze_once`'s OWN separate,
+  older alert site (main.py ~line 1543-1548, reached when cycle_result is
+  None -- e.g. the cron lock is held by a concurrent cron, or auto_trade is
+  False) genuinely cannot be converted the same way: its analysis dicts
+  come straight from analyze_trade() (weather_markets.py), never through
+  trade_cycle.py's classification loop, so they never carry a `tier` key at
+  all. Left as-is, correctly out of scope -- but now a real (if pre-existing
+  and Low-severity) divergence: that fallback path still alerts on
+  ">=0.25-magnitude STRONG-text, no placement gates" while the cycle_result
+  path now alerts on "cleared every placement gate," so the same market in
+  the same session could alert under one path and not the other depending
+  purely on whether the cron lock happened to be free that cycle. Noted in
+  a code comment at the alert site; not fixed (would require plumbing
+  `tier` through analyze_trade()/_analyze_once, out of scope for this
+  entry) -- folded into the follow-up entry below instead.
+
+  4 tests added to tests/test_trade_cycle_engine.py: a new
+  TestDashboardStarsKeyOffTier class (untiered-but-STRONG-text now shows 1
+  star not 3 -- the test that actually proves the fix; a real STRONG tier
+  at LOW time_risk still shows 3 stars; a real MED tier shows 2 stars; a
+  real STRONG tier at non-LOW time_risk shows 2 stars, exercising the one
+  branch where the ladder's two conditions interact) plus one new test in
+  TestCmdWatchDisplayScanUnification (alert no longer fires for the same
+  untiered-but-STRONG-text shape, with a positive-control assertion that
+  the candidate actually reached the rendered table first, so the
+  alerts==[] assertion isn't vacuous). All mutation-tested: manually
+  reverted both fixes to the old signal-text logic, confirmed the new
+  tests fail (3 of the 4 star tests and the alert test all failed against
+  the reverted code; the LOW-time_risk-STRONG-tier baseline test correctly
+  still passed either way), restored the fix via the same manual edits (no
+  `git checkout`), confirmed all pass again.
+
+  Opus review (effort: high) surfaced 2 MEDIUM + several LOW findings past
+  the entry's own 2 cited sites:
+
+  MEDIUM, fixed same session: cron.py's own signals_cache.json summary
+  (`summary.strong`/`summary.low_risk`, served by web_app.py's
+  /api/live_signals) computed `strong`/`low_risk` from the SAME
+  `s["signal"]` text this entry's fix just stopped trusting for the
+  `stars` field on that very same cache entry -- left unfixed, the two
+  would have actively disagreed within one JSON payload (e.g. a candidate
+  the fix now renders "★" could still count toward `summary.strong`).
+  Fixed by adding a `"tier"` key to trade_cycle.py's signals_cache_entries
+  dict (same value as `star_tier`) and switching cron.py's `strong =
+  [s for s in above_threshold if "STRONG" in s["signal"]]` to `s.get("tier")
+  == TIER_STRONG` (imported alongside cron.py's existing local
+  `from trade_cycle import run_trade_cycle`). 1 new test added
+  (test_signals_cache_entry_carries_tier_for_downstream_summaries)
+  asserting the entry actually carries the field.
+
+  MEDIUM, deliberately NOT fixed here -- filed as its own follow-up entry
+  below ("[main.py's _rating() CLI TABLE IS A 4TH, STILL-TEXT-DERIVED STAR
+  LADDER, NOW CONTRADICTING THE FIXED ONES]"): main.py's `_rating()`
+  (~line 1643-1651, the Rating column `_render_analysis_results` renders
+  for cmd_watch's/cron's console table) is a separate, pre-existing star
+  ladder keyed off net_edge magnitude + `risk != "HIGH"` -- it never
+  matched trade_cycle.py's own ladder even before this fix, but the fix
+  widens the gap: opus review's mutation run captured live evidence of the
+  exact untiered-but-STRONG-text candidate rendering "★★★" in this CLI
+  table while simultaneously rendering "★" in signals_cache.json and firing
+  no alert, in the same cycle. Not converted inline because `_rating()` is
+  shared by `_analyze_once`'s own tier-free callers too (real surgery:
+  needs a signature change plus a tier-aware/tier-absent branch, not a
+  1-line swap) -- genuinely separate scope, matching this repo's own
+  convention (see this entry's own filing history above).
+
+  LOW, addressed: a stale comment at main.py's alert site claiming the
+  cycle_result branch "matches [_analyze_once's] loop's exact condition"
+  -- no longer true post-fix -- rewritten to explain the current,
+  deliberate asymmetry instead (see the _analyze_once paragraph above).
+
+  LOW, not addressed, folded into the follow-up entry below: the frontend
+  legend (frontend/src/App.jsx and the sibling `weather app site V_3 (3)`
+  copy) labels "★★" as "Strong signal" -- now also covers MED tier: not a
+  hard break (both frontends bucket on `stars.length >= 2`, not exact
+  text), but worth a copy pass in the same follow-up. Also noted,
+  genuinely pre-existing and out of scope: web_app.py's own independent
+  top-opportunities star ladder (~line 2974-2979, edge_pct-based) -- fed by
+  its own analyze_trade() call, same `tier`-unavailable shape as
+  _analyze_once, not part of this bug family's fixable surface.
+
+  74 tests pass in tests/test_trade_cycle_engine.py (was 72 before this
+  session), 23 in tests/test_cron_integration.py. ruff + mypy clean on
+  trade_cycle.py, main.py, cron.py, and the test file.
+
+======================================================
+[main.py's _rating() CLI TABLE IS A 4TH, STILL-TEXT-DERIVED STAR LADDER, NOW CONTRADICTING THE FIXED ONES]
+Priority: Low -- cosmetic/display-only, same family as the entry above and
+  equally not a placement-path bug (placement still gates on `tier` alone,
+  never on any of these star renderings).
+
+Problem:
+  Filed 2026-08-08, surfaced by the same opus review that resolved
+  "[RESOLVED 2026-08-08] DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF
+  SIGNAL TEXT, NOT THE tier FIELD]" (see above), deliberately kept out of
+  scope for that entry (genuinely separate function/call-site surgery, not
+  a same-shape 1-line swap).
+
+  main.py's `_rating()` helper (~line 1643-1651 as of 2026-08-08):
+  ```
+  def _rating(net_edge: float, risk: str) -> str:
+      ae = abs(net_edge)
+      if ae >= STRONG_EDGE and risk != "HIGH":  return green("★★★")
+      elif ae >= 0.12:                          return yellow("★★ ")
+      else:                                     return dim("★  ")
+  ```
+  renders the Rating column in `_render_analysis_results`'s console table
+  -- the table cmd_watch and cron's own console output actually print. It
+  is a 4th independent star ladder (trade_cycle.py's dashboard stars and
+  main.py's watch-mode alert were the 2 the resolved entry above
+  converted; cron.py's signals_cache.json summary was a 3rd, also fixed
+  same session) -- and unlike the other 3, it was NEVER tier-aware even
+  before this session: it keys off raw `net_edge` magnitude (not
+  adjusted_edge) and `risk != "HIGH"` (not `== "LOW"`), so it never agreed
+  with trade_cycle.py's ladder by construction.
+
+  The resolved entry above's fix widens the practical impact of this
+  pre-existing gap: opus review's mutation-test run captured live evidence
+  of the exact untiered-but-STRONG-text candidate the resolved entry's own
+  regression test uses (adjusted_edge/net_edge qualify for STRONG, raw edge
+  too small for validate()'s MIN_EDGE gate, tier=None) rendering "★★★" in
+  this CLI table, "★" in signals_cache.json's `stars` field, and firing no
+  watch-mode alert -- three different verdicts for the same candidate in
+  the same cycle. Before the resolved entry's fix, all 3 (well, then-2)
+  sites agreed, wrongly, using the same signal-text logic; now this one is
+  the visible outlier.
+
+  cmd_watch calls `_render_analysis_results` with `cycle_result.liquid_opps`
+  (main.py ~line 3570), whose analysis dicts DO carry `tier` (unlike
+  `_analyze_once`'s own analysis dicts, which never do -- see the resolved
+  entry above's own note on why that fallback path was correctly left
+  alone). So unlike that fallback path, this one is not blocked by data
+  availability -- `_rating()` could read `tier` if it accepted it.
+
+  What it would look like: `_rating()` needs either an added `tier`
+  parameter (defaulting to None) that takes priority over the net_edge/risk
+  math when present, or the call site needs to branch. Not a blind
+  signature swap: `_render_analysis_results` is also called from
+  `_analyze_once`'s own render path (tier-free analysis dicts), so
+  `_rating()` must keep working correctly with `tier` absent -- trace every
+  call site of `_render_analysis_results`/`_rating()` before changing the
+  signature, matching this repo's own gate-caller-tracing convention. Once
+  fixed, add a regression test asserting the CLI table's rendered stars
+  agree with signals_cache.json's `stars` field for the same candidate (the
+  resolved entry above's `test_untiered_strong_text_no_longer_shows_
+  multiple_stars` fixture is exactly the shape to reuse).
+
+  Also worth folding into the same pass (both LOW, both surfaced by the
+  same review, both cosmetic):
+  - The `_analyze_once`-reached fallback watch alert (main.py ~line
+    1543-1548, hit when cycle_result is None -- e.g. the cron lock is held
+    by a concurrent cron) still alerts on `"STRONG" in net_signal` text
+    with no placement-gate awareness, while the cycle_result path (fixed
+    this session) now alerts on `tier == TIER_STRONG`. Same market, same
+    session, different alert behavior depending purely on whether the lock
+    was free that cycle. Would need `tier` plumbed through analyze_trade()/
+    _analyze_once to close for real -- bigger surgery, same shape as the
+    _rating() fix above.
+  - frontend/src/App.jsx's (and the sibling `weather app site V_3 (3)`
+    SignalsTab.jsx's) legend labels "★★" as "Strong signal" -- now also
+    covers MED tier since the resolved entry above's fix. Not a hard break
+    (both frontends bucket on `stars.length >= 2`, not the exact label
+    text), but the copy is stale. A quick pass to relabel "★★" as
+    "Strong or med signal" (or similar) would close this.
+
+  Deliberately NOT in scope for this entry, confirmed genuinely separate:
+  web_app.py's own independent top-opportunities star ladder (~line
+  2974-2979, edge_pct-based) -- fed by its own analyze_trade() call, same
+  `tier`-unavailable shape as `_analyze_once`, not fixable without the same
+  analyze_trade()-level plumbing the fallback-alert bullet above would also
+  need.
 

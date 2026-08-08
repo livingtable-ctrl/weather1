@@ -762,6 +762,51 @@ class TestCmdWatchDisplayScanUnification:
         )
         assert alerts[0]["ticker"] == market["ticker"]
 
+    def test_auto_watch_cycle_result_does_not_alert_untiered_strong_text(
+        self, engine_env, monkeypatch, capsys
+    ):
+        """backlog.txt 'DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF
+        SIGNAL TEXT, NOT THE tier FIELD': same shape as trade_cycle's own
+        test_raw_edge_below_min_edge_untiers_an_otherwise_strong_candidate --
+        adjusted_edge/net_edge still qualify for STRONG (net_signal text
+        still reads "STRONG BUY") but raw edge is too small to clear
+        validate()'s MIN_EDGE gate, so tier stays None. Before the fix, the
+        alert fired anyway off the signal text alone; it must not fire for a
+        candidate that never actually cleared a placement gate."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(analysis, edge=0.05, recommended_side="yes")
+        assert "STRONG" in analysis["net_signal"]
+
+        alerts: list = []
+        monkeypatch.setattr(
+            main,
+            "alert_strong_signal",
+            lambda **kw: alerts.append(kw),
+        )
+        monkeypatch.setattr(main, "get_weather_markets", lambda c: [market])
+        monkeypatch.setattr(main, "enrich_with_forecast", lambda m: enriched)
+        monkeypatch.setattr(main, "analyze_trade", lambda e: analysis)
+        monkeypatch.setattr(paper, "get_open_trades", lambda: [])
+        self._drive_one_cycle(main, monkeypatch)
+
+        main.cmd_watch(client, auto_trade=True, min_edge=0.05)
+
+        # Positive control: the candidate genuinely reached liquid_opps and
+        # was rendered (not silently dropped earlier in the pipeline, which
+        # would make the alerts==[] assertion below pass vacuously).
+        out = capsys.readouterr().out
+        assert market["ticker"] in out, (
+            f"expected {market['ticker']} in the rendered table -- if it's "
+            "missing, the candidate never reached liquid_opps and the "
+            "alerts==[] assertion below would be vacuous:\n" + out
+        )
+        assert alerts == [], (
+            f"expected no alert_strong_signal() call for an untiered "
+            f"(tier=None) candidate even though net_signal text still reads "
+            f"STRONG, got {len(alerts)} call(s)"
+        )
+
     def test_auto_watch_cycle_result_ticker_city_includes_no_analysis_markets(
         self, engine_env, monkeypatch
     ):
@@ -1317,6 +1362,121 @@ class TestPlacementEdgeGateTierClassification:
         assert len(result.strong_opps) == 1
         [(_, out_analysis)] = result.all_results
         assert out_analysis["tier"] == trade_cycle.TIER_STRONG
+
+
+class TestDashboardStarsKeyOffTier:
+    """backlog.txt 'DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF SIGNAL
+    TEXT, NOT THE tier FIELD' -- the dashboard star rating must key off the
+    authoritative `tier` field this loop's own classification sets, not
+    `"STRONG" in net_signal` text, which is driven purely by adjusted_edge
+    magnitude and has no awareness of whether the candidate actually cleared
+    validate()'s real placement gates."""
+
+    def test_untiered_strong_text_no_longer_shows_multiple_stars(self, engine_env):
+        """Same shape as test_raw_edge_below_min_edge_untiers_an_otherwise_
+        strong_candidate: adjusted_edge/net_edge qualify for STRONG (so
+        net_signal text still reads "STRONG BUY") but raw edge is too small
+        to clear validate()'s MIN_EDGE gate, so tier stays None. Before the
+        fix, this rendered "★★★" (3 stars, time_risk == "LOW"). The
+        fix must drop it to a single star -- passes_threshold alone, no
+        tier."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(analysis, edge=0.05, recommended_side="yes")
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] is None
+        assert out_analysis["_passes_threshold"] is True
+        assert "STRONG" in out_analysis.get("net_signal", "")
+        [entry] = result.signals_cache_entries
+        assert entry["stars"] == "★"
+
+    def test_real_strong_tier_at_low_time_risk_still_shows_three_stars(
+        self, engine_env
+    ):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] == trade_cycle.TIER_STRONG
+        [entry] = result.signals_cache_entries
+        assert entry["stars"] == "★★★"
+
+    def test_real_med_tier_shows_two_stars(self, engine_env):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _med_market_analysis()
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] == trade_cycle.TIER_MED
+        [entry] = result.signals_cache_entries
+        assert entry["stars"] == "★★"
+
+    def test_real_strong_tier_at_non_low_time_risk_shows_two_stars(self, engine_env):
+        """The one branch where the ladder's two conditions actually
+        interact: tier == STRONG alone isn't enough for 3 stars, time_risk
+        must also be LOW, or it drops to the 2-star (tier==STRONG or
+        tier==MED) rung."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+        analysis = dict(analysis, time_risk="HIGH")
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        [(_, out_analysis)] = result.all_results
+        assert out_analysis["tier"] == trade_cycle.TIER_STRONG
+        [entry] = result.signals_cache_entries
+        assert entry["stars"] == "★★"
+
+    def test_signals_cache_entry_carries_tier_for_downstream_summaries(
+        self, engine_env
+    ):
+        """cron.py's own signals_cache summary (strong/low_risk counts) reads
+        this same entry's `tier` key, not signal text -- must actually be
+        present and correct or that summary silently falls back to a KeyError
+        or stays permanently wrong."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        [entry] = result.signals_cache_entries
+        assert entry["tier"] == trade_cycle.TIER_STRONG
 
 
 class TestPlacementKellyFloorGateTierClassification:

@@ -3450,7 +3450,7 @@ def cmd_watch(
                 # Imported here, not at module/function top, so a plain
                 # read-only watch session (auto_trade=False) never imports
                 # the trade-decision engine at all.
-                from trade_cycle import run_trade_cycle
+                from trade_cycle import TIER_STRONG, run_trade_cycle
 
                 ctx = _build_cron_context()
                 _lock_acquired = ctx.acquire_cron_lock()
@@ -3533,19 +3533,29 @@ def cmd_watch(
                 # Fire the new-STRONG-liquid-opportunity alert -- previously
                 # only reachable via _analyze_once's own per-market loop
                 # (main.py, the loop above this function), which the
-                # cycle_result path bypasses entirely. Matches that loop's
-                # exact condition (liquid is implicit: cycle_result.liquid_opps
-                # is already the liquid split), using `previous` from BEFORE
-                # this cycle's render call reassigns it below, same timing
-                # _analyze_once uses internally (opus review, 2026-08-03: a
-                # HIGH-severity finding -- this alert silently never fired on
-                # the auto-trade watch path without this loop, and worse,
-                # was sticky, since _save_watch_state below still recorded
-                # those tickers as seen).
+                # cycle_result path bypasses entirely (liquid is implicit:
+                # cycle_result.liquid_opps is already the liquid split), using
+                # `previous` from BEFORE this cycle's render call reassigns it
+                # below, same timing _analyze_once uses internally (opus
+                # review, 2026-08-03: a HIGH-severity finding -- this alert
+                # silently never fired on the auto-trade watch path without
+                # this loop, and worse, was sticky, since _save_watch_state
+                # below still recorded those tickers as seen). As of the
+                # tier-based fix below, this loop's condition deliberately no
+                # longer matches _analyze_once's own STRONG-text condition --
+                # _analyze_once's analysis dicts come straight from
+                # analyze_trade() and never carry a `tier` key, so that older
+                # fallback path (reached when cycle_result is None, e.g. the
+                # cron lock is held) still alerts on signal text alone.
                 for _cw_alert_enriched, _cw_alert_analysis in cycle_result.liquid_opps:
                     _cw_alert_ticker = _cw_alert_enriched.get("ticker", "")
+                    # backlog.txt "DASHBOARD STARS + WATCH-MODE STRONG ALERT
+                    # KEY OFF SIGNAL TEXT, NOT THE tier FIELD": read the
+                    # authoritative `tier` run_trade_cycle() sets (cleared
+                    # every placement gate) instead of net_signal text, which
+                    # is driven only by adjusted_edge magnitude.
                     if (
-                        "STRONG" in _cw_alert_analysis.get("net_signal", "")
+                        _cw_alert_analysis.get("tier") == TIER_STRONG
                         and _cw_alert_ticker not in previous
                     ):
                         alert_strong_signal(

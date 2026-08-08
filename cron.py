@@ -1210,7 +1210,7 @@ def _cmd_cron_body(
     # get_gate_counts is still read after the scan (scan-summary block below);
     # reset_gate_counts is no longer called here -- run_trade_cycle() resets
     # the counters itself before its own analyze loop runs.
-    from trade_cycle import run_trade_cycle
+    from trade_cycle import TIER_STRONG, run_trade_cycle
     from weather_markets import get_gate_counts as _get_gate_counts
 
     # Subscribe+start the WebSocket at the same point in the cycle it ran at
@@ -1338,7 +1338,13 @@ def _cmd_cron_body(
     try:
         cache_path = SIGNALS_CACHE_PATH
         above_threshold = [s for s in signals_cache if s.get("passes_threshold", True)]
-        strong = [s for s in above_threshold if "STRONG" in s["signal"]]
+        # backlog.txt "DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF
+        # SIGNAL TEXT, NOT THE tier FIELD": read the authoritative `tier`
+        # trade_cycle.py's classification loop set (now also carried on this
+        # same signals_cache entry, see its "tier" key), not signal text --
+        # this summary shares cache_payload with the "stars" field the same
+        # fix converted, and must agree with it.
+        strong = [s for s in above_threshold if s.get("tier") == TIER_STRONG]
         low_risk = [s for s in strong if s["time_risk"] == "LOW"]
         # Sort: above-threshold candidates first (by edge), then below-threshold (by edge).
         signals_cache.sort(
