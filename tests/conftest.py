@@ -110,6 +110,44 @@ def clear_metar_cache():
 
 
 @pytest.fixture(autouse=True)
+def clear_nws_mos_climate_indices_caches():
+    """Clear nws.py/mos.py/climate_indices.py's in-process caches before
+    every test, mirroring clear_metar_cache above.
+
+    backlog.txt "SEVERAL test_weather_markets.py analyze_trade TESTS STILL
+    MAKE REAL NETWORK CALLS VIA UNMOCKED nws_prob" (2026-08-07 audit): unlike
+    metar._METAR_CACHE, these caches had no isolation fixture at all. A
+    network-call spy without cache-clearing under-reported which tests were
+    still exercising real code paths -- an earlier test that (accidentally
+    or deliberately, e.g. tests/test_mos_nbp.py's own direct
+    _fetch_nbp_percentiles() calls) populated one of these caches for a
+    given city/station key silently satisfied a LATER test's identical,
+    unmocked cache key with a cache hit instead of a real network call,
+    hiding that the later test never actually mocked anything. Confirmed
+    live: re-running the audit's spy with these 7 caches cleared before every
+    test revealed 9 additional real-network-call sites this file's own
+    analyze_trade tests were making that a single uncleared pass had masked.
+    Without this fixture, the network-call regression guard test
+    (test_analyze_trade_makes_no_real_nws_mos_or_climate_indices_calls in
+    test_weather_markets.py) is itself maskable by cross-test cache
+    pollution depending on execution order -- this fixture is what makes
+    both the fix and that guard order-independent.
+    """
+    import climate_indices
+    import mos
+    import nws
+
+    nws._gridpoint_cache.clear()
+    nws._forecast_cache.clear()
+    nws._obs_cache.clear()
+    nws._precip_cache.clear()
+    mos._MOS_CACHE.clear()
+    mos._NBS_CACHE.clear()
+    mos._NBP_CACHE.clear()
+    climate_indices._indices_cache.clear()
+
+
+@pytest.fixture(autouse=True)
 def neutral_temperature_scaling(monkeypatch):
     """Patch ml_bias._TEMP_CACHE to neutral T=1.0 before every test.
 

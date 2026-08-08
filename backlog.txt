@@ -14837,7 +14837,7 @@ Priority: Medium -- not a live-money bug (this only affects the sigma-based
   failed. ruff + ruff format clean.
 
 ======================================================
-[SEVERAL test_weather_markets.py analyze_trade TESTS STILL MAKE REAL NETWORK CALLS VIA UNMOCKED nws_prob]
+[RESOLVED 2026-08-07] SEVERAL test_weather_markets.py analyze_trade TESTS STILL MAKE REAL NETWORK CALLS VIA UNMOCKED nws_prob
 Priority: Low -- not currently causing any failure (231/231 pass; the
   entry above's fix already closed the two live-observation paths that
   WERE causing failures), but a real, currently-reachable hermeticity gap
@@ -14875,6 +14875,104 @@ Priority: Low -- not currently causing any failure (231/231 pass; the
   flagged test is still missing a mock for -- likely nws_prob at minimum,
   possibly the newer NWS AFD-parsing infra too. A meaningfully larger
   task than either of the two already-fixed gaps, not a quick follow-on.
+
+RESOLVED 2026-08-07: Ran the prescribed audit. First confirmed the
+  NWS AFD-parsing infra (fetch_afd_discussion, city->WFO registry) is NOT
+  reachable from analyze_trade at all -- it's only called from main.py's
+  CLI display path; weather_markets.py's own manifest-check helper imports
+  just the CITY_WFO_OFFICE dict, never the fetch function. Not the 4th
+  instance; a genuinely separate function was.
+
+  Built a throwaway pytest plugin patching requests.Session.get/.post at
+  the class level to record (test, url) instead of hitting the network,
+  ran the whole file. First pass (13 tests, all via weather_markets.nws_prob
+  -> nws.get_nws_daily_forecast -> api.weather.gov, or the Phase-C
+  nbm_quantile_prob block's `import mos as _mos_mod; _mos_mod.
+  fetch_nbm_quantiles(...)` -> mos._fetch_nbp_percentiles ->
+  mesonet.agron.iastate.edu). Fixed via monkeypatch.setattr(wm, "nws_prob",
+  ...) / monkeypatch.setattr(mos, "fetch_nbm_quantiles", ...) at each site,
+  matching the get_live_observation mocking convention from the entry
+  above -- 2 shared helpers (_analyze_trade_base_mocks,
+  _stub_ecmwf_gap_common) covering 6 tests between them, plus 7 individual
+  sites.
+
+  Re-running the spy after that fix found ONE test still leaking (mesonet).
+  Root cause: mos.py's _NBP_CACHE/_NBS_CACHE/_MOS_CACHE and nws.py's
+  _forecast_cache/_gridpoint_cache are module-level caches with NO test
+  isolation (unlike metar._METAR_CACHE, which conftest.py's
+  clear_metar_cache autouse fixture already resets) -- an earlier test's
+  real network call for a given city/station silently satisfied a LATER
+  test's identical, unmocked cache key with a cache hit instead of a real
+  network call, hiding that the later test never mocked anything. Adding
+  per-test cache-clearing to the audit tool and re-running from a clean
+  baseline revealed 9 MORE real-call sites that a single uncleared pass had
+  masked -- including test_model_consensus_false_when_models_disagree,
+  which this SAME entry's prior "12 failing tests" fix had explicitly
+  (and, it turns out, incorrectly -- an artifact of that session's own
+  single test run never exposing the order-dependent gap) said was already
+  fully mocked. Fixed all 9 (1 shared helper covering 3 tests, 6 individual
+  sites) the same way.
+
+  Added test_analyze_trade_makes_no_real_nws_mos_or_climate_indices_calls
+  as a permanent regression guard (replaces nws._session.get/mos._session.
+  get/climate_indices' module-level requests.get with a call-recording
+  stub, asserts zero calls through the shared _analyze_trade_base_mocks
+  baseline). Discovered live: a raise-on-call-only stub (no recording)
+  falsely passes even with a mock removed, because analyze_trade wraps
+  both nws_prob and the nbm_quantile_prob block in their own try/except
+  and logs-and-continues on any exception -- the exact resilience that
+  made the original bug silent swallows the raise before it ever reaches
+  pytest. Recording (not raising) is what actually detects the gap.
+  Mutation-tested by temporarily removing each of the 3 mocks one at a
+  time and confirming the guard failed with the real blocked URL each
+  time, then restoring.
+
+  Independent opus review (effort: high) of that state found the "0 real
+  network calls" claim was still false: the spy's requests.Session.get
+  hook is blind to climate_indices.py's bare module-level requests.get(...)
+  calls (no Session object), reachable from analyze_trade via
+  temperature_adjustment() -> climate_indices.get_indices() -> 3 real
+  www.cpc.ncep.noaa.gov fetches (AO/NAO/ONI indices) -- a 3rd real,
+  independent gap of the exact same bug class, present in all 13 fixed
+  tests plus 3 unrelated TestForecastModelWeights tests (winter months
+  trigger the same call via _get_enso_phase(), even with city=None).
+  Fixed by adding monkeypatch.setattr(wm, "temperature_adjustment", ...)
+  to the same 8 sites (matching the pre-existing convention already used
+  by test_model_consensus_false_when_models_disagree and
+  test_mos_missing_min_does_not_use_max_as_substitute) and
+  monkeypatch.setattr(wm, "_get_enso_phase", "neutral") to the 3
+  TestForecastModelWeights tests (matching that class's own existing
+  test_all_winter_months_use_high_ecmwf convention). Review also found:
+  the guard's own mos.fetch_nbm_quantiles mock lived in its private body
+  rather than the shared baseline, making that leg's assertion structurally
+  dead (moved into _analyze_trade_base_mocks, re-verified via mutation
+  test); the guard's name/docstring overclaimed "no real network calls"
+  full stop when it only enforced 2 of several reachable sessions (renamed
+  to test_analyze_trade_makes_no_real_nws_mos_or_climate_indices_calls,
+  extended to patch climate_indices' requests.get too, docstring now states
+  explicitly what it does and doesn't cover); the cache-clearing that made
+  the audit tool's findings trustworthy only ever lived in the throwaway
+  plugin, so the shipped guard was itself maskable by the same cross-test
+  cache pollution it exists to catch -- shipped as a new permanent autouse
+  conftest.py fixture (clear_nws_mos_climate_indices_caches, 7 cache.clear()
+  calls, mirrors clear_metar_cache) instead. One doc-only nit (a docstring
+  claiming the stub "records instead of raising" when the code does both)
+  fixed by rewording. Confirmed correct, no action: the wm.nws_prob/
+  mos.fetch_nbm_quantiles binding targets, the Chicago MOS-blend test edit,
+  and the AFD-infra-unreachable finding.
+
+  Final state, verified via a comprehensive spy (requests.Session.request
+  class-level hook, catching every Session.get/.post call regardless of
+  binding, PLUS module-level requests.get, WITH per-test cache clearing):
+  zero real network calls anywhere in test_weather_markets.py.
+  232 passed / 4 skipped (was 231/4 before this session's new guard test).
+  Broader sweep (test_mos.py, test_mos_nbp.py, test_mos_nbs.py,
+  test_nws_afd.py, test_climate_indices.py, test_climatology.py,
+  test_infrastructure.py, test_phase2_batch_m.py,
+  test_hurricane_climatology.py, test_p1_remaining.py): all pass, no
+  regressions from the new autouse conftest.py fixture. ruff + ruff format
+  + mypy clean on both changed files (tests/test_weather_markets.py,
+  tests/conftest.py).
 
 [RESOLVED 2026-08-07] test_cron_integration.py's cmd_cron TESTS ALSO MAKE REAL NETWORK CALLS VIA UNMOCKED trade_cycle._run_batch_prewarm
 Priority: Low at discovery time -- passing (if slow) in the environment

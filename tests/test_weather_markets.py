@@ -343,14 +343,27 @@ class TestForecastModelWeights:
     WINTER_MONTHS = (10, 11, 12, 1, 2, 3)
     SUMMER_MONTHS = (4, 5, 6, 7, 8, 9)
 
-    def test_returns_dict_with_expected_keys(self):
+    def test_returns_dict_with_expected_keys(self, monkeypatch):
+        """month=1 is winter, so _forecast_model_weights hits the same
+        live-network _get_enso_phase() call test_all_winter_months_use_high_
+        ecmwf below already pins to neutral -- see that test's docstring."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_get_enso_phase", lambda: "neutral")
         weights = _forecast_model_weights(1)
         assert isinstance(weights, dict)
         for key in ("gfs_seamless", "ecmwf_ifs025", "icon_seamless"):
             assert key in weights
 
-    def test_winter_month_boosts_ecmwf_weight(self):
-        """ECMWF weight should be higher in winter than summer."""
+    def test_winter_month_boosts_ecmwf_weight(self, monkeypatch):
+        """ECMWF weight should be higher in winter than summer.
+
+        month=1 is winter, so _forecast_model_weights hits the same
+        live-network _get_enso_phase() call test_all_winter_months_use_high_
+        ecmwf below already pins to neutral -- see that test's docstring."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_get_enso_phase", lambda: "neutral")
         winter_w = _forecast_model_weights(1)["ecmwf_ifs025"]
         summer_w = _forecast_model_weights(7)["ecmwf_ifs025"]
         assert winter_w > summer_w
@@ -381,8 +394,15 @@ class TestForecastModelWeights:
                 f"Expected 1.5 for summer month {month}, got {w['ecmwf_ifs025']}"
             )
 
-    def test_gfs_and_icon_weights_are_constant(self):
-        """GFS and ICON weights should be 1.0 year-round."""
+    def test_gfs_and_icon_weights_are_constant(self, monkeypatch):
+        """GFS and ICON weights should be 1.0 year-round.
+
+        Loops every month, including winter ones, which hit the same
+        live-network _get_enso_phase() call test_all_winter_months_use_high_
+        ecmwf above already pins to neutral -- see that test's docstring."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_get_enso_phase", lambda: "neutral")
         for month in range(1, 13):
             w = _forecast_model_weights(month)
             assert w["gfs_seamless"] == pytest.approx(1.0)
@@ -1224,6 +1244,7 @@ class TestBlendWeightCalibrationPriority:
 
 def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
     """analyze_trade result includes model_consensus bool when it returns a result."""
+    import mos
     import weather_markets as wm
     from weather_markets import analyze_trade
 
@@ -1240,6 +1261,9 @@ def test_analyze_trade_result_has_model_consensus_field(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1299,6 +1323,7 @@ def test_analyze_trade_result_surfaces_precip_sum_in(monkeypatch):
     but was never threaded past precip-market routing into the temperature-
     path result dict -- analyze_trade must surface it log-only as
     precip_sum_in, read straight from enriched["_forecast"]."""
+    import mos
     import weather_markets as wm
     from weather_markets import analyze_trade
 
@@ -1313,6 +1338,9 @@ def test_analyze_trade_result_surfaces_precip_sum_in(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1377,6 +1405,7 @@ def test_analyze_trade_result_precip_sum_in_none_when_key_missing(monkeypatch):
     reaching the result dict at all), so that case can't exercise this
     ternary's False branch meaningfully. This uses a present-but-incomplete
     forecast dict instead, which analyze_trade processes normally."""
+    import mos
     import weather_markets as wm
     from weather_markets import analyze_trade
 
@@ -1391,6 +1420,9 @@ def test_analyze_trade_result_precip_sum_in_none_when_key_missing(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1438,6 +1470,8 @@ def test_analyze_trade_result_precip_sum_in_none_when_key_missing(monkeypatch):
 def _analyze_trade_base_mocks(monkeypatch, wm):
     """Shared mocks for the nbm_quantile_prob tests below -- same baseline
     as the other analyze_trade fixture tests in this file."""
+    import mos
+
     monkeypatch.setattr(
         wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
     )
@@ -1449,6 +1483,13 @@ def _analyze_trade_base_mocks(monkeypatch, wm):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 74.0)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    # Default -- the 3 nbm_quantile_prob tests below override this
+    # immediately after calling this helper (monkeypatch's "last setattr
+    # wins" rule), so this default only actually matters for callers (e.g.
+    # the network-call guard below) that don't override it.
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1581,8 +1622,73 @@ def test_analyze_trade_nbm_quantile_fetch_exception_does_not_break_analysis(
     assert result["nbm_quantile_prob"] is None
 
 
+def test_analyze_trade_makes_no_real_nws_mos_or_climate_indices_calls(monkeypatch):
+    """Regression guard for backlog.txt "SEVERAL test_weather_markets.py
+    analyze_trade TESTS STILL MAKE REAL NETWORK CALLS VIA UNMOCKED nws_prob":
+    a 2026-08-07 audit found 13 analyze_trade tests reaching real HTTP calls
+    to api.weather.gov (via nws_prob), mesonet.agron.iastate.edu (via
+    mos.fetch_nbm_quantiles), AND www.cpc.ncep.noaa.gov (via
+    temperature_adjustment -> climate_indices.get_indices, found by a
+    follow-up opus review of the first two) -- all three wrapped in their own
+    try/except inside analyze_trade, so an unmocked real call fails silently
+    (logs a warning, returns a neutral/None value) rather than failing the
+    test. NOT a claim of zero calls through every session analyze_trade could
+    ever reach (e.g. Open-Meteo/metar/acis_precip/acis_snow) -- those are
+    covered today by _analyze_trade_base_mocks' own higher-level mocks
+    (fetch_temperature_nbm/ecmwf, get_ensemble_temps, get_weather_forecast),
+    verified empirically via a whole-file network spy, but this guard doesn't
+    independently re-verify them at the session level the way it does for the
+    three mechanisms this backlog entry was actually about.
+
+    This replaces nws._session.get, mos._session.get, AND the module-level
+    requests.get climate_indices calls directly (it has no Session object of
+    its own) -- the actual lowest-level HTTP entry points all three real
+    functions go through -- with a stub that RECORDS calls instead of
+    silently succeeding, then runs analyze_trade through the exact baseline
+    mocks (_analyze_trade_base_mocks) every nbm_quantile_prob test above
+    already uses, and asserts zero calls were recorded. The stub also raises
+    after recording (so a real call still can't succeed even if some path
+    swallows the assertion failure some other way), but the raise is NOT
+    load-bearing for detection -- see the mutation-test note below.
+
+    Mutation-tested (2026-08-07), each of the three independently: temporarily
+    commenting out _analyze_trade_base_mocks' `nws_prob` line, its
+    `mos.fetch_nbm_quantiles` line, and its `temperature_adjustment` line (one
+    at a time, each restored before the next) each made this test fail on the
+    `assert calls == []` line below with the real blocked URL, not a silent
+    pass. A raise-on-call-only stub (no recording) was tried first and falsely
+    passed even with a mock removed: nws_prob and the nbm_quantile_prob block
+    both wrap their real calls in try/except and log-and-continue on any
+    exception -- the same resilience that made the original bug silent -- so
+    a bare raise never reaches pytest. Recording is what survives that
+    resilience and lets the assertion actually fail.
+    """
+    import climate_indices
+    import mos
+    import nws
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    calls: list[str] = []
+
+    def _record(url, *args, **kwargs):
+        calls.append(url)
+        raise RuntimeError(f"blocked real network call: {url}")
+
+    monkeypatch.setattr(nws._session, "get", _record)
+    monkeypatch.setattr(mos._session, "get", _record)
+    monkeypatch.setattr(climate_indices.requests, "get", _record)
+
+    _analyze_trade_base_mocks(monkeypatch, wm)
+
+    result = analyze_trade(_analyze_trade_enriched_fixture())
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    assert calls == [], f"analyze_trade made real network call(s): {calls}"
+
+
 def test_model_consensus_false_when_models_disagree(monkeypatch):
     """model_consensus is False when ICON and GFS differ by more than 8pp."""
+    import mos
     import weather_markets as wm
     from weather_markets import analyze_trade
 
@@ -1621,6 +1727,7 @@ def test_model_consensus_false_when_models_disagree(monkeypatch):
     monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: 0.15)
     monkeypatch.setattr(wm, "get_live_observation", lambda *a, **kw: None)
     monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
 
     from datetime import datetime, timedelta
 
@@ -1661,6 +1768,7 @@ def test_analyze_trade_captures_ecmwf_forecast_means(monkeypatch):
     consumed for model_consensus before) and ecmwf_ifs025's mean
     (model_temps["ecmwf"] via fetch_temperature_ecmwf(), already fetched for
     an unrelated Phase-C purpose)."""
+    import mos
     import weather_markets as wm
     from weather_markets import analyze_trade
 
@@ -1679,6 +1787,9 @@ def test_analyze_trade_captures_ecmwf_forecast_means(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1753,6 +1864,7 @@ def test_analyze_trade_captures_gem_ukmo_forecast_means(monkeypatch):
     must surface GEM/UKMO's own means in model_forecast_means, via
     _get_gem_ukmo_means, fetched separately from _get_consensus_probs's 5-tuple
     under the same ens_prob/temps gate."""
+    import mos
     import weather_markets as wm
     from weather_markets import analyze_trade
 
@@ -1771,6 +1883,9 @@ def test_analyze_trade_captures_gem_ukmo_forecast_means(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1835,6 +1950,7 @@ def test_analyze_trade_survives_gem_ukmo_fetch_exception(monkeypatch):
     """_get_gem_ukmo_means failing must not abort the trade -- mirrors the
     existing _get_consensus_probs exception-tolerance behavior, and must not
     regress icon/gfs/ecmwf's own means (separate try/except blocks)."""
+    import mos
     import weather_markets as wm
     from weather_markets import analyze_trade
 
@@ -1856,6 +1972,9 @@ def test_analyze_trade_survives_gem_ukmo_fetch_exception(monkeypatch):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -1947,6 +2066,8 @@ def _ecmwf_gap_test_enriched():
 
 
 def _stub_ecmwf_gap_common(monkeypatch, wm):
+    import mos
+
     monkeypatch.setattr(
         wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
     )
@@ -1955,6 +2076,9 @@ def _stub_ecmwf_gap_common(monkeypatch, wm):
     monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
     monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
     monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
     monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
     monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
@@ -4313,6 +4437,7 @@ class TestMosBlendNoCrossVariableFallback:
             patch("climatology.persistence_prob", return_value=0.3),
             patch("mos.get_mos_station", _fake_mos.get_mos_station),
             patch("mos.fetch_mos_best", _fake_mos.fetch_mos_best),
+            patch("mos.fetch_nbm_quantiles", return_value=None),
         ):
             result = wm.analyze_trade(enriched)
 
