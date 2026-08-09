@@ -22,10 +22,18 @@ Problem:
     metar.py field-name fix landed; even a well-intentioned attempt to add
     daily-extreme logic here before that fix would have kept falling back to
     the instantaneous reading anyway).
-  - No local-hour gate of any kind -- the disabled weather_markets.py branch
-    at least required 14:00+ local before ever considering a lock; this one
-    can fire at any hour, including well before a HIGH market's daily high
-    has occurred.
+  - No hour gate INSIDE `_check_between_settlement()`/`check_city_settlement()`
+    themselves -- CORRECTED same day after re-reading `run_settlement_monitor()`
+    (~line 299) more carefully: it DOES restrict invocation to a 17:00-19:00
+    local per-city window (`_MONITOR_START_HOUR`/`_MONITOR_END_HOUR`, ~line
+    92-93) before ever calling into this code, so the original framing here
+    ("can fire at any hour") was wrong and has been corrected -- the failure
+    scenario below is re-derived to fall inside that real window. The
+    remaining gap is real: for most cities the daily high typically peaks
+    mid-afternoon (2-5 PM), BEFORE this window even opens, so a 17:00-19:00
+    reading is very often already cooling PAST the true peak -- the window's
+    existence doesn't fix the instantaneous-vs-extreme conflation, it just
+    narrows when it can bite.
   - A YES lock that fires on ANY instantaneous in-band reading with zero
     clearance requirement (`_check_between_settlement`'s own docstring:
     "Clearance only affects confidence, not the lock condition").
@@ -40,27 +48,46 @@ Problem:
   either; not re-verified against the pre-ceda79d code).
 
   Concrete failure scenario (independently verified live via
-  `check_city_settlement`'s actual code, not asserted): HIGH-series between
-  market, band [85.5, 87.5]. At 11:00 local the station reads 78.0°F (normal
-  morning warm-up; the day's actual high later reaches 86.5°F, a real YES).
-  clearance = 85.5 - 78.0 = 7.5 >= _SETTLEMENT_MARGIN_F + 1.0 (2.0) -> locks
-  NO at confidence min(0.95, 0.60 + 7.5*0.03) = 0.825. cron.py's >= 0.80
-  auto-execution threshold fires and force-closes the open YES paper
-  position at a loss -- on a position that was actually going to win. (The
-  YES side of this same bug caps out around 0.75 confidence for a
-  comparably early reading, under cron's 0.80 threshold, so in practice only
-  the NO direction currently auto-executes from this bug -- still a real,
-  reachable, wrong-direction forced settlement.)
+  `check_city_settlement`'s actual code AND `run_settlement_monitor`'s real
+  17:00-19:00 gate, not asserted): HIGH-series between market, band
+  [85.5, 87.5]. The day's actual high, 86.5°F (a real YES), occurred at
+  15:00 -- before the monitor's window even opens. By 18:00 (inside the
+  real 17:00-19:00 window) the station has cooled to 76.0°F, a ~10.5°F
+  afternoon-to-evening drop plausible after a cold-frontal passage or
+  thunderstorm outflow, not a routine every-day swing but a real,
+  recurring one. clearance = 85.5 - 76.0 = 9.5 >= _SETTLEMENT_MARGIN_F +
+  1.0 (2.0) -> locks NO at confidence min(0.95, 0.60 + 9.5*0.03) = 0.885.
+  cron.py's >= 0.80 auto-execution threshold fires and force-closes the
+  open YES paper position at a loss -- on a position that was actually
+  going to win. (The YES side of this same bug is architecturally capped at
+  confidence 0.75 for a 2°F-wide band -- min(0.95, 0.70 + clearance*0.05)
+  with clearance bounded at the band half-width, 1.0°F -- always under
+  cron's 0.80 threshold, so in practice only the NO direction currently
+  auto-executes from this bug. This is the exact same "confidence formula
+  capped below the threshold that matters" bug shape independently found
+  in the sibling weather_markets.py entry's between_edge gate -- worth
+  keeping in mind when re-deriving the fix here, since a naive port of
+  that fix's margin numbers could reproduce the same unreachable-ceiling
+  mistake in a new place if not re-checked against THIS module's own
+  0.70/0.05 confidence formula, which differs from weather_markets.py's
+  _dynamic_lock_in_confidence.)
 
 What it would look like:
   Same fix shape as the weather_markets.py sibling entry, scoped to this
   module: key `_check_between_settlement()` off a real daily extreme
   (min_temp_f/max_temp_f, now available thanks to this session's metar.py
-  fix) instead of current_temp_f, add the missing local-hour gate, and
-  re-derive safe NO/YES lock conditions using the same monotonic-safety
-  reasoning (NO only on the side the running extreme has already
-  irreversibly cleared; YES only with real margin against the one at-risk
-  edge). Whether to literally share code with weather_markets.py's
+  fix) instead of current_temp_f. The 17:00-19:00 caller-side window
+  (`run_settlement_monitor`) does NOT need an hour gate added inside this
+  function the way weather_markets.py's 14:00 gate did -- that window
+  already exists and is the wrong kind of guard to add a second one of;
+  what's missing is using the daily extreme AT ALL. Re-derive safe NO/YES
+  lock conditions using the same monotonic-safety reasoning (NO only on
+  the side the running extreme has already irreversibly cleared; YES only
+  with real margin against the one at-risk edge, and re-check the actual
+  achievable confidence range against THIS module's own 0.70/0.05 YES
+  formula and 0.60/0.03 NO formula -- not weather_markets.py's
+  _dynamic_lock_in_confidence -- before picking a margin). Whether to
+  literally share code with weather_markets.py's
   `_metar_lock_in` between branch or keep a parallel implementation (this
   module's return shape / signal-building pipeline differs) is a real design
   choice for whoever picks this up -- not decided here.
