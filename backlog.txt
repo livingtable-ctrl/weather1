@@ -11917,6 +11917,19 @@ When to revisit:
     above. Full Position read-model: when the next live-position feature
     lands, using it as the third consumer that validates the interface.
 
+UPDATE 2026-08-09 (re-checked this trigger before starting any new work
+  here, per this entry's own reasoning): partial-fill handling -- named
+  above as "the likeliest" next feature -- has now shipped (see "[RESOLVED
+  2026-08-09] LIVE EXIT PARTIAL-FILLS WERE LOGGED BUT NEVER RECONCILED",
+  pushed `bb91374`). Per explicit user decision, it shipped FIRST,
+  deliberately AS the third consumer this entry's own trigger was waiting
+  for, rather than building the read-model speculatively without one. The
+  full Position read-model itself is STILL unstarted -- this entry remains
+  open. Whoever picks this up next has a real third consumer to validate
+  the interface against (paper's 3 check functions + order_executor's live
+  adapter/replication + the new record_live_partial_exit reconciliation),
+  which is exactly the condition this entry was waiting on.
+
 [PARTIALLY RESOLVED 2026-07-25 -- parts (a) and (b) shipped; part (c), the
   blend-weights-dict refactor, still open, deliberately scoped out as its
   own separately-reviewed pass given its live-blend blast radius --
