@@ -153,6 +153,7 @@ class TestSchemaVersionMatchesMigrations:
             "exit_reason",
             "exit_price",
             "entry_prob",
+            "closes_position_id",
         }
         assert expected <= cols
 
@@ -187,7 +188,8 @@ class TestSchemaVersionMatchesMigrations:
                     settled_at TEXT, outcome_yes INTEGER, pnl REAL,
                     close_time TEXT, filled_at TEXT, market_mid_at_fill REAL,
                     replaces_order_id INTEGER, peak_profit_pct REAL,
-                    exit_reason TEXT, exit_price REAL, entry_prob REAL
+                    exit_reason TEXT, exit_price REAL, entry_prob REAL,
+                    closes_position_id INTEGER
                 )
             """)
         execution_log.init_log()
@@ -456,6 +458,117 @@ class TestLiveSettlement:
         assert row_id not in [
             o["id"] for o in execution_log.get_filled_unsettled_live_orders()
         ]
+
+    def test_record_live_partial_exit_reduces_fill_quantity_keeps_open(self):
+        """A partial IOC exit fill must shrink the tracked open quantity by
+        exactly the filled amount without closing the position -- it must
+        still surface via get_filled_unsettled_live_orders() so the
+        remainder gets its own protective-exit attempt next cycle."""
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        execution_log.log_order_result(row_id, status="filled", fill_quantity=10)
+
+        execution_log.record_live_partial_exit(row_id, filled_count=4)
+
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT fill_quantity, settled_at, exit_price, exit_reason, pnl "
+                "FROM orders WHERE id = ?",
+                (row_id,),
+            ).fetchone()
+        assert row["fill_quantity"] == 6
+        # Position stays open -- these must be untouched by the reconciliation.
+        assert row["settled_at"] is None
+        assert row["exit_price"] is None
+        assert row["exit_reason"] is None
+        assert row["pnl"] is None
+        # Positive control: the reduced quantity is what a re-read actually
+        # sees via the same query _get_live_open_positions() uses.
+        reopened = execution_log.get_filled_unsettled_live_orders()
+        assert len(reopened) == 1
+        assert reopened[0]["id"] == row_id
+        assert reopened[0]["fill_quantity"] == 6
+
+    def test_record_live_partial_exit_decrements_relatively_not_absolutely(self):
+        """The UPDATE must compute fill_quantity - filled_count IN SQL, not
+        have the caller read-modify-write an absolute total in Python --
+        otherwise two concurrent partial exits against the same position
+        (e.g. cron and a concurrent `watch --auto --live` both reacting to
+        the same stale price) that each read the pre-decrement value would
+        each independently write the same wrong 'remaining' total, silently
+        losing one of the two reductions. Proven here by two SEQUENTIAL
+        calls: each must decrement off whatever is currently stored, not off
+        a value captured before either call."""
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        execution_log.log_order_result(row_id, status="filled", fill_quantity=10)
+
+        execution_log.record_live_partial_exit(row_id, filled_count=4)
+        execution_log.record_live_partial_exit(row_id, filled_count=2)
+
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT fill_quantity FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        # 10 - 4 - 2 = 4, not 10 - 2 = 8 (which an absolute-overwrite bug
+        # keyed off a stale read would produce).
+        assert row["fill_quantity"] == 4
+
+    def test_exit_orders_own_filled_row_excluded_from_open_positions(self):
+        """Regression: a filled exit (SELL) order's own row is live=1,
+        status='filled', settled_at=NULL on ITSELF regardless of whether the
+        underlying position it closed fully settled -- without
+        closes_position_id, that row is indistinguishable from a genuine new
+        entry fill and get_filled_unsettled_live_orders() would misreport it
+        as a brand-new open position on the very next call, forever (nothing
+        else ever sets settled_at on the exit order's own row)."""
+        position_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        exit_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.20,
+            order_type="market",
+            status="pending",
+            live=True,
+            closes_position_id=position_id,
+        )
+        execution_log.log_order_result(exit_id, status="filled", fill_quantity=10)
+        execution_log.record_live_early_exit(position_id, 0.20, "stop_loss", -2.0)
+
+        # Positive control: a legitimate second, unrelated open position
+        # (no closes_position_id) must still surface normally.
+        other_position_id = execution_log.log_order(
+            ticker="KXHIGH-25JUN01-T80",
+            side="yes",
+            quantity=3,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        open_rows = execution_log.get_filled_unsettled_live_orders()
+        assert [r["id"] for r in open_rows] == [other_position_id]
+        assert exit_id not in [r["id"] for r in open_rows]
+        assert position_id not in [r["id"] for r in open_rows]
 
     def test_log_order_persists_entry_prob(self):
         row_id = execution_log.log_order(

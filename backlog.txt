@@ -1,6 +1,211 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[RESOLVED 2026-08-09] LIVE EXIT PARTIAL-FILLS WERE LOGGED BUT NEVER RECONCILED -- POSITION QUANTITY DRIFTED FROM WHAT WAS ACTUALLY STILL OPEN
+Priority: Medium -- live-order-adjacent (order_executor._exit_live_position),
+  but ENABLE_MICRO_LIVE is False today so no real position has ever hit this
+  path. Picked up while re-checking the "[PARTIALLY RESOLVED 2026-07-19]
+  PAPER AND LIVE POSITIONS ARE TWO LEDGERS WITH ADAPTER GLUE" entry's own
+  deferred trigger ("when the next live-position feature lands, using it as
+  the third consumer that validates the interface") -- re-verified live that
+  no such feature had landed since 2026-07-19, and partial-fill
+  reconciliation (already flagged by that entry as "the likeliest" next
+  feature, and already sitting as a concrete, non-hypothetical scope note in
+  _exit_live_position's own docstring) was picked, per explicit user
+  decision, to ship FIRST and serve as that third consumer -- the Position
+  read-model itself remains separately unstarted; see that entry for its own
+  current status.
+
+Problem:
+  _exit_live_position() places an IOC (immediate_or_cancel) SELL to close a
+  protected live position; Kalshi's IOC orders can legally partial-fill
+  (match what's immediately available, cancel the rest). Previously, a
+  partial fill was logged at ERROR ("Manual review needed") and NOT
+  reconciled -- the original position row's tracked fill_quantity stayed at
+  the full original amount, so the next cycle's _get_live_open_positions()
+  would still see the full original quantity as open, risking a future
+  protective exit trying to sell more contracts than actually remained.
+
+What shipped:
+  execution_log.record_live_partial_exit(order_id, filled_count) -- an
+  atomic UPDATE ... SET fill_quantity = COALESCE(fill_quantity, quantity) -
+  ? (a relative decrement computed in SQL, not a Python read-modify-write of
+  an absolute total) that reduces the original position row's tracked
+  fill_quantity by exactly the sold amount, leaving settled_at/exit_price/
+  exit_reason/pnl untouched so the position stays open at its new smaller
+  size for get_filled_unsettled_live_orders() to keep surfacing next cycle.
+  _exit_live_position()'s partial-fill branch now computes the sold
+  portion's fee-adjusted P&L (same fee convention as the full-exit branch:
+  fee only discounts a genuine gain, never a loss) and realizes it
+  immediately via add_live_loss(), same as a full exit, then calls
+  record_live_partial_exit() and returns False (position not fully closed,
+  remainder retried next cycle -- matches the existing "will retry next
+  cycle" semantics already used for the zero-fill case).
+
+  A second, pre-existing bug found by adjacency while writing the first
+  integration test (not introduced by this change, but on the exact same
+  query path being modified): a filled EXIT order's own logged row is
+  itself live=1/status='filled'/settled_at=NULL on ITSELF -- indistinguishable
+  in shape from a genuine new entry fill, for BOTH full and partial exits --
+  so get_filled_unsettled_live_orders() (and thus _get_live_open_positions())
+  would misidentify every live exit order as a brand-new phantom open
+  position on the very next call, forever (nothing else ever sets
+  settled_at on the exit order's own row). Verified order_type could NOT be
+  used as a discriminator instead -- a legitimate taker-cross ENTRY order
+  (_replace_live_order) also logs order_type='market'. Fixed by adding a new
+  closes_position_id column (migration v17, _SCHEMA_VERSION 16->17), set via
+  log_order(..., closes_position_id=position["id"]) only on the exit order's
+  own logging call in _exit_live_position, and excluded via "AND
+  closes_position_id IS NULL" in get_filled_unsettled_live_orders()'s query.
+  Confirmed against the real production execution_log.db: schema at
+  user_version=16 with 0 live rows today, so this is a clean upgrade with no
+  phantom rows to backfill.
+
+  Independent Agent(opus, effort=high) review before push found 3 more real,
+  in-scope issues on the same payload this change already touches, all
+  fixed in the same pass:
+  (1) MEDIUM -- get_today_live_spend() (feeds the MAX_DAILY_SPEND gate that
+  hard-blocks new entries) summed quantity*price over every non-failed/
+  canceled/amended live row, including exit orders' own rows -- a SELL that
+  reduces existing exposure isn't new capital deployed (matching the
+  reasoning _exit_live_position already applies by skipping this same gate
+  for exits), and this fix's own closes_position_id column made the
+  omission newly compound: a position whose IOC exit partial-fills every
+  cycle logs a fresh exit-order row each retry, each one inflating the
+  counter again. Added the same "AND closes_position_id IS NULL" filter
+  there.
+  (2) MEDIUM -- record_live_partial_exit's first version computed the
+  remaining quantity in Python (read fill_quantity, subtract, write the
+  absolute result back) -- a genuine read-modify-write race: two processes
+  (e.g. cron and a concurrent `watch --auto --live`) reacting to the same
+  stale position could both read the same pre-decrement value and each
+  write the same wrong "remaining" total, silently losing one of the two
+  reductions. Changed to the atomic SQL decrement described above, and the
+  function's own parameter renamed from remaining_quantity (an absolute
+  target) to filled_count (a delta) to make the contract self-evident.
+  (3) LOW -- a docstring claim that fill_quantity had exactly one reader on
+  an open-position row was false (order_executor._poll_pending_orders'
+  settlement loop also reads it on the same row shape) -- the resulting
+  behavior was verified still correct by the reviewer, but the false claim
+  itself was corrected since it would mislead whoever touches this next.
+  4 more LOW findings were process/documentation only (log severity for a
+  reconciled partial fill bumped WARNING, per-branch phantom-position test
+  coverage was partial-only and now covers the full-exit path too, a schema
+  presence test's expected-columns set was stale, and this entry itself
+  didn't exist yet when the code's own docstring already promised it) --
+  all corrected inline above and in the code.
+  1 LOW/informational finding (hoisting entry_price/id reads to the top of
+  _exit_live_position means a malformed position dict now raises before the
+  gate check and before order placement, instead of after a live order was
+  already sent) was left as a documented no-op: this is a safety
+  IMPROVEMENT over the prior ordering (fail before risking a live order, not
+  after), and is unreachable today regardless since the only real producer,
+  _get_live_open_positions(), always populates both keys.
+  2 findings were genuinely separate consumers per the "same payload" test
+  and filed as their own new entries below rather than fixed inline: the
+  aggregate-only P&L accounting gap for partial exits (a different output --
+  tax CSV / dashboard summary -- not the position-tracking query this
+  change touches), and the manual cmd_order sell path (a different function
+  and caller entirely, main.py not order_executor.py).
+
+  New tests (tests/test_execution_log.py, tests/test_live_execution.py):
+  reconciliation correctness (fill_quantity reduced by exactly the filled
+  amount, settled_at/pnl/exit_price/exit_reason left untouched, the position
+  still surfaces as open with the reduced quantity), the fee-adjusted
+  partial P&L formula for both loss and gain cases, an end-to-end
+  integration test proving _get_live_open_positions() actually sees the
+  reduced quantity after _exit_live_position runs (not just each function
+  tested in isolation), the phantom-position exclusion for both the
+  partial-fill AND full-fill branches (a positive control confirming the
+  excluded row really was logged live/filled/settled_at-NULL, the shape
+  that would trigger the bug if unguarded), the atomic-decrement proof
+  (two sequential partial exits must compose to 10-4-2=4, not the 10-2=8 a
+  stale-read absolute-overwrite bug would produce), and get_today_live_spend
+  exclusion of exit-order rows including the repeated-partial-retry case.
+  Mutation-tested each of the 4 load-bearing changes individually via the
+  Edit tool (reverted, confirmed the right test failed for the right
+  reason, restored): the closes_position_id query filter, the
+  record_live_partial_exit call site, the add_live_loss realization call,
+  the get_today_live_spend closes_position_id filter, and the atomic-vs-
+  absolute decrement SQL.
+  419 tests pass across tests/test_live_execution.py, test_execution_log.py,
+  test_execution_proof.py, test_execution_stability.py, test_early_exits.py,
+  test_paper.py, test_trading.py, and test_cron_integration.py. ruff + ruff
+  format + mypy clean on both changed source files (execution_log.py,
+  order_executor.py) -- the 5 mypy errors mypy also reports are pre-existing
+  and in 3 unrelated files (notify.py, acis_precip.py, acis_snow.py) never
+  touched by this change.
+
+Not yet actioned (filed as their own entries below, not folded into this
+one -- see the "same payload" reasoning above):
+  - AGGREGATE-ONLY P&L ACCOUNTING FOR PARTIAL LIVE EXITS UNDER-REPORTS PER-
+    TRADE TAX CSV AND THE DASHBOARD'S total_pnl SUMMARY
+  - MANUAL cmd_order LIVE SELLS DON'T SET closes_position_id OR REDUCE
+    TRACKED POSITION SIZE -- AND MAY NOT EVEN LOG live=True
+
+[OPEN 2026-08-09 -- new, split out of the entry above per its own "same payload" scoping] AGGREGATE-ONLY P&L ACCOUNTING FOR PARTIAL LIVE EXITS UNDER-REPORTS PER-TRADE TAX CSV AND THE DASHBOARD'S total_pnl SUMMARY
+Priority: Low -- reporting/accounting completeness only, not a live-order
+  safety gate; today's aggregate daily total (execution_log.get_today_live_loss(),
+  fed by add_live_loss()) IS correct in real time. ENABLE_MICRO_LIVE is False,
+  so there is no live data to under-report yet.
+
+Problem:
+  A live position row's own pnl/settled_at are only ever written at that
+  row's FULL closure (record_live_early_exit()/record_live_settlement()) --
+  true before the partial-fill reconciliation fix above and still true
+  after it, by design (the position isn't closed, just smaller). This means
+  a partial exit's realized P&L is reflected immediately in the day's
+  aggregate total (add_live_loss) but never becomes its own row anywhere,
+  so two per-position/per-trade views silently miss it going forward:
+  execution_log.export_live_tax_csv() (per-trade tax reporting -- a position
+  that had one partial exit and one final full exit would show only the
+  final exit's smaller-quantity P&L, not the true combined total) and
+  execution_log.get_live_pnl_summary()'s today_pnl/total_pnl fields (the
+  dashboard's headline P&L numbers), both of which SUM(pnl) only over rows
+  where settled_at IS NOT NULL.
+
+Recommendation (not yet actioned -- filed for later decision):
+  If/when this needs fixing, the likely shape is either (a) give each
+  partial exit its own lightweight settled row (a "closed_quantity" child
+  row referencing the original position, mirroring how closes_position_id
+  already links an exit order to what it closed) that both export functions
+  can SUM(pnl) over alongside the original row's eventual final-closure
+  pnl, or (b) a dedicated running total column on the original position row
+  that both functions read instead of a single point-in-time pnl. Needs a
+  design decision (AskUserQuestion) before implementing either -- explicitly
+  deferred rather than guessed at when this entry was filed, since
+  ENABLE_MICRO_LIVE being off means there's no real urgency forcing the
+  choice yet.
+
+[OPEN 2026-08-09 -- new, split out of the entry above per its own "same payload" scoping] MANUAL cmd_order LIVE SELLS DON'T SET closes_position_id OR REDUCE TRACKED POSITION SIZE -- AND MAY NOT EVEN LOG live=True
+Priority: Low -- manual CLI-only path (main.py cmd_order), not the automated
+  cron/watch protective-exit path the sibling entry above fixed. No live
+  order has ever gone through this command (ENABLE_MICRO_LIVE is False).
+
+Problem:
+  main.py's cmd_order (the manual buy/sell CLI command) logs via
+  `log_order(ticker, side, int(count), price, order_type=action)` --
+  positionally, with no live=True keyword at all, so even a manual order
+  against the REAL client is logged as live=False by default. Two
+  compounding gaps if this path is ever used for a real live sell: (1) it
+  never passes closes_position_id, so it would reintroduce the exact
+  phantom-open-position bug the sibling entry above just fixed for the
+  automated path, and (2) it never reduces the original position's
+  fill_quantity on a partial fill either, so a manual partial-fill exit
+  would leave the position's tracked size wrong the same way the automated
+  path did before that fix. Whether gap (nothing marked live=True) is itself
+  a bug or intentional (e.g. cmd_order may be paper-only in practice, or
+  gated elsewhere before reaching here) was NOT investigated -- flagged
+  as-is from the opus review that surfaced it, not independently re-verified
+  against cmd_order's full call graph.
+
+Recommendation (not yet actioned -- filed for later decision):
+  First confirm whether cmd_order's sell action can actually reach a real
+  live order today (trace its full call graph and any live/paper gating
+  around it) before deciding whether this needs the same closes_position_id
+  + fill_quantity-reduction treatment _exit_live_position now has, or
+  whether it's genuinely paper-only and this is a non-issue.
+
 [RESOLVED 2026-08-05] ~13 NON-SAFETY-CRITICAL FILES STILL BYPASS paths.py -- WORKTREE CRON RUNS SILENTLY HIT A STALE LOCAL data/ CACHE
 Priority: Medium -- no live-money or trade-correctness impact (DB, paper
   trades, and backups all correctly route through paths.py already), but a

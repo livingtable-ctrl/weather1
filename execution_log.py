@@ -48,7 +48,7 @@ _append_lock = _el_threading.Lock()  # WA-9: serialize concurrent JSONL appends
 # only has the columns that predate this list; every column added since is
 # expressed as its own migration, matching tracker.py's convention of never
 # touching the base CREATE TABLE again once versioning exists.
-_SCHEMA_VERSION = 16  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 17  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     "ALTER TABLE orders ADD COLUMN fill_quantity INTEGER",  # v1
@@ -67,6 +67,7 @@ _MIGRATIONS = [
     "ALTER TABLE orders ADD COLUMN exit_reason TEXT",  # v14
     "ALTER TABLE orders ADD COLUMN exit_price REAL",  # v15
     "ALTER TABLE orders ADD COLUMN entry_prob REAL",  # v16
+    "ALTER TABLE orders ADD COLUMN closes_position_id INTEGER",  # v17
 ]
 
 
@@ -170,6 +171,7 @@ def log_order(
     close_time: str | None = None,
     replaces_order_id: int | None = None,
     entry_prob: float | None = None,
+    closes_position_id: int | None = None,
 ) -> int:
     """
     Record a live order attempt. Returns the new row ID.
@@ -184,6 +186,18 @@ def log_order(
     against the held position (mirrors paper.py's place_paper_order
     entry_prob field). None for a replacement/reprice order — the position's
     entry_prob was already captured on the original placement it replaces.
+
+    closes_position_id: id of the OPEN POSITION row (an earlier entry order)
+    this order was placed to close, if any -- set only by
+    order_executor._exit_live_position for its protective stop-loss/
+    breakeven/model-exit SELL orders. Without this, a filled exit order's
+    own row (live=1, status='filled', settled_at still NULL on itself) is
+    indistinguishable from a genuine new entry fill and would be
+    misidentified as a brand-new open position by
+    get_filled_unsettled_live_orders() on the very next call -- this field
+    exists solely so that query can exclude it. None for every other order
+    (entries, reprices, taker-crosses all open or replace a position, they
+    never close one).
     """
     init_log()
     with _conn() as con:
@@ -192,8 +206,8 @@ def log_order(
             INSERT INTO orders
               (ticker, side, quantity, price, order_type, status, response, error,
                placed_at, fill_quantity, error_code, error_type, forecast_cycle, live,
-               close_time, replaces_order_id, entry_prob)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               close_time, replaces_order_id, entry_prob, closes_position_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ticker,
@@ -213,6 +227,7 @@ def log_order(
                 close_time,
                 replaces_order_id,
                 entry_prob,
+                closes_position_id,
             ),
         )
         return cur.lastrowid or 0
@@ -443,6 +458,13 @@ def get_today_live_spend() -> float:
     both would double-count the same resting position's capital every time
     it gets repriced (see order_executor._amend_live_order).
 
+    closes_position_id IS NULL excludes protective-exit SELL orders for the
+    same reason _exit_live_position() itself skips the daily-spend gate on
+    exits: a SELL that closes existing exposure isn't new capital deployed,
+    and every exit order's own row would otherwise inflate this counter --
+    compounding once per cycle for a position whose IOC exit repeatedly
+    partial-fills, since each retry logs its own new exit-order row.
+
     Fails closed (inf) on a DB read failure, matching get_today_live_loss().
     """
     today = datetime.now(UTC).strftime("%Y-%m-%d")
@@ -453,6 +475,7 @@ def get_today_live_spend() -> float:
                 "SELECT COALESCE(SUM(quantity * price), 0.0) AS total FROM orders "
                 "WHERE live = 1 "
                 "AND status NOT IN ('failed', 'canceled', 'cancelled', 'amended') "
+                "AND closes_position_id IS NULL "
                 "AND placed_at >= ?",
                 (today,),
             ).fetchone()
@@ -510,13 +533,23 @@ def add_live_loss(amount: float) -> float:
 
 
 def get_filled_unsettled_live_orders() -> list[dict]:
-    """Return live filled orders that have not yet had their settlement outcome recorded."""
+    """Return live filled orders that have not yet had their settlement
+    outcome recorded -- i.e. open POSITIONS, not exit orders.
+
+    closes_position_id IS NULL excludes a protective exit order's own row:
+    that row is itself live=1/status=filled/settled_at=NULL (it closed a
+    DIFFERENT row, the position referenced by closes_position_id, not
+    itself), so without this filter it would be indistinguishable from a
+    genuine new entry fill and misread as a brand-new open position by
+    every caller of this function.
+    """
     init_log()
     with _conn() as con:
         rows = con.execute(
             """
             SELECT * FROM orders
             WHERE live = 1 AND status = 'filled' AND settled_at IS NULL
+              AND closes_position_id IS NULL
             ORDER BY placed_at
             """,
         ).fetchall()
@@ -575,6 +608,43 @@ def record_live_early_exit(
             WHERE id = ?
             """,
             (datetime.now(UTC).isoformat(), exit_price, exit_reason, pnl, order_id),
+        )
+
+
+def record_live_partial_exit(order_id: int, filled_count: int) -> None:
+    """Reconcile an open live position's tracked size after an IOC exit
+    order only partial-fills (matches what's immediately available, cancels
+    the rest -- see order_executor._exit_live_position's docstring).
+
+    Deliberately leaves settled_at/exit_price/exit_reason/pnl untouched --
+    the position isn't closed, just smaller, so get_filled_unsettled_live_orders()
+    must keep surfacing this row next cycle for the remaining quantity to get
+    its own protective-exit attempt. Writes fill_quantity (also read by
+    order_executor._poll_pending_orders' settlement loop and
+    _get_live_open_positions() -- both already correctly treat it as "the
+    position's current open quantity," so reusing it for this needs no
+    schema change) rather than a separate column.
+
+    filled_count is a DELTA (how many contracts this exit attempt just
+    sold), not the resulting total -- the UPDATE computes
+    fill_quantity - filled_count in SQL, a single atomic statement, rather
+    than the caller reading fill_quantity, subtracting in Python, and
+    writing the absolute result back. The latter is a read-modify-write
+    race: two processes (e.g. cron and a concurrent `watch --auto --live`)
+    could both read the same pre-decrement value and each independently
+    compute and write the same wrong "remaining" total, silently losing one
+    of the two reductions and leaving the tracked quantity too high.
+
+    The sold portion's realized P&L is the caller's responsibility to add
+    via add_live_loss(), same division of labor record_live_early_exit()
+    already has with its own caller.
+    """
+    init_log()
+    with _conn() as con:
+        con.execute(
+            "UPDATE orders SET fill_quantity = COALESCE(fill_quantity, quantity) - ? "
+            "WHERE id = ?",
+            (filled_count, order_id),
         )
 
 

@@ -2048,6 +2048,90 @@ class TestGetTodayLiveSpendExcludesAmended:
         assert execution_log.get_today_live_spend() == pytest.approx(5.50)  # the fix
 
 
+class TestGetTodayLiveSpendExcludesExitOrders:
+    """A protective exit (SELL) order reduces existing exposure, it isn't
+    new capital deployed -- _exit_live_position() already skips the daily-
+    spend GATE for exactly this reason. get_today_live_spend() must exclude
+    the exit order's own logged row too, or every stop-loss/breakeven/
+    model-exit fill inflates the counter that blocks NEW entries, with a
+    partial-fill retry compounding it once per cycle."""
+
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_exit_order_row_excluded_entry_row_counted(self):
+        import execution_log
+
+        entry_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.20,
+            order_type="market",
+            status="filled",
+            live=True,
+            closes_position_id=entry_id,
+        )
+
+        # If the exit row weren't excluded: 10*0.40 + 10*0.20 = $6.00.
+        # Correct: only the entry, 10*0.40 = $4.00.
+        assert execution_log.get_today_live_spend() == pytest.approx(4.00)
+
+    def test_repeated_partial_exit_retries_do_not_compound_spend(self):
+        """A position whose IOC exit partial-fills every cycle logs a fresh
+        exit-order row each retry -- none of them should ever count as
+        spend, no matter how many cycles it takes to fully close."""
+        import execution_log
+
+        entry_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        for _ in range(3):
+            execution_log.log_order(
+                ticker="KXHIGH-25MAY15-T75",
+                side="yes",
+                quantity=10,
+                price=0.20,
+                order_type="market",
+                status="filled",
+                live=True,
+                closes_position_id=entry_id,
+            )
+
+        assert execution_log.get_today_live_spend() == pytest.approx(4.00)
+
+
 class TestRepriceOrCancelPendingOrders:
     """The core reprice-or-cancel policy: cancel on edge decay, cancel+
     replace as taker when edge clears the real taker fee, cancel+replace as
@@ -2686,6 +2770,44 @@ class TestGetLiveOpenPositions(_LiveDBTestBase):
         positions = _get_live_open_positions()
         assert positions[0]["entered_at"] == "2026-05-15T18:00:00+00:00"
 
+    def test_reflects_reduced_quantity_after_partial_exit(self):
+        """End-to-end proof the partial-fill fix actually closes the gap:
+        after _exit_live_position partially fills, the NEXT call to
+        _get_live_open_positions() must see the reduced quantity, not the
+        original -- otherwise a second protective-exit attempt would try to
+        sell more contracts than are actually still held."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position, _get_live_open_positions
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        execution_log.log_order_result(row_id, status="filled", fill_quantity=10)
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "4.00",  # only 4 of 10 requested
+        }
+        position = _get_live_open_positions()[0]
+        assert position["quantity"] == 10
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        positions_after = _get_live_open_positions()
+        assert len(positions_after) == 1
+        assert positions_after[0]["quantity"] == 6
+        assert positions_after[0]["cost"] == pytest.approx(0.40 * 6)
+
 
 class TestUpdateLivePeakProfits(_LiveDBTestBase):
     def test_records_new_peak_when_higher(self):
@@ -2831,6 +2953,51 @@ class TestExitLivePosition(_LiveDBTestBase):
         assert row["outcome_yes"] is None
         assert row["settled_at"] is not None
 
+    def test_full_fill_exit_order_not_treated_as_new_open_position(self):
+        """Regression pin for the phantom-position bug on the FULL-fill
+        path specifically (the partial-fill tests already pin it for that
+        branch) -- a refactor that moved closes_position_id into only the
+        partial branch would silently reopen this gap for full exits, which
+        are the common case."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position, _get_live_open_positions
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+        assert result is True
+        # Positive control: the exit order row itself really was logged
+        # live/filled (the shape that would trigger the bug if unguarded).
+        with execution_log._conn() as con:
+            exit_row = con.execute(
+                "SELECT live, status, settled_at, closes_position_id FROM orders "
+                "WHERE id != ? ORDER BY id DESC LIMIT 1",
+                (row_id,),
+            ).fetchone()
+        assert exit_row["live"] == 1
+        assert exit_row["status"] == "filled"
+        assert exit_row["settled_at"] is None
+        assert exit_row["closes_position_id"] == row_id
+        # The actual guard: no phantom position surfaces afterward.
+        assert _get_live_open_positions() == []
+
     def test_gain_case_applies_fee_discount(self):
         """A genuine gain (exit_price > entry_price, e.g. a model-exit that
         fires on a favorable move) DOES get the taker-fee discount -- only a
@@ -2901,7 +3068,7 @@ class TestExitLivePosition(_LiveDBTestBase):
             ).fetchone()
         assert row["settled_at"] is None
 
-    def test_partial_fill_logs_error_and_does_not_close_position(self):
+    def test_partial_fill_reconciles_quantity_and_realizes_pnl(self):
         from unittest.mock import MagicMock, patch
 
         import execution_log
@@ -2920,22 +3087,76 @@ class TestExitLivePosition(_LiveDBTestBase):
             status="filled",
             live=True,
         )
+        execution_log.log_order_result(row_id, status="filled", fill_quantity=10)
         position = self._position(id=row_id)
         with patch("trading_gates.pre_live_trade_check", return_value=None):
             result = _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
 
+        # Not fully closed -- the remaining 6 contracts stay open for a
+        # future cycle's protective-exit attempt.
         assert result is False
-        # Deliberately not reconciled in this pass (see the function's
-        # docstring) -- but must not silently mark the position fully closed
-        # either, which would corrupt the ledger by claiming 10 contracts
-        # exited when only 4 actually did.
         with execution_log._conn() as con:
             row = con.execute(
-                "SELECT settled_at FROM orders WHERE id = ?", (row_id,)
+                "SELECT settled_at, fill_quantity FROM orders WHERE id = ?",
+                (row_id,),
             ).fetchone()
+        # Must not silently mark the position fully closed, which would
+        # corrupt the ledger by claiming 10 contracts exited when only 4
+        # actually did.
         assert row["settled_at"] is None
+        # But the tracked open quantity IS reduced by exactly the filled
+        # amount, so a re-read sees only the genuine remainder as open.
+        assert row["fill_quantity"] == 6
+        # Positive control: the reduced position still surfaces as open.
+        reopened = execution_log.get_filled_unsettled_live_orders()
+        assert len(reopened) == 1
+        assert reopened[0]["fill_quantity"] == 6
+
+        # Loss case -> no fee discount: gross_pnl = 4 * (0.20 - 0.40) = -0.80,
+        # realized immediately via add_live_loss even though the row itself
+        # isn't settled yet.
+        assert execution_log.get_today_live_loss() == pytest.approx(0.80)
+
+    def test_partial_fill_gain_case_applies_fee_discount(self):
+        """Mirrors test_gain_case_applies_fee_discount for the partial-fill
+        branch -- the sold portion's realized P&L must get the same
+        gain-only fee discount as a full exit."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "4.00",  # only 4 of 10 requested
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        execution_log.log_order_result(row_id, status="filled", fill_quantity=10)
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.60, "model_exit", "2026-05-15_12z"
+            )
+
+        assert result is False
+        # gross_pnl = 4 * (0.60 - 0.40) = 0.80; gain -> fee applies:
+        # 0.80 * (1 - 0.07) = 0.744
+        assert execution_log.get_today_live_loss() == pytest.approx(-0.744, rel=1e-3)
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT fill_quantity FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["fill_quantity"] == 6
 
     def test_place_order_exception_logs_failed_status(self):
         from unittest.mock import MagicMock, patch

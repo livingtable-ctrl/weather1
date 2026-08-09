@@ -1148,19 +1148,33 @@ def _exit_live_position(
 
     Scope note on partial fills: an immediate_or_cancel order can legally
     partial-fill (match what's immediately available, cancel the rest). This
-    function only treats the position as closed when the full requested
-    quantity fills. A genuine partial fill (0 < fill_count < quantity) is
-    logged at ERROR (not just retried silently) but NOT reconciled here --
-    handling it correctly requires reducing the original position's tracked
-    quantity by exactly the filled amount, which is real additional
-    bookkeeping deliberately left as a follow-up given ENABLE_MICRO_LIVE is
-    False today (no live position exists yet for this gap to affect).
+    function only treats the position as CLOSED when the full requested
+    quantity fills. A genuine partial fill (0 < fill_count < quantity)
+    reduces the original position's tracked quantity by exactly the filled
+    amount (execution_log.record_live_partial_exit) and realizes that
+    portion's P&L immediately (add_live_loss), same as a full exit, but
+    leaves the position open at its new smaller size -- the next cycle's
+    _get_live_open_positions() picks it up again and any further protective
+    exit is attempted against the reduced remainder, not the original
+    quantity. Aggregate-only accounting: the sold portion doesn't get its
+    own export_live_tax_csv row (that only happens at a position's full
+    closure, same as today's full-exit path) -- filed as a follow-up in
+    backlog.txt if per-lot tax reporting on partial exits is ever needed.
+
+    Every exit order logged below passes closes_position_id=position["id"]
+    -- without it, this SELL order's own row (live=1, status='filled',
+    settled_at NULL on itself regardless of full/partial outcome) would be
+    indistinguishable from a genuine new entry fill and misidentified as a
+    brand-new open position by the next get_filled_unsettled_live_orders()
+    call. See execution_log.log_order's closes_position_id docstring.
     """
     from trading_gates import pre_live_trade_check
+    from utils import KALSHI_FEE_RATE
 
     ticker = position["ticker"]
     side = position["side"]
     qty = position["quantity"]
+    entry_price = position["entry_price"]
 
     try:
         pre_live_trade_check(client)
@@ -1178,6 +1192,7 @@ def _exit_live_position(
         forecast_cycle=cycle,
         live=True,
         close_time=position.get("close_time"),
+        closes_position_id=position["id"],
     )
     try:
         response = client.place_order(
@@ -1214,22 +1229,34 @@ def _exit_live_position(
         execution_log.log_order_result(
             log_id, status="filled", response=response, fill_quantity=fill_count
         )
-        _log.error(
-            "[LiveExit] %s: IOC exit PARTIALLY filled (%d/%d) — position "
-            "quantity not yet reconciled, see _exit_live_position's partial-"
-            "fill scope note. Manual review needed.",
+        # Same fee convention as the full-close branch below: fee only
+        # discounts a genuine gain, never applied to a loss.
+        partial_gross_pnl = fill_count * (exit_price - entry_price)
+        partial_pnl = round(
+            partial_gross_pnl * (1 - KALSHI_FEE_RATE)
+            if partial_gross_pnl > 0
+            else partial_gross_pnl,
+            4,
+        )
+        remaining_qty = qty - fill_count
+        execution_log.record_live_partial_exit(position["id"], fill_count)
+        execution_log.add_live_loss(-partial_pnl)
+        _log.warning(
+            "[LiveExit] %s: IOC exit PARTIALLY filled (%d/%d) via %s — "
+            "position reduced to %d remaining, will retry next cycle "
+            "(partial pnl=%.2f)",
             ticker,
             fill_count,
             qty,
+            reason,
+            remaining_qty,
+            partial_pnl,
         )
         return False
 
     execution_log.log_order_result(
         log_id, status="filled", response=response, fill_quantity=fill_count
     )
-
-    entry_price = position["entry_price"]
-    from utils import KALSHI_FEE_RATE
 
     # This is a direct generalization of _poll_pending_orders' natural-
     # settlement formula (settlement is just the exit_price=1 or 0 special
