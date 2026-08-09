@@ -1,91 +1,135 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
-[OPEN 2026-08-09 -- new, filed after a user question about a specific "between market, no METAR lock-in" skip log line surfaced that this gap had never actually been tracked in this file, only in code comments] BETWEEN-BUCKET MARKETS (KXHIGH*-B##.5) ARE PERMANENTLY UNTRADEABLE -- METAR LOCK-IN WAS NEVER BUILT FOR THEM
-Priority: Medium -- not a bug (fails closed, zero live-money risk today),
-  but a real, permanent gap in market coverage. Between-bucket tickers
-  (e.g. KXHIGHCHI-26AUG10-B86.5) are, per the existing code comment at the
-  gate itself, "Kalshi's most numerous temperature-market type" -- this
-  entire class has been silently retired from trading since METAR lock-in
-  was scoped to only cover above/below markets.
+[OPEN 2026-08-09 -- new, filed after a user question about a specific "between market, no METAR lock-in" skip log line surfaced that this gap had never actually been tracked in this file, only in code comments and a test docstring. CORRECTED same day after a 10-pass review of a handoff prompt drafted from this entry's first version -- that version significantly understated the history: it framed this as a feature that was "deliberately scoped out" and "never built," when the real history (found via `git log -S` on the disabling comment, not assumed) is that it WAS built, WAS live for 4 days, caused 2 real (paper-trading) losing trades from one bug, then got fully disabled after a SECOND, deeper bug was found -- and the fix the disable's own test says is missing has actually existed in this file the entire time, unused for this specific purpose. See "Problem" below for the corrected, git-verified account.] BETWEEN-BUCKET MARKETS (KXHIGH*-B##.5) ARE PERMANENTLY UNTRADEABLE -- METAR LOCK-IN WAS DISABLED AFTER 2 REAL LOSING TRADES AND NEVER FIXED
+Priority: Medium -- not a live-money bug today (fails closed, ENABLE_MICRO_LIVE
+  has been False this entire history), but a real, permanent gap in market
+  coverage with a known real cost: 2 confirmed losing paper trades before it
+  was disabled. Between-bucket tickers (e.g. KXHIGHCHI-26AUG10-B86.5) are,
+  per the existing code comment at the gate itself, "Kalshi's most numerous
+  temperature-market type" -- this entire class has been silently retired
+  from trading since 2026-06-29 (see history below), over 6 weeks before
+  this entry was filed.
 
 Problem:
   analyze_trade()'s between-bucket gate (weather_markets.py:10773-10786)
   requires metar_locked=True before a between market can trade at all --
   the reasoning being that plain ensemble sigma (3-5.5°F) is too wide to
   price a ±1°F band with any edge, so only a same-day METAR-confirmed
-  observation can justify a trade. But _metar_lock_in()'s own "between"
-  branch (weather_markets.py:10011-10024) unconditionally returns
-  `False, 0.0, {}` -- not a bug, a deliberate stub, per its own comment:
-  "Between lock-in is DELIBERATELY disabled -- not a stale TODO... a
-  correct between implementation needs its own confidence/margin/clearance
-  logic, not a quick reuse of the above/below branch." check_metar_lockout()
-  (metar.py:216-297), the function every above/below market's lock-in
-  reuses, only implements single-threshold "above"/"below" comparisons --
-  it has no concept of a two-sided band at all.
-  The result: metar_locked is permanently False for every between market,
-  so analyze_trade's gate at line 10774 fires and returns None every single
-  time, for every between-bucket ticker, unconditionally. Logged at INFO
-  (not DEBUG) specifically so this retired market class stays visible
-  rather than silently vanishing from the scan output -- that's the exact
-  log line ("between market, no METAR lock-in... deliberately disabled
-  pending dedicated design work") the user asked about that surfaced this
-  entry was missing.
-  One concrete side effect worth knowing before starting this: the
-  ensemble-based probability path for between markets already EXISTS and
-  works -- _compute_ensemble_prob() (weather_markets.py:5751) has its own
-  between-specific branch (weather_markets.py:5867-5874, computing a
-  Gaussian-CDF probability over the [lower, upper] bracket and logging
-  bracket=[lo,hi]) -- but it is UNREACHABLE dead code today: its only two
-  call sites are analyze_trade's daily path (weather_markets.py:10932,
-  gated shut by the lock-in check above before ever reaching this line) and
-  _analyze_hourly_trade's hourly path (weather_markets.py:9807, which per
-  its own docstring never constructs a "between"-type condition -- hourly
-  markets are all above/below-threshold). So a real between-bucket
-  ensemble-probability calculation is already built and sitting unused,
-  not something that needs writing from scratch.
-  Also worth flagging: the between-bucket gate's own comment (weather_
-  markets.py:10771) claims "NO bets already require >3°F clearance
-  (enforced in _metar_lock_in)" -- this is describing INTENDED design, not
-  current behavior. _metar_lock_in's between branch has zero clearance
-  logic of any kind (it returns immediately, before any temperature
-  comparison), so no such enforcement exists yet -- don't trust that
-  comment as a description of what's live today.
+  observation can justify a trade. _metar_lock_in()'s own "between" branch
+  (weather_markets.py:10011-10024) unconditionally returns `False, 0.0, {}`.
+
+  Real history, verified via `git log -S`/`git show`, not assumed from the
+  current code comment alone:
+  - 2026-06-25 (`e395392`): between-market lock-in WAS live at this point,
+    comparing the instantaneous current METAR temp against the [lower,
+    upper] bucket (YES if inside the band, NO if >3°F outside either edge,
+    confidence via the same _dynamic_lock_in_confidence() above/below
+    markets use). It had a date-guard bug: an obs_time near midnight UTC
+    converts to ~7 PM the PRIOR local calendar day, so the code was
+    comparing yesterday evening's declining temperature against today's
+    2°F-wide window before today's actual high had even occurred. Confirmed
+    real losing trades from this: "OKC B91.5, SATX B91.5 placed Jun25 05:35
+    UTC -- lost Jun25 when actual highs reached 91-92F despite midnight
+    temp of ~85F" (both paper trades -- ENABLE_MICRO_LIVE was False the
+    entire time order-execution code has existed, well before this date).
+    Fixed same day with a local-date guard (compare obs_time's local DATE
+    to target_date, not just the hour).
+  - 2026-06-29 (`ceda79d`, 4 days later, a broader "close grade-audit-
+    flagged correctness bugs" pass), a SECOND, deeper flaw was found even
+    after the date-guard fix: the between branch compared the
+    INSTANTANEOUS current_temp_f to the bucket, not the running DAILY HIGH
+    -- labeled "AC3 violation" in that commit's message. This matters
+    because a between market's daily high can still rise later in the day
+    even if it's inside (or below) the band right now, the same monotonic-
+    safety issue the above/below branch already solves for LOW markets
+    (see the `_is_low_mkt` block a few lines above the between branch) but
+    never got solved for the two-sided between case. Rather than fix this
+    properly, the entire between branch was disabled and its now-
+    unreachable implementation code deleted (`git show ceda79d --
+    weather_markets.py` shows the full removed logic for reference).
+  - `tests/test_phase2_batch_d.py::TestBetweenLockInDynamicConfidence
+    .test_between_lock_in_disabled` (added by the same 2026-06-29 commit)
+    pins the disabled state and states the re-enable condition: "it
+    compares current_temp_f to the bucket instead of the daily high...
+    Re-enable only once METAR observations track a daily high/low
+    equivalent for between markets."
+
+  THE ACTUAL GAP, verified live in the CURRENT code (not just the history
+  above): that re-enable condition already has its infrastructure built and
+  has had it since BEFORE the disable -- confirmed by reading the parent
+  commit of `ceda79d` (`git show ceda79d^:weather_markets.py`), where the
+  above/below branch already computed `_daily_ext = _metar_obs.get(
+  "min_temp_f")` or `.get("max_temp_f")` (the exact "daily high/low
+  equivalent" the disabled test asks for) completely unchanged by that
+  commit. The between branch has simply never been updated to use it --
+  nobody has revisited this in the 6+ weeks since. This is NOT a missing-
+  infrastructure blocker; it's an unapplied fix sitting right next to
+  working reference code the whole time.
+
+  Two more things worth knowing before starting, both re-verified live in
+  the current code:
+  - The ensemble-based (non-metar-locked) probability path for between
+    markets already exists and works: _compute_ensemble_prob()
+    (weather_markets.py:5751) has its own between-specific branch
+    (weather_markets.py:5867-5874, a Gaussian-CDF probability over the
+    [lower, upper] bracket) -- but it's unreachable dead code today, since
+    analyze_trade's daily path (weather_markets.py:10932) is gated shut by
+    the lock-in check above before ever reaching it, and the only other
+    caller (_analyze_hourly_trade, weather_markets.py:9807) never
+    constructs a "between"-type condition per its own docstring.
+  - The between-bucket gate's own comment (weather_markets.py:10771)
+    claims "NO bets already require >3°F clearance (enforced in
+    _metar_lock_in)" -- this describes INTENDED design, not current
+    behavior; _metar_lock_in's between branch has zero clearance logic of
+    any kind today (it returns immediately). Don't trust that comment as a
+    description of what's live.
 
 What it would look like:
-  A dedicated between-market lock-in function (not a reuse of
-  check_metar_lockout, per its own above/below-only structure) that,
-  given a same-day METAR observation and a [lower, upper] bracket, decides:
-  - YES locks in when the observed running extreme sits safely INSIDE the
-    band with clearance from BOTH edges (not just one threshold the way
-    above/below works) -- needs its own margin/confidence shape, since
-    "distance from threshold" doesn't generalize to "distance from the
-    nearer of two edges" without redesign.
-  - NO locks in when the observation is safely OUTSIDE the band on either
-    side (below lower-margin OR above upper-margin).
-  - The existing analyze_trade gate's post-lock-in YES-side station-gap
-    clearance check (weather_markets.py:10787-10803, requiring >=1.5°F
-    inside the band) already anticipates this shape and can likely stay
-    as-is once metar_locked can actually become True for a between market.
+  Swap the disabled branch's dependence on `current_temp_f` for
+  `_daily_ext` (same pattern the above/below branch already uses ~30 lines
+  above it, weather_markets.py:9975-9979: `_metar_obs.get("max_temp_f")`
+  for HIGH markets, `min_temp_f` for LOW), then re-derive the YES/NO lock
+  conditions against that daily extreme instead of the instantaneous
+  reading:
+  - NO lock (safe/monotonic): daily-high-so-far has ALREADY exceeded the
+    upper edge by margin -- a running daily max cannot decrease, so this
+    can't reverse. (The original deleted implementation's NO branch also
+    fired when daily-high-so-far was BELOW the lower edge by margin --
+    that direction is NOT monotonic-safe, mirroring exactly the unsafe
+    direction the existing `_is_low_mkt` block already rejects for LOW
+    markets. Don't reintroduce it.)
+  - YES lock (the genuinely hard, still-unsolved part): daily-high-so-far
+    being inside the band right now does NOT mean it stays there -- it can
+    still rise and exit on the high side later. This is real design work:
+    options include requiring a late-enough local hour that further rise
+    is unlikely, a wider inside-band margin than the existing 3°F, or
+    concluding YES may only be safely lockable very close to end-of-day.
+    This is the actual "dedicated design work" the original disable
+    comment referred to -- scoped now to specifically the YES side, not
+    the whole feature.
   The already-built _compute_ensemble_prob between-branch (see above)
-  suggests the NON-metar-locked ensemble path may not need new work at
-  all -- the real gap is specifically the metar_locked=True path.
+  means the NON-metar-locked ensemble path likely needs no new work --
+  the gap is specifically the metar_locked=True path.
 
 Why not now:
-  Deliberately scoped out when the between-bucket gate itself was built --
-  this is real, dedicated design+test work (a genuinely different
-  clearance/confidence shape than the existing above/below margin logic),
-  not a quick addition, and was never filed as its own backlog entry at the
-  time -- it only existed as code comments until this entry.
+  Disabled 2026-06-29 as a safety fix after a real correctness bug was
+  found (not a scope decision made when the feature was first designed --
+  it was live and trading before that). Never revisited since; never filed
+  as its own backlog entry until now -- it only existed as code comments
+  and a test docstring for 6+ weeks.
 
 When to revisit:
   No specific trigger condition -- this is buildable now, independent of
-  any other in-flight work. Whoever picks it up should start by writing
-  the METAR lock-in logic in isolation (mirroring check_metar_lockout's own
-  test coverage) before wiring it into _metar_lock_in's between branch, and
-  confirm live via `py main.py cron` (TRADING_PAUSED=true, no order-
-  placement risk) that between-bucket tickers stop hitting the
-  "between_no_metar" gate counter and start reaching a real probability.
+  any other in-flight work, and the "missing infrastructure" the disabling
+  test's docstring implies is blocking it has actually been available the
+  whole time (see "THE ACTUAL GAP" above). Whoever picks this up should
+  start by reading `git show ceda79d -- weather_markets.py` for the exact
+  deleted implementation, re-derive the monotonic-safety asymmetry for the
+  NO side (straightforward, mirrors the existing LOW-market fix) before
+  attempting the harder YES side, and confirm live via `py main.py cron`
+  (TRADING_PAUSED=true, no order-placement risk) that between-bucket
+  tickers stop hitting the "between_no_metar" gate counter.
 
 [RESOLVED 2026-08-09] LIVE EXIT PARTIAL-FILLS WERE LOGGED BUT NEVER RECONCILED -- POSITION QUANTITY DRIFTED FROM WHAT WAS ACTUALLY STILL OPEN
 Priority: Medium -- live-order-adjacent (order_executor._exit_live_position),
