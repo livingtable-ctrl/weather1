@@ -1,6 +1,92 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-09 -- new, filed after a user question about a specific "between market, no METAR lock-in" skip log line surfaced that this gap had never actually been tracked in this file, only in code comments] BETWEEN-BUCKET MARKETS (KXHIGH*-B##.5) ARE PERMANENTLY UNTRADEABLE -- METAR LOCK-IN WAS NEVER BUILT FOR THEM
+Priority: Medium -- not a bug (fails closed, zero live-money risk today),
+  but a real, permanent gap in market coverage. Between-bucket tickers
+  (e.g. KXHIGHCHI-26AUG10-B86.5) are, per the existing code comment at the
+  gate itself, "Kalshi's most numerous temperature-market type" -- this
+  entire class has been silently retired from trading since METAR lock-in
+  was scoped to only cover above/below markets.
+
+Problem:
+  analyze_trade()'s between-bucket gate (weather_markets.py:10773-10786)
+  requires metar_locked=True before a between market can trade at all --
+  the reasoning being that plain ensemble sigma (3-5.5°F) is too wide to
+  price a ±1°F band with any edge, so only a same-day METAR-confirmed
+  observation can justify a trade. But _metar_lock_in()'s own "between"
+  branch (weather_markets.py:10011-10024) unconditionally returns
+  `False, 0.0, {}` -- not a bug, a deliberate stub, per its own comment:
+  "Between lock-in is DELIBERATELY disabled -- not a stale TODO... a
+  correct between implementation needs its own confidence/margin/clearance
+  logic, not a quick reuse of the above/below branch." check_metar_lockout()
+  (metar.py:216-297), the function every above/below market's lock-in
+  reuses, only implements single-threshold "above"/"below" comparisons --
+  it has no concept of a two-sided band at all.
+  The result: metar_locked is permanently False for every between market,
+  so analyze_trade's gate at line 10774 fires and returns None every single
+  time, for every between-bucket ticker, unconditionally. Logged at INFO
+  (not DEBUG) specifically so this retired market class stays visible
+  rather than silently vanishing from the scan output -- that's the exact
+  log line ("between market, no METAR lock-in... deliberately disabled
+  pending dedicated design work") the user asked about that surfaced this
+  entry was missing.
+  One concrete side effect worth knowing before starting this: the
+  ensemble-based probability path for between markets already EXISTS and
+  works -- _compute_ensemble_prob() (weather_markets.py:5751) has its own
+  between-specific branch (weather_markets.py:5867-5874, computing a
+  Gaussian-CDF probability over the [lower, upper] bracket and logging
+  bracket=[lo,hi]) -- but it is UNREACHABLE dead code today: its only two
+  call sites are analyze_trade's daily path (weather_markets.py:10932,
+  gated shut by the lock-in check above before ever reaching this line) and
+  _analyze_hourly_trade's hourly path (weather_markets.py:9807, which per
+  its own docstring never constructs a "between"-type condition -- hourly
+  markets are all above/below-threshold). So a real between-bucket
+  ensemble-probability calculation is already built and sitting unused,
+  not something that needs writing from scratch.
+  Also worth flagging: the between-bucket gate's own comment (weather_
+  markets.py:10771) claims "NO bets already require >3°F clearance
+  (enforced in _metar_lock_in)" -- this is describing INTENDED design, not
+  current behavior. _metar_lock_in's between branch has zero clearance
+  logic of any kind (it returns immediately, before any temperature
+  comparison), so no such enforcement exists yet -- don't trust that
+  comment as a description of what's live today.
+
+What it would look like:
+  A dedicated between-market lock-in function (not a reuse of
+  check_metar_lockout, per its own above/below-only structure) that,
+  given a same-day METAR observation and a [lower, upper] bracket, decides:
+  - YES locks in when the observed running extreme sits safely INSIDE the
+    band with clearance from BOTH edges (not just one threshold the way
+    above/below works) -- needs its own margin/confidence shape, since
+    "distance from threshold" doesn't generalize to "distance from the
+    nearer of two edges" without redesign.
+  - NO locks in when the observation is safely OUTSIDE the band on either
+    side (below lower-margin OR above upper-margin).
+  - The existing analyze_trade gate's post-lock-in YES-side station-gap
+    clearance check (weather_markets.py:10787-10803, requiring >=1.5°F
+    inside the band) already anticipates this shape and can likely stay
+    as-is once metar_locked can actually become True for a between market.
+  The already-built _compute_ensemble_prob between-branch (see above)
+  suggests the NON-metar-locked ensemble path may not need new work at
+  all -- the real gap is specifically the metar_locked=True path.
+
+Why not now:
+  Deliberately scoped out when the between-bucket gate itself was built --
+  this is real, dedicated design+test work (a genuinely different
+  clearance/confidence shape than the existing above/below margin logic),
+  not a quick addition, and was never filed as its own backlog entry at the
+  time -- it only existed as code comments until this entry.
+
+When to revisit:
+  No specific trigger condition -- this is buildable now, independent of
+  any other in-flight work. Whoever picks it up should start by writing
+  the METAR lock-in logic in isolation (mirroring check_metar_lockout's own
+  test coverage) before wiring it into _metar_lock_in's between branch, and
+  confirm live via `py main.py cron` (TRADING_PAUSED=true, no order-
+  placement risk) that between-bucket tickers stop hitting the
+  "between_no_metar" gate counter and start reaching a real probability.
+
 [RESOLVED 2026-08-09] LIVE EXIT PARTIAL-FILLS WERE LOGGED BUT NEVER RECONCILED -- POSITION QUANTITY DRIFTED FROM WHAT WAS ACTUALLY STILL OPEN
 Priority: Medium -- live-order-adjacent (order_executor._exit_live_position),
   but ENABLE_MICRO_LIVE is False today so no real position has ever hit this
