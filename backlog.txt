@@ -1,7 +1,87 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
-[OPEN 2026-08-09 -- new, filed after a user question about a specific "between market, no METAR lock-in" skip log line surfaced that this gap had never actually been tracked in this file, only in code comments and a test docstring. CORRECTED same day after a 10-pass review of a handoff prompt drafted from this entry's first version -- that version significantly understated the history: it framed this as a feature that was "deliberately scoped out" and "never built," when the real history (found via `git log -S` on the disabling comment, not assumed) is that it WAS built, WAS live for 4 days, caused 2 real (paper-trading) losing trades from one bug, then got fully disabled after a SECOND, deeper bug was found -- and the fix the disable's own test says is missing has actually existed in this file the entire time, unused for this specific purpose. See "Problem" below for the corrected, git-verified account.] BETWEEN-BUCKET MARKETS (KXHIGH*-B##.5) ARE PERMANENTLY UNTRADEABLE -- METAR LOCK-IN WAS DISABLED AFTER 2 REAL LOSING TRADES AND NEVER FIXED
+[OPEN 2026-08-09 -- new, filed by adjacency while resolving the BETWEEN-BUCKET MARKETS METAR lock-in entry below (a second, independent opus review of that fix's own changes traced every consumer of the "between market, instantaneous-vs-daily-extreme" bug pattern and found this one, in a completely separate module this session did not touch).] SETTLEMENT_MONITOR.PY'S OWN BETWEEN-BUCKET LOCK HAS THE SAME AC3 BUG THE JUST-FIXED weather_markets.py ONE HAD -- AND IT AUTO-CLOSES REAL PAPER POSITIONS
+Priority: Medium-High -- not the live-money entry path (that's analyze_trade/
+  order_executor, unaffected by this), but settlement_monitor.py's signals ARE
+  consumed automatically: cron.py:1415 acts on any settlement-lag signal with
+  confidence >= 0.80 by closing the matching OPEN PAPER POSITION outright
+  (`_sig_conf >= 0.80 and _sig_ticker in _open_by_ticker`) -- no human review.
+  A wrong signal here doesn't just skip a trade opportunity (this entry's
+  sibling's failure mode); it forces an incorrect settlement on a position
+  that was already open, which corrupts the graduation Brier score and P&L
+  history those paper trades feed into.
+
+Problem:
+  settlement_monitor.py's `_check_between_settlement()` (~line 164) and its
+  only caller `check_city_settlement()` (~line 210) lock a between-bucket
+  settlement signal using ONLY the instantaneous METAR reading
+  (`obs["current_temp_f"]`), with:
+  - No daily-extreme lookup at all (doesn't touch min_temp_f/max_temp_f --
+    which, separately, were themselves silently None until this session's
+    metar.py field-name fix landed; even a well-intentioned attempt to add
+    daily-extreme logic here before that fix would have kept falling back to
+    the instantaneous reading anyway).
+  - No local-hour gate of any kind -- the disabled weather_markets.py branch
+    at least required 14:00+ local before ever considering a lock; this one
+    can fire at any hour, including well before a HIGH market's daily high
+    has occurred.
+  - A YES lock that fires on ANY instantaneous in-band reading with zero
+    clearance requirement (`_check_between_settlement`'s own docstring:
+    "Clearance only affects confidence, not the lock condition").
+  This is functionally the exact "compares current_temp_f to the bucket
+  instead of the daily high" bug (AC3) that got weather_markets.py's between
+  branch disabled on 2026-06-29 -- reimplemented independently in this
+  module, which was never touched by that disable or by this session's fix.
+  The docstring's own claim -- "Lock logic (mirrors _metar_lock_in in
+  weather_markets.py)" -- is false today (and was arguably already stale
+  before this session, since it never matched the ACTUAL pre-disable
+  _metar_lock_in implementation's date-guard or clearance requirements
+  either; not re-verified against the pre-ceda79d code).
+
+  Concrete failure scenario (independently verified live via
+  `check_city_settlement`'s actual code, not asserted): HIGH-series between
+  market, band [85.5, 87.5]. At 11:00 local the station reads 78.0°F (normal
+  morning warm-up; the day's actual high later reaches 86.5°F, a real YES).
+  clearance = 85.5 - 78.0 = 7.5 >= _SETTLEMENT_MARGIN_F + 1.0 (2.0) -> locks
+  NO at confidence min(0.95, 0.60 + 7.5*0.03) = 0.825. cron.py's >= 0.80
+  auto-execution threshold fires and force-closes the open YES paper
+  position at a loss -- on a position that was actually going to win. (The
+  YES side of this same bug caps out around 0.75 confidence for a
+  comparably early reading, under cron's 0.80 threshold, so in practice only
+  the NO direction currently auto-executes from this bug -- still a real,
+  reachable, wrong-direction forced settlement.)
+
+What it would look like:
+  Same fix shape as the weather_markets.py sibling entry, scoped to this
+  module: key `_check_between_settlement()` off a real daily extreme
+  (min_temp_f/max_temp_f, now available thanks to this session's metar.py
+  fix) instead of current_temp_f, add the missing local-hour gate, and
+  re-derive safe NO/YES lock conditions using the same monotonic-safety
+  reasoning (NO only on the side the running extreme has already
+  irreversibly cleared; YES only with real margin against the one at-risk
+  edge). Whether to literally share code with weather_markets.py's
+  `_metar_lock_in` between branch or keep a parallel implementation (this
+  module's return shape / signal-building pipeline differs) is a real design
+  choice for whoever picks this up -- not decided here.
+
+Why not now:
+  Out of scope for the sibling entry's own fix: genuinely separate module,
+  separate call chain (main.py -> run_settlement_monitor -> check_city_
+  settlement, not analyze_trade), separate consumer (cron.py's settlement-lag
+  auto-execution, not order_executor's trade-entry path), and its own
+  existing test file (tests/test_settlement_monitor.py) currently asserts
+  the CURRENT (wrong) behavior -- fixing this needs its own test rewrite, not
+  a drive-by patch inside an unrelated change.
+
+When to revisit:
+  No blocking dependency -- metar.py's max_temp_f/min_temp_f fix (this same
+  session) already provides the daily-extreme data this fix would need.
+  Buildable now; flagged Medium-High rather than deferred indefinitely
+  because of the real (if currently NO-direction-only) auto-execution path
+  through cron.py.
+
+[RESOLVED 2026-08-09] BETWEEN-BUCKET MARKETS (KXHIGH*-B##.5) ARE PERMANENTLY UNTRADEABLE -- METAR LOCK-IN WAS DISABLED AFTER 2 REAL LOSING TRADES AND NEVER FIXED
 Priority: Medium -- not a live-money bug today (fails closed, ENABLE_MICRO_LIVE
   has been False this entire history), but a real, permanent gap in market
   coverage with a known real cost: 2 confirmed losing paper trades before it
@@ -130,6 +210,133 @@ When to revisit:
   attempting the harder YES side, and confirm live via `py main.py cron`
   (TRADING_PAUSED=true, no order-placement risk) that between-bucket
   tickers stop hitting the "between_no_metar" gate counter.
+
+What shipped:
+  _metar_lock_in()'s "between" branch (weather_markets.py) re-enabled, keyed
+  off the daily extreme (_metar_obs["max_temp_f"]/["min_temp_f"], selected by
+  ticker HIGH/LOW prefix -- between-buckets exist for both daily-high and
+  daily-low series, not just KXHIGH*), never the instantaneous current_temp_f
+  -- the exact AC3 violation that got the original implementation disabled.
+  Per-observation local-date guard restored (the actual e395392 OKC/SATX
+  fix, lost when ceda79d deleted the whole branch). NO-side lock is
+  monotonic-safe (fires only once the running extreme has ALREADY cleared
+  the opposite edge by the existing 3.0°F margin -- cannot reverse), mirrors
+  the existing LOW-market above/below fix, and explicitly does NOT
+  reintroduce the deleted implementation's unsafe below-lower-edge-for-HIGH-
+  markets direction. YES-side lock (this entry's actual open design
+  question) requires the daily extreme inside the band with clearance to the
+  one at-risk edge (the edge the monotonic direction hasn't already
+  foreclosed) of at least half the band width -- decided, per explicit user
+  direction ("what would give us the best chance of making money"), to reuse
+  the SAME 14:00 hour gate as above/below markets rather than add a bespoke
+  later cutoff: _dynamic_lock_in_confidence's existing hour/clearance scaling
+  already prices a marginal early lock into a smaller Kelly stake, so an
+  artificial delay would only cost real, price-able edge without adding
+  safety a continuous confidence score doesn't already provide.
+
+  TWO INDEPENDENT ROUNDS of Agent(opus, effort=high) review before push (the
+  first a 3-agent parallel review scoped by lock-in logic / downstream gate /
+  test quality, at the user's explicit request given the size of this
+  change; the second a single focused re-verification of the first round's
+  fixes) found 7 real bugs in the first draft, all fixed:
+  (1) HIGH -- metar.py's fetch_metar() read nonexistent API fields
+  "minf"/"maxf"; the real aviationweather.gov payload has no Fahrenheit
+  extreme field at all, only "maxT"/"minT" in CELSIUS (verified against a
+  live API response: KJFK maxT=32.8, minT=25.6). max_temp_f/min_temp_f had
+  been silently None for EVERY METAR observation ever fetched in this
+  codebase's history -- affecting the existing above/below branch too, not
+  just this new between branch -- so the "already-built infrastructure" this
+  entry's own first version described was itself broken the whole time.
+  Fixed by reading the real Celsius fields with proper conversion (same bug,
+  same fix, also applied to dew_point_f: real field is "dewp" not "dwpf"/
+  "dwpt"). New regression tests in tests/test_metar.py pin the real field
+  names against the actual captured live payload shape.
+  (2) HIGH -- analyze_trade's downstream "between_edge" gate (added in
+  a24d547, before between lock-in was ever live) compared
+  metar_lockout["current_temp_f"] (the instantaneous reading) against the
+  band, while the lock itself was decided on the daily extreme -- the exact
+  instantaneous-vs-extreme conflation (AC3) the branch was disabled for,
+  relocated one level down into this gate. Fixed by surfacing a new
+  "comp_temp_f" key in _metar_lock_in's return dict (the value that actually
+  decided the lock, for ALL locked branches -- above/below too) and having
+  the gate (and analyze_trade's forecast_temp assignment, which was also
+  silently recording the instantaneous reading and polluting the per-city
+  station-bias learner -- pre-existing for above/below, fixed here since
+  it's the same line) read comp_temp_f instead.
+  (3) HIGH -- the YES-lock's confidence calculation passed the NO-side
+  _margin (3.0°F) to _dynamic_lock_in_confidence instead of the actual
+  in-band margin that gated the lock (_yes_inband_margin, half the band
+  width) -- since the in-band clearance can never reach 3.0°F on a narrow
+  band, the confidence's clearance factor was always exactly zero, making
+  confidence (and therefore Kelly stake) invariant to how safe a given lock
+  actually was. Fixed by passing _yes_inband_margin; a dedicated test
+  verifies the two margins produce numerically different confidence values
+  and catches the swap directly.
+  (4) MEDIUM -- the between_edge gate's own threshold was hardcoded at
+  1.5°F, but a 2°F-wide band caps the two-sided min-distance-to-either-edge
+  at 1.0°F (exactly centered) -- 1.5°F was mathematically unreachable and
+  silently rejected every YES lock, forever, uncaught because the whole
+  branch was disabled from before this gate was even written. A second
+  review round found that a naive current_temp_f->comp_temp_f swap in the
+  same fixed formula created a NEW pathology (a ~0.25°F-wide accidental
+  sliver once composed with the in-function YES margin); final fix derives
+  the threshold as (_hi - _lo) / 8.0, independently re-verified (by the
+  second review round) to be non-vacuous and non-redundant against the
+  in-function margin for a real 2°F band.
+  (5) LOW/test-quality (several, all fixed together) -- an ambiguous ticker
+  ("?") silently defaulted to HIGH-market logic instead of refusing to lock;
+  a YES lock could fire off the current_temp_f fallback when no real daily
+  extreme was available (unlike the NO branches, which stay sound under that
+  fallback -- current_temp_f is always a valid bound on the true extreme in
+  the NO direction, but says nothing about the extreme in the YES direction);
+  a malformed "between" condition missing lower/upper would have silently
+  defaulted to a fake [0.0, 0.0] band and fired a confident wrong NO lock,
+  now newly reachable since the branch used to return before ever getting
+  there -- all 3 now fail closed, each with a dedicated test. ~15 new/
+  rewritten tests added: NO/YES boundary mutation tests at both band edges
+  (inclusive >=/<=, matching check_metar_lockout's own convention), a
+  band-width-proportional-vs-hardcoded-1.0 margin discriminator (wide-band
+  test), a LOW-market mirror of the "don't reintroduce the deleted
+  implementation's unsafe direction" regression guard (previously HIGH-only),
+  a 0.0°F daily-extreme `is not None` vs truthiness mutation test, a 14:00
+  hour boundary pair, and a true end-to-end test driving the REAL (unmocked)
+  _metar_lock_in all the way through analyze_trade -- the earlier drafts of
+  the between_edge gate tests all mocked _metar_lock_in wholesale and
+  hand-picked comp_temp_f/current_temp_f independently, which is exactly why
+  finding (2) above was invisible to them.
+
+  Found by adjacency during the second review round, filed as its own new
+  entry above ("SETTLEMENT_MONITOR.PY'S OWN BETWEEN-BUCKET LOCK HAS THE SAME
+  AC3 BUG") rather than fixed inline: settlement_monitor.py has its own,
+  independent between-bucket lock implementation with the identical
+  instantaneous-vs-daily-extreme bug, reachable through cron.py's
+  auto-execution of settlement-lag signals at confidence >= 0.80 -- a
+  genuinely separate module, call chain, and consumer, not the analyze_trade/
+  order_executor trade-entry path this entry's own fix touches.
+
+  docs/grade_audit/modules/weather_markets.md's AC3 acceptance criterion --
+  which literally mandated "between-condition markets must not receive METAR
+  lock-in" -- rewritten to the actual correctness invariant (daily extreme,
+  not instantaneous reading) so a future grade-audit run doesn't recommend
+  re-disabling this branch a second time. The dated audit OUTPUT snapshots
+  under docs/grade_audit/outputs/ and docs/grade_audit/report.md (both from
+  2026-06-29) were deliberately left untouched -- they're point-in-time
+  historical reports, not living documents, and rewriting them to reflect
+  today's state would falsify history the same way editing a past commit
+  message would.
+
+  Tests (freshly re-counted at the moment of writing this sentence): 333
+  passed, 4 skipped across tests/test_phase2_batch_d.py + test_gaussian_
+  prob.py + test_metar.py + test_weather_markets.py (26 between-lock-in
+  tests in test_phase2_batch_d.py, 5 between_edge/end-to-end tests in
+  test_gaussian_prob.py, 3 new metar.py field-name regression tests, plus
+  the existing test_weather_markets.py suite unchanged and still green). A
+  broader regression sweep (32 test files across backtest/paper/trading/
+  hurricane/rain/snow/hourly/settlement_monitor/etc.) ran clean at 1202
+  passed. Ruff and mypy clean on every changed file (weather_markets.py,
+  metar.py, tests/test_phase2_batch_d.py, tests/test_gaussian_prob.py,
+  tests/test_metar.py) -- the only mypy errors present are 4 pre-existing,
+  unrelated ones in acis_precip.py/acis_snow.py.
 
 [RESOLVED 2026-08-09] LIVE EXIT PARTIAL-FILLS WERE LOGGED BUT NEVER RECONCILED -- POSITION QUANTITY DRIFTED FROM WHAT WAS ACTUALLY STILL OPEN
 Priority: Medium -- live-order-adjacent (order_executor._exit_live_position),

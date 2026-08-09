@@ -10007,27 +10007,263 @@ def _metar_lock_in(
                             "confirmed below threshold-margin — day not over"
                         ),
                     }
+            # Surface the value that actually decided the lock (the daily
+            # extreme when available) so callers -- analyze_trade's
+            # forecast_temp assignment, the between-bucket station-gap gate
+            # -- don't have to re-derive it from current_temp_f, which is
+            # always the instantaneous reading and can differ.
+            _lockout["comp_temp_f"] = _comp_temp
 
         elif _cond_type == "between":
-            # Between lock-in is DELIBERATELY disabled — not a stale TODO. This
-            # permanently skips analyze_trade's between-bucket gate (which
-            # requires metar_locked=True to trade any between market at all),
-            # fail-closed and by design: no money is lost, but it silently
-            # retires the entire between-bucket market class (Kalshi's most
-            # numerous temperature-market type) until real design+test work
-            # goes into a between-market lock-in scheme (check_metar_lockout
-            # only supports "above"/"below" directions; a correct between
-            # implementation needs its own confidence/margin/clearance logic,
-            # not a quick reuse of the above/below branch). See analyze_trade's
-            # "between_no_metar" gate counter, now logged at info level so this
-            # retirement stays visible rather than silent.
-            return False, 0.0, {}
+            # Re-enabled (backlog.txt "BETWEEN-BUCKET MARKETS ... METAR LOCK-IN
+            # WAS DISABLED") using the daily extreme (_daily_ext), not the
+            # instantaneous current_temp_f the original 2026-06-29-disabled
+            # implementation compared against — that was the AC3 violation that
+            # got the whole branch pulled. Same pattern as the above/below
+            # branch above: key off ticker (KXLOW... vs KXHIGH...) since
+            # between-buckets exist for both daily-high and daily-low series.
+            # Fail closed on a malformed condition rather than silently
+            # defaulting to a fake [0.0, 0.0] band -- with this branch now
+            # actually reachable (it used to return before ever getting
+            # here), a missing lower/upper would otherwise produce a
+            # confident, wrong NO lock (comp_temp >= 0.0 + margin fires for
+            # almost any real temperature). _parse_market_condition always
+            # sets both keys for a real "between" condition; this only
+            # guards a malformed/synthetic caller.
+            if condition.get("lower") is None or condition.get("upper") is None:
+                return False, 0.0, {}
+            _lo = float(condition["lower"])
+            _hi = float(condition["upper"])
+            _between_var = _var_from_ticker_prefix(ticker.upper())
+            _is_low_mkt = _between_var == "min"
+            _daily_ext = (
+                _metar_obs.get("min_temp_f")
+                if _is_low_mkt
+                else _metar_obs.get("max_temp_f")
+            )
+            _comp_temp = (
+                _daily_ext if _daily_ext is not None else _metar_obs["current_temp_f"]
+            )
+            _margin = 3.0  # matches check_metar_lockout's own default
+            # Log/reason wording: distinguish a real daily extreme from the
+            # current_temp_f fallback (the NO branches below are sound either
+            # way — see the `_daily_ext is None` branch's own comment — but an
+            # operator reading these logs shouldn't be told "daily extreme"
+            # when it was actually the instantaneous reading; that exact
+            # false affirmative is why the original AC3 bug went unnoticed).
+            _ext_kind = (
+                ("daily low-so-far" if _is_low_mkt else "daily high-so-far")
+                if _daily_ext is not None
+                else "current reading (no daily extreme available, used as a bound)"
+            )
+
+            # Per-observation local-date guard (the actual bug that caused the
+            # 2 real OKC/SATX losing trades on 2026-06-25, fixed same-day in
+            # e395392, then lost when the whole branch was deleted 4 days later
+            # in ceda79d): a METAR obs_time near midnight UTC converts to ~7 PM
+            # the PRIOR local calendar day. The outer function-level check
+            # above only confirms target_date is TODAY, not that this specific
+            # observation is FROM today — restore that guard here.
+            try:
+                import zoneinfo as _zi
+
+                _obs_local = _metar_obs["obs_time"].astimezone(
+                    _zi.ZoneInfo(_CITY_TZ.get(city, "America/New_York"))
+                )
+                _lh = _obs_local.hour
+                _obs_local_date = _obs_local.date()
+            except Exception:
+                return False, 0.0, {}  # can't determine local hour — skip lock-in
+
+            if _between_var is None:
+                # Ticker doesn't say HIGH or LOW (e.g. a caller that passes
+                # the default ticker="?") -- silently defaulting to HIGH here
+                # would apply running-max monotonic logic to what might
+                # actually be a daily-MIN series, producing a confidently
+                # wrong NO lock. Fail closed instead. Not reachable via any
+                # real analyze_trade call (its ticker always comes from a
+                # real KXHIGH*/KXLOW* market), but a caller passing a
+                # non-conforming ticker should not get a silently-guessed
+                # answer.
+                _lockout = {
+                    "locked": False,
+                    "outcome": None,
+                    "confidence": 0.0,
+                    "reason": (
+                        f"cannot determine HIGH/LOW direction from ticker "
+                        f"{ticker!r} — refusing to guess"
+                    ),
+                }
+            elif _obs_local_date != target_date:
+                _lockout = {
+                    "locked": False,
+                    "outcome": None,
+                    "confidence": 0.0,
+                    "reason": (
+                        f"METAR obs from {_obs_local_date} != target {target_date}"
+                        " — prior-day temp cannot confirm today's extreme"
+                    ),
+                }
+            elif _lh < 14:
+                _lockout = {
+                    "locked": False,
+                    "outcome": None,
+                    "confidence": 0.0,
+                    "reason": f"too early ({_lh}h < 14h local)",
+                }
+            elif not _is_low_mkt and _comp_temp >= _hi + _margin:
+                # HIGH-var between market: a running daily-high-so-far cannot
+                # decrease, so once it has already cleared the upper edge by
+                # margin, the final high can only stay above it — safe,
+                # monotonic NO lock (mirrors the LOW-market NO block above).
+                _clearance = _comp_temp - _hi
+                _lockout = {
+                    "locked": True,
+                    "outcome": "no",
+                    "confidence": _metar._dynamic_lock_in_confidence(
+                        _clearance, _lh, _margin
+                    ),
+                    "reason": (
+                        f"{_ext_kind} {_comp_temp:.1f}°F > upper edge "
+                        f"{_hi}°F + margin {_margin}°F — running max cannot "
+                        "fall back into the band"
+                    ),
+                }
+            elif _is_low_mkt and _comp_temp <= _lo - _margin:
+                # LOW-var between market: a running daily-low-so-far cannot
+                # increase, so once it has already cleared the lower edge by
+                # margin, the final low can only stay below it — safe,
+                # monotonic NO lock.
+                _clearance = _lo - _comp_temp
+                _lockout = {
+                    "locked": True,
+                    "outcome": "no",
+                    "confidence": _metar._dynamic_lock_in_confidence(
+                        _clearance, _lh, _margin
+                    ),
+                    "reason": (
+                        f"{_ext_kind} {_comp_temp:.1f}°F < lower edge "
+                        f"{_lo}°F - margin {_margin}°F — running min cannot "
+                        "rise back into the band"
+                    ),
+                }
+            elif _daily_ext is None:
+                # No real daily extreme available (station doesn't report
+                # min/maxT, or the METAR API omitted it) -- both NO branches
+                # above stay sound under the current_temp_f fallback (the
+                # instantaneous reading is always a valid lower bound on the
+                # true daily max / upper bound on the true daily min, so if
+                # IT already cleared the margin the true extreme has too),
+                # but a YES lock cannot: "instantaneous reading is inside the
+                # band" says nothing about whether the actual daily extreme
+                # already exceeded it earlier today. Refuse to lock YES from
+                # the fallback alone (this is the AC3 violation the original
+                # implementation had — comparing the instantaneous reading to
+                # the bucket — reintroduced only for the case where no real
+                # extreme exists to compare against instead).
+                _lockout = {
+                    "locked": False,
+                    "outcome": None,
+                    "confidence": 0.0,
+                    "reason": (
+                        "no daily extreme available from this station -- "
+                        "cannot safely lock YES from the instantaneous "
+                        "reading alone"
+                    ),
+                }
+            elif _lo <= _comp_temp <= _hi:
+                # Inside the band right now — NOT yet safe by itself, since the
+                # running extreme can still move toward the one edge it hasn't
+                # ruled out (upper for HIGH markets, lower for LOW markets; the
+                # other edge is already foreclosed by the monotonic direction,
+                # same reasoning as the two NO branches above). Lock YES only
+                # once there's real clearance to that at-risk edge, using
+                # _dynamic_lock_in_confidence's own hour/clearance scaling (not
+                # a bespoke cutoff) to price in how likely further drift still
+                # is — a marginal early lock gets a low confidence and
+                # therefore a small Kelly stake downstream rather than being
+                # blocked outright.
+                #
+                # The gating margin here is NOT the same `_margin` (3.0°F)
+                # used by the two NO branches above: those measure clearance
+                # OUTSIDE the band, which is architecturally unbounded, so 3°F
+                # is a real, achievable bar. This measures clearance to ONE
+                # edge from INSIDE a 2°F-wide band (`_hi - _lo`), which is
+                # bounded at the full band width (2.0°F today) — a 3.0°F
+                # in-band requirement would be mathematically unreachable and
+                # silently make this branch dead code (exactly the bug found
+                # and fixed in analyze_trade's sibling `between_edge` gate a
+                # few lines below this function's only caller — see that
+                # gate's own comment). Require at least half the band width of
+                # clearance (i.e. the daily extreme hasn't yet passed the
+                # band's midpoint), leaving real room before the at-risk edge.
+                # `_yes_inband_margin`, NOT `_margin`, is also what must be
+                # passed to _dynamic_lock_in_confidence below -- passing
+                # `_margin` (3.0°F) there would make its clearance factor
+                # permanently zero, since _risk_clearance can never reach
+                # 3.0°F inside a band this narrow, silently flattening every
+                # YES lock's confidence to the hour-only floor.
+                _risk_clearance = (
+                    (_hi - _comp_temp) if not _is_low_mkt else (_comp_temp - _lo)
+                )
+                _yes_inband_margin = (_hi - _lo) / 2.0
+                if _risk_clearance >= _yes_inband_margin:
+                    _lockout = {
+                        "locked": True,
+                        "outcome": "yes",
+                        "confidence": _metar._dynamic_lock_in_confidence(
+                            _risk_clearance, _lh, _yes_inband_margin
+                        ),
+                        "reason": (
+                            f"{_ext_kind} {_comp_temp:.1f}°F inside "
+                            f"[{_lo}, {_hi}] with {_risk_clearance:.1f}°F "
+                            "clearance to the at-risk edge"
+                        ),
+                    }
+                else:
+                    _lockout = {
+                        "locked": False,
+                        "outcome": None,
+                        "confidence": 0.0,
+                        "reason": (
+                            f"inside band but only {_risk_clearance:.1f}°F "
+                            f"clearance to at-risk edge (< {_yes_inband_margin}°F "
+                            "margin)"
+                        ),
+                    }
+            else:
+                # Outside the band on the not-yet-foreclosed side and not yet
+                # past either NO branch's margin -- e.g. a HIGH market's
+                # running max is above `_hi` but hasn't cleared `_hi +
+                # _margin` yet, or hasn't reached the band at all. The final
+                # outcome may already be structurally fixed (a running max
+                # past `_hi` can only stay there or climb further -- it IS
+                # going to be NO), but withheld pending the same station-gap
+                # safety margin the NO branches above require; don't
+                # overclaim it's "not yet determined" when it may already be.
+                _lockout = {
+                    "locked": False,
+                    "outcome": None,
+                    "confidence": 0.0,
+                    "reason": (
+                        "between-bucket: not yet past the NO safety margin, "
+                        "or extreme hasn't reached the band"
+                    ),
+                }
+            # Surface the value that actually decided the lock -- see the
+            # matching comment on the above/below branch above.
+            _lockout["comp_temp_f"] = _comp_temp
 
         else:
             _lockout = {"locked": False}
 
         # Always surface the observed temp so callers don't need the raw obs object.
         _lockout.setdefault("current_temp_f", _metar_obs["current_temp_f"])
+        # comp_temp_f is set explicitly by the above/below and between
+        # branches above (whichever value actually decided the lock); fall
+        # back to the instantaneous reading only when neither branch ran
+        # (cond_type is neither above/below nor between).
+        _lockout.setdefault("comp_temp_f", _metar_obs["current_temp_f"])
 
         if _lockout.get("locked"):
             _metar_p = (
@@ -10765,21 +11001,52 @@ def analyze_trade(
     #   1. METAR lock-in fired — without it, our ensemble sigma (3–5.5°F) assigns
     #      probabilities well below market-maker METAR pricing, so no edge is
     #      recoverable regardless of drift.
-    #   2. For YES bets: the observed temp is ≥1.5°F inside the band.  Kalshi's
-    #      official settlement station is typically 1–3°F away from our METAR
-    #      station; a reading near the band edge can be flipped by that gap.
-    #      NO bets already require >3°F clearance (enforced in _metar_lock_in),
-    #      so they are inherently safe from station-gap reversals.
+    #   2. For a locked YES outcome: the value that decided the lock (the
+    #      daily extreme, exposed as metar_lockout["comp_temp_f"] — see
+    #      _metar_lock_in) is inside the band on BOTH sides by a
+    #      band-width-derived margin (min distance to either edge) --
+    #      trims the worst quartile of an already-narrow lock-eligible
+    #      range (see _metar_lock_in's own _yes_inband_margin, which already
+    #      caps this two-sided distance at half the band width before this
+    #      gate ever runs). Kalshi's official settlement station can be
+    #      1–3°F away from our METAR station; this margin is NOT big enough
+    #      to fully absorb that gap on a 2°F-wide band -- no threshold here
+    #      could be, since the band itself is narrower than the gap. This is
+    #      a real, if partial, filter (rejects the closest-to-the-edge
+    #      quarter), not a claim that station-gap risk is fully mitigated for
+    #      between YES locks; that residual risk is accepted, not solved, by
+    #      this gate. A locked NO outcome already requires >3°F clearance
+    #      outside the band (enforced in _metar_lock_in), comfortably larger
+    #      than the station gap, so it's inherently safe and isn't
+    #      re-checked here.
+    #      Two bugs in this gate's history, both found by the same
+    #      2026-08-09 review that re-enabled between lock-in (backlog.txt
+    #      "BETWEEN-BUCKET MARKETS ... METAR LOCK-IN WAS DISABLED"):
+    #      (a) this gate originally compared metar_lockout["current_temp_f"]
+    #      (the INSTANTANEOUS reading) against the band, while the lock
+    #      itself was decided on the DAILY EXTREME — the exact
+    #      instantaneous-vs-extreme conflation (AC3) the branch was disabled
+    #      for in the first place, just relocated into this gate. Fixed by
+    #      reading comp_temp_f instead.
+    #      (b) the threshold was hardcoded at 1.5°F, but a 2°F-wide band caps
+    #      the two-sided min-distance at 1.0°F (exactly centered) — 1.5°F was
+    #      mathematically unreachable and silently rejected every YES lock,
+    #      forever. Neither bug was ever caught in production because between
+    #      lock-in was permanently disabled from before this gate was even
+    #      written until this same 2026-08-09 fix, so
+    #      metar_lockout.get("outcome") == "yes" was never true and this
+    #      whole branch never ran. Threshold is now derived from the band
+    #      width (not hardcoded) so it stays achievable if the band width
+    #      ever changes.
     if condition.get("type") == "between":
         if not metar_locked:
-            # Between lock-in is unconditionally disabled in _metar_lock_in (see
-            # its docstring/comment there) — this branch therefore fires for
-            # EVERY between market, permanently. Logged at info (not debug) so
-            # this whole retired market class stays visible rather than silent.
-            _log.info(
+            # info-level logging here (kept from when the branch was
+            # permanently disabled, to keep a fully-retired market class
+            # visible) would now fire on every scan before 14:00 local for
+            # Kalshi's most numerous temperature-market type — debug instead.
+            _log.debug(
                 "analyze_trade: skipping %s — between market, no METAR lock-in "
-                "(ensemble sigma too wide for 2°F band; between lock-in is "
-                "deliberately disabled pending dedicated design work)",
+                "(ensemble sigma too wide for 2°F band)",
                 enriched.get("ticker", "?"),
             )
             _count_gate("between_no_metar")
@@ -10787,14 +11054,25 @@ def analyze_trade(
         if metar_lockout.get("outcome") == "yes":
             _lo = float(condition.get("lower", 0.0))
             _hi = float(condition.get("upper", 0.0))
-            _ct = float(metar_lockout.get("current_temp_f", 0.0))
+            _ct = float(
+                metar_lockout.get(
+                    "comp_temp_f", metar_lockout.get("current_temp_f", 0.0)
+                )
+            )
             _yes_clearance = min(_ct - _lo, _hi - _ct)
-            if _yes_clearance < 1.5:
+            # _metar_lock_in's own YES margin already confines comp_temp_f to
+            # the band's safer half (see _yes_inband_margin there); this is a
+            # SECOND, independent check on the same value for station-gap
+            # safety, so it must stay derived from the band width rather than
+            # a fixed constant to remain both achievable and non-vacuous.
+            _between_edge_margin = (_hi - _lo) / 8.0
+            if _yes_clearance < _between_edge_margin:
                 _log.debug(
                     "analyze_trade: skipping %s — between market YES, clearance "
-                    "%.1f°F < 1.5°F station-gap buffer (METAR %.1f°F in [%.1f, %.1f])",
+                    "%.2f°F < %.2f°F station-gap buffer (METAR %.1f°F in [%.1f, %.1f])",
                     enriched.get("ticker", "?"),
                     _yes_clearance,
+                    _between_edge_margin,
                     _ct,
                     _lo,
                     _hi,
@@ -11653,7 +11931,19 @@ def analyze_trade(
         # lockout confidence, not forecast_temp), but forecast_temp is
         # persisted in the result/tracker and would corrupt downstream
         # calibration data keyed on it.
-        _metar_ct = metar_lockout.get("current_temp_f")
+        # Use comp_temp_f (the value that actually decided the lock — the
+        # daily extreme when available) rather than current_temp_f (always
+        # the instantaneous reading): recording the instantaneous reading as
+        # the "blended" model output here feeds _get_combined_station_bias's
+        # per-city learner (tracker.get_dynamic_station_bias reads exactly
+        # these model="blended" rows against the settled daily extreme), so
+        # an evening reading that has since cooled/warmed away from the
+        # actual daily high/low would inject a phantom bias sample. Pre-
+        # existing for above/below markets too (comp_temp_f is set for both),
+        # not just between — fixed here since it's the same line either way.
+        _metar_ct = metar_lockout.get(
+            "comp_temp_f", metar_lockout.get("current_temp_f")
+        )
         forecast_temp = _metar_ct if _metar_ct is not None else (_fallback_temp or 0.0)
         forecast_temp_raw = forecast_temp
         temps = []
@@ -11699,7 +11989,9 @@ def analyze_trade(
         # Belt-and-suspenders: dampen ci_scale when we're in the pre-extreme window.
         # Layer 1 (daily min/max from ASOS) handles the root cause; this handles
         # pre-dawn uncertainty when the ASOS extreme field isn't yet populated.
-        # Not applied to between markets (already excluded from the metar_locked path).
+        # Explicitly excluded for between markets below (they DO reach this
+        # metar_locked path now — this dampening logic just isn't meaningful
+        # for a two-sided band, which has no single "pre-extreme window" var).
         if condition.get("type") != "between":
             try:
                 import zoneinfo as _zi

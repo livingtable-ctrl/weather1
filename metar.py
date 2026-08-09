@@ -175,21 +175,43 @@ def fetch_metar(station: str) -> dict | None:
         _METAR_CACHE.set(key, None)
         return None
 
-    def _safe_extreme(field: str) -> float | None:
-        raw = obs.get(field)
-        if raw is None:
+    def _safe_extreme(f_field: str, c_field: str) -> float | None:
+        # aviationweather.gov's real /api/data/metar payload has no *f
+        # Fahrenheit extreme field at all -- only maxT/minT in Celsius (found
+        # 2026-08-09, opus review of backlog.txt "BETWEEN-BUCKET MARKETS ...
+        # METAR LOCK-IN WAS DISABLED": the code had read the nonexistent
+        # "minf"/"maxf" since this function was written, so max_temp_f/
+        # min_temp_f were ALWAYS None in production -- silently, since every
+        # caller already has an `is not None` fallback to current_temp_f).
+        # f_field is kept as a defensive first choice only, mirroring
+        # current_temp_f's own tmpf-then-temp pattern above, in case the API
+        # ever adds a Fahrenheit variant.
+        raw_f = obs.get(f_field)
+        if raw_f is not None:
+            try:
+                val_f = float(raw_f)
+            except (TypeError, ValueError):
+                pass
+            else:
+                return val_f if -80.0 <= val_f <= 140.0 else None
+        raw_c = obs.get(c_field)
+        if raw_c is None:
             return None
         try:
-            val = float(raw)
+            val = float(raw_c) * 9 / 5 + 32
         except (TypeError, ValueError):
             return None
         return val if -80.0 <= val <= 140.0 else None
 
-    # Extract dew point: prefer dwpf (°F) if present, else convert dwpt (°C).
-    # Returns None when neither field is available.
+    # Extract dew point: prefer dwpf (°F) if present, else convert the real
+    # payload's "dewp" (°C) field. "dwpt" is kept as a second Celsius fallback
+    # only in case some other endpoint/format uses that name -- the live
+    # aviationweather.gov payload uses "dewp", not "dwpt" (same field-name
+    # audit as _safe_extreme above; dew_point_f was ALSO always None before
+    # this fix).
     dp_f = obs.get("dwpf")
     if dp_f is None:
-        dp_c = obs.get("dwpt")
+        dp_c = obs.get("dewp", obs.get("dwpt"))
         if dp_c is not None:
             try:
                 dp_f = float(dp_c) * 9 / 5 + 32
@@ -203,8 +225,8 @@ def fetch_metar(station: str) -> dict | None:
 
     result = {
         "current_temp_f": temp_f,
-        "min_temp_f": _safe_extreme("minf"),
-        "max_temp_f": _safe_extreme("maxf"),
+        "min_temp_f": _safe_extreme("minf", "minT"),
+        "max_temp_f": _safe_extreme("maxf", "maxT"),
         "dew_point_f": dp_f,
         "station": obs.get("icaoId", station),
         "obs_time": obs_time,

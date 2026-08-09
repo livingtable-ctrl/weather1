@@ -551,6 +551,187 @@ class TestBetweenMarketGaussian:
             f"obs must not appear in blend_sources for 'between' markets; got {blend}"
         )
 
+    def _analyze_between_yes(self, comp_temp_f, current_temp_f=None):
+        """Drive analyze_trade with a mocked YES METAR lock so the downstream
+        `between_edge` station-gap gate (weather_markets.py, right after the
+        _metar_lock_in call in analyze_trade) is the only thing left to
+        decide the outcome. Same mock recipe as
+        test_between_market_has_nonzero_p_win_gaussian above, varying only
+        _metar_lock_in's outcome/comp_temp_f/current_temp_f.
+
+        comp_temp_f and current_temp_f are set independently (matching what
+        the real _metar_lock_in returns: comp_temp_f is the daily extreme
+        that decided the lock, current_temp_f is always the instantaneous
+        reading, and they can differ) so a test can prove the gate reads the
+        right one. Defaults current_temp_f to comp_temp_f when not given.
+        """
+        import weather_markets as wm
+
+        enriched = self._make_between_enriched()  # lower=69.5, upper=71.5
+        _ct = comp_temp_f if current_temp_f is None else current_temp_f
+
+        with (
+            patch.object(
+                wm,
+                "get_ensemble_temps",
+                return_value=[68.5, 69.5, 70.5, 71.5, 72.5] * 4,
+            ),
+            patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
+            patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
+            patch.object(wm, "get_ensemble_members", return_value=None),
+            patch("weather_markets.climatological_prob", return_value=0.10),
+            patch("weather_markets.nws_prob", return_value=None),
+            patch("weather_markets.get_live_observation", return_value=None),
+            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+            patch.object(wm, "_CONDITION_WEIGHTS", {}),
+            patch.object(wm, "_CITY_WEIGHTS", {}),
+            patch.object(
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
+            ),
+            patch.object(
+                wm,
+                "_metar_lock_in",
+                return_value=(
+                    True,
+                    0.80,
+                    {
+                        "outcome": "yes",
+                        "comp_temp_f": comp_temp_f,
+                        "current_temp_f": _ct,
+                    },
+                ),
+            ),
+        ):
+            return wm.analyze_trade(enriched)
+
+    def test_between_edge_gate_passes_at_achievable_clearance(self):
+        """Positive control for the between_edge gate fix: the OLD 1.5°F
+        threshold was mathematically unreachable on a 2°F-wide band (max
+        two-sided clearance is 1.0°F, exactly centered) and silently rejected
+        every YES lock, forever, without a single test ever catching it
+        (the gate was unreachable in production too, since metar_locked was
+        always False pre-fix). At the exact band midpoint (69.5+71.5)/2=70.5,
+        clearance is 1.0°F -- the maximum achievable -- which must clear the
+        corrected, band-width-derived bar (0.25°F for this 2°F band) and NOT
+        be gated."""
+        result = self._analyze_between_yes(comp_temp_f=70.5)
+        assert result is not None, (
+            "between_edge gate rejected the maximum achievable clearance "
+            "(1.0°F at band midpoint) -- threshold is still unreachable"
+        )
+
+    def test_between_edge_gate_blocks_insufficient_clearance(self):
+        """Negative control paired with the test above: a reading close to
+        the band edge (clearance 0.1°F, well under the 0.25°F bar) must still
+        be gated -- proves the fix didn't just delete the check."""
+        result = self._analyze_between_yes(comp_temp_f=69.6)
+        assert result is None, (
+            "between_edge gate let a near-edge (0.1°F clearance) YES lock "
+            "through -- station-gap protection is gone"
+        )
+
+    def test_between_edge_gate_boundary_at_derived_threshold(self):
+        """Mutation-test the exact derived threshold ((hi-lo)/8 = 0.25°F for
+        this 2°F band): clearance of exactly 0.25°F must pass, 0.01°F less
+        must not -- catches the threshold silently drifting to a different
+        fraction of the band width."""
+        result_at = self._analyze_between_yes(comp_temp_f=69.75)  # clearance 0.25
+        assert result_at is not None, (
+            "between_edge gate rejected exactly the derived threshold clearance"
+        )
+
+        result_under = self._analyze_between_yes(comp_temp_f=69.74)  # clearance 0.24
+        assert result_under is None, (
+            "between_edge gate passed 0.01°F under the derived threshold"
+        )
+
+    def test_between_edge_gate_uses_comp_temp_f_not_current_temp_f(self):
+        """The gate must key off comp_temp_f (the daily extreme that decided
+        the lock), not current_temp_f (the instantaneous reading, which can
+        have drifted well outside the band by the time evening cooling sets
+        in -- the exact instantaneous-vs-extreme conflation, AC3, the branch
+        was disabled for in the first place). comp_temp_f=70.5 is safely
+        centered; current_temp_f=60.0 would fail the gate outright if
+        (wrongly) used instead."""
+        result = self._analyze_between_yes(comp_temp_f=70.5, current_temp_f=60.0)
+        assert result is not None, (
+            "between_edge gate appears to be using current_temp_f (60.0, "
+            "outside the band) instead of comp_temp_f (70.5, centered)"
+        )
+
+    def test_between_yes_lock_end_to_end_real_metar_lock_in(self):
+        """End-to-end regression: drive the REAL (unmocked) _metar_lock_in --
+        only fetch_metar and _metar_station_for_city are mocked -- all the
+        way through analyze_trade, proving the daily-extreme YES lock and the
+        band-width-derived between_edge gate actually compose into a real
+        trade signal together. Every other between_edge test mocks
+        _metar_lock_in wholesale and hand-picks comp_temp_f/current_temp_f,
+        which hides exactly this kind of composition bug (found by opus
+        review 2026-08-09: the original current_temp_f-vs-comp_temp_f
+        mismatch was invisible to those tests for this reason)."""
+        import zoneinfo as _zi
+        from datetime import datetime as _datetime
+        from unittest.mock import MagicMock
+
+        import metar as _metar
+        import weather_markets as wm
+
+        enriched = self._make_between_enriched()  # lower=69.5, upper=71.5
+        enriched["ticker"] = "KXHIGHNY-26AUG10-B70.5"
+        # _metar_lock_in's own top-level guard requires target_date == today
+        # in the city's local tz (NYC here) -- override the fixture's default
+        # "today + 2 days" target, which would otherwise short-circuit before
+        # ever reaching the between branch this test exists to exercise.
+        _today_nyc = _datetime.now(_zi.ZoneInfo("America/New_York")).date()
+        enriched["_date"] = _today_nyc
+        enriched["_forecast"]["date"] = _today_nyc.isoformat()
+
+        fake_obs_time = MagicMock()
+        fake_obs_local = MagicMock(hour=18)
+        fake_obs_local.date.return_value = _today_nyc
+        fake_obs_time.astimezone.return_value = fake_obs_local
+
+        with (
+            patch.object(
+                wm,
+                "get_ensemble_temps",
+                return_value=[68.5, 69.5, 70.5, 71.5, 72.5] * 4,
+            ),
+            patch.object(wm, "fetch_temperature_nbm", return_value=70.8),
+            patch.object(wm, "fetch_temperature_ecmwf", return_value=71.2),
+            patch.object(wm, "get_ensemble_members", return_value=None),
+            patch("weather_markets.climatological_prob", return_value=0.10),
+            patch("weather_markets.nws_prob", return_value=None),
+            patch("weather_markets.get_live_observation", return_value=None),
+            patch("weather_markets.temperature_adjustment", return_value=0.0),
+            patch.object(wm, "_SEASONAL_WEIGHTS", {}),
+            patch.object(wm, "_CONDITION_WEIGHTS", {}),
+            patch.object(wm, "_CITY_WEIGHTS", {}),
+            patch.object(
+                wm, "_get_consensus_probs", return_value=(None, None, None, None, None)
+            ),
+            patch.object(wm, "_metar_station_for_city", return_value="KNYC"),
+            patch.object(
+                _metar,
+                "fetch_metar",
+                return_value={
+                    "current_temp_f": 68.0,  # evening cooling -- outside the band
+                    "max_temp_f": 70.5,  # daily high peaked at the band midpoint
+                    "obs_time": fake_obs_time,
+                },
+            ),
+        ):
+            result = wm.analyze_trade(enriched)
+
+        assert result is not None, (
+            "real _metar_lock_in + analyze_trade's between_edge gate did not "
+            "produce a trade for a genuinely safe, well-centered YES lock "
+            "(daily high 70.5°F in [69.5, 71.5], 18:00 local) even though "
+            "the instantaneous reading has since cooled to 68.0°F"
+        )
+        assert result.get("metar_locked") is True
+
 
 # ── L6-E regression: blend_sources weights must always sum to ≤ 1.0 ─────────
 

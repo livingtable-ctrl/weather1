@@ -69,9 +69,24 @@ A function in Sections 1–8 CANNOT score above 7 if it fails any of these.
   `apply_ml_prob_correction()`.
 - AC2: Platt block has `if days_out > 0:` (or equivalent) guard before calling
   `apply_platt_per_city()`.
-- AC3: METAR lock-in block has `condition_type != "between"` (or equivalent) guard.
-  Between-condition markets must not receive METAR lock-in — a current temperature
-  reading does not predict the daily high within a 2°F band.
+- AC3 (revised 2026-08-09, backlog.txt "BETWEEN-BUCKET MARKETS ... METAR LOCK-IN
+  WAS DISABLED"): between-condition markets' METAR lock-in must key off the
+  DAILY EXTREME (`min_temp_f`/`max_temp_f`), never the instantaneous
+  `current_temp_f` — this is the actual bug ("compares current_temp_f to the
+  bucket instead of the daily high") that got the branch disabled 2026-06-29,
+  not the mere presence of lock-in for "between" markets. The branch is
+  correctly re-enabled as of that entry's resolution: `_metar_lock_in`'s
+  between block computes `_comp_temp` from `_metar_obs.get("max_temp_f"/
+  "min_temp_f")` (falling back to current_temp_f only for the safe,
+  monotonic NO direction — never for YES), and `analyze_trade`'s downstream
+  `between_edge` gate reads `metar_lockout["comp_temp_f"]` (the same daily
+  extreme), not `current_temp_f`. FAIL this criterion only if a "between"
+  branch is found comparing `current_temp_f` directly against the band for a
+  YES/locked-in-general decision, NOT for simply having between-market
+  lock-in present. Do NOT recommend reintroducing `condition_type !=
+  "between"` (or `return (False, None, {})` at the top of the between block)
+  as a fix — that was already tried, is the whole reason this criterion
+  needed revising, and would silently re-retire this market class again.
 - AC4: Degenerate ensemble (all members identical) returns `None` or skips the trade
   before any blending. A junk probability from an all-identical ensemble must never
   reach Kelly. Note: any ensemble where all 20 members are the same value must trigger

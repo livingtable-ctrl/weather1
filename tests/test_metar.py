@@ -200,6 +200,96 @@ class TestFetchMetar:
 
         assert result is None
 
+    def test_max_min_temp_f_parsed_from_real_api_field_names(self):
+        """Regression for the field-name bug found by opus review of
+        backlog.txt "BETWEEN-BUCKET MARKETS ... METAR LOCK-IN WAS DISABLED"
+        (2026-08-09): aviationweather.gov's real /api/data/metar payload has
+        no "minf"/"maxf" field at all -- only "maxT"/"minT" in CELSIUS. Code
+        that read "minf"/"maxf" silently got None for every observation ever
+        fetched, in production, since fetch_metar was written -- every caller
+        (both above/below's own daily-extreme branch and the newly re-enabled
+        between branch) always fell back to current_temp_f without ever
+        knowing it. Payload below is verbatim field shape from a real
+        aviationweather.gov response captured 2026-08-09 (KJFK:
+        temp=32.2, maxT=32.8, minT=25.6 -- all Celsius)."""
+        import metar
+
+        fresh_time = (datetime.now(UTC) - timedelta(minutes=5)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        response = [
+            {
+                "icaoId": "KJFK",
+                "obsTime": fresh_time,
+                "temp": 32.2,
+                "dewp": 20.0,
+                "maxT": 32.8,
+                "minT": 25.6,
+            }
+        ]
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            result = metar.fetch_metar("KJFK")
+
+        assert result is not None
+        assert result["max_temp_f"] == pytest.approx(91.04, abs=0.1), (
+            f"max_temp_f not parsed from maxT (Celsius): got {result['max_temp_f']!r}"
+        )
+        assert result["min_temp_f"] == pytest.approx(78.08, abs=0.1), (
+            f"min_temp_f not parsed from minT (Celsius): got {result['min_temp_f']!r}"
+        )
+
+    def test_max_min_temp_f_prefers_fahrenheit_field_if_ever_present(self):
+        """Defensive: if the API ever adds a Fahrenheit extreme field, prefer
+        it over converting the Celsius one (mirrors current_temp_f's own
+        tmpf-then-temp preference)."""
+        import metar
+
+        fresh_time = (datetime.now(UTC) - timedelta(minutes=5)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        response = [
+            {
+                "icaoId": "KJFK",
+                "obsTime": fresh_time,
+                "temp": 32.2,
+                "maxf": 90.0,  # Fahrenheit -- should win over maxT below
+                "maxT": 32.8,  # Celsius -- would be ~91.0F if converted
+                "minf": 80.0,
+                "minT": 25.6,
+            }
+        ]
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            result = metar.fetch_metar("KJFK")
+
+        assert result["max_temp_f"] == pytest.approx(90.0, abs=0.01)
+        assert result["min_temp_f"] == pytest.approx(80.0, abs=0.01)
+
+    def test_dew_point_f_parsed_from_real_dewp_celsius_field(self):
+        """Regression for the same field-name bug: the real payload's dew
+        point field is "dewp" (Celsius), not "dwpt" -- the code's prior
+        second-choice fallback. dew_point_f was also always None in
+        production before this fix (KJFK: dewp=20.0C -> 68.0F)."""
+        import metar
+
+        fresh_time = (datetime.now(UTC) - timedelta(minutes=5)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        response = [
+            {"icaoId": "KJFK", "obsTime": fresh_time, "temp": 32.2, "dewp": 20.0}
+        ]
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            result = metar.fetch_metar("KJFK")
+
+        assert result["dew_point_f"] == pytest.approx(68.0, abs=0.1), (
+            f"dew_point_f not parsed from dewp (Celsius): got {result['dew_point_f']!r}"
+        )
+
 
 class TestCheckMetarLockout:
     def test_locked_below_threshold_after_2pm(self):
