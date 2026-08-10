@@ -968,3 +968,45 @@ def test_cron_logs_near_settlement_row_with_real_trade_fields(cron_env):
         "SELECT ticker, our_model_prob, trade_side FROM near_settlement_log"
     ).fetchone()
     assert row == ("KXHIGH-NYC-26APR17-B70", 0.65, "yes")
+
+
+# ── cmd_cron reads settlement lag signals with a generous staleness window ───
+
+
+def test_cron_reads_settlement_signals_with_generous_staleness_window(cron_env):
+    """cmd_cron()'s settlement-lag-signal consumer (~cron.py:1396) must pass
+    a max_age_minutes generous enough to survive the settlement monitor's
+    own up-to-~5-hour daily run (main.cmd_schedule()'s new
+    KalshiWeatherSettlementMonitor task) plus a real gap between cron
+    cycles -- the function's bare 120min default predates that task ever
+    being scheduled at all and would silently drop a signal written early
+    in the run before the next cron cycle ever reads it. Regression test
+    for that gap, found by an independent review while adding the
+    settlement-monitor scheduling task itself."""
+    tmp_path, client, main, paper = cron_env
+
+    captured: dict = {}
+
+    def _fake_read_settlement_signals(max_age_minutes=120):
+        captured["max_age_minutes"] = max_age_minutes
+        return []  # no active signals -- only checking the call args
+
+    with (
+        patch(
+            "settlement_monitor.read_settlement_signals", _fake_read_settlement_signals
+        ),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    assert captured, "read_settlement_signals was never called"
+    # Must comfortably cover the settlement monitor's own longest run
+    # (~310min, see test_cmd_schedule_settlement_monitor.py) plus the
+    # longest documented gap between cron cycles (6h, cmd_schedule_cycles'
+    # 4x/day cadence) -- and stay well under 24h so it can't reach into a
+    # prior trading day's now-irrelevant signals.
+    assert 610 <= captured["max_age_minutes"] < 1440

@@ -8261,6 +8261,7 @@ def cmd_schedule():
         return
 
     import shutil
+    import subprocess
 
     schtasks = shutil.which("schtasks")
     if not schtasks:
@@ -8289,19 +8290,21 @@ def cmd_schedule():
     print(bold(f"Registering scheduled task: {task_name}"))
     print(dim(f"Command: {task_cmd}"))
     confirm = input("  Register now? (Y/n): ").strip().lower()
+    # Declining just skips THIS task, same as the email/settle/settlement
+    # blocks below -- previously this returned from the whole function,
+    # silently skipping every later task too (the most likely real user of
+    # the settlement-monitor block added below already has this task
+    # registered and would naturally decline re-registering it).
     if confirm == "n":
-        print(dim("Cancelled."))
-        return
-
-    import subprocess
-
-    result = subprocess.run(create_cmd, shell=True, capture_output=True, text=True)
-    if result.returncode == 0:
-        print(green(f"\nTask '{task_name}' registered — runs every 3 hours."))
-        print(dim("To remove: schtasks /Delete /TN KalshiWeatherScan /F"))
+        print(dim("Skipped."))
     else:
-        print(red(f"Failed: {result.stderr.strip() or result.stdout.strip()}"))
-        print(dim("Try running this terminal as Administrator."))
+        result = subprocess.run(create_cmd, shell=True, capture_output=True, text=True)
+        if result.returncode == 0:
+            print(green(f"\nTask '{task_name}' registered — runs every 3 hours."))
+            print(dim("To remove: schtasks /Delete /TN KalshiWeatherScan /F"))
+        else:
+            print(red(f"Failed: {result.stderr.strip() or result.stdout.strip()}"))
+            print(dim("Try running this terminal as Administrator."))
 
     # ── Daily morning email ──────────────────────────────────────────────────
     email_task = "KalshiWeatherEmail"
@@ -8353,6 +8356,133 @@ def cmd_schedule():
             print(dim("To remove: schtasks /Delete /TN KalshiWeatherSettle /F"))
         else:
             print(red(f"Failed: {result2.stderr.strip() or result2.stdout.strip()}"))
+
+    # ── Daily settlement lag monitor ─────────────────────────────────────────
+    # The 20 tracked cities span several US zones, each independently gated
+    # to its own local 5-7pm window inside run_settlement_monitor(). A
+    # single fixed-duration daily run, anchored to the window-OPEN instant
+    # of whichever tracked zone is currently furthest EAST and running
+    # until the window-CLOSE instant of whichever tracked zone is
+    # currently furthest WEST, covers every city in one task — computed
+    # fresh every time this registers (not hardcoded to "Eastern"
+    # specifically) from settlement_monitor's own constants and the actual
+    # tracked city timezones, so a future city added on EITHER side of the
+    # current span doesn't silently fall outside the window.
+    import math
+    from zoneinfo import ZoneInfo
+
+    settlement_duration: int | None = None
+    settlement_start_str = ""
+    try:
+        # Imported inside the try, not at function top: settlement_monitor
+        # has a module-level assertion (_CITY_SERIES_TICKER derivation)
+        # that raises if Kalshi has renamed a tracked city's series again
+        # — that must skip only this task, not crash cmd_schedule() after
+        # the 3 tasks above already registered.
+        from settlement_monitor import (
+            _MONITOR_CITIES,
+            _MONITOR_END_HOUR,
+            _MONITOR_START_HOUR,
+        )
+
+        def _utc_offset(tz: str) -> timedelta:
+            # Always non-None: `datetime.now(ZoneInfo(...))` is inherently
+            # tz-aware.
+            off = datetime.now(ZoneInfo(tz)).utcoffset()
+            assert off is not None
+            return off
+
+        _tzs = {c["tz"] for c in _MONITOR_CITIES.values()}
+        # Rank zones by UTC offset, not by each zone's own wall-clock
+        # "now" — comparing wall-clock instants directly breaks whenever
+        # two zones currently sit on different calendar dates relative to
+        # each other (e.g. it's already past midnight Eastern while still
+        # before midnight Pacific), which is true for several hours every
+        # night. Offset comparison has no calendar-date component, so it's
+        # immune to that. Largest (least negative) offset = easternmost,
+        # whose own local window opens earliest in absolute terms;
+        # smallest (most negative) = westernmost, whose window closes
+        # latest.
+        _open_zone = max(_tzs, key=_utc_offset)
+        _close_zone = min(_tzs, key=_utc_offset)
+
+        # Pure duration (open zone's own 2-hour window, widened by however
+        # far ahead of the close zone it currently runs) — never touches a
+        # wall-clock instant, so it can't inherit the date-crossing issue
+        # above either.
+        _span_hours = (_MONITOR_END_HOUR - _MONITOR_START_HOUR) + (
+            _utc_offset(_open_zone) - _utc_offset(_close_zone)
+        ).total_seconds() / 3600
+        # +10min buffer (~2 poll intervals; _POLL_INTERVAL_SECONDS=300).
+        settlement_duration = math.ceil(_span_hours * 60) + 10
+
+        # The actual start instant only ever needs ONE zone's own
+        # wall-clock "today" (no cross-zone date-crossing risk here).
+        _start_instant = datetime.now(ZoneInfo(_open_zone)).replace(
+            hour=_MONITOR_START_HOUR, minute=0, second=0, microsecond=0
+        )
+        # Convert that TARGET instant (not "now") to the host's own local
+        # wall clock via fromtimestamp(), which asks the OS to localize
+        # that specific instant — correctly DST-adjusted for it even when
+        # "now" (at registration time) and the target instant fall on
+        # opposite sides of a DST transition. A snapshotted fixed offset
+        # (`datetime.now().astimezone().tzinfo`) would get this wrong for
+        # roughly a 2-3 hour window around each transition, twice a year.
+        settlement_start_str = datetime.fromtimestamp(
+            _start_instant.timestamp()
+        ).strftime("%H:%M")
+    except Exception as exc:
+        print(red(f"\nSkipping settlement monitor task: {exc}"))
+
+    if settlement_duration is not None:
+        settlement_task = "KalshiWeatherSettlementMonitor"
+        settlement_cmd = (
+            f'"{py_exe}" "{script_path}" settlement-monitor {settlement_duration}'
+        )
+        settlement_create = (
+            f"schtasks /Create /F /SC DAILY /ST {settlement_start_str} "
+            f'/TN "{settlement_task}" /TR "{_esc_tr(settlement_cmd)}" /RL HIGHEST'
+        )
+
+        print(bold(f"\nRegistering daily settlement monitor task: {settlement_task}"))
+        print(dim(f"Command: {settlement_cmd}"))
+        print(
+            dim(
+                f"  Runs {settlement_start_str} local machine time for "
+                f"{settlement_duration} minutes, covering every tracked city's "
+                "own 5-7pm-local settlement window."
+            )
+        )
+        print(
+            dim(
+                "  This task runs for hours, not minutes like the others — "
+                "Task Scheduler's defaults skip it on battery power and "
+                "won't wake a sleeping machine for it. If this host sleeps "
+                "or unplugs during its run window, open the task in Task "
+                "Scheduler and adjust its Conditions/Settings tabs to match."
+            )
+        )
+        confirm3 = input("  Register now? (Y/n): ").strip().lower()
+        if confirm3 != "n":
+            result3 = subprocess.run(
+                settlement_create, shell=True, capture_output=True, text=True
+            )
+            if result3.returncode == 0:
+                print(
+                    green(
+                        f"\nTask '{settlement_task}' registered — runs daily at "
+                        f"{settlement_start_str}."
+                    )
+                )
+                print(
+                    dim(
+                        "To remove: schtasks /Delete /TN KalshiWeatherSettlementMonitor /F"
+                    )
+                )
+            else:
+                print(
+                    red(f"Failed: {result3.stderr.strip() or result3.stdout.strip()}")
+                )
 
 
 def cmd_schedule_cycles() -> None:

@@ -1393,7 +1393,20 @@ def _cmd_cron_body(
     try:
         from settlement_monitor import read_settlement_signals
 
-        _settlement_sigs = read_settlement_signals()
+        # A settlement lag signal encodes a METAR-confirmed outcome fact
+        # (the day's high/low has already cleared or missed a threshold),
+        # not a time-decaying price edge -- it stays valid until that
+        # market settles, so a generous staleness window doesn't risk
+        # acting on stale reasoning. The default (120min) predates
+        # settlement_monitor.py ever actually being scheduled to run: its
+        # own daily task can now run up to ~5 hours (see cmd_schedule() in
+        # main.py), and cron itself may run as infrequently as every 6
+        # hours (cmd_schedule_cycles()'s 4x/day cadence) -- 120min would
+        # silently drop a signal written early in that run before the next
+        # cron cycle ever reads it. 720min (12h) comfortably covers the
+        # longest run + longest cron gap while staying well under 24h, so
+        # it can't reach into a prior trading day's now-irrelevant signals.
+        _settlement_sigs = read_settlement_signals(max_age_minutes=720)
         if _settlement_sigs:
             _log.info("Settlement lag signals: %d active", len(_settlement_sigs))
             from paper import close_paper_early as _close_early
