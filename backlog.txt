@@ -570,6 +570,30 @@ Recommendation (not yet actioned -- filed for later decision):
   + fill_quantity-reduction treatment _exit_live_position now has, or
   whether it's genuinely paper-only and this is a non-issue.
 
+UPDATE 2026-08-09 (research pass, no code changed -- filed by the whole-
+  program feature-discovery scan, see docs/feature-scan-2026-08-09.md
+  finding F7): both entries above are reconstructing what actually filled
+  from this bot's OWN ledger (execution_log rows, closes_position_id,
+  fill_quantity). Kalshi publishes the authoritative record directly:
+  GET /portfolio/fills and GET /portfolio/settlements are both real,
+  documented endpoints (docs.kalshi.com/api-reference/portfolio/get-fills,
+  get-settlements) and kalshi_client.py has NO method for either (grep
+  "portfolio/fills"/"portfolio/settlements" across the repo: 0 hits).
+  Today fills are inferred entirely by polling get_order().fill_count_fp
+  (order_executor.py:498-500), and settlement is inferred from
+  market["result"] plus a status="settled" scan -- never from Kalshi's own
+  fill/settlement ledger. NOT verified live (both require auth, not probed
+  this session): the exact response shape, whether Kalshi's fill records
+  carry a stable per-fill ID that could serve as the child-row key the
+  entry above already proposes (option (a): "a closed_quantity child row
+  referencing the original position"), and whether historical fills before
+  ENABLE_MICRO_LIVE was ever flipped would even exist to backfill against.
+  If/when either entry above is picked up, wiring GET /portfolio/fills in
+  as the ground truth (rather than reconciling execution_log against
+  itself) may be the more direct fix for both, since it sidesteps needing
+  a new child-row schema entirely -- worth evaluating before choosing
+  option (a) or (b) in the recommendation above.
+
 [RESOLVED 2026-08-05] ~13 NON-SAFETY-CRITICAL FILES STILL BYPASS paths.py -- WORKTREE CRON RUNS SILENTLY HIT A STALE LOCAL data/ CACHE
 Priority: Medium -- no live-money or trade-correctness impact (DB, paper
   trades, and backups all correctly route through paths.py already), but a
@@ -7922,6 +7946,26 @@ What the fix looks like:
   kalshi_client.py's place_order/cancel_order) -- build any new order-group
   logic on top of that V2 path, not the old deprecated one.
 
+UPDATE 2026-08-09 (research pass, no code changed -- filed by the whole-
+  program feature-discovery scan, see docs/feature-scan-2026-08-09.md
+  finding E4): a concrete answer to the "don't assume a single rebate
+  number, identify which program actually applies" note above.
+  GET /incentive_programs is real and answers unauthenticated (live-probed
+  2026-08-09, HTTP 200, no signing needed) -- it returns live per-market
+  program entries directly: incentive_type ("liquidity" observed),
+  incentive_description ("series_lip"), market_ticker, target_size_fp,
+  period_reward, discount_factor_bps, start_date/end_date. The sample
+  pulled this session listed KXSILVER15M and KXWTI15M, no weather tickers
+  -- so this doesn't answer "does a weather-series program exist today,"
+  only "the endpoint that would answer it is free and already
+  discoverable." NOT verified: whether any KXHIGH*/KXLOW*/KXRAIN* market
+  ever appears in this feed (would need sampling over days, not one call,
+  since programs appear to be per-market and time-boxed per the
+  start_date/end_date fields). This is a cheap, standing way to answer the
+  open question above once this bot is actually resting real exit orders
+  -- poll the endpoint periodically and filter to tracked tickers rather
+  than researching program terms by hand.
+
 Why not now: N/A -- resolved (as event-driven protective exits, see above).
 
 When to revisit: N/A -- resolved. See the deliberately-deferred list above
@@ -9304,6 +9348,40 @@ When to revisit:
   - Check settled_temp_f row counts per city; start when the biggest cities
     clear a reasonable floor (~30+ per season) — as of 2026-07-20, still not
     crossed (21 max).
+
+UPDATE 2026-08-09 (research pass, no code changed -- filed by the whole-
+  program feature-discovery scan, see docs/feature-scan-2026-08-09.md
+  finding F1): this entry's own sample-floor blocker may be moot. Kalshi's
+  real settled market objects already carry the settlement value this
+  entry wants -- audit_settlement()'s monthly-rain and monthly-snow
+  branches already read it (tracker.py:3662-3675, market.get
+  ("expiration_value") once status="finalized") -- but the daily-
+  temperature branch (tracker.py:3855-3870) instead derives settled_temp_f
+  from an IEM ASOS raw-METAR proxy, which its OWN docstring says is not
+  what Kalshi actually settles on (tracker.py:3603-3611: "NOT the same
+  source Kalshi actually settles on ... can legitimately disagree with raw
+  ASOS METAR extremes by ~1 degree near a threshold, confirmed 2026-07-05
+  on KXLOWTMIN-26JUN28-T66").
+  Live-verified (unauthenticated GET, no code run): querying
+  `/markets?series_ticker=<S>&status=settled&limit=1000` for KXHIGHNY,
+  KXLOWTNYC, KXHIGHLAX, KXHIGHTPHX, KXLOWTMIA, KXHIGHTSEA each returned 462
+  settled markets across 77 distinct settlement days (2026-05-25 through
+  2026-08-09), with expiration_value populated on 461-462 of 462 markets
+  per series. Sample event KXHIGHNY-26JUL31: every market in the ladder
+  (both T-tickers and all 4 B-tickers) carries expiration_value="85.00"
+  and settlement_ts, Kalshi's own settled CLI-report figure, not a proxy.
+  If a daily-temperature branch is added to audit_settlement() mirroring
+  the two branches that already exist (read expiration_value, write to
+  settled_temp_f once status="finalized"), a single backfill pass across
+  the ~40 tracked daily temperature series x 77 settlement days could
+  plausibly clear this entry's own ~30/season floor immediately, rather
+  than waiting for real-time accumulation. NOT verified: whether
+  expiration_value is populated identically across the OTHER 34 tracked
+  daily series not sampled above, and whether a T-ticker's
+  expiration_value needs any transformation vs. a between-bucket's (not
+  checked -- the 6-series sample above included both shapes and both
+  looked like a plain settled temperature number, but this needs
+  confirming against every tracked series before writing the branch).
 
 [RESOLVED 2026-07-20, smallest useful version] JOINT FULL-LADDER BRACKET SELECTION
 Priority: was Medium-Low (real EV improvement, real design work)
@@ -10817,6 +10895,22 @@ When to revisit (adverse-selection half only -- flow-vs-settlement analysis
   - Once execution_log.orders has real filled_at/market_mid_at_fill rows to
     join against -- currently 0 of 198.
 
+UPDATE 2026-08-09 (research pass, no code changed -- filed by the whole-
+  program feature-discovery scan, see docs/feature-scan-2026-08-09.md
+  finding F15): flagging for visibility, not new work -- this entry's own
+  2026-08-03 resolution note above already recorded trade_history/
+  price_history at 70,362/13,820 rows with full 43/43 ticker overlap, well
+  past any reasonable "thin data" bar. The tables and their get_price_
+  history()/get_trade_history()/get_trade_flow_settlement_correlation()
+  readers remain fully wired but zero-production-caller by design (the
+  dead-code-scanner allowlist entries this entry's own resolution note
+  added). No new analysis pass is proposed here -- get_trade_flow_
+  settlement_correlation() is already a real, callable, tested query per
+  this entry's own note ("re-run it as trade_history keeps accumulating");
+  this is just confirming the data volume that note referenced is real and
+  current, in case anyone reads only the "When to revisit" section above
+  without the full resolution note.
+
 [RESOLVED 2026-07-24] NBM PROBABILISTIC QUANTILES -- ORPHANED CONVERTER, MISSING FETCHER
 Priority: was Low-Medium -- the consumer half already existed in-tree; only
   the fetch half was missing, and the fetch half needed real research.
@@ -10915,6 +11009,37 @@ Still open:
 When to revisit:
   - If the REAL NBM entry's NBS sky/gst/p12 fields ever get pulled in for
     another reason, log them alongside precip_sum_in the same way.
+
+UPDATE 2026-08-09 (research pass, no code changed -- filed by the whole-
+  program feature-discovery scan, see docs/feature-scan-2026-08-09.md
+  finding F12): more of this entry's own "already fetched, never read"
+  pattern, this time on the NWS side rather than Open-Meteo/Pirate. All
+  verified by repo-wide grep, 0 hits each outside comments:
+  - probabilityOfPrecipitation -- present on every /gridpoints/.../forecast
+    period the bot already iterates (nws.py:241-264 reads only startTime/
+    temperature/temperatureUnit/isDaytime from each period). This is NWS's
+    own official PoP, on a forecast the temperature path already fetches;
+    the rain models use a different source entirely.
+  - maxTemperatureLast24Hours / minTemperatureLast24Hours -- present on
+    /stations/{id}/observations/latest, which the bot already fetches
+    twice (nws.py:443 for temp, :495 for precip). These are exactly the
+    daily extremes the METAR path (metar.py:178-204) reconstructs by hand
+    from a different source.
+  - forecastGridData -- the /points/{lat},{lon} response is fetched TWICE
+    per city (nws.py:160 for gridId/gridX/gridY, :175 again for
+    observationStations, without reusing the first cache) and both times
+    carries this URL, the pointer to NWS's raw gridded dataset (skyCover,
+    quantitativePrecipitation, snowfallAmount, apparentTemperature,
+    probabilityOfPrecipitation, maxTemperature/minTemperature GRIDS, not
+    just point forecasts). Never fetched.
+  - Also unread on the same already-fetched objects: detailedForecast,
+    shortForecast, relativeHumidity, dewpoint, windSpeed,
+    temperatureTrend (forecast periods); windChill, heatIndex,
+    barometricPressure, cloudLayers, presentWeather (observations).
+  Marginal request cost for the first three is zero -- the HTTP calls are
+  already being made. NOT verified: whether any of these actually improve
+  calibration once logged (same log-only-then-verify discipline this
+  entry's own precip_sum_in/model_disagreement_f additions already use).
 
 [PARTIALLY RESOLVED 2026-07-23 -- tracker.get_regional_recent_bias() shipped
   log-only; wiring into an actual forecast lean still gated on more data]
@@ -16791,4 +16916,794 @@ Problem:
   `tier`-unavailable shape as `_analyze_once`, not fixable without the same
   analyze_trade()-level plumbing the fallback-alert bullet above would also
   need.
+
+======================================================
+2026-08-09 WHOLE-PROGRAM FEATURE-DISCOVERY SCAN -- systematic hunt for NEW
+capability (exchange/data-source surface unused, infrastructure built for
+one purpose that could serve a second, market surface Kalshi exposes that
+the bot doesn't touch), explicitly NOT a bug hunt and NOT incremental
+refinement of already-tracked work. Seven parallel Explore-agent subsystem
+scans, deduplicated against all 26 then-open BACKLOG_OPEN.md entries (full
+entry text read for every near-miss) and against shipped functionality
+(grepped under multiple plausible names before calling anything missing);
+every finding personally re-verified against source by the orchestrating
+session before filing, several against live unauthenticated Kalshi API
+probes. Full report with all citations: docs/feature-scan-2026-08-09.md.
+Entries below are the report's INTERNAL findings not already folded into
+an existing entry as an UPDATE note (see L9261, L510/L544, L10869, L10563,
+and the ORDER GROUPS entry above, each of which got one).
+======================================================
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding F2)] TEMPERATURE MARKET DIRECTION IS PARSED FROM FREE-TEXT TITLES -- KALSHI'S OWN strike_type/floor_strike/cap_strike ARE NEVER READ FOR TEMPERATURE MARKETS
+Priority: Medium-High -- this is the single most safety-critical parse in
+  the program (which side of the threshold we're betting), currently
+  dependent on Kalshi's marketing copy rather than a structured field.
+
+Problem:
+  _parse_market_condition()'s temperature branch (weather_markets.py:
+  5671-5735) extracts the -T##/-B##.# suffix from the ticker, then
+  resolves direction purely by substring-matching ">"/"above"/"<"/"below"
+  against `title`, falling back to `subtitle`+`yes_sub_title`, and FAILS
+  CLOSED (skips the market, logs a warning) if neither matches
+  (:5724-5735). The same function already reads Kalshi's structured
+  fields for every other market family: rain at :5488/:5495, snow at
+  :5532/:5539, hurricane-count at :4790-4816. `cap_strike` has zero
+  references anywhere in the repo (grep --include=*.py, prod and tests).
+  `rules_primary` (the literal settlement rule text per market) is read
+  nowhere as a dict field -- it appears only in 5 prose comments.
+  Live-verified (unauthenticated GET) against the real KXHIGHNY-26AUG09
+  ladder:
+    KXHIGHNY-26AUG09-T90   strike_type=less     floor=None cap=90
+    KXHIGHNY-26AUG09-T97   strike_type=greater  floor=97   cap=None
+    KXHIGHNY-26AUG09-B90.5 strike_type=between  floor=90   cap=91
+  and rules_primary on the same markets carries the settlement source
+  verbatim ("...as reported by the National Weather Service's
+  Climatological Report (Daily), is less than 90...").
+  Two distinct capabilities sitting unused: (1) strike_type/floor_strike/
+  cap_strike as the authoritative machine-readable direction/bounds,
+  replacing the title/subtitle text guess; (2) rules_primary +
+  settlement_sources (on the event object) as machine-readable settlement
+  provenance, which metar.MARKET_STATION_MAP (metar.py:325-350) and
+  nws_afd.CITY_WFO_OFFICE (nws_afd.py:85-107) currently assert by hand in
+  two separate hardcoded tables with no automated cross-check.
+  NOT a correctness bug in the current output: the -B suffix's val +-1.0F
+  band (weather_markets.py:5687) matches Kalshi's real floor/cap for
+  integer-reported settlement in the sample above -- this is about an
+  unused structured field, not a wrong parse today.
+
+What the fix would look like:
+  Mirror the rain/snow branches' pattern: read strike_type directly
+  (less/greater -> below/above, between -> between) instead of the title-
+  substring chain, keeping the existing threshold math. Separately,
+  cross-check MARKET_STATION_MAP/CITY_WFO_OFFICE against rules_primary/
+  settlement_sources (perhaps as an extension of check_series_drift()'s
+  existing daily-warn pattern) so a station/office table drift is caught
+  the same way a series-name drift already is.
+
+Why not now:
+  Filed by this session's discovery scan, not picked up -- needs a design
+  decision on whether to replace the title-parse path outright or run
+  both in parallel with a mismatch warning for a transition period (the
+  title-based fail-closed behavior has been live and presumably correct
+  for a while; a silent behavior change here is exactly the kind of thing
+  that warrants its own dedicated pass, not a bundle-in).
+
+When to revisit:
+  Whenever this parse path is next touched for any reason -- the
+  replacement is a straightforward mirror of an already-proven pattern in
+  the same function.
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding F3)] CONSISTENCY.PY'S ARBITRAGE CHECK PARSES BETWEEN-BUCKET MARKETS AND THEN DROPS THEM -- AND ABOVE/BELOW NEVER CROSS-CHECK EACH OTHER
+Priority: Medium-High -- the most numerous and (per live probe) thinnest-
+  booked temperature market shape is completely unmonitored by the
+  arbitrage checker that already auto-places corrective trades on the
+  shapes it DOES cover.
+
+Problem:
+  _parse_threshold() returns ("between", val) for any -B##.# ticker
+  (consistency.py:97), and _group_markets() appends those entries to the
+  group (consistency.py:355-357) -- but find_violations() builds exactly
+  two lists:
+    above = [... if ct == "above" and p > 0]   (consistency.py:386-389)
+    below = [... if ct == "below" and p > 0]   (consistency.py:391-394)
+  Every "between" entry falls through both comprehensions and is compared
+  against nothing. Three separate gaps follow from this:
+  - No between-bucket check at all. A real KXHIGHNY-26AUG09 ladder is 4
+    between-buckets + 2 tails (T90/T97); there is no check that a date's
+    between prices sum to ~1, and no check that a between bucket is
+    consistent with the above/below rungs bracketing it.
+  - Above and below never meet -- the two loops (:399, :439) are fully
+    independent; no complementarity check (P(high>X) + P(high<=X) ~= 1)
+    even though a real series contains both.
+  - HIGH and LOW never meet -- the group key is (series, date_str) where
+    series = ticker.split("-")[0] (consistency.py:349), so
+    KXHIGHNY-26AUG09-* and KXLOWTNYC-26AUG09-* are always different
+    groups.
+  Live-probed the real KXHIGHNY-26AUG09 ladder: the -B92.5/B94.5/B96.5
+  buckets showed yes_bid_size_fp=0.00 against yes_ask_size_fp in the
+  tens of thousands -- exactly the thin-book shape this checker's
+  zero-quote-leg guard (consistency.py:404-419) already exists to defend
+  against on the shapes it does cover.
+
+What the fix would look like:
+  This is "extend the existing, already-live temperature arbitrage
+  checker," not "build cross-market arbitrage from scratch" -- the
+  grouping, edge-from-real-bid/ask computation, one-sided-book guard, the
+  is_shadow flag pattern (already proven on the rain-arb entry below,
+  L6088's sibling above), the >5-violation circuit breaker
+  (trade_cycle.py:294-300), and the two-leg placement-with-unwind
+  (main.py:1955-2009) all already exist for above/below. A between-bucket
+  relation needs deciding: bucket-sum-to-~1 across a date's full between
+  ladder, and/or a monotonicity/consistency check against the bracketing
+  above/below tails. Whether a detected violation is tradeable as a 2-leg
+  or 3-leg basket is new design work the current 2-leg placement loop
+  doesn't model and would need its own decision, mirroring the rain-arb
+  entry's own shadow-first rollout discipline given this is live-adjacent
+  (find_violations() feeds automatic paper placement today).
+
+Why not now:
+  New finding from this session's discovery scan; not evaluated against
+  real historical between-bucket price data the way the rain-arb entry's
+  own resolution required before shipping (pulled real St. Petersburg/NYC
+  ladders to confirm strike_type live before shipping that one) --
+  deserves the same live-data-first discipline before any code change,
+  given find_violations() is on the automatic-placement path.
+
+When to revisit:
+  Whenever cross-market arbitrage detection is picked up again --
+  reference this entry alongside L6088 above (the rain arb graduation
+  decision) since both are extending the same checker to shapes it
+  currently excludes.
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding F4)] TOP-OF-BOOK SIZE FIELDS ARRIVE FREE ON EVERY MARKET FETCH AND ARE DISCARDED -- AND THE BATCH ORDERBOOK ENDPOINT IS UNUSED
+Priority: Medium-High -- position sizing on a resting-maker strategy is
+  currently blind to whether the size it wants can actually fill.
+
+Problem:
+  yes_bid_size_fp/yes_ask_size_fp are present on every market object the
+  bot already fetches via get_markets()/get_market() (confirmed live,
+  e.g. yes_ask_size_fp="14277.00" on a real KXHIGHNY market) and have
+  zero references anywhere in the repo, prod or tests. Liquidity is
+  instead synthesized as volume(_fp) + open_interest(_fp)
+  (weather_markets.py:10720-10722), which says nothing about what's
+  actually resting at the current price. volume_24h_fp has exactly one
+  reference (main.py:5257, display only).
+  Separately: kalshi_client.get_orderbook() (kalshi_client.py:346-350)
+  has exactly one caller in the repo (main.py:1357, the CLI "Orderbook:"
+  print), and order_executor.py:130-134 explicitly documents why the
+  trading path avoids it ("get_market()'s yes_bid/yes_ask ARE the
+  authoritative top-of-book"). The `depth` query param is never sent.
+  GET /markets/orderbooks (the batch, full-depth endpoint) has zero
+  references repo-wide -- live-probed unauthenticated 2026-08-09, HTTP
+  200, returned the complete price-level ladder (28+ NO-side levels) for
+  a single real market in one call.
+  On the WS side, orderbook_snapshot builds yes_levels/no_levels
+  (kalshi_ws.py:87-101) that nothing can ever read (both public accessors
+  require mid_price, kalshi_ws.py:233/:239, which a snapshot entry never
+  has), and orderbook_delta payloads are stashed as last_delta with zero
+  readers, self-documented at kalshi_ws.py:144-146/:255-257.
+
+What the fix would look like:
+  Reading yes_bid_size_fp/yes_ask_size_fp is nearly free -- the fields
+  are already inside the dict is_liquid() (weather_markets.py) inspects.
+  The natural insertion points are the existing liquidity_kelly_scale
+  (paper.py) and _liquidity_edge_scale (weather_markets.py) functions --
+  a fillable-size-aware Kelly scale, or a spread-vs-depth gate, rather
+  than a whole new mechanism. The batch endpoint needs one new client
+  method mirroring get_orderbook()'s existing shape (this one DOES
+  paginate/return full depth per the live probe). What's genuinely new
+  design work: deciding what "fillable size" means for a strategy that
+  always enters as a resting midpoint GTC limit order (utils.py:96),
+  where the bot IS the liquidity on entry rather than consuming it.
+
+Why not now:
+  New finding from this session's discovery scan; the design question
+  above (what depth means for a maker-only entry strategy) needs
+  resolving before writing code, not guessed at.
+
+When to revisit:
+  Whenever sizing/liquidity logic is next touched -- the size fields
+  parse identically to the fields already read on the same dict, so this
+  is cheap to fold into any nearby change.
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding F5)] _analyze_precip_trade / _analyze_snow_trade ARE FULLY BUILT (~390 LINES) AND UNREACHABLE FROM THE LIVE SCAN
+Priority: Low now, Medium if Kalshi relists the products these were
+  written for -- no code needed today, just a watch.
+
+Problem:
+  Both models are dispatched from analyze_trade() (weather_markets.py:
+  10867 and :10880) and are currently unreachable in practice:
+  - KNOWN_WEATHER_SERIES (weather_markets.py:3825-3957) contains no
+    daily-precip or generic-snow series; get_weather_markets() fetches
+    exactly the registry (:4094) -- there is no global scan.
+  - Every registered KXRAIN*M ticker returns precip_month_total at
+    weather_markets.py:5517 and every KXDENSNOWM* returns
+    snow_month_total at :5556 -- both BEFORE the generic precip_any/
+    precip_above/precip_snow blocks at :5644/:5666/:5628 are ever
+    reached.
+  - The only other route in, is_precip_title() (weather_markets.py:
+    5604-5609), requires "temperature"/"high"/"low" to all be absent from
+    the title -- real KXHIGH*/KXLOW* titles always contain one of those.
+  So _analyze_precip_trade (weather_markets.py:7927-8133, 207 lines,
+  including a consensus bonus and Kelly tail) and _analyze_snow_trade
+  (:8136-8321, 186 lines, including a wet-bulb/snow-liquid-ratio chain at
+  :7161-7191) currently price nothing, ever.
+  Kalshi does list the products these were written for -- confirmed live
+  in the KNOWN_UNTRACKED_RAIN_SERIES/KNOWN_UNTRACKED_SNOW_SERIES comments
+  (KXRAIND "Rain Daily", KXRAINDNYC "Daily Rain - NYC", KXRAINHOLIDAY, and
+  the four *SNOWXMAS holiday-window series), all currently "0 open
+  markets, real series."
+
+What it would look like:
+  Nothing to build -- the models, the Kelly tail, the consensus bonus,
+  and the shadow-gate pattern already exist and are tested. The
+  actionable piece is cheap: fold these series into check_series_drift()
+  (or its widened form, see the entry below) so a real listing is noticed
+  automatically instead of requiring a manual catalog scan.
+
+Why not now:
+  Genuinely gated on Kalshi listing a real market for one of these
+  products -- there is nothing to trade against today.
+
+When to revisit:
+  Whenever check_series_drift() (or the widened version below) reports a
+  live market on one of these series for the first time.
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding F6)] check_series_drift() WATCHES ONLY 5 OF ~291 LIVE CLIMATE-AND-WEATHER SERIES FAMILIES
+Priority: Medium -- the watcher exists precisely so a new/renamed series
+  is never again found only by a manual catalog audit (the exact incident
+  that motivated building it, weather_markets.py:4148-4151), and it
+  currently guards roughly a fifth of the live category surface.
+
+Problem:
+  check_series_drift() (weather_markets.py:4139-4246) already does the
+  right thing -- fetches Kalshi's live Climate-and-Weather catalog daily
+  via get_series_list() and warns on drift in both directions. Its filter
+  (weather_markets.py:4167-4178) covers exactly:
+    startswith(("KXHIGH","KXLOW","KXRAIN")) or "SNOW" in t
+    | (hurricane-count | hurricane-next-event | storm-order exact sets)
+  KXTEMP*H is a documented deliberate blind spot (:4185-4188). Everything
+  else in the live catalog produces no warning ever, in either direction.
+  Live-probed the full catalog (GET /series?category=Climate and
+  Weather&include_volume=true, 291 series). Untracked, unwatched, real
+  volume:
+    KXTORNADO       vol=4,043,486  "Number of Tornadoes" (monthly)
+    KXHMONTH        vol=3,952,726  2 open  "Hottest month instance"
+    KXHURCAT        vol=2,424,310  "Hurricane category" (per-storm)
+    KXHMONTHRANGE   vol=1,118,002  12 open "Monthly Temperature Increase"
+    KXGTEMP         vol=  943,293  2 open  "Hottest year ever"
+    KXHOLIDAYTMAX   vol=  561,537  0 open  "Max temperature holiday by city"
+    KXHOLIDAYTMIN   vol=  112,913  0 open  "Min temperature holidays"
+    KXHOBBYTEMP     vol=   27,737  1 open  "Max temp at Houston Hobby Airport"
+  KXHURCAT and per-city landfall are already named as open in the RAIN/
+  SNOW/HURRICANE entry above -- treat those as covered. The watcher gap
+  itself (that a new temperature-adjacent family can go live with zero
+  signal) is not covered anywhere.
+
+What the fix would look like:
+  Two separable pieces. (1) Widen the watcher: one filter predicate plus
+  an "untracked but real" allowlist entry, mirroring the three that
+  already exist (KNOWN_DEAD_WEATHER_SERIES/KNOWN_UNTRACKED_RAIN_SERIES/
+  KNOWN_UNTRACKED_SNOW_SERIES) -- nearly free, makes the blind spot
+  self-reporting. (2) Evaluate specific families: KXHOLIDAYTMAX/
+  KXHOLIDAYTMIN is the closest adjacent product to the bot's core
+  competence (same variable, same cities, holiday-window framing instead
+  of daily) and has real historical volume with 0 open markets right now
+  -- i.e. seasonal, not dead, worth a live re-check before the next
+  holiday window. KXHOBBYTEMP is a single-station daily max the existing
+  daily model could price directly if onboarded as a city.
+
+Why not now:
+  Piece (1) is cheap and could be picked up any time; piece (2) needs a
+  live re-check closer to the relevant season/holiday window before
+  committing engineering time to onboarding a currently-dormant series.
+
+When to revisit:
+  Piece (1): whenever weather_markets.py's series registries are next
+  touched. Piece (2): re-check KXHOLIDAYTMAX/TMIN before the next major
+  US holiday, and KXHOBBYTEMP any time (no seasonality gate needed).
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding F7a)] NO EXCHANGE-STATUS/MAINTENANCE AWARENESS -- /exchange/status AND /exchange/schedule ARE NEVER CALLED
+Priority: Medium -- cheap to add, closes a real operational hole (orders
+  attempted into a maintenance window).
+
+Problem:
+  Neither endpoint has any reference in the repo (grep "exchange/status"/
+  "exchange/schedule" --include=*.py: 0 hits). Live-probed unauthenticated
+  2026-08-09:
+  - GET /exchange/status -> 200: {"exchange_active": true,
+    "trading_active": true, "exchange_index_statuses": [{index 0, active,
+    trading_active: true}, {index 1, active, trading_active: FALSE}]} --
+    i.e. exchange sharding means "the exchange is up" is not a single
+    boolean; a specific shard can be halted while others trade.
+  - GET /exchange/schedule -> 200: maintenance_windows (empty at probe
+    time) + weekly standard_hours, including a real Thursday 03:00-05:00
+    UTC gap.
+  Nothing in trading_gates.py's seven live-order gates, nor anywhere in
+  cron.py's pre-flight checks, asks whether the exchange (or the relevant
+  shard) is open before scanning or placing.
+
+What the fix would look like:
+  Two new client methods (same _get shape as every other endpoint in
+  kalshi_client.py). Read exchange_active/trading_active (and, per-market,
+  which exchange_index a market belongs to -- exchange_index is already a
+  field on every market/event/series object and is currently unread) as
+  an additional pre-flight gate, and/or check maintenance_windows before
+  scheduling a scan.
+
+Why not now:
+  New finding from this session's discovery scan; not evaluated against
+  how often this bot's operating hours actually overlap a real maintenance
+  window in practice (the weekly Thursday gap above may already fall
+  outside this bot's active scan hours -- worth checking before deciding
+  this needs a hard gate vs. just a log line).
+
+When to revisit:
+  Before or alongside the always-on-VM move (L7584 above) -- a
+  continuously-running watcher is more exposed to hitting a maintenance
+  window mid-cycle than the current periodic-cron cadence.
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding F8)] NBM'S OWN MEAN/SIGMA (TXNMN/TXNSD) ARE INSIDE THE ALREADY-FETCHED NBP BULLETIN AND ARE SKIPPED
+Priority: Medium-High -- sigma feeds gaussian_probability() on literally
+  every trade; the current estimate is a heuristic while a calibrated one
+  is already being downloaded and cached every cycle.
+
+Problem:
+  _NBP_PERCENTILE_ROWS (mos.py:396-402) maps exactly five rows --
+  TXNP1/2/5/7/9 (10/25/50/75/90 percentiles). _parse_nbp_bulletin()
+  iterates only that dict (mos.py:489-499). The bulletin carries two more
+  temperature rows immediately above them -- from the repo's own fixture,
+  described as "structurally faithful to a real fetched bulletin (KMDW,
+  2026-07-24)":
+    tests/test_mos_nbp.py:40  TXNMN  80  63| 85  67   (NBM's own mean)
+    tests/test_mos_nbp.py:41  TXNSD   2   2|  2   2   (NBM's own stdev)
+  TXNMN/TXNSD appear nowhere else in the repo (grep: those two fixture
+  lines only). _split_nbp_row() (mos.py:405-424) is row-label-agnostic
+  and would parse either unchanged -- no new parsing logic needed, only
+  new dict entries.
+  Meanwhile sigma comes from a hand-rolled _forecast_uncertainty()
+  (target-date-based heuristic) or climatology.compute_sigma_from_climate
+  (30-year climate stdev x 0.60, climatology.py:272/:379) -- neither of
+  which is NBM's own stated forecast-time uncertainty for this specific
+  run.
+
+What the fix would look like:
+  Add TXNMN=mean, TXNSD=stdev to the row map (or a sibling dict), thread
+  a second return value through fetch_nbm_quantiles() alongside the
+  existing percentile dict. Evaluate via the existing SIGNAL_REGISTRY
+  shadow-then-graduate harness (weather_markets.py:6716-6875) -- log
+  TXNSD-derived sigma alongside the current one, compare against
+  settled_temp_f once enough rows accumulate (this pairs naturally with
+  the settled_temp_f entry above once that's fixed, since sigma
+  validation needs real settlement error to compare against).
+
+Why not now:
+  New finding; needs the same log-only-then-verify discipline as every
+  other signal in SIGNAL_REGISTRY before being wired into anything live
+  -- filed for that pipeline, not for direct wiring.
+
+When to revisit:
+  Whenever mos.py's NBP parsing is next touched -- the change itself is
+  two dict entries; the graduation evaluation is the real work and can
+  start as soon as it's logged.
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding F9)] /historical/* ENDPOINTS ARE UNUSED -- backtest.py RUNS AGAINST A SYNTHETIC ENSEMBLE, NOT REAL HISTORICAL PRICES, AND THE LIVE-DATA WINDOW IS ONLY ~3 MONTHS
+Priority: Medium -- the backtester is currently validating strategy
+  changes against data it invented, not against what the market actually
+  did.
+
+Problem:
+  Zero repo references to any /historical endpoint. Live-probed
+  unauthenticated 2026-08-09, all HTTP 200:
+  - GET /historical/cutoff -> {"market_settled_ts": "2026-06-10...",
+    "trades_created_ts": "2026-06-10...", ...}. Kalshi's docs state the
+    live-data target window is 3 months; anything older moves to the
+    historical endpoints and drops off the live ones this bot's client
+    already calls.
+  - GET /historical/markets?series_ticker=KXHIGHNY&limit=1000 -> 1,000
+    markets across 167 events, close_time 2025-12-25 through 2026-06-09,
+    cursor present (more pages), carrying result/expiration_value/
+    strike_type/floor_strike/settlement_ts/volume_fp/open_interest_fp/
+    yes_bid_size_fp/yes_ask_size_fp/price_ranges.
+  - GET /historical/trades?limit=2 -> full signed taker flow with
+    taker_outcome_side/taker_book_side/is_block_trade.
+  Two consequences: (1) backtest.run_backtest() reconstructs probabilities
+  from a SYNTHETIC 50-member ensemble (backtest.py:128-133,
+  forecast_mean + gauss(0, sigma)), and run_walk_forward() reads only the
+  tracker DB and reports "pnl": 0.0 with the comment "# entry price not
+  available in tracker DB" (backtest.py:755) -- the historical endpoints
+  supply real per-market prices, sizes, and outcomes that could replace
+  both gaps. (2) sync_outcomes()'s candlestick/trade backfill uses the
+  LIVE endpoints only (tracker.py:4563/:4601), so any capture gap older
+  than the ~3-month cutoff is unrecoverable from those endpoints --
+  backfill_price_history() (tracker.py:4655), which exists specifically
+  to recover lost rows, also uses the live endpoint and would silently
+  fail to recover anything past the cutoff.
+
+What the fix would look like:
+  Client methods are cheap (same paginated _get shape as get_markets/
+  get_trades). Rewiring backtest.py onto real historical prices is a
+  genuine build -- the cheapest useful slice is a cutoff-awareness guard
+  on the existing backfill path (warn or fall back to /historical/* when
+  a gap predates the live-data cutoff) before attempting the larger
+  backtest rewrite.
+
+Why not now:
+  New finding; the backtest rewrite is real design work (what does
+  "replay real order-book state" mean for a strategy that always enters
+  as a resting maker order, not a taker) and shouldn't be bundled with
+  the cheap cutoff-guard piece.
+
+When to revisit:
+  The cutoff-guard piece: whenever backfill_price_history() is next
+  touched. The backtest rewrite: whenever backtest.py's synthetic-
+  ensemble approach is next questioned on its own terms.
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding F10)] kalshi_client.get_events() IS FULLY DEAD, AND get_series_list()'S RICH SERIES METADATA IS DROPPED TO A BARE TICKER
+Priority: Low-Medium on its own; feeds directly into the strike_type/
+  rules_primary entry above (settlement_sources lives on the event
+  object).
+
+Problem:
+  kalshi_client.get_events() (kalshi_client.py:435-438) has zero callers
+  anywhere, including tests (grep get_events --include=*.py: 1 hit, the
+  definition itself). It also has no cursor loop, so as written it would
+  only ever return page 1.
+  Live-verified: GET /events?series_ticker=KXHIGHNY&status=open&
+  with_nested_markets=true returns each event with its COMPLETE markets
+  array in one call, including cap_strike, which the flat /markets
+  response the bot actually uses omits for non-between rungs (confirmed
+  live: a plain /markets fetch of KXHIGHNY-26AUG10-T96 has no cap_strike
+  key at all; the same market via /events?with_nested_markets=true does).
+  The bot instead issues one get_markets(series_ticker=...) per registry
+  entry, 6 workers, 40s timeout (weather_markets.py:4092-4127).
+  Related, same file: get_series_list() returns rich series objects and
+  the single consumer reads only `ticker` (weather_markets.py:4165-4166).
+  Live-verified every one of the 291 weather series carries
+  settlement_sources (name+URL), contract_terms_url, contract_url,
+  frequency, fee_type ("quadratic" on all 291, confirmed), fee_multiplier,
+  and product_metadata -- all dropped at the single call site.
+  Also unused on get_markets(): min_updated_ts, min_close_ts/max_close_ts,
+  tickers (comma list), event_ticker, mve_filter -- all 0 repo hits. Note
+  weather_markets.py:3821-3823 carries a stale comment ("client.
+  get_markets() does not expose the API cursor, making reliable
+  pagination impossible") that the client's own code contradicts -- it
+  paginates internally at kalshi_client.py:315-336.
+
+What the fix would look like:
+  Cheap on its own: add a cursor loop to get_events() if it's ever wired
+  up. The real value is using with_nested_markets=true to fetch a whole
+  event's ladder (including cap_strike) in one call instead of relying on
+  the flat /markets response -- feeds the strike_type entry above
+  directly. settlement_sources feeds the same entry's provenance-
+  cross-check idea.
+
+Why not now:
+  New finding; not worth its own pass separate from the strike_type entry
+  above, which is where the payoff actually is.
+
+When to revisit:
+  Alongside the strike_type/rules_primary entry above -- same session,
+  same underlying "read Kalshi's structured fields instead of
+  reconstructing them" theme.
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding F11)] settlement_monitor.py's AUTOMATED EARLY-CLOSE PATH HAS NO SCHEDULED INPUT -- NOTHING RUNS THE MONITOR THAT WRITES settlement_signals.json
+Priority: Medium -- a built, tested automated-exit feature is currently
+  producing nothing at all.
+
+Problem:
+  run_settlement_monitor() is reachable from exactly one place: the CLI
+  (main.py:8930-8931 -> main.py:847-859). Nothing schedules it --
+  cmd_schedule() (main.py:8217) registers KalshiWeatherScan/
+  KalshiWeatherEmail/KalshiWeatherSettle; cmd_schedule_cycles()
+  (main.py:8318) registers the four NWP-aligned cron tasks. Neither
+  includes it.
+  cron.py:1391-1441 READS data/settlement_signals.json and, on
+  confidence >= 0.80 matching an open trade, calls paper.
+  close_paper_early(id, 0.97 or 0.03) -- a real automated exit. But the
+  writer never runs on its own. Confirmed live 2026-08-09:
+  data/settlement_signals.json does not exist in the live data directory
+  at all.
+  Separately worth noting: settlement_monitor.py:93-94/328-329
+  (_MONITOR_START_HOUR=17, _MONITOR_END_HOUR=19, evaluated against
+  datetime.now(ZoneInfo(city_tz))) is the ONLY per-city-local-time
+  scheduling mechanism anywhere in the program -- cron.py, trade_cycle.py,
+  and watchdog.py contain zero timezone imports. This is exactly the
+  mechanism the CITY-LOCAL AFTERNOON SAME-DAY SWEEP entry above (L9897)
+  wants elsewhere, sitting unscheduled in a different module.
+
+What the fix would look like:
+  One schtasks entry in cmd_schedule_cycles(), or a background thread in
+  the future always-on watcher (L7584/L12710 territory) -- the monitor
+  itself, its lock logic, and the cron-side consumer are all already
+  built and (per the sibling L4 entry at the top of this file) already
+  under active correctness review.
+
+Why not now:
+  New finding; the L4 entry at the top of this file is fixing a
+  correctness bug in this exact module's between-bucket lock logic --
+  wiring up scheduling for a module mid-bugfix would be premature; let
+  that land first.
+
+When to revisit:
+  Immediately after the L4 correctness fix lands -- there's no reason to
+  ship a scheduled trigger for a code path currently under active repair,
+  but no reason to wait long after either.
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding F13)] IEM'S OWN DOCUMENTED MOS MODEL ALLOWLIST HAS 3 MODELS THE BOT NEVER REQUESTS -- ONE (LAV) IS A NATURAL FIT FOR THE HOURLY MARKETS' KNOWN consensus=False GAP
+Priority: Medium -- directly relevant to why the hourly-directional market
+  family is stuck shadow-only.
+
+Problem:
+  mos.py:378-381 documents, from a live test, IEM's server-side model
+  restriction: ^(AVN|GFS|ETA|NAM|NBS|NBE|ECM|LAV|MEX)$. The bot requests
+  exactly three: GFS and NAM (mos.py:152/:216/:221) and NBS (mos.py:273).
+  Never requested anywhere (grep: 0 hits): LAV (LAMP -- Localized
+  Aviation MOS Program, hourly-updating short-range statistical
+  guidance), MEX (extended-range GFS MOS, ~8 days), ECM (ECMWF MOS), NBE
+  (NBM extended).
+  Two specific fits:
+  - LAV -> the hourly markets. _analyze_hourly_trade() hardcodes
+    consensus = False because "no genuinely independent second source
+    exists for hourly yet" (weather_markets.py:9843-9854), and the hourly
+    path deliberately skips METAR lock-in, the NBM/ECMWF blend,
+    get_historical_sigma(), and the model-consensus check
+    (weather_markets.py:9767-9779). LAMP is hourly station guidance from
+    the SAME host, SAME JSON API, SAME fetch_mos() code path already used
+    for GFS/NAM -- an actual independent second source is one parameter
+    value away.
+  - MEX -> the far end of the horizon. nws_prob() falls back to a flat
+    sigma=4.0 at long lead times (nws.py:343); MEX covers exactly that
+    range.
+  Also worth noting while here: MOS GFS/NAM is wired for only 6 of 20
+  cities (_MOS_CITIES, mos.py:33), and per-row dpt (dew point) and every
+  non-tmp MOS column are dropped at parse (mos.py:174).
+
+What the fix would look like:
+  fetch_mos()/fetch_mos_best() already take a model parameter -- LAV/MEX
+  need their own MOS_SIGMA row (mos.py's existing per-model sigma table)
+  and, for LAV specifically, an hour-indexed accessor (the existing NBS/
+  NBP hourly-extremes code is the direct precedent for this shape).
+
+Why not now:
+  New finding; the hourly market family's shadow-gate is already tracked
+  (HOURLY-DIRECTIONAL TEMPERATURE MARKETS entry, resolved through Step 2)
+  -- this is a new input to that model, not a new market family, and
+  should be evaluated for real accuracy improvement before being wired
+  into consensus=True, same shadow-then-graduate discipline as every
+  other signal here.
+
+When to revisit:
+  Whenever the hourly market family's model is next revisited -- LAV is
+  the more urgent of the two (directly closes a documented gap in an
+  existing shadow model); MEX is lower urgency since long-lead-time
+  temperature markets are a smaller slice of volume.
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding F14)] ACIS IS NEVER ASKED FOR TEMPERATURE (maxt/mint) -- ONLY PRECIP/SNOW -- EVEN AT THE EXACT STATION KALSHI SETTLES ON
+Priority: Medium -- every climatological prior and climatology-derived
+  sigma is computed on a reanalysis grid cell rather than the thermometer
+  the contract actually settles against.
+
+Problem:
+  acis_precip.py and acis_snow.py both POST to http://data.rcc-acis.org/
+  StnData with `elems` set to exactly one element: pcpn
+  (acis_precip.py:135/:223) or snow (acis_snow.py:140/:236). ACIS's
+  maxt/mint daily elements are never requested (grep "maxt": 0 outside
+  these files' own comments), nor are MultiStnData/GridData/StnMeta.
+  The station ID is derived from metar.MARKET_STATION_MAP
+  (acis_precip.py:72-86) -- i.e. the ASOS station Kalshi's own
+  rules_primary text names as the settlement site (see the strike_type
+  entry above). Meanwhile the bot's 30-year temperature climatology comes
+  from Open-Meteo GRIDDED REANALYSIS at a lat/lon
+  (climatology.py:100-108), and get_historical_sigma() derives sigma from
+  that grid's variance (climatology.py:272/:379) -- a different cell than
+  the actual settlement thermometer.
+  So: a free, unauthenticated, already-wired NOAA endpoint can return 30
+  years of daily max/min AT THE SETTLEMENT STATION, and the bot asks it
+  only for rain.
+
+What the fix would look like:
+  The fetcher, circuit breaker, 30-day disk cache, and {year: {MMDD:
+  value}} shape are all already in acis_precip.py and substance-agnostic
+  -- acis_snow.py already reuses them wholesale by just swapping the
+  `elems` name and URL param. A temperature variant is the same reuse
+  pattern a third time.
+
+Why not now:
+  New finding; needs a decision on whether station-based climatology
+  should REPLACE or supplement the existing grid-based sigma (the two
+  will disagree in general -- a station is a point, the grid cell is an
+  area average), which is a real design question, not a mechanical
+  extension.
+
+When to revisit:
+  Whenever get_historical_sigma()/climatology.py's sigma derivation is
+  next revisited -- pairs naturally with the settled_temp_f entry above,
+  since both are about trusting station-level ground truth over a
+  reanalysis proxy for the same underlying question.
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding F15b)] audit_log AND near_settlement_log ARE ENTIRELY WRITE-ONLY TABLES
+Priority: Low-Medium -- data is already there; this is pure read-side
+  work, not a new capture.
+
+Problem:
+  audit_log (tracker.py:480-489, 8 columns incl. free-text `thesis`) is
+  written by log_audit() (tracker.py:717-750) from main.py on every
+  manual user action. There is no SELECT ... FROM audit_log anywhere in
+  the repository, including tests. The index idx_audit_ticker (:490)
+  serves no query. A complete manual-trade audit trail is accumulating
+  unread.
+  near_settlement_log (tracker.py:534-545, 8 columns) is written by
+  cron.py:483-524. Production SELECTs: none (only two test files touch
+  it). Worse, the column that makes the table's stated purpose possible
+  -- model prob vs MARKET price in the 0-2h window before close
+  (tracker.py:123-124) -- is hardcoded None:
+    cron.py:515:   None,  # market_yes_price: Phase 2 -- requires live market fetch
+
+What it would look like:
+  audit_log: a simple cmd_audit_log CLI report (thesis-searchable manual
+  trade history) would make the free-text field actually useful.
+  near_settlement_log: needs the market_yes_price gap closed first (a
+  live get_market() call at write time, same pattern already used
+  elsewhere in cron.py's pre-scan bookkeeping section) before the table's
+  own stated purpose is even answerable.
+
+Why not now:
+  Low-value on its own; audit_log's fix is a nice-to-have display feature
+  with no trading impact, and near_settlement_log's Phase-2 gap has been
+  a known, explicitly-labeled placeholder rather than an oversight.
+
+When to revisit:
+  near_settlement_log: whenever "Phase 2" work on that table is picked
+  up -- the placeholder comment already names the exact next step.
+  audit_log: opportunistically, low priority.
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding E1) -- EXTERNAL/unverified, see status below] forecast_percentile_history ENDPOINT -- COULD BE A LIVE MARKET-IMPLIED DISTRIBUTION TIME SERIES, BUT RETURNS AN OPAQUE 400 ON EVERY PARAMETER SHAPE TRIED
+Priority: Low until verified -- do the verification before any design
+  work, per this entry's own status.
+
+Problem (EXTERNAL, docs-sourced -- NOT grounded in this codebase):
+  docs.kalshi.com/api-reference/events/get-event-forecast-percentile-
+  history.md documents GET /series/{series_ticker}/events/{ticker}/
+  forecast_percentile_history, params percentiles (up to 10, 0-9999),
+  start_ts, end_ts, period_interval (0/1/60/1440), returning
+  percentile_points[] with raw_numerical_forecast/numerical_forecast/
+  formatted_forecast per percentile per period. The docs describe it as
+  "the historical raw and formatted forecast numbers for an event at
+  specific percentiles." If this applies to weather events, it is the
+  market-implied temperature distribution over time, published BY THE
+  EXCHANGE, historical, at up to 5-second resolution -- the same object
+  weather_markets.fit_market_implied_distribution() (weather_markets.py:
+  6008-6162) currently reconstructs log-only from the ladder.
+
+STATUS -- unverified, repeated live probes all failed:
+  Tried against real KXHIGHNY events (both a currently-open event and a
+  recently-closed one), varying: repeated-param vs comma-separated
+  percentiles (comma form correctly rejected with a strconv.ParseInt
+  error, confirming repeated-param is the right shape per the docs);
+  period_interval 0/1/60/1440; single vs 3-percentile requests; with and
+  without start_ts=0. Every syntactically well-formed combination
+  (valid int percentiles, valid start_ts/end_ts, valid period_interval
+  enum value) returned a bare {"error":{"code":"bad_request","message":
+  "bad request"}} with no further detail -- no field-level error the way
+  malformed requests got elsewhere in this same probing session. Missing-
+  param requests correctly named the missing param, so the endpoint IS
+  reachable and IS validating structurally; something else about a fully
+  valid request is being rejected. Did not attempt with authentication
+  (out of scope for an unauthenticated discovery probe).
+
+What must be verified before any design work:
+  Does this endpoint return non-empty data for ANY KXHIGH*/KXLOW* event,
+  authenticated or not? Three live hypotheses, untested: (1) requires
+  authentication despite most other GET endpoints not needing it: (2)
+  only applies to scalar/numeric-forecast event types that aren't
+  weather brackets (economic indices, election vote-share, etc.) -- "a
+  real numerical forecast" language in the docs is at least consistent
+  with this; (3) the specific series/event combination tried has no
+  forecast data attached even though the endpoint would work for a
+  different one. This is a single successful authenticated GET away from
+  confirming or killing the whole idea.
+
+Why not now:
+  Explicitly NOT actionable until the verification above happens -- filing
+  this so the next session doesn't have to re-derive that a probe was
+  already tried and how it failed.
+
+When to revisit:
+  Whenever an authenticated test call is convenient (this bot already has
+  real API credentials for its own trading -- a signed GET against this
+  endpoint from within the real client would resolve hypothesis (1)
+  immediately).
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md finding E2) -- EXTERNAL, partially grounded in this codebase's own documented approximation] FEE MODEL IS A FLAT-FRACTION APPROXIMATION OF KALSHI'S REAL QUADRATIC FEE FORMULA -- NEVER CHECKED AGAINST AN OBSERVED FEE
+Priority: Low-Medium -- EV and Kelly are computed against a fee model
+  that has never been compared to a real invoice.
+
+Problem:
+  The code is already candid about this (utils.py:79-82): "7% is the
+  coefficient in that formula, not a flat 7% of winnings -- KALSHI_FEE_RATE
+  is used here as a flat-fraction-of-winnings approximation." Kalshi's
+  real formula: fee = round_up(0.07 * C * P * (1-P)) per contract.
+  Live-verified (EXTERNAL confirmation of an internal claim): ALL 291
+  Climate-and-Weather series carry fee_type="quadratic" and
+  fee_multiplier=1 -- so the quadratic form applies uniformly across
+  every series this bot trades, and the multiplier is not a per-series
+  complication here. Neither field is read anywhere (grep fee_type/
+  fee_multiplier: 0 hits).
+  The approximation p_win * payout * fee_rate equals the true fee exactly
+  when p_win == price, and diverges by the ratio p_win/price otherwise --
+  i.e. precisely when there is edge, the only time an order is placed. It
+  OVER-states the fee when p_win > price (conservative, not a safety
+  issue), and OMITS the per-fill round-up-to-the-cent entirely (which
+  under-states fees on small orders -- the bot's quantity floor is 1
+  contract, paper.py:842).
+  Deeper point: average_fee_paid / taker_fill_cost_dollars /
+  maker_fill_cost_dollars are documented in the client's own docstrings
+  (kalshi_client.py:674, order_executor.py:3175-3186) and never read --
+  so no observed fee has EVER been compared against the model, on either
+  formula.
+
+What must be verified before acting:
+  Magnitude. Recomputing realized P&L over settled trades both ways (flat
+  approximation vs. the real quadratic formula with round-up) is a few
+  lines against the existing tracker DB and would say whether this is
+  worth a code change at all before writing one.
+
+Why not now:
+  The magnitude check above hasn't been run; this could easily turn out
+  to be immaterial at the bot's current position sizes.
+
+When to revisit:
+  Run the magnitude check first, opportunistically -- if it shows a real
+  divergence, implement the exact formula (kelly_fraction() and every
+  net_ev/net_edge call site already centralize fee_rate as a parameter,
+  so this is a formula swap, not a structural change).
+
+[OPEN 2026-08-09 -- new, filed by the whole-program feature-discovery scan (docs/feature-scan-2026-08-09.md findings E3+E5) -- EXTERNAL, watch items only, nothing actionable today] MULTIVARIATE EVENT COLLECTIONS AND ORDER-QUEUE-POSITION -- REAL KALSHI CAPABILITIES, NO CURRENT TARGET FOR EITHER
+Priority: Low -- filed for visibility only; live-probing found nothing to
+  build against today for either.
+
+Problem (EXTERNAL, both docs-sourced, one live-probed):
+  Multivariate event collections (combo markets): POST
+  /multivariate_event_collections/{ticker} creates/resolves a combo
+  market from selected legs; markets carry mve_collection_ticker/
+  mve_selected_legs, and GET /markets accepts mve_filter=only|exclude.
+  Zero repo references to any of this. Live-probed GET
+  /multivariate_event_collections?limit=200 (2026-08-09, unauthenticated,
+  multiple pages sampled): every collection found was an NFL game/spread/
+  total parlay -- NO weather collections exist today. One concrete,
+  actionable consequence right now regardless: since the bot never sends
+  mve_filter, if a weather-adjacent collection ever DOES appear under a
+  tracked series, it would enter the scan silently and be priced by a
+  model that assumes a single-city marginal, not a joint outcome.
+  Order queue position: GET /portfolio/orders/{id}/queue_position and the
+  batch get-queue-positions-for-orders variant are documented, zero repo
+  references. The bot's own amend_order() docstring already notes a
+  price-only amend forfeits queue position (kalshi_client.py:666-669),
+  and the reprice decision (order_executor.py:882-1032) is made without
+  knowing what's being given up. Requires auth, not probed this session.
+  Only relevant on the live path (watch --auto --live), which never runs
+  headlessly today.
+
+What it would look like:
+  Multivariate: nothing to build until a weather collection exists --
+  the actionable piece today is just adding mve_filter=exclude (or
+  equivalent) as a defensive default if/when the bot's scan is ever
+  broadened beyond the explicit KNOWN_WEATHER_SERIES allowlist it already
+  uses (which already implicitly excludes combo tickers, so this may
+  already be moot -- worth a quick confirm, not a build).
+  Queue position: a new client method plus wiring into the reprice
+  decision at order_executor.py:882-1032, to weigh queue position lost
+  against expected price improvement before repricing.
+
+Why not now:
+  Multivariate: genuinely nothing exists to act on. Queue position: only
+  matters once live maker trading runs continuously, which per L4409
+  above has never happened even once (DEMO_BASE smoke test still open).
+
+When to revisit:
+  Multivariate: periodically re-probe the collections endpoint, or drop
+  this entirely once confirmed the existing series allowlist already
+  excludes combo tickers structurally. Queue position: alongside or after
+  L4409 (the live order-execution smoke test) actually happens.
 
