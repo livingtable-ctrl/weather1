@@ -154,6 +154,15 @@ _RAW_OUTCOMES_ALLOWLIST: dict[tuple[str, str], str] = {
         "is never joined into any Brier/calibration query, so there's no "
         "scoring-pollution risk the disputed-row guard exists to prevent."
     ),
+    ("tracker.py", "backfill_daily_temp_settlement"): (
+        "Data-repair utility that corrects settled_temp_f from Kalshi's own "
+        "expiration_value -- like backfill_emos_data, correcting a column's "
+        "source data doesn't decide whether the row is later used for "
+        "calibration/training; that decision belongs to the consumer (e.g. "
+        "get_emos_training_data, which does join outcomes_valid). A "
+        "disputed row's settled_temp_f is just as wrong-from-a-proxy as a "
+        "non-disputed one's and deserves the same correction."
+    ),
 }
 
 

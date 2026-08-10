@@ -10308,23 +10308,27 @@ def _var_from_ticker_prefix(ticker_upper: str) -> str | None:
     the backlog entry named: 4 (backtest.py, this module's own
     _metar_lock_in, paper.py, order_executor.py) turned out to be
     functionally identical to the old `"min" if "LOW" in series else "max"`
-    one-liner and now call this directly; 2 more (tracker.py's
-    audit_settlement() and backfill_emos_data()) have real, non-identical
-    fallback logic for the neither-HIGH-nor-LOW case that would have
-    silently changed behavior if forced into a single shared function --
-    those call this helper for just the substring check, keeping their own
-    fallback. (Opus-review-corrected, 2026-08-02: the neither-match case
-    for tracker.py's two sites is NOT reachable via hourly KXTEMPxxxH or
-    monthly rain/snow tickers as an earlier version of this docstring
-    claimed -- both are handled by earlier returns in each of those two
-    functions before this check is ever reached; that reachability claim
-    actually describes paper.py's own site, which IS one of the 4 direct
-    callers, not a tracker.py fallback site. audit_settlement()'s
-    `return False` arm is reachable for a non-monthly precip ticker or any
-    ticker whose condition type resolves to neither "above" nor "below"
-    -- e.g. "between" -- while also containing neither "HIGH" nor "LOW"
-    in its own ticker text.) The remaining 2 (consistency.py, main.py)
-    were re-verified to NOT actually be this convention at all -- they
+    one-liner and now call this directly; 1 more (tracker.py's
+    backfill_emos_data(), for its ens_mean Part 2) has a different CALLING
+    pattern, not different fallback logic -- it checks the ticker's own
+    stored predictions.var column first and only reaches this helper (as
+    `_var_from_ticker_prefix(ticker_upper) or "max"`, opus-review-corrected
+    2026-08-10: identical in shape to the 4 direct callers' own fallback,
+    not something distinct) when that stored value is None.
+    (Opus-review-corrected, 2026-08-02: the neither-match case for
+    tracker.py's sites is NOT reachable via hourly KXTEMPxxxH or monthly
+    rain/snow tickers as an earlier version of this docstring claimed --
+    handled by earlier returns before this check is ever reached; that
+    reachability claim actually describes paper.py's own site, which IS one
+    of the 4 direct callers, not a tracker.py fallback site. UPDATE
+    2026-08-10: tracker.py's audit_settlement() -- the other former site --
+    no longer calls this helper at all; its daily HIGH/LOW branch now reads
+    Kalshi's own settled expiration_value directly instead of deriving one
+    from an ASOS-fetched max/min temperature, so no HIGH/LOW discrimination
+    is needed there any more (backlog.txt "DATA-DRIVEN SIGMA FROM SETTLED
+    HISTORY + CLI-REPORT SETTLEMENT FETCH", finding F1).) The remaining 2
+    (consistency.py, main.py) were re-verified to NOT actually be this
+    convention at all -- they
     check the same "HIGH"/"LOW" substrings but to classify a market's
     condition direction or a display/grouping ticker-type, not which
     daily temperature variable to fetch; the backlog entry's framing

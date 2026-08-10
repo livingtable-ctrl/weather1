@@ -6278,6 +6278,46 @@ def cmd_backfill_price_history(client: KalshiClient) -> None:
         raise
 
 
+def cmd_backfill_daily_temp_settlement() -> None:
+    """One-off recovery for outcomes.settled_temp_f rows written before
+    audit_settlement()'s daily HIGH/LOW branch switched from an IEM ASOS
+    raw-METAR proxy to Kalshi's own settled expiration_value (backlog.txt
+    "DATA-DRIVEN SIGMA FROM SETTLED HISTORY + CLI-REPORT SETTLEMENT FETCH").
+    Re-runs audit_settlement() for every already-populated daily-temp row so
+    it's corrected against Kalshi's real settlement. Safe to re-run —
+    already-correct rows are simply re-confirmed.
+
+    Reports the disputed-row count before and after (opus-review-caught,
+    2026-08-10): every disputed row in production was flagged by the OLD
+    ASOS-proxy comparison this pass replaces, and audit_settlement() now
+    clears disputed=1 on a ticker that re-checks clean against Kalshi's own
+    settled figure -- surfacing the delta here makes that irreversible
+    write visible before/after a live run rather than silent."""
+    from tracker import backfill_daily_temp_settlement, get_disputed_count
+
+    disputed_before = get_disputed_count()
+    print(
+        "Backfilling outcomes.settled_temp_f from Kalshi's own settlement "
+        "(expiration_value) for daily HIGH/LOW markets…"
+    )
+    print(f"  Disputed rows before: {disputed_before}")
+    try:
+        corrected, failed = backfill_daily_temp_settlement()
+        disputed_after = get_disputed_count()
+        print(f"\nDone — settled_temp_f corrected for {corrected} ticker(s).")
+        print(f"  Disputed rows after: {disputed_after}")
+        if failed:
+            print(
+                yellow(
+                    f"  {failed} ticker(s) failed (see log) — left with their "
+                    "prior value, will be retried on the next run."
+                )
+            )
+    except Exception as exc:
+        print(red(f"Backfill failed: {exc}"))
+        raise
+
+
 # ── Interactive menu ──────────────────────────────────────────────────────────
 
 
@@ -8942,6 +8982,11 @@ def main():
         cmd_backfill_emos(force="--force" in args)
     elif cmd in ("backfill-price-history", "backfill_price_history"):
         cmd_backfill_price_history(client)
+    elif cmd in (
+        "backfill-daily-temp-settlement",
+        "backfill_daily_temp_settlement",
+    ):
+        cmd_backfill_daily_temp_settlement()
     elif cmd in ("settings", "config-settings"):
         cmd_settings(client)
     elif cmd == "onboard":

@@ -9546,6 +9546,40 @@ When to revisit:
     clear a reasonable floor (~30+ per season) — as of 2026-07-20, still not
     crossed (21 max).
 
+UPDATE 2026-08-10 (CLI-report settlement fetch shipped, a cheaper angle than
+  this entry's original "What the fix looks like" envisioned; the sample
+  floor is NOT yet cleared and the sigma computation itself is STILL NOT
+  BUILT, entry remains open -- CORRECTED same day, see note below, after an
+  opus review caught the first version of this update overclaiming): per
+  docs/feature-scan-2026-08-09.md finding F1, audit_settlement()'s daily
+  HIGH/LOW branch (tracker.py) now reads Kalshi's own settled
+  expiration_value directly instead of deriving settled_temp_f from the IEM
+  ASOS raw-METAR proxy — no city->WFO/pil table needed at all, since Kalshi
+  already returns the literal CLI-report figure on every settled market.
+  This removes the "CLI fetch carries the known per-city hardcoded-table
+  risk" blocker named above outright.
+  What this does NOT do: settled_temp_f has exactly one production writer
+  (this same daily branch), so the new one-off backfill
+  (tracker.backfill_daily_temp_settlement(), `py main.py
+  backfill-daily-temp-settlement`) can only CORRECT existing rows' values
+  against Kalshi's real settlement -- it cannot create new ones. Read-only
+  production probe 2026-08-10 (opus review): 279 rows currently have
+  settled_temp_f (all KXHIGH*/KXLOW*, 259 distinct city/date pairs, max 16
+  for one city) -- essentially the 234-row 2026-07-20 count plus 6 weeks of
+  organic accumulation, not a step change. The ~30/season floor this entry
+  is gated on is NOT cleared by shipping the fetch or running the backfill
+  alone. Clearing it for real needs a separate bulk-harvest pass (fetch
+  every finalized market per tracked series via
+  client.get_markets(series_ticker=..., status="settled") -- the pattern
+  already used at weather_markets.py:9022-9024 -- and log_prediction/
+  log_outcome rows for ones this bot never itself predicted), which is NOT
+  built by this change and is real, separately-scoped follow-up work.
+  Whoever picks this up next should re-run the 2026-07-20 per-city/per-
+  season count query against settled_temp_f first (not assume it's cleared)
+  before deciding whether the sigma computation itself -- unchanged,
+  unstarted -- is ready to start, or whether the bulk-harvest pass above
+  needs to happen first.
+
 [RESOLVED 2026-07-20, smallest useful version] JOINT FULL-LADDER BRACKET SELECTION
 Priority: was Medium-Low (real EV improvement, real design work)
 

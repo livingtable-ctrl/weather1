@@ -3608,42 +3608,51 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
         self.assertEqual(tracker.get_disputed_count(), 2)
 
     def test_audit_settlement_marks_disputed_on_mismatch(self):
+        """backlog.txt "DATA-DRIVEN SIGMA FROM SETTLED HISTORY + CLI-REPORT
+        SETTLEMENT FETCH" finding F1: the daily branch now reads Kalshi's
+        own expiration_value. A mismatch here means our own condition/
+        threshold parsing disagrees with Kalshi's real settlement."""
         from unittest.mock import patch
-
-        import weather_markets
 
         ticker = "KXHIGHNY-26APR09-T70"
         self._log_settled(ticker, 0.70, False, date(2026, 4, 9))
 
-        with (
-            patch.object(weather_markets, "_metar_station_for_city", return_value=None),
-            patch.object(tracker, "_fetch_actual_daily_temp", return_value=75.0),
+        class _FakeClient:
+            def get_market(self, ticker):
+                return {"status": "finalized", "expiration_value": "75.0"}
+
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
         ):
-            # threshold=70, archive says 75°F (>70 => archive_yes=True), but
-            # Kalshi's real settlement was NO — a genuine mismatch.
+            # threshold=70, Kalshi's own settled figure is 75°F (>70 =>
+            # archive_yes=True), but Kalshi's real YES/NO result was NO --
+            # a genuine mismatch (our own parsing, not proxy/CLI noise).
             result = tracker.audit_settlement(ticker, settled_yes=False)
 
         self.assertTrue(result)
         with sqlite3.connect(str(tracker.DB_PATH)) as con:
             row = con.execute(
-                "SELECT disputed FROM outcomes WHERE ticker=?", (ticker,)
+                "SELECT disputed, settled_temp_f FROM outcomes WHERE ticker=?",
+                (ticker,),
             ).fetchone()
         self.assertEqual(row[0], 1)
+        self.assertAlmostEqual(row[1], 75.0)
 
     def test_audit_settlement_does_not_mark_disputed_when_matched(self):
         from unittest.mock import patch
 
-        import weather_markets
-
         ticker = "KXHIGHNY-26APR09-T71"
         self._log_settled(ticker, 0.70, True, date(2026, 4, 9))
 
-        with (
-            patch.object(weather_markets, "_metar_station_for_city", return_value=None),
-            patch.object(tracker, "_fetch_actual_daily_temp", return_value=75.0),
+        class _FakeClient:
+            def get_market(self, ticker):
+                return {"status": "finalized", "expiration_value": "75.0"}
+
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
         ):
-            # threshold=70, archive says 75°F (>70 => archive_yes=True), Kalshi
-            # also settled YES — no mismatch.
+            # threshold=70, Kalshi's settled figure is 75°F (>70 =>
+            # archive_yes=True), Kalshi's real result also YES -- no mismatch.
             result = tracker.audit_settlement(ticker, settled_yes=True)
 
         self.assertTrue(result)
@@ -3653,229 +3662,174 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
             ).fetchone()
         self.assertEqual(row[0], 0)
 
-    def test_audit_settlement_prefers_stored_var_over_substring_fallback(self):
-        """backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff
-        item 2 (var-derivation root-cause fix): the stored predictions.var
-        must win even when it *disagrees* with what the ticker-substring
-        fallback would derive -- proves real precedence, not just "happens
-        to agree." Ticker text says HIGH (-> fallback would say "max"); the
-        stored var says "min"; the fetch must use "min"."""
+    def test_audit_settlement_clears_stale_dispute_on_clean_recheck(self):
+        """opus-review-caught (2026-08-10): every disputed row in production
+        was flagged by the OLD ASOS-proxy comparison this branch replaces.
+        A ticker previously marked disputed that now checks clean against
+        Kalshi's own settled figure must have disputed cleared, not stay
+        permanently excluded from outcomes_valid for a reason since proven
+        unreliable."""
         from unittest.mock import patch
 
-        import weather_markets
-
-        ticker = "KXHIGHNY-26APR09-T60"
-        analysis = {
-            "condition": {"type": "above", "threshold": 60.0, "var": "min"},
-            "forecast_prob": 0.5,
-            "market_prob": 0.5,
-            "edge": 0.1,
-            "method": "ensemble",
-        }
-        tracker.log_prediction(ticker, "NYC", date(2026, 4, 9), analysis)
-        tracker.log_outcome(ticker, True)
-
-        captured_var = {}
-
-        def _fake_fetch(station, target_date, var, city_tz):
-            captured_var["var"] = var
-            return 65.0
-
-        with (
-            patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KNYC"
-            ),
-            patch.object(tracker, "_fetch_asos_daily_temp", side_effect=_fake_fetch),
-        ):
-            tracker.audit_settlement(ticker, settled_yes=True)
-
-        self.assertEqual(
-            captured_var.get("var"),
-            "min",
-            "must use the stored predictions.var ('min'), not derive 'max' from "
-            "cond_type=='above' via the substring-fallback path",
-        )
-
-    def test_audit_settlement_falls_back_when_no_stored_var(self):
-        """A ticker with no predictions row at all (var can't be looked up)
-        must still fall back to the old ticker-substring/cond_type
-        derivation, not silently skip settlement."""
-        from unittest.mock import patch
-
-        import weather_markets
-
-        ticker = "KXHIGHNY-26APR09-T70"
+        ticker = "KXHIGHNY-26APR09-T71B"
         self._log_settled(ticker, 0.70, True, date(2026, 4, 9))
-        # Blank out the stored var to simulate a pre-migration row.
+        tracker.mark_outcome_disputed(ticker)
         with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            con.execute("UPDATE predictions SET var = NULL WHERE ticker = ?", (ticker,))
-            con.commit()
+            pre = con.execute(
+                "SELECT disputed FROM outcomes WHERE ticker=?", (ticker,)
+            ).fetchone()
+        self.assertEqual(pre[0], 1, "test setup must actually start disputed")
 
-        captured_var = {}
+        class _FakeClient:
+            def get_market(self, ticker):
+                return {"status": "finalized", "expiration_value": "75.0"}
 
-        def _fake_fetch(station, target_date, var, city_tz):
-            captured_var["var"] = var
-            return 75.0
-
-        with (
-            patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KNYC"
-            ),
-            patch.object(tracker, "_fetch_asos_daily_temp", side_effect=_fake_fetch),
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
         ):
             result = tracker.audit_settlement(ticker, settled_yes=True)
 
         self.assertTrue(result)
-        self.assertEqual(
-            captured_var.get("var"),
-            "max",
-            "must fall back to ticker-substring derivation ('max' for KXHIGH) "
-            "when no stored var exists",
-        )
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT disputed FROM outcomes WHERE ticker=?", (ticker,)
+            ).fetchone()
+        self.assertEqual(row[0], 0)
 
-    def test_audit_settlement_falls_back_to_cond_type_when_ticker_has_neither(self):
-        """2026-08-02 var-consolidation regression test: a ticker containing
-        NEITHER "HIGH" nor "LOW" (real for e.g. a malformed/unusual ticker)
-        must fall back to cond_type ("above" -> max), not silently derive
-        the wrong var -- this is the one behavior _var_from_ticker_prefix()
-        deliberately does NOT own, since it returns None rather than
-        guessing for this exact case."""
+    def test_audit_settlement_daily_skips_unresolvable_cond_type(self):
+        """opus-review-caught (2026-08-10): the deleted var-derivation
+        block's `else: return False` for a cond_type outside above/below/
+        between wasn't just about deriving a var -- it was the only guard
+        stopping a non-single-temperature-value market from writing a
+        Fahrenheit figure into settled_temp_f. Concretely reachable: a
+        daily-rain ticker (currently untracked -- KNOWN_UNTRACKED_RAIN_SERIES,
+        0 open markets -- but not gated on that fact anywhere in this code
+        path) resolves city="NYC" via the bare "NY" in ticker_up substring
+        check (weather_markets.py's _parse_city_from_ticker), isn't a
+        monthly/hourly ticker, and parses to cond_type="precip_above" even
+        with the empty title audit_settlement passes -- without this guard
+        it would reach the Kalshi fetch and, if finalized with a numeric
+        expiration_value, write inches of rain into a degrees-Fahrenheit
+        column. No predictions/outcomes rows are needed for this test --
+        the guard must fire before either is ever read or written."""
+        ticker = "KXRAINDNYC-26APR10-P0.25"
+
         from unittest.mock import patch
 
-        import weather_markets
-
-        ticker = "KXWEATHERNYC-26APR09-T70"
-        self._log_settled(ticker, 0.70, True, date(2026, 4, 9), condition_type="above")
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            con.execute("UPDATE predictions SET var = NULL WHERE ticker = ?", (ticker,))
-            con.commit()
-
-        captured_var = {}
-
-        def _fake_fetch(station, target_date, var, city_tz):
-            captured_var["var"] = var
-            return 75.0
-
-        with (
-            patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KNYC"
-            ),
-            patch.object(tracker, "_fetch_asos_daily_temp", side_effect=_fake_fetch),
-        ):
+        with patch.object(tracker, "_get_settlement_kalshi_client") as _get_client:
             result = tracker.audit_settlement(ticker, settled_yes=True)
 
-        self.assertTrue(result)
-        self.assertEqual(
-            captured_var.get("var"),
-            "max",
-            "cond_type='above' must derive var='max' when the ticker itself "
-            "gives no HIGH/LOW signal",
-        )
+        self.assertFalse(result)
+        _get_client.assert_not_called()
 
-    def test_audit_settlement_skips_when_ticker_and_cond_type_both_unresolved(self):
-        """2026-08-02 var-consolidation regression test: a ticker with
-        neither HIGH nor LOW, and a cond_type that's neither above nor
-        below (e.g. "between"), must skip settlement (return False) rather
-        than guess a var -- the one case _var_from_ticker_prefix()'s None
-        return value is specifically designed to let callers detect and
-        handle their own way."""
-        ticker = "KXWEATHERNYC-26APR09-B65.5"
-        self._log_settled(
-            ticker, 0.70, True, date(2026, 4, 9), condition_type="between"
-        )
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            con.execute("UPDATE predictions SET var = NULL WHERE ticker = ?", (ticker,))
-            con.commit()
-
-        result = tracker.audit_settlement(ticker, settled_yes=True)
-
-        self.assertFalse(
-            result,
-            "must skip (return False) rather than guess a var for a ticker "
-            "with no HIGH/LOW signal and a non-above/below cond_type",
-        )
-
-    def test_audit_settlement_falls_back_to_cond_type_below(self):
-        """2026-08-02 var-consolidation regression test (opus-review-caught
-        gap: the mirror of test_..._falls_back_to_cond_type_when_ticker_has
-        _neither's "above" case survived every mutation tried against the
-        "below" arm specifically). A ticker with neither HIGH nor LOW and
-        cond_type="below" must derive var="min", not "max"."""
+    def test_audit_settlement_daily_reads_expiration_value_regardless_of_var(self):
+        """expiration_value is populated identically across every strike in
+        a daily HIGH/LOW event (live-verified 2026-08-09/2026-08-10) -- a
+        LOW-series ticker must read the same field the same way a HIGH-
+        series ticker does, with no HIGH/LOW derivation involved at all."""
         from unittest.mock import patch
-
-        import weather_markets
-
-        ticker = "KXWEATHERNYC-26APR09-T70"
-        self._log_settled(ticker, 0.30, False, date(2026, 4, 9), condition_type="below")
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            con.execute("UPDATE predictions SET var = NULL WHERE ticker = ?", (ticker,))
-            con.commit()
-
-        captured_var = {}
-
-        def _fake_fetch(station, target_date, var, city_tz):
-            captured_var["var"] = var
-            return 60.0
-
-        with (
-            patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KNYC"
-            ),
-            patch.object(tracker, "_fetch_asos_daily_temp", side_effect=_fake_fetch),
-        ):
-            result = tracker.audit_settlement(ticker, settled_yes=False)
-
-        self.assertTrue(result)
-        self.assertEqual(
-            captured_var.get("var"),
-            "min",
-            "cond_type='below' must derive var='min' when the ticker itself "
-            "gives no HIGH/LOW signal",
-        )
-
-    def test_audit_settlement_ticker_prefix_wins_over_cond_type(self):
-        """2026-08-02 var-consolidation regression test (opus-review-caught
-        gap: replacing _var_from_ticker_prefix(ticker_upper) with None --
-        letting cond_type decide unconditionally -- survived every existing
-        mutation). A KXLOW* ticker on a "above" condition (a real market
-        shape: the bet direction and the market's min/max type are
-        independent, e.g. betting the daily LOW will be above some
-        threshold) must still derive var="min" from the ticker itself,
-        matching tracker.py's own in-code invariant: "Condition type only
-        says which side of the threshold the bet is on — it must not
-        override this.\" """
-        from unittest.mock import patch
-
-        import weather_markets
 
         ticker = "KXLOWTNYC-26APR09-T40"
+        # threshold=70.0 (hardcoded by _log_settled's condition_type="above"
+        # shape) -- expiration_value=75.0 is >70, matching settled_yes=True,
+        # so this exercises the clean read-and-write path, not the mismatch/
+        # dispute path (opus-review-caught, 2026-08-10: an earlier version of
+        # this test used 45.0, which is <70 and so tripped MISMATCH/disputed
+        # despite the test's own docstring claiming a clean read).
         self._log_settled(ticker, 0.70, True, date(2026, 4, 9), condition_type="above")
-        with sqlite3.connect(str(tracker.DB_PATH)) as con:
-            con.execute("UPDATE predictions SET var = NULL WHERE ticker = ?", (ticker,))
-            con.commit()
 
-        captured_var = {}
+        class _FakeClient:
+            def get_market(self, ticker):
+                return {"status": "finalized", "expiration_value": "75.0"}
 
-        def _fake_fetch(station, target_date, var, city_tz):
-            captured_var["var"] = var
-            return 45.0
-
-        with (
-            patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KNYC"
-            ),
-            patch.object(tracker, "_fetch_asos_daily_temp", side_effect=_fake_fetch),
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
         ):
             result = tracker.audit_settlement(ticker, settled_yes=True)
 
         self.assertTrue(result)
-        self.assertEqual(
-            captured_var.get("var"),
-            "min",
-            "a KXLOWT* ticker must derive var='min' from its own prefix "
-            "even when cond_type='above' -- the ticker prefix must win, "
-            "not the condition direction",
-        )
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT settled_temp_f, disputed FROM outcomes WHERE ticker = ?",
+                (ticker,),
+            ).fetchone()
+        self.assertAlmostEqual(row[0], 75.0)
+        self.assertEqual(row[1], 0, "must not be disputed on a clean match")
+
+    def test_audit_settlement_daily_not_finalized_returns_false_no_write(self):
+        """Must refuse a non-finalized market even with a valid
+        expiration_value -- proves the finalized gate is real."""
+        from unittest.mock import patch
+
+        ticker = "KXHIGHNY-26APR09-T72"
+        self._log_settled(ticker, 0.70, True, date(2026, 4, 9))
+
+        class _FakeClient:
+            def get_market(self, ticker):
+                return {"status": "active", "expiration_value": "75.0"}
+
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertFalse(result)
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT settled_temp_f FROM outcomes WHERE ticker=?", (ticker,)
+            ).fetchone()
+        self.assertIsNone(row[0])
+
+    def test_audit_settlement_daily_missing_expiration_value_returns_false(self):
+        from unittest.mock import patch
+
+        ticker = "KXHIGHNY-26APR09-T73"
+        self._log_settled(ticker, 0.70, True, date(2026, 4, 9))
+
+        class _FakeClient:
+            def get_market(self, ticker):
+                return {"status": "finalized", "expiration_value": None}
+
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertFalse(result)
+
+    def test_audit_settlement_daily_non_numeric_expiration_value_returns_false(self):
+        from unittest.mock import patch
+
+        ticker = "KXHIGHNY-26APR09-T74"
+        self._log_settled(ticker, 0.70, True, date(2026, 4, 9))
+
+        class _FakeClient:
+            def get_market(self, ticker):
+                return {"status": "finalized", "expiration_value": "not-a-number"}
+
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertFalse(result)
+
+    def test_audit_settlement_daily_fetch_exception_returns_false_not_raise(self):
+        from unittest.mock import patch
+
+        ticker = "KXHIGHNY-26APR09-T75"
+        self._log_settled(ticker, 0.70, True, date(2026, 4, 9))
+
+        class _FakeClient:
+            def get_market(self, ticker):
+                raise RuntimeError("network down")
+
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertFalse(result)
 
     def test_audit_settlement_hourly_writes_settled_value_not_temp_f(self):
         """backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff
@@ -3918,7 +3872,8 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
 
     def test_audit_settlement_hourly_passes_correct_hour_and_uses_hour_fetch(self):
         """Must call the hour-specific fetch (_fetch_asos_hour_temp) with the
-        ticker's parsed hour, never the daily max/min fetch."""
+        ticker's parsed hour, and must never reach the daily branch's Kalshi
+        market fetch."""
         from unittest.mock import patch
 
         import weather_markets
@@ -3947,12 +3902,12 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
             patch.object(
                 tracker, "_fetch_asos_hour_temp", side_effect=_fake_hour_fetch
             ),
-            patch.object(tracker, "_fetch_asos_daily_temp") as _daily_fetch,
+            patch.object(tracker, "_get_settlement_kalshi_client") as _client,
         ):
             tracker.audit_settlement(ticker, settled_yes=True)
 
         self.assertEqual(captured.get("hour"), 6)
-        _daily_fetch.assert_not_called()
+        _client.assert_not_called()
 
     def test_audit_settlement_hourly_no_station_skips_settlement(self):
         """No station mapped for the city -- must return False, not crash or
@@ -4017,24 +3972,22 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
         not an accidental blanket capture."""
         from unittest.mock import patch
 
-        import weather_markets
-
         ticker = "KXHIGHNY-26JUL20-T80"
         self._log_settled(ticker, 0.70, True, date(2026, 7, 20))
 
+        class _FakeClient:
+            def get_market(self, ticker):
+                return {"status": "finalized", "expiration_value": "82.0"}
+
         with (
             patch.object(
-                weather_markets, "_metar_station_for_city", return_value="KNYC"
+                tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
             ),
-            patch.object(
-                tracker, "_fetch_asos_daily_temp", return_value=82.0
-            ) as _daily,
             patch.object(tracker, "_fetch_asos_hour_temp") as _hourly,
         ):
             result = tracker.audit_settlement(ticker, settled_yes=True)
 
         self.assertTrue(result)
-        _daily.assert_called_once()
         _hourly.assert_not_called()
         with sqlite3.connect(str(tracker.DB_PATH)) as con:
             row = con.execute(
@@ -7268,3 +7221,151 @@ class TestBackfillPriceHistory(unittest.TestCase):
         mock_client = MagicMock()
         self.assertEqual(tracker.backfill_price_history(mock_client), (0, 0))
         mock_client.get_market.assert_not_called()
+
+
+class TestBackfillDailyTempSettlement(unittest.TestCase):
+    """tracker.backfill_daily_temp_settlement() -- the one-off recovery pass
+    correcting outcomes.settled_temp_f rows written by audit_settlement()'s
+    now-replaced ASOS-proxy daily branch (backlog.txt "DATA-DRIVEN SIGMA
+    FROM SETTLED HISTORY + CLI-REPORT SETTLEMENT FETCH", finding F1)."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_predictions.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _settle(self, ticker, *, settled_temp_f=75.0, settled_yes=True, city="NYC"):
+        analysis = {
+            "condition": {"type": "above", "threshold": 70.0},
+            "forecast_prob": 0.6,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "ensemble",
+            "n_members": 82,
+        }
+        tracker.log_prediction(ticker, city, date(2099, 1, 1), analysis)
+        tracker.log_outcome(ticker, settled_yes)
+        if settled_temp_f is not None:
+            with sqlite3.connect(str(tracker.DB_PATH)) as con:
+                con.execute(
+                    "UPDATE outcomes SET settled_temp_f = ? WHERE ticker = ?",
+                    (settled_temp_f, ticker),
+                )
+
+    def test_corrects_stale_proxy_value_from_expiration_value(self):
+        """The row already has an (old, ASOS-proxy-derived) settled_temp_f;
+        re-running audit_settlement() against a fake Kalshi client must
+        overwrite it with the real settled figure."""
+        self._settle("KXHIGHNY-26APR09-T70", settled_temp_f=74.0, settled_yes=True)
+
+        from unittest.mock import patch
+
+        class _FakeClient:
+            def get_market(self, ticker):
+                return {"status": "finalized", "expiration_value": "75.0"}
+
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
+        ):
+            corrected, failed = tracker.backfill_daily_temp_settlement()
+
+        self.assertEqual((corrected, failed), (1, 0))
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT settled_temp_f FROM outcomes WHERE ticker = ?",
+                ("KXHIGHNY-26APR09-T70",),
+            ).fetchone()
+        self.assertAlmostEqual(row[0], 75.0)
+
+    def test_rows_with_null_settled_temp_f_are_not_selected(self):
+        """Rows that never got a settled_temp_f (e.g. hourly/monthly-precip
+        tickers, or a daily ticker whose original fetch failed) must not be
+        targeted -- this backfill corrects existing values, it doesn't fill
+        gaps (that's backfill_emos_data's job)."""
+        self._settle("KXHIGHNY-26APR09-T70", settled_temp_f=None)
+
+        from unittest.mock import patch
+
+        with patch.object(tracker, "_get_settlement_kalshi_client") as _get_client:
+            corrected, failed = tracker.backfill_daily_temp_settlement()
+
+        self.assertEqual((corrected, failed), (0, 0))
+        _get_client.assert_not_called()
+
+    def test_failed_fetch_leaves_prior_value_untouched(self):
+        self._settle("KXHIGHNY-26APR09-T70", settled_temp_f=74.0, settled_yes=True)
+
+        from unittest.mock import patch
+
+        class _FakeClient:
+            def get_market(self, ticker):
+                raise RuntimeError("API down")
+
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
+        ):
+            corrected, failed = tracker.backfill_daily_temp_settlement()
+
+        self.assertEqual((corrected, failed), (0, 1))
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT settled_temp_f FROM outcomes WHERE ticker = ?",
+                ("KXHIGHNY-26APR09-T70",),
+            ).fetchone()
+        self.assertAlmostEqual(row[0], 74.0)
+
+    def test_one_ticker_failure_does_not_abort_the_whole_pass(self):
+        self._settle("KXHIGHNY-26APR09-T70", settled_temp_f=74.0, settled_yes=True)
+        self._settle("KXLOWTDEN-26APR09-T30", settled_temp_f=28.0, settled_yes=True)
+
+        from unittest.mock import patch
+
+        class _FakeClient:
+            def get_market(self, ticker):
+                if ticker == "KXHIGHNY-26APR09-T70":
+                    raise RuntimeError("API down")
+                return {"status": "finalized", "expiration_value": "30.0"}
+
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
+        ):
+            corrected, failed = tracker.backfill_daily_temp_settlement()
+
+        self.assertEqual((corrected, failed), (1, 1))
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            rows = dict(
+                con.execute("SELECT ticker, settled_temp_f FROM outcomes").fetchall()
+            )
+        self.assertAlmostEqual(rows["KXHIGHNY-26APR09-T70"], 74.0)
+        self.assertAlmostEqual(rows["KXLOWTDEN-26APR09-T30"], 30.0)
+
+    def test_disputed_rows_are_included(self):
+        """Matches backfill_price_history's own reasoning (see
+        test_disputed_row_guard.py's allowlist entry) -- a disputed
+        SETTLEMENT doesn't make the underlying temperature correction any
+        less valid; excluding disputed rows here would leave exactly the
+        rows most likely to have a stale proxy value permanently wrong."""
+        self._settle("KXHIGHNY-26APR09-T70", settled_temp_f=74.0, settled_yes=True)
+        tracker.mark_outcome_disputed("KXHIGHNY-26APR09-T70")
+
+        from unittest.mock import patch
+
+        class _FakeClient:
+            def get_market(self, ticker):
+                return {"status": "finalized", "expiration_value": "75.0"}
+
+        with patch.object(
+            tracker, "_get_settlement_kalshi_client", return_value=_FakeClient()
+        ):
+            corrected, failed = tracker.backfill_daily_temp_settlement()
+
+        self.assertEqual((corrected, failed), (1, 0))
+
+    def test_zero_when_nothing_has_settled_temp_f(self):
+        self.assertEqual(tracker.backfill_daily_temp_settlement(), (0, 0))

@@ -1051,6 +1051,27 @@ def mark_outcome_disputed(ticker: str) -> None:
         _log.debug("mark_outcome_disputed: failed for %s: %s", ticker, exc)
 
 
+def mark_outcome_undisputed(ticker: str) -> None:
+    """Clear a ticker's disputed flag (opus-review-caught, 2026-08-10):
+    mark_outcome_disputed() is this repo's only writer of disputed=1, and
+    audit_settlement()'s daily-branch mismatch check is its only caller --
+    every disputed row in production was set by comparing the OLD ASOS-proxy
+    temperature against Kalshi's real YES/NO result, a comparison now known
+    to legitimately disagree with Kalshi's real CLI-report settlement by
+    ~1 degree near a threshold. Once the daily branch reads Kalshi's own
+    settled figure directly, a ticker that no longer mismatches was flagged
+    for a reason that's since been proven unreliable and should not stay
+    permanently excluded from Brier/calibration scoring (outcomes_valid has
+    no other path back to inclusion -- there was no un-dispute function
+    before this one)."""
+    init_db()
+    try:
+        with _conn() as con:
+            con.execute("UPDATE outcomes SET disputed = 0 WHERE ticker = ?", (ticker,))
+    except Exception as exc:
+        _log.debug("mark_outcome_undisputed: failed for %s: %s", ticker, exc)
+
+
 def get_disputed_count() -> int:
     """Return the number of outcomes flagged as disputed (settlement audit mismatch)."""
     init_db()
@@ -3472,6 +3493,14 @@ def _fetch_asos_daily_temp(
     See _fetch_asos_observations() for the fetch/parse/local-day-filter logic.
 
     Falls back to None on any fetch or parse error.
+
+    No production callers as of 2026-08-10 -- audit_settlement()'s daily
+    branch (its only former caller) now reads Kalshi's own settled
+    expiration_value directly instead (backlog.txt "DATA-DRIVEN SIGMA FROM
+    SETTLED HISTORY + CLI-REPORT SETTLEMENT FETCH", finding F1). Retained,
+    not deleted, because tests/test_tracker.py's TestFetchAsosDailyTemp
+    exercises it directly as a standalone unit and _fetch_actual_daily_temp
+    (below) still needs a documented ASOS-vs-OpenMeteo comparison point.
     """
     observations = _fetch_asos_observations(station, target_date, city_tz)
     if not observations:
@@ -3526,6 +3555,9 @@ def _fetch_actual_daily_temp(
     _fetch_asos_daily_temp for any city with a known ICAO station — Open-Meteo
     uses gridded ERA5 reanalysis which can differ from point station readings
     by up to 3°F at cities where the airport sits in a different microclimate.
+
+    No production callers as of 2026-08-10, same as _fetch_asos_daily_temp
+    above -- see that function's docstring.
     """
     import requests
 
@@ -3568,9 +3600,14 @@ def _get_settlement_kalshi_client():
     sync_outcomes loop don't rebuild it. Deliberately re-fetches rather
     than reusing sync_outcomes' own already-fetched `market` dict (that
     call site is the only one of the 3 that has it handy) -- trades one
-    redundant API call per settling rain ticker (~10/month, negligible)
-    for keeping this function's signature unchanged for its other 2
-    callers.
+    redundant API call per settling ticker for keeping this function's
+    signature unchanged for its other 2 callers. Cheap for rain/snow
+    (~10/month); UPDATE 2026-08-10: the daily HIGH/LOW branch now makes
+    this same trade too (previously ASOS/OpenMeteo, no Kalshi call at all)
+    -- still one extra call per settling ticker, same negligible-per-call
+    cost, just a higher-volume caller than rain/snow (backlog.txt
+    "DATA-DRIVEN SIGMA FROM SETTLED HISTORY + CLI-REPORT SETTLEMENT FETCH",
+    finding F1).
 
     Rebuilds if KALSHI_ENV changes since the cached client was built
     (review-caught: main.py's build_client() re-reads it fresh every call
@@ -3594,40 +3631,48 @@ def _get_settlement_kalshi_client():
 
 
 def audit_settlement(ticker: str, settled_yes: bool) -> bool:
-    """Cross-check Kalshi's settlement against ASOS station archive data.
+    """Write outcomes.settled_temp_f / settled_value from Kalshi's own
+    settlement data where possible, cross-checking our own condition/
+    threshold parsing against it.
 
-    Uses the ICAO station nearest the city (via IEM ASOS raw hourly METAR
-    archive) as an approximate proxy. Falls back to Open-Meteo gridded data
-    only when no station is mapped for the city.
+    Daily HIGH/LOW temperature markets (backlog.txt "DATA-DRIVEN SIGMA FROM
+    SETTLED HISTORY + CLI-REPORT SETTLEMENT FETCH", finding F1 in
+    docs/feature-scan-2026-08-09.md): reads market.get("expiration_value")
+    directly once status="finalized" — the literal CLI-report figure Kalshi
+    settled on — mirroring the monthly rain/snow branches below. This
+    REPLACES the IEM ASOS raw-METAR archive proxy this branch used before
+    2026-08-10: that proxy was confirmed to legitimately disagree with
+    Kalshi's real CLI-report-based settlement by ~1 degree near a threshold
+    (2026-07-05, KXLOWTMIN-26JUN28-T66: fresh ASOS KMSP read 67.0F against a
+    66F "greater than" threshold — implying YES — while Kalshi's real
+    settlement was NO). expiration_value is populated identically across
+    every strike in a daily HIGH/LOW event regardless of threshold (live-
+    verified 2026-08-09/2026-08-10 across 18 of the 36 tracked daily series,
+    including a same-event cross-strike check), so no HIGH/LOW (var)
+    derivation is needed for this branch. A MISMATCH warning on this path
+    now means our own condition/threshold parsing disagrees with Kalshi's
+    real settlement — i.e. a bug worth investigating, not proxy/CLI noise.
 
-    NOTE: this is NOT the same source Kalshi actually settles on. Kalshi's
-    rules_primary text states settlement uses the NWS Daily Climatological
-    Report (CLI product), which is compiled/rounded differently and can
-    legitimately disagree with raw ASOS METAR extremes by ~1 degree near a
-    threshold (confirmed 2026-07-05 on KXLOWTMIN-26JUN28-T66: fresh ASOS
-    KMSP read 67.0F against a 66F "greater than" threshold — implying YES —
-    while Kalshi's real CLI-report-based settlement was NO). A MISMATCH
-    warning here means our proxy disagrees with Kalshi, not that Kalshi
-    settled incorrectly.
+    HOURLY temperature markets (KXTEMPxxxH, handled further below) are
+    unaffected by the above and still derive settled_value from the IEM
+    ASOS raw-METAR archive — Kalshi has no analogous single-hour
+    expiration_value to read, so the same proxy caveat (and the
+    proxy/CLI-report divergence risk) still applies there.
 
-    Logs a WARNING when archive temperature contradicts Kalshi's YES/NO result,
-    which can indicate a data source lag, this proxy/CLI-report divergence, or
-    (rarely) an actual Kalshi settlement mistake. Skips silently if the ticker
-    is unparseable, archive is unavailable, or the condition type can't be
-    verified with a single temperature value (e.g. between, precipitation).
+    Logs a WARNING when the settled temperature contradicts Kalshi's YES/NO
+    result. Skips silently if the ticker is unparseable, settlement data is
+    unavailable, or the condition type can't be verified with a single
+    temperature value (e.g. between, precipitation).
 
     Returns True if settled_temp_f was actually written, False if this call
-    skipped for any reason (unparseable ticker/city, no coords, no archive
-    data, etc.) — callers that loop over many tickers (e.g. a backfill) should
-    use this instead of re-reading the DB, since a False here means the row's
-    prior value (if any) was left completely untouched, not confirmed correct.
+    skipped for any reason (unparseable ticker/city, no coords, not yet
+    finalized, no expiration_value, etc.) — callers that loop over many
+    tickers (e.g. a backfill) should use this instead of re-reading the DB,
+    since a False here means the row's prior value (if any) was left
+    completely untouched, not confirmed correct.
     """
     try:
-        from weather_markets import (
-            _KXRAIN_MONTHLY_CITY,
-            _KXSNOW_MONTHLY_CITY,
-            _var_from_ticker_prefix,
-        )
+        from weather_markets import _KXRAIN_MONTHLY_CITY, _KXSNOW_MONTHLY_CITY
         from weather_markets import CITY_COORDS as _coords
         from weather_markets import _metar_station_for_city as _station_for_city
         from weather_markets import _parse_market_condition as _parse_cond
@@ -3741,7 +3786,7 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
         coords = _coords.get(city)
         if not coords:
             return False
-        lat, lon, tz = coords
+        _, _, tz = coords
 
         # ── Hourly settlement (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE
         # MARKETS" Step 2 handoff item 3) ────────────────────────────────────
@@ -3816,58 +3861,74 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
 
         cond_type = cond.get("type", "")
 
-        # Prefer the var stored on the prediction itself (backlog.txt
-        # "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item 2, the
-        # var-derivation root-cause fix) -- avoids the cond_type-based
-        # fallback below, which is a different, wrong-shape bug for hourly
-        # tickers: "will the temp at hour H exceed X" doesn't imply hour H is
-        # the day's max-hour just because the condition direction is "above".
-        var: str | None = None
-        try:
-            with _conn() as _con:
-                _var_row = _con.execute(
-                    "SELECT var FROM predictions WHERE ticker = ?", (ticker,)
-                ).fetchone()
-            if _var_row and _var_row[0]:
-                var = _var_row[0]
-        except Exception:
-            pass
-
-        if var is None:
-            # Determine which daily temperature variable to fetch.
-            # HIGH temp markets (KXHIGH...) need the daily max; LOW temp markets need min.
-            # between markets use the same logic — the range is on a specific var.
-            ticker_upper = ticker.upper()
-            var = _var_from_ticker_prefix(ticker_upper)
-            if var is None:
-                if cond_type == "above":
-                    var = "max"
-                elif cond_type == "below":
-                    var = "min"
-                else:
-                    return False  # precipitation or unknown — skip
-
-        # Prefer ASOS station data (same source as Kalshi settlement).
-        # Fall back to Open-Meteo gridded archive only when no station is mapped.
-        station = _station_for_city(city)
-        if station:
-            actual = _fetch_asos_daily_temp(station, target_date, var, city_tz=tz)
-            source = f"ASOS:{station}"
-        else:
-            actual = _fetch_actual_daily_temp(lat, lon, tz, target_date, var)
-            source = "OpenMeteo"
-        if actual is None:
+        # Guard dropped from the old var-derivation block along with it: that
+        # block's own `else: return False` for a cond_type outside
+        # above/below/between wasn't just about deriving a var -- it was also
+        # the only thing stopping a non-single-temperature-value market
+        # (e.g. a future daily precip series) from writing a Fahrenheit
+        # figure into settled_temp_f. Restored explicitly here so this
+        # branch stays daily-temperature-only regardless of what future
+        # ticker types reach it (opus-review-caught, 2026-08-10).
+        if cond_type not in ("above", "below", "between"):
             return False
 
-        # Store the observed temperature so we can compute empirical NWS forecast
+        # Read Kalshi's own settled figure directly (backlog.txt "DATA-DRIVEN
+        # SIGMA FROM SETTLED HISTORY + CLI-REPORT SETTLEMENT FETCH", finding
+        # F1) instead of deriving one from the ASOS raw-METAR proxy this
+        # branch used before 2026-08-10 -- see this function's docstring for
+        # why that proxy could legitimately disagree with Kalshi's real
+        # CLI-report-based settlement by ~1 degree near a threshold.
+        # expiration_value is populated identically across every strike in a
+        # daily HIGH/LOW event (live-verified 2026-08-09/2026-08-10,
+        # including a same-event cross-strike check on a LOW-series market),
+        # so unlike the old ASOS path this needs no HIGH/LOW (var)
+        # derivation at all -- the settled value applies regardless of which
+        # threshold this particular ticker trades.
+        try:
+            client = _get_settlement_kalshi_client()
+            market = client.get_market(ticker)
+        except Exception as exc:
+            _log.warning(
+                "audit_settlement[%s]: daily market fetch failed: %s", ticker, exc
+            )
+            return False
+        if market.get("status") != "finalized":
+            return False
+        exp_val = market.get("expiration_value")
+        if exp_val is None:
+            _log.warning(
+                "audit_settlement[%s]: finalized but no expiration_value", ticker
+            )
+            return False
+        try:
+            actual = float(exp_val)
+        except (TypeError, ValueError):
+            _log.warning(
+                "audit_settlement[%s]: non-numeric expiration_value=%r",
+                ticker,
+                exp_val,
+            )
+            return False
+        source = "Kalshi:expiration_value"
+
+        # Store the settled temperature so we can compute empirical NWS forecast
         # error distributions per city — the foundation for data-driven sigma
         # calibration that will replace the current hardcoded sigma values.
         with _conn() as con:
-            con.execute(
+            cur = con.execute(
                 "UPDATE outcomes SET settled_temp_f = ? WHERE ticker = ?",
                 (round(actual, 1), ticker),
             )
-        _log.debug("settlement_audit: stored actual temp %.1f°F for %s", actual, ticker)
+        if cur.rowcount < 1:
+            _log.warning(
+                "audit_settlement[%s]: no matching outcomes row -- "
+                "settled_temp_f not actually written",
+                ticker,
+            )
+            return False
+        _log.debug(
+            "settlement_audit: stored settled temp %.1f°F for %s", actual, ticker
+        )
 
         # Consistency check: only verifiable for above/below single-threshold markets.
         # between markets define a range — a single temp point confirms or denies
@@ -3898,10 +3959,11 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
             return True
 
         if archive_yes != settled_yes:
-            # cond_type + threshold_desc together give a future reader enough to
-            # judge, at a glance, whether this looks like the small (~1F) accepted
-            # ASOS-vs-CLI-report proxy gap or something larger worth a fresh look —
-            # see this function's docstring for that known, deliberately-unfixed gap.
+            # actual is Kalshi's own settled figure (expiration_value), so unlike
+            # the old ASOS-proxy days a mismatch here means OUR condition/threshold
+            # parsing (cond_type + threshold_desc, logged below) disagrees with
+            # Kalshi's real settlement -- worth investigating as a real parsing bug,
+            # not proxy/CLI-report noise. See this function's docstring.
             _log.warning(
                 "settlement_audit MISMATCH %s — Kalshi=%s %s=%.1f°F vs threshold %s (%s)",
                 ticker,
@@ -3920,6 +3982,12 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
                 source,
                 actual,
             )
+            # A ticker disputed under the old ASOS-proxy comparison that now
+            # agrees against Kalshi's own settled figure was flagged for a
+            # reason since proven unreliable (opus-review-caught, 2026-08-10)
+            # -- clear it rather than leave it permanently excluded from
+            # outcomes_valid. No-op if it was never disputed.
+            mark_outcome_undisputed(ticker)
         return True
     except Exception as exc:
         _log.debug("audit_settlement: skipped for %s: %s", ticker, exc)
@@ -4749,6 +4817,72 @@ def backfill_price_history(client) -> tuple[int, int]:
             )
             failed += 1
     return filled, failed
+
+
+def backfill_daily_temp_settlement() -> tuple[int, int]:
+    """One-off recovery pass for outcomes.settled_temp_f rows written by
+    audit_settlement()'s now-replaced ASOS-proxy daily HIGH/LOW branch
+    (backlog.txt "DATA-DRIVEN SIGMA FROM SETTLED HISTORY + CLI-REPORT
+    SETTLEMENT FETCH", finding F1 in docs/feature-scan-2026-08-09.md):
+    audit_settlement()'s daily branch now reads Kalshi's own
+    expiration_value directly instead of deriving a proxy figure from the
+    IEM ASOS raw-METAR archive (see that function's docstring), but the
+    code fix alone does not correct rows that already settled under the
+    old proxy value -- confirmed live 2026-07-05 that the proxy and
+    Kalshi's real CLI-report settlement can legitimately disagree by ~1
+    degree near a threshold.
+
+    settled_temp_f has exactly one production writer -- audit_settlement's
+    daily branch (the hourly branch writes settled_value/settled_var; the
+    monthly rain/snow branches write settled_value) -- so "settled_temp_f
+    IS NOT NULL" is definitionally "written by that branch." No ticker
+    prefix/series filter is needed, unlike backfill_emos_data's non-force
+    Part 1 (which excludes monthly rain/snow tickers only to avoid an
+    unrelated always-NULL re-fetch-forever wrinkle that doesn't apply here).
+
+    Unlike backfill_price_history (which fills rows with ZERO existing
+    data), every row targeted here already has a value -- the fix is
+    correcting it, not filling a gap. Re-runs audit_settlement() for each:
+    safe and idempotent, since that function's write is an unconditional
+    UPDATE regardless of the column's current value. No client parameter
+    is needed (unlike backfill_price_history) -- audit_settlement() builds
+    its own client via _get_settlement_kalshi_client().
+
+    Returns (corrected, failed). corrected counts a ticker where
+    audit_settlement() returned True (settled_temp_f actually rewritten
+    from Kalshi's own settlement). failed counts one where it returned
+    False (market not yet finalized, fetch error, missing/non-numeric
+    expiration_value, etc.) -- left with its prior, possibly still
+    proxy-derived, value untouched; safe to retry on a future run.
+    Deliberately joins the raw outcomes table, not outcomes_valid, matching
+    backfill_price_history's and backfill_emos_data's own reasoning -- a
+    column-repair utility corrects data regardless of the row's dispute
+    status; that status is a downstream calibration-query concern.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT ticker, settled_yes FROM outcomes WHERE settled_temp_f IS NOT NULL"
+        ).fetchall()
+
+    corrected = 0
+    failed = 0
+    for row in rows:
+        ticker = row["ticker"]
+        try:
+            ok = audit_settlement(ticker, bool(row["settled_yes"]))
+        except Exception as exc:
+            _log.warning(
+                "backfill_daily_temp_settlement: audit_settlement failed for %s: %s",
+                ticker,
+                exc,
+            )
+            ok = False
+        if ok:
+            corrected += 1
+        else:
+            failed += 1
+    return corrected, failed
 
 
 def log_member_score(

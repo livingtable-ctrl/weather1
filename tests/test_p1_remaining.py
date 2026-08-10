@@ -1396,3 +1396,42 @@ class TestCmdBackfillPriceHistory:
             main.cmd_backfill_price_history(MagicMock())
         out = capsys.readouterr().out
         assert "Backfill failed" in out
+
+
+class TestCmdBackfillDailyTempSettlement:
+    """main.cmd_backfill_daily_temp_settlement -- the
+    `backfill-daily-temp-settlement` CLI command, recovering settled_temp_f
+    rows written under audit_settlement()'s now-replaced ASOS-proxy daily
+    branch (see tests/test_tracker.py's TestBackfillDailyTempSettlement for
+    the underlying tracker.backfill_daily_temp_settlement mechanism)."""
+
+    def test_prints_corrected_count(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("tracker.backfill_daily_temp_settlement", lambda: (7, 0))
+        main.cmd_backfill_daily_temp_settlement()
+        out = capsys.readouterr().out
+        assert "7" in out
+        assert "failed" not in out.lower()
+
+    def test_prints_failed_count_when_nonzero(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("tracker.backfill_daily_temp_settlement", lambda: (5, 3))
+        main.cmd_backfill_daily_temp_settlement()
+        out = capsys.readouterr().out
+        assert "5" in out
+        assert "3" in out
+        assert "failed" in out.lower()
+
+    def test_prints_error_and_reraises_on_failure(self, monkeypatch, capsys):
+        import main
+
+        def _boom():
+            raise RuntimeError("Kalshi API down")
+
+        monkeypatch.setattr("tracker.backfill_daily_temp_settlement", _boom)
+        with pytest.raises(RuntimeError, match="Kalshi API down"):
+            main.cmd_backfill_daily_temp_settlement()
+        out = capsys.readouterr().out
+        assert "Backfill failed" in out
