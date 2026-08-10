@@ -141,10 +141,7 @@ def _fake_dt(hour: int):
 
 def test_dynamic_strong_band(monkeypatch):
     """Strong band win rate (>baseline) → cap clamped to MAX."""
-    _patch_dynamic_env(monkeypatch)
-    monkeypatch.setattr(
-        "tracker.count_settled_sameday_predictions", lambda: 160, raising=False
-    )
+    _patch_dynamic_env(monkeypatch, min_samples=10)
     monkeypatch.setattr("order_executor.datetime", _fake_dt(8))  # hour=8 → band=1
 
     # baseline_wr=0.70, band_wr=14/15≈0.933, N=15, K=5
@@ -163,10 +160,7 @@ def test_dynamic_strong_band(monkeypatch):
 
 def test_dynamic_weak_band(monkeypatch):
     """Weak band with enough data → cap materially reduced."""
-    _patch_dynamic_env(monkeypatch)
-    monkeypatch.setattr(
-        "tracker.count_settled_sameday_predictions", lambda: 160, raising=False
-    )
+    _patch_dynamic_env(monkeypatch, min_samples=10)
     monkeypatch.setattr("order_executor.datetime", _fake_dt(8))  # hour=8 → band=1
 
     # baseline_wr=0.70, band_wr=7/20=0.35, N=20, K=5
@@ -185,10 +179,7 @@ def test_dynamic_weak_band(monkeypatch):
 
 def test_dynamic_sparse_band(monkeypatch):
     """Sparse band (N=3) → shrinkage pulls toward baseline, moderate reduction."""
-    _patch_dynamic_env(monkeypatch)
-    monkeypatch.setattr(
-        "tracker.count_settled_sameday_predictions", lambda: 160, raising=False
-    )
+    _patch_dynamic_env(monkeypatch, min_samples=10)
     monkeypatch.setattr("order_executor.datetime", _fake_dt(8))  # hour=8 → band=1
 
     # baseline_wr=0.70, band_wr=0/3=0.00, N=3, K=5
@@ -207,10 +198,7 @@ def test_dynamic_sparse_band(monkeypatch):
 
 def test_dynamic_unknown_band(monkeypatch):
     """Band with no historical data → treated as baseline → cap = MAX."""
-    _patch_dynamic_env(monkeypatch)
-    monkeypatch.setattr(
-        "tracker.count_settled_sameday_predictions", lambda: 160, raising=False
-    )
+    _patch_dynamic_env(monkeypatch, min_samples=10)
     monkeypatch.setattr(
         "order_executor.datetime", _fake_dt(8)
     )  # hour=8 → band=1, not in bands dict
@@ -228,10 +216,38 @@ def test_dynamic_unknown_band(monkeypatch):
 
 
 def test_dynamic_insufficient_samples(monkeypatch):
-    """Dynamic enabled but settled < threshold → full cap, feature stays dormant."""
+    """Dynamic enabled but band-stats baseline < threshold → full cap, feature stays dormant."""
     _patch_dynamic_env(monkeypatch, min_samples=150)
     monkeypatch.setattr(
-        "tracker.count_settled_sameday_predictions", lambda: 99, raising=False
+        "paper.get_sameday_band_stats",
+        lambda band_hours=6: {
+            "baseline": {"wins": 60, "total": 99},
+            "bands": {1: {"wins": 6, "total": 10}},
+        },
+        raising=False,
+    )
+
+    assert order_executor._sameday_effective_cap(MAX) == MAX
+
+
+def test_dynamic_gate_ignores_tracker_prediction_count(monkeypatch):
+    """Dynamic gate must key off get_sameday_band_stats' own baseline total, not
+    tracker.count_settled_sameday_predictions() — that counts every days_out=0
+    market type (HIGH/LOW/between/rain/snow/hourly), not just the settled
+    above/below trades the dynamic formula actually consumes. A large tracker
+    count must NOT be enough to activate dynamic scaling on its own.
+    """
+    _patch_dynamic_env(monkeypatch, min_samples=150)
+    monkeypatch.setattr(
+        "tracker.count_settled_sameday_predictions", lambda: 99999, raising=False
+    )
+    monkeypatch.setattr(
+        "paper.get_sameday_band_stats",
+        lambda band_hours=6: {
+            "baseline": {"wins": 3, "total": 5},
+            "bands": {1: {"wins": 1, "total": 2}},
+        },
+        raising=False,
     )
 
     assert order_executor._sameday_effective_cap(MAX) == MAX
@@ -244,10 +260,7 @@ def test_dynamic_zero_baseline_wins_returns_minimum(monkeypatch):
     the dynamic system for its worst-case input. Instead, 0.0 baseline_wr should
     produce cap=1 (the floor).
     """
-    _patch_dynamic_env(monkeypatch)
-    monkeypatch.setattr(
-        "tracker.count_settled_sameday_predictions", lambda: 160, raising=False
-    )
+    _patch_dynamic_env(monkeypatch, min_samples=20)
     monkeypatch.setattr("order_executor.datetime", _fake_dt(8), raising=False)
 
     monkeypatch.setattr(

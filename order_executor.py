@@ -1662,16 +1662,6 @@ def _sameday_effective_cap(max_positions: int) -> int:
     if not SAME_DAY_DYNAMIC_SLOTS and SAME_DAY_RESERVE_SLOTS <= 0:
         return max_positions
 
-    try:
-        from tracker import count_settled_sameday_predictions
-
-        settled = count_settled_sameday_predictions()
-    except Exception:
-        return max_positions  # fail open — never block trades on a lookup error
-
-    if settled < SAME_DAY_RESERVE_MIN_SAMPLES:
-        return max_positions  # not enough data yet
-
     # Dynamic mode: Bayesian shrinkage of per-band win rate toward baseline
     if SAME_DAY_DYNAMIC_SLOTS:
         try:
@@ -1687,6 +1677,13 @@ def _sameday_effective_cap(max_positions: int) -> int:
 
             stats = get_sameday_band_stats(SAME_DAY_DYNAMIC_BAND_HOURS)
             baseline = stats["baseline"]
+            # Gate on the same above/below settled-trade pool the formula below
+            # draws from. count_settled_sameday_predictions() counts a different,
+            # broader pool (every days_out=0 market type in the ML tracking
+            # table) — passing that check doesn't mean this pool has enough
+            # samples to trust a per-band win-rate split.
+            if baseline["total"] < SAME_DAY_RESERVE_MIN_SAMPLES:
+                return max_positions  # not enough same-day above/below data yet
             if baseline["total"] == 0:
                 return max_positions
             baseline_wr = baseline["wins"] / baseline["total"]
@@ -1722,6 +1719,16 @@ def _sameday_effective_cap(max_positions: int) -> int:
     # Static mode (legacy): hold back fixed slots before a fixed UTC hour
     if SAME_DAY_RESERVE_SLOTS <= 0:
         return max_positions
+
+    try:
+        from tracker import count_settled_sameday_predictions
+
+        settled = count_settled_sameday_predictions()
+    except Exception:
+        return max_positions  # fail open — never block trades on a lookup error
+
+    if settled < SAME_DAY_RESERVE_MIN_SAMPLES:
+        return max_positions  # not enough data yet
     if datetime.now(UTC).hour >= SAME_DAY_RESERVE_AFTER_HOUR_UTC:
         return max_positions  # past cutoff hour, release reserved slots
     return max(0, max_positions - SAME_DAY_RESERVE_SLOTS)
