@@ -165,46 +165,108 @@ def _check_between_settlement(
     current_temp_f: float,
     lower_f: float,
     upper_f: float,
+    max_temp_f: float | None,
 ) -> dict:
     """
     Determine settlement outcome for a between-bucket market.
 
     Returns a dict with keys: locked (bool), outcome (str|None),
-    confidence (float).
+    confidence (float), comp_temp_f (float — the value that actually
+    decided the lock, for logging/signal-payload transparency).
 
-    Lock logic (mirrors _metar_lock_in in weather_markets.py):
-    • YES — temp is anywhere inside [lower, upper].  By 5-7 PM the daily
-      high is almost certainly established; confidence scales with clearance
-      from the nearest edge.
-    • NO  — temp is outside by > (_SETTLEMENT_MARGIN_F + 1.0)°F from the
-      nearest edge.  The extra 1°F guard prevents a premature NO when the
-      reading is just below or above the bucket boundary.
-    • Neither — temp is near the edge; outcome is still uncertain.
+    Keys off the running daily HIGH (max_temp_f), not the instantaneous
+    METAR reading (current_temp_f) — comparing the instantaneous reading to
+    the bucket was the exact AC3 violation (backlog.txt "SETTLEMENT_MONITOR
+    .PY'S OWN BETWEEN-BUCKET LOCK...") this function used to have: an
+    evening reading that has cooled well below the band says nothing about
+    whether the true daily high, reached earlier in the afternoon, was
+    already inside or above it. Callers MUST source max_temp_f from
+    metar.fetch_metar_daily_extreme() (a true running max computed locally
+    from a full window of historical observations), NOT from
+    fetch_metar()'s own max_temp_f field — that field is only the METAR
+    remark group's 6-hour synoptic-window extreme (populated solely on
+    00Z/06Z/12Z/18Z reports), not a value that accumulates since local
+    midnight, and using it here would silently reintroduce a narrower
+    version of the same AC3 bug (see fetch_metar_daily_extreme's own
+    docstring for the live-verified detail). HIGH-market-only (no
+    LOW-market branch, unlike weather_markets.py's _metar_lock_in sibling):
+    settlement_monitor.py only ever monitors KXHIGH* series (see
+    _CITY_SERIES_TICKER's `t.startswith("KXHIGH")` filter in
+    check_city_settlement's caller) — a KXLOW* between-bucket would need
+    its own branch keyed off a "min" daily extreme if this module is ever
+    extended to monitor LOW series.
+
+    Same monotonic-safety reasoning as _metar_lock_in's between branch (NO
+    only once the running extreme has irreversibly cleared the one at-risk
+    edge; YES only with real margin against that edge) — NOT a literal port
+    of its formula/margins, which are re-derived here against THIS module's
+    own 0.60+clearance*0.03 (NO) and 0.70+clearance*0.05 (YES) confidence
+    scaling instead of weather_markets.py's _dynamic_lock_in_confidence:
+    • NO  — the running daily high has already cleared the upper edge by
+      >= (_SETTLEMENT_MARGIN_F + 1.0)°F. Monotonically safe: a running max
+      can only stay flat or rise, never fall back down, so the final high
+      is guaranteed to still exceed the band. Compares against
+      max(current_temp_f, max_temp_f) when max_temp_f is available (guards
+      against the two independently-cached METAR fetches momentarily
+      disagreeing, e.g. a fresher current_temp_f than a still-TTL-cached
+      max_temp_f), and falls back to current_temp_f alone when max_temp_f
+      is unavailable — current_temp_f is always <= the true daily high
+      (it's one of the readings the true max is taken over), so if IT has
+      already cleared the margin above the upper edge, the true high has
+      too. There is deliberately no "below the lower edge" NO direction: a
+      running high sitting below the band, even the real max_temp_f, does
+      not preclude the true high from still rising into or past the band
+      later in the day.
+    • YES — the running daily high is inside [lower, upper] AND has at
+      least half the band width of clearance to the upper edge (the only
+      at-risk edge — the lower edge is already foreclosed, since a running
+      max cannot fall below a value it has already reached). Requires a
+      REAL max_temp_f; never locks YES from the current_temp_f fallback
+      alone — an in-band instantaneous reading proves nothing about whether
+      the true high already passed through or above the band earlier today.
+    • Neither — outcome still uncertain.
 
     Args:
         current_temp_f: Latest METAR temperature
         lower_f: Bucket lower bound (e.g. 66.5)
         upper_f: Bucket upper bound (e.g. 68.5)
+        max_temp_f: Running daily high-so-far — MUST come from
+            metar.fetch_metar_daily_extreme(), not fetch_metar()'s own
+            max_temp_f field (see above). None if unavailable.
     """
-    if lower_f <= current_temp_f <= upper_f:
-        # Inside the band → lock YES.  Clearance only affects confidence,
-        # not the lock condition (consistent with _metar_lock_in).
-        clearance = min(current_temp_f - lower_f, upper_f - current_temp_f)
-        confidence = min(0.95, 0.70 + clearance * 0.05)
-        return {"locked": True, "outcome": "yes", "confidence": confidence}
-
-    # Outside the band.  Use (_SETTLEMENT_MARGIN_F + 1.0)°F guard to avoid
-    # locking NO when the reading is just outside the bucket boundary.
-    clearance = (
-        current_temp_f - upper_f
-        if current_temp_f > upper_f
-        else lower_f - current_temp_f
+    no_margin = _SETTLEMENT_MARGIN_F + 1.0
+    comp_temp = (
+        max(current_temp_f, max_temp_f) if max_temp_f is not None else current_temp_f
     )
-    if clearance >= _SETTLEMENT_MARGIN_F + 1.0:
-        confidence = min(0.95, 0.60 + clearance * 0.03)
-        return {"locked": True, "outcome": "no", "confidence": confidence}
 
-    return {"locked": False, "outcome": None, "confidence": 0.0}
+    if comp_temp >= upper_f + no_margin:
+        clearance = comp_temp - upper_f
+        confidence = min(0.95, 0.60 + clearance * 0.03)
+        return {
+            "locked": True,
+            "outcome": "no",
+            "confidence": confidence,
+            "comp_temp_f": comp_temp,
+        }
+
+    if max_temp_f is not None and lower_f <= comp_temp <= upper_f:
+        risk_clearance = upper_f - comp_temp
+        yes_inband_margin = (upper_f - lower_f) / 2.0
+        if risk_clearance >= yes_inband_margin:
+            confidence = min(0.95, 0.70 + risk_clearance * 0.05)
+            return {
+                "locked": True,
+                "outcome": "yes",
+                "confidence": confidence,
+                "comp_temp_f": comp_temp,
+            }
+
+    return {
+        "locked": False,
+        "outcome": None,
+        "confidence": 0.0,
+        "comp_temp_f": comp_temp,
+    }
 
 
 def check_city_settlement(city: str, active_tickers: list[dict]) -> list[dict]:
@@ -221,7 +283,7 @@ def check_city_settlement(city: str, active_tickers: list[dict]) -> list[dict]:
     Returns:
         List of new settlement signal dicts
     """
-    from metar import check_metar_lockout, fetch_metar
+    from metar import check_metar_lockout, fetch_metar, fetch_metar_daily_extreme
 
     config = _MONITOR_CITIES.get(city)
     if not config:
@@ -231,14 +293,42 @@ def check_city_settlement(city: str, active_tickers: list[dict]) -> list[dict]:
     if not obs:
         return []
 
+    try:
+        _local_today = datetime.now(ZoneInfo(config["tz"])).date()
+    except Exception:
+        _log.warning(
+            "check_city_settlement: ZoneInfo(%r) unavailable for %s — "
+            "falling back to UTC date",
+            config["tz"],
+            city,
+        )
+        _local_today = datetime.now(UTC).date()
+
     new_signals = []
     for market in active_tickers:
         direction = market.get("direction", "above")
 
         if direction == "between":
-            lower_f = float(market.get("lower", 0))
-            upper_f = float(market.get("upper", 0))
-            lockout = _check_between_settlement(obs["current_temp_f"], lower_f, upper_f)
+            # Fail closed on a malformed condition rather than silently
+            # defaulting to a fake [0.0, 0.0] band (comp_temp >= 0.0 +
+            # margin would fire a confident, wrong NO for almost any real
+            # temperature). run_settlement_monitor's B-ticker parsing always
+            # sets both keys for a real between market; this only guards a
+            # malformed/synthetic caller (mirrors the same guard added to
+            # weather_markets.py's _metar_lock_in between branch, bded3d6).
+            if market.get("lower") is None or market.get("upper") is None:
+                continue
+            lower_f = float(market["lower"])
+            upper_f = float(market["upper"])
+            # See _check_between_settlement's docstring: max_temp_f must be
+            # the REAL running daily high, not fetch_metar()'s own
+            # max_temp_f (a 6-hour synoptic-window value).
+            max_temp_f = fetch_metar_daily_extreme(
+                config["station"], config["tz"], _local_today, "max"
+            )
+            lockout = _check_between_settlement(
+                obs["current_temp_f"], lower_f, upper_f, max_temp_f
+            )
             if lockout["locked"]:
                 center_f = (lower_f + upper_f) / 2
                 signal = build_settlement_signal(
@@ -249,12 +339,23 @@ def check_city_settlement(city: str, active_tickers: list[dict]) -> list[dict]:
                     current_temp_f=obs["current_temp_f"],
                     threshold_f=center_f,
                 )
+                # Surface the value that actually decided the lock (the
+                # daily extreme, when available) separately from the
+                # instantaneous current_temp_f already in the signal — an
+                # operator reading settlement_signals.json (or web_app's
+                # /api/settlement_signals) must not see a YES outcome next
+                # to a current_temp_f that looks nothing like it.
+                signal["comp_temp_f"] = lockout["comp_temp_f"]
+                signal["max_temp_f"] = max_temp_f
                 new_signals.append(signal)
                 _log.info(
-                    "SETTLEMENT LAG signal: %s → %s (conf=%.0f%%) — temp %.1f°F vs bucket [%.1f, %.1f]°F",
+                    "SETTLEMENT LAG signal: %s → %s (conf=%.0f%%) — "
+                    "daily-high %.1f°F (current %.1f°F) vs bucket "
+                    "[%.1f, %.1f]°F",
                     market["ticker"],
                     lockout["outcome"],
                     lockout["confidence"] * 100,
+                    lockout["comp_temp_f"],
                     obs["current_temp_f"],
                     lower_f,
                     upper_f,

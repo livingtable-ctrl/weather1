@@ -52,13 +52,25 @@ class TestBetweenLockInDynamicConfidence:
         fake_obs_time.astimezone.return_value = fake_obs_local
 
         obs = {"current_temp_f": current_temp, "obs_time": fake_obs_time}
-        if max_temp_f is not None:
-            obs["max_temp_f"] = max_temp_f
-        if min_temp_f is not None:
-            obs["min_temp_f"] = min_temp_f
+
+        # _metar_lock_in no longer reads max_temp_f/min_temp_f off the
+        # fetch_metar() obs dict (2026-08-09: those fields are a sparse
+        # 6-hour synoptic-window value, not a true running daily extreme —
+        # see metar.fetch_metar_daily_extreme's docstring). It now calls
+        # fetch_metar_daily_extreme(station, city_tz, target_date, extreme)
+        # directly; mock that instead, keyed on which extreme is requested.
+        def _fake_daily_extreme(_station, _city_tz, _target_date, extreme):
+            return max_temp_f if extreme == "max" else min_temp_f
 
         with patch.object(wm, "_metar_station_for_city", return_value="KJFK"):
-            with patch.object(_metar, "fetch_metar", return_value=obs):
+            with (
+                patch.object(_metar, "fetch_metar", return_value=obs),
+                patch.object(
+                    _metar,
+                    "fetch_metar_daily_extreme",
+                    side_effect=_fake_daily_extreme,
+                ),
+            ):
                 return wm._metar_lock_in(
                     city="NYC",
                     target_date=today,

@@ -15,7 +15,7 @@ Reported win rate: 85-90%.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
@@ -233,6 +233,194 @@ def fetch_metar(station: str) -> dict | None:
     }
     _METAR_CACHE.set(key, result)
     return result
+
+
+# In-process cache for the true running daily extreme (see
+# fetch_metar_daily_extreme below) — keyed by station+local-date so the
+# cached value never leaks across a day boundary. Same 15-min TTL as
+# _METAR_CACHE.
+#
+# The staleness this TTL trades away is NOT symmetric between the two
+# extremes: for a NO-direction lock, a stale (under-reported) max/min is
+# still a valid lower/upper bound on the true running extreme, so staleness
+# only makes a real NO lock arrive up to ~15 min late — never wrong. For a
+# YES-direction lock (both settlement_monitor._check_between_settlement and
+# weather_markets._metar_lock_in's between branch require the extreme to
+# sit INSIDE the band with clearance to the at-risk edge), an
+# under-reported extreme makes the measured clearance LARGER than the true
+# current clearance — i.e. a stale read can make a YES lock look safer than
+# it currently is, for up to ~15 minutes, until the next real observation
+# is cached. Both callers additionally require a real (non-fallback) extreme
+# and per-observation staleness/date guards elsewhere in the call chain,
+# which bound the practical exposure, but this cache's own staleness is
+# not, by itself, safe in the YES direction the way it is in the NO
+# direction — do not assume otherwise when reusing this cache elsewhere.
+_DAILY_OBS_CACHE_TTL = 900
+_DAILY_OBS_CACHE: ForecastCache[list[float] | None] = ForecastCache(
+    ttl_secs=_DAILY_OBS_CACHE_TTL
+)
+
+
+def _extract_temp_f(obs: dict) -> float | None:
+    """Extract a plausible temp_f from a raw METAR obs dict (prefers tmpf
+    °F, else converts temp °C). Returns None for a missing or physically
+    implausible reading. Deliberately NOT shared with fetch_metar()'s own
+    inline version of this same logic — fetch_metar() is heavily tested and
+    logs a specific warning on the implausible-temp path; duplicating the
+    ~10 lines here avoids touching that already-verified code as a side
+    effect of adding this function."""
+    temp_f = obs.get("tmpf")
+    if temp_f is None:
+        temp_c = obs.get("temp")
+        if temp_c is None:
+            return None
+        try:
+            temp_f = float(temp_c) * 9 / 5 + 32
+        except (TypeError, ValueError):
+            return None
+    else:
+        try:
+            temp_f = float(temp_f)
+        except (TypeError, ValueError):
+            return None
+    return temp_f if -80.0 <= temp_f <= 140.0 else None
+
+
+def _extract_obs_time(obs: dict) -> datetime | None:
+    """Parse a raw METAR obs dict's obsTime (Unix epoch int/float, or an
+    ISO-8601 string) into a UTC datetime. Deliberately NOT shared with
+    fetch_metar()'s own version of this parsing (same rationale as
+    _extract_temp_f) — omits fetch_metar()'s reportTime tertiary fallback
+    and 90-min staleness gate, neither of which apply when aggregating a
+    historical window rather than validating a single live reading."""
+    raw = obs.get("obsTime")
+    if isinstance(raw, int | float) and raw > 0:
+        try:
+            return datetime.fromtimestamp(raw, UTC)
+        except Exception:
+            return None
+    if isinstance(raw, str) and raw:
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except Exception:
+            return None
+    return None
+
+
+def _fetch_daily_temps_f(
+    station: str, city_tz: str, target_date: date
+) -> list[float] | None:
+    """Fetch every METAR temp_f reading for `station` that falls on the
+    LOCAL calendar date `target_date`, by requesting a wide (30-hour)
+    window of historical observations — enough to cover local midnight to
+    now for any continental-US timezone with buffer to spare — and
+    filtering+converting each reading's obsTime to `city_tz` locally.
+
+    Returns None on fetch failure (network error, unparseable response);
+    an empty list is a valid result (fetch succeeded, no reading fell on
+    target_date yet — e.g. right after local midnight).
+    """
+    key = f"{station.upper()}|{target_date.isoformat()}"
+    cached, hit, _ = _DAILY_OBS_CACHE.get_with_ts(key)
+    if hit:
+        return cached
+
+    try:
+        resp = _session.get(
+            _METAR_URL,
+            params={"ids": station.upper(), "format": "json", "hours": "30"},
+            timeout=(5, 10),
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        _log.debug("_fetch_daily_temps_f(%s): %s", station, exc)
+        # Negative-cache the failure (mirrors fetch_metar()'s own pattern) —
+        # without this, an API outage makes every same-day between/above-
+        # below market re-attempt this fetch on every scan, since
+        # _metar_lock_in runs once per market rather than once per station.
+        _DAILY_OBS_CACHE.set(key, None)
+        return None
+
+    if not data:
+        _DAILY_OBS_CACHE.set(key, [])
+        return []
+
+    try:
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo(city_tz)
+    except Exception:
+        _log.debug("_fetch_daily_temps_f(%s): bad city_tz %r", station, city_tz)
+        _DAILY_OBS_CACHE.set(key, None)
+        return None
+
+    temps: list[float] = []
+    for obs in data:
+        temp_f = _extract_temp_f(obs)
+        if temp_f is None:
+            continue
+        obs_time = _extract_obs_time(obs)
+        if obs_time is None:
+            continue
+        if obs_time.astimezone(tz).date() != target_date:
+            continue
+        temps.append(temp_f)
+
+    _DAILY_OBS_CACHE.set(key, temps)
+    return temps
+
+
+def fetch_metar_daily_extreme(
+    station: str, city_tz: str, target_date: date, extreme: str
+) -> float | None:
+    """
+    Compute the TRUE running daily extreme (max or min observed temp_f)
+    since LOCAL midnight of `target_date`, by fetching a window of
+    historical METAR observations and taking the extreme LOCALLY.
+
+    Do NOT use fetch_metar()'s own max_temp_f/min_temp_f fields for any
+    reasoning that depends on a full-day running extreme (e.g. "the running
+    high can only stay flat or rise, never fall back into the band") —
+    live-verified 2026-08-09 (backlog.txt "SETTLEMENT_MONITOR.PY'S OWN
+    BETWEEN-BUCKET LOCK..."): those come from the METAR remark group's
+    6-hour max/min (maxT/minT), populated ONLY on synoptic-hour (00Z/06Z/
+    12Z/18Z) reports and covering only THAT report's own preceding 6 hours
+    — not a cumulative value since local midnight. A station whose true
+    daily high occurred outside the most recent synoptic window (e.g. an
+    early-afternoon peak followed by a cold-frontal cooldown before the
+    next synoptic report) silently under-reports it via that field; on
+    KDEN, live-checked the same day, maxT was populated on only 2 of 15
+    hourly reports and each value matched only that report's own 6h window.
+
+    Only reliable for target_date == "today" (in city_tz) at call time: the
+    underlying fetch requests a 30-hour window ending NOW, which covers
+    local midnight through now for any continental-US timezone with buffer
+    to spare — but for any OTHER target_date that window will generally
+    miss part of that date's readings (e.g. a `target_date` of yesterday,
+    called this afternoon, would only see yesterday's evening hours, not
+    its morning). Both current callers (settlement_monitor.py,
+    weather_markets.py's _metar_lock_in) only ever pass today's date; this
+    function does not enforce that itself.
+
+    Args:
+        station: ICAO station code
+        city_tz: IANA timezone name for the station's city
+        target_date: the LOCAL calendar date to compute the extreme for —
+            see the "today only" restriction above
+        extreme: "max" or "min"
+
+    Returns:
+        The extreme temp_f among target_date's observations so far, or
+        None on fetch failure or if no observation has fallen on
+        target_date yet.
+    """
+    if extreme not in ("max", "min"):
+        raise ValueError(f"extreme must be 'max' or 'min', got {extreme!r}")
+    temps = _fetch_daily_temps_f(station, city_tz, target_date)
+    if not temps:
+        return None
+    return max(temps) if extreme == "max" else min(temps)
 
 
 def check_metar_lockout(

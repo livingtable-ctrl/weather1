@@ -95,7 +95,7 @@ def clear_paper_min_edge_cache():
 
 @pytest.fixture(autouse=True)
 def clear_metar_cache():
-    """Clear the in-process METAR cache before every test.
+    """Clear the in-process METAR cache(s) before every test.
 
     metar._METAR_CACHE is a module-level ForecastCache instance with a
     5-minute TTL.  If any earlier test (or a real network call during
@@ -103,10 +103,18 @@ def clear_metar_cache():
     calls return the cached value without touching the mocked _session,
     causing every TestFetchMetar test to receive real live data instead of
     the fixture response.
+
+    metar._DAILY_OBS_CACHE (added 2026-08-09 alongside
+    fetch_metar_daily_extreme, keyed on station+LOCAL DATE rather than just
+    station) needs the exact same isolation — without it, TestFetchMetar
+    DailyExtreme tests that reuse the same station+date across scenarios
+    (a realistic, common test shape) silently cache-hit on an earlier
+    test's fixture data instead of exercising their own mocked _session.
     """
     import metar
 
     metar._METAR_CACHE.clear()
+    metar._DAILY_OBS_CACHE.clear()
 
 
 @pytest.fixture(autouse=True)

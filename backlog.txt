@@ -1,7 +1,140 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
-[OPEN 2026-08-09 -- new, filed by adjacency while resolving the BETWEEN-BUCKET MARKETS METAR lock-in entry below (a second, independent opus review of that fix's own changes traced every consumer of the "between market, instantaneous-vs-daily-extreme" bug pattern and found this one, in a completely separate module this session did not touch).] SETTLEMENT_MONITOR.PY'S OWN BETWEEN-BUCKET LOCK HAS THE SAME AC3 BUG THE JUST-FIXED weather_markets.py ONE HAD -- AND IT AUTO-CLOSES REAL PAPER POSITIONS
+[OPEN 2026-08-10 -- new, filed by adjacency while resolving the SETTLEMENT_MONITOR.PY between-bucket AC3 entry below (second opus review round of that fix live-hit this exact bug when its end-to-end test failed, and confirmed via `git stash` that it reproduces identically on unmodified master -- pre-existing, not introduced by that session's diff).] ANALYZE_TRADE'S past_date GATE COMPARES A CITY-LOCAL target_date AGAINST UTC's CURRENT DATE -- REJECTS LEGITIMATELY-STILL-OPEN SAME-DAY MARKETS FOR ~4-8 HOURS EVERY EVENING, PER CITY
+Priority: High -- this is analyze_trade's own gate, the live/paper TRADE-ENTRY
+  path (order_executor's upstream signal source), not a settlement-only
+  concern. Broader blast radius than the sibling entries that found it:
+  every same-day HIGH/LOW/between market, every city, not just between-bucket.
+
+Problem:
+  weather_markets.py's analyze_trade(), ~line 10585:
+    assert target_date is not None
+    if target_date < datetime.now(UTC).date():
+        ...
+        _count_gate("past_date")
+        return None  # market target date already passed
+  `target_date` is derived from the ticker and represents the market's
+  CITY-LOCAL trading day (parse_city_date()). Comparing it against
+  `datetime.now(UTC).date()` is wrong whenever UTC's calendar date has
+  already rolled over past midnight but the city's local calendar date has
+  not -- true for every US city this bot trades (all negative UTC offsets)
+  during a multi-hour window every evening: roughly 20:00-23:59 local for
+  EDT (UTC-4), 19:00-23:59 for CDT (UTC-5), 18:00-23:59 for MDT (UTC-6),
+  17:00-23:59 for PDT (UTC-7) -- i.e. UTC-midnight through each city's own
+  local midnight. During that window, target_date (still "today" locally)
+  is < UTC's already-rolled-over date, so the gate incorrectly treats a
+  market that is still legitimately trading today as already past and
+  rejects it outright.
+
+  Live-verified, reproducible right now (checked 2026-08-10 00:15 UTC =
+  2026-08-09 20:15 EDT): `tests/test_gaussian_prob.py::
+  TestBetweenMarketGaussian::test_between_yes_lock_end_to_end_real_metar_
+  lock_in` fails with `gate=past_date target=2026-08-09 today=2026-08-10`
+  for a NYC market that should still be tradeable. Confirmed via `git
+  stash` (running the same test against unmodified master, commit
+  efd11f3) that this is NOT caused by the sibling session's between-bucket
+  diff -- it reproduces identically on master alone, purely a function of
+  wall-clock time when the test happens to run. This makes it an
+  intermittent, wall-clock-dependent failure: it will appear to "pass"
+  again once UTC rolls past the affected window, which is exactly why it
+  had apparently gone unnoticed -- CI/local runs outside the affected hours
+  see nothing wrong.
+
+  NOT independently verified by this filing: (a) whether any other gate in
+  analyze_trade or elsewhere in the codebase shares this same UTC-vs-local
+  date comparison mistake -- only this one call site was found, by
+  accident, via a failing test; a deliberate sweep for `datetime.now(UTC
+  ).date()` compared against a city-local target_date elsewhere has not
+  been done. (b) whether settlement_monitor.py's own 17:00-19:00 local
+  window check is affected -- it uses a different, already city-local-only
+  comparison (`_MONITOR_START_HOUR <= local_now.hour < _MONITOR_END_HOUR`
+  against `datetime.now(ZoneInfo(city_tz))`), so it is NOT obviously
+  exposed to this same bug, but that has not been explicitly proven here.
+  Whoever picks this up should re-verify both before scoping the fix.
+
+What it would look like:
+  Compare target_date against the CITY-LOCAL current date, not UTC's --
+  e.g. `datetime.now(ZoneInfo(_CITY_TZ.get(city, "America/New_York"))).date
+  ()`, mirroring the city-local "today" pattern already used elsewhere in
+  this same function (_metar_lock_in's own `_local_today`, a few hundred
+  lines away) and in settlement_monitor.py. `city` is already in scope at
+  this point in analyze_trade. Needs its own test(s) pinning the exact
+  UTC-rollover-vs-local-evening window per representative timezone (EDT/
+  CDT/MDT/PDT), not just a single wall-clock-dependent assertion like the
+  one that surfaced this.
+
+Why not now:
+  Out of scope for the between-bucket AC3 fix that found it: a completely
+  different gate/function (analyze_trade's past_date check, not
+  _metar_lock_in or _check_between_settlement), a different bug class
+  (UTC-vs-local date comparison, not instantaneous-vs-daily-extreme), and a
+  much broader blast radius (every same-day market, every city, not just
+  between-bucket) that deserves its own dedicated investigation and test
+  sweep rather than a drive-by fix bundled into an unrelated change.
+
+When to revisit:
+  No blocking dependency. High priority given real trade-entry impact --
+  recommend picking this up soon; it silently suppresses legitimate
+  same-day trade signals for several hours every evening, for every city,
+  and its wall-clock-dependent nature means it can sit unnoticed in CI
+  runs that happen to execute outside the affected window.
+
+[OPEN 2026-08-10 -- new, filed by adjacency while resolving the SETTLEMENT_MONITOR.PY between-bucket AC3 entry below (second opus review round, spotted in passing while reading weather_markets.py's _persistence_prob for unrelated reasons; independently re-verified against nws.py's actual return shape before filing).] weather_markets.py's persistence_prob "PREFER TODAY'S OBSERVED MAX" BRANCH IS DEAD CODE -- nws.get_live_observation() NEVER RETURNS max_temp_f OR high_f
+Priority: Low-Medium -- affects only the `_persistence_prob` fallback path
+  (days_out <= 2, live-observation-based), not METAR lock-in or the primary
+  ensemble pipeline. Silently degrades to always using the instantaneous
+  reading instead of the intended "today's observed max" for same-day HIGH
+  markets, which is the same category of bug (instantaneous vs. daily
+  extreme) as the sibling entries above, just in a third, independent
+  module/code path.
+
+Problem:
+  weather_markets.py ~line 5913-5918 (inside the function computing
+  persistence_prob's live-observation input):
+    if var == "max" and days_out == 0 and _live:
+        _live_temp = (
+            _live.get("max_temp_f") or _live.get("high_f") or _live.get("temp_f")
+        )
+    else:
+        _live_temp = _live.get("temp_f") if _live else None
+  Comment above it: "For HIGH/max-role markets at days_out=0 the
+  instantaneous current temp is misleading after noon (the high has
+  already occurred and is higher). Prefer today's observed max when the
+  observation includes it." -- but `_live` comes from `nws.
+  get_live_observation(city, coords)` (nws.py ~line 414-462), which
+  independently re-verified 2026-08-10 (reading the function body directly,
+  not assumed) returns EXACTLY `{"temp_f", "timestamp", "description"}` --
+  it never sets "max_temp_f" or "high_f" on the returned dict. Both `.get()`
+  calls before the final `.get("temp_f")` fallback are therefore always
+  None, so this branch has silently always fallen through to the
+  instantaneous reading, since whenever this code was written -- exactly
+  the outcome the comment says it's trying to avoid.
+
+What it would look like:
+  Either (a) source a real daily-high value for this path -- e.g. reuse
+  metar.fetch_metar_daily_extreme() (added 2026-08-09/10 by the sibling
+  entries above) if a METAR station is available for the city, or extend
+  nws.get_live_observation()'s own payload with a real daily max field if
+  NWS's API exposes one; or (b) if neither is practical for this fallback
+  path, remove the dead max_temp_f/high_f branch and the now-inaccurate
+  comment, falling back to temp_f directly with an honest comment about why.
+
+Why not now:
+  Out of scope for the between-bucket AC3 fix that found it: a genuinely
+  separate function (_persistence_prob's live-observation blend, not
+  _metar_lock_in), separate data source (nws.get_live_observation, not
+  metar.fetch_metar), and a lower-severity fallback-only path (days_out <=
+  2 persistence blending, not the primary METAR lock-in or ensemble
+  pipeline) that doesn't warrant bundling into an unrelated change.
+
+When to revisit:
+  No blocking dependency. Low-Medium priority -- pick up alongside other
+  persistence_prob/nws.py maintenance, or whenever fetch_metar_daily_
+  extreme's daily-high plumbing is next touched, since option (a) above
+  could reuse it directly.
+
+[RESOLVED 2026-08-10] SETTLEMENT_MONITOR.PY'S OWN BETWEEN-BUCKET LOCK HAS THE SAME AC3 BUG THE JUST-FIXED weather_markets.py ONE HAD -- AND IT AUTO-CLOSES REAL PAPER POSITIONS
 Priority: Medium-High -- not the live-money entry path (that's analyze_trade/
   order_executor, unaffected by this), but settlement_monitor.py's signals ARE
   consumed automatically: cron.py:1415 acts on any settlement-lag signal with
@@ -107,6 +240,114 @@ When to revisit:
   Buildable now; flagged Medium-High rather than deferred indefinitely
   because of the real (if currently NO-direction-only) auto-execution path
   through cron.py.
+
+RESOLUTION (2026-08-10):
+  Shipped the fix shape described above, KEY DESIGN DECISION per user
+  AskUserQuestion: parallel implementation, not shared code with
+  weather_markets.py's _metar_lock_in between branch (this module's flat
+  dict return shape and simpler HIGH-only scope didn't justify the
+  refactor risk of touching bded3d6's already-shipped code for a shared
+  helper).
+
+  `_check_between_settlement(current_temp_f, lower_f, upper_f, max_temp_f)`
+  now takes a 4th param and keys the lock off max_temp_f (the running daily
+  high), not current_temp_f. NO locks only once max_temp_f (falling back to
+  current_temp_f only when max_temp_f is None) has cleared the upper edge by
+  >= _SETTLEMENT_MARGIN_F + 1.0 (2.0)°F -- monotonically safe, and the ONLY
+  safe NO direction for a HIGH-only market (the old code's symmetric "below
+  the lower edge" NO branch is gone entirely -- that was the actual bug: a
+  running high sitting below the band does NOT preclude the true high from
+  still rising into or past the band later). YES locks only from a REAL
+  max_temp_f (never the current_temp_f fallback) with >= half the band width
+  of clearance to the at-risk upper edge. `comp_temp = max(current_temp_f,
+  max_temp_f)` when max_temp_f is available, hardening against the two
+  independently-cached METAR fetches momentarily disagreeing.
+
+  SCOPE EXPANSION mid-session, surfaced via AskUserQuestion and user choice:
+  a first opus review round found that metar.py's existing max_temp_f/
+  min_temp_f fields (which both this fix's first draft AND the already-
+  merged weather_markets.py sibling, bded3d6, depend on) are NOT a true
+  running daily extreme -- they're the METAR API's maxT/minT remark-group
+  fields, populated ONLY on synoptic-hour (00Z/06Z/12Z/18Z) reports and each
+  covering only that report's own preceding 6-hour window. Live-verified
+  against aviationweather.gov (KDEN: maxT populated on only 2 of 15 hourly
+  reports). User chose to fix the root cause rather than ship a narrower,
+  YES-lock-disabled version: added `metar.fetch_metar_daily_extreme(station,
+  city_tz, target_date, extreme)` (+ private `_fetch_daily_temps_f`/
+  `_extract_temp_f`/`_extract_obs_time` helpers, + a new `_DAILY_OBS_CACHE`,
+  15-min TTL, keyed on station+local-date), which fetches a 30-hour window
+  of historical METAR observations and computes the TRUE running extreme
+  LOCALLY by filtering to the target local calendar date and taking max/min
+  of each reading's own temp field -- ignoring the sparse maxT/minT fields
+  entirely. Wired into BOTH this module's _check_between_settlement AND
+  weather_markets.py's _metar_lock_in (both the above/below AND between
+  branches, retroactively correcting bded3d6's own reliance on the same
+  sparse fields for its already-shipped between-YES and LOW-market NO
+  locks).
+
+  Two rounds of independent opus review (effort: high) before push, matching
+  the sibling entry's own precedent given the expanded scope:
+  - Round 1 found the metar.py windowed-max root cause above (the scope-
+    expansion trigger) plus a fragile float-precision accident: the YES
+    branch's confidence ceiling is 0.7999999999999999 < cron's 0.80
+    threshold by 1 ULP, not a real designed margin -- documented, not
+    "fixed," since changing it either way is a separate design call.
+  - Round 2 (after the metar.py scope expansion) found and this session
+    fixed: (a) a real, PRE-EXISTING, wall-clock-dependent bug in
+    analyze_trade's `past_date` gate (compares a city-local target_date
+    against UTC's current date) that this fix's own new end-to-end test
+    incidentally exposed -- independently confirmed via `git stash` that it
+    reproduces identically on unmodified master, filed as its own new HIGH
+    priority backlog entry above (NOT fixed here -- genuinely separate
+    function/bug-class/blast-radius, per this project's adjacency-scope
+    discipline); (b) zero test coverage on the Celsius-only `temp` API field
+    (the actual real-payload shape -- all first-draft tests used the
+    non-existent `tmpf` field), the `hours` request param, and the cache
+    key's date component, each mutation-confirmed and then closed with new
+    tests; (c) `_DAILY_OBS_CACHE`'s docstring overclaimed staleness safety
+    ("never wrong") -- true for NO locks (a lower bound), false for YES
+    locks (a stale under-report makes YES look artificially safer) --
+    corrected; (d) no negative-caching on fetch/timezone failure (unlike
+    fetch_metar's own pattern) -- added; (e) an invalid `extreme` argument
+    silently fell through to "min" semantics -- now raises ValueError; (f) a
+    third, independent instance of this same instantaneous-vs-extreme bug
+    class in weather_markets.py's persistence_prob fallback path (nws.
+    get_live_observation never returns max_temp_f/high_f, so that branch has
+    always been dead code) -- filed as its own new Low-Medium priority entry
+    above, not fixed here (separate function, separate data source, lower-
+    severity fallback-only path).
+
+  Tests: tests/test_settlement_monitor.py rewritten (5 old tests replaced,
+  22 total now, all mutation-tested against the removed unsafe-NO-direction
+  and the YES-requires-real-max_temp_f guards) + tests/test_metar.py's new
+  TestFetchMetarDailyExtreme class (14 tests, mutation-tested against the
+  Celsius-field, hours-param, cache-key, and local-date-filter claims) +
+  updated mocking in tests/test_weather_markets.py/test_phase2_batch_d.py/
+  test_gaussian_prob.py (now mock fetch_metar_daily_extreme directly instead
+  of embedding max_temp_f/min_temp_f in the fetch_metar() return dict) +
+  tests/conftest.py's clear_metar_cache fixture extended to also clear the
+  new _DAILY_OBS_CACHE (cross-test pollution was hit and fixed mid-session:
+  same station+date reused across scenarios silently cache-hit on an
+  earlier test's fixture). 22 passed (test_settlement_monitor.py), 40 passed
+  (test_metar.py) freshly re-run at resolution-write time; 367 passed, 4
+  skipped, 1 failed across the combined scoped suite (test_settlement_
+  monitor + test_metar + test_weather_markets + test_phase2_batch_d +
+  test_gaussian_prob) -- the 1 failure is
+  test_gaussian_prob.py::TestBetweenMarketGaussian::
+  test_between_yes_lock_end_to_end_real_metar_lock_in, the PRE-EXISTING
+  analyze_trade past_date bug above, independently confirmed via `git
+  stash` to fail identically on unmodified master (not a regression from
+  this change) -- currently red only because of when (wall-clock) this
+  narrative happens to be written; see the new backlog entry for the real
+  fix. Broader regression sweep: ~2000 tests across every file importing
+  metar/weather_markets/settlement_monitor, all passing except that same
+  1 pre-existing failure and 1 unrelated pre-existing environment gap
+  (test_ml_bias.py::TestEmos::test_fit_emos_returns_four_floats, missing
+  `properscoring` package, confirmed via git stash to fail identically on
+  master). Ruff and mypy clean on all changed files (mypy pre-existing
+  errors in unrelated acis_precip.py/acis_snow.py, not touched by this
+  change, confirmed via the actual pre-commit hook at commit time per this
+  project's mypy-version discipline).
 
 [RESOLVED 2026-08-09] BETWEEN-BUCKET MARKETS (KXHIGH*-B##.5) ARE PERMANENTLY UNTRADEABLE -- METAR LOCK-IN WAS DISABLED AFTER 2 REAL LOSING TRADES AND NEVER FIXED
 Priority: Medium -- not a live-money bug today (fails closed, ENABLE_MICRO_LIVE

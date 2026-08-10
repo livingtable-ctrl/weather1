@@ -4338,15 +4338,23 @@ class TestMetarLockInLowMarketAsymmetry:
         fake_obs_time.astimezone.return_value = fake_obs_local
 
         with patch.object(wm, "_metar_station_for_city", return_value="KJFK"):
-            with patch.object(
-                _metar,
-                "fetch_metar",
-                return_value={
-                    "current_temp_f": min_temp_f,
-                    "min_temp_f": min_temp_f,
-                    "max_temp_f": min_temp_f + 20.0,
-                    "obs_time": fake_obs_time,
-                },
+            with (
+                patch.object(
+                    _metar,
+                    "fetch_metar",
+                    return_value={
+                        "current_temp_f": min_temp_f,
+                        "obs_time": fake_obs_time,
+                    },
+                ),
+                # _metar_lock_in sources the daily extreme from
+                # fetch_metar_daily_extreme, not fetch_metar()'s own
+                # min_temp_f/max_temp_f fields (2026-08-09 — see
+                # fetch_metar_daily_extreme's docstring). ticker is always a
+                # KXLOW* ticker here, so only "min" is ever requested.
+                patch.object(
+                    _metar, "fetch_metar_daily_extreme", return_value=min_temp_f
+                ),
             ):
                 return wm._metar_lock_in(
                     city="NYC",

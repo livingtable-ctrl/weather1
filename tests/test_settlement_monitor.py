@@ -123,60 +123,161 @@ class TestBuildSettlementSignal:
 
 
 class TestCheckBetweenSettlement:
-    """Unit tests for _check_between_settlement (between-bucket lockout logic)."""
+    """Unit tests for _check_between_settlement (between-bucket lockout logic).
 
-    def test_inside_band_locks_yes(self):
-        """Temp inside band → locked=True, outcome=yes (any clearance suffices)."""
+    Rewritten 2026-08-09 (backlog.txt "SETTLEMENT_MONITOR.PY'S OWN
+    BETWEEN-BUCKET LOCK...") — the function now keys off max_temp_f (the
+    running daily high), not current_temp_f, since locking off the
+    instantaneous reading was the AC3 bug this rewrite fixes.
+    """
+
+    def test_max_temp_inside_band_with_full_clearance_locks_yes(self):
+        """max_temp_f at the lower edge → max clearance to the at-risk upper
+        edge (full band width) → locked YES."""
         from settlement_monitor import _check_between_settlement
 
-        # clearance from lower = 70.5 - 69.5 = 1.0, from upper = 71.5 - 70.5 = 1.0
-        result = _check_between_settlement(70.5, lower_f=69.5, upper_f=71.5)
+        # risk_clearance = upper(71.5) - max(69.5) = 2.0 >= margin (band
+        # width / 2 = 1.0)
+        result = _check_between_settlement(
+            current_temp_f=69.5, lower_f=69.5, upper_f=71.5, max_temp_f=69.5
+        )
         assert result["locked"] is True
         assert result["outcome"] == "yes"
-        assert result["confidence"] > 0.7
+        assert result["confidence"] == pytest.approx(0.80, abs=0.001)
 
-    def test_inside_at_edge_still_locks_yes(self):
-        """Temp at the very edge of the band (clearance=0) still locks YES."""
+    def test_max_temp_at_yes_margin_boundary_locks_yes(self):
+        """max_temp_f exactly at the half-band-width margin → locks (>=, not >)."""
         from settlement_monitor import _check_between_settlement
 
-        # Exactly at lower edge — outcome uncertain but still "inside"
-        result = _check_between_settlement(69.5, lower_f=69.5, upper_f=71.5)
+        # risk_clearance = 71.5 - 70.5 = 1.0 == margin (2.0/2) exactly
+        result = _check_between_settlement(
+            current_temp_f=70.5, lower_f=69.5, upper_f=71.5, max_temp_f=70.5
+        )
         assert result["locked"] is True
         assert result["outcome"] == "yes"
-        assert result["confidence"] == pytest.approx(0.70, abs=0.01)
+        assert result["confidence"] == pytest.approx(0.75, abs=0.001)
 
-    def test_outside_with_sufficient_clearance_locks_no(self):
-        """Temp >2°F below lower edge → locked=True, outcome=no."""
+    def test_max_temp_just_under_yes_margin_not_locked(self):
+        """max_temp_f just inside the at-risk edge of the margin → not locked."""
         from settlement_monitor import _check_between_settlement
 
-        # clearance = 69.5 - 67.0 = 2.5 ≥ margin(1.0) + 1.0 = 2.0
-        result = _check_between_settlement(67.0, lower_f=69.5, upper_f=71.5)
-        assert result["locked"] is True
-        assert result["outcome"] == "no"
-
-    def test_outside_too_close_to_edge_not_locked(self):
-        """Temp just outside lower edge (clearance < margin+1°F) → not locked."""
-        from settlement_monitor import _check_between_settlement
-
-        # clearance = 69.5 - 69.0 = 0.5 < 2.0 → uncertain
-        result = _check_between_settlement(69.0, lower_f=69.5, upper_f=71.5)
+        # risk_clearance = 71.5 - 70.51 = 0.99 < margin (1.0)
+        result = _check_between_settlement(
+            current_temp_f=70.51, lower_f=69.5, upper_f=71.5, max_temp_f=70.51
+        )
         assert result["locked"] is False
 
-    def test_above_band_with_clearance_locks_no(self):
-        """Temp well above upper edge → locked=True, outcome=no."""
+    def test_yes_requires_real_max_temp_not_current_temp_fallback(self):
+        """AC3 regression guard: an in-band INSTANTANEOUS reading alone must
+        never lock YES — only a real max_temp_f can. Positive control: the
+        identical band/current_temp_f locks YES once a real max_temp_f
+        (test_max_temp_inside_band_with_full_clearance_locks_yes, same
+        current_temp_f=69.5) is supplied, proving this isn't vacuously
+        unlocked for some unrelated reason."""
         from settlement_monitor import _check_between_settlement
 
-        # clearance = 74.0 - 71.5 = 2.5 ≥ 2.0
-        result = _check_between_settlement(74.0, lower_f=69.5, upper_f=71.5)
+        result = _check_between_settlement(
+            current_temp_f=69.5, lower_f=69.5, upper_f=71.5, max_temp_f=None
+        )
+        assert result["locked"] is False
+
+    def test_max_temp_cleared_upper_edge_with_margin_locks_no(self):
+        """max_temp_f >2°F above the upper edge → locked=True, outcome=no."""
+        from settlement_monitor import _check_between_settlement
+
+        # clearance = 73.6 - 71.5 = 2.1 >= margin(1.0) + 1.0 = 2.0
+        result = _check_between_settlement(
+            current_temp_f=73.6, lower_f=69.5, upper_f=71.5, max_temp_f=73.6
+        )
         assert result["locked"] is True
         assert result["outcome"] == "no"
+        assert result["confidence"] == pytest.approx(0.663, abs=0.001)
+
+    def test_max_temp_just_under_no_margin_not_locked(self):
+        """max_temp_f just under the NO margin → not locked."""
+        from settlement_monitor import _check_between_settlement
+
+        # clearance = 73.4 - 71.5 = 1.9 < 2.0
+        result = _check_between_settlement(
+            current_temp_f=73.4, lower_f=69.5, upper_f=71.5, max_temp_f=73.4
+        )
+        assert result["locked"] is False
+
+    def test_max_temp_at_exact_no_margin_boundary_locks_no(self):
+        """max_temp_f exactly at the NO margin boundary → locks (>=, not >).
+        Mutation guard: a `>` mutant of the NO branch's `>=` comparison
+        passes every other test in this class (all use clearance strictly
+        above or below 2.0) but fails this one."""
+        from settlement_monitor import _check_between_settlement
+
+        # clearance = 73.5 - 71.5 = 2.0 == margin exactly
+        result = _check_between_settlement(
+            current_temp_f=73.5, lower_f=69.5, upper_f=71.5, max_temp_f=73.5
+        )
+        assert result["locked"] is True
+        assert result["outcome"] == "no"
+
+    def test_no_lock_fallback_stays_unlocked_when_current_temp_below_band(self):
+        """The exact fallback path the OLD code got wrong: max_temp_f
+        unavailable, current_temp_f well below the band. Must NOT lock NO
+        (current_temp_f below the band says nothing about whether the real
+        high already passed through/above it earlier in the day) — only
+        current_temp_f ABOVE the band with margin is a safe NO fallback."""
+        from settlement_monitor import _check_between_settlement
+
+        result = _check_between_settlement(
+            current_temp_f=76.0, lower_f=85.5, upper_f=87.5, max_temp_f=None
+        )
+        assert result["locked"] is False
+
+    def test_no_lock_falls_back_to_current_temp_when_max_temp_unavailable(self):
+        """When max_temp_f is unavailable, the NO direction safely falls back
+        to current_temp_f (current_temp_f <= true daily high always, so a
+        cleared margin on current_temp_f guarantees the real high cleared it
+        too)."""
+        from settlement_monitor import _check_between_settlement
+
+        # clearance = 74.0 - 71.5 = 2.5 >= 2.0
+        result = _check_between_settlement(
+            current_temp_f=74.0, lower_f=69.5, upper_f=71.5, max_temp_f=None
+        )
+        assert result["locked"] is True
+        assert result["outcome"] == "no"
+
+    def test_running_high_inside_band_locks_yes_despite_evening_cooling(self):
+        """AC3 regression guard, reproducing the entry's own concrete failure
+        scenario: the real daily high (86.5°F) occurred earlier and sits
+        safely inside the band, but the station has since cooled well below
+        the band's lower edge by evening. The old (buggy) instantaneous-
+        reading logic would have locked NO here (wrong — the real answer is
+        YES); the fixed logic must lock YES from the real max_temp_f."""
+        from settlement_monitor import _check_between_settlement
+
+        result = _check_between_settlement(
+            current_temp_f=76.0, lower_f=85.5, upper_f=87.5, max_temp_f=86.5
+        )
+        assert result["locked"] is True
+        assert result["outcome"] == "yes"
+
+    def test_running_high_still_below_band_stays_uncertain_not_locked(self):
+        """AC3 regression guard: a running high that hasn't reached the band
+        yet must NOT lock NO (the true high can still rise into or past the
+        band later in the day) — even though the old instantaneous-reading
+        logic's symmetric clearance check would have locked NO here."""
+        from settlement_monitor import _check_between_settlement
+
+        result = _check_between_settlement(
+            current_temp_f=80.0, lower_f=85.5, upper_f=87.5, max_temp_f=80.0
+        )
+        assert result["locked"] is False
 
 
 class TestBTickerParsing:
     """B-ticker (between-bucket) detection in check_city_settlement."""
 
     def test_b_ticker_outside_near_edge_not_locked(self):
-        """B-ticker market with temp just outside band (clearance < 2°F) → no signal."""
+        """B-ticker market with daily high just outside band (clearance <
+        2°F) → no signal."""
         from datetime import datetime
         from unittest.mock import patch
 
@@ -194,13 +295,59 @@ class TestBTickerParsing:
             "threshold": None,
         }
 
-        with patch("metar.fetch_metar", return_value=fake_obs):
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            patch("metar.fetch_metar_daily_extreme", return_value=73.0),
+        ):
             signals = sm.check_city_settlement("NYC", [mock_market])
 
         assert signals == []
 
-    def test_b_ticker_yes_signal_when_temp_inside(self):
-        """B-ticker locked YES when temp is inside the band."""
+    def test_b_ticker_yes_signal_when_max_temp_inside(self):
+        """B-ticker locked YES when the real daily high (from
+        fetch_metar_daily_extreme, NOT fetch_metar()'s own max_temp_f field)
+        is inside the band with sufficient clearance to the at-risk edge."""
+        from datetime import datetime
+        from unittest.mock import patch
+
+        import settlement_monitor as sm
+
+        fake_obs = {
+            # Deliberately <= max_temp_f below, so comp_temp's
+            # max(current_temp_f, max_temp_f) hardening doesn't override
+            # the daily-high value this test means to exercise.
+            "current_temp_f": 68.0,
+            "obs_time": datetime.now(UTC),
+        }
+        mock_market = {
+            "direction": "between",
+            "lower": 69.5,
+            "upper": 71.5,
+            "ticker": "KXHIGHNY-26MAY17-B70.5",
+            "threshold": None,
+        }
+
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            patch("metar.fetch_metar_daily_extreme", return_value=69.5),
+        ):
+            signals = sm.check_city_settlement("NYC", [mock_market])
+
+        assert len(signals) == 1
+        assert signals[0]["outcome"] == "yes"
+        assert signals[0]["ticker"] == "KXHIGHNY-26MAY17-B70.5"
+        assert signals[0]["comp_temp_f"] == pytest.approx(69.5)
+        assert signals[0]["max_temp_f"] == pytest.approx(69.5)
+
+    def test_b_ticker_no_signal_when_max_temp_unavailable_despite_in_band_reading(
+        self,
+    ):
+        """AC3 regression guard at the check_city_settlement integration
+        level: an in-band instantaneous reading with no daily-extreme data
+        available (station doesn't report it / fetch failed) must NOT
+        produce a YES signal — mirrors
+        test_yes_requires_real_max_temp_not_current_temp_fallback but through
+        the full fetch → signal pipeline."""
         from datetime import datetime
         from unittest.mock import patch
 
@@ -218,12 +365,73 @@ class TestBTickerParsing:
             "threshold": None,
         }
 
-        with patch("metar.fetch_metar", return_value=fake_obs):
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            patch("metar.fetch_metar_daily_extreme", return_value=None),
+        ):
+            signals = sm.check_city_settlement("NYC", [mock_market])
+
+        assert signals == []
+
+    def test_b_ticker_locks_yes_from_max_temp_despite_evening_cooling(self):
+        """Integration-level version of the entry's own failure scenario:
+        real daily high sits inside the band, station has since cooled well
+        below the band by evening. Must produce a YES signal, not the old
+        code's wrong NO."""
+        from datetime import datetime
+        from unittest.mock import patch
+
+        import settlement_monitor as sm
+
+        fake_obs = {
+            "current_temp_f": 76.0,
+            "obs_time": datetime.now(UTC),
+        }
+        mock_market = {
+            "direction": "between",
+            "lower": 85.5,
+            "upper": 87.5,
+            "ticker": "KXHIGHNY-26MAY17-B86.5",
+            "threshold": None,
+        }
+
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            patch("metar.fetch_metar_daily_extreme", return_value=86.5),
+        ):
             signals = sm.check_city_settlement("NYC", [mock_market])
 
         assert len(signals) == 1
         assert signals[0]["outcome"] == "yes"
-        assert signals[0]["ticker"] == "KXHIGHNY-26MAY17-B70.5"
+        assert signals[0]["comp_temp_f"] == pytest.approx(86.5)
+
+    def test_b_ticker_malformed_band_missing_bounds_fails_closed(self):
+        """A between market dict missing 'lower'/'upper' must be skipped,
+        not silently default to a fake [0.0, 0.0] band (which would
+        confidently lock NO for almost any real temperature)."""
+        from datetime import datetime
+        from unittest.mock import patch
+
+        import settlement_monitor as sm
+
+        fake_obs = {
+            "current_temp_f": 70.5,
+            "obs_time": datetime.now(UTC),
+        }
+        mock_market = {
+            "direction": "between",
+            "ticker": "KXHIGHNY-26MAY17-B70.5",
+            "threshold": None,
+            # lower/upper deliberately omitted
+        }
+
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            patch("metar.fetch_metar_daily_extreme", return_value=70.5),
+        ):
+            signals = sm.check_city_settlement("NYC", [mock_market])
+
+        assert signals == []
 
     def test_t_ticker_still_works_as_before(self):
         """T-ticker (above/below) markets are unaffected by the B-ticker changes."""

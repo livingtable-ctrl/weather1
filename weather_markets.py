@@ -9973,10 +9973,16 @@ def _metar_lock_in(
             # occurred at 6 AM. Key off ticker (KXLOW... vs KXHIGH...) because
             # _cond_type describes the bet direction, not whether it's a min/max market.
             _is_low_mkt = _var_from_ticker_prefix(ticker.upper()) == "min"
-            if _is_low_mkt:
-                _daily_ext = _metar_obs.get("min_temp_f")
-            else:
-                _daily_ext = _metar_obs.get("max_temp_f")
+            # fetch_metar()'s own min_temp_f/max_temp_f come from the METAR
+            # remark group's 6-hour extreme (maxT/minT), populated only on
+            # synoptic-hour reports and covering only that report's own
+            # preceding 6h — NOT a running value since local midnight (see
+            # fetch_metar_daily_extreme's docstring, live-verified 2026-08-09
+            # against backlog.txt "SETTLEMENT_MONITOR.PY'S OWN BETWEEN-BUCKET
+            # LOCK..."). Use the real running extreme instead.
+            _daily_ext = _metar.fetch_metar_daily_extreme(
+                _metar_sta, _city_tz_str, _local_today, "min" if _is_low_mkt else "max"
+            )
             _comp_temp = (
                 _daily_ext if _daily_ext is not None else _metar_obs["current_temp_f"]
             )
@@ -10036,10 +10042,11 @@ def _metar_lock_in(
             _hi = float(condition["upper"])
             _between_var = _var_from_ticker_prefix(ticker.upper())
             _is_low_mkt = _between_var == "min"
-            _daily_ext = (
-                _metar_obs.get("min_temp_f")
-                if _is_low_mkt
-                else _metar_obs.get("max_temp_f")
+            # See the above/below branch's matching comment: fetch_metar()'s
+            # own min_temp_f/max_temp_f are a 6-hour synoptic-window extreme,
+            # not a running value since local midnight.
+            _daily_ext = _metar.fetch_metar_daily_extreme(
+                _metar_sta, _city_tz_str, _local_today, "min" if _is_low_mkt else "max"
             )
             _comp_temp = (
                 _daily_ext if _daily_ext is not None else _metar_obs["current_temp_f"]

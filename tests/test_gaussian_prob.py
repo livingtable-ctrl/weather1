@@ -717,10 +717,15 @@ class TestBetweenMarketGaussian:
                 "fetch_metar",
                 return_value={
                     "current_temp_f": 68.0,  # evening cooling -- outside the band
-                    "max_temp_f": 70.5,  # daily high peaked at the band midpoint
                     "obs_time": fake_obs_time,
                 },
             ),
+            # _metar_lock_in sources the daily extreme from
+            # fetch_metar_daily_extreme (2026-08-09), not fetch_metar()'s own
+            # max_temp_f field -- mock it directly so this end-to-end test
+            # still exercises "daily high peaked at the band midpoint"
+            # without a real network call.
+            patch.object(_metar, "fetch_metar_daily_extreme", return_value=70.5),
         ):
             result = wm.analyze_trade(enriched)
 
