@@ -330,7 +330,25 @@ def nws_prob(
     # "between" ranges. Scoped to between only because _nws_days_out_scale(2.0)
     # also fires at days_out=1 — applying sigma=1 to above/below would compound
     # with that weight doubling and inflate blended_prob past the 0.25 gap gate.
-    days_out = (target_date - _utc_today()).days
+    # target_date is CITY-LOCAL (from analyze_trade's parse_city_date()), so
+    # days_out must be computed against the city's own local today, not UTC's
+    # -- during the ~4-8h evening window where UTC has already rolled over
+    # but the city hasn't, a UTC-based days_out silently sigma-tightens a
+    # genuinely-tomorrow-local market (backlog.txt "ANALYZE_TRADE'S
+    # past_date GATE..." -- same bug class, same target_date, this call site).
+    _nws_tz = coords[2] if len(coords) > 2 else "UTC"
+    try:
+        from zoneinfo import ZoneInfo as _NwsZoneInfo
+
+        _local_today = datetime.now(_NwsZoneInfo(_nws_tz)).date()
+    except Exception:
+        _log.warning(
+            "nws_prob: ZoneInfo(%r) unavailable for %s — falling back to UTC date",
+            _nws_tz,
+            city,
+        )
+        _local_today = _utc_today()
+    days_out = (target_date - _local_today).days
     if days_out <= 0:
         sigma = 1.0
     elif days_out == 1 and condition.get("type") == "between":

@@ -861,14 +861,29 @@ def log_prediction(
     cond = analysis.get("condition", {})
     lo = cond.get("threshold", cond.get("lower"))
     hi = cond.get("threshold", cond.get("upper"))
-    # max(0, ...) matches the clamp already used at weather_markets.py's
-    # days_out call sites: from 00:00 UTC until local midnight (a same-day
-    # evening window for US cities), _utc_today() is already local-tomorrow,
-    # which would otherwise store days_out=-1 and drop the row from both the
-    # same-day and multiday analytics buckets.
-    days_out = (
-        max(0, (market_date - _utc_today()).days) if market_date is not None else None
-    )
+    # Prefer analysis["days_out"] (analyze_trade's own value, computed
+    # against the market's CITY-LOCAL today per backlog.txt "ANALYZE_TRADE'S
+    # past_date GATE...") over recomputing here from UTC -- recomputing would
+    # silently disagree with the value analyze_trade itself used for this
+    # same trade during the ~4-8h evening window each day where UTC's date
+    # has already rolled over but the city's hasn't, polluting the
+    # calibration/analytics buckets this data feeds with two different
+    # answers for the same trade. Falls back to the old UTC-based clamp only
+    # when the caller doesn't supply analysis["days_out"] (e.g. a shadow/
+    # lookup write built from a bare market dict rather than a real
+    # analyze_trade() result).
+    _analysis_days_out = analysis.get("days_out")
+    if _analysis_days_out is not None:
+        days_out = _analysis_days_out
+    elif market_date is not None:
+        # max(0, ...) matches the clamp already used at weather_markets.py's
+        # days_out call sites: from 00:00 UTC until local midnight (a same-day
+        # evening window for US cities), _utc_today() is already local-tomorrow,
+        # which would otherwise store days_out=-1 and drop the row from both the
+        # same-day and multiday analytics buckets.
+        days_out = max(0, (market_date - _utc_today()).days)
+    else:
+        days_out = None
     # #53: raw_prob is pre-bias-correction; forecast_prob is the adjusted value.
     # M-12: arithmetic is correct — bias_correction stores the amount SUBTRACTED from
     # the blended prob to produce forecast_prob, so adding it back reconstructs the

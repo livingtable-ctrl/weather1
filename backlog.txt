@@ -1,7 +1,7 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
-[OPEN 2026-08-10 -- new, filed by adjacency while resolving the SETTLEMENT_MONITOR.PY between-bucket AC3 entry below (second opus review round of that fix live-hit this exact bug when its end-to-end test failed, and confirmed via `git stash` that it reproduces identically on unmodified master -- pre-existing, not introduced by that session's diff).] ANALYZE_TRADE'S past_date GATE COMPARES A CITY-LOCAL target_date AGAINST UTC's CURRENT DATE -- REJECTS LEGITIMATELY-STILL-OPEN SAME-DAY MARKETS FOR ~4-8 HOURS EVERY EVENING, PER CITY
+[RESOLVED 2026-08-11 -- see resolution below.] ANALYZE_TRADE'S past_date GATE COMPARES A CITY-LOCAL target_date AGAINST UTC's CURRENT DATE -- REJECTS LEGITIMATELY-STILL-OPEN SAME-DAY MARKETS FOR ~4-8 HOURS EVERY EVENING, PER CITY
 Priority: High -- this is analyze_trade's own gate, the live/paper TRADE-ENTRY
   path (order_executor's upstream signal source), not a settlement-only
   concern. Broader blast radius than the sibling entries that found it:
@@ -79,6 +79,185 @@ When to revisit:
   same-day trade signals for several hours every evening, for every city,
   and its wall-clock-dependent nature means it can sit unnoticed in CI
   runs that happen to execute outside the affected window.
+
+Resolution (2026-08-11):
+  Root cause fixed in weather_markets.py: analyze_trade() now computes
+  `_local_today` once, early in the function, via
+  `datetime.now(ZoneInfo(_CITY_TZ.get(city or "", "America/New_York"))).date()`
+  (try/except falling back to UTC on ZoneInfo failure, with a warning log),
+  and reuses that single value at every days_out/past-date comparison in
+  the function -- the past_date gate itself, the hurricane_count/
+  storm_order/generic days_out ceiling gates, and the two downstream
+  days_out recomputations feeding edge_confidence/sigma scaling.
+  _analyze_hourly_trade() (a separate function analyze_trade calls) gets
+  its own equivalent local computation via its own coords/tz parameter.
+
+  Explicitly left unchanged, re-verified rather than assumed:
+  _forecast_uncertainty() no longer even has a UTC dependency to leave
+  alone -- see the M1 finding below, it was simplified to a pure function
+  of days_out instead. _days_out_from_close_time() compares two UTC-based
+  quantities (close_dt.date() vs UTC today) and is genuinely a different,
+  self-consistent bug class -- left as-is (see L4 below for a nuance worth
+  noting, not fixing).
+
+  Scope grew substantially past the single named gate, via an opus
+  effort=high review (spawned per this project's standing 28-step
+  workflow) that traced every consumer of analyze_trade's target_date/
+  days_out, not just the literal call sites named in this entry's
+  original filing:
+
+  Sites fixed in THIS change (same live trade-entry payload analyze_trade
+  already produces, or a split-brain this change itself would otherwise
+  have introduced -- both same-payload per the workflow's adjacency rule):
+    - weather_markets.py analyze_trade(): past_date gate,
+      hurricane_count/storm_order/generic days_out ceiling gates (3
+      sites), two downstream days_out recomputations feeding
+      edge_confidence/sigma scaling.
+    - weather_markets.py _analyze_hourly_trade(): its own days_out calc.
+    - weather_markets.py _forecast_uncertainty(): changed signature from
+      target_date to days_out -- both real call sites (inside
+      _compute_ensemble_prob and the MOS-sigma-fallback path) already had
+      a correctly-computed city-local days_out in scope, so this function
+      no longer needs (or has) any datetime dependency at all. The
+      TestUtcTodayDate test pinning it to UTC was rewritten as a pure
+      value-mapping test; its class docstring now scopes what the class
+      actually still guards (UTC vs naive system-local, not UTC vs
+      city-local).
+    - weather_markets.py fetch_temperature_pirate_weather(): the
+      is_historical UTC-vs-target_date check that decides forecast vs
+      time-machine endpoint -- same bug class already fixed in its sibling
+      fetch_temperature_weatherapi(), now consistent.
+    - nws.py nws_prob(): days_out (feeding the NWS sigma ladder) was still
+      UTC-based even though target_date/city/coords are the same
+      city-local values analyze_trade passes in.
+    - mos.py fetch_mos()/fetch_mos_best(): added an optional
+      `tz: str | None = None` parameter (both call sites -- weather_
+      markets.py's analyze_trade and trade_cycle.py's pre-warm -- now pass
+      `_CITY_TZ.get(city)`) so the MOS sigma lookup and NAM/GFS model
+      routing key off city-local days_out too. None (unknown caller)
+      preserves the old UTC-only behavior.
+    - tracker.py log_prediction(): now prefers analysis["days_out"]
+      (analyze_trade's own, now-corrected value) over recomputing from
+      UTC -- recomputing would otherwise create a NEW split-brain this fix
+      would have introduced (paper.json's days_out vs the predictions DB's
+      disagreeing during the rollover window), not merely leave an old bug
+      in place. Falls back to the old UTC-based clamp only when analysis
+      lacks a "days_out" key.
+
+  Deferred to a NEW backlog entry (below) rather than fixed here: main.py's
+  _feature_importance_days_out and monte_carlo.py's is-past check --
+  genuinely separate consumers (model-training feature logging, standalone
+  simulation) per the same adjacency test, not the live trade-entry
+  payload this change is already touching.
+
+  Explicitly NOT a defect, left as-is: _days_out_from_close_time() (see
+  L4 note in the new backlog entry below for a related nuance worth
+  documenting).
+
+  Testing: every fixed site got its own new, hand-mutation-tested
+  regression test (reverted the fix, confirmed the specific test fails,
+  restored, confirmed it passes again) -- not just a suite-wide pass/fail:
+    - tests/test_weather_markets.py::TestPastDateGateCityLocal (3 tests):
+      same-day-market-not-gated, genuinely-past-market-still-gated, and
+      the generic days_out ceiling, all pinned at a fixed 2026-08-10
+      00:30 UTC instant across NYC/Chicago/Denver/LA (EDT/CDT/MDT/PDT).
+    - tests/test_weather_markets.py::TestUtcTodayDate: rewritten pure
+      value-mapping test for _forecast_uncertainty's new signature.
+    - tests/test_weather_markets.py::
+      TestFetchTemperaturePirateWeatherHistoricalRouting: forecast-vs-
+      timemachine endpoint routing.
+    - tests/test_nws.py (new file): nws_prob's sigma ladder.
+    - tests/test_mos.py: fetch_mos's sigma lookup, fetch_mos_best's
+      NAM/GFS routing.
+    - tests/test_tracker.py: log_prediction prefers analysis["days_out"],
+      falls back correctly when absent.
+  Fresh count at the moment of writing this narrative: 1128 tests
+  collected (1124 passed, 4 skipped) across the full affected suite
+  (test_weather_markets/test_gaussian_prob/test_hourly_markets/
+  test_hurricane_gating/test_hurricane_markets/test_forecasting/test_mos/
+  test_mos_nbp/test_mos_nbs/test_tracker/test_trade_cycle_engine/
+  test_prediction_kwargs/test_nws/test_nbm).
+
+  Process note: this session's own opus review agent made a stray,
+  unreverted edit to weather_markets.py mid-review (a mutation-testing
+  experiment for one of the new tests, left in place with a NameError-
+  causing bug -- `timedelta` used but never imported) before being asked
+  to stop; caught by chance while independently investigating an unrelated
+  test flake, not by the review's own process. Confirmed reverted and the
+  file matches the intended diff before continuing. Lint (ruff/ruff-format/
+  mypy via the actual pre-commit hook) is clean across all 11 changed
+  files (mos.py, nws.py, tracker.py, trade_cycle.py, weather_markets.py,
+  tests/test_forecasting.py, tests/test_hourly_markets.py,
+  tests/test_mos.py, tests/test_tracker.py, tests/test_weather_markets.py,
+  tests/test_nws.py).
+
+[OPEN 2026-08-11 -- new, filed by adjacency while resolving the ANALYZE_TRADE'S past_date GATE entry above (an opus effort=high review of that fix traced every consumer of analyze_trade's target_date/days_out and found these 2 non-trading-path sites share the same bug class; deliberately NOT fixed inline there per the same-payload scope test -- these are genuinely separate consumers, not the live trade-entry blend that fix was already touching).] main.py's _feature_importance_days_out AND monte_carlo.py's is-past CHECK STILL COMPARE A CITY-LOCAL target_date/DATE STRING AGAINST UTC TODAY
+Priority: Low -- neither gates a live trade entry. main.py's
+  _feature_importance_days_out feeds model-training feature logging (not a
+  live decision); monte_carlo.py's is-past check gates a standalone
+  simulation. Same bug class and window as the (now-fixed) ANALYZE_TRADE'S
+  past_date GATE entry, just lower-stakes consumers.
+
+Problem:
+  main.py ~line 2552 (_feature_importance_days_out):
+    return (_date_fi.fromisoformat(target_date_str) - _utc_today_fi()).days
+  target_date_str is analyze_trade's own target_date.isoformat() (city-
+  local, from parse_city_date()) -- comparing it against utils.utc_today()
+  means the feature-importance days_out logged for model training is off
+  by one during the same ~4-8h evening window every day, and now also
+  disagrees with the (post-fix) days_out in the same analysis dict this
+  function is fed from.
+
+  monte_carlo.py ~line 317:
+    _is_past = _date_mc.fromisoformat(_tdate) < _utc_today()
+  Same shape: _tdate is a city-local date string, compared against UTC
+  today.
+
+  NOT independently verified by this filing: whether either site's
+  downstream consumer (model training, simulation output) is sensitive
+  enough to this off-by-one to matter in practice, or whether it washes
+  out in aggregate given both errors are always in the same direction
+  (UTC-today is always >= city-local-today, never earlier) and bounded to
+  ~4-8h/day. Whoever picks this up should check the actual magnitude of
+  impact before assuming this is worth the same priority as a live-trade
+  fix.
+
+  Also noted by the same review, informational only, NOT a defect:
+  weather_markets.py's _days_out_from_close_time() (used for monthly rain/
+  snow/hurricane-next-event's own days_out ceiling gates) is correctly
+  UTC-vs-UTC internally consistent (compares close_dt.date(), itself UTC,
+  against UTC today) -- genuinely a different bug class from this entry,
+  correctly left alone. Worth knowing though: Kalshi's close_time for a
+  market described as closing on a given city-local-ET date is an
+  evening-ET instant whose UTC date is the FOLLOWING day (e.g.
+  "2026-09-15T03:59Z" is 23:59 ET on Sep 14 -- see weather_markets.py's own
+  comment near line ~9418), so close_dt.date() slightly OVERSTATES the
+  ET-local days-out by one until ~20:00 ET on the market's final day.
+  Immaterial against the months-scale RAIN_MAX_DAYS_OUT/SNOW_MAX_DAYS_OUT/
+  HURRICANE_MAX_DAYS_OUT ceilings this gates, and the direction is
+  conservative (biases edge_confidence/time_kelly_scale down, not up) --
+  not worth a code change, just worth knowing if this area gets touched
+  again.
+
+What it would look like:
+  main.py: thread the city (already available via the enclosing scope --
+  check the actual call site) through to a ZoneInfo-based local-today
+  computation, mirroring analyze_trade's own `_local_today` pattern.
+  monte_carlo.py: same pattern, if the city is available at that call
+  site; check whether it currently is before assuming this is a small fix.
+
+Why not now:
+  Both are non-trading-path consumers (feature logging, simulation) of the
+  same underlying value analyze_trade already computes correctly post-fix
+  -- genuinely separate call sites needing their own investigation (does
+  main.py's call site have city in scope? what does monte_carlo.py's
+  simulation actually use is_past for downstream?) rather than an inline
+  fix riding along on the trade-entry gate's own change.
+
+When to revisit:
+  No blocking dependency. Low priority -- pick up opportunistically or
+  when someone is already touching feature-importance logging or the
+  monte carlo simulation for other reasons.
 
 [OPEN 2026-08-10 -- new, filed by adjacency while resolving the SETTLEMENT_MONITOR.PY between-bucket AC3 entry below (second opus review round, spotted in passing while reading weather_markets.py's _persistence_prob for unrelated reasons; independently re-verified against nws.py's actual return shape before filing).] weather_markets.py's persistence_prob "PREFER TODAY'S OBSERVED MAX" BRANCH IS DEAD CODE -- nws.get_live_observation() NEVER RETURNS max_temp_f OR high_f
 Priority: Low-Medium -- affects only the `_persistence_prob` fallback path

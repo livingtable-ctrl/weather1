@@ -132,6 +132,94 @@ class TestFetchMos:
         assert result["max_temp_f"] == 72
         assert result["n_hours"] == 3  # only same-day rows counted
 
+    def test_days_out_uses_city_local_today_not_utc(self):
+        """fetch_mos's days_out (and thus sigma) must be computed against
+        the tz passed in, not UTC -- target_date is city-local (from
+        analyze_trade's parse_city_date()), so a UTC-based days_out
+        silently disagrees during the ~4-8h evening window each day where
+        UTC's date has already rolled over but the city's hasn't
+        (backlog.txt "ANALYZE_TRADE'S past_date GATE...").
+
+        Fixed instant 2026-08-10 00:30 UTC -> NYC local today is 2026-08-09.
+        target_date=2026-08-11 is 2 days out from NYC's local today, but
+        only 1 day out from UTC's already-rolled-over 2026-08-10 -- the
+        GFS sigma table gives a different value for each (3.2 vs 2.5),
+        so this discriminates the two implementations directly."""
+        from datetime import UTC, datetime
+
+        import mos
+
+        frozen_instant = datetime(2026, 8, 10, 0, 30, tzinfo=UTC)
+
+        class _Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return frozen_instant.replace(tzinfo=None)
+                return frozen_instant.astimezone(tz)
+
+        response = {
+            "data": [{"ftime": "2026-08-11 15:00", "tmp": 70}],
+        }
+        with (
+            patch.object(mos, "datetime", _Frozen),
+            patch.object(mos, "_session") as mock_sess,
+        ):
+            mock_sess.get.return_value.json.return_value = response
+            mock_sess.get.return_value.raise_for_status.return_value = None
+            result = mos.fetch_mos(
+                "KNYC",
+                target_date=date(2026, 8, 11),
+                model="GFS",
+                tz="America/New_York",
+            )
+
+        assert result is not None
+        assert result["sigma"] == 3.2, (
+            f"expected GFS sigma for days_out=2 (NYC-local) == 3.2, got "
+            f"{result['sigma']!r} -- looks like days_out was computed from "
+            f"UTC (days_out=1 -> sigma=2.5) instead of America/New_York"
+        )
+
+    def test_fetch_mos_best_routing_uses_city_local_today_not_utc(self):
+        """fetch_mos_best's NAM-vs-GFS routing must also key off the passed
+        tz, not UTC -- same fixed instant/target_date as the sigma test
+        above: NYC-local days_out=2 must skip the NAM attempt entirely
+        (days_out>1), where a UTC-based days_out=1 would wrongly try NAM
+        first."""
+        from datetime import UTC, datetime
+
+        import mos
+
+        frozen_instant = datetime(2026, 8, 10, 0, 30, tzinfo=UTC)
+
+        class _Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return frozen_instant.replace(tzinfo=None)
+                return frozen_instant.astimezone(tz)
+
+        response = {
+            "data": [{"ftime": "2026-08-11 15:00", "tmp": 70}],
+        }
+        with (
+            patch.object(mos, "datetime", _Frozen),
+            patch.object(mos, "_session") as mock_sess,
+        ):
+            mock_sess.get.return_value.json.return_value = response
+            mock_sess.get.return_value.raise_for_status.return_value = None
+            result = mos.fetch_mos_best(
+                "KNYC", target_date=date(2026, 8, 11), tz="America/New_York"
+            )
+
+        assert result is not None
+        assert result["model"] == "GFS", (
+            f"expected GFS (days_out=2 from NYC-local skips the NAM "
+            f"attempt), got model={result['model']!r} -- looks like "
+            f"days_out was computed from UTC (days_out=1, tries NAM first)"
+        )
+
 
 class TestMosIntegration:
     def test_analyze_trade_includes_mos_field(self):

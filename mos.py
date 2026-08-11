@@ -112,10 +112,27 @@ def _parse_temp(value) -> float | None:
         return None
 
 
+def _local_or_utc_today(tz: str | None) -> date:
+    """CITY-LOCAL today for the given IANA tz, or UTC today if tz is None
+    or ZoneInfo(tz) fails (mirrors weather_markets._metar_lock_in's fallback)."""
+    if tz is None:
+        return _utc_today()
+    try:
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo(tz)).date()
+    except Exception:
+        _log.warning(
+            "_local_or_utc_today: ZoneInfo(%r) unavailable — falling back to UTC", tz
+        )
+        return _utc_today()
+
+
 def fetch_mos(
     station: str,
     target_date: date | None = None,
     model: str = "GFS",
+    tz: str | None = None,
 ) -> dict | None:
     """
     Fetch MOS forecast for a station from the IEM API.
@@ -124,6 +141,12 @@ def fetch_mos(
         station: ASOS station code (e.g. "KNYC")
         target_date: Date to get forecast for (default: tomorrow)
         model: MOS model ("GFS" or "NAM")
+        tz: IANA timezone for computing days_out against target_date's own
+            CITY-LOCAL today (e.g. "America/New_York"). target_date is
+            city-local (from analyze_trade's parse_city_date()), so days_out
+            must be too -- same bug class as backlog.txt "ANALYZE_TRADE'S
+            past_date GATE...". None (unknown caller/city) falls back to
+            UTC, same as before this parameter existed.
 
     Returns:
         dict with keys:
@@ -178,7 +201,7 @@ def fetch_mos(
         return None
 
     # B1: compute days_out and look up MOS-specific RMSE as sigma
-    days_out = max(0, (target_date - _utc_today()).days)
+    days_out = max(0, (target_date - _local_or_utc_today(tz)).days)
     sigma_table = MOS_SIGMA.get(model.upper(), MOS_SIGMA["GFS"])
     max_key = max(sigma_table.keys())
     sigma = sigma_table.get(days_out, sigma_table[max_key])
@@ -198,27 +221,33 @@ def fetch_mos(
 def fetch_mos_best(
     station: str,
     target_date: date | None = None,
+    tz: str | None = None,
 ) -> dict | None:
     """
     B2: Fetch MOS using the best available model for the given days_out.
     For days_out <= 1: try NAM first (higher resolution), fall back to GFS.
     For days_out >= 2: use GFS only (NAM is unreliable beyond ~60h).
 
+    tz: IANA timezone for computing days_out against target_date's own
+        CITY-LOCAL today -- see fetch_mos()'s docstring for why. Threaded
+        through to both internal fetch_mos() calls so the NAM/GFS routing
+        decision here and the sigma lookup inside fetch_mos() agree.
+
     Returns the result dict from fetch_mos(), or None if all models fail.
     """
     if target_date is None:
         target_date = datetime.now(UTC).date() + timedelta(days=1)
 
-    days_out = max(0, (target_date - _utc_today()).days)
+    days_out = max(0, (target_date - _local_or_utc_today(tz)).days)
 
     if days_out <= 1:
         # Try NAM first — tighter RMSE for same-day and next-day markets
-        result = fetch_mos(station, target_date, model="NAM")
+        result = fetch_mos(station, target_date, model="NAM", tz=tz)
         if result is not None:
             return result
 
     # GFS fallback (or primary for days_out >= 2)
-    return fetch_mos(station, target_date, model="GFS")
+    return fetch_mos(station, target_date, model="GFS", tz=tz)
 
 
 # ── NBS (National Blend of Models MOS-style bulletin) ───────────────────────

@@ -1107,10 +1107,11 @@ def _run_batch_prewarm_for_pairs(
             pass
         try:
             import mos as _mos_mod
+            from weather_markets import _CITY_TZ as _mos_city_tz
 
             mos_sta = _mos_mod.get_mos_station(c)
             if mos_sta:
-                _mos_mod.fetch_mos_best(mos_sta, target_date=dt)
+                _mos_mod.fetch_mos_best(mos_sta, target_date=dt, tz=_mos_city_tz.get(c))
         except Exception:
             pass
         try:

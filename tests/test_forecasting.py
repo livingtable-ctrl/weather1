@@ -516,17 +516,20 @@ class TestTimeDecayEdge:
         from datetime import datetime, timedelta
         from unittest.mock import patch
 
+        # analyze_trade computes days_out from the market's CITY-LOCAL today
+        # (ZoneInfo via _CITY_TZ), not UTC's and not the test-runner's
+        # system-local date.today() (backlog.txt "ANALYZE_TRADE'S past_date
+        # GATE..." fixed the UTC-vs-local-target_date bug this comment used
+        # to describe -- every days_out site in weather_markets.py now uses
+        # the same city-local "today", mirroring _analyze_precip_trade's
+        # pattern). Build the target off NYC's own local date (matching
+        # this fixture's "_city": "NYC" below) so the test is correct
+        # regardless of wall-clock time relative to UTC.
+        from zoneinfo import ZoneInfo
+
         import weather_markets as wm
 
-        # analyze_trade computes days_out from datetime.now(UTC).date(), not
-        # the test-runner's system-local date.today() (opus review corrected
-        # an earlier, wrong claim here that this was NY-timezone-based --
-        # every days_out site in weather_markets.py uses UTC). When the
-        # sandbox's local timezone is ahead of UTC, system date.today() can
-        # already be UTC-tomorrow, turning the intended days_out=3 into 4 and
-        # pushing this ticket's target date into a gate that makes
-        # analyze_trade return None entirely (confirmed live).
-        target = datetime.now(UTC).date() + timedelta(days=3)
+        target = datetime.now(ZoneInfo("America/New_York")).date() + timedelta(days=3)
         close_dt = datetime.now(UTC) + timedelta(hours=10)
 
         enriched = {

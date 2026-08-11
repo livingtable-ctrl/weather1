@@ -65,6 +65,46 @@ class TestTracker(unittest.TestCase):
         self.assertEqual(row["ticker"], "KXTEST-26APR09-T70")
         self.assertAlmostEqual(row["our_prob"], 0.70)
 
+    def test_log_prediction_uses_analysis_days_out_not_recomputed_utc(self):
+        """log_prediction must store analysis["days_out"] (analyze_trade's
+        own value, computed against the market's CITY-LOCAL today) rather
+        than recomputing days_out itself from UTC -- recomputing would
+        silently disagree with the value analyze_trade used for this same
+        trade during the ~4-8h evening window each day where UTC's date
+        has already rolled over but the city's hasn't, creating a
+        split-brain between this DB and paper.json's own recorded value
+        (backlog.txt "ANALYZE_TRADE'S past_date GATE...").
+
+        market_date is deliberately set to today+2 (UTC) so the OLD
+        from-scratch recomputation would produce ~2, materially different
+        from the analysis dict's days_out=5 -- a real discriminator, not
+        a coincidental match."""
+        analysis = self._fake_analysis()
+        analysis["days_out"] = 5
+        market_date = date.today() + timedelta(days=2)
+        tracker.log_prediction("TKDAYSOUT", "NYC", market_date, analysis)
+        history = tracker.get_history()
+        self.assertEqual(len(history), 1)
+        self.assertEqual(
+            history[0]["days_out"],
+            5,
+            "log_prediction must use analysis['days_out'] (5), not "
+            "recompute a different value from market_date/UTC",
+        )
+
+    def test_log_prediction_falls_back_to_recomputed_days_out_when_absent(self):
+        """When analysis has no "days_out" key (e.g. a shadow/lookup write
+        built from a bare market dict), log_prediction must still fall back
+        to the old market_date-vs-UTC-today computation rather than storing
+        NULL or crashing."""
+        analysis = self._fake_analysis()
+        assert "days_out" not in analysis
+        market_date = date.today() + timedelta(days=3)
+        tracker.log_prediction("TKFALLBACK", "NYC", market_date, analysis)
+        history = tracker.get_history()
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["days_out"], 3)
+
     def test_no_duplicate_same_day(self):
         """Logging the same ticker twice on the same day should update, not insert."""
         tracker.log_prediction(

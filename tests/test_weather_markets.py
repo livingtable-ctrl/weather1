@@ -8,7 +8,8 @@ import pytest
 # Ensure the project root is on sys.path so imports work when run from tests/
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from datetime import UTC
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 # Captured at collection time, before conftest's default_gem_ukmo_means_none
 # autouse fixture (which runs per-test, before each test body) replaces
@@ -2188,13 +2189,16 @@ def test_metar_locked_trade_has_ecmwf_forecast_mean_keys(monkeypatch):
         wm, "_metar_lock_in", lambda *a, **kw: (True, 0.85, {"current_temp_f": 76.0})
     )
 
-    from datetime import UTC, datetime
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
 
-    # analyze_trade's past-date gate (target_date < datetime.now(UTC).date())
-    # runs unconditionally before _metar_lock_in is even called (line 7434),
-    # so mocking _metar_lock_in doesn't shield a system-local-behind-UTC
-    # sandbox from this gate returning None instead of reaching the mock.
-    today = datetime.now(UTC).date()
+    # analyze_trade's past-date gate (target_date < the market's CITY-LOCAL
+    # today) runs unconditionally before _metar_lock_in is even called, so
+    # mocking _metar_lock_in doesn't shield this fixture from that gate
+    # returning None instead of reaching the mock. Anchor "today" to NYC's
+    # own local date (this fixture's "_city": "NYC") to match the gate
+    # exactly, rather than UTC's.
+    today = datetime.now(ZoneInfo("America/New_York")).date()
     enriched = {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
         "_date": today,
@@ -2233,13 +2237,16 @@ def test_metar_locked_trade_has_nbm_quantile_prob_key(monkeypatch):
         wm, "_metar_lock_in", lambda *a, **kw: (True, 0.85, {"current_temp_f": 76.0})
     )
 
-    from datetime import UTC, datetime
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
 
-    # analyze_trade's past-date gate (target_date < datetime.now(UTC).date())
-    # runs unconditionally before _metar_lock_in is even called (line 7434),
-    # so mocking _metar_lock_in doesn't shield a system-local-behind-UTC
-    # sandbox from this gate returning None instead of reaching the mock.
-    today = datetime.now(UTC).date()
+    # analyze_trade's past-date gate (target_date < the market's CITY-LOCAL
+    # today) runs unconditionally before _metar_lock_in is even called, so
+    # mocking _metar_lock_in doesn't shield this fixture from that gate
+    # returning None instead of reaching the mock. Anchor "today" to NYC's
+    # own local date (this fixture's "_city": "NYC") to match the gate
+    # exactly, rather than UTC's.
+    today = datetime.now(ZoneInfo("America/New_York")).date()
     enriched = {
         "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
         "_date": today,
@@ -2446,6 +2453,58 @@ class TestFetchTemperatureWeatherapi:
         assert result is None
         # Restore
         wm._weatherapi_cb.record_success()
+
+
+class TestFetchTemperaturePirateWeatherHistoricalRouting:
+    """fetch_temperature_pirate_weather must route to the FORECAST endpoint
+    (not the historical time-machine endpoint) for a market that is still
+    in progress in the city's own local time, even during the ~4-8h evening
+    window where UTC's date has already rolled over -- same bug class as
+    backlog.txt "ANALYZE_TRADE'S past_date GATE...", mirroring the
+    sibling fix already in fetch_temperature_weatherapi (~line 2359)."""
+
+    def test_still_open_local_market_hits_forecast_not_timemachine(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        frozen_instant = datetime(2026, 8, 10, 0, 30, tzinfo=UTC)
+
+        class _Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return frozen_instant.replace(tzinfo=None)
+                return frozen_instant.astimezone(tz)
+
+        # NYC local today during this instant is 2026-08-09 -- a market
+        # dated 2026-08-09 is still genuinely in progress locally, even
+        # though UTC's date is already 2026-08-10.
+        target = date(2026, 8, 9)
+
+        called_urls = []
+
+        def _fake_request(method, url, **kw):
+            called_urls.append(url)
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            resp.json.return_value = {"daily": {"data": []}}
+            return resp
+
+        monkeypatch.setattr(wm, "datetime", _Frozen)
+        monkeypatch.setenv("PIRATE_WEATHER_API_KEY", "test-key")
+        monkeypatch.setattr(wm, "_request_with_retry", _fake_request)
+        wm._pirate_cb.record_success()
+
+        wm.fetch_temperature_pirate_weather("NYC", target)
+
+        assert len(called_urls) == 1
+        assert called_urls[0].startswith(wm._PIRATE_FORECAST_BASE), (
+            f"expected the FORECAST endpoint for a still-open local-today "
+            f"market, got {called_urls[0]!r} -- looks like is_historical "
+            f"was computed from UTC (target < UTC-today) instead of NYC's "
+            f"own local today"
+        )
 
 
 class TestGetWeatherForecastFallbackChain:
@@ -3038,30 +3097,34 @@ class TestLearnedWeightsValidation:
 
 
 class TestUtcTodayDate:
-    """L5-E: weather_markets must use datetime.now(UTC).date() not date.today()."""
+    """L5-E: weather_markets must use datetime.now(UTC).date() not date.today()
+    for any UTC-vs-system-local comparison. Does NOT mean every days_out
+    computation must be UTC-based -- analyze_trade's own days_out is
+    deliberately CITY-LOCAL (backlog.txt "ANALYZE_TRADE'S past_date
+    GATE..."); this class only guards against the naive-local-clock bug,
+    not against city-local-timezone-aware computation."""
 
-    def test_market_lookup_uses_utc_date_not_local(self):
-        """_forecast_uncertainty should use UTC date, so patching datetime.now()
-        changes the days_out calculation."""
-        from datetime import UTC, date, datetime
-        from unittest.mock import MagicMock, patch
-
+    def test_forecast_uncertainty_is_a_pure_function_of_days_out(self):
+        """_forecast_uncertainty(days_out) no longer recomputes "today"
+        itself (from UTC or anywhere else) -- both real callers, inside
+        analyze_trade's not-metar-locked path, already have a
+        correctly-computed CITY-LOCAL days_out in scope and pass it
+        directly, so a second internal recomputation here would risk
+        silently disagreeing with it during the UTC-rollover-vs-local-
+        evening window (backlog.txt "ANALYZE_TRADE'S past_date GATE...").
+        Pins the full days_out->sigma ladder as a pure value mapping."""
         import weather_markets as wm
 
-        # Use a target date 3 days from a known UTC reference date
-        known_utc_date = date(2025, 6, 15)
-        target = date(2025, 6, 18)  # 3 days out → uncertainty == 4.0
-
-        mock_dt = MagicMock(spec=datetime)
-        mock_dt.now.return_value.date.return_value = known_utc_date
-
-        with patch("weather_markets.datetime", mock_dt):
-            result = wm._forecast_uncertainty(target)
-
-        # 3 days out → 4.0 per _forecast_uncertainty() ladder
-        assert result == 4.0, f"Expected 4.0 (3 days out from UTC date), got {result!r}"
-        # Verify datetime.now was called with UTC sentinel
-        mock_dt.now.assert_called_once_with(UTC)
+        assert wm._forecast_uncertainty(0) == 3.0
+        assert wm._forecast_uncertainty(1) == 3.0
+        assert wm._forecast_uncertainty(2) == 4.0
+        assert wm._forecast_uncertainty(3) == 4.0
+        assert wm._forecast_uncertainty(4) == 5.0
+        assert wm._forecast_uncertainty(5) == 5.0
+        assert wm._forecast_uncertainty(6) == 6.0
+        assert wm._forecast_uncertainty(7) == 6.0
+        assert wm._forecast_uncertainty(8) == 7.5
+        assert wm._forecast_uncertainty(30) == 7.5
 
     def test_no_date_today_calls_remain(self):
         """weather_markets.py must not contain any date.today() calls."""
@@ -3070,6 +3133,174 @@ class TestUtcTodayDate:
         src = (Path(__file__).parent.parent / "weather_markets.py").read_text()
         assert "date.today()" not in src, (
             "Found date.today() in weather_markets.py — replace with datetime.now(UTC).date()"
+        )
+
+
+# ── TestPastDateGateCityLocal ─────────────────────────────────────────────────
+# Regression tests for backlog.txt "ANALYZE_TRADE'S past_date GATE COMPARES A
+# CITY-LOCAL target_date AGAINST UTC's CURRENT DATE". analyze_trade's
+# past_date/days_out gates must key off each market's own CITY-LOCAL "today",
+# not UTC's -- during the ~4-8h window every evening (00:00 UTC through each
+# city's own local midnight), UTC's calendar date has already rolled over
+# but the city's hasn't. Pins the exact behavior for one fixed UTC instant
+# inside that window for all 4 representative US timezones (EDT/CDT/MDT/PDT)
+# by patching weather_markets.datetime with a datetime subclass whose .now()
+# returns that instant converted into whatever tzinfo is requested --
+# preserves every other datetime classmethod (fromisoformat, arithmetic,
+# etc.) that the rest of analyze_trade also relies on, unlike a full
+# MagicMock swap.
+class _FrozenDatetime(datetime):
+    """datetime.now(tz) returns _FROZEN_INSTANT converted to tz (or naive
+    _FROZEN_INSTANT if tz is None); every other datetime behavior is real."""
+
+    _frozen_instant: "datetime" = None  # type: ignore[assignment]
+
+    @classmethod
+    def now(cls, tz=None):
+        if tz is None:
+            return cls._frozen_instant.replace(tzinfo=None)
+        return cls._frozen_instant.astimezone(tz)
+
+
+def _frozen_datetime_at(instant):
+    frozen = type("_FrozenDatetimeAt", (_FrozenDatetime,), {})
+    frozen._frozen_instant = instant
+    return frozen
+
+
+class TestPastDateGateCityLocal:
+    """(city, _CITY_TZ value) pairs for the 4 representative US timezones
+    this bot trades, per backlog.txt's own EDT/CDT/MDT/PDT framing."""
+
+    _CITIES = [
+        ("NYC", "KXHIGHNY"),
+        ("Chicago", "KXHIGHCHI"),
+        ("Denver", "KXHIGHDEN"),
+        ("LA", "KXHIGHLAX"),
+    ]
+
+    def _enriched(self, city, series, target_date):
+        return {
+            "_city": city,
+            "_date": target_date,
+            "_hour": None,
+            "_forecast": {
+                "high_f": 75.0,
+                "low_f": 58.0,
+                "precip_in": 0.0,
+                "models_used": 3,
+                "high_range": (73.0, 77.0),
+            },
+            "ticker": f"{series}-GATE-T74.5",
+            "series_ticker": series,
+            "title": f"{city} high above 74.5°F",
+            "yes_ask": 55,
+            "yes_bid": 45,
+            "volume": 500,
+            "volume_fp": 500,
+            "open_interest": 200,
+            "open_interest_fp": 200,
+            "close_time": "",
+        }
+
+    def test_same_day_market_still_open_during_utc_rollover_window(self, monkeypatch):
+        """A market whose target_date is still "today" in the city's own
+        timezone must NOT be gated as past, even during the window where
+        UTC's date has already rolled over to the city's tomorrow.
+
+        Fixed instant: 2026-08-10 00:30 UTC. In every one of the 4
+        representative timezones, local wall-clock time is still the
+        evening of 2026-08-09 (EDT 20:30, CDT 19:30, MDT 18:30, PDT
+        17:30) -- UTC's date (08-10) is one day ahead of every city's own
+        local date (08-09). Pre-fix, the gate compared target_date against
+        UTC's 08-10 and rejected a genuinely-still-open 08-09 market.
+        """
+        import weather_markets as wm
+
+        frozen_instant = datetime(2026, 8, 10, 0, 30, tzinfo=UTC)
+        monkeypatch.setattr(wm, "datetime", _frozen_datetime_at(frozen_instant))
+        # target_date == local today for every city here, so _metar_lock_in's
+        # own top-level guard does NOT short-circuit -- without this mock it
+        # would attempt a real network call to fetch live METAR data (the
+        # exact "unmocked real network call" issue class backlog.txt has
+        # flagged before). This test only cares whether the past_date gate
+        # (which runs well before _metar_lock_in) fired, so a deterministic
+        # not-locked result is all that's needed here.
+        monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+
+        for city, series in self._CITIES:
+            local_today = frozen_instant.astimezone(ZoneInfo(wm._CITY_TZ[city])).date()
+            assert local_today == date(2026, 8, 9), (
+                f"test setup bug: expected {city} local date 2026-08-09 "
+                f"during the UTC-rollover window, got {local_today}"
+            )
+            wm.reset_gate_counts()
+            wm.analyze_trade(self._enriched(city, series, local_today))
+            counts = wm.get_gate_counts()
+            # Rule out an EARLIER gate (no_forecast/no_date/no_city/days_out)
+            # having fired instead -- an assertion on past_date alone would
+            # pass vacuously if the fixture stopped reaching that gate at all.
+            assert counts.get("no_forecast") is None
+            assert counts.get("no_date") is None
+            assert counts.get("no_city") is None
+            assert counts.get("days_out") is None
+            assert counts.get("past_date") is None, (
+                f"{city}: past_date gate wrongly fired for a market still "
+                f"open in {city}'s own local time (target={local_today}, "
+                f"UTC now={frozen_instant})"
+            )
+
+    def test_genuinely_past_market_still_gated_during_utc_rollover_window(
+        self, monkeypatch
+    ):
+        """A market that is genuinely one full day in the past for the
+        city (not just UTC) must still be rejected by the past_date gate,
+        at the same fixed instant used by the "still open" test above --
+        confirms the fix didn't just make the gate permissive."""
+        import weather_markets as wm
+
+        frozen_instant = datetime(2026, 8, 10, 0, 30, tzinfo=UTC)
+        monkeypatch.setattr(wm, "datetime", _frozen_datetime_at(frozen_instant))
+
+        for city, series in self._CITIES:
+            local_today = frozen_instant.astimezone(ZoneInfo(wm._CITY_TZ[city])).date()
+            genuinely_past = local_today - timedelta(days=1)
+            wm.reset_gate_counts()
+            result = wm.analyze_trade(self._enriched(city, series, genuinely_past))
+            assert result is None
+            counts = wm.get_gate_counts()
+            assert counts.get("past_date") == 1, (
+                f"{city}: past_date gate should have fired for a market "
+                f"genuinely one full local day in the past "
+                f"(target={genuinely_past}, local today={local_today})"
+            )
+
+    def test_days_out_ceiling_uses_city_local_today_not_utc(self, monkeypatch):
+        """The generic days_out ceiling gate (MAX_DAYS_OUT) must also key
+        off city-local today. Same fixed 00:30 UTC instant as above: a
+        market MAX_DAYS_OUT+1 days out from the city's own local today
+        sits exactly MAX_DAYS_OUT days out from UTC's (already-rolled-
+        over) date -- pre-fix, the UTC-based comparison would let it
+        through 1 day past the intended ceiling instead of rejecting it.
+        """
+        import weather_markets as wm
+
+        frozen_instant = datetime(2026, 8, 10, 0, 30, tzinfo=UTC)
+        monkeypatch.setattr(wm, "datetime", _frozen_datetime_at(frozen_instant))
+
+        city, series = "NYC", "KXHIGHNY"
+        local_today = frozen_instant.astimezone(ZoneInfo(wm._CITY_TZ[city])).date()
+        target_date = local_today + timedelta(days=wm.MAX_DAYS_OUT + 1)
+
+        wm.reset_gate_counts()
+        result = wm.analyze_trade(self._enriched(city, series, target_date))
+        assert result is None
+        counts = wm.get_gate_counts()
+        assert counts.get("days_out") == 1, (
+            f"days_out gate should have fired: target is "
+            f"MAX_DAYS_OUT+1={wm.MAX_DAYS_OUT + 1} days out from {city}'s "
+            f"own local today ({local_today}), even though it's only "
+            f"MAX_DAYS_OUT days out from UTC's already-rolled-over date"
         )
 
 
@@ -3134,13 +3365,19 @@ def test_analyze_trade_returns_none_for_past_date_market(monkeypatch):
     high fake edges) for already-resolved markets.
     """
     from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
 
     from weather_markets import analyze_trade
 
-    # analyze_trade's past-date gate compares against datetime.now(UTC).date()
-    # -- must match here or a local-ahead-of-UTC sandbox timezone can put
-    # "yesterday" on the wrong side of the gate, silently passing the check.
-    past = datetime.now(UTC).date() - timedelta(days=1)
+    # analyze_trade's past-date gate compares target_date against the
+    # market's CITY-LOCAL today (NYC here), not UTC's -- during the ~4-8h
+    # evening window where UTC has already rolled over past midnight but
+    # NYC hasn't, `datetime.now(UTC).date() - 1 day` is NYC's actual TODAY,
+    # not yesterday, which would make this "past" fixture accidentally
+    # legitimate and the test's own premise wrong. Anchor to NYC's local
+    # date instead so this is genuinely one full day in the past regardless
+    # of wall-clock time relative to UTC.
+    past = datetime.now(ZoneInfo("America/New_York")).date() - timedelta(days=1)
     enriched = {
         "_city": "NYC",
         "_date": past,

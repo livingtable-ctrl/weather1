@@ -2437,7 +2437,18 @@ def fetch_temperature_pirate_weather(city: str, target_date: date) -> dict | Non
         _log.debug("[CircuitBreaker] pirate_weather circuit open — skipping fetch")
         return None
 
-    today = datetime.now(UTC).date()
+    # Compute against the city's LOCAL date, not UTC -- see
+    # fetch_temperature_weatherapi's identical comment above for why (same
+    # bug class as backlog.txt "ANALYZE_TRADE'S past_date GATE...": during
+    # the evening window a genuinely-still-in-progress local day would
+    # otherwise be misrouted to the time-machine (historical) endpoint
+    # instead of the forecast endpoint).
+    try:
+        from zoneinfo import ZoneInfo as _ZI5
+
+        today = datetime.now(_ZI5(_CITY_TZ.get(city, "America/New_York"))).date()
+    except Exception:
+        today = datetime.now(UTC).date()
     is_historical = target_date < today
 
     try:
@@ -5370,12 +5381,19 @@ def enrich_with_forecast(market: dict, fetch_forecast: bool = True) -> dict:
 # ── Trade analysis ────────────────────────────────────────────────────────────
 
 
-def _forecast_uncertainty(target_date: date) -> float:
+def _forecast_uncertainty(days_out: int) -> float:
     """
     Estimated standard deviation of forecast error in °F.
     Weather forecasts get less accurate further out.
+
+    Takes days_out directly rather than a target_date + recomputing "today"
+    itself -- both real callers (inside analyze_trade's not-metar-locked
+    path) already have a correctly-computed, CITY-LOCAL days_out in scope
+    (backlog.txt "ANALYZE_TRADE'S past_date GATE..."); a second UTC-based
+    recomputation here would silently disagree with it during the ~4-8h
+    evening window each day where UTC's date has already rolled over but
+    the city's hasn't.
     """
-    days_out = (target_date - datetime.now(UTC).date()).days
     if days_out <= 1:
         return 3.0
     elif days_out <= 3:
@@ -5831,9 +5849,7 @@ def _compute_ensemble_prob(
         # is more informative than the generic days-out lookup table.
         _ens_std = ens_stats.get("std") if ens_stats else None
         _raw_sigma = (
-            _ens_std
-            if _ens_std and _ens_std > 0
-            else _forecast_uncertainty(target_date)
+            _ens_std if _ens_std and _ens_std > 0 else _forecast_uncertainty(days_out)
         )
         # Cap raw sigma before applying sigma_mult so the time-of-day
         # reduction from _time_risk() still applies proportionally.
@@ -9800,8 +9816,23 @@ def _analyze_hourly_trade(
         _count_gate("degenerate_ens")
         return None
 
-    days_out = max(0, (target_date - datetime.now(UTC).date()).days)
     _tz = coords[2] if len(coords) > 2 else "UTC"
+    # Compare against the market's LOCAL calendar date, not UTC -- see
+    # _analyze_precip_trade's identical comment for why (backlog.txt
+    # "ANALYZE_TRADE'S past_date GATE...").
+    try:
+        from zoneinfo import ZoneInfo as _ZoneInfoHourly
+
+        _local_today_hourly = datetime.now(_ZoneInfoHourly(_tz)).date()
+    except Exception:
+        _log.warning(
+            "_analyze_hourly_trade: ZoneInfo(%r) unavailable for %s — "
+            "falling back to UTC date",
+            _tz,
+            city,
+        )
+        _local_today_hourly = datetime.now(UTC).date()
+    days_out = max(0, (target_date - _local_today_hourly).days)
     _, sigma_mult = _time_risk(enriched.get("close_time", ""), _tz)
 
     method, ens_prob = _compute_ensemble_prob(
@@ -10535,6 +10566,39 @@ def analyze_trade(
         _log.warning("analyze_trade[%s]: gate=no_city date=%s", _tkr, target_date)
         _count_gate("no_city")
         return None  # unrecognized city in ticker
+
+    # Every days_out/past-date comparison below must use the market's own
+    # CITY-LOCAL "today", not UTC's -- target_date (from parse_city_date())
+    # is already city-local, so comparing it against datetime.now(UTC).date()
+    # is wrong for the ~4-8h window every evening (00:00 UTC through each
+    # city's own local midnight) where UTC's calendar date has already
+    # rolled over but the city's has not (backlog.txt "ANALYZE_TRADE'S
+    # past_date GATE..."). Computed once here and reused for every
+    # days_out/past-date check in this function, mirroring the city-local
+    # "today" pattern already used by _metar_lock_in and _analyze_precip_trade.
+    # city can be "" for hurricane_count/storm_order (national, not
+    # per-city) -- _CITY_TZ.get's fallback covers that the same way the
+    # other call sites do.
+    try:
+        from zoneinfo import ZoneInfo as _ZoneInfoLocal
+
+        # `city or ""` (not the bare `_CITY_TZ.get(city, ...)` used at other
+        # call sites) because `city` here is untyped (enriched.get("_city")
+        # can be None for hurricane_count/storm_order) -- dict.get(None,
+        # default) is safe at runtime but mypy rejects a non-str key against
+        # dict[str, str] without the coercion.
+        _local_today = datetime.now(
+            _ZoneInfoLocal(_CITY_TZ.get(city or "", "America/New_York"))
+        ).date()
+    except Exception:
+        _log.warning(
+            "analyze_trade[%s]: ZoneInfo unavailable for city=%s — "
+            "falling back to UTC date",
+            _tkr,
+            city,
+        )
+        _local_today = datetime.now(UTC).date()
+
     if _is_monthly_rain:
         # target_date is None for these tickers by design (see the comment
         # above) -- a plain `target_date < today` comparison below would
@@ -10586,12 +10650,12 @@ def analyze_trade(
         # is truthy here (hurricane-count included -- its ticker's date
         # suffix IS its real close date, so it safely reuses this branch).
         assert target_date is not None
-        if target_date < datetime.now(UTC).date():
+        if target_date < _local_today:
             _log.debug(
                 "analyze_trade[%s]: gate=past_date target=%s today=%s",
                 _tkr,
                 target_date,
-                datetime.now(UTC).date(),
+                _local_today,
             )
             _count_gate("past_date")
             return None  # market target date already passed — Kalshi hasn't settled yet but no edge
@@ -10642,7 +10706,7 @@ def analyze_trade(
         # computation, just against HURRICANE_MAX_DAYS_OUT instead of
         # MAX_DAYS_OUT (these markets open ~7-8 months before close).
         assert target_date is not None
-        _days_out_check = max(0, (target_date - datetime.now(UTC).date()).days)
+        _days_out_check = max(0, (target_date - _local_today).days)
         if _days_out_check > HURRICANE_MAX_DAYS_OUT:
             _log.debug(
                 "analyze_trade[%s]: gate=days_out days=%d max=%d (hurricane_count)",
@@ -10659,7 +10723,7 @@ def analyze_trade(
         # markets open ~7 months before close (May 15 - Dec 1), same season
         # window as hurricane-count/hurricane-next-event.
         assert target_date is not None
-        _days_out_check = max(0, (target_date - datetime.now(UTC).date()).days)
+        _days_out_check = max(0, (target_date - _local_today).days)
         if _days_out_check > HURRICANE_MAX_DAYS_OUT:
             _log.debug(
                 "analyze_trade[%s]: gate=days_out days=%d max=%d (storm_order)",
@@ -10715,7 +10779,7 @@ def analyze_trade(
             return None
     else:
         assert target_date is not None
-        _days_out_check = max(0, (target_date - datetime.now(UTC).date()).days)
+        _days_out_check = max(0, (target_date - _local_today).days)
         if _days_out_check > MAX_DAYS_OUT:
             _log.debug(
                 "analyze_trade[%s]: gate=days_out days=%d max=%d",
@@ -11169,7 +11233,7 @@ def analyze_trade(
                 )
                 forecast_temp += _pdopna_adj
 
-        days_out = max(0, (target_date - datetime.now(UTC).date()).days)
+        days_out = max(0, (target_date - _local_today).days)
 
     if not metar_locked:
         # ── 1. Ensemble probability ──────────────────────────────────────────────
@@ -11716,7 +11780,7 @@ def analyze_trade(
                 # warmed (pool timed out), skip MOS rather than block the worker.
                 if _mos_mod.is_mos_cached(_mos_sta, target_date):
                     _mos_data_pre = _mos_mod.fetch_mos_best(
-                        _mos_sta, target_date=target_date
+                        _mos_sta, target_date=target_date, tz=_CITY_TZ.get(city or "")
                     )
                 else:
                     _log.debug(
@@ -11741,7 +11805,7 @@ def analyze_trade(
                 try:
                     _mos_sigma_val = _mos_data_pre.get(
                         "sigma"
-                    ) or _forecast_uncertainty(target_date)
+                    ) or _forecast_uncertainty(days_out)
                     _mos_p_pre = _forecast_probability(
                         condition, _mos_temp_val, _mos_sigma_val
                     )
@@ -11934,7 +11998,7 @@ def analyze_trade(
         series = (enriched.get("series_ticker") or enriched.get("ticker", "")).upper()
         var = _daily_var_from_series(series)
         condition["var"] = var
-        days_out = max(0, (target_date - datetime.now(UTC).date()).days)
+        days_out = max(0, (target_date - _local_today).days)
         _fallback_temp = forecast["low_f"] if var == "min" else forecast["high_f"]
         # Explicit None-check — a legitimate 0.0°F METAR observation (routine
         # deep-winter reading) is falsy and would otherwise be replaced by the

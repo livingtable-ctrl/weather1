@@ -110,13 +110,14 @@ class TestAnalyzeTradeHourlyModel:
 
     def _enriched(self, yes_bid_cents, yes_ask_cents, hour=14, threshold=75.99):
         import datetime
+        from zoneinfo import ZoneInfo
 
-        # analyze_trade's past-date gate compares target_date against
-        # datetime.now(UTC).date() -- a same-day fixture built from
-        # system-local date.today() can fall on the wrong side of that gate
-        # (return None) whenever local time lags UTC, e.g. US timezones for
-        # most of the day.
-        target = datetime.datetime.now(datetime.UTC).date()
+        # analyze_trade's past-date gate compares target_date against the
+        # market's CITY-LOCAL today (NYC here, matching "_city": "NYC"
+        # below), not UTC's and not system-local date.today() -- anchor
+        # to NYC's own local date so this same-day fixture matches the
+        # gate exactly regardless of wall-clock time relative to UTC.
+        target = datetime.datetime.now(ZoneInfo("America/New_York")).date()
         ticker = (
             f"KXTEMPNYCH-{target.strftime('%y%b%d').upper()}{hour:02d}-T{threshold}"
         )
