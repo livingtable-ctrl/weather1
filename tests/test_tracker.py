@@ -689,6 +689,175 @@ class TestBrierScoreLastN(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TestBrierByConditionTypeRolling(unittest.TestCase):
+    """Tests for tracker.brier_by_condition_type_rolling() (2026-08-12
+    investigation follow-up: surfaces a condition_type-specific weakness
+    that brier_score_by_method[_rolling]'s method-only grouping can't see).
+    """
+
+    def setUp(self):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_cond_type.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _insert(
+        self, ticker, our_prob, settled_yes, condition_type="above", method="ensemble"
+    ):
+        analysis = {
+            "condition": {"type": condition_type, "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.50,
+            "edge": our_prob - 0.50,
+            "method": method,
+            "n_members": 20,
+        }
+        tracker.log_prediction(ticker, "NYC", date(2099, 1, 1), analysis)
+        tracker.log_outcome(ticker, settled_yes)
+
+    def test_computes_brier_and_directional_accuracy_per_condition_type(self):
+        # prob=0.9 predicts YES; actual settled NO on all 4 -> every call
+        # wrong (directional_accuracy=0.0), brier=(0.9-0)^2=0.81 each.
+        for i in range(4):
+            self._insert(f"BELOW-{i}", 0.9, False, condition_type="below")
+        result = tracker.brier_by_condition_type_rolling(
+            "ensemble", window=20, min_samples=4
+        )
+        self.assertIn("below", result)
+        self.assertEqual(result["below"]["n"], 4)
+        self.assertAlmostEqual(result["below"]["directional_accuracy"], 0.0)
+        self.assertAlmostEqual(result["below"]["brier"], 0.81)
+
+    def test_below_min_samples_excluded(self):
+        for i in range(3):
+            self._insert(f"THIN-{i}", 0.9, True, condition_type="above")
+        result = tracker.brier_by_condition_type_rolling(
+            "ensemble", window=20, min_samples=4
+        )
+        self.assertNotIn("above", result)
+
+    def test_condition_types_windowed_independently(self):
+        # 25 "above" (window=20 must cap this) + 3 "below" -- "below" must
+        # NOT be starved down to a share of a shared last-20-overall window.
+        for i in range(25):
+            self._insert(f"ABOVE-{i}", 0.9, True, condition_type="above")
+        for i in range(3):
+            self._insert(f"BELOW-{i}", 0.9, True, condition_type="below")
+        result = tracker.brier_by_condition_type_rolling(
+            "ensemble", window=20, min_samples=1
+        )
+        self.assertEqual(result["above"]["n"], 20)
+        self.assertEqual(result["below"]["n"], 3)
+
+    def test_filters_by_method(self):
+        for i in range(4):
+            self._insert(
+                f"OTHER-{i}", 0.9, True, condition_type="above", method="normal_dist"
+            )
+        result = tracker.brier_by_condition_type_rolling(
+            "ensemble", window=20, min_samples=1
+        )
+        self.assertEqual(result, {})
+
+    def test_perfect_predictions_full_directional_accuracy(self):
+        for i in range(5):
+            self._insert(f"GOOD-{i}", 0.9, True, condition_type="above")
+        result = tracker.brier_by_condition_type_rolling(
+            "ensemble", window=20, min_samples=1
+        )
+        self.assertAlmostEqual(result["above"]["directional_accuracy"], 1.0)
+
+
+class TestCheckConditionTypeWeakness(unittest.TestCase):
+    """Tests for tracker.check_condition_type_weakness() -- the log-only
+    (never halts) alert cron.py surfaces each cycle."""
+
+    def setUp(self):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_cond_weak.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _insert(
+        self, ticker, our_prob, settled_yes, condition_type="above", method="ensemble"
+    ):
+        analysis = {
+            "condition": {"type": condition_type, "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.50,
+            "edge": our_prob - 0.50,
+            "method": method,
+            "n_members": 20,
+        }
+        tracker.log_prediction(ticker, "NYC", date(2099, 1, 1), analysis)
+        tracker.log_outcome(ticker, settled_yes)
+
+    def test_warns_when_below_floor(self):
+        for i in range(8):
+            self._insert(f"BAD-{i}", 0.9, False, condition_type="below")
+        alerts = tracker.check_condition_type_weakness(
+            window=20, min_samples=8, directional_floor=0.40
+        )
+        self.assertEqual(len(alerts), 1)
+        self.assertIn("ensemble", alerts[0])
+        self.assertIn("below", alerts[0])
+
+    def test_no_alert_when_healthy(self):
+        for i in range(8):
+            self._insert(f"GOOD-{i}", 0.9, True, condition_type="above")
+        alerts = tracker.check_condition_type_weakness(
+            window=20, min_samples=8, directional_floor=0.40
+        )
+        self.assertEqual(alerts, [])
+
+    def test_no_alert_below_min_samples(self):
+        for i in range(3):
+            self._insert(f"THIN-{i}", 0.9, False, condition_type="below")
+        alerts = tracker.check_condition_type_weakness(
+            window=20, min_samples=8, directional_floor=0.40
+        )
+        self.assertEqual(alerts, [])
+
+    def test_checks_each_method_independently(self):
+        for i in range(8):
+            self._insert(
+                f"E-BAD-{i}", 0.9, False, condition_type="below", method="ensemble"
+            )
+        for i in range(8):
+            self._insert(
+                f"N-GOOD-{i}",
+                0.9,
+                True,
+                condition_type="above",
+                method="normal_dist",
+            )
+        alerts = tracker.check_condition_type_weakness(
+            window=20, min_samples=8, directional_floor=0.40
+        )
+        self.assertEqual(len(alerts), 1)
+        self.assertIn("method=ensemble", alerts[0])
+
+
 class TestGetBias(unittest.TestCase):
     """Focused tests for tracker.get_bias() (#111)."""
 
@@ -4076,6 +4245,17 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
         before = tracker.brier_score_by_method_rolling(window=100, min_samples=1)
         self._add_disputed_outlier()
         after = tracker.brier_score_by_method_rolling(window=100, min_samples=1)
+        self.assertEqual(before, after)
+
+    def test_brier_by_condition_type_rolling_excludes_disputed(self):
+        self._seed_baseline()  # condition_type="above" by default
+        before = tracker.brier_by_condition_type_rolling(
+            "ensemble", window=100, min_samples=1
+        )
+        self._add_disputed_outlier()  # also condition_type="above"
+        after = tracker.brier_by_condition_type_rolling(
+            "ensemble", window=100, min_samples=1
+        )
         self.assertEqual(before, after)
 
     def test_get_component_attribution_excludes_disputed(self):

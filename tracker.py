@@ -1737,6 +1737,106 @@ def brier_score_by_method_rolling(
     }
 
 
+def brier_by_condition_type_rolling(
+    method: str = "ensemble", window: int = 20, min_samples: int = 8
+) -> dict[str, dict]:
+    """Rolling Brier score AND directional accuracy per condition_type, for
+    one method's settled multi-day predictions.
+
+    Windowed PER condition_type (not a shared last-N-overall window then
+    split), since condition types settle at very different rates -- 'below'
+    markets are far rarer than 'above'/'between' for this bot's real trade
+    mix, so a shared window would leave 'below' chronically under-
+    represented. Surfaces the exact asymmetry a manual per-condition-type
+    breakdown found by hand (2026-08-12 investigation): a method's overall
+    Brier/win-rate can look merely mediocre while one condition_type is
+    actually dragging it down and running worse than a coin flip, invisible
+    to brier_score_by_method[_rolling]'s method-only grouping.
+
+    Returns {condition_type: {"n": int, "brier": float,
+    "directional_accuracy": float}} for condition types with at least
+    min_samples settled predictions in their own trailing window. Excludes
+    disputed outcomes via outcomes_valid, matching every other Brier query.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT p.condition_type, p.our_prob, o.settled_yes
+            FROM multiday_predictions p
+            JOIN outcomes_valid o ON p.ticker = o.ticker
+            WHERE p.method = ? AND p.our_prob IS NOT NULL
+              AND p.condition_type IS NOT NULL
+            ORDER BY o.settled_at DESC
+            """,
+            (method,),
+        ).fetchall()
+
+    by_type_recent: dict[str, list[tuple[float, int]]] = {}
+    for r in rows:
+        bucket = by_type_recent.setdefault(r["condition_type"], [])
+        if len(bucket) < window:
+            bucket.append((r["our_prob"], r["settled_yes"]))
+
+    result: dict[str, dict] = {}
+    for cond_type, pairs in by_type_recent.items():
+        n = len(pairs)
+        if n < min_samples:
+            continue
+        brier = sum((p - y) ** 2 for p, y in pairs) / n
+        correct = sum(1 for p, y in pairs if (p > 0.5) == (y == 1))
+        result[cond_type] = {
+            "n": n,
+            "brier": round(brier, 4),
+            "directional_accuracy": round(correct / n, 4),
+        }
+    return result
+
+
+def check_condition_type_weakness(
+    window: int = 20, min_samples: int = 8, directional_floor: float = 0.40
+) -> list[str]:
+    """Warn (never halt) when a (method, condition_type) pair's rolling
+    directional accuracy drops below directional_floor.
+
+    Complements the WIN_RATE_COLLAPSE anomaly (alerts.py, whole multi-day
+    pool) and brier_score_by_method[_rolling] (per-method only): neither
+    would have surfaced the 'below'-market-specific weakness found by hand
+    2026-08-12, since 'above'/'between' were healthy enough to keep the
+    method-level aggregate merely mediocre rather than clearly broken.
+    Intentionally warn-only -- unlike WIN_RATE_COLLAPSE this has no halt
+    threshold wired in ALERT_HALT_THRESHOLDS, since a single condition_type
+    slice is a smaller, noisier sample than the pools that gate live
+    trading today; it exists to surface the split for a human to check, not
+    to auto-halt on it.
+    """
+    init_db()
+    with _conn() as con:
+        methods = [
+            r["method"]
+            for r in con.execute(
+                "SELECT DISTINCT method FROM multiday_predictions "
+                "WHERE method IS NOT NULL"
+            ).fetchall()
+        ]
+
+    alerts_out: list[str] = []
+    for method in methods:
+        breakdown = brier_by_condition_type_rolling(
+            method, window=window, min_samples=min_samples
+        )
+        for cond_type, stats in breakdown.items():
+            if stats["directional_accuracy"] < directional_floor:
+                alerts_out.append(
+                    f"CONDITION-TYPE WEAKNESS: method={method} "
+                    f"condition_type={cond_type} "
+                    f"directional_accuracy={stats['directional_accuracy']:.0%} "
+                    f"(n={stats['n']}, floor={directional_floor:.0%}) "
+                    f"brier={stats['brier']:.4f}"
+                )
+    return alerts_out
+
+
 def brier_score_probation_rolling(
     method: str, window: int = 20, min_samples: int = 15
 ) -> float | None:

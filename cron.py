@@ -1091,6 +1091,19 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.debug("cmd_cron: auto_retire_strategies failed: %s", _e)
 
+    # Condition-type weakness check (log-only, non-blocking, no halt gate --
+    # see tracker.check_condition_type_weakness's own docstring for why).
+    # Surfaces a (method, condition_type) pair running well below a coin
+    # flip even when that method's aggregate Brier looks merely mediocre,
+    # without needing a manual per-condition-type breakdown to find it.
+    try:
+        from tracker import check_condition_type_weakness as _check_cond_weak
+
+        for _cond_alert in _check_cond_weak():
+            _log.warning("cmd_cron: %s", _cond_alert)
+    except Exception as _e:
+        _log.debug("cmd_cron: check_condition_type_weakness failed: %s", _e)
+
     # Auto-extend ensemble pin when it is within 48 h of expiry and directional
     # accuracy is still healthy. The pin prevents auto-retirement of a method whose
     # Brier is high due to stop-loss exits rather than bad direction. Without this,
