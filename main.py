@@ -66,8 +66,8 @@ from order_executor import (  # noqa: F401 — re-exports: tests + main code ref
     _check_live_position_exits,
     _count_open_live_orders,  # noqa: F401
     _daily_paper_spend,
+    _liquidation_price,
     _log_shadow_predictions,
-    _midpoint_price,
     _place_live_order,  # noqa: F401
     _poll_pending_orders,
     _prediction_kwargs_from_analysis,
@@ -6850,6 +6850,7 @@ def cmd_menu(client: KalshiClient):
             elif sub == "4":
                 try:
                     from paper import check_model_exits, close_paper_early
+                    from utils import YES_ASK_KEYS, YES_BID_KEYS, coalesce_market_price
 
                     recs = check_model_exits(client)
                     if not recs:
@@ -6882,11 +6883,32 @@ def cmd_menu(client: KalshiClient):
                                 break
                             if choice == "y":
                                 try:
-                                    exit_price = _midpoint_price(
-                                        rec["market"], rec["held_side"]
+                                    _market = rec["market"]
+                                    _held_side = rec["held_side"]
+                                    _current_prices = {
+                                        t["ticker"]: {
+                                            "bid": coalesce_market_price(
+                                                _market, *YES_BID_KEYS
+                                            ),
+                                            "ask": coalesce_market_price(
+                                                _market, *YES_ASK_KEYS
+                                            ),
+                                        }
+                                    }
+                                    exit_price = _liquidation_price(
+                                        _current_prices, t["ticker"], _held_side
                                     )
-                                    close_paper_early(t["id"], exit_price)
-                                    print(green(f"  #{t['id']} {t['ticker']} closed."))
+                                    if exit_price is None or exit_price <= 0:
+                                        print(
+                                            red(
+                                                f"  Could not close: no realizable quote for {t['ticker']}"
+                                            )
+                                        )
+                                    else:
+                                        close_paper_early(t["id"], exit_price)
+                                        print(
+                                            green(f"  #{t['id']} {t['ticker']} closed.")
+                                        )
                                 except Exception as _ce:
                                     print(red(f"  Could not close: {_ce}"))
                             else:

@@ -407,6 +407,156 @@ class TestModelExitShiftPpIsConfigurable:
         assert closed == 0
 
 
+class TestEarlyExitPricingConvention:
+    """_check_early_exits must price a model-exit at the realizable bid/ask
+    (_liquidation_price), not the bid/ask midpoint -- matching
+    _check_live_model_exits' existing convention. Before this fix,
+    _check_early_exits used _midpoint_price, which overvalues the position by
+    half the bid-ask spread (see positions.liquidation_price's docstring)."""
+
+    def _shifted_trade_and_analysis(self, side: str):
+        trade = _make_trade(entered_hours_ago=24, side=side)
+        far_future = (datetime.now(UTC) + timedelta(days=10)).isoformat()
+        trade["close_time"] = far_future
+        # entry_prob=0.65; shift a "yes" position via a low forecast_prob,
+        # a "no" position via a high one -- either way, shift=0.35 > the
+        # 0.25 default MODEL_EXIT_SHIFT_PP threshold.
+        forecast_prob = 0.30 if side == "yes" else 1.0
+        analysis = {"forecast_prob": forecast_prob, "net_edge": -0.10}
+        return trade, analysis
+
+    def test_exit_price_uses_liquidation_not_midpoint_yes_side(self):
+        """yes_bid=20c/yes_ask=40c: liquidation (realizable) = 0.20 (the bid).
+        The old midpoint convention would have booked 0.30 -- a $0.10/share
+        overstatement that flows straight into pnl for every share held."""
+        import order_executor
+
+        trade, analysis = self._shifted_trade_and_analysis("yes")
+        mock_market = {"ticker": trade["ticker"], "yes_bid": 20, "yes_ask": 40}
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = mock_market
+
+        captured = {}
+
+        def _fake_close(trade_id, exit_price):
+            captured["exit_price"] = exit_price
+            return {"pnl": 0.0}
+
+        with (
+            patch("order_executor.get_weather_markets", return_value=[mock_market]),
+            patch("order_executor.enrich_with_forecast", return_value=mock_market),
+            patch("order_executor.analyze_trade", return_value=analysis),
+            patch("paper.get_open_trades", return_value=[trade]),
+            patch("paper.close_paper_early", side_effect=_fake_close) as mock_close,
+        ):
+            closed = order_executor._check_early_exits(mock_client)
+
+        assert closed == 1
+        mock_close.assert_called_once()
+        assert captured["exit_price"] == pytest.approx(0.20), (
+            f"Expected the realizable bid (0.20), got {captured['exit_price']} "
+            "-- the old midpoint convention would have produced 0.30"
+        )
+
+    def test_exit_price_uses_liquidation_not_midpoint_no_side(self):
+        """yes_bid=60c/yes_ask=80c, held side NO: liquidation (realizable) =
+        1 - yes_ask = 0.20. The old midpoint convention would have booked
+        0.30 (midpoint of the NO market's own 0.20/0.40 bid-ask)."""
+        import order_executor
+
+        trade, analysis = self._shifted_trade_and_analysis("no")
+        mock_market = {"ticker": trade["ticker"], "yes_bid": 60, "yes_ask": 80}
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = mock_market
+
+        captured = {}
+
+        def _fake_close(trade_id, exit_price):
+            captured["exit_price"] = exit_price
+            return {"pnl": 0.0}
+
+        with (
+            patch("order_executor.get_weather_markets", return_value=[mock_market]),
+            patch("order_executor.enrich_with_forecast", return_value=mock_market),
+            patch("order_executor.analyze_trade", return_value=analysis),
+            patch("paper.get_open_trades", return_value=[trade]),
+            patch("paper.close_paper_early", side_effect=_fake_close) as mock_close,
+        ):
+            closed = order_executor._check_early_exits(mock_client)
+
+        assert closed == 1
+        mock_close.assert_called_once()
+        assert captured["exit_price"] == pytest.approx(0.20), (
+            f"Expected the realizable NO price (1 - yes_ask = 0.20), got "
+            f"{captured['exit_price']} -- the old midpoint convention would "
+            "have produced 0.30"
+        )
+
+    def test_skips_cycle_on_missing_quote_not_fallback_to_entry_price(self, caplog):
+        """A missing/invalid quote must skip this cycle (matching
+        _check_live_model_exits' behavior), not fall back to entry_price --
+        that fallback is the stop-loss/breakeven family's convention, a
+        different function family with a different contract. Paired with a
+        positive control: the debug skip message actually appearing proves
+        the shift/hold/settlement gates were all passed and the code reached
+        the price-computation branch, rather than the trade being filtered
+        out earlier for an unrelated reason (which would make the "0 closed"
+        assertion below pass vacuously)."""
+        import order_executor
+
+        trade, analysis = self._shifted_trade_and_analysis("yes")
+        # No yes_bid/yes_ask fields at all -> coalesce_market_price returns
+        # 0.0 for both -> liquidation_price returns None for the "yes" side.
+        mock_market = {"ticker": trade["ticker"]}
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = mock_market
+
+        with (
+            patch("order_executor.get_weather_markets", return_value=[mock_market]),
+            patch("order_executor.enrich_with_forecast", return_value=mock_market),
+            patch("order_executor.analyze_trade", return_value=analysis),
+            patch("paper.get_open_trades", return_value=[trade]),
+            patch("paper.close_paper_early") as mock_close,
+            caplog.at_level("DEBUG"),
+        ):
+            closed = order_executor._check_early_exits(mock_client)
+
+        assert closed == 0
+        mock_close.assert_not_called()
+        assert "could not compute exit price" in caplog.text, (
+            "positive control: the skip-debug message must fire, proving the "
+            "gates passed and the price-computation branch was actually "
+            "reached (not blocked earlier by hold-time/settlement gates)"
+        )
+
+    def test_skips_cycle_when_no_side_liquidation_is_exactly_zero(self, caplog):
+        """liquidation_price() returns 0.0 (NOT None) for a NO position when
+        yes_ask=100c (1 - 1.0 = 0.0) -- only the `exit_price <= 0` half of the
+        guard catches this, not `is None`. Without this test, mutating the
+        guard to `if exit_price is None:` would still pass every other test
+        in this class, since none of them exercise a non-None zero price."""
+        import order_executor
+
+        trade, analysis = self._shifted_trade_and_analysis("no")
+        mock_market = {"ticker": trade["ticker"], "yes_ask": 100}
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = mock_market
+
+        with (
+            patch("order_executor.get_weather_markets", return_value=[mock_market]),
+            patch("order_executor.enrich_with_forecast", return_value=mock_market),
+            patch("order_executor.analyze_trade", return_value=analysis),
+            patch("paper.get_open_trades", return_value=[trade]),
+            patch("paper.close_paper_early") as mock_close,
+            caplog.at_level("DEBUG"),
+        ):
+            closed = order_executor._check_early_exits(mock_client)
+
+        assert closed == 0
+        mock_close.assert_not_called()
+        assert "could not compute exit price" in caplog.text
+
+
 class TestBreakevenStops:
     def test_check_breakeven_stops_fires_when_peak_met_and_price_falls(self):
         """check_breakeven_stops must return the ticker when peak was met and price fell back."""

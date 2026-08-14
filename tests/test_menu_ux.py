@@ -3,6 +3,8 @@
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 class TestCronOutputFlush:
     def test_stdout_flushed_before_cmd_cron(self, monkeypatch):
@@ -108,16 +110,29 @@ class TestExitSignals:
     """Tests for the paper submenu 'Exit signals' branch (sub == '4')."""
 
     def _run_paper_sub4(
-        self, monkeypatch, fake_recs, input_seq, close_mock, midpoint_val=0.54
+        self,
+        monkeypatch,
+        fake_recs,
+        input_seq,
+        close_mock,
+        liquidation_val=0.54,
+        patch_liquidation=True,
     ):
-        """Helper: drive cmd_menu → P(aper) → 4(exit signals), capturing stdout."""
+        """Helper: drive cmd_menu → P(aper) → 4(exit signals), capturing stdout.
+
+        patch_liquidation=False leaves main._liquidation_price un-mocked, so
+        the real bid/ask -> realizable-price computation runs end to end
+        (liquidation_val is then unused)."""
         from unittest.mock import MagicMock
 
         import main
 
         monkeypatch.setattr("paper.check_model_exits", lambda *a: fake_recs)
         monkeypatch.setattr("paper.close_paper_early", close_mock)
-        monkeypatch.setattr(main, "_midpoint_price", lambda m, s: midpoint_val)
+        if patch_liquidation:
+            monkeypatch.setattr(
+                main, "_liquidation_price", lambda p, t, s: liquidation_val
+            )
 
         # "P" → paper submenu; "4" → exit signals; then per-signal inputs;
         # "" → Press Enter to return; "Q" → Quit
@@ -166,7 +181,7 @@ class TestExitSignals:
         )
 
     def test_exit_signals_closes_when_user_says_yes(self, monkeypatch, capsys):
-        """When user says y, close_paper_early must be called with (trade_id, midpoint_price)."""
+        """When user says y, close_paper_early must be called with (trade_id, liquidation_price)."""
 
         fake_trade = {
             "id": 7,
@@ -192,14 +207,57 @@ class TestExitSignals:
             fake_recs,
             input_seq=["y"],
             close_mock=lambda tid, ep: close_calls.append((tid, ep)) or fake_trade,
-            midpoint_val=0.61,
+            liquidation_val=0.38,
         )
         out = capsys.readouterr().out
-        assert close_calls == [(7, 0.61)], (
-            f"Expected close call with (7, 0.61), got {close_calls}"
+        assert close_calls == [(7, 0.38)], (
+            f"Expected close call with (7, 0.38), got {close_calls}"
         )
         assert "closed" in out.lower(), (
             f"Expected 'closed' confirmation in output, got:\n{out}"
+        )
+
+    def test_exit_signals_uses_realizable_price_not_midpoint(self, monkeypatch, capsys):
+        """Real before/after: for a NO position with yes_bid=60/yes_ask=62 (cents),
+        the realized close must be the NO-side liquidation price (1 - yes_ask =
+        0.38), not the old midpoint convention (which would have booked 0.39 --
+        the midpoint of the NO market's own 0.38/0.40 bid-ask). Does NOT mock
+        _liquidation_price -- exercises the real computation end to end."""
+        fake_trade = {
+            "id": 11,
+            "ticker": "KXLOWCHI-25APR30-T41",
+            "side": "no",
+            "qty": 5,
+            "entry_price": 0.45,
+        }
+        fake_market = {"yes_ask": 62, "yes_bid": 60, "ticker": "KXLOWCHI-25APR30-T41"}
+        fake_recs = [
+            {
+                "trade": fake_trade,
+                "reason": "edge_gone",
+                "current_edge": -0.15,
+                "held_side": "no",
+                "market": fake_market,
+            }
+        ]
+
+        close_calls = []
+        self._run_paper_sub4(
+            monkeypatch,
+            fake_recs,
+            input_seq=["y"],
+            close_mock=lambda tid, ep: close_calls.append((tid, ep)) or fake_trade,
+            patch_liquidation=False,
+        )
+
+        assert len(close_calls) == 1, (
+            f"Expected exactly one close call, got {close_calls}"
+        )
+        trade_id, exit_price = close_calls[0]
+        assert trade_id == 11
+        assert exit_price == pytest.approx(0.38), (
+            f"Expected the realizable NO-side price (1 - yes_ask = 0.38), "
+            f"not the old midpoint (0.39); got {exit_price}"
         )
 
     def test_exit_signals_keyboard_interrupt_returns_to_menu(self, monkeypatch, capsys):
@@ -227,7 +285,7 @@ class TestExitSignals:
         ]
 
         monkeypatch.setattr("paper.check_model_exits", lambda *a: fake_recs)
-        monkeypatch.setattr(main, "_midpoint_price", lambda m, s: 0.49)
+        monkeypatch.setattr(main, "_liquidation_price", lambda p, t, s: 0.49)
 
         call_count = {"n": 0}
 

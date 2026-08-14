@@ -1792,7 +1792,9 @@ def _check_early_exits(client=None) -> int:
     """
     Re-analyze all open paper positions. If the updated model probability has
     shifted more than MODEL_EXIT_SHIFT_PP (default 25 percentage points) against
-    the entry direction, close the position early at the current market mid-price.
+    the entry direction, close the position early at the realizable bid/ask
+    price (see _liquidation_price) -- the same convention
+    _check_live_model_exits uses for live positions.
 
     Returns the number of positions closed.
     """
@@ -1851,10 +1853,17 @@ def _check_early_exits(client=None) -> int:
                 continue
 
             if shift > MODEL_EXIT_SHIFT_PP:
-                exit_price = _midpoint_price(market, side)
-                # H-4: never close at zero — missing market data returns 0.0 which
-                # records maximum loss even if the trade was profitable.
-                if exit_price <= 0:
+                book = _get_current_book(client, ticker) or market
+                current_prices = {
+                    ticker: {
+                        "bid": coalesce_market_price(book, *YES_BID_KEYS),
+                        "ask": coalesce_market_price(book, *YES_ASK_KEYS),
+                    }
+                }
+                exit_price = _liquidation_price(current_prices, ticker, side)
+                # H-4: never close at zero/no-quote — a missing or invalid
+                # quote must skip this cycle, not record a fabricated price.
+                if exit_price is None or exit_price <= 0:
                     _log.debug(
                         "[EarlyExit] skip %s — could not compute exit price (market data missing)",
                         ticker,

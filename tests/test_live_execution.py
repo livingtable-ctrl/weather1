@@ -4,14 +4,20 @@ import pytest
 
 
 class TestMidpointPrice:
+    """_midpoint_price is still used for live order placement/repricing
+    (order_executor._place_live_order, _reprice_or_cancel_pending_orders) --
+    out of scope for the model-exit pricing-convention fix. main.py no longer
+    re-exports it since its one exit-path use (the manual close menu) now
+    uses _liquidation_price instead."""
+
     def test_midpoint_yes_side(self):
-        from main import _midpoint_price
+        from order_executor import _midpoint_price
 
         market = {"yes_bid": 45, "yes_ask": 55}
         assert _midpoint_price(market, "yes") == pytest.approx(0.50)
 
     def test_midpoint_no_side(self):
-        from main import _midpoint_price
+        from order_executor import _midpoint_price
 
         market = {"yes_bid": 45, "yes_ask": 55}
         # no_bid = 100 - yes_ask = 45; no_ask = 100 - yes_bid = 55 → midpoint = 0.50

@@ -12936,12 +12936,10 @@ RESOLVED 2026-08-13: Shipped the full Position read-model this entry's
       unreachable in practice, same as before this change), but worth
       knowing if that guard is ever loosened.
 
-[NEW 2026-08-13 -- split from the entry above per its own same-payload
-  test; CORRECTED 2026-08-13 same day, by an independent opus review of the
-  split itself (effort=high), which caught that the ORIGINAL version of
-  this entry's own Priority/Problem text was factually wrong about there
-  being no price-math duplication here -- see Priority below for what's
-  actually true.] check_model_exits/_check_live_model_exits/
+[PARTIALLY RESOLVED 2026-08-14 -- the Medium-priority price-convention
+  divergence is fixed; the Low-priority dict-vs-Position sourcing is
+  deliberately still open, unchanged from the original filing, see "Why
+  not now" below] check_model_exits/_check_live_model_exits/
   _check_early_exits STILL SOURCE POSITIONS AS RAW DICTS, NOT THE NEW
   Position READ-MODEL -- AND THEIR EXIT-PRICE CONVENTIONS HAVE ALREADY
   DIVERGED
@@ -13024,6 +13022,185 @@ When to revisit:
   that it was caught by review after the sibling entry's implementation
   was already done and confirmed, not before. Dict-sourcing: no blocking
   dependency.
+
+Resolution (2026-08-14):
+  Both remaining execute-a-close sites switched from _midpoint_price() to
+  liquidation_price() (positions.py): order_executor._check_early_exits
+  (order_executor.py, the automated paper path, cron/watch-driven) and
+  main.py's interactive exit-signal menu (~line 6858, the manual y/N close
+  reached via check_model_exits' recommendations). Both now price a
+  model-exit identically to order_executor._check_live_model_exits
+  (unchanged) -- same current_prices dict shape ({ticker: {"bid","ask"}}
+  via coalesce_market_price(*YES_BID_KEYS/YES_ASK_KEYS)), and, added during
+  review (see Finding 1 below), the same _get_current_book(client, ticker)
+  or market WS-then-REST freshness step live already used -- paper's
+  pricing now literally mirrors live's, not just conceptually.
+
+  Two scope/design decisions surfaced via AskUserQuestion before
+  implementing (terse question, tradeoffs in option descriptions, per this
+  project's standing workflow):
+    1. Fix both _check_early_exits AND main.py's manual close site
+       (chosen) vs. _check_early_exits only. Chosen because leaving the
+       manual site on the old midpoint convention would have created a
+       NEW divergence (manual paper closes vs. automated paper closes
+       pricing the same trigger differently) the moment this entry closed.
+    2. Preserve the existing skip-this-cycle-on-bad-quote behavior
+       (chosen) vs. this entry's own original "What it would look like"
+       text, which prescribed falling back to entry_price "like the other
+       exit paths already do." Re-verified against live code
+       (order_executor.py, both _check_live_model_exits and
+       _check_early_exits) before implementing: that claim was wrong --
+       neither existing model-exit site falls back to entry_price on a
+       bad quote; both skip the cycle. The entry_price fallback is the
+       STOP-LOSS/BREAKEVEN family's convention (order_executor.py's
+       _check_live_position_exits, paper.py's stop-loss/breakeven exit
+       loop), a different function family with a different contract.
+       Implemented as `if exit_price is None or exit_price <= 0: continue`
+       -- liquidation_price() returns None on a missing/invalid quote
+       (never negative), so this preserves the exact skip semantics both
+       existing model-exit sites already had, just checking a different
+       function's return contract.
+
+  Real-data impact check (this entry's own stated precondition under "Why
+  not now" above): queried predictions.db's price_history table
+  (yes_bid_close/yes_ask_close) against all 37 historical paper trades
+  settled via the model-exit-family midpoint convention (paper_trades.json,
+  outcome="early_exit", exit_reason IS NULL -- this bucket covers both
+  _check_early_exits' automated closes and the manual menu's closes, since
+  neither tags a reason). Matched each trade's settled_at to the nearest
+  price_history candle by ticker; only 12 of 37 matched within 15 minutes
+  of the actual exit (price_history's per-ticker coverage is sparse -- the
+  other 25 matched a candle 6-48+ hours away and were excluded as
+  unreliable, not averaged in). Of the 12 reliable matches: median spread
+  ~3c, mean ~4.8c, mean per-trade P&L overstatement (midpoint vs. realizable)
+  ~$1.34, max $4.73 on a single trade. Confirms this entry's own suspicion
+  under "Why not now": spreads are consistently thin on these weather-market
+  tickers, so per-trade dollar impact is modest -- but real, directionally
+  consistent with liquidation_price()'s docstring (midpoint always
+  overvalues by roughly half the spread), and non-zero, which is enough to
+  justify the fix on consistency grounds even before considering compounding
+  effects (see Finding 11 below on the paper P&L series becoming
+  non-homogeneous across this changeover).
+
+  Tests: 5 new tests -- tests/test_early_exits.py's new
+  TestEarlyExitPricingConvention (4 tests: hand-computed liquidation price
+  vs. the old midpoint for both YES and NO sides; a positive-controlled
+  skip-on-None test; a skip-on-exactly-0.0 test added per Finding 3 below,
+  covering the `exit_price <= 0` half of the guard that `is None` alone
+  does not) and tests/test_menu_ux.py's new
+  test_exit_signals_uses_realizable_price_not_midpoint (drives the real
+  main.py manual-close code path end to end with no pricing mock). 2
+  existing tests updated in test_menu_ux.py (mock arity/values for the
+  _midpoint_price -> _liquidation_price switch) and 2 in
+  test_live_execution.py (TestMidpointPrice now imports from
+  order_executor, since main.py no longer re-exports the now-paper-close-
+  unused _midpoint_price -- it remains legitimately used for live order
+  placement/repricing, order_executor.py:983/1582, untouched by this
+  change). Every new/changed pricing assertion mutation-tested by reverting
+  the relevant production line via Edit, confirming the right test failed
+  for the price-difference reason (not an unrelated one), then restoring:
+  the YES/NO liquidation-vs-midpoint tests fail with "got 0.3, expected
+  0.2" against the reverted midpoint code; the missing-quote skip test
+  fails by actually closing at a fabricated 0.5 against reverted code; the
+  exactly-0.0 skip test (added for Finding 3) fails by closing at a
+  fabricated $0.00 when the guard is mutated to drop its `<= 0` clause.
+  140 tests pass (freshly re-run immediately before writing this sentence)
+  across tests/test_early_exits.py, test_menu_ux.py, and
+  test_live_execution.py; a broader regression sweep of
+  tests/test_positions.py, test_trading.py, test_paper.py,
+  test_main_cron_smoke.py, and test_trading_gates.py (250 tests, also
+  freshly re-run) passes clean given this touches a live-order-adjacent
+  exit-pricing path. ruff + ruff format + mypy clean via the actual
+  pre-commit hook on all changed files.
+
+  Independent opus review (effort=high) before push found 11 findings, all
+  addressed:
+    - 2 LOW findings, fixed: (1) unlike _check_live_model_exits,
+      _check_early_exits was pricing off the same-cycle get_weather_markets
+      scan dict rather than calling _get_current_book(client, ticker) first
+      for a WS-cache-then-REST-fresh quote -- not a regression (the old
+      _midpoint_price() call used the identical stale dict), but it left
+      the "same convention as live" claim in this change's own docstring
+      not quite true. Now calls _get_current_book exactly like
+      _check_live_model_exits does. (2) The `exit_price <= 0` half of the
+      skip guard (as opposed to `is None`) was reachable but untested at
+      both new sites -- a NO position in a market with yes_ask=100c
+      produces liquidation_price()==0.0, not None, so mutating the guard
+      to check only `is None` would have passed every other test. Added
+      test_skips_cycle_when_no_side_liquidation_is_exactly_zero;
+      mutation-tested (see Tests above).
+    - 3 LOW findings, fixed: (1) main.py's growing module-level `utils`
+      import block was adding a second function-object symbol
+      (coalesce_market_price) to the exact "frozen at process-import time
+      across a test's importlib.reload(utils)" risk class a standing
+      comment in that import block already documents and warns against --
+      moved coalesce_market_price/YES_BID_KEYS/YES_ASK_KEYS to a local
+      import inside the sub=="4" branch, matching that branch's existing
+      local-import convention (`from paper import ...` two lines above).
+      _liquidation_price stays module-level (tests monkeypatch
+      main._liquidation_price by name). (2) tests/test_menu_ux.py's new
+      end-to-end test asserted exact float equality
+      (`close_calls == [(11, 0.38)]`) on a genuinely computed value
+      (1.0 - 0.62); passed today only because that particular subtraction
+      happens to be exactly representable -- changed to
+      `exit_price == pytest.approx(0.38)`. (3) that same test duplicated
+      ~25 lines of the existing _run_paper_sub4 helper because the helper
+      unconditionally mocked _liquidation_price -- added a
+      patch_liquidation=True parameter so the new test can reuse the
+      helper with patch_liquidation=False.
+    - 2 informational findings, no action -- explicit reasoned no-ops:
+      (1) liquidation_price() doesn't round to 2dp the way the old
+      _midpoint_price() did; verified harmless, since close_paper_early
+      already rounds both exit_price and pnl to 4dp and the ledger's own
+      balance-drift check tolerates 0.05. (2) no regression test pins
+      _check_live_model_exits' own pricing convention -- that function is
+      byte-for-byte unchanged by this entry, so adding coverage for
+      already-existing, already-shipped behavior is a genuinely separate,
+      unscoped task, not a gap this change introduced.
+    - 1 LOW finding, documented deliberate no-op: main.py's manual y/N
+      close path now declines (prints "no realizable quote", moves on)
+      when the quote is missing, with no operator escape hatch to enter a
+      manual price. This is correct for the automated paths (paper's own
+      duplicate-order-guard-adjacent invariant: never fabricate a price),
+      and is already a net improvement here too -- the OLD behavior always
+      closed, at a possibly-fabricated _midpoint_price default (0.50,
+      exactly the class of bug this entry exists to fix), so this is not a
+      regression. Adding a manual-price-entry prompt is a genuine UX
+      feature addition, not a bug fix, and out of scope for this entry.
+    - 1 MEDIUM finding, fixed: this entry's own "What it would look like"
+      text (see above) prescribed the entry_price fallback that decision 2
+      above explicitly rejected as factually wrong for this function
+      family -- left as originally written, a future session picking up
+      the dict-sourcing half of this entry could "finish" it by adding
+      that fallback and silently reintroducing a fabricated-price bug.
+      This resolution note is the fix: the original problem/plan text
+      above is left intact for history (per this project's convention),
+      but decision 2 in this Resolution section is now the authoritative
+      record of what shipped and why the entry's own prescription was not
+      followed.
+    - 1 LOW/informational finding, noted rather than actioned: paper
+      model-exit closes from this date forward book systematically lower
+      proceeds than before (by roughly half the spread, both sides) --
+      correct and intended, but it makes the paper P&L series
+      non-homogeneous across 2026-08-14 for anything that reads it in
+      aggregate (paper.graduation_check's win-rate/total-pnl thresholds,
+      the drawdown pause, tracker calibration). Not a bug and not
+      reverted; recorded here so a future "why did paper P&L step down
+      around mid-August" question has a documented answer.
+    - 1 MEDIUM finding, spun off as its own new backlog entry rather than
+      fixed here (same-payload test: genuinely separate consumer, not the
+      same data flow this entry touches -- a different function, different
+      file, Python+JSX rather than this entry's pure-Python sites): the
+      React dashboard's Close button (frontend/src/App.jsx,
+      frontend/src/useData.js, web_app.py's POST /api/close-position) is a
+      FOURTH paper-close site, with a pricing convention worse than either
+      bug this entry fixed -- see the new entry near the end of this file
+      for the full writeup.
+
+  Dict-vs-Position sourcing (the Low-priority half of this entry):
+  deliberately still not touched, unchanged from the original filing above
+  -- genuinely has no duplication risk, pure internal consistency, pick up
+  opportunistically or if these functions are touched for another reason.
 
 [PARTIALLY RESOLVED 2026-07-25 -- parts (a) and (b) shipped; part (c), the
   blend-weights-dict refactor, still open, deliberately scoped out as its
@@ -17522,4 +17699,91 @@ Problem:
   `tier`-unavailable shape as `_analyze_once`, not fixable without the same
   analyze_trade()-level plumbing the fallback-alert bullet above would also
   need.
+
+[NEW 2026-08-14 -- found via opus review (effort=high) during the
+  model-exit pricing-convention fix, see the PARTIALLY RESOLVED entry
+  earlier in this file (check_model_exits/_check_live_model_exits/
+  _check_early_exits ... EXIT-PRICE CONVENTIONS HAVE ALREADY DIVERGED) for
+  the sibling fix this is adjacent to but was correctly NOT folded into
+  (same-payload test: genuinely separate consumer, different function,
+  different file, Python+JSX rather than that entry's pure-Python sites)]
+  REACT DASHBOARD'S CLOSE BUTTON IS A FOURTH PAPER-CLOSE SITE, WITH A
+  PRICING CONVENTION WORSE THAN EITHER BUG THE SIBLING ENTRY FIXED
+Priority: Medium -- same live/paper-P&L-overstatement class as the sibling
+  entry (booking a more optimistic exit than the position could actually
+  realize), but with a larger per-trade error and, for NO positions, a
+  wrong-side price rather than just a wrong-convention one. Currently
+  gated behind a manual operator click in the web dashboard, not an
+  automated path, which is the only reason this isn't higher.
+
+Problem:
+  frontend/src/useData.js:172's mapTrades() computes `mark:
+  t.current_yes_ask ?? t.actual_fill_price ?? t.entry_price ?? 0` for every
+  open position with NO side-branching (`side` is carried on the object
+  separately but never read when computing `mark`). frontend/src/App.jsx's
+  handleClose() (~line 638-641) posts that value straight through:
+  `body: JSON.stringify({ trade_id: pos.id, exit_price: pos.mark || 0 })`
+  to POST /api/close-position (web_app.py:2886-2919), which accepts any
+  client-supplied exit_price in the (0, 1] range (enforced server-side,
+  see web_app.py:2905-2912's existing WA-security comment/check -- so this
+  is not a wide-open injection, just a wrong-but-in-range price) with no
+  side- or market-cross-check against what the position could actually
+  realize. `current_yes_ask` itself is populated at web_app.py:1393 from
+  the SSE live-market snapshot's raw `yes_ask` field, unadjusted for side.
+
+  Concrete failure modes, both verified against the current code (not
+  assumed):
+    1. A YES holder's Close button books the *ask* (what a buyer pays to
+       open more), not the *bid* (what a holder can realize by closing) --
+       overvalued by the FULL bid-ask spread, twice as wrong as the
+       midpoint bug the sibling entry just fixed (which averaged bid and
+       ask, an overstatement of half the spread).
+    2. A NO holder's Close button books the raw YES ask directly -- not
+       even the right SIDE's price (should be `1 - yes_ask`, the NO bid).
+       A NO position in a 60/62-cent (yes_bid/yes_ask) market books 0.62
+       instead of the realizable 0.38: a ~$0.24/share fabricated gain,
+       independent of and much larger than the midpoint-vs-liquidation gap
+       the sibling entry addressed.
+    3. When the SSE snapshot has no quote for a ticker,
+       `current_yes_ask` is null/undefined and `mark` falls through to
+       `t.actual_fill_price ?? t.entry_price ?? 0` -- entry_price is
+       exactly the fallback this project's sibling entry deliberately
+       REJECTED for the model-exit family (see that entry's Resolution,
+       decision 2), reintroduced here via the frontend instead.
+
+What it would look like:
+  Compute `mark` the same way the now-fixed Python paths do: for a YES
+  position, the realizable bid; for a NO position, `1 - yes_ask` (the NO
+  bid) -- i.e. mirror positions.liquidation_price()'s logic in useData.js,
+  which needs `current_yes_bid` (not just `current_yes_ask`) threaded
+  through from web_app.py:1393's SSE-snapshot enrichment alongside the
+  existing `current_yes_ask` field, plus `side` read at the mark
+  computation (currently ignored). On the no-quote fallback, either match
+  the sibling entry's skip-this-cycle convention (disable/hide the Close
+  button rather than falling back to entry_price) or, since this is a
+  human-in-the-loop UI unlike the automated Python paths, surface a
+  manual-price-entry field instead -- genuinely a UX design decision, not
+  a mechanical port, surface via AskUserQuestion per this project's
+  standing workflow rather than assuming. Needs its own before/after test
+  (or manual verification plus a written note, given this is a React/Flask
+  boundary without this repo's Python test harness) proving the posted
+  exit_price changes for a representative YES and NO fixture.
+
+Why not now:
+  Genuinely a separate change from the sibling entry that found this:
+  different language/file pair (JSX + Flask route, not the sibling's
+  pure-Python order_executor.py/main.py sites), different UI/UX surface
+  (a manual dashboard click, not a cron-driven or CLI-menu close), and
+  would need its own review of whatever frontend test coverage (if any)
+  exists for useData.js/App.jsx before shipping -- bundling it into the
+  sibling entry's already-large diff would have blurred two independently
+  reviewable changes together for no benefit.
+
+When to revisit:
+  Soon -- per-trade dollar impact here is structurally larger than the
+  sibling entry's (full spread for YES, a wrong-side price entirely for
+  NO, vs. half-spread for both sides in the sibling), and it silently
+  fabricates a price via the entry_price fallback exactly when the
+  operator most needs an accurate one (a stale/missing quote). No blocking
+  dependency on the sibling entry -- that one is already resolved.
 
