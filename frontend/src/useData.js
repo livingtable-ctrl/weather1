@@ -146,6 +146,40 @@ function mapCircuitBreakers(raw) {
 }
 
 /**
+ * Realizable mark for an open position, mirroring positions.liquidation_price()'s
+ * convention: a YES holder can only sell at yes_bid, a NO holder only at
+ * 1 - yes_ask (the NO bid) -- using the other side's price (or a mid) prices the
+ * position at what a *buyer* would pay to open more, not what a *holder* can
+ * actually realize by closing. A side price of 0 means no resting quote on that
+ * side (not a real $0 market), so it's treated the same as a missing quote --
+ * this also covers a NO position whose yes_ask is exactly 1.0 (a normal quote
+ * on an illiquid/extreme-strike market, not an error), which would otherwise
+ * compute a "live" mark of exactly 0 that the server's exit_price > 0 gate
+ * would then reject with no manual-entry fallback offered. Unrecognized/
+ * missing side falls to the NO branch, matching liquidation_price()'s own
+ * if-yes/else-NO default. Falls back to entry_price/actual_fill_price only
+ * for DISPLAY (markIsLive=false flags this so the UI can grey it out and
+ * route Close through manual entry instead of silently submitting a
+ * fabricated price) -- entry_price preferred first since it's what the
+ * displayed cost-basis (cost/qty) is derived from, so the no-quote fallback
+ * shows exactly $0 unrealized P&L rather than a few cents of phantom
+ * gain/loss from actual_fill_price's extra fill-price precision.
+ */
+export function computeMark(t) {
+  const side = (t.side || '').toLowerCase();
+  const bid = t.current_yes_bid != null ? Number(t.current_yes_bid) : null;
+  const ask = t.current_yes_ask != null ? Number(t.current_yes_ask) : null;
+  const liveSidePrice = side === 'yes'
+    ? (bid != null && bid > 0 ? bid : null)
+    : (ask != null && ask > 0 ? 1 - ask : null);
+  const markIsLive = liveSidePrice != null && liveSidePrice > 0;
+  return {
+    mark:       markIsLive ? liveSidePrice : (t.entry_price ?? t.actual_fill_price ?? 0),
+    markIsLive,
+  };
+}
+
+/**
  * /api/trades
  * → {open: [...paperTrade], closed: [...paperTrade]}
  *
@@ -161,7 +195,7 @@ function mapTrades(raw) {
   // (ticker, city, side, outcome, pnl, entered_at, actual_fill_price, net_edge, …)
 
   const open = (raw.open || []).map(t => {
-    const markLive = t.current_yes_ask != null;
+    const { mark, markIsLive } = computeMark(t);
     return {
       id:         t.id,
       ticker:     t.ticker,
@@ -169,8 +203,8 @@ function mapTrades(raw) {
       side:       t.side,
       cost:       t.cost,
       qty:        t.quantity,
-      mark:       t.current_yes_ask ?? t.actual_fill_price ?? t.entry_price ?? 0,
-      markIsLive: markLive,
+      mark,
+      markIsLive,
       fcst:       t.entry_prob,
       edge:       t.net_edge,
       expiry:     t.target_date,
@@ -317,9 +351,14 @@ export default function useData(setConnected) {
         if (cbs?.length) next.circuitBreakers = cbs;
 
         // Trades → closedTrades + positions
+        // (checking != null, not .length, so a genuinely empty list --
+        // closing the last open position, or zero closed trades ever --
+        // actually clears the UI instead of leaving stale/mock data behind;
+        // mapTrades only returns null for closed/open when the fetch itself
+        // failed, which is the one case we want to keep the prior state for)
         const trades = mapTrades(tradesR);
-        if (trades.closed?.length) next.closedTrades = trades.closed;
-        if (trades.open?.length)   next.positions    = trades.open;
+        if (trades.closed != null) next.closedTrades = trades.closed;
+        if (trades.open != null)   next.positions    = trades.open;
 
         // Balance history — endpoint returns {labels, values, points}
         if (Array.isArray(balHistR?.points) && balHistR.points.length) next.balanceHist = balHistR.points;

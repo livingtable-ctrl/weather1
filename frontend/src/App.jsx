@@ -624,21 +624,67 @@ function PositionsTab() {
   const M = useContext(DataContext);
   const [filter, setFilter] = useState('');
   const [sortKey, setSortKey] = useState('edge');
-  const [selectedPos, setSelectedPos] = useState(null);
+  // Selection is keyed by id, not the position object itself: M.positions is a
+  // brand-new array of brand-new objects every poll (mapTrades rebuilds it),
+  // so holding the object directly froze the selected position's mark/
+  // markIsLive at whatever they were the instant it got clicked — the
+  // detail panel (and, more importantly, the price Close would submit)
+  // never picked up a fresher or staler quote after that. Deriving it fresh
+  // from the live array every render fixes both: a submitted price is
+  // always current, and the UI correctly flips between the live view and
+  // the manual-entry view as quotes come and go.
+  const [selectedId, setSelectedId] = useState(null);
   const [closeMsg, setCloseMsg] = useState('');
+  // Prefilled (not auto-submitted) when the position has no live quote for its
+  // own side — pos.mark already falls back to entry_price/actual_fill_price for
+  // display, but that fabricated value must never go straight to the server;
+  // the operator has to see and confirm/edit it first.
+  const [closePriceInput, setClosePriceInput] = useState('');
+
+  const selectedPos = useMemo(
+    () => M.positions.find(p => p.id === selectedId) || null,
+    [M.positions, selectedId]
+  );
 
   useEffect(() => {
-    const handler = () => setSelectedPos(null);
+    const handler = () => { setSelectedId(null); setCloseMsg(''); };
     document.addEventListener('kalshi:escape', handler);
     return () => document.removeEventListener('kalshi:escape', handler);
   }, []);
 
+  // Deliberately keyed on selectedId, not selectedPos: selectedPos is
+  // re-derived fresh from M.positions every render (see useMemo above), so
+  // keying on it would re-run this on every poll and wipe out an
+  // in-progress manual edit each time new data arrives. Does NOT touch
+  // closeMsg here — handleClose's own success/error path also drives
+  // selectedId to null on close, and clearing closeMsg here would blank the
+  // just-set result message out from under the operator before they see it;
+  // closeMsg is cleared instead at the two real "user changed selection"
+  // sites (the row click handler and the escape-key handler above).
+  useEffect(() => {
+    setClosePriceInput(
+      selectedPos && !selectedPos.markIsLive ? selectedPos.mark.toFixed(2) : ''
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
   function handleClose(pos) {
     if (!pos.id) { setCloseMsg('✗ No trade ID'); setTimeout(() => setCloseMsg(''), 3000); return; }
+    let exitPrice = pos.mark || 0;
+    const manual = !pos.markIsLive;
+    if (manual) {
+      const parsed = parseFloat(closePriceInput);
+      if (!Number.isFinite(parsed) || parsed < 0.01 || parsed > 1) {
+        setCloseMsg('✗ Enter a valid exit price (0.01–1.00)');
+        setTimeout(() => setCloseMsg(''), 3000);
+        return;
+      }
+      exitPrice = parsed;
+    }
     fetch('/api/close-position', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
-      body: JSON.stringify({ trade_id: pos.id, exit_price: pos.mark || 0 }),
+      body: JSON.stringify({ trade_id: pos.id, exit_price: exitPrice, manual }),
     })
       .then(r => r.json())
       .then(d => {
@@ -646,7 +692,7 @@ function PositionsTab() {
         else {
           const pnl = d.pnl != null ? (d.pnl >= 0 ? `+$${d.pnl.toFixed(2)}` : `-$${Math.abs(d.pnl).toFixed(2)}`) : '';
           setCloseMsg(`✓ Closed ${pos.ticker} ${pnl}`);
-          setSelectedPos(null);
+          setSelectedId(null);
           M.refresh();
         }
         setTimeout(() => setCloseMsg(''), 4000);
@@ -702,9 +748,9 @@ function PositionsTab() {
           </thead>
           <tbody>
             {filtered.map((p, i) => (
-              <tr key={i} onClick={() => setSelectedPos(selectedPos === p ? null : p)} style={{
+              <tr key={i} onClick={() => { setSelectedId(selectedId === p.id ? null : p.id); setCloseMsg(''); }} style={{
                 borderBottom: '1px solid var(--bg-muted)', cursor: 'pointer',
-                background: selectedPos === p ? 'var(--bg-subtle)' : 'transparent',
+                background: selectedId === p.id ? 'var(--bg-subtle)' : 'transparent',
               }}>
                 <td style={{ padding: '14px 16px', fontFamily: 'ui-monospace, monospace', fontSize: 11, color: '#3b82f6' }}>{p.ticker}</td>
                 <td style={{ padding: '14px 16px', fontWeight: 600 }}>{normCity(p.city)}</td>
@@ -767,12 +813,29 @@ function PositionsTab() {
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {closeMsg && <span style={{ fontSize: 12, fontWeight: 600, color: closeMsg.startsWith('✓') ? '#16a34a' : '#ef4444' }}>{closeMsg}</span>}
+              {!selectedPos.markIsLive && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-faint)' }} title="No live quote for this side — enter the exit price yourself">
+                    No live quote — exit price:
+                  </span>
+                  <input
+                    type="number" step="0.01" min="0.01" max="1"
+                    value={closePriceInput}
+                    onChange={e => setClosePriceInput(e.target.value)}
+                    style={{
+                      width: 64, padding: '5px 8px', borderRadius: 7,
+                      border: '1px solid var(--border)', background: 'var(--bg-card)',
+                      color: 'var(--text)', fontSize: 12, fontFamily: 'ui-monospace, monospace',
+                    }}
+                  />
+                </span>
+              )}
               <button onClick={() => handleClose(selectedPos)} style={{
                 padding: '6px 14px', borderRadius: 7, border: '1px solid #ef4444',
                 background: 'rgba(239,68,68,0.08)', color: '#ef4444',
                 fontSize: 12, fontWeight: 600, cursor: 'pointer',
               }}>Close Position</button>
-              <button onClick={() => setSelectedPos(null)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-card)', fontSize: 12, cursor: 'pointer', color: 'var(--text)' }}>Dismiss</button>
+              <button onClick={() => { setSelectedId(null); setCloseMsg(''); }} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-card)', fontSize: 12, cursor: 'pointer', color: 'var(--text)' }}>Dismiss</button>
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16 }}>

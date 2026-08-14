@@ -686,10 +686,27 @@ def _build_app(client):
 
         # NOTE: This is read by _get_live_market_snapshot() for SSE. Under multi-process WSGI,
         # each process has its own cache — only the most recently analyzed process updates live data.
+        from utils import YES_ASK_KEYS, YES_BID_KEYS, coalesce_market_price
+
+        def _safe_snapshot_price(market: dict, *keys: str) -> float:
+            # Raw market dicts carry either legacy cents (yes_bid/yes_ask ints)
+            # or dollar-strings (yes_bid_dollars/yes_ask_dollars) depending on
+            # Kalshi's API shape at fetch time -- coalesce_market_price handles
+            # both, but a per-item try/except here (rather than relying on the
+            # per-market try/except above, which doesn't cover this later
+            # comprehension) keeps one market's malformed price field from
+            # crashing the whole snapshot instead of just degrading that one
+            # entry to "no quote".
+            try:
+                return coalesce_market_price(market, *keys)
+            except (ValueError, TypeError):
+                return 0
+
         _get_live_market_snapshot._cache = [  # type: ignore[attr-defined]
             {
                 "ticker": m.get("ticker", ""),
-                "yes_ask": m.get("yes_ask", 0),
+                "yes_bid": _safe_snapshot_price(m, *YES_BID_KEYS),
+                "yes_ask": _safe_snapshot_price(m, *YES_ASK_KEYS),
                 "edge": a.get("net_edge", a.get("edge", 0)),
             }
             for m, a in sorted(
@@ -1390,6 +1407,7 @@ setInterval(() => {{
         snapshot = {m["ticker"]: m for m in _get_live_market_snapshot()}
         for t in open_trades:
             snap = snapshot.get(t.get("ticker", ""), {})
+            t["current_yes_bid"] = snap.get("yes_bid")
             t["current_yes_ask"] = snap.get("yes_ask")
             # Pass through needs_manual_settle flag so the UI can badge it
             t.setdefault("needs_manual_settle", bool(t.get("needs_manual_settle")))
@@ -2890,6 +2908,11 @@ setInterval(() => {{
         Body (JSON):
           trade_id    int    required
           exit_price  float  (0, 1] required — current mark price
+          manual      bool   optional — true when the frontend had no live
+                              quote and the operator typed exit_price by hand
+                              (rather than it being market-derived); recorded
+                              as reason="manual_close" for audit, distinct
+                              from an unset reason (quote-derived close).
         """
         from paper import close_paper_early
 
@@ -2910,8 +2933,12 @@ setInterval(() => {{
         # same (0, 1] contract this route's own docstring already promises.
         if not (0.0 < exit_price <= 1.0):
             return jsonify({"error": "exit_price must be in (0, 1]"}), 400
+        # Reason is server-decided from a bool, never taken as a free-form
+        # client string — a raw client-supplied reason would let a buggy or
+        # malicious client stuff arbitrary text into the trade ledger.
+        reason = "manual_close" if body.get("manual") is True else None
         try:
-            trade = close_paper_early(trade_id, exit_price)
+            trade = close_paper_early(trade_id, exit_price, reason=reason)
             return jsonify({"ok": True, "pnl": trade.get("pnl")}), 200
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 404

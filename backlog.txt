@@ -17700,13 +17700,14 @@ Problem:
   analyze_trade()-level plumbing the fallback-alert bullet above would also
   need.
 
-[NEW 2026-08-14 -- found via opus review (effort=high) during the
-  model-exit pricing-convention fix, see the PARTIALLY RESOLVED entry
-  earlier in this file (check_model_exits/_check_live_model_exits/
-  _check_early_exits ... EXIT-PRICE CONVENTIONS HAVE ALREADY DIVERGED) for
-  the sibling fix this is adjacent to but was correctly NOT folded into
-  (same-payload test: genuinely separate consumer, different function,
-  different file, Python+JSX rather than that entry's pure-Python sites)]
+[RESOLVED 2026-08-14 -- see resolution below. Originally found via opus
+  review (effort=high) during the model-exit pricing-convention fix, see
+  the PARTIALLY RESOLVED entry earlier in this file (check_model_exits/
+  _check_live_model_exits/_check_early_exits ... EXIT-PRICE CONVENTIONS
+  HAVE ALREADY DIVERGED) for the sibling fix this was adjacent to but was
+  correctly NOT folded into (same-payload test: genuinely separate
+  consumer, different function, different file, Python+JSX rather than
+  that entry's pure-Python sites)]
   REACT DASHBOARD'S CLOSE BUTTON IS A FOURTH PAPER-CLOSE SITE, WITH A
   PRICING CONVENTION WORSE THAN EITHER BUG THE SIBLING ENTRY FIXED
 Priority: Medium -- same live/paper-P&L-overstatement class as the sibling
@@ -17786,4 +17787,393 @@ When to revisit:
   fabricates a price via the entry_price fallback exactly when the
   operator most needs an accurate one (a stale/missing quote). No blocking
   dependency on the sibling entry -- that one is already resolved.
+
+Resolution (2026-08-14):
+  web_app.py:689-694 (the SSE snapshot cache `_get_live_market_snapshot.
+  _cache`, previously "yes_ask" only) now also stores "yes_bid" from the
+  raw market dict, mirroring the existing yes_ask line exactly. web_app.py
+  :1390-1395 (`/api/trades`'s open-trade enrichment) now sets
+  `current_yes_bid` alongside the existing `current_yes_ask`. frontend/src/
+  useData.js's mapTrades() had its inline mark computation extracted into
+  a new exported `computeMark(t)` mirroring positions.liquidation_price()'s
+  convention exactly: YES marks at current_yes_bid, NO marks at
+  1 - current_yes_ask, and a side price of 0 is treated as no quote (not a
+  real $0 market) -- matching liquidation_price()'s own <=0 handling.
+  markIsLive now reflects whether THAT side's quote is actually present,
+  not just current_yes_ask's presence (previously a YES position with a
+  live ask but no live bid would have shown as "live" despite having no
+  realizable price to mark against).
+
+  Two scope/design decisions surfaced via AskUserQuestion before
+  implementing, per this project's standing workflow:
+    1. No-quote fallback UX -- manual price-entry field (chosen) vs.
+       disabling the Close button entirely. Investigated first: the SSE
+       snapshot cache is populated ONLY by the Jinja /analyze route
+       visiting, and only holds the top-10 markets by currently-positive
+       net edge -- nothing in cron.py/main.py auto-refreshes it, and an
+       already-held position's edge routinely decays below that bar. So a
+       missing quote is plausibly the COMMON case for held positions on
+       this dashboard, not a rare edge case -- disabling Close whenever
+       that's true would make the button frequently unusable, which is
+       almost certainly why the entry_price fallback existed in the first
+       place. Chose manual entry instead: App.jsx's Close panel now shows
+       a small number input (prefilled with the same fallback value used
+       for display, but never auto-submitted) whenever `!markIsLive`,
+       validated client-side to (0, 1] before the request fires; the
+       existing server-side range check (web_app.py's api_close_position)
+       is unchanged and still the authoritative gate. Filed the underlying
+       quote-coverage gap (SSE cache doesn't reliably cover held positions)
+       as its own new backlog entry below -- fixing it properly is an
+       API-cost/latency design question of its own (per-ticker
+       client.get_market() calls vs. an unverified batch-by-tickers REST
+       param), not something this entry's own scope asked for.
+    2. Test strategy, given this frontend has zero existing test harness
+       (no jest/vitest in package.json, confirmed by inspection, and no
+       ESLint config either) -- added vitest as a devDependency (chosen)
+       over manual browser verification + written note. frontend/src/
+       useData.test.js: 7 tests, hand-computed fixtures matching the 3
+       concrete failure modes from this entry's own "Problem" section
+       (YES-books-ask, NO-books-wrong-side, 0-price-treated-as-live), plus
+       a case-insensitive-side check and a positive control proving the
+       live bid/ask fields are actually read (not coincidentally equal to
+       a fallback). Mutation-tested via the Edit tool (not a string-replace
+       script, per this project's standing workflow): reverted
+       computeMark() to the exact original buggy logic, re-ran -- 5 of 7
+       tests failed as expected (the 2 that still passed are the
+       fallback-chain tests, which were never testing the side-branching
+       fix and correctly behave identically under both versions); restored
+       the fix, re-ran -- 7/7 pass again.
+
+  Discovered mid-task: this repo has TWO near-duplicate frontend source
+  trees -- the tracked frontend/src/ this entry's line numbers cite, and
+  an untracked, git-ignored-by-omission local folder ("weather app site
+  V_3 (3)/frontend/src/") that the user confirmed is what's actually
+  deployed day-to-day. Diffed both files fully before assuming anything:
+  they carried the identical mapTrades() bug this entry fixes, plus the
+  tracked copy had 2 unrelated fixes (a CSRF X-Requested-With header on
+  every authHeader() call, and an override_until epoch-seconds/Date()
+  fix) the V3 copy was missing. Per user instruction: applied the
+  identical mark/Close-button fix to BOTH trees, and ported the 2 missing
+  fixes forward into V3 so it doesn't regress on unrelated, previously-
+  shipped work. Confirmed byte-identical after porting (`diff`). The V3
+  edit is outside git tracking and was not part of this commit -- only
+  frontend/src/ and web_app.py are.
+
+  web_app.py: ruff check + ruff format --check + mypy (--ignore-missing-
+  imports --implicit-optional --no-error-summary, matching the pre-commit
+  hook's pinned versions/args) all clean. No frontend lint tooling exists
+  in this repo to run. `npm run build` succeeds (static/dist rebuilt and
+  included in this commit, since it's git-tracked and this fix requires a
+  rebuild to actually deploy).
+
+  Live browser verification was attempted (main.py web / port 5000) but
+  blocked by this dashboard's pre-existing Basic Auth requirement, unable
+  to authenticate in this session -- relied on the vitest coverage above
+  instead, consistent with the test-strategy decision (chosen specifically
+  because live E2E isn't practical here).
+
+  Independent opus review (effort=high), per this project's standing
+  workflow: found 1 HIGH, 3 MEDIUM, 8 LOW findings. All addressed --
+  none dropped regardless of severity:
+    HIGH -- web_app.py's snapshot-cache population (`_get_live_market_
+      snapshot._cache`) read raw `m.get("yes_bid"/"yes_ask", 0)` directly,
+      bypassing coalesce_market_price() (this codebase's established
+      cents-vs-dollars normalizer, used everywhere else a Kalshi price
+      field is read). Under a legacy-cents API response this produced
+      garbage marks and a `markIsLive: true` state that was actually
+      unsubmittable (server rejects out-of-range prices), silently
+      defeating the manual-entry fallback this fix exists to provide; pre-
+      existing on yes_ask, but the fix made it load-bearing by adding
+      yes_bid on the same unguarded path. Fixed: both fields now go
+      through coalesce_market_price(*YES_BID_KEYS/YES_ASK_KEYS), wrapped
+      in a per-item try/except (a malformed price on one market must
+      degrade only that market to "no quote", not crash the whole
+      /analyze route -- this comprehension sits outside the per-market
+      try/except above it in the same route).
+    MEDIUM 1 -- a NO position with yes_ask exactly 1.0 (a normal quote on
+      an illiquid/extreme-strike market, not an error -- order_executor.py
+      synthesizes this exact value when no real ask exists) computed
+      liveSidePrice=0, which passed the `!= null` liveness check but the
+      server's `exit_price > 0` gate then rejected it, hard-blocking Close
+      with the manual-entry fallback suppressed (since markIsLive read
+      true). Fixed: markIsLive now additionally requires
+      `liveSidePrice > 0`. Mutation-tested (reverted to the `!= null`-only
+      check via Edit, confirmed the new test for this exact case fails,
+      restored).
+    MEDIUM 2 -- `selectedPos` was a detached object reference to whatever
+      position array existed at click time; M.positions is a brand-new
+      array of brand-new objects every 60s poll (mapTrades rebuilds it),
+      so the selected position's mark/markIsLive were frozen the instant
+      it was clicked and never picked up a fresher (or staler) quote --
+      Close could submit an arbitrarily stale price, and the UI never
+      switched between live/manual-entry mode as quotes came and went.
+      Fixed: selection is now keyed by id (`selectedId`), with
+      `selectedPos` derived fresh from `M.positions` every render via
+      useMemo. The prefill-on-select effect is deliberately keyed on
+      `selectedId` alone (not the derived object), so it fires only on a
+      genuine reselection, not every poll -- otherwise it would wipe an
+      operator's in-progress manual-entry edit every 60 seconds.
+    MEDIUM 3 -- manual entry widens the pre-existing WA-security gap
+      (client-supplied exit_price, range-checked but not market-cross-
+      checked) with no audit trail distinguishing a manually-typed price
+      from a market-derived one. Fixed: the frontend now sends a `manual`
+      boolean (never a free-form reason string, to prevent a buggy/
+      malicious client stuffing arbitrary text into the ledger);
+      web_app.py translates `manual: true` into
+      `close_paper_early(..., reason="manual_close")`, matching this
+      codebase's existing reason-tagging convention (paper.py:1501's
+      `reason="stop_loss"`).
+    LOW 1-8 -- side default now matches liquidation_price()'s if-yes/else-
+      NO convention (was defaulting unrecognized/missing side to YES,
+      backwards from Python -- unreachable with real data today, fixed
+      for correctness anyway); client validation tightened to `>= 0.01`
+      matching the input's declared min and its own error message text;
+      current_yes_bid/current_yes_ask now coerced via Number() so a
+      string-shaped quote can't crash `.toFixed()` downstream; added 5
+      more vitest cases closing the gaps a reviewer found in the original
+      7 (the ask=1.0 zero-price case, a live-mark-is-never-0 companion
+      assertion, the side-default case, and 2 string-coercion cases -- 12
+      total, all passing, the zero-price one mutation-tested per above);
+      the vacuous `selectedPos.mark != null` null-check was dropped (mark
+      is never null by construction) as part of the MEDIUM 2 rewrite;
+      closeMsg now clears on genuine reselection (row click, Dismiss,
+      Escape) but deliberately NOT inside the selectedId effect itself,
+      since handleClose's own success path also drives selectedId to null
+      and clearing there would blank the just-set success message before
+      the operator sees it; `trades.open?.length`/`trades.closed?.length`
+      changed to `!= null` checks so closing the last open position (or
+      genuinely zero closed trades) actually clears the UI instead of
+      leaving stale data displayed; fallback price order swapped to
+      entry_price-first (was actual_fill_price-first) since entry_price is
+      what the displayed cost-basis (cost/qty) is derived from, so the
+      no-quote fallback shows exactly $0 phantom P&L instead of a few
+      cents of drift from actual_fill_price's extra fill precision.
+
+  Discovered mid-review-response: the "weather app site V_3 (3)" path
+  confirmed earlier in this session as canonical was itself wrong in a way
+  that would have shipped this fix to a folder nobody's browser actually
+  loads. `weather app site V_3 (3)/frontend/src/` (what was patched first,
+  per the user's initial confirmation) is NOT what that folder's own
+  vite.config.js/index.html build from -- index.html loads `/src/main.jsx`,
+  which resolves to a DIFFERENT, sibling `weather app site V_3 (3)/src/`
+  tree entirely, confirmed by actually building it
+  (`npx vite build` inside that folder) and grepping for the bug pattern
+  there directly, not assumed. That real tree is also a materially more
+  evolved fork (bulk-close, a confirm-modal close flow, a position-alerts
+  panel, a close_time-derived expiry field) than either of the other two
+  copies, explaining why the user experiences it as "the real dashboard."
+  Re-applied the fix there, adapted to its actual structure rather than
+  transplanted mechanically:
+    - useData.js: same computeMark()/CSRF/trades-null-check fixes, with
+      its own close_time-derived `expiry` field preserved untouched.
+    - tabs/PositionsTab.jsx: the confirm-close MODAL (a UI shape neither
+      other copy has) now shows an editable exit-price input in place of
+      the static "at mark price X¢" text when markIsLive is false, rather
+      than the inline field the other two copies use -- adapted to fit
+      this file's own existing UI, not copy-pasted.
+    - Found and fixed a THIRD close-price site neither other copy has:
+      handleBulkClose() posted `p.mark || 0` for every selected position
+      with no live-quote check or manual-entry step at all (bulk actions
+      have no per-position UI for one). Fixed by filtering the bulk batch
+      to markIsLive positions only and reporting a skipped count --
+      closing a batch of positions some of which have no live quote now
+      closes the live ones and tells the operator how many were skipped,
+      rather than silently booking a fabricated price for the rest.
+    - Explicitly NOT ported: the MEDIUM 2 (stale-selectedPos) fix. This
+      file's selection state is more deeply entangled (a Set-based bulk-
+      selection alongside single selectedPos/confirmClose, a keyboard
+      handler with confirmClose in its own dependency array) than either
+      other copy, and this file has no test harness to verify a refactor
+      against. Attempting an under-verified structural change to code
+      this unfamiliar, on the folder the user's actual browser loads, was
+      judged a worse risk than leaving a known, already-documented staleness
+      gap in place one more cycle. Filed as its own followup below rather
+      than silently skipped.
+    - Verified the ported fix actually builds: `npx vite build` inside
+      "weather app site V_3 (3)" (its own vite.config.js/package.json,
+      separate from the tracked repo's frontend/) succeeded, 43 modules
+      transformed, no errors.
+
+  Discovered as a direct consequence of that build: `weather app site
+  V_3 (3)/vite.config.js`'s outDir (`../static/dist`, relative to that
+  folder) resolves to the MAIN CLONE's own `static/dist`
+  (`C:\Users\thesa\claude kalshi\static\dist`) -- the same physical path
+  main.py's "Web Dashboard" launch config serves from. Running that build
+  therefore overwrote the main clone's live static/dist with frontend code
+  now expecting a `current_yes_bid` field the main clone's own web_app.py
+  (a separate, until-then-unpatched checkout from this worktree) never
+  sent -- a frontend/backend mismatch on the user's actual running
+  instance, introduced by this session's own verification step. Caught
+  and fixed immediately: applied the identical 3-part web_app.py diff
+  (verified byte-identical via `diff` against this worktree's own) directly
+  to the main clone's web_app.py, confirmed clean under ruff/mypy there
+  too. That change sits uncommitted in the main clone pending the user's
+  own restart of their Flask process (Flask does not hot-reload .py
+  changes) -- flagged to the user directly, who confirmed they'll handle
+  the restart themselves.
+
+[OPEN 2026-08-14 -- new, filed by adjacency while resolving the REACT
+  DASHBOARD'S CLOSE BUTTON entry above: investigating that entry's no-quote
+  fallback UX decision surfaced this as the actual root cause, not just a
+  rare edge case.] `/API/TRADES`'S LIVE QUOTE ENRICHMENT (current_yes_bid/
+  current_yes_ask) ONLY EVER COVERS THE TOP-10 CURRENTLY-POSITIVE-EDGE
+  MARKETS, NOT ARBITRARY HELD POSITIONS
+Priority: Low-Medium -- not a live-money correctness bug (the entry above's
+  fix makes whatever quote IS present correct; this is about how often a
+  quote is present at all), but it means the Close-button's manual-entry
+  fallback path -- meant for the rare stale-quote case -- is plausibly the
+  COMMON path for any position whose edge has decayed since entry, which
+  was never the intent.
+
+Problem:
+  web_app.py's `_get_live_market_snapshot._cache` (the sole source of
+  current_yes_bid/current_yes_ask on /api/trades' open positions, per the
+  entry above) is written ONLY by the Jinja /analyze route's handler
+  (web_app.py ~line 689), and only ever holds the top-10 markets with
+  currently-positive net_edge (`if a.get("net_edge", ...) > 0`). Nothing in
+  cron.py or main.py auto-visits /analyze -- the cache is populated purely
+  as a side effect of a human loading that page, and even then only covers
+  markets that still look like fresh entry opportunities right now. An
+  already-held position's edge routinely decays or goes negative after
+  entry (that's normal, expected behavior, not a bug) -- once it does, its
+  ticker silently drops out of this cache and /api/trades stops reporting
+  a live quote for it at all, even though the position is still open and
+  the underlying market still has a real, fetchable price.
+
+What it would look like:
+  Fetch each open position's own ticker directly rather than depending on
+  the opportunistic top-10 cache -- kalshi_client.py already has a
+  single-ticker `get_market(ticker)` method (line 339) that would work,
+  though calling it once per open position on every /api/trades poll (60s
+  interval per useData.js) adds N live API calls per poll, an API-
+  cost/latency tradeoff worth deciding deliberately rather than
+  defaulting into. A batched alternative (Kalshi's GET /markets accepting
+  a `tickers=` query param) was NOT found in use anywhere in this codebase
+  during a grep sweep -- don't assume that shape works without verifying
+  against Kalshi's actual API docs or a live test call first.
+
+Why not now:
+  Genuinely a different-sized problem than the mark-computation fix that
+  found it -- that fix corrects the math for whatever quote is present;
+  this is about redesigning WHICH positions get a live quote at all, which
+  touches API call volume/rate-limit exposure on every dashboard poll.
+  Surfaced via AskUserQuestion during the sibling entry's own design
+  discussion and explicitly deferred rather than silently expanding that
+  entry's scope.
+
+When to revisit:
+  Soon-ish -- not urgent (no bug ships worse numbers, positions just show
+  the honest "no live quote" state more often than intended), but worth
+  fixing before the manual-price-entry UX becomes the dashboard's default
+  experience rather than its intended rare-case fallback.
+
+[OPEN 2026-08-14 -- new, user-reported while this session was live-testing
+  the entry above's dashboard fix; user confirmed afterward this predates
+  today's changes, so it is NOT caused by the fix above -- filed as-is,
+  UNDIAGNOSED, for a future session to actually investigate.] DASHBOARD
+  BASIC-AUTH PASSWORD PROMPT REPEATS INDEFINITELY, INCLUDING ON A CORRECT
+  PASSWORD
+Priority: Unknown -- not yet diagnosed. Potentially High if it's actually
+  locking the operator out of the dashboard (kill switch, halt/resume, and
+  trade-control endpoints all live behind this same auth gate per
+  web_app.py's _check_auth), but severity depends entirely on root cause,
+  which this entry does not yet have.
+
+Problem:
+  User-reported: the dashboard's Basic Auth password prompt "keeps
+  spamming" and reappears even after entering the correct password. Not
+  independently reproduced or diagnosed by this session -- a competing
+  Flask dev server (started from this worktree, for browser-testing the
+  entry above's fix) was live on port 5000 at the same time the symptom
+  was reported and is one plausible explanation (a worktree-local .env
+  resolving a different DASHBOARD_PASSWORD than the user's normal
+  instance, so a "correct" password for their usual setup would fail
+  against a different test instance sharing the same port) -- but the user
+  explicitly confirmed the symptom predates this session's changes, so
+  that specific server collision is not the (or at least not the only)
+  cause. web_app.py's own auth code (_check_auth, ~line 151-194) wasn't
+  changed by this session in any way that touches password comparison or
+  header validation.
+
+What it would look like:
+  Actually reproduce it against the user's normal dashboard instance
+  (not a competing test server), then instrument/trace: is the server
+  actually rejecting the password (hmac.compare_digest failing on a
+  correct-looking input -- e.g. a whitespace/encoding mismatch in how
+  DASHBOARD_PASSWORD is stored vs. typed), or is this a browser-native
+  Basic-Auth caching/re-prompt quirk (browsers are known to mishandle
+  credential changes for HTTP Basic Auth, sometimes silently resending a
+  stale cached credential instead of showing a fresh prompt) unrelated to
+  the server's own logic entirely.
+
+Why not now:
+  Not diagnosed yet, and this session's own testing was implicated as at
+  least a contributing confound (even though not the root cause per the
+  user) -- needs a clean-room reproduction, not a guess folded into an
+  unrelated commit.
+
+When to revisit:
+  Soon -- this gates kill-switch and trade-control endpoints; an operator
+  who can't reliably authenticate during a real incident is a real
+  operational risk, independent of how it's eventually root-caused.
+
+[OPEN 2026-08-14 -- new, deliberately deferred (not silently skipped) while
+  resolving the REACT DASHBOARD'S CLOSE BUTTON entry above: an opus review
+  finding (MEDIUM 2 in that entry's Resolution) was fixed in both the
+  tracked frontend/src/App.jsx and the git-ignored "weather app site
+  V_3 (3)/frontend/src/App.jsx" mirror, but deliberately NOT in "weather
+  app site V_3 (3)/src/tabs/PositionsTab.jsx" -- the file that folder's own
+  vite.config.js/index.html actually build, i.e. the real one the user's
+  browser loads.] "weather app site V_3 (3)/src/tabs/PositionsTab.jsx"'S
+  selectedPos/confirmClose ARE THE SAME DETACHED-OBJECT-REFERENCE BUG THE
+  SIBLING ENTRY JUST FIXED ELSEWHERE, STILL UNFIXED HERE
+Priority: Medium -- same staleness class as the sibling entry's MEDIUM 2
+  (a submitted Close price can go stale indefinitely, and the UI won't
+  switch between live/manual-entry mode as quotes come and go), on the
+  file that's actually live rather than a reference copy.
+
+Problem:
+  M.positions is a brand-new array of brand-new objects every 60s poll
+  (mapTrades rebuilds it from scratch). This file's `selectedPos` (set via
+  row click) and `confirmClose` (set via handleClose, which is what the
+  Close-position confirm modal actually reads) both hold direct object
+  references captured at click time, not ids re-resolved against the live
+  array -- identical to the bug the sibling entry's MEDIUM 2 finding
+  described and fixed in App.jsx. Whatever mark/markIsLive the position
+  had at the moment it was clicked is what stays displayed and what gets
+  submitted to /api/close-position, no matter how long the confirm modal
+  sits open or how much the underlying quote has moved (or disappeared)
+  since.
+
+What it would look like:
+  Same shape as the fix already shipped in App.jsx: key selection by
+  `p.id` instead of the object itself, derive `selectedPos`/`confirmClose`
+  fresh from `M.positions` every render (e.g. via useMemo keyed on
+  [M.positions, selectedId]), and re-derive the close-price prefill only
+  on a genuine reselection (keyed on the id, not the derived object) so
+  polling refreshes don't wipe an in-progress manual-entry edit. This file
+  additionally has a Set-based bulk-selection (`selectedIds`) and a
+  keydown handler with `confirmClose` in its own dependency array
+  (Enter-to-confirm) that the sibling fix's App.jsx didn't have to
+  contend with -- both need to keep working correctly through the same
+  refactor, which is exactly why this wasn't attempted inline (see "Why
+  not now").
+
+Why not now:
+  This file has no test harness at all (same zero-frontend-test-coverage
+  gap noted throughout the sibling entry) and a genuinely more complex
+  selection-state shape (bulk Set + single selection + a keyboard handler
+  with its own dependency array) than the file the fix was already proven
+  against. Attempting an unverified structural refactor of unfamiliar code
+  on the one file the user's actual browser loads was judged a worse risk
+  in the moment than shipping the smaller, already-tested price-
+  correctness fix and leaving this specific staleness gap for a session
+  that can build proper coverage around it first.
+
+When to revisit:
+  Soon-ish -- not as urgent as the price-correctness bugs already fixed
+  (a stale price is wrong but bounded by how long the modal stays open,
+  not systematically wrong on every close the way the pre-fix mark
+  computation was), but it's the same bug class already fixed elsewhere
+  in this exact feature, just not here yet.
 
