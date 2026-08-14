@@ -430,6 +430,47 @@ class TestLiveSettlement:
             ).fetchone()
         assert row["peak_profit_pct"] == pytest.approx(0.42)
 
+    def test_update_live_peak_profit_does_not_lower_an_already_higher_peak(self):
+        """A concurrent writer's fresher, higher peak must survive a
+        stale/lower write racing in behind it (SQL-level compare-and-set,
+        not caller-trusted) -- mirrors paper.PaperPositionStore.save_peak's
+        equivalent guard."""
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=1,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        execution_log.update_live_peak_profit(row_id, 0.50)
+        execution_log.update_live_peak_profit(row_id, 0.30)  # stale, lower
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT peak_profit_pct FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["peak_profit_pct"] == pytest.approx(0.50)
+
+    def test_update_live_peak_profit_skips_a_settled_row(self):
+        """A position closed by another process between the caller's price
+        snapshot and this write must not have a stale peak written onto its
+        now-settled row."""
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=1,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        execution_log.record_live_early_exit(row_id, 0.60, "stop_loss", 0.05)
+        execution_log.update_live_peak_profit(row_id, 0.42)
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT peak_profit_pct FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["peak_profit_pct"] is None
+
     def test_record_live_early_exit_leaves_outcome_yes_null(self):
         """An early exit closes the position (settled_at set, excluded from
         get_filled_unsettled_live_orders) but must not fabricate a market

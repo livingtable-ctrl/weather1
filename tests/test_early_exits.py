@@ -415,6 +415,7 @@ class TestBreakevenStops:
 
         far_future = "2099-01-01T00:00:00+00:00"  # well outside the 24h settlement gate
         trade = {
+            "id": 1,
             "ticker": "KXHIGH-T70",
             "side": "yes",
             "entry_price": 0.50,
@@ -427,10 +428,12 @@ class TestBreakevenStops:
 
         # Price has now fallen back below entry (0.48 < 0.50)
         exits = paper.check_breakeven_stops(
-            [trade], current_prices={"KXHIGH-T70": {"bid": 0.48, "ask": 0.48}}
+            [paper._trade_to_position(trade)],
+            current_prices={"KXHIGH-T70": {"bid": 0.48, "ask": 0.48}},
         )
-        assert "KXHIGH-T70" in exits, (
-            f"check_breakeven_stops should fire when price falls below entry. Got: {exits}"
+        tickers = [p.ticker for p in exits]
+        assert "KXHIGH-T70" in tickers, (
+            f"check_breakeven_stops should fire when price falls below entry. Got: {tickers}"
         )
 
     def test_check_breakeven_stops_silent_before_peak_is_met(self):
@@ -440,6 +443,7 @@ class TestBreakevenStops:
 
         far_future = "2099-01-01T00:00:00+00:00"
         trade = {
+            "id": 1,
             "ticker": "KXHIGH-T70",
             "side": "yes",
             "entry_price": 0.50,
@@ -451,17 +455,20 @@ class TestBreakevenStops:
         }
 
         exits = paper.check_breakeven_stops(
-            [trade], current_prices={"KXHIGH-T70": {"bid": 0.40, "ask": 0.40}}
+            [paper._trade_to_position(trade)],
+            current_prices={"KXHIGH-T70": {"bid": 0.40, "ask": 0.40}},
         )
         assert exits == [], f"Should not fire when peak not yet met. Got: {exits}"
 
     def test_update_peak_profits_sets_peak_on_new_high(self, monkeypatch):
         """update_peak_profits must record a new peak when unrealized profit exceeds stored peak."""
         import paper
+        from positions import update_peak_profits
 
-        # update_peak_profits calls _load() and _save() internally.
-        # Monkeypatch _load and _save to control the data without file I/O.
+        # PaperPositionStore.save_peak calls paper._load()/_save() internally.
+        # Monkeypatch those to control the data without file I/O.
         trade = {
+            "id": 1,
             "ticker": "KXHIGH-T70",
             "side": "yes",
             "entry_price": 0.50,
@@ -476,9 +483,12 @@ class TestBreakevenStops:
         saved = []
         monkeypatch.setattr(paper, "_save", lambda d: saved.append(d))
 
+        store = paper.PaperPositionStore()
         # yes_bid = 0.65 → unrealized_profit_pct = (0.65 - 0.50) * 10 / 5.00 = 0.30 (30%)
-        paper.update_peak_profits(
-            [trade], current_prices={"KXHIGH-T70": {"bid": 0.65, "ask": 0.65}}
+        update_peak_profits(
+            [paper._trade_to_position(trade)],
+            current_prices={"KXHIGH-T70": {"bid": 0.65, "ask": 0.65}},
+            save_peak=store.save_peak,
         )
 
         assert saved, "update_peak_profits must call _save when a new peak is found"

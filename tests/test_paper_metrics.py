@@ -108,7 +108,9 @@ class TestBreakEvenStop:
 
         t = self._open_trade("T1", "no", 0.45, 20, peak=None)
         # yes price = 0.30 → our_price = 0.70 → profit
-        result = paper.check_breakeven_stops([t], {"T1": {"bid": 0.30, "ask": 0.30}})
+        result = paper.check_breakeven_stops(
+            [paper._trade_to_position(t)], {"T1": {"bid": 0.30, "ask": 0.30}}
+        )
         assert result == []
 
     def test_peak_below_trigger_no_exit(self):
@@ -116,7 +118,7 @@ class TestBreakEvenStop:
 
         t = self._open_trade("T1", "no", 0.45, 20, peak=0.20)  # only 20%, need 30%
         result = paper.check_breakeven_stops(
-            [t], {"T1": {"bid": 0.50, "ask": 0.50}}
+            [paper._trade_to_position(t)], {"T1": {"bid": 0.50, "ask": 0.50}}
         )  # back to breakeven
         assert result == []
 
@@ -127,8 +129,10 @@ class TestBreakEvenStop:
             "T1", "no", 0.45, 20, peak=0.80
         )  # was up 80% — above 0.75 threshold
         # yes=0.55 → our_price=0.45 → exactly at entry → pnl=0
-        result = paper.check_breakeven_stops([t], {"T1": {"bid": 0.55, "ask": 0.55}})
-        assert "T1" in result
+        result = paper.check_breakeven_stops(
+            [paper._trade_to_position(t)], {"T1": {"bid": 0.55, "ask": 0.55}}
+        )
+        assert "T1" in [p.ticker for p in result]
 
     def test_peak_hit_price_below_entry_triggers(self):
         import paper
@@ -137,19 +141,24 @@ class TestBreakEvenStop:
             "T1", "no", 0.45, 20, peak=0.80
         )  # was up 80% — above 0.75 threshold
         # yes=0.60 → our_price=0.40 → below entry → pnl < 0
-        result = paper.check_breakeven_stops([t], {"T1": {"bid": 0.60, "ask": 0.60}})
-        assert "T1" in result
+        result = paper.check_breakeven_stops(
+            [paper._trade_to_position(t)], {"T1": {"bid": 0.60, "ask": 0.60}}
+        )
+        assert "T1" in [p.ticker for p in result]
 
     def test_peak_hit_still_in_profit_no_exit(self):
         import paper
 
         t = self._open_trade("T1", "no", 0.45, 20, peak=0.50)
         # yes=0.40 → our_price=0.60 → still above entry → no exit
-        result = paper.check_breakeven_stops([t], {"T1": {"bid": 0.40, "ask": 0.40}})
+        result = paper.check_breakeven_stops(
+            [paper._trade_to_position(t)], {"T1": {"bid": 0.40, "ask": 0.40}}
+        )
         assert result == []
 
     def test_update_peak_profits_sets_new_high(self, tmp_path, monkeypatch):
         import paper
+        from positions import update_peak_profits
 
         t = self._open_trade("T1", "no", 0.45, 20, peak=None)
         data = {"balance": 900.0, "peak_balance": 1000.0, "trades": [t]}
@@ -157,15 +166,21 @@ class TestBreakEvenStop:
         p.write_text(json.dumps(data))
         monkeypatch.setattr(paper, "DATA_PATH", p)
 
+        store = paper.PaperPositionStore()
         # yes=0.30 → our_price=0.70 → profit=(0.70-0.45)*20=5.0
         # profit_pct = 5.0 / cost(9.0) ≈ 0.556
-        changed = paper.update_peak_profits([t], {"T1": {"bid": 0.30, "ask": 0.30}})
+        changed = update_peak_profits(
+            [paper._trade_to_position(t)],
+            {"T1": {"bid": 0.30, "ask": 0.30}},
+            store.save_peak,
+        )
         assert changed is True
         saved = json.loads(p.read_text())
         assert saved["trades"][0]["peak_profit_pct"] > 0.50
 
     def test_update_peak_profits_no_change_when_lower(self, tmp_path, monkeypatch):
         import paper
+        from positions import update_peak_profits
 
         t = self._open_trade("T1", "no", 0.45, 20, peak=0.80)
         data = {"balance": 900.0, "peak_balance": 1000.0, "trades": [t]}
@@ -173,8 +188,13 @@ class TestBreakEvenStop:
         p.write_text(json.dumps(data))
         monkeypatch.setattr(paper, "DATA_PATH", p)
 
+        store = paper.PaperPositionStore()
         # price moved against us — profit pct is now lower
-        changed = paper.update_peak_profits([t], {"T1": {"bid": 0.50, "ask": 0.50}})
+        changed = update_peak_profits(
+            [paper._trade_to_position(t)],
+            {"T1": {"bid": 0.50, "ask": 0.50}},
+            store.save_peak,
+        )
         assert changed is False
 
 

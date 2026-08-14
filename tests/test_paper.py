@@ -1759,55 +1759,69 @@ class TestLiquidationPriceZeroSide:
         be treated as having crashed to $0 -- it must be skipped (fall back
         to entry_price by the caller), not counted as a stop-loss breach."""
         from paper import check_stop_losses
+        from positions import Position
 
-        trade = {
-            "ticker": "T1",
-            "side": "yes",
-            "entry_price": 0.60,
-            "quantity": 10,
-            "cost": 6.0,
-            "settled": False,
-            "close_time": "2099-01-01T00:00:00Z",
-        }
+        pos = Position(
+            id=1,
+            ticker="T1",
+            side="yes",
+            entry_price=0.60,
+            quantity=10,
+            cost=6.0,
+            entry_prob=None,
+            close_time="2099-01-01T00:00:00Z",
+            entered_at=None,
+            peak_profit_pct=None,
+        )
         # bid=0.0 (no resting bids), ask=0.35 -- a real, non-crashed market
         # with a thin/one-sided book, not an actual price collapse to zero.
         prices = {"T1": {"bid": 0.0, "ask": 0.35}}
-        assert check_stop_losses([trade], prices) == []
+        assert check_stop_losses([pos], prices) == []
 
     def test_zero_ask_no_longer_books_phantom_win(self):
         """End-to-end: a NO position with a one-sided (ask=0) book must not
         be treated as having appreciated to guaranteed-win $1.00."""
         from paper import check_breakeven_stops
+        from positions import Position
 
-        trade = {
-            "ticker": "T1",
-            "side": "no",
-            "entry_price": 0.40,
-            "quantity": 10,
-            "cost": 4.0,
-            "settled": False,
-            "close_time": "2099-01-01T00:00:00Z",
-            "peak_profit_pct": 0.5,  # already past BREAKEVEN_TRIGGER_PCT
-        }
+        pos = Position(
+            id=1,
+            ticker="T1",
+            side="no",
+            entry_price=0.40,
+            quantity=10,
+            cost=4.0,
+            entry_prob=None,
+            close_time="2099-01-01T00:00:00Z",
+            entered_at=None,
+            peak_profit_pct=0.5,  # already past BREAKEVEN_TRIGGER_PCT
+        )
         # bid=0.65 (real), ask=0.0 (no resting asks) -- must be skipped, not
         # priced at a phantom $1.00 that would trivially trigger the stop.
         prices = {"T1": {"bid": 0.65, "ask": 0.0}}
-        assert check_breakeven_stops([trade], prices) == []
+        assert check_breakeven_stops([pos], prices) == []
 
 
 class TestCheckStopLosses:
-    def _trade(self, ticker, side, entry_price, qty, close_time="2099-01-01T00:00:00Z"):
+    def _trade(
+        self, ticker, side, entry_price, qty, close_time="2099-01-01T00:00:00Z", id=1
+    ):
         # close_time defaults to far-future so Fix 1's 24h gate doesn't skip the trade.
+        from positions import Position
+
         cost = round(entry_price * qty, 4)
-        return {
-            "ticker": ticker,
-            "side": side,
-            "entry_price": entry_price,
-            "quantity": qty,
-            "cost": cost,
-            "settled": False,
-            "close_time": close_time,
-        }
+        return Position(
+            id=id,
+            ticker=ticker,
+            side=side,
+            entry_price=entry_price,
+            quantity=qty,
+            cost=cost,
+            entry_prob=None,
+            close_time=close_time,
+            entered_at=None,
+            peak_profit_pct=None,
+        )
 
     def test_stop_triggers_when_yes_price_halves(self):
         """YES trade: price halved → loss = 50% of cost → stop fires (MULT=2)."""
@@ -1817,7 +1831,9 @@ class TestCheckStopLosses:
         # current yes = 0.30 → loss = (0.30-0.60)*10 = -3.0; threshold = -cost/2 = -3.0
         # At exactly threshold it fires (strictly less would not, so use 0.29)
         prices = {"T1": 0.29}
-        assert check_stop_losses([trade], _flat_prices(prices)) == ["T1"]
+        assert [p.ticker for p in check_stop_losses([trade], _flat_prices(prices))] == [
+            "T1"
+        ]
 
     def test_stop_not_triggered_within_range(self):
         """YES trade: small adverse move → no stop."""
@@ -1836,7 +1852,9 @@ class TestCheckStopLosses:
         # current yes = 0.85 → current NO = 0.15; loss = (0.15-0.40)*10 = -2.5
         # threshold = -cost/2 = -2.0  →  -2.5 < -2.0 → fires
         prices = {"T1": 0.85}
-        assert check_stop_losses([trade], _flat_prices(prices)) == ["T1"]
+        assert [p.ticker for p in check_stop_losses([trade], _flat_prices(prices))] == [
+            "T1"
+        ]
 
     def test_stop_not_triggered_when_multiplier_zero(self):
         """STOP_LOSS_MULT=0 disables stop-losses entirely."""
@@ -1861,11 +1879,11 @@ class TestCheckStopLosses:
         """Only tickers that breach the threshold are returned."""
         from paper import check_stop_losses
 
-        t1 = self._trade("T1", "yes", 0.60, 10)  # will breach
-        t2 = self._trade("T2", "yes", 0.60, 10)  # will not breach
+        t1 = self._trade("T1", "yes", 0.60, 10, id=1)  # will breach
+        t2 = self._trade("T2", "yes", 0.60, 10, id=2)  # will not breach
         prices = {"T1": 0.20, "T2": 0.55}
         result = check_stop_losses([t1, t2], _flat_prices(prices))
-        assert result == ["T1"]
+        assert [p.ticker for p in result] == ["T1"]
 
     def test_stop_loss_result_wires_to_close_paper_early(self, tmp_path, monkeypatch):
         """Full chain: stop fires → close_paper_early settles the trade and updates balance."""
@@ -1890,8 +1908,9 @@ class TestCheckStopLosses:
         # Price drops to 0.29 → unrealized PnL = (0.29 - 0.60) * 10 = -$3.10
         # stop_threshold = -(cost / MULT) = -(6.0 / 2) = -$3.00 → breach
         prices = {"T_INTEGRATION": 0.29}
-        tickers = paper.check_stop_losses(paper.get_open_trades(), _flat_prices(prices))
-        assert "T_INTEGRATION" in tickers, (
+        positions = [paper._trade_to_position(t) for t in paper.get_open_trades()]
+        triggered = paper.check_stop_losses(positions, _flat_prices(prices))
+        assert [p.ticker for p in triggered] == ["T_INTEGRATION"], (
             "Stop should fire when loss exceeds threshold"
         )
 

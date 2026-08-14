@@ -19,7 +19,26 @@ import time
 import zlib as _zlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from positions import Position, _passes_exit_gates
+
+# check_stop_losses/check_breakeven_stops keep their PUBLIC pre-refactor
+# names (still `from paper import check_stop_losses` in tests/test_paper.py
+# etc.) even though their return type changed (list[str] -> list[Position],
+# see positions.py) -- they're genuinely the same functions moved, not new
+# ones, and several tests import them by this name directly. update_peak_profits
+# is instead re-exported under a NEW private name (_shared_update_peak_profits)
+# because its old public name/signature (open_trades, current_prices) -> bool
+# no longer exists at all -- paper.update_peak_profits the function is gone,
+# replaced by PaperPositionStore.save_peak + positions.update_peak_profits(
+# positions, prices, save_peak). Keeping a same-named symbol here would
+# silently paper over that removal for any code still calling
+# `paper.update_peak_profits(...)` with the old two-arg shape.
+from positions import check_breakeven_stops as check_breakeven_stops
+from positions import check_stop_losses as check_stop_losses
+from positions import liquidation_price as _liquidation_price
+from positions import update_peak_profits as _shared_update_peak_profits
 from safe_io import AtomicWriteError, atomic_write_json
 from safe_io import project_root as _project_root
 from utils import (
@@ -31,6 +50,9 @@ from utils import (
     METHOD_KELLY_GATE,
     STRATEGY,
 )
+
+if TYPE_CHECKING:
+    from positions import PositionStore
 
 _log = logging.getLogger(__name__)
 
@@ -1296,228 +1318,103 @@ def validate_paper_trades_integrity() -> list[str]:
     return errors
 
 
-def _liquidation_price(
-    prices: dict[str, dict[str, float]], ticker: str, side: str
-) -> float | None:
-    """Return what closing this position right now would actually realize.
-
-    #3: a YES holder can only sell at yes_bid (what a buyer will pay); a NO
-    holder can only sell at 1 - yes_ask (= no_bid). Using yes_ask for YES or
-    1 - yes_bid for NO instead prices the position at what a *buyer* would
-    pay to open more, not what a *holder* can realize by closing — overvaluing
-    the position by the bid-ask spread (understating loss, so stops fire late;
-    inflating take-profit/exit proceeds).
+def _trade_to_position(t: dict) -> Position:
+    """Adapt one paper_trades.json trade dict into the shared Position shape
+    positions.py's check_stop_losses/check_breakeven_stops/update_peak_profits
+    operate on. Only the fields those functions read are carried across —
+    see Position's own docstring for why the rest of the trade dict (thesis,
+    model_forecast_means, ...) is deliberately left out.
     """
-    quote = prices.get(ticker)
-    if not quote:
-        return None
-    # Deep-review followup: parse_market_price() coalesces a missing side to
-    # 0.0 (never None) -- a one-sided/thin book with no resting bids (or no
-    # resting asks) is common overnight and legitimately produces bid=0.0 or
-    # ask=0.0 while the *other* side still has a real quote, so `has_quote`
-    # (mid > 0) can be True while one individual side is still 0. Treating a
-    # 0.0 side as a real price fires phantom $0 stop-losses (YES, bid=0) and
-    # books phantom $1.00 wins (NO, ask=0) -- both silently corrupt the real
-    # ledger. A price <= 0 is never a real tradeable quote, so treat it the
-    # same as "no quote" (None) here.
-    if side == "yes":
-        bid = quote.get("bid")
-        return bid if bid is not None and bid > 0 else None
-    ask = quote.get("ask")
-    return (1.0 - ask) if ask is not None and ask > 0 else None
+    entry_price = t.get("entry_price", 0.0)
+    qty = t.get("quantity", 0)
+    return Position(
+        id=t["id"],
+        ticker=t.get("ticker", ""),
+        side=t.get("side", "yes"),
+        quantity=qty,
+        entry_price=entry_price,
+        cost=t.get("cost") or entry_price * qty,
+        entry_prob=t.get("entry_prob"),
+        close_time=t.get("close_time") or t.get("expires_at"),
+        entered_at=t.get("entered_at"),
+        peak_profit_pct=t.get("peak_profit_pct"),
+    )
 
 
-def _passes_exit_gates(
-    *,
-    ticker: str,
-    log_tag: str,
-    entered_at: str | None = None,
-    close_time: str | None = None,
-    min_hold_hours: float | None = None,
-    settlement_gate_hours: float | None = None,
-) -> bool:
-    """Shared timing gates for early-exit checks (stop-loss/breakeven/model-exit),
-    used by paper.py's and order_executor.py's exit-check functions.
+class PaperPositionStore:
+    """PositionStore backed by paper.py's own JSON ledger (data/paper_trades.json).
 
-    Pass min_hold_hours to enforce the minimum-hold gate, settlement_gate_hours to
-    enforce the pre-settlement gate; leave either None to skip that gate entirely
-    (matches which gates each call site already applied before this was extracted —
-    no site should start applying a gate it didn't before).
-
-    The two gates fail differently by design, preserved from the original inline
-    checks: a missing/unparseable entered_at fails OPEN (hold gate treated as
-    passed — we cannot assess hold time, so don't block on it), while a missing/
-    unparseable close_time fails CLOSED (settlement gate treated as failed, with a
-    warning — silently skipping it risks closing at settlement-convergence prices).
+    The live-side sibling is order_executor.LivePositionStore, backed by
+    execution_log's SQLite rows. Both expose get_open/save_peak/exit so
+    positions.update_peak_profits' save_peak callback and each side's own
+    orchestrator (check_paper_position_exits / _check_live_position_exits)
+    can drive the shared stop-loss/breakeven/peak logic without either
+    knowing the other's storage. get_open/save_peak conform to
+    positions.PositionStore (see that Protocol's docstring for why exit()
+    is deliberately not part of it) -- checked below the class body.
     """
-    if min_hold_hours is not None and entered_at:
-        try:
-            entered_dt = datetime.fromisoformat(entered_at.replace("Z", "+00:00"))
-            if entered_dt.tzinfo is None:
-                entered_dt = entered_dt.replace(tzinfo=UTC)
-            hours_held = (datetime.now(UTC) - entered_dt).total_seconds() / 3600
-            if hours_held < min_hold_hours:
-                return False
-        except (ValueError, TypeError):
-            pass  # fail open — same as the original inline `except: pass`
 
-    if settlement_gate_hours is not None:
-        if not close_time:
-            _log.warning(
-                "%s skipping exit for %s — close_time missing, cannot apply %gh gate",
-                log_tag,
-                ticker,
-                settlement_gate_hours,
+    def get_open(self) -> list[Position]:
+        """Not called by check_paper_position_exits itself (below) -- that
+        function needs the RAW trade dicts too (for the "trade" key in its
+        own external return contract), so it calls get_open_trades() +
+        _trade_to_position() directly and keeps a by_id map alongside,
+        rather than throwing the raw dicts away right after building
+        Positions from them. get_open() exists for API parity with
+        LivePositionStore (which DOES use its own get_open() in production,
+        order_executor.py's _check_live_position_exits) and is exercised
+        directly by tests/test_positions.py.
+        """
+        return [_trade_to_position(t) for t in get_open_trades()]
+
+    def save_peak(self, position: Position, peak_profit_pct: float) -> None:
+        """Persist one position's new peak. Writes one trade at a time (one
+        _save() per updated position within a cycle) rather than the
+        pre-refactor update_peak_profits' single batched save for the whole
+        list — matches the write pattern order_executor's live side already
+        used via execution_log.update_live_peak_profit, so the two paths are
+        now consistent instead of one batching and the other not.
+
+        Re-checks the CURRENT stored peak under _DATA_LOCK before writing
+        (not just the possibly-stale `position.peak_profit_pct` the caller's
+        update_peak_profits() computed against, taken from a snapshot before
+        this cycle's REST price-fetch loop) and skips a settled trade --
+        both match the guards the pre-refactor batched-save version had when
+        it read+compared+wrote in one locked pass. Without this, a
+        concurrent cron/watch overlap (paper.py's own _CrossProcessDataLock
+        exists specifically for this) could silently LOWER an already-higher
+        peak recorded by the other process, disarming its breakeven stop, or
+        write a peak onto a trade the other process closed in the interim.
+        """
+        with _DATA_LOCK:
+            data = _load()
+            for t in data["trades"]:
+                if t["id"] == position.id:
+                    if t.get("settled"):
+                        return
+                    stored = t.get("peak_profit_pct")
+                    if stored is None or peak_profit_pct > stored:
+                        t["peak_profit_pct"] = peak_profit_pct
+                        _save(data)
+                    return
+            _log.debug(
+                "[PaperPositionStore] save_peak: no trade with id=%s found "
+                "(already closed?) — peak %.4f not written",
+                position.id,
+                peak_profit_pct,
             )
-            return False
-        try:
-            close_dt = datetime.fromisoformat(close_time.replace("Z", "+00:00"))
-            hours_to_settlement = (close_dt - datetime.now(UTC)).total_seconds() / 3600
-            if hours_to_settlement < settlement_gate_hours:
-                return False
-        except (ValueError, TypeError):
-            _log.warning(
-                "%s skipping exit for %s — close_time unparseable: %s",
-                log_tag,
-                ticker,
-                close_time,
-            )
-            return False
 
-    return True
+    def exit(
+        self, position: Position, exit_price: float, reason: str | None = None
+    ) -> dict:
+        return close_paper_early(position.id, exit_price, reason=reason)
 
 
-def check_stop_losses(
-    open_trades: list[dict], current_prices: dict[str, dict[str, float]]
-) -> list[str]:
-    """
-    Return tickers whose unrealized loss has breached the stop-loss threshold.
-
-    Stop fires when: unrealized_loss > cost / STOP_LOSS_MULT
-    i.e. for default STOP_LOSS_MULT=2, exit when the position has lost >50% of cost.
-
-    current_prices: {ticker: {"bid": yes_bid, "ask": yes_ask}} (0-1 floats)
-    """
-    from utils import EXIT_SETTLEMENT_GATE_HOURS, STOP_LOSS_MULT
-
-    if STOP_LOSS_MULT <= 0:
-        return []
-
-    exits: list[str] = []
-    for t in open_trades:
-        ticker = t.get("ticker", "")
-        entry_price = t.get("entry_price", 0.0)
-        qty = t.get("quantity", 0)
-        cost = t.get("cost") or entry_price * qty
-        side = t.get("side", "yes")
-
-        if not ticker or qty <= 0 or cost <= 0:
-            continue
-
-        # In the final EXIT_SETTLEMENT_GATE_HOURS before settlement, binary markets
-        # converge to the actual temperature outcome. GFS/ensemble-driven intraday
-        # price swings in this window are noise — let the market settle naturally
-        # rather than locking in a loss.
-        close_time_str = t.get("close_time") or t.get("expires_at")
-        if not _passes_exit_gates(
-            ticker=ticker,
-            log_tag="[StopLoss]",
-            close_time=close_time_str,
-            settlement_gate_hours=EXIT_SETTLEMENT_GATE_HOURS,
-        ):
-            continue
-
-        current_side_price = _liquidation_price(current_prices, ticker, side)
-        if current_side_price is None:
-            continue
-
-        unrealized_pnl = (current_side_price - entry_price) * qty
-        stop_threshold = -(cost / STOP_LOSS_MULT)
-
-        if unrealized_pnl < stop_threshold:
-            exits.append(ticker)
-
-    return exits
-
-
-def update_peak_profits(
-    open_trades: list[dict], current_prices: dict[str, dict[str, float]]
-) -> bool:
-    """Update peak_profit_pct on open trades if current unrealized profit is a new high.
-
-    Saves atomically only when at least one peak is updated. Returns True if any
-    trade was updated. Called each cron run before check_breakeven_stops().
-
-    current_prices: {ticker: {"bid": yes_bid, "ask": yes_ask}} (0-1 floats)
-    """
-    with _DATA_LOCK:
-        data = _load()
-        changed = False
-        for t in data["trades"]:
-            if t.get("settled"):
-                continue
-            ticker = t.get("ticker", "")
-            entry_price = t.get("entry_price", 0.0)
-            qty = t.get("quantity", 0)
-            cost = t.get("cost") or entry_price * qty
-            if cost <= 0 or qty <= 0:
-                continue
-            side = t.get("side", "yes")
-            current_side_price = _liquidation_price(current_prices, ticker, side)
-            if current_side_price is None:
-                continue
-            unrealized_profit_pct = (current_side_price - entry_price) * qty / cost
-            stored_peak = t.get("peak_profit_pct")
-            if stored_peak is None or unrealized_profit_pct > stored_peak:
-                t["peak_profit_pct"] = round(unrealized_profit_pct, 4)
-                changed = True
-        if changed:
-            _save(data)
-    return changed
-
-
-def check_breakeven_stops(
-    open_trades: list[dict], current_prices: dict[str, dict[str, float]]
-) -> list[str]:
-    """Return tickers whose break-even stop has triggered.
-
-    Fires when: peak_profit_pct >= BREAKEVEN_TRIGGER_PCT AND current unrealized
-    pnl <= 0 (price has fallen back to entry or below). Requires update_peak_profits()
-    to have been called first so peak_profit_pct is current.
-
-    current_prices: {ticker: {"bid": yes_bid, "ask": yes_ask}} (0-1 floats)
-    """
-    from utils import BREAKEVEN_TRIGGER_PCT, EXIT_SETTLEMENT_GATE_HOURS
-
-    exits: list[str] = []
-    for t in open_trades:
-        peak = t.get("peak_profit_pct")
-        if peak is None or peak < BREAKEVEN_TRIGGER_PCT:
-            continue
-        ticker = t.get("ticker", "")
-
-        # Same settlement-convergence gate as check_stop_losses: in the final
-        # EXIT_SETTLEMENT_GATE_HOURS before settlement, price swings are
-        # outcome-convergence noise, not a signal to exit.
-        close_time_str = t.get("close_time") or t.get("expires_at")
-        if not _passes_exit_gates(
-            ticker=ticker,
-            log_tag="[BreakevenStop]",
-            close_time=close_time_str,
-            settlement_gate_hours=EXIT_SETTLEMENT_GATE_HOURS,
-        ):
-            continue
-
-        entry_price = t.get("entry_price", 0.0)
-        qty = t.get("quantity", 0)
-        side = t.get("side", "yes")
-        current_side_price = _liquidation_price(current_prices, ticker, side)
-        if current_side_price is None:
-            continue
-        unrealized_pnl = (current_side_price - entry_price) * qty
-        if unrealized_pnl <= 0:
-            exits.append(ticker)
-    return exits
+if TYPE_CHECKING:
+    # mypy-only structural proof that PaperPositionStore's get_open/save_peak
+    # actually satisfy positions.PositionStore -- never executed, no runtime
+    # cost, but catches the next signature drift the way an ABC would.
+    _paper_store_conforms: PositionStore = PaperPositionStore()
 
 
 def check_paper_position_exits(client) -> list[dict]:
@@ -1584,22 +1481,24 @@ def check_paper_position_exits(client) -> list[dict]:
             len(open_trades),
         )
 
-    update_peak_profits(open_trades, current_prices)
+    store = PaperPositionStore()
+    positions = [_trade_to_position(t) for t in open_trades]
+    by_id = {t["id"]: t for t in open_trades}
+
+    _shared_update_peak_profits(positions, current_prices, store.save_peak)
 
     closed: list[dict] = []
 
-    sl_tickers = check_stop_losses(open_trades, current_prices)
-    for ticker in sl_tickers:
-        trade = next((t for t in open_trades if t["ticker"] == ticker), None)
+    sl_positions = check_stop_losses(positions, current_prices)
+    for pos in sl_positions:
+        trade = by_id.get(pos.id)
         if trade is None:
             continue
-        exit_price = _liquidation_price(
-            current_prices, ticker, trade.get("side", "yes")
-        )
+        exit_price = _liquidation_price(current_prices, pos.ticker, pos.side)
         if exit_price is None:
-            exit_price = trade["entry_price"]
+            exit_price = pos.entry_price
         try:
-            result = close_paper_early(trade["id"], exit_price, reason="stop_loss")
+            result = store.exit(pos, exit_price, reason="stop_loss")
         except ValueError as exc:
             # Position was closed/settled by someone else (e.g. a concurrent
             # cron run, or auto-settlement) between get_open_trades() above
@@ -1607,14 +1506,14 @@ def check_paper_position_exits(client) -> list[dict]:
             # every remaining stop-loss/breakeven check this cycle.
             _log.warning(
                 "[StopLoss] could not close %s (#%s): %s",
-                ticker,
-                trade["id"],
+                pos.ticker,
+                pos.id,
                 exc,
             )
             continue
         closed.append(
             {
-                "ticker": ticker,
+                "ticker": pos.ticker,
                 "reason": "stop_loss",
                 "trade": trade,
                 "exit_price": exit_price,
@@ -1625,29 +1524,29 @@ def check_paper_position_exits(client) -> list[dict]:
     # Reload after any stop-loss exits — a position closed above must not
     # also be considered for a breakeven exit on the same cycle.
     open_trades = get_open_trades()
-    be_tickers = check_breakeven_stops(open_trades, current_prices)
-    for ticker in be_tickers:
-        trade = next((t for t in open_trades if t["ticker"] == ticker), None)
+    positions = [_trade_to_position(t) for t in open_trades]
+    by_id = {t["id"]: t for t in open_trades}
+    be_positions = check_breakeven_stops(positions, current_prices)
+    for pos in be_positions:
+        trade = by_id.get(pos.id)
         if trade is None:
             continue
-        exit_price = _liquidation_price(
-            current_prices, ticker, trade.get("side", "yes")
-        )
+        exit_price = _liquidation_price(current_prices, pos.ticker, pos.side)
         if exit_price is None:
-            exit_price = trade["entry_price"]
+            exit_price = pos.entry_price
         try:
-            result = close_paper_early(trade["id"], exit_price)
+            result = store.exit(pos, exit_price)
         except ValueError as exc:
             _log.warning(
                 "[BreakEven] could not close %s (#%s): %s",
-                ticker,
-                trade["id"],
+                pos.ticker,
+                pos.id,
                 exc,
             )
             continue
         closed.append(
             {
-                "ticker": ticker,
+                "ticker": pos.ticker,
                 "reason": "breakeven",
                 "trade": trade,
                 "exit_price": exit_price,

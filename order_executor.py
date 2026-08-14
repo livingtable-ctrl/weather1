@@ -16,10 +16,16 @@ import math
 import os
 import time
 from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING
 
 import execution_log
 from ab_test import ABTest as _ABTest
 from colors import dim, green, red, yellow
+from positions import Position
+from positions import check_breakeven_stops as check_breakeven_stops
+from positions import check_stop_losses as check_stop_losses
+from positions import liquidation_price as _liquidation_price
+from positions import update_peak_profits as _shared_update_peak_profits
 from utils import (
     EXIT_MIN_HOLD_HOURS,
     EXIT_SETTLEMENT_GATE_HOURS,
@@ -53,6 +59,9 @@ from weather_markets import (
     is_storm_order_ticker,
     parse_market_price,
 )
+
+if TYPE_CHECKING:
+    from positions import PositionStore
 
 _log = logging.getLogger("main")
 
@@ -1066,14 +1075,14 @@ def _reprice_or_cancel_pending_orders(
 
 
 def _get_live_open_positions() -> list[dict]:
-    """Build check_stop_losses()/check_breakeven_stops()-compatible dicts
-    from execution_log's filled-unsettled live orders.
-
-    paper.check_stop_losses() and paper.check_breakeven_stops() both already
-    operate on a plain list[dict] parameter with no coupling to paper's own
-    JSON store (verified by reading both bodies), so they're reused
-    unmodified below -- only this adapter, the peak-profit persistence, and
-    the actual exit execution are new for live positions.
+    """Build a paper-trade-shaped dict from execution_log's filled-unsettled
+    live orders. Kept as the raw-dict adapter (not Position-returning) so
+    _check_live_model_exits/_check_early_exits, which still read the full
+    dict shape directly, are unaffected -- LivePositionStore.get_open()
+    layers _live_dict_to_position() on top of this for the shared
+    positions.check_stop_losses()/check_breakeven_stops()/
+    update_peak_profits(), the same pattern paper.PaperPositionStore.get_open()
+    uses over paper.get_open_trades().
     """
     rows = execution_log.get_filled_unsettled_live_orders()
     positions = []
@@ -1106,32 +1115,68 @@ def _get_live_open_positions() -> list[dict]:
     return positions
 
 
-def _update_live_peak_profits(
-    positions: list[dict], current_prices: dict[str, dict[str, float]]
-) -> None:
-    """Live equivalent of paper.update_peak_profits(). That function ignores
-    its own open_trades parameter and re-reads paper's JSON store internally
-    (verified by reading its body), so it cannot be reused here directly --
-    this replicates just its peak-tracking math against execution_log-backed
-    positions instead, and updates each position dict in place so the
-    breakeven-stop check immediately below sees the fresh peak.
-    """
-    from paper import _liquidation_price
+def _live_dict_to_position(d: dict) -> Position:
+    """Adapt one _get_live_open_positions() dict into the shared Position
+    shape positions.py's check_stop_losses/check_breakeven_stops/
+    update_peak_profits operate on. Mirrors paper._trade_to_position."""
+    return Position(
+        id=d["id"],
+        ticker=d["ticker"],
+        side=d.get("side", "yes"),
+        quantity=d["quantity"],
+        entry_price=d["entry_price"],
+        cost=d["cost"],
+        entry_prob=d.get("entry_prob"),
+        close_time=d.get("close_time"),
+        entered_at=d.get("entered_at"),
+        peak_profit_pct=d.get("peak_profit_pct"),
+    )
 
-    for pos in positions:
-        cost = pos.get("cost", 0)
-        qty = pos.get("quantity", 0)
-        if cost <= 0 or qty <= 0:
-            continue
-        current_price = _liquidation_price(current_prices, pos["ticker"], pos["side"])
-        if current_price is None:
-            continue
-        unrealized_profit_pct = (current_price - pos["entry_price"]) * qty / cost
-        stored_peak = pos.get("peak_profit_pct")
-        if stored_peak is None or unrealized_profit_pct > stored_peak:
-            rounded = round(unrealized_profit_pct, 4)
-            execution_log.update_live_peak_profit(pos["id"], rounded)
-            pos["peak_profit_pct"] = rounded
+
+class LivePositionStore:
+    """PositionStore backed by execution_log's SQLite rows. See
+    paper.PaperPositionStore for the paper-side sibling -- both expose
+    get_open/save_peak/exit so positions.update_peak_profits' save_peak
+    callback and each side's own orchestrator can drive the shared
+    stop-loss/breakeven/peak logic without either knowing the other's
+    storage. get_open/save_peak conform to positions.PositionStore (see
+    that Protocol's docstring for why exit() is deliberately not part of
+    it) -- checked below the class body.
+
+    client/cycle are bound at construction since exit() ultimately calls
+    _exit_live_position, which needs both to actually place the protective
+    exit order.
+    """
+
+    def __init__(self, client, cycle: str) -> None:
+        self._client = client
+        self._cycle = cycle
+
+    def get_open(self) -> list[Position]:
+        return [_live_dict_to_position(d) for d in _get_live_open_positions()]
+
+    def save_peak(self, position: Position, peak_profit_pct: float) -> None:
+        execution_log.update_live_peak_profit(position.id, peak_profit_pct)
+
+    def exit(self, position: Position, exit_price: float, reason: str = "") -> bool:
+        pos_dict = {
+            "id": position.id,
+            "ticker": position.ticker,
+            "side": position.side,
+            "quantity": position.quantity,
+            "entry_price": position.entry_price,
+            "close_time": position.close_time,
+        }
+        return _exit_live_position(
+            self._client, pos_dict, exit_price, reason, self._cycle
+        )
+
+
+if TYPE_CHECKING:
+    # mypy-only structural proof that LivePositionStore's get_open/save_peak
+    # actually satisfy positions.PositionStore -- never executed, no runtime
+    # cost, but catches the next signature drift the way an ABC would.
+    _live_store_conforms: PositionStore = LivePositionStore(None, "")
 
 
 def _exit_live_position(
@@ -1285,21 +1330,21 @@ def _exit_live_position(
 
 def _check_live_position_exits(client, config: dict | None = None) -> None:
     """Protect open live positions with stop-loss and breakeven-stop checks,
-    reusing paper.check_stop_losses()/check_breakeven_stops() unmodified.
+    reusing positions.check_stop_losses()/check_breakeven_stops() unmodified
+    -- the same functions paper.check_paper_position_exits uses.
 
     Must run AFTER _poll_pending_orders in the same cycle so a just-filled
     order is already visible via get_filled_unsettled_live_orders().
     """
-    from paper import _liquidation_price, check_breakeven_stops, check_stop_losses
-
-    positions = _get_live_open_positions()
+    cycle = _current_forecast_cycle()
+    store = LivePositionStore(client, cycle)
+    positions = store.get_open()
     if not positions:
         return
 
-    cycle = _current_forecast_cycle()
     current_prices: dict[str, dict[str, float]] = {}
     for pos in positions:
-        book = _get_current_book(client, pos["ticker"])
+        book = _get_current_book(client, pos.ticker)
         if book:
             # _get_current_book's WS-cache hit is already dollar floats, but
             # its REST fallback returns the raw client.get_market() dict
@@ -1307,48 +1352,52 @@ def _check_live_position_exits(client, config: dict | None = None) -> None:
             # coalesce_market_price normalizes either shape, matching
             # how every other _get_current_book caller in this file already
             # handles it (see _reprice_or_cancel_pending_orders below).
-            current_prices[pos["ticker"]] = {
+            current_prices[pos.ticker] = {
                 "bid": coalesce_market_price(book, *YES_BID_KEYS),
                 "ask": coalesce_market_price(book, *YES_ASK_KEYS),
             }
 
-    _update_live_peak_profits(positions, current_prices)
+    _shared_update_peak_profits(positions, current_prices, store.save_peak)
 
     # Grouped by ticker (a list per ticker, not one dict slot) -- two
     # separate open live positions can legally share a ticker (two distinct
-    # fills before either settles). check_stop_losses()/check_breakeven_stops()
-    # only ever return ticker strings, not position identifiers, so a flagged
-    # ticker can't be resolved back to exactly which same-ticker position(s)
-    # individually breached. Erring toward exiting every position on a
-    # flagged ticker (rather than picking just one) is the safe direction for
-    # a protective mechanism -- the failure mode being guarded against is a
+    # fills before either settles), unlike paper which is 1:1 by
+    # construction via the duplicate-order guard. check_stop_losses()/
+    # check_breakeven_stops() now return the triggered Position(s) directly,
+    # but a triggered position's own ticker can still have OTHER same-ticker
+    # positions that individually stayed under threshold -- erring toward
+    # exiting every position on a flagged ticker (rather than just the one
+    # that individually triggered) remains the safe direction for a
+    # protective mechanism -- the failure mode being guarded against is a
     # position silently left with zero protection, not a position closing a
     # cycle earlier than its own individual threshold strictly required.
-    by_ticker: dict[str, list[dict]] = {}
+    by_ticker: dict[str, list[Position]] = {}
     for pos in positions:
-        by_ticker.setdefault(pos["ticker"], []).append(pos)
+        by_ticker.setdefault(pos.ticker, []).append(pos)
 
-    sl_tickers = set(check_stop_losses(positions, current_prices))
+    sl_tickers = {pos.ticker for pos in check_stop_losses(positions, current_prices)}
     for ticker in sl_tickers:
         for target_pos in by_ticker.get(ticker, []):
-            exit_price = _liquidation_price(current_prices, ticker, target_pos["side"])
+            exit_price = _liquidation_price(current_prices, ticker, target_pos.side)
             if exit_price is None:
-                exit_price = target_pos["entry_price"]
-            _exit_live_position(client, target_pos, exit_price, "stop_loss", cycle)
+                exit_price = target_pos.entry_price
+            store.exit(target_pos, exit_price, "stop_loss")
 
     # Reload — a stop-loss exit above must not also be considered for a
     # breakeven exit on the same cycle (already closed or exit attempted).
-    remaining = [p for p in positions if p["ticker"] not in sl_tickers]
-    be_tickers = set(check_breakeven_stops(remaining, current_prices))
+    remaining = [p for p in positions if p.ticker not in sl_tickers]
+    be_tickers = {
+        pos.ticker for pos in check_breakeven_stops(remaining, current_prices)
+    }
     for ticker in be_tickers:
         # ticker-level exclusion above means a ticker can never appear in
         # both sl_tickers and be_tickers -- every position by_ticker[ticker]
         # returns here was genuinely part of `remaining`.
         for target_pos in by_ticker.get(ticker, []):
-            exit_price = _liquidation_price(current_prices, ticker, target_pos["side"])
+            exit_price = _liquidation_price(current_prices, ticker, target_pos.side)
             if exit_price is None:
-                exit_price = target_pos["entry_price"]
-            _exit_live_position(client, target_pos, exit_price, "breakeven", cycle)
+                exit_price = target_pos.entry_price
+            store.exit(target_pos, exit_price, "breakeven")
 
 
 def _check_live_model_exits(client, config: dict | None = None) -> int:
@@ -1376,7 +1425,7 @@ def _check_live_model_exits(client, config: dict | None = None) -> int:
     markets_by_ticker = {m["ticker"]: m for m in markets}
     cycle = _current_forecast_cycle()
 
-    from paper import _liquidation_price, _passes_exit_gates
+    from positions import _passes_exit_gates
 
     closed = 0
     for pos in positions:
@@ -1748,7 +1797,8 @@ def _check_early_exits(client=None) -> int:
     Returns the number of positions closed.
     """
     import paper as _paper
-    from paper import _passes_exit_gates, get_open_trades
+    from paper import get_open_trades
+    from positions import _passes_exit_gates
 
     if client is None:
         return 0  # cannot fetch live market prices without a client

@@ -2810,9 +2810,16 @@ class TestGetLiveOpenPositions(_LiveDBTestBase):
 
 
 class TestUpdateLivePeakProfits(_LiveDBTestBase):
+    """order_executor._update_live_peak_profits was superseded by the shared
+    positions.update_peak_profits() + LivePositionStore.save_peak() combo
+    (see backlog.txt's "PAPER AND LIVE POSITIONS ARE TWO LEDGERS WITH
+    ADAPTER GLUE" entry) -- these exercise that combo directly, same
+    fixtures/assertions as before."""
+
     def test_records_new_peak_when_higher(self):
         import execution_log
-        from order_executor import _update_live_peak_profits
+        from order_executor import LivePositionStore
+        from positions import Position, update_peak_profits
 
         row_id = execution_log.log_order(
             ticker="KXHIGH-25MAY15-T75",
@@ -2822,20 +2829,24 @@ class TestUpdateLivePeakProfits(_LiveDBTestBase):
             status="filled",
             live=True,
         )
-        position = {
-            "id": row_id,
-            "ticker": "KXHIGH-25MAY15-T75",
-            "side": "yes",
-            "entry_price": 0.40,
-            "quantity": 10,
-            "cost": 4.0,
-            "peak_profit_pct": None,
-        }
+        position = Position(
+            id=row_id,
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            entry_price=0.40,
+            quantity=10,
+            cost=4.0,
+            entry_prob=None,
+            close_time=None,
+            entered_at=None,
+            peak_profit_pct=None,
+        )
         current_prices = {"KXHIGH-25MAY15-T75": {"bid": 0.55, "ask": 0.60}}
-        _update_live_peak_profits([position], current_prices)
+        store = LivePositionStore(client=None, cycle="test")
+        update_peak_profits([position], current_prices, store.save_peak)
 
         # unrealized_profit_pct = (0.55 - 0.40) * 10 / 4.0 = 0.375
-        assert position["peak_profit_pct"] == pytest.approx(0.375)
+        assert position.peak_profit_pct == pytest.approx(0.375)
         with execution_log._conn() as con:
             row = con.execute(
                 "SELECT peak_profit_pct FROM orders WHERE id = ?", (row_id,)
@@ -2844,7 +2855,8 @@ class TestUpdateLivePeakProfits(_LiveDBTestBase):
 
     def test_does_not_overwrite_a_higher_stored_peak(self):
         import execution_log
-        from order_executor import _update_live_peak_profits
+        from order_executor import LivePositionStore
+        from positions import Position, update_peak_profits
 
         row_id = execution_log.log_order(
             ticker="KXHIGH-25MAY15-T75",
@@ -2854,19 +2866,23 @@ class TestUpdateLivePeakProfits(_LiveDBTestBase):
             status="filled",
             live=True,
         )
-        position = {
-            "id": row_id,
-            "ticker": "KXHIGH-25MAY15-T75",
-            "side": "yes",
-            "entry_price": 0.40,
-            "quantity": 10,
-            "cost": 4.0,
-            "peak_profit_pct": 0.50,  # already higher than the current tick
-        }
+        position = Position(
+            id=row_id,
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            entry_price=0.40,
+            quantity=10,
+            cost=4.0,
+            entry_prob=None,
+            close_time=None,
+            entered_at=None,
+            peak_profit_pct=0.50,  # already higher than the current tick
+        )
         current_prices = {"KXHIGH-25MAY15-T75": {"bid": 0.45, "ask": 0.50}}
-        _update_live_peak_profits([position], current_prices)
+        store = LivePositionStore(client=None, cycle="test")
+        update_peak_profits([position], current_prices, store.save_peak)
 
-        assert position["peak_profit_pct"] == 0.50
+        assert position.peak_profit_pct == 0.50
         with execution_log._conn() as con:
             row = con.execute(
                 "SELECT peak_profit_pct FROM orders WHERE id = ?", (row_id,)
@@ -3397,6 +3413,52 @@ class TestCheckLivePositionExits(_LiveDBTestBase):
         }
         # bid=0.10 breaches stop-loss for both positions independently
         # (well past 50% of either position's cost).
+        with (
+            patch(
+                "order_executor._get_current_book",
+                return_value={"yes_bid": 0.10, "yes_ask": 0.15},
+            ),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            _check_live_position_exits(mock_client)
+
+        assert mock_client.place_order.call_count == 2
+        with execution_log._conn() as con:
+            rows = con.execute(
+                "SELECT id, exit_reason, settled_at FROM orders WHERE id IN (?, ?)",
+                (row_id_a, row_id_b),
+            ).fetchall()
+        for row in rows:
+            assert row["exit_reason"] == "stop_loss"
+            assert row["settled_at"] is not None
+
+    def test_two_positions_same_ticker_only_one_individually_breaches_both_exit(self):
+        """The fan-out safety property this ticket-level by_ticker grouping
+        exists for: when only ONE of two same-ticker positions individually
+        breaches its own stop-loss threshold, BOTH must still be exited --
+        erring toward protecting a position that didn't strictly need to
+        exit yet, rather than risk leaving position B's zero-protection gap
+        the ticket-collapse regression test above guards against. Without
+        the by_ticker fan-out (e.g. if a future 'simplification' exited
+        only the position(s) check_stop_losses itself returned), this would
+        exit A but silently leave B open."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _check_live_position_exits
+
+        # A: cost=5.0, threshold=-2.5 -> at bid=0.10, pnl=(0.10-0.50)*10=-4.0 -> breaches.
+        row_id_a = self._open_position_row(price=0.50, quantity=10)
+        # B: cost=1.2, threshold=-0.6 -> at the SAME bid=0.10, pnl=(0.10-0.12)*10=-0.2
+        # -> does NOT individually breach.
+        row_id_b = self._open_position_row(price=0.12, quantity=10)
+        assert row_id_a != row_id_b
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
         with (
             patch(
                 "order_executor._get_current_book",

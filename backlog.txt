@@ -12608,7 +12608,7 @@ When to revisit (superseding the entry's original text above):
     branch -- re-run this same cost/benefit check then, don't assume the
     answer is now permanently "no."
 
-[PARTIALLY RESOLVED 2026-07-19] PAPER AND LIVE POSITIONS ARE TWO LEDGERS WITH ADAPTER GLUE -- EVERY RISK FEATURE SHIPS TWICE
+[RESOLVED 2026-08-13 -- the full Position read-model (dataclass + two PositionStore implementations + shared stop-loss/breakeven/peak-profit) shipped, closing the concrete duplication this entry's Problem section cited. See resolution block after the 2026-08-09 update below. Model-exit's own position-sourcing (check_model_exits/_check_live_model_exits/_check_early_exits still read raw dicts, not Position) was deliberately scoped OUT per the same-payload test, split to its own new follow-up entry near the end of this file. CORRECTED same day, by independent opus review of the split: that follow-up entry's own initial text wrongly claimed the scoped-out functions had "no duplication risk of the kind this entry was about" -- they actually DO diverge on real price-math (order_executor._check_live_model_exits uses _liquidation_price, order_executor._check_early_exits uses _midpoint_price, for the conceptually identical job) -- see the follow-up entry's own corrected text for the real reasoning.] PAPER AND LIVE POSITIONS ARE TWO LEDGERS WITH ADAPTER GLUE -- EVERY RISK FEATURE SHIPS TWICE
 Priority: Medium -- cost compounds per feature once live trading is real;
   currently only ~4 features deep. Includes a real, already-observed
   drift: exit-gate thresholds duplicated as bare literals across both
@@ -12747,6 +12747,283 @@ UPDATE 2026-08-09 (re-checked this trigger before starting any new work
   the interface against (paper's 3 check functions + order_executor's live
   adapter/replication + the new record_live_partial_exit reconciliation),
   which is exactly the condition this entry was waiting on.
+
+RESOLVED 2026-08-13: Shipped the full Position read-model this entry's
+  "What it would look like" section specified, using the third consumer
+  (record_live_partial_exit) the 2026-08-09 update above confirmed was
+  ready.
+
+  New module positions.py (one-directional dependency -- paper.py and
+  order_executor.py both import from it, it imports from neither, avoiding
+  the circularity a shared module between them would otherwise risk):
+    - Position dataclass: the 10 fields check_stop_losses/check_breakeven_
+      stops/update_peak_profits actually consume (id, ticker, side,
+      quantity, entry_price, cost, entry_prob, close_time, entered_at,
+      peak_profit_pct) -- deliberately NOT the full stored record either
+      side's storage carries (paper's ~20-field trade dict, execution_log's
+      order row); each side's own store adapts its native storage into/out
+      of this shape.
+    - liquidation_price() and _passes_exit_gates() moved here unchanged
+      (same docstrings/logic) from paper.py, which now re-exports both by
+      name so `from paper import _liquidation_price` / `_passes_exit_gates`
+      (used directly by several existing tests) keeps working.
+    - check_stop_losses(positions, prices) -> list[Position] and
+      check_breakeven_stops(positions, prices) -> list[Position]: same
+      threshold math as before, now returning the triggered Position
+      objects instead of ticker strings (see decision 3 below).
+    - update_peak_profits(positions, prices, save_peak) -> bool: same peak
+      math, now taking an injected save_peak(position, peak) callback
+      instead of implicitly reloading/saving paper's JSON store (see
+      decision 2 below). Mutates each improved Position's peak_profit_pct
+      in place, same as before.
+
+  Two PositionStore implementations, one per side, both exposing
+  get_open()/save_peak()/exit():
+    - paper.PaperPositionStore (paper.py): get_open() wraps
+      get_open_trades() + a new _trade_to_position() adapter; save_peak()
+      writes one matching trade by id under _DATA_LOCK (see decision 2's
+      per-position-write note below); exit() wraps close_paper_early()
+      unchanged.
+    - order_executor.LivePositionStore (order_executor.py): binds
+      client/cycle at construction; get_open() wraps the existing
+      _get_live_open_positions() (kept as the raw-dict adapter, unchanged,
+      so tests reading its dict shape directly are unaffected) + a new
+      _live_dict_to_position() adapter; save_peak() calls
+      execution_log.update_live_peak_profit() directly; exit() converts
+      the Position back to the dict shape _exit_live_position() expects
+      (left that ~150-line live-order function's own signature/internals
+      completely untouched -- lowest-risk path for the actual order-
+      placement code).
+    - order_executor._update_live_peak_profits() (the hand-written
+      replication this entry's Problem section flagged) is gone --
+      superseded by shared update_peak_profits() + store.save_peak().
+
+  paper.check_paper_position_exits() and order_executor.
+  _check_live_position_exits() (the two orchestrators) were rewritten to
+  route through their own store, but check_paper_position_exits()'s
+  EXTERNAL return contract ({"ticker","reason","trade","exit_price","pnl"})
+  is byte-for-byte unchanged -- verified against both of its only 2 call
+  sites (cron.py:1660, main.py:3659, both only read _closed["ticker"] and
+  _closed["trade"].get("peak_profit_pct")) before deciding "trade" could
+  stay the original raw dict rather than becoming the slimmer Position.
+  _check_live_position_exits() already returned None and still does.
+
+  Three design decisions asked via AskUserQuestion before implementing
+  (terse question, tradeoffs in option descriptions, per this project's
+  standing workflow):
+    1. Scope: full pass in one reviewed change (chosen) vs. phased
+       read-side-only. Full pass matches the entry's own original design
+       and avoided landing an unused store/dataclass mid-refactor.
+    2. Fix update_peak_profits' ignore-its-own-parameter bug (chosen) vs.
+       preserve the split. Fixing it changes a real, visible behavior:
+       paper's peak persistence now writes ONE trade at a time (one
+       save_peak -> one _save() call per improved position within a
+       cycle) instead of the old single batched save covering the whole
+       list -- this makes paper consistent with how live's peak
+       persistence (execution_log.update_live_peak_profit, one UPDATE per
+       improved position) already worked, rather than the two staying
+       inconsistent. Mutation-tested directly (see Tests below).
+    3. check_stop_losses/check_breakeven_stops return list[Position]
+       instead of list[str] tickers (chosen) vs. keep tickers. Removes the
+       ticker-based re-lookup indirection order_executor's fan-out (>1
+       live position can share a ticker; paper is 1:1) previously needed.
+
+  Deliberately NOT touched: paper.check_model_exits, order_executor.
+  _check_live_model_exits, and order_executor._check_early_exits still
+  source their open positions as raw dicts (get_open_trades()/
+  _get_live_open_positions()), not via the new Position/PositionStore --
+  see the new follow-up entry near the end of this file for why (same-
+  payload test: different data flow, no duplication risk of the kind this
+  entry was about).
+
+  Tests: added tests/test_positions.py (11 tests) covering the new module
+  directly -- genuine object-identity between paper.py/order_executor.py's
+  re-exported names and positions.py's originals (the actual mechanism
+  that prevents the kind of drift this entry was filed over -- two
+  identical-looking functions can still silently diverge on the next edit
+  if they're not the same object), PaperPositionStore/LivePositionStore's
+  get_open/save_peak/exit individually, and the per-position-save decision
+  above. Mutation-tested 2 of the new tests directly by reverting the
+  production code and confirming the right test failed for the right
+  reason, then restoring it: (a) update_peak_profits calling save_peak
+  only for the first improved position instead of every one --
+  test_save_peak_called_once_per_improved_position_not_batched caught it
+  (assertion went from 2 calls expected to 1 observed); (b)
+  PaperPositionStore.save_peak matching by ticker instead of id -- initial
+  version of test_save_peak_writes_only_the_targeted_position did NOT
+  catch this (the fixture's ticker-collision ordering happened to coincide
+  with id-ordering, so the mutation passed unnoticed) -- reordered the
+  fixture so the target position is listed AFTER another same-ticker
+  position, which then correctly caught the mutation (target's peak stayed
+  None instead of being set).
+
+  Updated existing tests in tests/test_paper.py, tests/test_paper_metrics.py,
+  tests/test_early_exits.py, and tests/test_live_execution.py for the
+  dict->Position and list[str]->list[Position] signature changes (decisions
+  2 and 3 above) -- same assertions/coverage, updated call shape.
+  tests/test_live_execution.py's TestUpdateLivePeakProfits was rewritten
+  against LivePositionStore + the shared update_peak_profits() (the
+  function it tested, order_executor._update_live_peak_profits, no longer
+  exists).
+
+  553 tests pass (freshly re-run immediately before writing this sentence,
+  after the review-fix pass below added 3 more) across
+  tests/test_early_exits.py, test_paper.py, test_live_execution.py,
+  test_p9_p10.py, test_trading.py, test_cron_integration.py,
+  test_menu_ux.py, test_paper_metrics.py, test_spend_validation.py,
+  test_cron_group_c.py, test_main_cron_smoke.py, test_execution_log.py,
+  and the new test_positions.py. ruff + ruff format + mypy clean on
+  positions.py, paper.py, order_executor.py, execution_log.py, and every
+  changed test file.
+
+  Independent opus review (effort=high) before push found 19 findings, all
+  addressed:
+    - 2 real regressions (MEDIUM), fixed: (1) PaperPositionStore.save_peak
+      compared against a possibly-stale snapshot instead of re-reading the
+      stored peak under _DATA_LOCK -- a concurrent cron/watch overlap could
+      silently LOWER an already-higher peak recorded by the other process,
+      disarming its breakeven stop. Now a compare-and-set under the lock,
+      matching (and fixing, for parity) execution_log.update_live_peak_profit's
+      equally-unguarded SQL UPDATE on the live side. (2) save_peak no longer
+      skipped a settled trade (metric-only consequence, still fixed). Both
+      new regression tests in tests/test_execution_log.py, mutation-tested.
+    - 1 test gap (MEDIUM), fixed: the live-side by_ticker fan-out safety
+      property (exit ALL positions sharing a flagged ticker, not just the
+      one that individually breached) had zero test coverage -- a mutation
+      to individual-only exiting passed all 115 relevant tests clean. New
+      test (tests/test_live_execution.py) with two same-ticker positions
+      where only one individually breaches; mutation-tested (fails 1/7 in
+      the class when reverted, as expected).
+    - 1 inaccurate backlog claim (MEDIUM), fixed: the follow-up entry split
+      off below originally claimed the scoped-out model-exit functions had
+      "no duplication risk" -- false; they use different exit-price
+      conventions (_liquidation_price vs _midpoint_price), verified live.
+      Corrected in that entry's own text.
+    - 13 LOW findings, all fixed: stale _get_live_open_positions docstring;
+      added a PositionStore Protocol (get_open/save_peak only -- exit()
+      deliberately excluded, see the Protocol's own docstring) with a
+      mypy-checked (TYPE_CHECKING-gated) conformance proof for both
+      concrete stores, mutation-tested to confirm mypy actually flags a
+      signature drift; documented why PaperPositionStore.get_open() isn't
+      used in check_paper_position_exits itself; corrected Position's
+      docstring (entry_prob/entered_at aren't read by this module's own
+      functions, carried for the not-yet-converted model-exit consumers);
+      restored lost docstring substance on liquidation_price/
+      _passes_exit_gates; strengthened tests/test_positions.py's
+      LivePositionStore.exit() test from a partial to a full-dict equality
+      assertion (mutation-tested: catches a dropped close_time field the
+      partial assertion missed); added an explicit in-place-mutation
+      (same-cycle peak visibility) assertion to
+      TestUpdatePeakProfitsSavesPerPosition; removed a redundant
+      importlib.reload in a new test (conftest.py's autouse
+      isolate_paper_data fixture already handles it); fixed
+      _check_early_exits' _passes_exit_gates import to come directly from
+      positions.py instead of via paper.py's re-export; documented the
+      reasoning for check_stop_losses/check_breakeven_stops keeping their
+      public names while update_peak_profits was renamed private.
+    - 3 informational notes: mutation-testing claims independently
+      reproduced and confirmed; test-count fully confirmed by re-running
+      all 13 files together (550, matching this narrative) rather than the
+      review's own partial 8-file subset (483); and one incidental
+      correctness IMPROVEMENT worth recording -- check_paper_position_exits'
+      old ticker-keyed exit lookup (`next(t for t in open_trades if
+      t["ticker"] == ticker)`) would, if paper ever held two open trades on
+      one ticker, resolve both breaches to the same first trade and let the
+      second close_paper_early() call fail as a logged "race," silently
+      leaving that second position unclosed. The new by_id lookup doesn't
+      have this failure mode. Not independently regression-tested (paper's
+      own duplicate-order guard makes two-open-trades-one-ticker
+      unreachable in practice, same as before this change), but worth
+      knowing if that guard is ever loosened.
+
+[NEW 2026-08-13 -- split from the entry above per its own same-payload
+  test; CORRECTED 2026-08-13 same day, by an independent opus review of the
+  split itself (effort=high), which caught that the ORIGINAL version of
+  this entry's own Priority/Problem text was factually wrong about there
+  being no price-math duplication here -- see Priority below for what's
+  actually true.] check_model_exits/_check_live_model_exits/
+  _check_early_exits STILL SOURCE POSITIONS AS RAW DICTS, NOT THE NEW
+  Position READ-MODEL -- AND THEIR EXIT-PRICE CONVENTIONS HAVE ALREADY
+  DIVERGED
+Priority: Medium for the price-convention divergence, Low for the dict-vs-
+  Position sourcing itself. The dict-sourcing IS cosmetic (see "What it
+  would look like" below). But these functions do NOT merely duplicate
+  per-trade API-call/analysis STRUCTURE with no price-math risk, as this
+  entry originally (and wrongly) claimed: order_executor.
+  _check_live_model_exits computes its exit price via _liquidation_price()
+  (order_executor.py:1471, bid for YES / 1-ask for NO -- the realizable
+  closing price), while order_executor._check_early_exits (paper-only)
+  computes its via _midpoint_price() (order_executor.py:1854, the bid/ask
+  midpoint) -- verified live by grepping both call sites 2026-08-13, not
+  assumed. positions.liquidation_price()'s own docstring explains why this
+  matters: pricing at the midpoint instead of the realizable bid/ask
+  "overvalu[es] the position by the bid-ask spread ... inflating
+  take-profit/exit proceeds." So paper's model-exits book a more optimistic
+  P&L than live's would for the identical shift/threshold -- precisely the
+  live/paper divergence class this whole backlog entry (see the resolved
+  entry above) was filed to eliminate, just found in a different function
+  pair than the one that got fixed.
+
+Problem:
+  Price-convention divergence (the real issue): paper.check_model_exits
+  doesn't compute its own exit price at all (it's a pure recommendation
+  generator -- main.py's cmd_brief/watch-mode display decides the actual
+  close_paper_early() call and price separately). order_executor.
+  _check_early_exits DOES exit paper trades directly and uses
+  _midpoint_price(). order_executor._check_live_model_exits exits live
+  positions directly and uses _liquidation_price(). Two functions doing the
+  conceptually identical job (close a position because the model's
+  probability shifted past a threshold) price the close differently.
+
+  Dict-vs-Position sourcing (cosmetic): paper.check_model_exits still calls
+  get_open_trades() (raw dicts, full ~20-field trade shape) directly rather
+  than PaperPositionStore.get_open(). order_executor._check_live_model_exits
+  and order_executor._check_early_exits still call
+  _get_live_open_positions()/paper.get_open_trades() directly rather than
+  LivePositionStore.get_open(). All three return dicts (not Position) in
+  their recommendation payloads, since callers (main.py's exit-signal
+  display, cmd_brief) read extra fields (thesis, full market dict, etc.)
+  Position deliberately doesn't carry.
+
+What it would look like:
+  Price convention: decide which is actually correct (liquidation_price's
+  own docstring argues realizable bid/ask, not midpoint, is the right
+  convention for a real exit -- the same argument that motivated fixing
+  paper's stop-loss/breakeven pricing originally) and make
+  _check_early_exits use liquidation_price() too, falling back to
+  entry_price like the other exit paths already do when no quote is
+  available. Needs its own before/after test proving the P&L booked for a
+  model-exit changes (or doesn't, if the spread is usually thin enough not
+  to matter -- check real settled-trade data before assuming impact).
+
+  Dict-vs-Position sourcing: not a straightforward swap -- these functions'
+  return payloads need the FULL trade/position dict for display, not just
+  Position's fields, so routing their position-SOURCING through the stores
+  (get_open()) while keeping their OWN return shape as dicts would need
+  each function to either look up the original dict by id after getting
+  Position objects (like check_paper_position_exits' by_id pattern) or the
+  stores would need a "get full record" escape hatch. Worth designing
+  properly rather than forcing a fit -- not a mechanical change.
+
+Why not now:
+  Price convention: not independently verified yet whether the divergence
+  moves real P&L by a meaningful amount (see "What it would look like"
+  above) -- needs that check before deciding this is worth a live-order
+  code change, not just deferred out of caution. Genuinely NOT scoped out
+  because it's low-risk; scoped out because filing it accurately (this
+  entry) and fixing it correctly are two different amounts of work, and the
+  2026-08-13 session that found it was already mid-review of a different,
+  larger change.
+  Dict-sourcing: genuinely has no duplication risk (it's structural, not
+  mathematical) -- pure internal consistency, not a bug. Pick up
+  opportunistically or if these functions are touched for another reason.
+
+When to revisit:
+  Price convention: soon -- this is a real, live-order-adjacent pricing
+  bug, not cosmetic; the only reason it isn't fixed in this same entry is
+  that it was caught by review after the sibling entry's implementation
+  was already done and confirmed, not before. Dict-sourcing: no blocking
+  dependency.
 
 [PARTIALLY RESOLVED 2026-07-25 -- parts (a) and (b) shipped; part (c), the
   blend-weights-dict refactor, still open, deliberately scoped out as its

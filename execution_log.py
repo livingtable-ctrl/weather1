@@ -576,15 +576,25 @@ def record_live_settlement(order_id: int, outcome_yes: bool, pnl: float) -> None
 
 def update_live_peak_profit(order_id: int, peak_profit_pct: float) -> None:
     """Record a new peak unrealized-profit fraction for an open live position
-    (mirrors paper.py's peak_profit_pct tracking, used by the breakeven-stop
-    check). Caller is responsible for only calling this when the new value is
-    actually higher than the stored one -- this just writes whatever it's given.
+    (mirrors paper.py's PaperPositionStore.save_peak, both invoked via the
+    shared positions.update_peak_profits() -- see backlog.txt's "PAPER AND
+    LIVE POSITIONS ARE TWO LEDGERS WITH ADAPTER GLUE" entry).
+
+    Compare-and-set guarded in SQL: only writes when the stored value is
+    NULL or lower, and only while the row is still open (settled_at IS
+    NULL) -- a caller-computed peak can be stale by the time this executes
+    (built from a snapshot taken before a REST price-fetch loop that can
+    take seconds), so a concurrent writer could otherwise have this call
+    silently LOWER an already-higher peak (disarming the breakeven stop) or
+    write onto a position closed in the interim.
     """
     init_log()
     with _conn() as con:
         con.execute(
-            "UPDATE orders SET peak_profit_pct = ? WHERE id = ?",
-            (peak_profit_pct, order_id),
+            "UPDATE orders SET peak_profit_pct = ? WHERE id = ? AND "
+            "settled_at IS NULL AND "
+            "(peak_profit_pct IS NULL OR peak_profit_pct < ?)",
+            (peak_profit_pct, order_id, peak_profit_pct),
         )
 
 
