@@ -4122,6 +4122,101 @@ class TestBatchPrewarmEnsembleTrackingOnlyModels:
         wm._ensemble_disk_pending.clear()
 
 
+class TestBatchPrewarmEnsembleBiasCorrection:
+    """batch_prewarm_ensemble is the actual production path (the [ENS batch]
+    lines every cron cycle) -- get_ensemble_temps's own bias-correction test
+    doesn't exercise it at all, and review flagged this as the highest-risk
+    untested line: the H-14 per-model cache write (feeding
+    _get_consensus_probs/_get_gem_ukmo_means/accuracy tracking) must stay
+    RAW, while only the blended (city, date, None, var) entry that feeds
+    the live trading forecast gets bias-corrected."""
+
+    def test_per_model_cache_raw_but_blend_corrected(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
+        wm._ensemble_cb.record_success()
+        wm._MODEL_BIAS_CACHE.clear()
+        monkeypatch.setattr(wm.time, "sleep", lambda _seconds: None)
+        monkeypatch.setattr(wm, "_model_weights", lambda city, month=None: {})
+        # icon_seamless has a known +4.0 bias; gfs_seamless has none.
+        monkeypatch.setattr(
+            wm, "_model_bias", lambda city, var, **kw: {"icon_seamless": 4.0}
+        )
+
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=3)
+        date_iso = target.isoformat()
+
+        members_by_model = {
+            "icon_seamless": [70.0, 71.0, 72.0, 73.0, 74.0],
+            "gfs_seamless": [68.0, 69.0, 70.0, 71.0, 72.0],
+            "ecmwf_aifs025_ensemble": [74.0, 75.0, 76.0, 77.0, 78.0],
+        }
+
+        def _fake_om_request(method, url, **kwargs):
+            params = kwargs.get("params", {})
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            daily_key = params.get("daily")
+            if daily_key == "precipitation_sum":
+                resp.json.return_value = {"daily": {"time": [date_iso]}}
+                return resp
+            model = params.get("models")
+            members = members_by_model.get(model, [])
+            resp.json.return_value = {
+                "daily": {
+                    "time": [date_iso],
+                    **{
+                        f"{daily_key}_member{i + 1:02d}": [v]
+                        for i, v in enumerate(members)
+                    },
+                }
+            }
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        written = wm.batch_prewarm_ensemble({("NYC", date_iso)})
+        assert written > 0, "batch_prewarm_ensemble wrote no cache entries"
+
+        # H-14 per-model entry: must be the RAW forecast, untouched by bias
+        # correction -- this is what _get_consensus_probs/_get_gem_ukmo_means
+        # and accuracy tracking read, and correcting it would corrupt both
+        # (a self-referential "corrected" prediction logged as if it were
+        # the model's real forecast).
+        icon_key = ("icon_seamless", "NYC", date_iso, "max", None)
+        icon_raw = wm._ensemble_cache.get(icon_key)
+        assert icon_raw == pytest.approx(members_by_model["icon_seamless"]), (
+            f"per-model cache entry must stay raw/uncorrected: {icon_raw}"
+        )
+
+        # Blended entry: icon's members must be shifted down by its +4.0
+        # bias (70,71,72,73,74 -> 66,67,68,69,70); gfs (no bias) unchanged.
+        blended = wm._ensemble_cache.get(("NYC", date_iso, None, "max"))
+        assert blended is not None
+        assert 66.0 in blended and 70.0 in blended, (
+            f"icon's bias-corrected members missing from the blend: {blended}"
+        )
+        # 73.0 only exists in icon's RAW set (70-74) -- gfs's raw set is
+        # 68-72 and ecmwf's is 74-78, neither overlaps 73.0, so it can only
+        # appear here if icon's uncorrected members leaked into the blend.
+        assert 73.0 not in blended, (
+            f"icon's raw (uncorrected) 73.0 leaked into the blend: {blended}"
+        )
+        assert 68.0 in blended, (
+            f"gfs_seamless (zero bias) must be unaffected: {blended}"
+        )
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
+        wm._MODEL_BIAS_CACHE.clear()
+
+
 class TestBatchPrewarmEnsembleRateLimitTiering:
     """Open-Meteo's free ensemble-api endpoint enforces an undocumented
     rolling-~60s request budget too tight for cron's 13 calls/cycle
@@ -4416,6 +4511,249 @@ class TestWeightsFromMaeExcludesTrackingOnlyModels:
         # gfs mae=4.0 -> weights 0.5/0.25, normalised to sum-to-2.
         assert baseline_result["icon_seamless"] == pytest.approx(4 / 3)
         assert baseline_result["gfs_seamless"] == pytest.approx(2 / 3)
+
+
+# ── TestModelBias (_model_bias, var-split bias-correction feeding the live blend) ──
+
+
+class TestModelBias:
+    """_model_bias() must correct each model's raw ensemble members toward its
+    own known signed error, split by var -- never falling back to a
+    pooled-across-var bias (verified worse than no correction at all via
+    leave-one-out backtest, 2026-08-13)."""
+
+    def _fake_bias_acc(self, **overrides) -> dict:
+        acc = {
+            "gfs_seamless": {
+                "max": {
+                    "bias": 4.4,
+                    "n": 30,
+                    "city_breakdown": {"NYC": 6.0},
+                    "city_n_breakdown": {"NYC": 25},
+                },
+                "min": {
+                    "bias": 0.4,
+                    "n": 30,
+                    "city_breakdown": {},
+                    "city_n_breakdown": {},
+                },
+            },
+        }
+        acc.update(overrides)
+        return acc
+
+    def test_uses_city_specific_bias_when_above_floor(self, monkeypatch):
+        import weather_markets as wm
+
+        wm._MODEL_BIAS_CACHE.clear()
+        monkeypatch.setattr(
+            "tracker.get_member_bias", lambda days_back=60: self._fake_bias_acc()
+        )
+        result = wm._model_bias("NYC", "max", min_n_city=20, min_n_global=10)
+        assert result["gfs_seamless"] == pytest.approx(6.0), (
+            f"NYC has 25 max observations, clears the 20 floor -- must use "
+            f"the city-specific bias (6.0), not the global one (4.4): {result}"
+        )
+        wm._MODEL_BIAS_CACHE.clear()
+
+    def test_falls_back_to_global_when_city_thin(self, monkeypatch):
+        import weather_markets as wm
+
+        wm._MODEL_BIAS_CACHE.clear()
+        monkeypatch.setattr(
+            "tracker.get_member_bias", lambda days_back=60: self._fake_bias_acc()
+        )
+        # Chicago has zero city-specific max observations for gfs_seamless
+        # in the fixture -- must fall back to the global var-specific bias.
+        result = wm._model_bias("Chicago", "max", min_n_city=20, min_n_global=10)
+        assert result["gfs_seamless"] == pytest.approx(4.4), (
+            f"Chicago has no city-specific data, global n=30 clears the 10 "
+            f"floor -- must use the global max-var bias: {result}"
+        )
+        wm._MODEL_BIAS_CACHE.clear()
+
+    def test_model_absent_when_both_city_and_global_too_thin(self, monkeypatch):
+        import weather_markets as wm
+
+        wm._MODEL_BIAS_CACHE.clear()
+        thin_acc = {
+            "gfs_seamless": {
+                "max": {
+                    "bias": 4.4,
+                    "n": 3,  # below min_n_global
+                    "city_breakdown": {},
+                    "city_n_breakdown": {},
+                },
+            },
+        }
+        monkeypatch.setattr("tracker.get_member_bias", lambda days_back=60: thin_acc)
+        result = wm._model_bias("NYC", "max", min_n_city=20, min_n_global=10)
+        assert "gfs_seamless" not in result, (
+            f"too thin for both city and global floors -- model must be "
+            f"absent (caller's .get(model, 0.0) then applies zero "
+            f"correction), not present with an unreliable number: {result}"
+        )
+        wm._MODEL_BIAS_CACHE.clear()
+
+    def test_var_split_never_pools_max_and_min(self, monkeypatch):
+        """gfs_seamless's fixture has max bias=4.4 and min bias=0.4 -- these
+        must never mix. Requesting var='min' must never return the max
+        figure, and vice versa."""
+        import weather_markets as wm
+
+        wm._MODEL_BIAS_CACHE.clear()
+        monkeypatch.setattr(
+            "tracker.get_member_bias", lambda days_back=60: self._fake_bias_acc()
+        )
+        max_result = wm._model_bias("Chicago", "max", min_n_city=20, min_n_global=10)
+        wm._MODEL_BIAS_CACHE.clear()
+        min_result = wm._model_bias("Chicago", "min", min_n_city=20, min_n_global=10)
+        wm._MODEL_BIAS_CACHE.clear()
+
+        assert max_result["gfs_seamless"] == pytest.approx(4.4)
+        assert min_result["gfs_seamless"] == pytest.approx(0.4)
+        assert max_result["gfs_seamless"] != min_result["gfs_seamless"]
+
+    def test_model_with_no_data_for_requested_var_absent(self, monkeypatch):
+        """A model that only has 'min' data must not appear at all when
+        var='max' is requested -- no silent fallback to its other var."""
+        import weather_markets as wm
+
+        wm._MODEL_BIAS_CACHE.clear()
+        min_only_acc = {
+            "icon_seamless": {
+                "min": {
+                    "bias": -0.7,
+                    "n": 30,
+                    "city_breakdown": {},
+                    "city_n_breakdown": {},
+                },
+            },
+        }
+        monkeypatch.setattr(
+            "tracker.get_member_bias", lambda days_back=60: min_only_acc
+        )
+        result = wm._model_bias("NYC", "max", min_n_city=20, min_n_global=10)
+        assert "icon_seamless" not in result
+        wm._MODEL_BIAS_CACHE.clear()
+
+    def test_empty_when_tracker_call_fails(self, monkeypatch):
+        import weather_markets as wm
+
+        wm._MODEL_BIAS_CACHE.clear()
+
+        def _raise(days_back=60):
+            raise RuntimeError("db unavailable")
+
+        monkeypatch.setattr("tracker.get_member_bias", _raise)
+        assert wm._model_bias("NYC", "max") == {}
+        wm._MODEL_BIAS_CACHE.clear()
+
+    def test_cache_key_includes_floors(self, monkeypatch):
+        """Review-caught (2026-08-13): the cache key omitted min_n_city/
+        min_n_global, so two calls differing only in floors would collide
+        on the same cache slot -- the second call's genuinely different
+        query would silently return the first call's cached answer instead
+        of being recomputed."""
+        import weather_markets as wm
+
+        wm._MODEL_BIAS_CACHE.clear()
+        monkeypatch.setattr(
+            "tracker.get_member_bias", lambda days_back=60: self._fake_bias_acc()
+        )
+        # NYC has 25 max observations for gfs_seamless (fixture) -- clears a
+        # 20-obs city floor but not a 30-obs one, in which case it must
+        # fall back to the global bias (4.4, global n=30) instead.
+        loose = wm._model_bias("NYC", "max", min_n_city=20, min_n_global=10)
+        strict = wm._model_bias("NYC", "max", min_n_city=30, min_n_global=10)
+
+        assert loose["gfs_seamless"] == pytest.approx(6.0), (
+            "25 obs clears the 20-floor city-specific bias"
+        )
+        assert strict["gfs_seamless"] == pytest.approx(4.4), (
+            f"25 obs does NOT clear the 30-floor -- must fall back to the "
+            f"global bias (4.4), not silently reuse the first call's cached "
+            f"city-specific answer (6.0) for a different floor: {strict}"
+        )
+        wm._MODEL_BIAS_CACHE.clear()
+
+
+class TestGetEnsembleTempsBiasCorrection:
+    """Wiring test: get_ensemble_temps() must subtract each model's bias from
+    its raw members before weighting/repeating into the blend, and must
+    skip bias correction entirely for hourly fetches (hour is not None),
+    matching var's own "ignored if hour is set" semantics."""
+
+    def _patch_common(self, monkeypatch, wm, *, bias: dict):
+        # NYC is a real CITY_COORDS entry already -- no need to fake it.
+        wm._ensemble_cache.clear()
+        monkeypatch.setattr(wm, "_model_weights", lambda city, month=None: {})
+        monkeypatch.setattr(
+            wm, "_model_bias", lambda city, var, **kw: dict(bias) if var else {}
+        )
+
+    def test_bias_subtracted_from_raw_members_before_blend(self, monkeypatch):
+        from datetime import date, timedelta
+
+        import weather_markets as wm
+
+        self._patch_common(monkeypatch, wm, bias={"icon_seamless": 3.0})
+
+        def _fake_fetch(lat, lon, tz, target_date, model, hour, var):
+            return {"icon_seamless": [70.0, 72.0], "gfs_seamless": [60.0, 62.0]}.get(
+                model, []
+            )
+
+        monkeypatch.setattr(wm, "_fetch_model_ensemble", _fake_fetch)
+        monkeypatch.setattr(wm, "ENSEMBLE_MODELS", ["icon_seamless", "gfs_seamless"])
+
+        target = date.today() + timedelta(days=3)
+        temps = wm.get_ensemble_temps("NYC", target, hour=None, var="max")
+
+        # icon_seamless's raw [70, 72] must be shifted down by its 3.0 bias
+        # -> [67, 69]; gfs_seamless (no bias entry, treated as 0.0) unchanged.
+        assert 67.0 in temps and 69.0 in temps, f"icon not bias-corrected: {temps}"
+        assert 70.0 not in temps and 72.0 not in temps, (
+            f"raw uncorrected icon values leaked into the blend: {temps}"
+        )
+        assert 60.0 in temps and 62.0 in temps, (
+            f"gfs (zero bias) must be unaffected: {temps}"
+        )
+        wm._ensemble_cache.clear()
+
+    def test_hourly_fetch_skips_bias_correction(self, monkeypatch):
+        """hour is not None -> var is semantically meaningless (a daily-
+        extreme correction must not be applied to an hourly forecast)."""
+        from datetime import date, timedelta
+
+        import weather_markets as wm
+
+        self._patch_common(monkeypatch, wm, bias={"icon_seamless": 3.0})
+
+        calls = {"model_bias": 0}
+
+        def _tracking_model_bias(city, var, **kw):
+            calls["model_bias"] += 1
+            return {"icon_seamless": 3.0}
+
+        monkeypatch.setattr(wm, "_model_bias", _tracking_model_bias)
+
+        def _fake_fetch(lat, lon, tz, target_date, model, hour, var):
+            return {"icon_seamless": [70.0, 72.0]}.get(model, [])
+
+        monkeypatch.setattr(wm, "_fetch_model_ensemble", _fake_fetch)
+        monkeypatch.setattr(wm, "ENSEMBLE_MODELS", ["icon_seamless"])
+
+        target = date.today() + timedelta(days=3)
+        temps = wm.get_ensemble_temps("NYC", target, hour=14, var="max")
+
+        assert calls["model_bias"] == 0, (
+            "_model_bias must not be called at all for an hourly fetch"
+        )
+        assert 70.0 in temps and 72.0 in temps, (
+            f"hourly fetch must use raw, uncorrected temps: {temps}"
+        )
+        wm._ensemble_cache.clear()
 
 
 # ── TestBetweenFloorGate ──────────────────────────────────────────────────────

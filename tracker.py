@@ -5000,6 +5000,104 @@ def backfill_daily_temp_settlement() -> tuple[int, int]:
     return corrected, failed
 
 
+def backfill_ensemble_member_scores_var() -> tuple[int, int, int]:
+    """One-off recovery pass for ensemble_member_scores rows logged before
+    log_member_score() call sites started passing var= (see that function's
+    docstring: "must not be pooled"). Every row with var IS NULL predates
+    that change and can't be weighted or bias-corrected per max-vs-min
+    without it.
+
+    Recovers var from tracker.predictions, which already records ticker and
+    city per forecast -- joined here via (city, market_date), since
+    ensemble_member_scores itself has no ticker column. var is derived from
+    the ticker via weather_markets._var_from_ticker_prefix() (the
+    codebase-wide single source of truth for this check -- see backlog.txt
+    "VAR-CONVENTION LITERAL HAND-COPIED ACROSS 7+ FILES") rather than read
+    from predictions.var directly, since that column is independently NULL
+    for many of the same historical rows. Validated live against every
+    predictions row where var IS already populated: 0 mismatches across 67
+    checked.
+
+    A (city, market_date) pair whose predictions span more than one
+    distinct KXHIGH/KXLOW prefix (both a high and a low market traded that
+    city that day, the common case) is left unresolved rather than guessed
+    at -- ensemble_member_scores has no ticker to disambiguate against.
+    Matching actual_temp against outcomes.settled_temp_f was tried as a
+    tiebreaker and never actually resolved a real ambiguous case in this
+    data, so it isn't relied on here. A pair with zero matching predictions
+    (no coverage that far back) is also left unresolved.
+
+    Known limitation (review-caught, 2026-08-13, low severity): an hourly
+    KXTEMPxxxH ticker has no HIGH/LOW substring, so _var_from_ticker_prefix
+    returns None for it and it never contributes a candidate var here --
+    meaning a (city, market_date) with an hourly ticker and a genuine
+    KXLOW ticker (no KXHIGH) would resolve "unambiguously" to min, even if
+    the specific row being backfilled actually came from the hourly
+    market, which paper.py's own fallback treats as max by convention
+    (see its _update_station_bias_from_settlement docstring). This can't
+    be resolved from ensemble_member_scores alone -- it has no ticker of
+    its own to say which specific market a row's forecast was for. Checked
+    against live data: the one city/date combination with both an hourly
+    and a daily ticker (NYC, 2026-07-24: KXHIGHNY-26JUL24-T81 +
+    KXTEMPNYCH-26JUL2406-T65.99) has no KXLOW ticker that day, so it
+    resolves cleanly to max with no ambiguity -- this gap isn't hit by any
+    row in the current data, but a future city/date with an hourly ticker
+    alongside a KXLOW (and no KXHIGH) would silently mis-resolve.
+
+    A resolved var can also collide with idx_ems_dedup (city, model,
+    target_date, var) -- pre-existing duplicate rows that share (city,
+    model, target_date) survive today only because SQLite treats their NULL
+    var as distinct; assigning them the SAME resolved var would violate
+    that unique index. Caught per-row (not left to abort the whole
+    transaction -- a naive version of this function did exactly that on
+    real data: 18 such collisions existed live, and letting one
+    IntegrityError propagate out of the `with _conn()` block rolled back
+    every already-applied update in the same run, backfilling zero rows).
+    Left NULL and counted separately from unresolved -- these rows aren't
+    missing information, they're a genuine pre-existing data-duplication
+    issue (both rows already double-count that city/date/model in
+    get_member_accuracy()/get_member_bias() while NULL) that this backfill
+    isn't the place to silently resolve by picking one to delete.
+
+    Safe to re-run -- only ever touches rows still NULL.
+
+    Returns (updated, unresolved, duplicate_conflict).
+    """
+    from weather_markets import _var_from_ticker_prefix
+
+    init_db()
+    with _conn() as con:
+        null_rows = con.execute(
+            "SELECT id, city, target_date FROM ensemble_member_scores WHERE var IS NULL"
+        ).fetchall()
+
+        updated = 0
+        unresolved = 0
+        duplicate_conflict = 0
+        for row in null_rows:
+            tickers = con.execute(
+                "SELECT DISTINCT ticker FROM predictions WHERE city = ? AND market_date = ?",
+                (row["city"], row["target_date"]),
+            ).fetchall()
+            candidate_vars = {
+                v
+                for (ticker,) in tickers
+                if (v := _var_from_ticker_prefix(ticker.upper())) is not None
+            }
+            if len(candidate_vars) != 1:
+                unresolved += 1
+                continue
+            try:
+                con.execute(
+                    "UPDATE ensemble_member_scores SET var = ? WHERE id = ?",
+                    (candidate_vars.pop(), row["id"]),
+                )
+                updated += 1
+            except sqlite3.IntegrityError:
+                duplicate_conflict += 1
+    return updated, unresolved, duplicate_conflict
+
+
 def log_member_score(
     city: str,
     model: str,
@@ -5073,6 +5171,67 @@ def get_member_accuracy(days_back: int = 60) -> dict:
             "city_breakdown": {c: round(v, 4) for c, v in city_mae.items()},
             # R25: per-city observation counts so _weights_from_mae can gate on
             # sample size rather than number of distinct cities.
+            "city_n_breakdown": {c: len(v) for c, v in city_errs.items()},
+        }
+    return result
+
+
+def get_member_bias(days_back: int = 60) -> dict:
+    """
+    Per-model SIGNED bias (mean predicted - actual), split by var ("max"/
+    "min"), used by weather_markets._model_bias() to bias-correct raw
+    ensemble members before they enter the live blend.
+
+    Unlike get_member_accuracy()'s MAE (which is pooled across var), bias
+    must never be pooled across var -- a model's high-temp bias and
+    low-temp bias can be similarly-sized but opposite-signed, and averaging
+    them together produces a correction that's wrong for both (verified via
+    leave-one-out backtest 2026-08-13: pooled bias-correction scored worse
+    than no correction at all; var-split bias-correction was the only
+    scheme tested that beat the uncorrected blend). Rows with var IS NULL
+    (pre-backfill legacy rows -- see backfill_ensemble_member_scores_var)
+    can't be attributed to either bucket and are excluded here, not folded
+    into either one.
+
+    Returns {model: {var: {bias, n, city_breakdown: {city: bias},
+    city_n_breakdown: {city: n}}}}.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT model, city, var, predicted_temp, actual_temp
+            FROM ensemble_member_scores
+            WHERE predicted_temp IS NOT NULL
+              AND actual_temp IS NOT NULL
+              AND var IS NOT NULL
+              AND model != 'blended'
+              AND logged_at >= datetime('now', ? || ' days')
+            """,
+            (f"-{days_back}",),
+        ).fetchall()
+
+    if not rows:
+        return {}
+
+    by_model_var: dict[tuple[str, str], list[tuple[str, float, float]]] = {}
+    for r in rows:
+        by_model_var.setdefault((r["model"], r["var"]), []).append(
+            (r["city"], r["predicted_temp"], r["actual_temp"])
+        )
+
+    result: dict = {}
+    for (model, var), entries in by_model_var.items():
+        errors = [p - a for _, p, a in entries]
+        bias = sum(errors) / len(errors)
+        city_errs: dict[str, list[float]] = {}
+        for city, p, a in entries:
+            city_errs.setdefault(city, []).append(p - a)
+        city_bias = {c: sum(v) / len(v) for c, v in city_errs.items()}
+        result.setdefault(model, {})[var] = {
+            "bias": round(bias, 4),
+            "n": len(entries),
+            "city_breakdown": {c: round(v, 4) for c, v in city_bias.items()},
             "city_n_breakdown": {c: len(v) for c, v in city_errs.items()},
         }
     return result

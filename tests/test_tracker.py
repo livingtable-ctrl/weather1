@@ -2415,6 +2415,273 @@ class TestEnsembleMemberAccuracyStratified(unittest.TestCase):
         self.assertIn("count", result["model_d"])
 
 
+class TestGetMemberBias(unittest.TestCase):
+    """get_member_bias() -- signed per-model bias split by var, feeding
+    weather_markets._model_bias()'s var-split ensemble bias-correction."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_returns_empty_when_no_data(self):
+        self.assertEqual(tracker.get_member_bias(), {})
+
+    def test_signed_bias_not_absolute_error(self):
+        """A model that consistently over-predicts must show a POSITIVE
+        bias (not the MAE, which would be the same magnitude either way)."""
+        tracker.log_member_score(
+            "NYC", "gfs_seamless", 75.0, 70.0, "2026-08-01", var="max"
+        )
+        tracker.log_member_score(
+            "NYC", "gfs_seamless", 74.0, 70.0, "2026-08-02", var="max"
+        )
+        result = tracker.get_member_bias()
+        self.assertAlmostEqual(result["gfs_seamless"]["max"]["bias"], 4.5, places=2)
+        self.assertEqual(result["gfs_seamless"]["max"]["n"], 2)
+
+    def test_under_prediction_gives_negative_bias(self):
+        tracker.log_member_score(
+            "NYC", "gem_global", 65.0, 70.0, "2026-08-01", var="min"
+        )
+        result = tracker.get_member_bias()
+        self.assertAlmostEqual(result["gem_global"]["min"]["bias"], -5.0, places=2)
+
+    def test_max_and_min_never_pooled(self):
+        """Same model, opposite-signed error on each var -- each bucket must
+        keep its own independent bias, not average together."""
+        tracker.log_member_score(
+            "NYC", "icon_seamless", 80.0, 75.0, "2026-08-01", var="max"
+        )  # +5
+        tracker.log_member_score(
+            "NYC", "icon_seamless", 65.0, 70.0, "2026-08-01", var="min"
+        )  # -5
+        result = tracker.get_member_bias()
+        self.assertAlmostEqual(result["icon_seamless"]["max"]["bias"], 5.0, places=2)
+        self.assertAlmostEqual(result["icon_seamless"]["min"]["bias"], -5.0, places=2)
+
+    def test_null_var_rows_excluded(self):
+        """A row logged without var= (legacy, pre-backfill) must not be
+        attributed to either bucket."""
+        tracker.log_member_score("NYC", "gfs_seamless", 75.0, 70.0, "2026-08-01")
+        result = tracker.get_member_bias()
+        self.assertEqual(result, {})
+
+    def test_city_breakdown(self):
+        tracker.log_member_score(
+            "NYC", "gfs_seamless", 76.0, 70.0, "2026-08-01", var="max"
+        )  # +6
+        tracker.log_member_score(
+            "Chicago", "gfs_seamless", 72.0, 70.0, "2026-08-01", var="max"
+        )  # +2
+        result = tracker.get_member_bias()
+        city_bd = result["gfs_seamless"]["max"]["city_breakdown"]
+        self.assertAlmostEqual(city_bd["NYC"], 6.0, places=2)
+        self.assertAlmostEqual(city_bd["Chicago"], 2.0, places=2)
+        self.assertEqual(result["gfs_seamless"]["max"]["city_n_breakdown"]["NYC"], 1)
+
+    def test_days_back_filters_old_rows(self):
+        """A row older than days_back must be excluded, same convention as
+        get_member_accuracy()."""
+        with tracker._conn() as con:
+            con.execute(
+                """INSERT INTO ensemble_member_scores
+                   (city, model, predicted_temp, actual_temp, target_date, var, logged_at)
+                   VALUES (?, ?, ?, ?, ?, ?, datetime('now', '-90 days'))""",
+                ("NYC", "gfs_seamless", 90.0, 70.0, "2026-05-01", "max"),
+            )
+        tracker.log_member_score(
+            "NYC", "gfs_seamless", 76.0, 70.0, "2026-08-01", var="max"
+        )
+        result = tracker.get_member_bias(days_back=60)
+        # Only the recent +6 row should count -- if the -90-day row leaked
+        # in, bias would be far from 6.0.
+        self.assertAlmostEqual(result["gfs_seamless"]["max"]["bias"], 6.0, places=2)
+        self.assertEqual(result["gfs_seamless"]["max"]["n"], 1)
+
+
+class TestBackfillEnsembleMemberScoresVar(unittest.TestCase):
+    """backfill_ensemble_member_scores_var() -- recovers var for legacy
+    ensemble_member_scores rows logged before log_member_score() call sites
+    passed var=, using tracker.predictions' own KXHIGH/KXLOW ticker prefix."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _add_prediction(self, ticker, city, market_date):
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO predictions (ticker, city, market_date, predicted_at) "
+                "VALUES (?, ?, ?, datetime('now'))",
+                (ticker, city, market_date),
+            )
+
+    def _add_null_var_score(self, city, model, predicted, actual, target_date):
+        with tracker._conn() as con:
+            con.execute(
+                """INSERT INTO ensemble_member_scores
+                   (city, model, predicted_temp, actual_temp, target_date, var, logged_at)
+                   VALUES (?, ?, ?, ?, ?, NULL, datetime('now'))""",
+                (city, model, predicted, actual, target_date),
+            )
+
+    def _var_for(self, row_id):
+        with tracker._conn() as con:
+            return con.execute(
+                "SELECT var FROM ensemble_member_scores WHERE id = ?", (row_id,)
+            ).fetchone()["var"]
+
+    def test_unambiguous_high_ticker_backfills_max(self):
+        self._add_prediction("KXHIGHNY-26AUG01-T80", "NYC", "2026-08-01")
+        self._add_null_var_score("NYC", "gfs_seamless", 82.0, 80.0, "2026-08-01")
+
+        result = tracker.backfill_ensemble_member_scores_var()
+
+        self.assertEqual(result, (1, 0, 0))
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT var FROM ensemble_member_scores WHERE city = 'NYC'"
+            ).fetchone()
+        self.assertEqual(row["var"], "max")
+
+    def test_unambiguous_low_ticker_backfills_min(self):
+        self._add_prediction("KXLOWTNY-26AUG01-T60", "NYC", "2026-08-01")
+        self._add_null_var_score("NYC", "gfs_seamless", 58.0, 60.0, "2026-08-01")
+
+        result = tracker.backfill_ensemble_member_scores_var()
+
+        self.assertEqual(result, (1, 0, 0))
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT var FROM ensemble_member_scores WHERE city = 'NYC'"
+            ).fetchone()
+        self.assertEqual(row["var"], "min")
+
+    def test_ambiguous_city_date_left_unresolved(self):
+        """Both a high and a low market traded that city/date -- no ticker
+        on the ensemble_member_scores row to disambiguate against, so this
+        must be left NULL rather than guessed."""
+        self._add_prediction("KXHIGHNY-26AUG01-T80", "NYC", "2026-08-01")
+        self._add_prediction("KXLOWTNY-26AUG01-T60", "NYC", "2026-08-01")
+        self._add_null_var_score("NYC", "gfs_seamless", 82.0, 80.0, "2026-08-01")
+
+        result = tracker.backfill_ensemble_member_scores_var()
+
+        self.assertEqual(result, (0, 1, 0))
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT var FROM ensemble_member_scores WHERE city = 'NYC'"
+            ).fetchone()
+        self.assertIsNone(row["var"])
+
+    def test_no_matching_prediction_left_unresolved(self):
+        self._add_null_var_score("NYC", "gfs_seamless", 82.0, 80.0, "2026-08-01")
+
+        result = tracker.backfill_ensemble_member_scores_var()
+
+        self.assertEqual(result, (0, 1, 0))
+
+    def test_already_populated_rows_untouched_and_not_recounted(self):
+        self._add_prediction("KXHIGHNY-26AUG01-T80", "NYC", "2026-08-01")
+        tracker.log_member_score(
+            "NYC", "icon_seamless", 81.0, 80.0, "2026-08-01", var="min"
+        )  # already has var -- deliberately the "wrong" one, must be untouched
+
+        result = tracker.backfill_ensemble_member_scores_var()
+
+        self.assertEqual(result, (0, 0, 0))
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT var FROM ensemble_member_scores WHERE model = 'icon_seamless'"
+            ).fetchone()
+        self.assertEqual(row["var"], "min")
+
+    def test_idempotent_rerun(self):
+        self._add_prediction("KXHIGHNY-26AUG01-T80", "NYC", "2026-08-01")
+        self._add_null_var_score("NYC", "gfs_seamless", 82.0, 80.0, "2026-08-01")
+
+        first = tracker.backfill_ensemble_member_scores_var()
+        second = tracker.backfill_ensemble_member_scores_var()
+
+        self.assertEqual(first, (1, 0, 0))
+        self.assertEqual(second, (0, 0, 0))
+
+    def test_non_high_low_ticker_left_unresolved(self):
+        """A rain/precip market at that city/date has neither prefix -- must
+        not be misread as either var."""
+        self._add_prediction("KXRAINNYCM-26AUG-5", "NYC", "2026-08-01")
+        self._add_null_var_score("NYC", "gfs_seamless", 82.0, 80.0, "2026-08-01")
+
+        result = tracker.backfill_ensemble_member_scores_var()
+
+        self.assertEqual(result, (0, 1, 0))
+
+    def test_duplicate_null_rows_dont_abort_the_whole_batch(self):
+        """Real-data regression (found by review 2026-08-13): two pre-
+        existing rows sharing (city, model, target_date) both currently
+        survive as var=NULL only because SQLite's idx_ems_dedup unique
+        index treats NULL as distinct. Resolving both to the SAME var
+        collides on that index. A naive version let the resulting
+        IntegrityError propagate out of the `with _conn()` block, which
+        rolled back EVERY already-applied update in the same run --
+        backfilling zero rows total, not just skipping the colliding pair.
+        This must instead: (a) apply the OTHER, unrelated row's update, and
+        (b) leave exactly one of the colliding pair NULL and counted as
+        duplicate_conflict, not crash and not silently drop unrelated work."""
+        self._add_prediction("KXHIGHNY-26AUG01-T80", "NYC", "2026-08-01")
+        self._add_null_var_score("NYC", "gfs_seamless", 82.0, 80.0, "2026-08-01")
+        row1_id = self._id_of("NYC", "gfs_seamless", "2026-08-01")
+        # A second, pre-existing duplicate row for the identical
+        # (city, model, target_date) -- both NULL today, both would resolve
+        # to "max", which collides once the first one is written.
+        self._add_null_var_score("NYC", "gfs_seamless", 83.0, 80.0, "2026-08-01")
+
+        # An unrelated row elsewhere that must still get backfilled even
+        # though the NYC pair above collides.
+        self._add_prediction("KXHIGHCHI-26AUG01-T75", "Chicago", "2026-08-01")
+        self._add_null_var_score("Chicago", "gfs_seamless", 76.0, 75.0, "2026-08-01")
+
+        updated, unresolved, duplicate_conflict = (
+            tracker.backfill_ensemble_member_scores_var()
+        )
+
+        self.assertEqual(unresolved, 0)
+        self.assertEqual(duplicate_conflict, 1, "exactly one of the colliding pair")
+        self.assertEqual(updated, 2, "the first NYC row AND the unrelated Chicago row")
+
+        with tracker._conn() as con:
+            chi_var = con.execute(
+                "SELECT var FROM ensemble_member_scores WHERE city = 'Chicago'"
+            ).fetchone()["var"]
+        self.assertEqual(chi_var, "max", "unrelated row must not be collateral damage")
+        self.assertEqual(self._var_for(row1_id), "max")
+
+    def _id_of(self, city, model, target_date):
+        with tracker._conn() as con:
+            return con.execute(
+                "SELECT id FROM ensemble_member_scores "
+                "WHERE city = ? AND model = ? AND target_date = ? "
+                "ORDER BY id LIMIT 1",
+                (city, model, target_date),
+            ).fetchone()["id"]
+
+
 class TestCalibrationByCityConditionTypeGrpB(unittest.TestCase):
     """#56 - get_calibration_by_city() must accept condition_type filter."""
 

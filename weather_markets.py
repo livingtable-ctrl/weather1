@@ -2059,6 +2059,7 @@ def batch_prewarm_ensemble(
                 # cycle.
                 all_temps: list[float] = []
                 _cycle_ttl = _ttl_until_next_cycle()
+                bias = _model_bias(city_name, var_str)
                 for model in fetch_models:
                     member_temps = raw_by_model[model].get(
                         (city_name, date_iso, var_str), []
@@ -2067,7 +2068,10 @@ def batch_prewarm_ensemble(
                         continue
                     # H-14: write per-model entry for _get_consensus_probs /
                     # _get_gem_ukmo_means — for every fetched model, blend or
-                    # tracking-only, so both consumers hit warm cache.
+                    # tracking-only, so both consumers hit warm cache. Written
+                    # BEFORE bias correction below: those consumers (accuracy
+                    # scoring, consensus-gap comparisons) need the model's raw
+                    # forecast, not a self-referentially-corrected one.
                     _model_key = (model, city_name, date_iso, var_str, None)
                     _ensemble_cache.set_with_ttl(_model_key, member_temps, _cycle_ttl)
                     _save_ensemble_disk_entry(_model_key, member_temps, _cycle_ttl)
@@ -2075,10 +2079,16 @@ def batch_prewarm_ensemble(
                         # Tracking-only: cached above for accuracy scoring,
                         # must NOT enter the live trading blend below.
                         continue
+                    model_bias = bias.get(model, 0.0)
+                    blend_temps = (
+                        [t - model_bias for t in member_temps]
+                        if model_bias
+                        else member_temps
+                    )
                     base_w = weights.get(model, 1.0)
                     w = 1.0 + (base_w - 1.0) * 1.0  # decay=1.0 for fresh data
                     repeats = max(1, round(w * 2))
-                    all_temps.extend(member_temps * repeats)
+                    all_temps.extend(blend_temps * repeats)
                 if all_temps:
                     _ensemble_cache.set_with_ttl(cache_key, all_temps, _cycle_ttl)
                     _save_ensemble_disk_entry(cache_key, all_temps, _cycle_ttl)
@@ -3278,6 +3288,76 @@ def _weights_from_mae(
     return normalised
 
 
+# (city, var, days_back) -> per-model signed bias. Same TTL rationale as
+# _MAE_WEIGHTS_CACHE (per-model bias drifts as new trades settle).
+_MODEL_BIAS_CACHE: ForecastCache[dict[str, float]] = ForecastCache(
+    ttl_secs=_MODEL_CACHE_TTL
+)
+
+
+def _model_bias(
+    city: str,
+    var: str,
+    days_back: int = 60,
+    min_n_city: int = 20,
+    min_n_global: int = 10,
+) -> dict[str, float]:
+    """
+    Return per-model additive bias correction for var ("max"/"min") ensemble
+    members, to be SUBTRACTED from each model's raw member temps before they
+    enter the live blend (see get_ensemble_temps/batch_prewarm_ensemble).
+
+    Prefers city-specific bias for this var if the city has >= min_n_city
+    var-specific observations; else falls back to the global (all-cities)
+    bias for this var if it has >= min_n_global observations; else 0.0 (no
+    correction) for that model.
+
+    Deliberately does NOT fall back further to a pooled-across-var bias --
+    verified via leave-one-out backtest (2026-08-13) that pooling max/min
+    bias together produces a WORSE correction than no correction at all (a
+    model's high-temp and low-temp bias can point opposite directions and
+    cancel into the wrong number). "No correction" is the safe floor, not
+    "correct anyway with worse data."
+
+    Models with no bias data at all for this var are simply absent from the
+    returned dict -- callers should treat a missing key as 0.0, matching
+    _weights_from_mae's `weights.get(model, 1.0)` fallback convention.
+    """
+    # Both floors are part of the cache key, not just (city, var, days_back)
+    # -- a call with different floors is a genuinely different query, not a
+    # cache hit for the same one (review-caught, 2026-08-13: both current
+    # production call sites use the defaults, so this was latent today, but
+    # any future caller passing custom floors would have silently gotten
+    # back whichever floors happened to warm the cache first).
+    cache_key = (city, var, days_back, min_n_city, min_n_global)
+    cached = _MODEL_BIAS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        from tracker import get_member_bias
+
+        acc = get_member_bias(days_back=days_back)
+    except Exception:
+        return {}
+
+    bias: dict[str, float] = {}
+    for model, by_var in acc.items():
+        stats = by_var.get(var)
+        if not stats:
+            continue
+        city_bias = stats["city_breakdown"].get(city)
+        city_n = stats["city_n_breakdown"].get(city, 0)
+        if city_bias is not None and city_n >= min_n_city:
+            bias[model] = city_bias
+        elif stats["n"] >= min_n_global:
+            bias[model] = stats["bias"]
+        # else: leave model out entirely -> callers treat as 0.0 (no correction)
+
+    _MODEL_BIAS_CACHE.set(cache_key, bias)
+    return bias
+
+
 def _dynamic_model_weights(
     city: str | None = None, month: int | None = None, min_samples: int = 5
 ) -> dict[str, float] | None:
@@ -3583,6 +3663,11 @@ def get_ensemble_temps(
     lat, lon, tz = coords
 
     weights = _model_weights(city, month=target_date.month)
+    # var is only a genuine daily-high/-low label when hour is None (see
+    # docstring: "ignored if hour is set") -- an hourly market's bias
+    # behavior isn't the same thing as its daily-extreme bias, so don't
+    # apply a daily-max/min correction to an hourly fetch.
+    bias = _model_bias(city, var) if hour is None else {}
 
     # We only reach here when building fresh data (stale cache was discarded above,
     # or no cache existed). Always use full model weights for a fresh fetch.
@@ -3593,6 +3678,9 @@ def get_ensemble_temps(
     for model in ensemble_models_with_ecmwf:
         try:
             temps = _fetch_model_ensemble(lat, lon, tz, target_date, model, hour, var)
+            model_bias = bias.get(model, 0.0)
+            if model_bias:
+                temps = [t - model_bias for t in temps]
             base_w = weights.get(model, 1.0)
             # Decay towards equal weighting (1.0) as cache ages
             w = 1.0 + (base_w - 1.0) * decay

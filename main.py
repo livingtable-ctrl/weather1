@@ -6318,6 +6318,40 @@ def cmd_backfill_daily_temp_settlement() -> None:
         raise
 
 
+def cmd_backfill_ensemble_var() -> None:
+    """One-off recovery for ensemble_member_scores rows logged before
+    log_member_score() call sites started passing var= ("max"/"min").
+    Without var, a model's per-model accuracy tracking pools daily-high and
+    daily-low forecast error together, which get_member_bias()'s var-split
+    bias-correction (feeding get_ensemble_temps/batch_prewarm_ensemble)
+    needs kept apart. Recovers var from tracker.predictions' own
+    KXHIGH/KXLOW ticker prefix, joined via (city, market_date). Safe to
+    re-run — only ever touches rows still NULL."""
+    from tracker import backfill_ensemble_member_scores_var
+
+    print("Backfilling ensemble_member_scores.var from predictions' ticker prefix…")
+    updated, unresolved, duplicate_conflict = backfill_ensemble_member_scores_var()
+    print(f"\nDone — {updated} row(s) backfilled.")
+    if unresolved:
+        print(
+            yellow(
+                f"  {unresolved} row(s) left NULL — no matching predictions row, "
+                "or the city/date had both a high and low market and couldn't "
+                "be disambiguated."
+            )
+        )
+    if duplicate_conflict:
+        print(
+            yellow(
+                f"  {duplicate_conflict} row(s) left NULL — resolved a var, but "
+                "another row already occupies that (city, model, date, var) slot. "
+                "These are pre-existing duplicate rows (predating idx_ems_dedup) "
+                "that already double-count that city/date/model while NULL; "
+                "not something this backfill resolves automatically."
+            )
+        )
+
+
 # ── Interactive menu ──────────────────────────────────────────────────────────
 
 
@@ -9117,6 +9151,8 @@ def main():
         "backfill_daily_temp_settlement",
     ):
         cmd_backfill_daily_temp_settlement()
+    elif cmd in ("backfill-ensemble-var", "backfill_ensemble_var"):
+        cmd_backfill_ensemble_var()
     elif cmd in ("settings", "config-settings"):
         cmd_settings(client)
     elif cmd == "onboard":
