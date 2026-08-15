@@ -533,10 +533,26 @@ def isolate_paper_data(tmp_path, monkeypatch):
     Tests that need a specific paper state (mock_balance_1000, cron_env) apply
     their own monkeypatches on top of this one; the last setattr wins for the
     duration of that test and everything is restored together at teardown.
+
+    Also redirects _LOSS_OVERRIDE_PATH and _ACCURACY_HALT_OVERRIDE_PATH --
+    both are module-level constants computed once from DATA_PATH at paper.py
+    IMPORT time, so patching DATA_PATH alone (above) does NOT reach them; any
+    test that calls is_daily_loss_halted()/is_accuracy_halted() (or writes an
+    override via reset_daily_loss_limit()/override_accuracy_halt()) without
+    this would read/write the real data/*_override.json files. Found via
+    opus review of the accuracy-halt-override feature (2026-08-14) -- fixed
+    here rather than locally in that one test class since the same gap
+    equally affects every other test touching either check function.
     """
     import paper
 
     monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    monkeypatch.setattr(
+        paper, "_LOSS_OVERRIDE_PATH", tmp_path / "loss_limit_override.json"
+    )
+    monkeypatch.setattr(
+        paper, "_ACCURACY_HALT_OVERRIDE_PATH", tmp_path / "accuracy_halt_override.json"
+    )
 
 
 @pytest.fixture

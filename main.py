@@ -3284,7 +3284,39 @@ def cmd_override(action: str, duration_minutes: int = 60) -> None:
     print(dim("  Usage: py main.py override pause [minutes]  |  unpause  |  status"))
 
 
-def cmd_admin(action: str, reason: str = "manual admin override") -> None:
+def _parse_accuracy_override_args(args: list) -> tuple[str, int]:
+    """Parse `py main.py admin accuracy-override [minutes] ["reason"]`'s
+    trailing args (the full CLI args list, so this reads args[2:] onward --
+    everything after the action word) into (reason, minutes).
+
+    minutes is optional and positional-first, matching `override
+    pause [minutes]`'s existing convention -- if args[2] isn't a whole
+    number, treat it (and everything after) as the reason instead and fall
+    back to the default 60-minute duration, so the common no-minutes case
+    (`admin accuracy-override "some reason"`) doesn't error out.
+
+    Extracted as a standalone function (rather than inline in the CLI
+    dispatcher) so this parsing logic is unit-testable on its own.
+    """
+    mins = 60
+    reason_start = 2
+    if len(args) > 2:
+        try:
+            mins = int(args[2])
+            reason_start = 3
+        except ValueError:
+            reason_start = 2
+    reason = (
+        " ".join(args[reason_start:])
+        if len(args) > reason_start
+        else "manual admin override"
+    )
+    return reason, mins
+
+
+def cmd_admin(
+    action: str, reason: str = "manual admin override", minutes: int = 60
+) -> None:
     """
     Admin commands for paper trading system.
 
@@ -3295,6 +3327,16 @@ def cmd_admin(action: str, reason: str = "manual admin override") -> None:
                     Use after a rough patch where the original peak is blocking
                     the model from gathering new data. Preserves all trade
                     history, predictions, and Brier data.
+      accuracy-override [minutes] ["reason"] — waive the accuracy circuit
+                    breaker (rolling win-rate + SPRT checks) for `minutes`
+                    minutes (default 60). Use only after actually
+                    investigating why it tripped and concluding the cause is
+                    already understood/fixed — not as a routine way to push
+                    trading through a real losing streak, which is exactly
+                    what this gate exists to stop.
+      accuracy-clear — remove an active accuracy-halt override early.
+      accuracy-status — show whether an accuracy-halt override is active and
+                    when it expires.
     """
     if action == "reset-loss":
         from paper import reset_daily_loss_limit
@@ -3307,6 +3349,110 @@ def cmd_admin(action: str, reason: str = "manual admin override") -> None:
                 "  The override expires automatically at midnight UTC."
             )
         )
+        return
+
+    if action == "accuracy-override":
+        from paper import (
+            get_accuracy_halt_override_status,
+            get_accuracy_halt_reason,
+            is_accuracy_halted,
+            override_accuracy_halt,
+        )
+
+        if minutes <= 0:
+            print(red(f"  minutes must be positive, got {minutes}"))
+            return
+
+        current_reason = get_accuracy_halt_reason() if is_accuracy_halted() else ""
+        if current_reason:
+            print(yellow(f"  Current halt reason: {current_reason}"))
+        existing = get_accuracy_halt_override_status()
+        if existing["active"]:
+            _remaining = max(0, (existing["expires_at"] - time.time()) / 60)
+            print(
+                yellow(
+                    f"  An override is ALREADY active ({_remaining:.0f} min "
+                    f"remaining, reason: {existing['reason']!r}). This will "
+                    f"replace it with a fresh {minutes}-minute window."
+                )
+            )
+        print(
+            yellow(
+                f"  This will bypass the accuracy circuit breaker for {minutes} "
+                f"minute(s), regardless of win rate or SPRT status during that "
+                f"window — this ALSO lifts the live-order accuracy gate "
+                f"(trading_gates.LiveTradingGate), not just paper cron "
+                f"placement. Only do this if you've already investigated why "
+                f"it tripped. Type 'yes' to confirm: "
+            ),
+            end="",
+            flush=True,
+        )
+        try:
+            answer = input().strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            print(dim("  Cancelled."))
+            return
+        if answer != "yes":
+            print(dim("  Cancelled."))
+            return
+        try:
+            expires_at = override_accuracy_halt(reason=reason, minutes=minutes)
+        except Exception as exc:
+            print(red(f"  Override FAILED — the halt is still active: {exc}"))
+            return
+        expires_str = datetime.fromtimestamp(expires_at, UTC).strftime(
+            "%Y-%m-%d %H:%M:%S UTC"
+        )
+        print(
+            green(
+                f"  Accuracy circuit breaker overridden for {minutes} minute(s) "
+                f"(until {expires_str}).\n"
+                f"  Run cron now — trade placement will proceed despite the halt.\n"
+                f"  Also lifts the live-order accuracy gate for the same window.\n"
+                f"  Clear early with: py main.py admin accuracy-clear"
+            )
+        )
+        return
+
+    if action == "accuracy-clear":
+        from paper import clear_accuracy_halt_override
+
+        was_active = clear_accuracy_halt_override()
+        if was_active:
+            print(green("  Accuracy halt override cleared."))
+        else:
+            print(dim("  No accuracy halt override was active."))
+        return
+
+    if action == "accuracy-status":
+        from paper import get_accuracy_halt_override_status, is_accuracy_halted
+
+        status = get_accuracy_halt_override_status()
+        if status["active"]:
+            expires_str = datetime.fromtimestamp(status["expires_at"], UTC).strftime(
+                "%Y-%m-%d %H:%M:%S UTC"
+            )
+            remaining_min = max(0, (status["expires_at"] - time.time()) / 60)
+            print(
+                green(
+                    f"  Override ACTIVE — expires {expires_str} ({remaining_min:.0f} min remaining)"
+                )
+            )
+            print(dim(f"  Reason: {status['reason']}"))
+        else:
+            print(dim("  No accuracy halt override is active."))
+        if is_accuracy_halted():
+            from paper import get_accuracy_halt_reason
+
+            print(
+                yellow(
+                    f"  Underlying halt is currently active: {get_accuracy_halt_reason()}"
+                )
+            )
+        else:
+            print(dim("  Underlying accuracy check is currently passing (not halted)."))
         return
 
     if action == "reset-peak":
@@ -3386,7 +3532,12 @@ def cmd_admin(action: str, reason: str = "manual admin override") -> None:
         return
 
     print(red(f"  Unknown admin action: {action!r}"))
-    print(dim("  Usage: py main.py admin reset-loss | reset-peak | sameday-stats"))
+    print(
+        dim(
+            "  Usage: py main.py admin reset-loss | reset-peak | sameday-stats | "
+            "accuracy-override [minutes] [reason] | accuracy-clear | accuracy-status"
+        )
+    )
 
 
 def cmd_watch(
@@ -9096,8 +9247,12 @@ def main():
         cmd_override(action, mins)
     elif cmd == "admin":
         action = args[1] if len(args) > 1 else ""
-        reason = " ".join(args[2:]) if len(args) > 2 else "manual admin override"
-        cmd_admin(action, reason)
+        if action == "accuracy-override":
+            reason, mins = _parse_accuracy_override_args(args)
+            cmd_admin(action, reason, mins)
+        else:
+            reason = " ".join(args[2:]) if len(args) > 2 else "manual admin override"
+            cmd_admin(action, reason)
     elif cmd == "replay":
         trade_id = args[1] if len(args) > 1 else ""
         if not trade_id:

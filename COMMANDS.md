@@ -112,6 +112,11 @@ All commands: `py main.py <command> [args]`
 | `admin reset-loss "reason"` | Same with a reason string logged |
 | `admin reset-peak` | Reset peak balance high-water mark to current balance |
 | `admin sameday-stats` | Show same-day position/spend stats (run at 150 settled same-day trades before activating reserve slots) |
+| `admin accuracy-override` | Bypass the accuracy circuit breaker (rolling win-rate + SPRT checks) for 60 min — asks for confirmation. Only after investigating why it tripped, not as a routine way to push through a real losing streak |
+| `admin accuracy-override 30` | Same, but for 30 minutes |
+| `admin accuracy-override 30 "reason"` | Same, with a reason string logged |
+| `admin accuracy-clear` | Clear an active accuracy-halt override early |
+| `admin accuracy-status` | Show whether an override is active (and expiry) plus the underlying halt state |
 | `retire-strategies` | Retire underperforming strategies (dry run — shows what would be retired) |
 | `retire-strategies --run` | Actually retire them |
 | `unretire-strategy <method>` | Re-enable a retired strategy with a 72h pin |
@@ -150,6 +155,18 @@ py main.py paper reset
 py main.py override pause [minutes]   # default 60 min
 py main.py override unpause
 py main.py override status
+```
+Note: `override` pauses trading manually — it's unrelated to `admin accuracy-override`
+below, which bypasses the automatic accuracy circuit breaker specifically.
+
+**`admin accuracy-override` subcommands:**
+```
+py main.py admin accuracy-override               # 60 min, asks to confirm
+py main.py admin accuracy-override 30             # 30 min
+py main.py admin accuracy-override 30 "reason"    # 30 min, reason logged
+py main.py admin accuracy-override "reason"       # 60 min (no minutes given), reason logged
+py main.py admin accuracy-clear                   # clear an active override early
+py main.py admin accuracy-status                  # show override + underlying halt state
 ```
 
 **`backtest` flags:**

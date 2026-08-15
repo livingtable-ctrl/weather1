@@ -360,6 +360,241 @@ class TestAccuracyCircuitBreaker:
         assert paper.is_accuracy_halted() is True
 
 
+class TestAccuracyHaltOverride:
+    """override_accuracy_halt()/clear_accuracy_halt_override()/
+    get_accuracy_halt_override_status(), and is_accuracy_halted()'s override
+    check. _ACCURACY_HALT_OVERRIDE_PATH is a module-level constant computed
+    once from DATA_PATH at import time (same pattern as the pre-existing
+    _LOSS_OVERRIDE_PATH) -- isolated globally by conftest.py's
+    isolate_paper_data autouse fixture (extended to cover both override path
+    constants, not just DATA_PATH, after an opus review flagged this class's
+    original local-only fixture as too narrow: every OTHER test touching
+    is_accuracy_halted()/is_daily_loss_halted() had the same latent gap)."""
+
+    def test_override_bypasses_a_real_win_rate_halt(self, monkeypatch):
+        """The whole point of the feature: an active override must make
+        is_accuracy_halted() return False even though the underlying win
+        rate is genuinely below threshold."""
+        import paper
+
+        monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.20, 20))
+        assert paper.is_accuracy_halted() is True  # sanity: halted without override
+
+        paper.override_accuracy_halt(reason="test", minutes=30)
+        assert paper.is_accuracy_halted() is False
+
+    def test_override_bypasses_an_sprt_halt_too(self, monkeypatch):
+        """The override covers BOTH checks is_accuracy_halted() makes, not
+        just the rolling win-rate one -- SPRT degradation must also be
+        skipped while an override is active."""
+        import paper
+
+        # Pin the thresholds explicitly rather than relying on utils.py's
+        # current defaults (both are os.getenv-overridable) -- an .env with
+        # a higher ACCURACY_MIN_WIN_RATE or ACCURACY_MIN_SAMPLE could
+        # otherwise make win_rate=0.55/count=20 fail to clear the win-rate
+        # branch, and this test would then "pass" without ever reaching the
+        # SPRT check it's actually named for.
+        monkeypatch.setattr("utils.ACCURACY_MIN_WIN_RATE", 0.40)
+        monkeypatch.setattr("utils.ACCURACY_MIN_SAMPLE", 20)
+        monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.55, 20))
+
+        def _degraded():
+            return {"status": "degraded", "llr": -5.0, "n": 20}
+
+        monkeypatch.setattr("tracker.sprt_model_health", _degraded)
+        assert paper.is_accuracy_halted() is True  # sanity: SPRT halts without override
+
+        paper.override_accuracy_halt(reason="test", minutes=30)
+        assert paper.is_accuracy_halted() is False
+
+    def test_expired_override_no_longer_applies(self, monkeypatch):
+        """An override with expires_at in the past must NOT bypass the real
+        check -- this is the whole safety property of the feature being
+        time-boxed rather than a permanent kill switch."""
+        import paper
+
+        monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.20, 20))
+        paper._ACCURACY_HALT_OVERRIDE_PATH.write_text(
+            json.dumps(
+                {
+                    "expires_at": time.time() - 60,
+                    "reason": "already expired",
+                    "minutes": 1,
+                }
+            )
+        )
+        assert paper.is_accuracy_halted() is True
+
+    def test_corrupt_override_file_falls_through_to_real_check_not_open(
+        self, monkeypatch
+    ):
+        """An unreadable/corrupt override file must fail through to the real
+        (fail-closed) check, matching is_daily_loss_halted()'s established
+        philosophy -- a broken flag file must never silently disable a
+        safety gate."""
+        import paper
+
+        monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.20, 20))
+        paper._ACCURACY_HALT_OVERRIDE_PATH.write_text("{not valid json")
+        assert paper.is_accuracy_halted() is True
+
+    def test_clear_accuracy_halt_override_removes_an_active_one(self, monkeypatch):
+        import paper
+
+        monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.20, 20))
+        paper.override_accuracy_halt(reason="test", minutes=30)
+        assert paper.is_accuracy_halted() is False
+
+        cleared = paper.clear_accuracy_halt_override()
+        assert cleared is True
+        assert paper.is_accuracy_halted() is True  # real halt re-applies immediately
+
+    def test_clear_accuracy_halt_override_is_a_safe_no_op_when_nothing_active(self):
+        import paper
+
+        assert paper.clear_accuracy_halt_override() is False
+
+    def test_status_reports_active_override_with_reason_and_expiry(self):
+        import paper
+
+        expires_at = paper.override_accuracy_halt(
+            reason="known ensemble bug, fixed", minutes=45
+        )
+        status = paper.get_accuracy_halt_override_status()
+        assert status["active"] is True
+        assert status["reason"] == "known ensemble bug, fixed"
+        assert status["expires_at"] == pytest.approx(expires_at)
+        assert status["minutes"] == 45
+
+    def test_status_reports_inactive_when_nothing_set(self):
+        import paper
+
+        status = paper.get_accuracy_halt_override_status()
+        assert status == {
+            "active": False,
+            "expires_at": None,
+            "reason": None,
+            "minutes": None,
+        }
+
+    def test_status_reports_inactive_for_an_expired_override(self):
+        import paper
+
+        paper._ACCURACY_HALT_OVERRIDE_PATH.write_text(
+            json.dumps({"expires_at": time.time() - 1, "reason": "old", "minutes": 5})
+        )
+        status = paper.get_accuracy_halt_override_status()
+        assert status["active"] is False
+
+    def test_zero_minutes_rejected(self):
+        """minutes=0 would produce an already-expired override that reports
+        success while never actually taking effect -- reject it outright
+        rather than silently no-op, matching web_app.py's api_override_set
+        fix for the identical bug class."""
+        import paper
+
+        with pytest.raises(ValueError):
+            paper.override_accuracy_halt(reason="test", minutes=0)
+        assert paper.get_accuracy_halt_override_status()["active"] is False
+
+    def test_negative_minutes_rejected(self):
+        import paper
+
+        with pytest.raises(ValueError):
+            paper.override_accuracy_halt(reason="test", minutes=-30)
+        assert paper.get_accuracy_halt_override_status()["active"] is False
+
+    def test_excessive_minutes_silently_capped_at_24h(self):
+        """An unbounded duration bypasses a safety gate with no real limit --
+        capped at 24h rather than rejected, matching api_override_set's own
+        sanity cap for the analogous manual-pause override."""
+        import paper
+
+        expires_at = paper.override_accuracy_halt(reason="test", minutes=999999)
+        status = paper.get_accuracy_halt_override_status()
+        assert status["minutes"] == 24 * 60
+        assert expires_at == pytest.approx(time.time() + 24 * 60 * 60, abs=5)
+
+    def test_override_does_not_affect_other_independent_halts(self, monkeypatch):
+        """An accuracy-halt override must not accidentally widen into a
+        general bypass -- is_daily_loss_halted() and is_paused_drawdown()
+        read entirely separate state and must be untouched."""
+        import paper
+
+        monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.20, 20))
+        monkeypatch.setattr(paper, "get_balance", lambda: 500.0)
+        monkeypatch.setattr(paper, "get_daily_pnl", lambda client=None: -1000.0)
+        # Deliberately not mocking is_paused_drawdown/is_streak_paused --
+        # asserting on the two guards this file directly owns (loss limit)
+        # is the meaningful, self-contained check without pulling in
+        # tracker-dependent drawdown state this test isn't about.
+
+        paper.override_accuracy_halt(reason="test", minutes=30)
+        assert paper.is_accuracy_halted() is False  # the thing we overrode
+        assert paper.is_daily_loss_halted() is True  # untouched, still real
+
+
+class TestParseAccuracyOverrideArgs:
+    """main._parse_accuracy_override_args() -- the CLI arg-parsing branch
+    for `admin accuracy-override [minutes] ["reason"]`. Extracted to a
+    standalone function specifically so this branch (untested before an
+    opus review flagged it -- the only place `minutes` is derived from raw
+    user input) could be unit-tested without invoking the full CLI
+    dispatcher."""
+
+    def test_no_args_uses_defaults(self):
+        import main
+
+        reason, mins = main._parse_accuracy_override_args(
+            ["admin", "accuracy-override"]
+        )
+        assert reason == "manual admin override"
+        assert mins == 60
+
+    def test_minutes_only(self):
+        import main
+
+        reason, mins = main._parse_accuracy_override_args(
+            ["admin", "accuracy-override", "30"]
+        )
+        assert reason == "manual admin override"
+        assert mins == 30
+
+    def test_minutes_and_reason(self):
+        import main
+
+        reason, mins = main._parse_accuracy_override_args(
+            ["admin", "accuracy-override", "30", "already", "fixed", "it"]
+        )
+        assert reason == "already fixed it"
+        assert mins == 30
+
+    def test_reason_only_no_minutes_falls_back_to_default_duration(self):
+        """The tricky branch: args[2] ('already') isn't a valid int, so the
+        whole remainder must be treated as the reason with mins defaulting
+        to 60 -- not an error, and not silently dropping the first word."""
+        import main
+
+        reason, mins = main._parse_accuracy_override_args(
+            ["admin", "accuracy-override", "already", "fixed", "it"]
+        )
+        assert reason == "already fixed it"
+        assert mins == 60
+
+    def test_negative_minutes_pass_through_for_cmd_admin_to_reject(self):
+        """Parsing itself doesn't validate -- int("-30") is a valid int, so
+        this must pass -30 through unchanged; cmd_admin (tested separately
+        in TestAccuracyHaltOverride via override_accuracy_halt's own
+        ValueError) is what actually rejects it."""
+        import main
+
+        reason, mins = main._parse_accuracy_override_args(
+            ["admin", "accuracy-override", "-30"]
+        )
+        assert mins == -30
+
+
 class TestDrawdownHaltDefault:
     def test_drawdown_halt_default_is_20pct(self, monkeypatch):
         """DRAWDOWN_HALT_PCT default must be 0.20, not 0.50."""

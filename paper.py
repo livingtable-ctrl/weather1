@@ -230,6 +230,24 @@ _DATA_LOCK = _CrossProcessDataLock(lambda: DATA_PATH.parent / "paper_trades.lock
 # is_daily_loss_halted().  Keyed to the UTC date so it auto-expires at midnight.
 _LOSS_OVERRIDE_PATH = DATA_PATH.parent / "loss_limit_override.json"
 
+# Accuracy-halt override flag — written by override_accuracy_halt(), checked
+# by is_accuracy_halted().  Time-boxed (expires_at epoch), not date-keyed --
+# unlike the daily loss limit, the accuracy circuit breaker isn't inherently
+# a once-a-day thing, so a fixed duration (matching cmd_override's existing
+# pause/unpause minutes convention) fits better than "until midnight."
+#
+# Why this gate has a manual override and is_paused_drawdown()/the kill
+# switch don't: accuracy (rolling win rate + SPRT) is a lagging STATISTICAL
+# signal whose root cause can be diagnosed and fixed (a known model/data bug
+# already patched, a genuinely small/unlucky sample) -- once that's true,
+# continuing to halt on stale evidence is itself a cost. Drawdown and the
+# kill switch are hard CAPITAL stops with no equivalent "the signal was
+# wrong" interpretation -- overriding those would mean deliberately
+# resuming trading through an still-ongoing capital loss, not past evidence
+# of one, which is a fundamentally different (and much worse) thing to make
+# easy to do from the CLI.
+_ACCURACY_HALT_OVERRIDE_PATH = DATA_PATH.parent / "accuracy_halt_override.json"
+
 STARTING_BALANCE: float = float(
     os.getenv("STARTING_BALANCE", "1000.0")
 )  # set to actual funded amount
@@ -2436,11 +2454,130 @@ def is_streak_paused() -> bool:
     return streak_pnl < -(STARTING_BALANCE * 0.02)
 
 
+def override_accuracy_halt(
+    reason: str = "manual admin override", minutes: int = 60
+) -> float:
+    """Waive the accuracy circuit breaker (both the rolling win-rate check and
+    the SPRT model-degradation check) for `minutes` minutes. This ALSO lifts
+    trading_gates.LiveTradingGate's accuracy check (it calls
+    is_accuracy_halted() too) -- a live manual `buy`/`sell` or a live cron
+    cycle is unblocked by this override, not just paper trade placement.
+
+    Writes a time-boxed flag file; is_accuracy_halted() checks it first and
+    returns False immediately while it's still valid, without ever computing
+    the real check -- no cleanup required, it just stops being read as valid
+    once expires_at passes. Written atomically (safe_io.atomic_write_json) --
+    a torn/partial read is possible from a concurrent cron cycle otherwise,
+    since this flag is checked once per trade cycle and once per live order.
+
+    This is a deliberate override of a protective gate, not a bug workaround
+    -- use it only after actually investigating why the rolling win rate (or
+    SPRT) tripped and concluding the cause is already understood/fixed, not
+    as a routine way to push trading through a real losing streak.
+
+    Raises ValueError if minutes isn't a positive integer -- a zero or
+    negative duration would silently produce an already-expired override
+    (reported as a successful bypass when it never took effect), the exact
+    bug web_app.py's api_override_set was already fixed for once; minutes
+    above 24h is silently capped rather than rejected, matching that same
+    endpoint's own sanity cap, since this is a temporary bypass, not a
+    standing configuration change.
+
+    Returns the override's expiry as a Unix epoch float. Raises
+    safe_io.AtomicWriteError if the flag file genuinely can't be written --
+    callers must not assume the override took effect just because this
+    function returned without that specific exception propagating past them.
+    """
+    if not isinstance(minutes, int) or minutes <= 0:
+        raise ValueError(f"minutes must be a positive integer, got {minutes!r}")
+    minutes = min(minutes, 24 * 60)  # sanity cap: 24h, matches api_override_set
+    expires_at = time.time() + minutes * 60
+
+    from safe_io import atomic_write_json
+
+    atomic_write_json(
+        {"expires_at": expires_at, "reason": reason, "minutes": minutes},
+        _ACCURACY_HALT_OVERRIDE_PATH,
+    )
+    _log.warning(
+        "Accuracy halt overridden for %d minutes (until %s UTC) — reason: %s "
+        "-- also lifts the live-order accuracy gate, not just paper placement",
+        minutes,
+        datetime.fromtimestamp(expires_at, UTC).strftime("%Y-%m-%d %H:%M:%S"),
+        reason,
+    )
+    return expires_at
+
+
+def clear_accuracy_halt_override() -> bool:
+    """Remove the accuracy-halt override flag early, if present -- safe to
+    call whether or not one exists (unlink is missing_ok). Returns True only
+    if an ACTIVE (non-expired) override was actually cleared, not just
+    whether a stale file happened to be lying around -- an already-expired
+    file being present isn't something a caller should be told was
+    "cleared," since it wasn't doing anything by the time this ran."""
+    status = get_accuracy_halt_override_status()
+    _ACCURACY_HALT_OVERRIDE_PATH.unlink(missing_ok=True)
+    return status["active"]
+
+
+def get_accuracy_halt_override_status() -> dict:
+    """Return {"active": bool, "expires_at": float|None, "reason": str|None,
+    "minutes": int|None} describing the current accuracy-halt override, or
+    all-empty/inactive if none is set or it has expired."""
+    if not _ACCURACY_HALT_OVERRIDE_PATH.exists():
+        return {"active": False, "expires_at": None, "reason": None, "minutes": None}
+    try:
+        flag = json.loads(_ACCURACY_HALT_OVERRIDE_PATH.read_text(encoding="utf-8"))
+        expires_at = flag.get("expires_at")
+        active = isinstance(expires_at, int | float) and time.time() <= expires_at
+        return {
+            "active": active,
+            "expires_at": expires_at,
+            "reason": flag.get("reason"),
+            "minutes": flag.get("minutes"),
+        }
+    except Exception:
+        return {"active": False, "expires_at": None, "reason": None, "minutes": None}
+
+
 def is_accuracy_halted() -> bool:
     """Return True if rolling win rate over last ACCURACY_WINDOW_TRADES is below
     ACCURACY_MIN_WIN_RATE. Requires ACCURACY_MIN_SAMPLE settled trades before firing.
     Also checks SPRT model degradation signal."""
     from utils import ACCURACY_MIN_SAMPLE, ACCURACY_MIN_WIN_RATE, ACCURACY_WINDOW_TRADES
+
+    # Check for a manual override first (see override_accuracy_halt()). A
+    # flag-read failure falls through to the real check below rather than
+    # blocking trading -- matches is_daily_loss_halted()'s established
+    # philosophy: a corrupt/unreadable override file is far more likely to
+    # mean "not actually active" than "silently trust it," so fail through
+    # to the real (fail-closed) check, not open.
+    try:
+        if _ACCURACY_HALT_OVERRIDE_PATH.exists():
+            _flag = json.loads(_ACCURACY_HALT_OVERRIDE_PATH.read_text(encoding="utf-8"))
+            _expires = _flag.get("expires_at")
+            if isinstance(_expires, int | float):
+                if time.time() <= _expires:
+                    # Log on every check while active (matching
+                    # _check_manual_override's per-cycle logging pattern) --
+                    # without this, a whole override window of trades placed
+                    # with the circuit breaker bypassed is indistinguishable
+                    # in the log/audit trail from a normal healthy cycle.
+                    _remaining_min = (_expires - time.time()) / 60
+                    _log.warning(
+                        "Accuracy halt override active (%.0f min remaining) — "
+                        "reason: %s",
+                        _remaining_min,
+                        _flag.get("reason", "manual admin override"),
+                    )
+                    return False  # override active
+                # Expired -- clean up so it doesn't linger indefinitely,
+                # matching _check_manual_override's auto-clear-on-expiry
+                # behavior for its own override file.
+                _ACCURACY_HALT_OVERRIDE_PATH.unlink(missing_ok=True)
+    except Exception:
+        pass
 
     try:
         from tracker import get_rolling_win_rate
