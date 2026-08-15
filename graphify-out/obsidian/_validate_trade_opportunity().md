@@ -26,7 +26,6 @@ tags:
 - [[get_cached_mid_price()]] - `calls` [EXTRACTED]
 - [[get_min_edge_for_confidence()]] - `calls` [EXTRACTED]
 - [[get_paper_min_edge()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 - [[run_trade_cycle()]] - `conceptually_related_to` [EXTRACTED]

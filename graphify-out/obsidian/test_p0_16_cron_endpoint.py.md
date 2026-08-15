@@ -15,7 +15,6 @@ tags:
 - [[TestIsCronRunning]] - `contains` [EXTRACTED]
 - [[TestRunCronConcurrentGuard]] - `contains` [EXTRACTED]
 - [[_auth_headers()]] - `contains` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_is_cron_running()]] - `calls` [EXTRACTED]
 - [[_make_app()_1]] - `contains` [EXTRACTED]
 

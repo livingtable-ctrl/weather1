@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Black Swan Halt State"
+community: "Community 693"
 location: "L629"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # Delete stale cached data files to prevent unbounded growth. Skips…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cleanup_data_dir()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

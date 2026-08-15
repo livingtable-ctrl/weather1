@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
-location: "L1603"
+community: "Community 693"
+location: "L1621"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # Return the total fraction of current balance committed across all open trades.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_total_exposure()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

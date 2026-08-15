@@ -13,7 +13,6 @@ tags:
 
 ## Connections
 - [[Explicit cap overrides dynamic Brier cap.]] - `rationale_for` [EXTRACTED]
-- [[kelly_bet_dollars()]] - `calls` [EXTRACTED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_56

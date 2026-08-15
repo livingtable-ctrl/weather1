@@ -14,6 +14,5 @@ tags:
 ## Connections
 - [[I8 Drawdown Snapshot vs Raw Balance]] - `references` [EXTRACTED]
 - [[detect_regime() RF6 Zero Test Coverage on Live Kelly Path (510)]] - `semantically_similar_to` [INFERRED]
-- [[paper.py]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

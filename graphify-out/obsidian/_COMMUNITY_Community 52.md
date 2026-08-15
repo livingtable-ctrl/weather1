@@ -59,15 +59,13 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 8 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 5 edges to [[_COMMUNITY_Community 40]]
 - 4 edges to [[_COMMUNITY_Community 36]]
 - 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 3 edges to [[_COMMUNITY_Community 40]]
 - 2 edges to [[_COMMUNITY_Community 127]]
 - 2 edges to [[_COMMUNITY_Community 190]]
 - 2 edges to [[_COMMUNITY_Community 328]]
 - 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 2 edges to [[_COMMUNITY_Community 353]]
 - 2 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 - 2 edges to [[_COMMUNITY_Community 71]]
 - 2 edges to [[_COMMUNITY_Community 74]]
@@ -77,13 +75,13 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 380]]
 - 1 edge to [[_COMMUNITY_Community 53]]
 - 1 edge to [[_COMMUNITY_Community 220]]
-- 1 edge to [[_COMMUNITY_Community 43]]
 - 1 edge to [[_COMMUNITY_Community 228]]
 - 1 edge to [[_COMMUNITY_Community 92]]
+- 1 edge to [[_COMMUNITY_Community 353]]
 
 ## Top bridge nodes
-- [[tracker.py_2]] - degree 20, connects to 11 communities
+- [[tracker.py_2]] - degree 18, connects to 10 communities
 - [[test_signal_quality.py]] - degree 20, connects to 9 communities
-- [[get_model_weights()]] - degree 11, connects to 5 communities
+- [[get_model_weights()]] - degree 9, connects to 4 communities
 - [[kalshi_client.py_1]] - degree 5, connects to 4 communities
-- [[sprt_model_health()]] - degree 6, connects to 3 communities
+- [[_get_recent_win_loss()]] - degree 5, connects to 2 communities

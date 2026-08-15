@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "rationale"
-community: "Community 521"
+community: "Community 693"
 location: "L23"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_521
+  - community/Community_693
 ---
 
 # Write a minimal valid paper_trades.json to *path* with the given balance.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_write_paper_json()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_521
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

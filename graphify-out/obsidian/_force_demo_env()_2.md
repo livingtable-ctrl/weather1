@@ -1,19 +1,19 @@
 ---
-source_file: "tests/test_web_analytics.py"
+source_file: "tests/test_web_app.py"
 type: "code"
-community: "Community 71"
-location: "L9"
+community: "Community 579"
+location: "L12"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_71
+  - community/Community_579
 ---
 
 # _force_demo_env()
 
 ## Connections
-- [[Ensure KALSHI_ENV=demo so _build_app doesn't require DASHBOARD_PASSWORD._1]] - `rationale_for` [EXTRACTED]
-- [[fixture_16]] - `references` [EXTRACTED]
-- [[test_web_analytics.py]] - `contains` [EXTRACTED]
+- [[Set DASHBOARD_UNPROTECTED=true so _build_app doesn't require…]] - `rationale_for` [EXTRACTED]
+- [[fixture_13]] - `references` [EXTRACTED]
+- [[test_web_app.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_71
+#graphify/code #graphify/EXTRACTED #community/Community_579

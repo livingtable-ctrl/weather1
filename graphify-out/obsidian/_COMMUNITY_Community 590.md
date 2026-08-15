@@ -22,8 +22,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 
 ## Top bridge nodes
-- [[generate_weekly_report Function]] - degree 4, connects to 2 communities
+- [[generate_weekly_report Function]] - degree 3, connects to 1 community

@@ -13,7 +13,6 @@ tags:
 
 ## Connections
 - [[OverviewTab_1]] - `shares_data_with` [INFERRED]
-- [[PortfolioEvCard]] - `shares_data_with` [INFERRED]
 - [[fetchAll inner (V3)]] - `calls` [EXTRACTED]
 - [[mapStats]] - `semantically_similar_to` [INFERRED]
 

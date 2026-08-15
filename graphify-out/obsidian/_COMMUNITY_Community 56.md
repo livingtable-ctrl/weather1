@@ -57,33 +57,33 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 9 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 5 edges to [[_COMMUNITY_Community 45]]
 - 3 edges to [[_COMMUNITY_Community 138]]
 - 2 edges to [[_COMMUNITY_Community 159]]
-- 2 edges to [[_COMMUNITY_Community 250]]
 - 2 edges to [[_COMMUNITY_Community 280]]
-- 2 edges to [[_COMMUNITY_Community 330]]
-- 2 edges to [[_COMMUNITY_Community 459]]
 - 2 edges to [[_COMMUNITY_Community 87]]
 - 1 edge to [[_COMMUNITY_Community 106]]
 - 1 edge to [[_COMMUNITY_Community 107]]
 - 1 edge to [[_COMMUNITY_Community 150]]
 - 1 edge to [[_COMMUNITY_Community 188]]
+- 1 edge to [[_COMMUNITY_Community 250]]
 - 1 edge to [[_COMMUNITY_Community 258]]
 - 1 edge to [[_COMMUNITY_Community 259]]
+- 1 edge to [[_COMMUNITY_Community 330]]
 - 1 edge to [[_COMMUNITY_Community 343]]
 - 1 edge to [[_COMMUNITY_Community 370]]
 - 1 edge to [[_COMMUNITY_Community 371]]
 - 1 edge to [[_COMMUNITY_Community 402]]
+- 1 edge to [[_COMMUNITY_Community 459]]
 - 1 edge to [[_COMMUNITY_Community 478]]
 - 1 edge to [[_COMMUNITY_Community 479]]
 - 1 edge to [[_COMMUNITY_Community 513]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 1 edge to [[_COMMUNITY_Community 180]]
 
 ## Top bridge nodes
-- [[test_paper.py]] - degree 56, connects to 24 communities
+- [[test_paper.py]] - degree 46, connects to 24 communities
 - [[TestMaxOrderLatency]] - degree 6, connects to 1 community
 - [[TestGetDailyPnlNoneSettledAt]] - degree 4, connects to 1 community
 - [[TestUndoLastTradePeakBalance]] - degree 4, connects to 1 community

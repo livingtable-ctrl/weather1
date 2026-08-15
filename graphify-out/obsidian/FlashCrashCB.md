@@ -12,7 +12,7 @@ tags:
 # FlashCrashCB
 
 ## Connections
-- [[dot-__init__()_12]] - `method` [EXTRACTED]
+- [[dot-__init__()_11]] - `method` [EXTRACTED]
 - [[dot-_load_cooldowns()]] - `method` [EXTRACTED]
 - [[dot-_load_history()]] - `method` [EXTRACTED]
 - [[dot-_save_cooldowns()]] - `method` [EXTRACTED]

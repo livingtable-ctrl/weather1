@@ -70,21 +70,15 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 7 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 3 edges to [[_COMMUNITY_Community 59]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_Community 145]]
+- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 354]]
 - 1 edge to [[_COMMUNITY_Community 32]]
+- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 454]]
 - 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Legacy Static Dashboard JS Pages]]
 
 ## Top bridge nodes
-- [[ABTest]] - degree 29, connects to 6 communities
+- [[ABTest]] - degree 23, connects to 4 communities
 - [[ab_test.py]] - degree 12, connects to 3 communities
-- [[list_all_summaries()]] - degree 10, connects to 2 communities
 - [[get_active_variant()]] - degree 10, connects to 1 community
-- [[ab_test.ABTest]] - degree 2, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Black Swan Halt State"
-location: "L8734"
+community: "Community 693"
+location: "L8885"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # Show A/B test results for all active tests.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_ab_summary()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

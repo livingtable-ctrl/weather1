@@ -13,6 +13,5 @@ tags:
 ## Connections
 - [[LiveTradingGate]] - `references` [EXTRACTED]
 - [[cron.py_1]] - `references` [EXTRACTED]
-- [[graduation_check()]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_40

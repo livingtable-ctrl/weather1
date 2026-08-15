@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
-location: "L4867"
+community: "Community 693"
+location: "L5018"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # cmd_retire_strategies()
@@ -14,12 +14,7 @@ tags:
 ## Connections
 - [[P9.5 Show retired strategy methods; with --run auto-retires failing ones.]] - `rationale_for` [EXTRACTED]
 - [[_header()]] - `calls` [EXTRACTED]
-- [[auto_retire_strategies()]] - `calls` [EXTRACTED]
-- [[dim()]] - `calls` [EXTRACTED]
-- [[get_retired_strategies()]] - `calls` [EXTRACTED]
-- [[green()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[red()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

@@ -20,7 +20,7 @@ tags:
 - [[kelly_fraction()]] - `implements` [EXTRACTED]
 - [[log_price_improvement()]] - `implements` [EXTRACTED]
 - [[monte_carlo.py_2]] - `references` [EXTRACTED]
-- [[paper.py_1]] - `references` [EXTRACTED]
+- [[paper.py]] - `references` [EXTRACTED]
 - [[weather_markets.py_2]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_36

@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
+community: "Anomaly Detection & PDF Reporting"
 location: "L2150"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # _prompt_price()
@@ -15,8 +15,6 @@ tags:
 - [[Prompt for a price; loops on emptyinvalid input, 'q' to cancel.]] - `rationale_for` [EXTRACTED]
 - [[_quick_paper_buy()]] - `calls` [EXTRACTED]
 - [[cmd_menu()]] - `calls` [EXTRACTED]
-- [[dim()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[red()]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

@@ -13,10 +13,7 @@ tags:
 
 ## Connections
 - [[Try to acquire the cron file lock. Fail CLOSED on every error. Returns True…]] - `rationale_for` [EXTRACTED]
-- [[_build_cron_context()]] - `indirect_call` [INFERRED]
-- [[cmd_cron()_1]] - `calls` [INFERRED]
 - [[cron.py]] - `contains` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[test_cron_lock.py_1]] - `calls` [EXTRACTED]
 - [[test_execution_stability.py_1]] - `calls` [EXTRACTED]
 

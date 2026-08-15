@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 43"
-location: "L98"
+community: "Community 693"
+location: "L120"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_43
+  - community/Community_693
 ---
 
 # _build_stream_data includes markets key.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_build_stream_data_has_markets_key()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_43
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

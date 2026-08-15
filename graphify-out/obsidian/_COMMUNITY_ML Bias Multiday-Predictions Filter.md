@@ -1,13 +1,13 @@
 ---
 type: community
 cohesion: 0.04
-members: 66
+members: 64
 ---
 
 # ML Bias Multiday-Predictions Filter
 
 **Cohesion:** 0.04 - loosely connected
-**Members:** 66 nodes
+**Members:** 64 nodes
 
 ## Members
 - [[dot-test_emos_exceedance_prob_called_via_load_emos_params()]] - code - tests/test_ml_bias.py
@@ -38,10 +38,8 @@ members: 66
 - [[Return the HMAC secret from env. Empty string disables verification (dev only).]] - rationale - ml_bias.py
 - [[TestEmos]] - code - tests/test_ml_bias.py
 - [[Tests for ML-based bias correction.]] - rationale - tests/test_ml_bias.py
-- [[Two-stage EMOS fit mean calibration (a,b) from all rows, variance (c,d) from…]] - rationale - main.py
 - [[Unknown city returns raw prob unchanged.]] - rationale - tests/test_ml_bias.py
 - [[Write HMAC sidecar for a freshly serialised pickle.]] - rationale - ml_bias.py
-- [[_cmd_emos_train()]] - code - main.py
 - [[_compute_hmac()]] - code - ml_bias.py
 - [[_hmac_secret()]] - code - ml_bias.py
 - [[_load_emos_params must return the cache when _EMOS_CACHE is populated.]] - rationale - tests/test_ml_bias.py
@@ -87,15 +85,14 @@ SORT file.name ASC
 ## Connections to other communities
 - 13 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 4 edges to [[_COMMUNITY_Community 79]]
-- 4 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 4 edges to [[_COMMUNITY_Community 353]]
-- 3 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 3 edges to [[_COMMUNITY_Community 120]]
 - 3 edges to [[_COMMUNITY_Community 32]]
 - 3 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 2 edges to [[_COMMUNITY_Community 214]]
 - 2 edges to [[_COMMUNITY_Community 47]]
+- 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 2 edges to [[_COMMUNITY_Community 195]]
 - 1 edge to [[_COMMUNITY_Community 113]]
 - 1 edge to [[_COMMUNITY_Community 471]]
@@ -109,4 +106,4 @@ SORT file.name ASC
 - [[ml_bias.py]] - degree 30, connects to 9 communities
 - [[apply_temperature_scaling()]] - degree 10, connects to 3 communities
 - [[_load_models()]] - degree 8, connects to 3 communities
-- [[_cmd_emos_train()]] - degree 8, connects to 2 communities
+- [[apply_ml_prob_correction() RF1 DEBUG on Model Failure (610)]] - degree 3, connects to 2 communities

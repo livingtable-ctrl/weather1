@@ -12,10 +12,10 @@ tags:
 # LivePositionStore
 
 ## Connections
-- [[dot-__init__()_8]] - `method` [EXTRACTED]
-- [[dot-exit()_1]] - `method` [EXTRACTED]
-- [[dot-get_open()_1]] - `method` [EXTRACTED]
-- [[dot-save_peak()_1]] - `method` [EXTRACTED]
+- [[dot-__init__()_7]] - `method` [EXTRACTED]
+- [[dot-exit()]] - `method` [EXTRACTED]
+- [[dot-get_open()]] - `method` [EXTRACTED]
+- [[dot-save_peak()]] - `method` [EXTRACTED]
 - [[dot-test_does_not_overwrite_a_higher_stored_peak()]] - `calls` [EXTRACTED]
 - [[dot-test_exit_wraps_exit_live_position()]] - `calls` [EXTRACTED]
 - [[dot-test_get_open_converts_filled_unsettled_rows_to_positions()]] - `calls` [EXTRACTED]

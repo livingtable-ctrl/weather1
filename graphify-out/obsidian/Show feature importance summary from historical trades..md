@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Black Swan Halt State"
-location: "L5124"
+community: "Community 693"
+location: "L5275"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # Show feature importance summary from historical trades.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_features()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

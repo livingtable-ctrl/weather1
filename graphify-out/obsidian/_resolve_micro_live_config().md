@@ -16,7 +16,6 @@ tags:
 - [[dot-test_none_live_config_loads_real_config()]] - `calls` [EXTRACTED]
 - [[Resolve the config micro-live enforces its daily-loss limit against. F2 micro-…]] - `rationale_for` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
-- [[_load_live_config()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[order_executor.py_1]] - `implements` [EXTRACTED]
 - [[test_prelog.py]] - `calls` [EXTRACTED]

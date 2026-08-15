@@ -12,6 +12,5 @@ tags:
 
 ## Connections
 - [[feature_importance.py]] - `references` [EXTRACTED]
-- [[main.py]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_32

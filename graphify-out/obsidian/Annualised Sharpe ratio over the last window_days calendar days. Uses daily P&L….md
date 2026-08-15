@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
-location: "L3094"
+community: "Community 693"
+location: "L3231"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # Annualised Sharpe ratio over the last window_days calendar days. Uses daily P&L…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_rolling_sharpe()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

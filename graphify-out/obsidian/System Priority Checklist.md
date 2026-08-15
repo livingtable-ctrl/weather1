@@ -14,6 +14,5 @@ tags:
 - [[check_anomalies()]] - `references` [EXTRACTED]
 - [[kelly_fraction()]] - `references` [EXTRACTED]
 - [[run_anomaly_check()]] - `references` [EXTRACTED]
-- [[web_app.py]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 693"
 location: "L443"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_693
 ---
 
 # Load the set of previously-seen tickers from disk (survives restarts).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_load_watch_state()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

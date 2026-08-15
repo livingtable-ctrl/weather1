@@ -26,8 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 
 ## Top bridge nodes
 - [[_install_cron_watchdog()]] - degree 5, connects to 1 community
-- [[test_cron_watchdog.py]] - degree 5, connects to 1 community

@@ -27,7 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Black Swan Halt State]]
+- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_Community 223]]
 - 2 edges to [[_COMMUNITY_Community 356]]
 - 1 edge to [[_COMMUNITY_Community 283]]
@@ -39,5 +39,5 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 86]]
 
 ## Top bridge nodes
-- [[Phase 2 Batch L Regression Tests]] - degree 16, connects to 10 communities
+- [[Phase 2 Batch L Regression Tests]] - degree 15, connects to 10 communities
 - [[TestCronUsesAnomalyTuple]] - degree 5, connects to 1 community

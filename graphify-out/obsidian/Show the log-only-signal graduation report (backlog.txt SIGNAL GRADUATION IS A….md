@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Black Swan Halt State"
-location: "L5088"
+community: "Community 693"
+location: "L5239"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # Show the log-only-signal graduation report (backlog.txt "SIGNAL GRADUATION IS A…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_signals()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

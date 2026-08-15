@@ -46,15 +46,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 13 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 9 edges to [[_COMMUNITY_Black Swan Halt State]]
+- 9 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 4 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
 - 4 edges to [[_COMMUNITY_Community 37]]
-- 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 3 edges to [[_COMMUNITY_Community 38]]
+- 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 3 edges to [[_COMMUNITY_Community 195]]
 - 2 edges to [[_COMMUNITY_Community 368]]
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 2 edges to [[_COMMUNITY_Community 32]]
 - 1 edge to [[_COMMUNITY_Community 149]]
 - 1 edge to [[_COMMUNITY_Community 204]]
@@ -66,7 +64,6 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 574]]
 - 1 edge to [[_COMMUNITY_Community 164]]
 - 1 edge to [[_COMMUNITY_Community 184]]
-- 1 edge to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_Community 569]]
 - 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
@@ -75,8 +72,8 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 
 ## Top bridge nodes
-- [[test_p1_remaining.py]] - degree 38, connects to 19 communities
-- [[notify.py]] - degree 20, connects to 6 communities
-- [[_system_cooldown_elapsed()]] - degree 8, connects to 3 communities
+- [[test_p1_remaining.py]] - degree 30, connects to 17 communities
+- [[notify.py]] - degree 19, connects to 5 communities
 - [[test_notify.py]] - degree 8, connects to 3 communities
-- [[alert_strong_signal()]] - degree 9, connects to 2 communities
+- [[_system_cooldown_elapsed()]] - degree 7, connects to 2 communities
+- [[send_system_alert()]] - degree 12, connects to 1 community

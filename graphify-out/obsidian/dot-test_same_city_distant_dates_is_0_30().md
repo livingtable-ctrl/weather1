@@ -13,6 +13,5 @@ tags:
 
 ## Connections
 - [[TestPositionCorrelationMatrix]] - `method` [EXTRACTED]
-- [[position_correlation_matrix()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_330

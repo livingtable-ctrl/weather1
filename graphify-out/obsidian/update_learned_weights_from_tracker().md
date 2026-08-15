@@ -15,12 +15,9 @@ tags:
 - [[118 Compute per-city inverse-MAE weights from tracker data and persist to…]] - `rationale_for` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[_weights_from_mae()]] - `calls` [EXTRACTED]
-- [[cmd_calibrate()]] - `calls` [EXTRACTED]
-- [[cmd_walkforward()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[get_member_accuracy()]] - `calls` [EXTRACTED]
 - [[learn_seasonal_weights()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[save_learned_weights()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 

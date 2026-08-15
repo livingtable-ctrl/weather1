@@ -24,10 +24,9 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Community 341]]
-- 3 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 512]]
 - 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 
 ## Top bridge nodes
-- [[test_p0_16_cron_endpoint.py]] - degree 7, connects to 3 communities
-- [[_is_cron_running()]] - degree 5, connects to 2 communities
+- [[test_p0_16_cron_endpoint.py]] - degree 6, connects to 2 communities
+- [[_is_cron_running()]] - degree 3, connects to 1 community

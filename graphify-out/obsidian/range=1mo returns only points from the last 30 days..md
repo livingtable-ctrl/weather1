@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 43"
-location: "L112"
+community: "Community 693"
+location: "L134"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_43
+  - community/Community_693
 ---
 
 # ?range=1mo returns only points from the last 30 days.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_balance_history_range_1mo()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_43
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

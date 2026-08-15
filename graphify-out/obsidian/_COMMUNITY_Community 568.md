@@ -23,11 +23,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_Community 330]]
 - 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_Community 500]]
 
 ## Top bridge nodes
-- [[simulate_portfolio Function]] - degree 6, connects to 5 communities
+- [[simulate_portfolio Function]] - degree 3, connects to 2 communities

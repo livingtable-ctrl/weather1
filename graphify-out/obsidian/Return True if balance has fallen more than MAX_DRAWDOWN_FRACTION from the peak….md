@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
-location: "L609"
+community: "Community 693"
+location: "L627"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # Return True if balance has fallen more than MAX_DRAWDOWN_FRACTION from the peak…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[is_paused_drawdown()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

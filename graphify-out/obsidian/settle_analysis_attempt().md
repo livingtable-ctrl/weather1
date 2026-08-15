@@ -15,8 +15,6 @@ tags:
 - [[55 Record the outcome for a previously logged analysis attempt.]] - `rationale_for` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[paper.py]] - `imports` [EXTRACTED]
-- [[settle_paper_trade()]] - `calls` [EXTRACTED]
 - [[sync_outcomes()]] - `calls` [EXTRACTED]
 - [[test_get_unselected_bias_excludes_traded_markets()]] - `calls` [EXTRACTED]
 - [[test_settle_analysis_attempt_matches_null_target_date_via_is_null()]] - `calls` [EXTRACTED]

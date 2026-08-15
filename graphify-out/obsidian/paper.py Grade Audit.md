@@ -11,7 +11,6 @@ tags:
 # paper.py Grade Audit
 
 ## Connections
-- [[paper.py]] - `references` [EXTRACTED]
 - [[paper.py File Grade median 7.510]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

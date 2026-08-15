@@ -18,7 +18,6 @@ tags:
 - [[_write_stale()]] - `contains` [EXTRACTED]
 - [[atomic_write_json_with_history()]] - `imports` [EXTRACTED]
 - [[data_dir()]] - `contains` [EXTRACTED]
-- [[main.py]] - `calls` [EXTRACTED]
 - [[safe_io.py]] - `calls` [EXTRACTED]
 - [[test_atomic_write_json_with_history_keeps_previous_versions()]] - `contains` [EXTRACTED]
 - [[test_prune_old_analysis_attempts_removes_stale_rows()]] - `contains` [EXTRACTED]

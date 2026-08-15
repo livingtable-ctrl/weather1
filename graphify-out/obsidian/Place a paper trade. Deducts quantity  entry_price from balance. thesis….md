@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
-location: "L897"
+community: "Community 693"
+location: "L915"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # Place a paper trade. Deducts quantity * entry_price from balance. thesis:…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[place_paper_order()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

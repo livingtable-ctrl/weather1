@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Kelly City Multiplier & Edge Realization"
-location: "L2074"
+community: "Community 693"
+location: "L2092"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Kelly_City_Multiplier__Edge_Realization
+  - community/Community_693
 ---
 
 # Measure how well the model's computed net_edge predicts actual outcomes.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_edge_realization_rate()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

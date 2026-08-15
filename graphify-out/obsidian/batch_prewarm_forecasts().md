@@ -19,10 +19,7 @@ tags:
 - [[_run_batch_prewarm_for_pairs()]] - `calls` [EXTRACTED]
 - [[_save_forecast_disk_entry()]] - `calls` [EXTRACTED]
 - [[_ttl_until_next_cycle()]] - `calls` [EXTRACTED]
-- [[cmd_brief()]] - `calls` [EXTRACTED]
-- [[cmd_today()]] - `calls` [EXTRACTED]
 - [[is_all_null()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[trade_cycle.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 

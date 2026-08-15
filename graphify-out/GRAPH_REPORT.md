@@ -5,13 +5,12 @@
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 11133 nodes · 19098 edges · 692 communities (557 shown, 135 thin omitted)
-- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 685 edges (avg confidence: 0.62)
-- Token cost: 0 input · 160,408 output
+- 11223 nodes · 18011 edges · 676 communities (539 shown, 137 thin omitted)
+- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 666 edges (avg confidence: 0.62)
+- Token cost: 0 input · 132,800 output
 
 ## Community Hubs (Navigation)
 - Community 499
-- Anomaly Detection & PDF Reporting
 - Black Swan Halt State
 - ML Bias Multiday-Predictions Filter
 - Community 100
@@ -21,7 +20,6 @@
 - Community 105
 - Community 106
 - Community 107
-- Community 108
 - METAR Settlement Monitoring
 - Community 110
 - Community 111
@@ -228,7 +226,6 @@
 - Community 35
 - Community 350
 - Community 352
-- Community 354
 - Community 356
 - Community 357
 - Community 358
@@ -285,13 +282,11 @@
 - Community 408
 - Community 409
 - Community 41
-- Community 410
 - Community 411
 - Community 412
 - Community 413
 - Community 414
 - Community 415
-- Community 416
 - Community 417
 - Community 418
 - Community 419
@@ -311,7 +306,6 @@
 - Community 432
 - Community 433
 - Community 434
-- Community 435
 - Community 436
 - Community 437
 - Community 438
@@ -363,7 +357,6 @@
 - Community 490
 - Community 491
 - Community 492
-- Community 493
 - Community 50
 - Community 502
 - Community 504
@@ -385,7 +378,6 @@
 - Community 519
 - Community 52
 - Community 520
-- Community 521
 - Community 522
 - Community 523
 - Community 524
@@ -396,7 +388,6 @@
 - Community 53
 - Community 530
 - Community 531
-- Community 532
 - Community 539
 - Community 54
 - Community 540
@@ -422,7 +413,6 @@
 - Community 56
 - Community 560
 - Community 561
-- Community 562
 - Community 57
 - Community 571
 - Community 572
@@ -472,9 +462,10 @@
 - Community 155
 - Community 213
 - Community 327
+- Community 692
+- Anomaly Detection & PDF Reporting
 - Community 112
 - Community 118
-- Test Fixture Cache Clearing (conftest)
 - Community 126
 - Community 129
 - Community 140
@@ -518,7 +509,6 @@
 - Community 384
 - Community 385
 - Community 40
-- Community 43
 - Community 442
 - Community 448
 - Community 449
@@ -531,10 +521,8 @@
 - Community 494
 - Community 495
 - Community 496
-- Community 498
 - Tracker P&L Attribution Tests
 - Community 500
-- Community 501
 - Community 503
 - Community 527
 - Community 533
@@ -547,7 +535,6 @@
 - Community 570
 - Community 575
 - Community 578
-- Community 579
 - Community 580
 - Community 581
 - Community 582
@@ -556,7 +543,6 @@
 - Community 596
 - Community 597
 - Community 598
-- Community 604
 - Community 609
 - Community 610
 - Community 611
@@ -587,10 +573,6 @@
 - Community 635
 - Community 636
 - Community 637
-- Community 638
-- Community 639
-- Community 640
-- Community 641
 - Community 74
 - Community 75
 - Community 81
@@ -602,8 +584,10 @@
 - Community 96
 - Community 97
 - Community 99
+- Test Fixture Cache Clearing (conftest)
 - Community 185
 - Community 497
+- Community 693
 - Community 567
 - Community 642
 - Community 643
@@ -695,57 +679,53 @@
 - Community 687
 - Community 688
 - Community 691
-- Community 692
+- Community 579
 
 ## God Nodes (most connected - your core abstractions)
-1. `analyze_trade()` - 154 edges
+1. `analyze_trade()` - 137 edges
 2. `ForecastCache` - 119 edges
-3. `_conn()` - 113 edges
-4. `init_db()` - 111 edges
-5. `KalshiClient` - 107 edges
-6. `TestDisputedOutcomeTracking` - 92 edges
-7. `Position` - 92 edges
-8. `_auto_place_trades()` - 90 edges
-9. `_build_app()` - 89 edges
-10. `main()` - 82 edges
+3. `_conn()` - 109 edges
+4. `init_db()` - 105 edges
+5. `TestDisputedOutcomeTracking` - 92 edges
+6. `Position` - 84 edges
+7. `main()` - 81 edges
+8. `_auto_place_trades()` - 76 edges
+9. `KalshiClient` - 68 edges
+10. `_cmd_cron_body()` - 67 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Reliability / Silent Failures Audit Scope` --semantically_similar_to--> `H11: Weather Alert Display`  [AMBIGUOUS] [semantically similar]
   system_audit_prompt.txt → docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md
+- `LiveTradingGate` --references--> `Live Trading Runbook`  [EXTRACTED]
+  trading_gates.py → LIVE_TRADING_RUNBOOK.md
 - `CircuitBreaker` --semantically_similar_to--> `ForecastCache`  [INFERRED] [semantically similar]
   circuit_breaker.py → forecast_cache.py
 - `CircuitBreaker` --semantically_similar_to--> `check_black_swan_conditions()`  [INFERRED] [semantically similar]
   circuit_breaker.py → alerts.py
 - `CircuitBreaker` --semantically_similar_to--> `load_all_sigmas()`  [INFERRED] [semantically similar]
   circuit_breaker.py → climatology.py
-- `FlashCrashCB` --semantically_similar_to--> `check_black_swan_conditions()`  [INFERRED] [semantically similar]
-  circuit_breaker.py → alerts.py
 
 ## Import Cycles
 - None detected.
 
 ## Hyperedges (group relationships)
-- **Duplicated useData Hook Across Two Frontend Trees** — frontend_src_usedata_usedatahook, v3_useData_useDataHook, frontend_src_usedata_computemark, v3_useData_computeMark, frontend_src_usedata_fetchallsafe, v3_useData_fetchAllSafe [INFERRED 0.85]
-- **Realizable Mark to Position Close Flow** — v3_useData_computeMark, v3_useData_mapTrades, v3_PositionsTab_handleClose, v3_PositionsTab_handleCloseConfirm, v3_PositionsTab_handleBulkClose [INFERRED 0.85]
-- **Calibration Status Card Cluster** — v3_AnalyticsTab, v3_AnalyticsTab_SamedayCalibCard, v3_AnalyticsTab_MultiDayCalibCard, v3_AnalyticsTab_EmosStatusCard, v3_useData_mapSamedayCalib [INFERRED 0.80]
+- **Accuracy halt override feature (CLI + tests + isolation)** — commands_admin_accuracy_override, tests_test_risk_control_testaccuracyhaltoverride, tests_test_risk_control_testparseaccuracyoverrideargs, tests_conftest_isolate_paper_data [EXTRACTED 0.90]
+- **Paper auto-trade safety guard isolation** — tests_test_risk_control_testautoplacetradeguards, tests_conftest_isolate_execution_log, tests_conftest_isolate_paper_data, commands_watch [INFERRED 0.65]
+- **Dashboard close-position live pricing flow** — weather_app_site_v_3_3_src_tabs_positionstab_handlecloseconfirm, weather_app_site_v_3_3_src_tabs_positionstab_component, tests_test_web_app_testapitradeslivequoteenrichment [INFERRED 0.70]
 
-## Communities (692 total, 135 thin omitted)
+## Communities (676 total, 137 thin omitted)
 
 ### Community 499 - "Community 499"
 Cohesion: 0.33
 Nodes (3): ErrorBoundary, kalshi-dashboard package.json, main.jsx entry point
 
-### Community 0 - "Anomaly Detection & PDF Reporting"
-Cohesion: 0.02
-Nodes (223): CorruptionError, run_anomaly_check(), get_feature_summary(), cmd_order(), cmd_paper(), cmd_today(), _quick_paper_buy(), run_stress_test() (+215 more)
-
 ### Community 1 - "Black Swan Halt State"
-Cohesion: 0.03
-Nodes (193): KalshiClient, clear_black_swan_state(), get_black_swan_status(), bold(), cyan(), dim(), edge_color(), green() (+185 more)
+Cohesion: 0.06
+Nodes (49): KalshiClient, clear_black_swan_state(), get_black_swan_status(), bold(), cyan(), dim(), edge_color(), green() (+41 more)
 
 ### Community 10 - "ML Bias Multiday-Predictions Filter"
 Cohesion: 0.04
-Nodes (54): TestEmos, _cmd_emos_train(), apply_platt_per_city(), apply_temperature_scaling(), _compute_hmac(), emos_exceedance_prob(), emos_interval_prob(), fit_emos() (+46 more)
+Nodes (52): TestEmos, apply_platt_per_city(), apply_temperature_scaling(), _compute_hmac(), emos_exceedance_prob(), emos_interval_prob(), fit_emos(), _hmac_secret() (+44 more)
 
 ### Community 100 - "Community 100"
 Cohesion: 0.11
@@ -774,10 +754,6 @@ Nodes (12): TestMaxDrawdown, Balance below 50% of $1000 → drawdown active., ke
 ### Community 107 - "Community 107"
 Cohesion: 0.08
 Nodes (12): TestPortfolioKelly, Open trade for NYC/2026-04-09 should show up in exposure., Trade for Chicago should not count toward NYC exposure., Settled trades should not count toward exposure., Zero existing exposure → base fraction returned unchanged., Existing exposure >= MAX → returns 0.0., Half of max city/date exposure → Kelly reduced by both city-date scale and the…, None city → base fraction returned unchanged (no lookup possible). (+4 more)
-
-### Community 108 - "Community 108"
-Cohesion: 0.11
-Nodes (16): TestAutoPlaceTradeGuards, TestDrawdownHaltDefault, TestPaperLiveSeparation, _make_opp(), _patch_paper_guards(), P2 Risk Control verification tests. No production code is modified — all tests…, Guards in _auto_place_trades must block execution and return 0., A single trade whose cost would breach MAX_DAILY_SPEND must be skipped. (+8 more)
 
 ### Community 11 - "METAR Settlement Monitoring"
 Cohesion: 0.05
@@ -856,8 +832,8 @@ Cohesion: 0.11
 Nodes (19): TestNBMQuantiles, nws_prob_from_quantiles(), _analyze_trade_base_mocks(), _analyze_trade_enriched_fixture(), test_analyze_trade_makes_no_real_nws_mos_or_climate_indices_calls(), test_analyze_trade_nbm_quantile_fetch_exception_does_not_break_analysis(), test_analyze_trade_result_nbm_quantile_prob_none_when_no_coverage(), test_analyze_trade_result_surfaces_nbm_quantile_prob() (+11 more)
 
 ### Community 132 - "Community 132"
-Cohesion: 0.12
-Nodes (16): TestCloudBackupTimestamped, TestRestoreDataConfirm, cloud_backup(), test_backup_to_s3_calls_upload(), test_backup_to_s3_skips_when_boto3_missing(), test_backup_to_s3_skips_without_env(), test_cloud_backup_fails_gracefully_on_s3_error(), test_cloud_backup_skipped_without_env() (+8 more)
+Cohesion: 0.09
+Nodes (11): TestCloudBackupTimestamped, TestRestoreDataConfirm, test_backup_to_s3_calls_upload(), test_backup_to_s3_skips_when_boto3_missing(), test_backup_to_s3_skips_without_env(), backup_to_s3 with no bucket returns None., backup_to_s3 calls boto3.client('s3').upload_file with correct args., backup_to_s3 logs a warning and does not raise when boto3 is not installed. (+3 more)
 
 ### Community 133 - "Community 133"
 Cohesion: 0.09
@@ -904,8 +880,8 @@ Cohesion: 0.16
 Nodes (8): TestCheckLiveModelExits, TestCheckLivePositionExits, _check_live_position_exits(), Protect open live positions with stop-loss and breakeven-stop checks, reusing…, Regression: _get_current_book's REST fallback returns the raw…, A ticker that stop-loss-exits must not also be evaluated for a breakeven exit…, Regression: two separate open live positions sharing a ticker (two distinct…, The fan-out safety property this ticket-level by_ticker grouping exists for:…
 
 ### Community 145 - "Community 145"
-Cohesion: 0.11
-Nodes (18): PaperPositionStore, PositionStore, AtomicWriteError, check_paper_position_exits(), _trade_to_position(), check_breakeven_stops(), liquidation_price(), Protocol (+10 more)
+Cohesion: 0.17
+Nodes (11): PositionStore, AtomicWriteError, check_breakeven_stops(), liquidation_price(), Protocol, Exception, Shared position read-model for paper and live trading. Both paper.py (JSON-…, Return positions whose break-even stop has triggered. Fires when:… (+3 more)
 
 ### Community 148 - "Community 148"
 Cohesion: 0.10
@@ -1053,7 +1029,7 @@ Nodes (11): TestLogNearSettlementTrades, _log_near_settlement_trades(), _near(),
 
 ### Community 2 - "Black Swan Detection & Walk-Forward Backtest"
 Cohesion: 0.02
-Nodes (174): CronContext, TestAnomalyBlackSwanCallsFailClosed, TestManualOverridePathConsistency, TradeCycleResult, run_black_swan_check(), run_paper_walk_forward(), fetch_pdo_pna(), backup_data() (+166 more)
+Nodes (152): CronContext, TestAnomalyBlackSwanCallsFailClosed, TestManualOverridePathConsistency, TradeCycleResult, run_black_swan_check(), run_paper_walk_forward(), fetch_pdo_pna(), backup_data() (+144 more)
 
 ### Community 20 - "Forecast Persistent Cache"
 Cohesion: 0.05
@@ -1140,8 +1116,8 @@ Cohesion: 0.13
 Nodes (8): TestStartingBalanceEnvVar, P0-7: STARTING_BALANCE must be configurable via environment variable., STARTING_BALANCE env var must be respected., STARTING_BALANCE must parse non-integer values correctly., utils.py must also expose STARTING_BALANCE from env var., reset_paper_account must initialise balance from STARTING_BALANCE., Without env var, STARTING_BALANCE defaults to 1000.0., STARTING_BALANCE
 
 ### Community 23 - "Kelly City Multiplier & Edge Realization"
-Cohesion: 0.06
-Nodes (24): TestCityKellyMultiplier, TestEdgeRealizationRate, TestMaxPositionsPerDate, TestPlacePaperOrderDuplicateGuard, _city_kelly_multiplier(), get_edge_realization_rate(), Measure how well the model's computed net_edge predicts actual outcomes.…, Scale Kelly down for cities where the model has historically underperformed.… (+16 more)
+Cohesion: 0.05
+Nodes (20): TestCityKellyMultiplier, TestEdgeRealizationRate, TestMaxPositionsPerDate, TestPlacePaperOrderDuplicateGuard, Tests for backlog items #6, #4, #1, #2. #6 - City-level Kelly scaling from…, When 4 positions already expire on a date, a 5th is rejected., With only 2 positions on the date, a 3rd is allowed (cap=4)., Cap is per-date: 4 positions on May-20 don't block a May-21 trade. (+12 more)
 
 ### Community 231 - "Community 231"
 Cohesion: 0.16
@@ -1188,8 +1164,8 @@ Cohesion: 0.25
 Nodes (6): TestMutationEndpointsRequireAuth, _basic_auth(), _make_app(), P0-8: mutation endpoints must require authentication., Create a test Flask app in demo mode., When DASHBOARD_PASSWORD is empty, mutation endpoints are open (dev mode).
 
 ### Community 245 - "Community 245"
-Cohesion: 0.14
-Nodes (9): KalshiWebSocket, check_overfitting(), auto_backtest(), Formal overfitting guard: compare in-sample vs out-of-sample Brier scores.…, Background WebSocket thread for real-time Kalshi order book data. Usage: ws =…, Add tickers to subscribe to. Must be called before start()., Start the WebSocket listener in a background thread., Stop the WebSocket listener. Cancels the running task (rather than just… (+1 more)
+Cohesion: 0.15
+Nodes (7): KalshiWebSocket, check_overfitting(), Formal overfitting guard: compare in-sample vs out-of-sample Brier scores.…, Background WebSocket thread for real-time Kalshi order book data. Usage: ws =…, Add tickers to subscribe to. Must be called before start()., Start the WebSocket listener in a background thread., Stop the WebSocket listener. Cancels the running task (rather than just…
 
 ### Community 246 - "Community 246"
 Cohesion: 0.18
@@ -1198,10 +1174,6 @@ Nodes (7): TestPnlDistributionGated, TestStratifiedSplitRemoved, Phase 3 Batch D
 ### Community 248 - "Community 248"
 Cohesion: 0.15
 Nodes (10): TestProdStartupWarning, Phase 2 Batch B Regression Tests, Phase 2 Batch G Regression Tests, Phase 2 Batch B regression tests: P2-2, P2-4, P2-14., Phase 2 Batch G regression tests: P2-16, P2-20, P2-30, P2-31, P2-41, P2-47., P2-16: KALSHI_ENV=prod must log a loud WARNING banner., cloud_backup.backup_data / restore_data, paper._DRAWDOWN_TIER_1..4 constants (+2 more)
-
-### Community 250 - "Community 250"
-Cohesion: 0.24
-Nodes (4): TestLiquidityKellyScale, liquidity_kelly_scale(), Return a 0.50-1.00 multiplier to reduce Kelly sizing based on market liquidity…, backlog.txt "LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD" -- revives the…
 
 ### Community 251 - "Community 251"
 Cohesion: 0.16
@@ -1391,10 +1363,6 @@ Nodes (10): HealthStatus, _check_api_failure_rate(), _check_platt_sanity(), chec
 Cohesion: 0.27
 Nodes (10): BotConfig, test_drawdown_halt_out_of_range_raises(), test_fee_rate_out_of_range_raises(), test_maker_fee_rate_defaults_to_zero(), test_maker_fee_rate_negative_raises(), test_maker_fee_rate_out_of_range_raises(), test_min_edge_above_strong_edge_raises(), test_valid_config_passes() (+2 more)
 
-### Community 299 - "Community 299"
-Cohesion: 0.27
-Nodes (4): TestTargetDateDue, _target_date_due(), Return True if target_date_str is on or before today_date. Parses both sides as…, Tests for main._target_date_due (backlog.txt "RAIN / SNOW / HURRICANE MARKETS"…
-
 ### Community 30 - "Tracker Settlement Sigma & Disputed Rows"
 Cohesion: 0.05
 Nodes (14): TestLiveTradingGateConditionTypeFilter, backlog.txt "DATA-DRIVEN SIGMA FROM SETTLED HISTORY + CLI-REPORT SETTLEMENT…, opus-review-caught (2026-08-10): every disputed row in production was flagged…, Must refuse a non-finalized market even with a valid expiration_value -- proves…, Companion regression: an ordinary daily ticker must not be routed through the…, Opus-review-caught gap: Denver's KXDENSNOWM ladder has 7 sibling brackets that…, Opus-review-caught gap: an unparseable settled snow ticker is silently dropped…, backlog.txt "HURRICANE MARKETS" -- time-to-next-event model (2026-08-07): must… (+6 more)
@@ -1477,7 +1445,7 @@ Nodes (6): TestGetBias, Focused tests for tracker.get_bias() (#111)., get_bias()
 
 ### Community 32 - "Community 32"
 Cohesion: 0.05
-Nodes (40): TestGbmHoldoutValidation, TestParamSweepTemporalSplit, _group_markets(), record_feature_contribution(), cmd_sweep(), train_bias_model(), run_sweep(), sweep_parameter() (+32 more)
+Nodes (38): TestGbmHoldoutValidation, TestParamSweepTemporalSplit, _group_markets(), record_feature_contribution(), train_bias_model(), run_sweep(), sweep_parameter(), Phase 2 Batch M Regression Tests (+30 more)
 
 ### Community 320 - "Community 320"
 Cohesion: 0.17
@@ -1510,10 +1478,6 @@ Nodes (7): TestResolveAmendStatus, _resolve_amend_status(), Translate an amend_o
 ### Community 33 - "Community 33"
 Cohesion: 0.06
 Nodes (34): ABTest, TestABTest, get_active_variant(), list_all_summaries(), _load_test_state(), _save_test_state(), _patch_ab_dir(), test_l4a_get_active_variant_returns_value() (+26 more)
-
-### Community 330 - "Community 330"
-Cohesion: 0.31
-Nodes (3): TestPositionCorrelationMatrix, position_correlation_matrix(), Build NxN correlation matrix for a list of trades. Correlation rules: Same city…
 
 ### Community 332 - "Community 332"
 Cohesion: 0.18
@@ -1594,10 +1558,6 @@ Nodes (6): TestTimeRisk, Build an ISO close_time string., Market closing in 90 m
 ### Community 352 - "Community 352"
 Cohesion: 0.27
 Nodes (6): TestParseOrderbookMessage, parse_message(), Parse a Kalshi WebSocket message into a normalized dict. Returns None for…, parse_message returns structured snapshot from orderbook_snapshot type., parse_message extracts mid-price from ticker message., Unknown message types return None (ignored).
-
-### Community 354 - "Community 354"
-Cohesion: 0.29
-Nodes (3): _CrossProcessDataLock, Serialises read-modify-write cycles on paper_trades.json across BOTH threads…, Also usable directly (not just via `with`) — a couple of call sites span…
 
 ### Community 356 - "Community 356"
 Cohesion: 0.29
@@ -1795,10 +1755,6 @@ Nodes (3): TestParseMarketConditionMonthlyRain, backlog.txt "RAIN / SNOW / HURRI
 Cohesion: 0.07
 Nodes (17): TestComputeMarketImpliedDistributions, TestFitMarketImpliedDistribution, TestFitMarketImpliedDistributionPrecipMonthTotal, TestResolveMarketImpliedForAnalysis, _market(), _normal_ladder(), _rain_ladder(), _rain_market() (+9 more)
 
-### Community 410 - "Community 410"
-Cohesion: 0.22
-Nodes (5): TestAccuracyCircuitBreaker, is_accuracy_halted returns True when win rate is 30% over 20 trades., is_accuracy_halted returns False when win rate is 55% over 20 trades., is_accuracy_halted returns False when fewer than ACCURACY_MIN_SAMPLE trades…, 2026-07-09: fail closed, not open, on an internal check failure -- a DB read…
-
 ### Community 411 - "Community 411"
 Cohesion: 0.31
 Nodes (5): TestGetBiasConditionType, Tests for get_bias() stratified by condition_type (#10)., Filtering by HIGH vs PRECIP gives different bias values., Without condition_type filter, bias uses all rows., Filtering by a condition_type with no matching rows returns 0.0.
@@ -1814,10 +1770,6 @@ Nodes (4): TestComputePersistenceProbRefactorSafetyNet, Dedicated unit tests for
 ### Community 415 - "Community 415"
 Cohesion: 0.22
 Nodes (5): TestBootstrapCIPrecip, All members above 0.01in → precip_any CI should be near (1, 1)., Half members above 0.10in → CI should straddle 0.5., Fewer than 5 members → returns (0.0, 1.0) as uninformative CI., No members above threshold → CI near (0, 0).
-
-### Community 416 - "Community 416"
-Cohesion: 0.22
-Nodes (5): TestKillSwitchAPI, POST /api/halt writes the kill-switch file with reason and timestamp., P1-16: atomic write must not leave a .tmp file after successful halt., POST /api/resume removes the kill-switch file., GET /api/status includes kill_switch_active field (False when no file).
 
 ### Community 417 - "Community 417"
 Cohesion: 0.25
@@ -1891,10 +1843,6 @@ Nodes (3): TestFeatureImportancePruning, P3-22: prune_feature_log must keep at m
 Cohesion: 0.25
 Nodes (3): TestRainGatesActive, backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 handoff item 7:…, Both conditions are required -- neither alone suffices.
 
-### Community 435 - "Community 435"
-Cohesion: 0.25
-Nodes (5): TestDailyLossThresholdScalesWithBalance, is_daily_loss_halted uses current balance, not STARTING_BALANCE., When balance has grown 2x, the halt threshold doubles (3% of 2x = 6% of start)., When balance equals STARTING_BALANCE, behavior matches the old threshold., If balance somehow drops below STARTING_BALANCE, threshold uses…
-
 ### Community 436 - "Community 436"
 Cohesion: 0.25
 Nodes (5): TestBrierSkillScore, Tests for brier_skill_score() (#11)., BSS returns None with < 10 samples., Perfect model (our_prob=1.0, settled YES) gives BSS > 0., Model matching market_prob exactly gives BSS ≈ 0.
@@ -1954,10 +1902,6 @@ Nodes (6): AnalysisResult, ForecastResult, MarketCondition, MarketDict, TypedDic
 ### Community 457 - "Community 457"
 Cohesion: 0.29
 Nodes (5): TestMosIntegration, get_mos_station(), Return the ASOS station code for a city, or None if unknown., Tests for NOAA MOS via IEM API., analyze_trade result dict contains mos_max_temp key.
-
-### Community 459 - "Community 459"
-Cohesion: 0.43
-Nodes (3): TestCorrKellyScale, corr_kelly_scale(), Scale Kelly fraction down based on max pairwise correlation with existing…
 
 ### Community 46 - "Community 46"
 Cohesion: 0.06
@@ -2075,10 +2019,6 @@ Nodes (3): TestValidateForecastModelKeys, backlog.txt 'GENERALIZED PER-MODEL ACC
 Cohesion: 0.29
 Nodes (4): TestNormalCDF, P(X <= mu) = 0.5 for a normal distribution., P(X <= mu + 2sigma) ~ 0.977., P(X <= mu - 2sigma) ~ 0.023.
 
-### Community 493 - "Community 493"
-Cohesion: 0.29
-Nodes (4): TestDashboardAuth, Dashboard is open when DASHBOARD_PASSWORD is empty., Dashboard returns 401 when password is set and no Authorization header sent., Dashboard returns 200 with correct Basic Auth credentials.
-
 ### Community 50 - "Community 50"
 Cohesion: 0.06
 Nodes (37): TestPersistenceRoutesThroughSafeIO, _log_settled(), test_get_recent_city_correlations_computes_correlation(), test_get_recent_city_correlations_excludes_disputed(), test_get_recent_city_correlations_returns_empty_when_no_data(), test_get_recent_city_correlations_skips_below_min_pairs(), test_get_regional_recent_bias_as_of_avoids_lookahead(), test_get_regional_recent_bias_computes_weighted_mean() (+29 more)
@@ -2139,10 +2079,6 @@ Nodes (20): TestAnalyzeTradeConditionType, TestGetMemberAccuracyDaysBack, TestMa
 Cohesion: 0.33
 Nodes (3): TestQuickPaperBuyRespectsPositionLimits, 2026-07-09: main.py's two check_position_limits call sites checked…, 2026-07-09: the except-pass around check_position_limits() used to swallow a…
 
-### Community 521 - "Community 521"
-Cohesion: 0.40
-Nodes (4): TestKellyScalesWithBalance, _write_paper_json(), Write a minimal valid paper_trades.json to *path* with the given balance., kelly_bet_dollars output should scale proportionally with paper balance.
-
 ### Community 522 - "Community 522"
 Cohesion: 0.33
 Nodes (3): TestSourceProbsPassthrough, log_prediction called without source probs must store NULLs (backward compat)., Calling log_prediction without source probs stores NULL (old callers safe).
@@ -2174,10 +2110,6 @@ Nodes (4): TestUtcTodayDate, L5-E: weather_markets must use datetime.now(UTC).da
 ### Community 531 - "Community 531"
 Cohesion: 0.47
 Nodes (3): TestGetEnsembleTempsBiasCorrection, Wiring test: get_ensemble_temps() must subtract each model's bias from its raw…, hour is not None -> var is semantically meaningless (a daily- extreme…
-
-### Community 532 - "Community 532"
-Cohesion: 0.33
-Nodes (4): TestPaperOrderCityDateServerDerived, Deep-review followup: /api/paper-order used to take city/target_date straight…, Omitting city/target_date from the request body must NOT bypass the exposure…, A client-supplied city/target_date that disagrees with the ticker's real city…
 
 ### Community 54 - "Community 54"
 Cohesion: 0.07
@@ -2255,10 +2187,6 @@ Nodes (3): TestWeightsFromMaeThinModelIsolation, Adjacency finding from the 2026
 Cohesion: 0.50
 Nodes (3): TestMosBlendNoCrossVariableFallback, A LOW market (var='min') with no MOS minimum must skip the MOS blend entirely,…, MOS returns max_temp_f=85 (daily high) but min_temp_f=None (no overnight-min…
 
-### Community 562 - "Community 562"
-Cohesion: 0.50
-Nodes (3): TestAnomalyStatusMatchesRealCheck, Deep-review followup: /api/anomaly-status used to independently rebuild the…, An early_exit trade (outcome not in yes/no) within the last-10- settled window…
-
 ### Community 57 - "Community 57"
 Cohesion: 0.06
 Nodes (19): TestBacktestBrierKeyNaming, TestCronWalCheckpoint, TestExecutionLogSynchronousFull, TestFetchArchiveTempsDeterministicSeed, TestKellyCapConstant, TestMonteCarloCorrelationApplied, Phase 3 Batch A regression tests: P3-10, P3-11, P3-13, P3-15, P3-19, P3-20,…, P3-15: cmd_cron must execute PRAGMA wal_checkpoint(PASSIVE) at end of run. (+11 more)
@@ -2305,7 +2233,7 @@ Nodes (18): TestCalibrateCLI, TestCalibrateSeasonalWeights, _make_winter_rows(),
 
 ### Community 7 - "Tracker SQLite Storage Tests"
 Cohesion: 0.03
-Nodes (47): TestGetForecastRunTrendFromAnalysis, TestGetModelWeightsExcludesTrackingOnlyModels, TestLogPredictionCalibrationCovariateFields, TestLogPredictionEcmwfConsensusGap, TestLogPredictionLiquidityEdgeScale, TestLogPredictionMarketImplied, TestLogPredictionNbmQuantileProb, TestLogPredictionRunTrend (+39 more)
+Nodes (44): TestGetForecastRunTrendFromAnalysis, TestGetModelWeightsExcludesTrackingOnlyModels, TestLogPredictionCalibrationCovariateFields, TestLogPredictionEcmwfConsensusGap, TestLogPredictionLiquidityEdgeScale, TestLogPredictionMarketImplied, TestLogPredictionNbmQuantileProb, TestLogPredictionRunTrend (+36 more)
 
 ### Community 70 - "Community 70"
 Cohesion: 0.08
@@ -2333,7 +2261,7 @@ Nodes (10): TestBackfillDailyTempSettlement, TestBackfillPriceHistory, tracker.b
 
 ### Community 78 - "Community 78"
 Cohesion: 0.07
-Nodes (19): TestAnalysisAttemptsUpsert, TestEntryProbFalsyZero, TestEnvVarFallback, TestLogPredictionWarning, TestSyncOutcomesWarning, _env_float(), _env_int(), tmp_paper() (+11 more)
+Nodes (17): TestAnalysisAttemptsUpsert, TestEntryProbFalsyZero, TestEnvVarFallback, TestLogPredictionWarning, TestSyncOutcomesWarning, tmp_paper(), tmp_tracker(), fixture (+9 more)
 
 ### Community 79 - "Community 79"
 Cohesion: 0.08
@@ -2403,6 +2331,14 @@ Nodes (3): balanceWalk Function, MOCK Export Object, Vite Build Config
 Cohesion: 0.18
 Nodes (6): Nav, PositionsTab, SignalsTab, DataContext, /api/close-position endpoint, /api/halt endpoint
 
+### Community 692 - "Community 692"
+Cohesion: 0.03
+Nodes (80): apiFetch, authHeader, computeMark, fetchAllSafe, mapAnalytics, mapCircuitBreakers, mapForecasts, mapPriceImprovement (+72 more)
+
+### Community 0 - "Anomaly Detection & PDF Reporting"
+Cohesion: 0.02
+Nodes (95): run_anomaly_check(), get_feature_summary(), run_stress_test(), simulate_portfolio(), _daily_paper_spend(), place_paper_order(), _collect_data(), _generate_html() (+87 more)
+
 ### Community 112 - "Community 112"
 Cohesion: 0.12
 Nodes (17): _finalized_market(), _ladder_at_local_hour(), _mock_client(), test_first_run_creates_cache_for_all_cities(), test_gated_to_run_once_per_city_per_day(), test_no_usable_data_not_cached_as_done_for_today(), test_role_degenerate_max_equals_min_prefers_max(), test_role_returns_none_when_hour_is_none() (+9 more)
@@ -2410,10 +2346,6 @@ Nodes (17): _finalized_market(), _ladder_at_local_hour(), _mock_client(), test_f
 ### Community 118 - "Community 118"
 Cohesion: 0.13
 Nodes (22): _best_weights(), calibrate_and_save(), calibrate_condition_weights(), calibrate_seasonal_weights(), _compute_recency_weight(), _load_rows(), _split_rows(), test_calibrate_condition_weights_returns_per_type_dict() (+14 more)
-
-### Community 12 - "Test Fixture Cache Clearing (conftest)"
-Cohesion: 0.05
-Nodes (63): clear_metar_cache(), clear_nws_mos_climate_indices_caches(), clear_paper_min_edge_cache(), _clear_trading_paused(), default_ecmwf_aifs_prob_none(), default_gem_ukmo_means_none(), isolate_circuit_breaker_state(), isolate_climatology_data_dir() (+55 more)
 
 ### Community 126 - "Community 126"
 Cohesion: 0.14
@@ -2452,7 +2384,7 @@ Cohesion: 0.12
 Nodes (17): test_gate_fails_closed_when_db_unavailable(), test_gate_passes_when_micro_live_and_sufficient_samples(), test_gate_raises_when_micro_live_and_insufficient_samples(), test_gate_skipped_when_micro_live_explicitly_false(), test_gate_skipped_when_micro_live_false(), Tests for the graduation gate in main.py (_check_graduation_gate)., RuntimeError raised when ENABLE_MICRO_LIVE=true and count < MIN_BRIER_SAMPLES., No exception when ENABLE_MICRO_LIVE=true and count >= MIN_BRIER_SAMPLES. (+9 more)
 
 ### Community 181 - "Community 181"
-Cohesion: 0.12
+Cohesion: 0.13
 Nodes (16): get_city_correlation(), load_correlations_from_backtest(), _load_dynamic_correlations(), save_correlations(), Monte Carlo simulation for paper trading portfolio. Simulates N random outcome…, #49: Load city-pair correlations from data/correlations.json. Returns a…, #49: Persist city-pair correlations to data/correlations.json. Keys may be…, #49: Read data/learned_correlations.json and return a frozenset-keyed dict.… (+8 more)
 
 ### Community 182 - "Community 182"
@@ -2513,7 +2445,7 @@ Nodes (11): test_place_paper_order_defaults_model_forecast_means_to_empty_dict()
 
 ### Community 24 - "Legacy Static Dashboard JS Pages"
 Cohesion: 0.06
-Nodes (45): loadAnalytics(), loadBrierHistory(), loadModelAccuracy(), loadModelAttribution(), loadPriceImprovement(), makeLayout(), loadBalanceChart(), loadCircuitStatus() (+37 more)
+Nodes (43): loadAnalytics(), loadBrierHistory(), loadModelAccuracy(), loadModelAttribution(), loadPriceImprovement(), makeLayout(), loadBalanceChart(), loadCircuitStatus() (+35 more)
 
 ### Community 243 - "Community 243"
 Cohesion: 0.20
@@ -2525,7 +2457,7 @@ Nodes (12): test_balance_fetch_failure_does_not_crash_full_cron_cycle(), test_no
 
 ### Community 25 - "Safe I/O CRC Validation Tests"
 Cohesion: 0.04
-Nodes (49): _validate_crc(), test_atomic_write_concurrent_threads_same_target_no_collision(), test_atomic_write_default_fallback_does_not_clobber_original(), test_atomic_write_emergency_copy_written_on_failure(), test_atomic_write_error_message_accurate_when_no_emergency_copy_possible(), test_atomic_write_json_emergency_copy_opt_out_skips_recovery_copy(), test_atomic_write_raises_when_all_retries_fail(), test_atomic_write_skips_fallback_dir_that_collides_with_original() (+41 more)
+Nodes (45): test_atomic_write_concurrent_threads_same_target_no_collision(), test_atomic_write_default_fallback_does_not_clobber_original(), test_atomic_write_emergency_copy_written_on_failure(), test_atomic_write_error_message_accurate_when_no_emergency_copy_possible(), test_atomic_write_json_emergency_copy_opt_out_skips_recovery_copy(), test_atomic_write_raises_when_all_retries_fail(), test_atomic_write_skips_fallback_dir_that_collides_with_original(), test_atomic_write_text_concurrent_writers_never_expose_torn_file() (+37 more)
 
 ### Community 298 - "Community 298"
 Cohesion: 0.20
@@ -2536,8 +2468,8 @@ Cohesion: 0.02
 Nodes (161): apply_ml_prob_correction(), _analyze_hourly_trade(), _analyze_hurricane_count_trade(), _analyze_hurricane_next_event_trade(), _analyze_monthly_rain_trade(), _analyze_monthly_snow_trade(), _analyze_precip_trade(), _analyze_snow_trade() (+153 more)
 
 ### Community 301 - "Community 301"
-Cohesion: 0.17
-Nodes (12): _validate_checksum(), test_validate_checksum_accepts_legacy_16char(), test_validate_checksum_rejects_empty_string(), test_validate_checksum_rejects_mismatch(), test_validate_checksum_rejects_one_char(), test_validate_checksum_skips_when_absent(), Validate SHA-256 checksum in data dict. Raises CorruptionError on mismatch.…, P1-5: empty checksum string must raise CorruptionError (was silently passing). (+4 more)
+Cohesion: 0.11
+Nodes (10): test_validate_checksum_accepts_legacy_16char(), test_validate_checksum_rejects_empty_string(), test_validate_checksum_rejects_mismatch(), test_validate_checksum_rejects_one_char(), test_validate_checksum_skips_when_absent(), P1-5: empty checksum string must raise CorruptionError (was silently passing)., P1-5: 1-char checksum must raise CorruptionError (was passing 1/16 of…, P1-5: tampered data must raise CorruptionError. (+2 more)
 
 ### Community 324 - "Community 324"
 Cohesion: 0.33
@@ -2565,7 +2497,7 @@ Nodes (8): _check_key_permissions(), Kalshi API client with RSA-PSS authenticati
 
 ### Community 353 - "Community 353"
 Cohesion: 0.20
-Nodes (10): cmd_calibrate(), cmd_train_bias(), _fit_platt(), train_platt_per_city(), Train ML bias correction models from tracker DB data., Recompute seasonal and per-city blend weights from settled predictions., Fit Platt scaling (A, B) via cross-entropy minimisation with scipy., Train per-city Platt scaling: fits (A, B) via cross-entropy on logit(p).… (+2 more)
+Nodes (6): _fit_platt(), train_platt_per_city(), Fit Platt scaling (A, B) via cross-entropy minimisation with scipy., Train per-city Platt scaling: fits (A, B) via cross-entropy on logit(p).…, train_all_temperature_scaling Function, train_platt_per_city Function
 
 ### Community 355 - "Community 355"
 Cohesion: 0.22
@@ -2584,12 +2516,8 @@ Cohesion: 0.24
 Nodes (10): _calibration_curve(), get_multiday_calibration_cli(), get_sameday_calibration(), get_sameday_calibration_cli(), _read_temperature_scale_key(), Bucket (predicted_prob, settled_yes) pairs into 5 equal-width calibration bins.…, Read a single T value from data/temperature_scale.json (None if…, Calibration analytics for same-day (days_out=0) METAR-locked predictions.… (+2 more)
 
 ### Community 40 - "Community 40"
-Cohesion: 0.05
-Nodes (35): _current_forecast_cycle(), _log_shadow_predictions(), _micro_live_gate_ok(), _prediction_kwargs_from_analysis(), _unpack_opp(), is_accuracy_halted(), minimal_mocks(), test_brier_alert_includes_guidance() (+27 more)
-
-### Community 43 - "Community 43"
-Cohesion: 0.05
-Nodes (43): test_analytics_route_returns_200_with_title(), test_api_brier_history_returns_list(), test_api_config_includes_both_fee_rates(), test_api_forecast_quality_returns_correct_shape(), test_api_graduation_returns_correct_shape(), test_api_risk_returns_correct_shape(), test_api_signals_returns_correct_shape(), test_api_trades_returns_correct_shape() (+35 more)
+Cohesion: 0.06
+Nodes (33): _current_forecast_cycle(), _log_shadow_predictions(), _micro_live_gate_ok(), _prediction_kwargs_from_analysis(), _unpack_opp(), minimal_mocks(), test_brier_alert_includes_guidance(), detect_brier_drift() (+25 more)
 
 ### Community 442 - "Community 442"
 Cohesion: 0.14
@@ -2615,10 +2543,6 @@ Nodes (4): _install_cron_watchdog(), Event, Start a daemon thread that hard-kill
 Cohesion: 0.29
 Nodes (5): _safe_price(), Normalize a price value to decimal (0-1) via utils.coalesce_market_price,…, _safe_price (utils.coalesce_market_price, wrapped fail-soft) normalises int…, KALSHI CENTS/DOLLARS PRICE NORMALIZATION consolidation bug fix: the old…, order_executor.py live reprice loop
 
-### Community 460 - "Community 460"
-Cohesion: 0.29
-Nodes (7): verify_backup(), test_verify_backup_fails_on_corrupt_file(), test_verify_backup_fails_on_invalid_json(), test_verify_backup_logs_checksum_on_success(), test_verify_backup_passes_on_good_file(), Path, Verify a backup file's CRC32 (legacy) and SHA-256 checksums. Returns True on…
-
 ### Community 48 - "Community 48"
 Cohesion: 0.05
 Nodes (17): DCArtboardFrame(), dcExport(), balanceWalk(), rng(), TweakColor(), __twkIsLight(), DC, DCCtx (+9 more)
@@ -2635,10 +2559,6 @@ Nodes (6): loadTrades(), populateCityFilter(), renderClosed(), renderOpen(), ren
 Cohesion: 0.47
 Nodes (5): main(), parse_entries(), render(), Generate an index of unfinished backlog.txt entries. backlog.txt is a single…, Split backlog.txt into entries anchored on '[' at column 0, and return one dict…
 
-### Community 498 - "Community 498"
-Cohesion: 0.33
-Nodes (6): _excepthook(), _thread_excepthook(), _write_crash_log(), BaseException, ExceptHookArgs, TracebackType
-
 ### Community 5 - "Tracker P&L Attribution Tests"
 Cohesion: 0.03
 Nodes (125): tmp_tracker(), test_batch_log_analysis_attempts_none_target_date_writes_null(), audit_settlement(), backfill_daily_temp_settlement(), backfill_emos_data(), backfill_ensemble_member_scores_var(), batch_log_analysis_attempts(), brier_by_condition_type_rolling() (+117 more)
@@ -2646,10 +2566,6 @@ Nodes (125): tmp_tracker(), test_batch_log_analysis_attempts_none_target_date_wr
 ### Community 500 - "Community 500"
 Cohesion: 0.33
 Nodes (6): log_live_fill(), Record a micro live fill for slippage tracking (#P10.4)., update_orderbook_cache Function, portfolio_var Function, _auto_place_trades Function, Live Order Executor Module
-
-### Community 501 - "Community 501"
-Cohesion: 0.33
-Nodes (6): auto_backup(), verify_db_backup(), cleanup_temp_files(), Copy predictions.db and paper_trades.json to data/backups/ on startup. #103:…, Re-open a backed-up predictions.db, count rows in predictions table. Logs…, #101: Remove stray .paper_trades_* temp files left by interrupted atomic…
 
 ### Community 527 - "Community 527"
 Cohesion: 0.33
@@ -2664,8 +2580,8 @@ Cohesion: 0.33
 Nodes (5): SettingsTab(), /api/halt route, /api/override route, /api/resume route, /api/weekly-report route
 
 ### Community 538 - "Community 538"
-Cohesion: 0.40
-Nodes (4): test_conftest_mock_market_has_all_required_fields(), Schema drift detection: ensure mock market data used in conftest matches the…, Mock market in conftest must include every field production code reads., mock_market fixture
+Cohesion: 0.50
+Nodes (3): test_conftest_mock_market_has_all_required_fields(), Schema drift detection: ensure mock market data used in conftest matches the…, Mock market in conftest must include every field production code reads.
 
 ### Community 55 - "Community 55"
 Cohesion: 0.07
@@ -2679,17 +2595,9 @@ Nodes (4): activate_black_swan_halt(), P10.2: Activate emergency shutdown. Write
 Cohesion: 0.50
 Nodes (3): _is_cron_running(), Read-only check: return True if a cron process holds the lock right now. Uses…, P0-16: api_run_cron concurrent-run guard. Verifies that /api/run_cron returns…
 
-### Community 570 - "Community 570"
-Cohesion: 0.50
-Nodes (4): _score_ensemble_members(), log_member_score(), Log per-model forecast accuracy after settlement for _dynamic_model_weights().…, Log an ensemble member's temperature prediction vs actuals for accuracy…
-
 ### Community 575 - "Community 575"
 Cohesion: 0.50
 Nodes (3): test_predictions_table_has_obs_weight_and_local_hour_columns(), Tests for obs_weight_used and local_hour DB columns (Phase 6.0)., predictions table must have obs_weight_used and local_hour columns.
-
-### Community 579 - "Community 579"
-Cohesion: 0.50
-Nodes (4): client(), _force_demo_env(), fixture, Set DASHBOARD_UNPROTECTED=true so _build_app doesn't require…
 
 ### Community 580 - "Community 580"
 Cohesion: 0.50
@@ -2767,6 +2675,10 @@ Nodes (25): was_traded_today(), test_auto_place_trades_skips_already_traded_toda
 Cohesion: 0.11
 Nodes (26): fetch_mos(), fetch_mos_best(), fetch_nbm_iem(), fetch_nbm_quantiles(), _fetch_nbp_percentiles(), _fetch_nbs_daily_extremes(), is_mos_cached(), _local_or_utc_today() (+18 more)
 
+### Community 12 - "Test Fixture Cache Clearing (conftest)"
+Cohesion: 0.08
+Nodes (38): fixture, isolate_retired_strategies(), isolate_circuit_breaker_state fixture, isolate_flash_crash_cb_state(), clear_paper_min_edge_cache(), clear_metar_cache(), clear_nws_mos_climate_indices_caches(), neutral_temperature_scaling() (+30 more)
+
 ### Community 185 - "Community 185"
 Cohesion: 0.11
 Nodes (17): dependencies, react, react-dom, devDependencies, vite, @vitejs/plugin-react, name, private (+9 more)
@@ -2774,6 +2686,10 @@ Nodes (17): dependencies, react, react-dom, devDependencies, vite, @vitejs/plugi
 ### Community 497 - "Community 497"
 Cohesion: 0.40
 Nodes (3): Tests for main.py's _feature_importance_days_out helper. Extracted from…, Backlog L12939 — Position read-model divergence, Backlog L17703 — React dashboard 4th paper-close site
+
+### Community 693 - "Community 693"
+Cohesion: 0.01
+Nodes (552): BaseException, ExceptHookArgs, TracebackType, fixture, _write_crash_log(), _excepthook(), _thread_excepthook(), _build_cron_context() (+544 more)
 
 ### Community 567 - "Community 567"
 Cohesion: 0.67
@@ -2931,25 +2847,15 @@ Nodes (3): _generate_html Function, _generate_pdf Function, generate_weekly_repo
 Cohesion: 0.00
 Nodes (21): /api/ab-tests route, /api/analytics route, /api/backup-status route, /api/balance_history route, /api/brier_history route, /api/circuit-status route, /api/config route, /api/emos-status route (+13 more)
 
-### Community 692 - "Community 692"
-Cohesion: 0.03
-Nodes (87): getStoredPwd(), authHeader, apiFetch, safe, mapStats, CB_LABELS, mapCircuitBreakers, computeMark (+79 more)
-
 ## Ambiguous Edges - Review These
-- `get_balance_history()` → `Phase 2 Batch F Regression Tests`  [AMBIGUOUS]
-  tests/test_phase2_batch_f.py · relation: calls
 - `ensemble_stats()` → `test_acis_precip.py`  [AMBIGUOUS]
   tests/test_acis_precip.py · relation: conceptually_related_to
 - `ensemble_stats()` → `_MONITOR_CITIES map`  [AMBIGUOUS]
   settlement_monitor.py · relation: conceptually_related_to
-- `ensemble_stats()` → `tests/conftest.py Fixtures`  [AMBIGUOUS]
-  tests/conftest.py · relation: conceptually_related_to
 - `run_trade_cycle()` → `batch_log_analysis_attempts()`  [AMBIGUOUS]
   trade_cycle.py · relation: conceptually_related_to
 - `fit_market_implied_distribution()` → `_analyze_hurricane_count_trade() / is_hurricane_count_ticker()`  [AMBIGUOUS]
   tests/test_market_implied_distribution.py · relation: conceptually_related_to
-- `is_accuracy_halted()` → `_system_cooldown_elapsed()`  [AMBIGUOUS]
-  notify.py · relation: conceptually_related_to
 - `get_pnl_by_signal_source()` → `_forecast_model_weights()`  [AMBIGUOUS]
   tests/test_phase4.py · relation: conceptually_related_to
 - `load_all_sigmas()` → `/api/anomaly-status endpoint`  [AMBIGUOUS]
@@ -2974,8 +2880,6 @@ Nodes (87): getStoredPwd(), authHeader, apiFetch, safe, mapStats, CB_LABELS, map
   system_audit_prompt.txt · relation: conceptually_related_to
 - `analytics.js (dashboard analytics page)` → `forecast.js (forecast page)`  [AMBIGUOUS]
   updated frontend/reference/analytics.js · relation: shares_data_with
-- `tests/conftest.py Fixtures` → `ab_test.ABTest`  [AMBIGUOUS]
-  tests/conftest.py · relation: conceptually_related_to
 - `Overview Dashboard (Dark v2 Variant)` → `Overview Dashboard (Light Variant)`  [AMBIGUOUS]
   updated frontend/screenshots/dark-v2.png · relation: conceptually_related_to
 - `Overview Dashboard (Dark v2 Variant)` → `Overview Dashboard (Dark Variant, base)`  [AMBIGUOUS]
@@ -2996,26 +2900,28 @@ Nodes (87): getStoredPwd(), authHeader, apiFetch, safe, mapStats, CB_LABELS, map
   updated frontend/design-canvas.jsx · relation: conceptually_related_to
 - `pyproject.toml Project Config` → `regression_baseline.json`  [AMBIGUOUS]
   pyproject.toml · relation: conceptually_related_to
+- `web command` → `dashboard command`  [AMBIGUOUS]
+  COMMANDS.md · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **416 isolated node(s):** `CITY_NAMES`, `TABS`, `THEMES`, `name`, `private` (+411 more)
+- **458 isolated node(s):** `CITY_NAMES`, `TABS`, `THEMES`, `name`, `private` (+453 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **135 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **137 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **What is the exact relationship between `get_balance_history()` and `Phase 2 Batch F Regression Tests`?**
-  _Edge tagged AMBIGUOUS (relation: calls) - confidence is low._
 - **What is the exact relationship between `ensemble_stats()` and `test_acis_precip.py`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `ensemble_stats()` and `_MONITOR_CITIES map`?**
-  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **What is the exact relationship between `ensemble_stats()` and `tests/conftest.py Fixtures`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `run_trade_cycle()` and `batch_log_analysis_attempts()`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `fit_market_implied_distribution()` and `_analyze_hurricane_count_trade() / is_hurricane_count_ticker()`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **What is the exact relationship between `is_accuracy_halted()` and `_system_cooldown_elapsed()`?**
+- **What is the exact relationship between `get_pnl_by_signal_source()` and `_forecast_model_weights()`?**
+  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
+- **What is the exact relationship between `load_all_sigmas()` and `/api/anomaly-status endpoint`?**
+  _Edge tagged AMBIGUOUS (relation: shares_data_with) - confidence is low._
+- **What is the exact relationship between `execution_log.py` and `Missing EXECUTION_LOG_PATH Centralization (Possible)`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._

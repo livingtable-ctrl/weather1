@@ -13,7 +13,6 @@ tags:
 
 ## Connections
 - [[CircuitBreaker]] - `imports` [EXTRACTED]
-- [[Command Reference]] - `conceptually_related_to` [INFERRED]
 - [[Fetch and analyze Kalshi weather prediction markets. Compares market-implied…]] - `rationale_for` [EXTRACTED]
 - [[ForecastCache]] - `imports` [EXTRACTED]
 - [[Grade Audit Module Doc TIER 2 Files]] - `references` [EXTRACTED]
@@ -209,7 +208,6 @@ tags:
 - [[load_seasonal_weights()]] - `imports` [EXTRACTED]
 - [[log_city_registry_report()]] - `contains` [EXTRACTED]
 - [[log_source_attempt()]] - `imports` [EXTRACTED]
-- [[main.py]] - `imports_from` [EXTRACTED]
 - [[market_implied_rain_event_key()]] - `contains` [EXTRACTED]
 - [[metar.py]] - `imports` [EXTRACTED]
 - [[normal_cdf()]] - `imports` [EXTRACTED]

@@ -92,7 +92,6 @@ SORT file.name ASC
 ## Connections to other communities
 - 13 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 8 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 7 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 7 edges to [[_COMMUNITY_Community 47]]
 - 6 edges to [[_COMMUNITY_Weather Probability Math Tests]]
 - 5 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
@@ -102,8 +101,6 @@ SORT file.name ASC
 - 4 edges to [[_COMMUNITY_Community 59]]
 - 4 edges to [[_COMMUNITY_Community 36]]
 - 2 edges to [[_COMMUNITY_Community 420]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Community 245]]
 - 2 edges to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
 - 2 edges to [[_COMMUNITY_Community 57]]
 - 2 edges to [[_COMMUNITY_Community 103]]
@@ -115,6 +112,7 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 391]]
 - 1 edge to [[_COMMUNITY_Community 540]]
 - 1 edge to [[_COMMUNITY_Community 541]]
+- 1 edge to [[_COMMUNITY_Community 245]]
 - 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 - 1 edge to [[_COMMUNITY_Community 118]]
 - 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
@@ -128,8 +126,8 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 293]]
 
 ## Top bridge nodes
-- [[safe_io.py]] - degree 32, connects to 17 communities
-- [[backtest.py]] - degree 30, connects to 10 communities
-- [[run_backtest()]] - degree 23, connects to 8 communities
-- [[test_backtest.py]] - degree 21, connects to 8 communities
+- [[safe_io.py]] - degree 31, connects to 16 communities
+- [[backtest.py]] - degree 29, connects to 9 communities
+- [[test_backtest.py]] - degree 20, connects to 7 communities
+- [[run_backtest()]] - degree 20, connects to 6 communities
 - [[test_bare_os_replace_guard.py]] - degree 12, connects to 6 communities

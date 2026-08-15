@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 493"
-location: "L177"
+community: "Community 693"
+location: "L199"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_493
+  - community/Community_693
 ---
 
 # Dashboard returns 200 with correct Basic Auth credentials.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_200_with_correct_credentials()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_493
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

@@ -55,11 +55,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 55]]
 - 1 edge to [[_COMMUNITY_Community 397]]
 - 1 edge to [[_COMMUNITY_Community 425]]
 - 1 edge to [[_COMMUNITY_Community 90]]
 
 ## Top bridge nodes
-- [[test_hurricane_gating.py]] - degree 11, connects to 5 communities
+- [[test_hurricane_gating.py]] - degree 9, connects to 4 communities

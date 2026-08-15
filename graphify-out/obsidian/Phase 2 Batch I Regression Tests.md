@@ -22,13 +22,7 @@ tags:
 - [[TestGetBalanceHistorySettlementTs]] - `contains` [EXTRACTED]
 - [[TestQuickPaperBuyAutoKellySizing]] - `contains` [EXTRACTED]
 - [[TestQuickPaperBuyRespectsPositionLimits]] - `contains` [EXTRACTED]
-- [[_exposure_denom()]] - `calls` [EXTRACTED]
 - [[_open_trade()]] - `contains` [EXTRACTED]
-- [[_quick_paper_buy()]] - `calls` [EXTRACTED]
 - [[_settled_trade()]] - `contains` [EXTRACTED]
-- [[check_position_limits()]] - `calls` [EXTRACTED]
-- [[covariance_kelly_scale()]] - `calls` [EXTRACTED]
-- [[get_balance_history()]] - `calls` [EXTRACTED]
-- [[paper.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

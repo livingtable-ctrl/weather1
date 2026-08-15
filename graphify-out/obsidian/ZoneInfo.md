@@ -48,7 +48,6 @@ tags:
 - [[_time_risk()]] - `calls` [INFERRED]
 - [[check_city_settlement()]] - `calls` [INFERRED]
 - [[check_metar_lockout()]] - `calls` [INFERRED]
-- [[cmd_schedule()]] - `calls` [INFERRED]
 - [[compute_hourly_temperature_proxy()]] - `calls` [INFERRED]
 - [[run_settlement_monitor()]] - `calls` [INFERRED]
 - [[settlement_monitor.py]] - `imports_from` [EXTRACTED]

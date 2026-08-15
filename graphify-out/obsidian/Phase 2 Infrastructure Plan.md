@@ -23,7 +23,7 @@ tags:
 - [[kalshi_client.py_2]] - `references` [EXTRACTED]
 - [[log_api_request()]] - `implements` [EXTRACTED]
 - [[nws.py_1]] - `references` [EXTRACTED]
-- [[paper.py_1]] - `references` [EXTRACTED]
+- [[paper.py]] - `references` [EXTRACTED]
 - [[safe_io.py_2]] - `implements` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_59

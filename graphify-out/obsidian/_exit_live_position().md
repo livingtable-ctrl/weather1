@@ -12,7 +12,7 @@ tags:
 # _exit_live_position()
 
 ## Connections
-- [[dot-exit()_1]] - `calls` [EXTRACTED]
+- [[dot-exit()]] - `calls` [EXTRACTED]
 - [[dot-test_full_fill_exit_order_not_treated_as_new_open_position()]] - `calls` [EXTRACTED]
 - [[dot-test_full_fill_records_fee_adjusted_pnl()]] - `calls` [EXTRACTED]
 - [[dot-test_gain_case_applies_fee_discount()]] - `calls` [EXTRACTED]

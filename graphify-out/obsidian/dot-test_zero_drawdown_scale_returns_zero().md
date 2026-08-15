@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 521"
+community: "Community 693"
 location: "L109"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_521
+  - community/Community_693
 ---
 
 # .test_zero_drawdown_scale_returns_zero()
@@ -15,4 +15,4 @@ tags:
 - [[TestKellyScalesWithBalance]] - `method` [EXTRACTED]
 - [[_write_paper_json()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_521
+#graphify/code #graphify/EXTRACTED #community/Community_693

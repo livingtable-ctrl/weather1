@@ -14,6 +14,5 @@ tags:
 ## Connections
 - [[TestSlippageAdjustedPrice]] - `method` [EXTRACTED]
 - [[quantity=1 produces 0.001 slippage.]] - `rationale_for` [EXTRACTED]
-- [[slippage_adjusted_price()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_320

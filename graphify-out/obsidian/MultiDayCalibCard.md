@@ -5,7 +5,7 @@ community: "Community 692"
 location: "487"
 tags:
   - graphify/code
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_692
 ---
 
@@ -15,4 +15,4 @@ tags:
 - [[SamedayCalibCard]] - `references` [EXTRACTED]
 - [[fetchAll inner (V3)]] - `shares_data_with` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_692
+#graphify/code #graphify/EXTRACTED #community/Community_692

@@ -15,10 +15,6 @@ tags:
 - [[KalshiClient]] - `references` [EXTRACTED]
 - [[bold()]] - `calls` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
-- [[get_balance()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[output_formatters.py]] - `contains` [EXTRACTED]
-- [[validate_api_key()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

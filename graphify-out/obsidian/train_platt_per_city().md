@@ -15,8 +15,6 @@ tags:
 - [[Train per-city Platt scaling fits (A, B) via cross-entropy on logit(p).…]] - `rationale_for` [EXTRACTED]
 - [[_fit_platt()]] - `calls` [EXTRACTED]
 - [[_logit()]] - `calls` [EXTRACTED]
-- [[cmd_calibrate()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[ml_bias.py]] - `contains` [EXTRACTED]
 - [[test_ml_bias.py]] - `calls` [EXTRACTED]
 

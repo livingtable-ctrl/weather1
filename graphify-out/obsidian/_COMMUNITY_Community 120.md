@@ -44,9 +44,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
-- 1 edge to [[_COMMUNITY_Test Fixture Cache Clearing (conftest)]]
 - 1 edge to [[_COMMUNITY_Community 109]]
 
 ## Top bridge nodes
-- [[Grade Audit Module Doc ml_bias.py]] - degree 5, connects to 3 communities
+- [[Grade Audit Module Doc ml_bias.py]] - degree 4, connects to 2 communities
 - [[test_hmac_bias.py]] - degree 5, connects to 1 community

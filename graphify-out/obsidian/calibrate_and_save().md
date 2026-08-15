@@ -22,10 +22,8 @@ tags:
 - [[calibrate_condition_weights()]] - `calls` [EXTRACTED]
 - [[calibrate_seasonal_weights()]] - `calls` [EXTRACTED]
 - [[calibration.py]] - `contains` [EXTRACTED]
-- [[cmd_calibrate()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[dataseasonal_condition_city_weights.json]] - `shares_data_with` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[tracker.DB_PATH  predictions DB]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_118

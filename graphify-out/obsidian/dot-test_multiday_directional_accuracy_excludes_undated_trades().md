@@ -15,6 +15,5 @@ tags:
 - [[dot-_make_multiday_trade()]] - `calls` [EXTRACTED]
 - [[TestEdgeRealizationRate]] - `method` [EXTRACTED]
 - [[Trades missing settled_at (a real historical data state) must be excluded…]] - `rationale_for` [EXTRACTED]
-- [[get_edge_realization_rate()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization

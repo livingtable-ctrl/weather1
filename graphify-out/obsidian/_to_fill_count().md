@@ -18,7 +18,6 @@ tags:
 - [[_poll_pending_orders()]] - `calls` [EXTRACTED]
 - [[_recover_pending_orders()]] - `calls` [EXTRACTED]
 - [[_resolve_amend_status()]] - `calls` [EXTRACTED]
-- [[cmd_order()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

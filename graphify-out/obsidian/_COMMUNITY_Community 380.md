@@ -30,10 +30,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 1 edge to [[_COMMUNITY_Community 166]]
-- 1 edge to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 52]]
-- 1 edge to [[_COMMUNITY_Community 108]]
 - 1 edge to [[_COMMUNITY_Community 228]]
 
 ## Top bridge nodes
-- [[test_sprt.py]] - degree 7, connects to 5 communities
+- [[test_sprt.py]] - degree 5, connects to 3 communities

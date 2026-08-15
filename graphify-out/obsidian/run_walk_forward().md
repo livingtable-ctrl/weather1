@@ -14,8 +14,6 @@ tags:
 ## Connections
 - [[Walk-forward validation slide a fixed-size window across the history, scoring…]] - `rationale_for` [EXTRACTED]
 - [[backtest.py]] - `contains` [EXTRACTED]
-- [[cmd_walkforward()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[tracker.DB_PATH  predictions DB]] - `calls` [EXTRACTED]
 - [[utc_today()]] - `calls` [EXTRACTED]
 

@@ -14,12 +14,10 @@ tags:
 ## Connections
 - [[apianomaly-status endpoint]] - `conceptually_related_to` [EXTRACTED]
 - [[Return the exact win-rate window check_anomalies()'s WIN RATE COLLAPSE gate…]] - `rationale_for` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_recent_settled()]] - `calls` [EXTRACTED]
 - [[_trade_lost()]] - `calls` [EXTRACTED]
 - [[_trade_won()]] - `calls` [EXTRACTED]
 - [[alerts.py]] - `contains` [EXTRACTED]
 - [[check_anomalies()]] - `calls` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_194

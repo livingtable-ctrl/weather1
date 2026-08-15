@@ -22,9 +22,7 @@ tags:
 - [[_poll_pending_orders()]] - `calls` [EXTRACTED]
 - [[_recover_pending_orders()]] - `calls` [EXTRACTED]
 - [[_replace_live_order()]] - `calls` [EXTRACTED]
-- [[cmd_order()]] - `calls` [EXTRACTED]
 - [[execution_log.py]] - `contains` [EXTRACTED]
 - [[init_log()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking

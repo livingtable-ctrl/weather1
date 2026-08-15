@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
-location: "L2828"
+community: "Community 693"
+location: "L2965"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # Export settled trades in Schedule D / capital gains format. Columns:…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[export_tax_csv()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

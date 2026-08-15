@@ -37,9 +37,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 40]]
 
 ## Top bridge nodes
-- [[test_near_settlement_log.py]] - degree 7, connects to 2 communities
 - [[_log_near_settlement_trades()]] - degree 10, connects to 1 community
+- [[test_near_settlement_log.py]] - degree 6, connects to 1 community

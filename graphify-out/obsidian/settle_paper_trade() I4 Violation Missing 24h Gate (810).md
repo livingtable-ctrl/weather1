@@ -13,6 +13,5 @@ tags:
 
 ## Connections
 - [[I4 24h Settlement Gate]] - `references` [EXTRACTED]
-- [[paper.py]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Anomaly Detection & PDF Reporting"
-location: "L2620"
+community: "Community 693"
+location: "L2757"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # check_aged_positions()
@@ -16,8 +16,8 @@ tags:
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
 - [[get_open_trades()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
-- [[paper.py]] - `contains` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
+- [[main.py_1]] - `imports` [EXTRACTED]
+- [[paper.py_1]] - `contains` [EXTRACTED]
+- [[web_app.py_1]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/code #graphify/EXTRACTED #community/Community_693

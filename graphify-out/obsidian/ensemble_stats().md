@@ -33,7 +33,6 @@ tags:
 - [[test_acis_precip.py]] - `conceptually_related_to` [AMBIGUOUS]
 - [[test_weather.py]] - `imports` [EXTRACTED]
 - [[test_weather_markets.py]] - `imports` [EXTRACTED]
-- [[testsconftest.py Fixtures]] - `conceptually_related_to` [AMBIGUOUS]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 - [[weather_markets.py_2]] - `implements` [EXTRACTED]
 

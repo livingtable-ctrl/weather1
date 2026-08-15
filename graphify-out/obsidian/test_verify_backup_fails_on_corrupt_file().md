@@ -13,6 +13,5 @@ tags:
 
 ## Connections
 - [[test_safe_io.py]] - `contains` [EXTRACTED]
-- [[verify_backup()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_460

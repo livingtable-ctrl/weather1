@@ -29,7 +29,6 @@ tags:
 - [[kalshi_client.py File Grade median 810, no active bugs]] - `references` [EXTRACTED]
 - [[kalshi_client.py Grade Audit]] - `references` [EXTRACTED]
 - [[log_api_request()]] - `imports` [EXTRACTED]
-- [[main.py]] - `imports_from` [EXTRACTED]
 - [[output_formatters.py]] - `imports_from` [EXTRACTED]
 - [[place_order() client_order_id Idempotency Design (810)]] - `references` [EXTRACTED]
 - [[schema_validator.py]] - `imports_from` [EXTRACTED]
@@ -37,6 +36,5 @@ tags:
 - [[trade_cycle.py]] - `imports_from` [EXTRACTED]
 - [[validate_market()]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `imports_from` [EXTRACTED]
-- [[web_app.py]] - `imports_from` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_351

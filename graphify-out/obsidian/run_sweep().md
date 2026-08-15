@@ -20,10 +20,7 @@ tags:
 - [[Run a sweep across key parameters using historical paper trades. Uses a 7030…]] - `rationale_for` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[_paper_min_edge_default()]] - `shares_data_with` [INFERRED]
-- [[cmd_sweep()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
-- [[load_paper_trades()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[param_sweep.py]] - `contains` [EXTRACTED]
 - [[sweep_parameter()]] - `calls` [EXTRACTED]
 

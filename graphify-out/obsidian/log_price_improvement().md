@@ -17,8 +17,6 @@ tags:
 - [[Tracker Grade Audit]] - `references` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[paper.py]] - `imports` [EXTRACTED]
-- [[place_paper_order()_1]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 - [[tracker.py_1]] - `implements` [EXTRACTED]
 

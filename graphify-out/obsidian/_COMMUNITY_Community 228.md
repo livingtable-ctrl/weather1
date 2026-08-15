@@ -36,7 +36,6 @@ SORT file.name ASC
 ## Connections to other communities
 - 1 edge to [[_COMMUNITY_Community 58]]
 - 1 edge to [[_COMMUNITY_Community 74]]
-- 1 edge to [[_COMMUNITY_Community 108]]
 - 1 edge to [[_COMMUNITY_Community 242]]
 - 1 edge to [[_COMMUNITY_Community 244]]
 - 1 edge to [[_COMMUNITY_Community 380]]
@@ -44,5 +43,5 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 40]]
 
 ## Top bridge nodes
-- [[utils.py_1]] - degree 8, connects to 7 communities
+- [[utils.py_1]] - degree 7, connects to 6 communities
 - [[STARTING_BALANCE]] - degree 3, connects to 1 community

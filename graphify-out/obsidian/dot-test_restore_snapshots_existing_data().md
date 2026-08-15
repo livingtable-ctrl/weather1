@@ -13,7 +13,6 @@ tags:
 
 ## Connections
 - [[TestRestoreDataConfirm]] - `method` [EXTRACTED]
-- [[cloud_backup()]] - `indirect_call` [INFERRED]
 - [[restore_data must snapshot current data before overwriting.]] - `rationale_for` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_132

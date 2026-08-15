@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
+community: "Community 693"
 location: "L489"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # _market_base_url()
@@ -16,6 +16,6 @@ tags:
 - [[_kalshi_env()]] - `calls` [EXTRACTED]
 - [[cmd_market()]] - `calls` [EXTRACTED]
 - [[cmd_markets()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

@@ -1,19 +1,19 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
+community: "Community 693"
 location: "L628"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # cleanup_data_dir()
 
 ## Connections
 - [[Delete stale cached data files to prevent unbounded growth. Skips…]] - `rationale_for` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

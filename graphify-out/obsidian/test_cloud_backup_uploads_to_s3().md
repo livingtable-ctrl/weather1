@@ -12,7 +12,6 @@ tags:
 # test_cloud_backup_uploads_to_s3()
 
 ## Connections
-- [[cloud_backup()]] - `calls` [EXTRACTED]
 - [[test_cloud_backup.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_132

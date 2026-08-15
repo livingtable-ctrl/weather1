@@ -12,7 +12,6 @@ tags:
 # test_health_endpoint_returns_ok()
 
 ## Connections
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Tracker_SQLite_Storage_Tests

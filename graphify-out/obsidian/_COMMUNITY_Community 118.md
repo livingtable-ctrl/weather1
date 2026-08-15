@@ -53,8 +53,6 @@ SORT file.name ASC
 - 2 edges to [[_COMMUNITY_Community 47]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 37]]
-- 1 edge to [[_COMMUNITY_Community 353]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Community 151]]
 - 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
@@ -62,7 +60,7 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[calibration.py]] - degree 20, connects to 8 communities
-- [[calibrate_and_save()]] - degree 15, connects to 7 communities
+- [[calibrate_and_save()]] - degree 13, connects to 5 communities
 - [[calibrate_seasonal_weights()]] - degree 18, connects to 4 communities
 - [[calibrate_condition_weights()]] - degree 14, connects to 3 communities
 - [[_best_weights()]] - degree 9, connects to 3 communities

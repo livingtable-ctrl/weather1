@@ -14,8 +14,6 @@ tags:
 ## Connections
 - [[If updated prob shifts 25pp against position, close_paper_early is called.]] - `rationale_for` [EXTRACTED]
 - [[_check_early_exits()]] - `calls` [INFERRED]
-- [[get_open_trades()]] - `calls` [EXTRACTED]
-- [[place_paper_order()_1]] - `calls` [EXTRACTED]
 - [[test_trading.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

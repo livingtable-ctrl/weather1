@@ -48,7 +48,6 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 6 edges to [[_COMMUNITY_Community 347]]
-- 3 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 3 edges to [[_COMMUNITY_Community 527]]
 - 3 edges to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 240]]
@@ -65,5 +64,5 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 52]]
 
 ## Top bridge nodes
-- [[test_trading.py]] - degree 40, connects to 15 communities
+- [[test_trading.py]] - degree 37, connects to 14 communities
 - [[test_auto_place_trades_stops_at_daily_spend_cap()]] - degree 3, connects to 1 community

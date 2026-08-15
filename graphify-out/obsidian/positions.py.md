@@ -20,7 +20,6 @@ tags:
 - [[check_stop_losses()]] - `contains` [EXTRACTED]
 - [[liquidation_price()]] - `contains` [EXTRACTED]
 - [[order_executor.py]] - `imports_from` [EXTRACTED]
-- [[paper.py]] - `imports_from` [EXTRACTED]
 - [[test_positions.py]] - `imports_from` [EXTRACTED]
 - [[update_peak_profits()]] - `contains` [EXTRACTED]
 

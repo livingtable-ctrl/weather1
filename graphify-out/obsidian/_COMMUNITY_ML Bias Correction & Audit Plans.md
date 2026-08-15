@@ -18,7 +18,6 @@ members: 164
 - [[Block until the per-endpoint minimum inter-request interval has elapsed.…]] - rationale - weather_markets.py
 - [[Bootstrap 90% CI for a precipitation ensemble probability.]] - rationale - weather_markets.py
 - [[Code Review Fixes Plan]] - document - code_review_plan.md
-- [[Command Reference]] - document - COMMANDS.md
 - [[Compute std dev of non-None values. Returns 0.0 if fewer than 2 valid.]] - rationale - weather_markets.py
 - [[Determine time-of-day risk level and forecast sigma multiplier. Returns…]] - rationale - weather_markets.py
 - [[Estimated standard deviation of forecast error in °F. Weather forecasts get…]] - rationale - weather_markets.py
@@ -88,6 +87,7 @@ members: 164
 - [[Thin wrapper so tests can monkeypatch the settled-trade count.]] - rationale - weather_markets.py
 - [[Thin wrapper so tests can monkeypatch the west-coast settled-trade counts.]] - rationale - weather_markets.py
 - [[Trading Logic Audit 2026-04-23]] - document - docs/audit-2026-04-23.md
+- [[ValueError]] - code
 - [[Write a one-time entry to feature_activations.json and log a WARNING.…]] - rationale - weather_markets.py
 - [[_CITY_SERIES_TICKER map]] - code - settlement_monitor.py
 - [[_analyze_hourly_trade()]] - code - weather_markets.py
@@ -183,11 +183,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 55 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 42 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 49 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 32 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
 - 29 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 24 edges to [[_COMMUNITY_Black Swan Halt State]]
+- 23 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 20 edges to [[_COMMUNITY_Weather Probability Math Tests]]
 - 16 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 15 edges to [[_COMMUNITY_Community 58]]
@@ -198,39 +197,45 @@ SORT file.name ASC
 - 12 edges to [[_COMMUNITY_Community 53]]
 - 10 edges to [[_COMMUNITY_Community 190]]
 - 10 edges to [[_COMMUNITY_Community 221]]
-- 9 edges to [[_COMMUNITY_Community 26]]
-- 8 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
+- 10 edges to [[_COMMUNITY_Community 26]]
+- 9 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
 - 8 edges to [[_COMMUNITY_Community 207]]
 - 7 edges to [[_COMMUNITY_Community 240]]
+- 7 edges to [[_COMMUNITY_Community 36]]
 - 6 edges to [[_COMMUNITY_Community 131]]
 - 6 edges to [[_COMMUNITY_Community 234]]
-- 6 edges to [[_COMMUNITY_Community 36]]
 - 6 edges to [[_COMMUNITY_Community 82]]
 - 6 edges to [[_COMMUNITY_Community 356]]
 - 6 edges to [[_COMMUNITY_Community 32]]
+- 6 edges to [[_COMMUNITY_Community 693]]
 - 5 edges to [[_COMMUNITY_Community 137]]
 - 5 edges to [[_COMMUNITY_Community 201]]
+- 4 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 4 edges to [[_COMMUNITY_Community 255]]
 - 4 edges to [[_COMMUNITY_Community 103]]
+- 4 edges to [[_COMMUNITY_Forecast Persistent Cache]]
 - 4 edges to [[_COMMUNITY_Community 220]]
 - 4 edges to [[_COMMUNITY_Community 334]]
 - 4 edges to [[_COMMUNITY_Community 415]]
 - 4 edges to [[_COMMUNITY_Community 339]]
+- 4 edges to [[_COMMUNITY_Community 55]]
 - 4 edges to [[_COMMUNITY_Community 59]]
 - 4 edges to [[_COMMUNITY_Community 89]]
 - 4 edges to [[_COMMUNITY_Community 350]]
+- 4 edges to [[_COMMUNITY_Community 533]]
 - 3 edges to [[_COMMUNITY_Community 160]]
 - 3 edges to [[_COMMUNITY_Community 178]]
-- 3 edges to [[_COMMUNITY_Forecast Persistent Cache]]
 - 3 edges to [[_COMMUNITY_Community 269]]
 - 3 edges to [[_COMMUNITY_Community 52]]
 - 3 edges to [[_COMMUNITY_Community 64]]
 - 3 edges to [[_COMMUNITY_Community 182]]
+- 3 edges to [[_COMMUNITY_Community 96]]
 - 3 edges to [[_COMMUNITY_Community 581]]
 - 3 edges to [[_COMMUNITY_Community 394]]
-- 3 edges to [[_COMMUNITY_Community 533]]
+- 3 edges to [[_COMMUNITY_Community 580]]
 - 2 edges to [[_COMMUNITY_Community 44]]
 - 2 edges to [[_COMMUNITY_Community 51]]
+- 2 edges to [[_COMMUNITY_Community 129]]
 - 2 edges to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 - 2 edges to [[_COMMUNITY_Community 164]]
 - 2 edges to [[_COMMUNITY_Community 214]]
@@ -238,21 +243,23 @@ SORT file.name ASC
 - 2 edges to [[_COMMUNITY_Community 230]]
 - 2 edges to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
 - 2 edges to [[_COMMUNITY_Community 296]]
+- 2 edges to [[_COMMUNITY_Community 298]]
 - 2 edges to [[_COMMUNITY_Community 62]]
 - 2 edges to [[_COMMUNITY_Community 384]]
 - 2 edges to [[_COMMUNITY_Community 70]]
 - 2 edges to [[_COMMUNITY_Community 451]]
 - 2 edges to [[_COMMUNITY_Community 41]]
-- 2 edges to [[_COMMUNITY_Community 96]]
 - 2 edges to [[_COMMUNITY_Community 528]]
+- 2 edges to [[_COMMUNITY_Community 94]]
+- 2 edges to [[_COMMUNITY_Community 86]]
 - 2 edges to [[_COMMUNITY_Community 303]]
-- 2 edges to [[_COMMUNITY_Community 580]]
 - 1 edge to [[_COMMUNITY_Community 111]]
-- 1 edge to [[_COMMUNITY_Community 145]]
 - 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
 - 1 edge to [[_COMMUNITY_Community 191]]
+- 1 edge to [[_COMMUNITY_Community 198]]
 - 1 edge to [[_COMMUNITY_Community 222]]
 - 1 edge to [[_COMMUNITY_Community 280]]
+- 1 edge to [[_COMMUNITY_Community 297]]
 - 1 edge to [[_COMMUNITY_Community 237]]
 - 1 edge to [[_COMMUNITY_Community 174]]
 - 1 edge to [[_COMMUNITY_Community 457]]
@@ -260,15 +267,15 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 233]]
 - 1 edge to [[_COMMUNITY_Community 423]]
 - 1 edge to [[_COMMUNITY_Community 73]]
-- 1 edge to [[_COMMUNITY_Community 55]]
 - 1 edge to [[_COMMUNITY_Community 325]]
 - 1 edge to [[_COMMUNITY_Community 85]]
-- 1 edge to [[_COMMUNITY_Community 94]]
-- 1 edge to [[_COMMUNITY_Community 86]]
 - 1 edge to [[_COMMUNITY_Community 458]]
 - 1 edge to [[_COMMUNITY_Community 92]]
+- 1 edge to [[_COMMUNITY_Community 326]]
 - 1 edge to [[_COMMUNITY_Community 348]]
+- 1 edge to [[_COMMUNITY_Community 353]]
 - 1 edge to [[_COMMUNITY_Community 598]]
+- 1 edge to [[_COMMUNITY_Community 65]]
 - 1 edge to [[_COMMUNITY_Community 142]]
 - 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
 - 1 edge to [[_COMMUNITY_Community 118]]
@@ -277,11 +284,10 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 211]]
 - 1 edge to [[_COMMUNITY_Community 351]]
 - 1 edge to [[_COMMUNITY_Community 71]]
-- 1 edge to [[_COMMUNITY_Community 538]]
 
 ## Top bridge nodes
-- [[weather_markets.py]] - degree 244, connects to 56 communities
-- [[analyze_trade()]] - degree 154, connects to 32 communities
-- [[parse_market_price()]] - degree 55, connects to 20 communities
-- [[weather_markets.py_1]] - degree 22, connects to 13 communities
-- [[_analyze_precip_trade()]] - degree 15, connects to 8 communities
+- [[weather_markets.py]] - degree 242, connects to 56 communities
+- [[analyze_trade()]] - degree 137, connects to 32 communities
+- [[ValueError]] - degree 33, connects to 20 communities
+- [[parse_market_price()]] - degree 42, connects to 18 communities
+- [[weather_markets.py_1]] - degree 20, connects to 12 communities

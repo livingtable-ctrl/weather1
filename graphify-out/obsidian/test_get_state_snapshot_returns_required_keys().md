@@ -13,7 +13,6 @@ tags:
 
 ## Connections
 - [[get_state_snapshot must return balance, open_trades_count, peak_balance, and…]] - `rationale_for` [EXTRACTED]
-- [[get_state_snapshot()]] - `calls` [EXTRACTED]
 - [[test_state_consistency.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

@@ -14,7 +14,6 @@ tags:
 ## Connections
 - [[Returns empty bets list when analyze_trade returns None for all markets.]] - `rationale_for` [EXTRACTED]
 - [[TestSuggestedBetsEndpoint]] - `method` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_make_market()]] - `calls` [EXTRACTED]
 - [[patch]] - `references` [EXTRACTED]
 

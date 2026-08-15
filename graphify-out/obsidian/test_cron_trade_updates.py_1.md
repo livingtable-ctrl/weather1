@@ -12,8 +12,6 @@ tags:
 
 ## Connections
 - [[_cmd_cron_body()]] - `references` [EXTRACTED]
-- [[auto_settle_paper_trades()]] - `calls` [EXTRACTED]
-- [[cmd_cron()_1]] - `calls` [EXTRACTED]
 - [[test_cron_integration.py_1]] - `semantically_similar_to` [INFERRED]
 
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

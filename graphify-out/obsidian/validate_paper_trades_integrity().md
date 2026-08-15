@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Anomaly Detection & PDF Reporting"
-location: "L1286"
+community: "Community 693"
+location: "L1304"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # validate_paper_trades_integrity()
@@ -14,8 +14,8 @@ tags:
 ## Connections
 - [[Check paper_trades.json for structural corruption. Returns a list of error…]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
-- [[_load()]] - `calls` [EXTRACTED]
-- [[paper.py]] - `contains` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
+- [[_load()_1]] - `calls` [EXTRACTED]
+- [[paper.py_1]] - `contains` [EXTRACTED]
+- [[web_app.py_1]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/code #graphify/EXTRACTED #community/Community_693

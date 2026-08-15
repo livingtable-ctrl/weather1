@@ -17,11 +17,7 @@ tags:
 - [[TestMaxPositionsPerDate]] - `contains` [EXTRACTED]
 - [[TestPlacePaperOrderDuplicateGuard]] - `contains` [EXTRACTED]
 - [[Tests for backlog items 6, 4, 1, 2. 6 - City-level Kelly scaling from…]] - `rationale_for` [EXTRACTED]
-- [[_city_kelly_multiplier()]] - `imports` [EXTRACTED]
-- [[get_edge_realization_rate()]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `calls` [EXTRACTED]
-- [[paper.py]] - `calls` [EXTRACTED]
-- [[portfolio_kelly_fraction()]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization

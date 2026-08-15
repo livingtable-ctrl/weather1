@@ -13,12 +13,10 @@ tags:
 
 ## Connections
 - [[Connection_1]] - `references` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_check_api_failure_rate()]] - `calls` [EXTRACTED]
 - [[_fetch()]] - `calls` [EXTRACTED]
 - [[_get_recent_win_loss()]] - `calls` [EXTRACTED]
 - [[_log_shadow_predictions()]] - `calls` [EXTRACTED]
-- [[_score_ensemble_members()]] - `calls` [EXTRACTED]
 - [[audit_settlement()]] - `calls` [EXTRACTED]
 - [[backfill_daily_temp_settlement()]] - `calls` [EXTRACTED]
 - [[backfill_emos_data()]] - `calls` [EXTRACTED]
@@ -89,7 +87,7 @@ tags:
 - [[get_sameday_calibration()]] - `calls` [EXTRACTED]
 - [[get_sameday_calibration_cli()]] - `calls` [EXTRACTED]
 - [[get_source_reliability()]] - `calls` [EXTRACTED]
-- [[get_stop_loss_accuracy()_1]] - `calls` [EXTRACTED]
+- [[get_stop_loss_accuracy()]] - `calls` [EXTRACTED]
 - [[get_trade_flow_settlement_correlation()]] - `calls` [EXTRACTED]
 - [[get_trade_history()]] - `calls` [EXTRACTED]
 - [[get_unselected_bias()]] - `calls` [EXTRACTED]
@@ -108,7 +106,6 @@ tags:
 - [[mark_outcome_disputed()]] - `calls` [EXTRACTED]
 - [[mark_outcome_undisputed()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
-- [[paper.py]] - `imports` [EXTRACTED]
 - [[prune_api_requests()]] - `calls` [EXTRACTED]
 - [[prune_old_analysis_attempts()]] - `calls` [EXTRACTED]
 - [[purge_old_predictions()]] - `calls` [EXTRACTED]
@@ -124,6 +121,5 @@ tags:
 - [[test_settle_analysis_attempt_matches_null_target_date_via_is_null()]] - `calls` [EXTRACTED]
 - [[test_tracker.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

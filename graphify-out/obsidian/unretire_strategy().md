@@ -16,9 +16,7 @@ tags:
 - [[_get_strategy_pins()]] - `calls` [EXTRACTED]
 - [[_save_retired_strategies()]] - `calls` [EXTRACTED]
 - [[_save_strategy_pins()]] - `calls` [EXTRACTED]
-- [[cmd_unretire_strategy()]] - `calls` [EXTRACTED]
 - [[get_retired_strategies()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_384

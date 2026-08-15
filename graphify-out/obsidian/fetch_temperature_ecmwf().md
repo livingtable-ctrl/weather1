@@ -15,12 +15,10 @@ tags:
 - [[dot-test_fetch_temperature_ecmwf_returns_float_or_none()]] - `calls` [EXTRACTED]
 - [[Fetch ECMWF deterministic max or min daily temperature for a city. Uses Open-…]] - `rationale_for` [EXTRACTED]
 - [[ValueError]] - `calls` [INFERRED]
-- [[_build_cron_context()]] - `indirect_call` [INFERRED]
 - [[_om_request()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[date_2]] - `references` [EXTRACTED]
 - [[is_all_null()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[test_ecmwf.py]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 

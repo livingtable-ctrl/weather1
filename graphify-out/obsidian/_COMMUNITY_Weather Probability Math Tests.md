@@ -90,7 +90,6 @@ SORT file.name ASC
 - 2 edges to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
 - 2 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 - 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 323]]
 - 1 edge to [[_COMMUNITY_Community 350]]
 - 1 edge to [[_COMMUNITY_Community 415]]
@@ -99,11 +98,11 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 269]]
 - 1 edge to [[_COMMUNITY_Community 331]]
 - 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 1 edge to [[_COMMUNITY_Community 570]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 
 ## Top bridge nodes
 - [[test_weather.py]] - degree 32, connects to 11 communities
-- [[_var_from_ticker_prefix()]] - degree 19, connects to 7 communities
+- [[_var_from_ticker_prefix()]] - degree 17, connects to 6 communities
 - [[prob_threshold()]] - degree 19, connects to 5 communities
 - [[_forecast_probability()]] - degree 13, connects to 3 communities
 - [[obs_prob()]] - degree 12, connects to 3 communities

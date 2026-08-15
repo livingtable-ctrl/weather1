@@ -55,10 +55,9 @@ SORT file.name ASC
 - 2 edges to [[_COMMUNITY_Community 40]]
 - 2 edges to [[_COMMUNITY_Community 52]]
 - 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_Community 228]]
 
 ## Top bridge nodes
-- [[_sameday_effective_cap()]] - degree 22, connects to 7 communities
+- [[_sameday_effective_cap()]] - degree 21, connects to 6 communities
 - [[test_sameday_reserve.py]] - degree 19, connects to 2 communities

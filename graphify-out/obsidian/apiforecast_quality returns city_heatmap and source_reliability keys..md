@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 43"
-location: "L385"
+community: "Community 693"
+location: "L591"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_43
+  - community/Community_693
 ---
 
 # /api/forecast_quality returns city_heatmap and source_reliability keys.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_api_forecast_quality_returns_correct_shape()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_43
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

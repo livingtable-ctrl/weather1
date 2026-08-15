@@ -1,24 +1,19 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Community 245"
+community: "Community 693"
 location: "L684"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_245
+  - community/Community_693
 ---
 
 # auto_backtest()
 
 ## Connections
-- [[dot-_run()_1]] - `indirect_call` [INFERRED]
-- [[KalshiClient]] - `references` [EXTRACTED]
+- [[KalshiClient_1]] - `references` [EXTRACTED]
 - [[Run a quick 7-day backtest silently in a background thread on startup. If…]] - `rationale_for` [EXTRACTED]
-- [[brier_score()]] - `calls` [EXTRACTED]
-- [[check_overfitting()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[run_backtest()]] - `calls` [EXTRACTED]
-- [[yellow()]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_245
+#graphify/code #graphify/EXTRACTED #community/Community_693

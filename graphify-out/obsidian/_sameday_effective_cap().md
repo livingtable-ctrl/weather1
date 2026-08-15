@@ -16,7 +16,6 @@ tags:
 - [[Paper Trading Ledger Module]] - `calls` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[count_settled_sameday_predictions()]] - `calls` [EXTRACTED]
-- [[get_sameday_band_stats()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[order_executor.py_1]] - `implements` [EXTRACTED]
 - [[test_db_error_fails_open()]] - `calls` [EXTRACTED]

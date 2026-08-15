@@ -1,21 +1,19 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
-location: "L4759"
+community: "Community 693"
+location: "L4910"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # cmd_kill()
 
 ## Connections
 - [[Activate the kill switch — stops all automated trading immediately.]] - `rationale_for` [EXTRACTED]
-- [[dim()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[red()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

@@ -27,7 +27,6 @@ tags:
 - [[fetch_archive_temps()]] - `contains` [EXTRACTED]
 - [[fetch_previous_run_ensemble()]] - `contains` [EXTRACTED]
 - [[kelly_fraction()]] - `imports` [EXTRACTED]
-- [[load_paper_trades()]] - `imports` [EXTRACTED]
 - [[parse_market_price()]] - `imports` [EXTRACTED]
 - [[paths.py]] - `imports_from` [EXTRACTED]
 - [[prob_threshold()]] - `imports` [EXTRACTED]

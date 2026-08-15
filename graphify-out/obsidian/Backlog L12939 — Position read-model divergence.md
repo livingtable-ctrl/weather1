@@ -5,7 +5,7 @@ community: "Community 497"
 location: "L29"
 tags:
   - graphify/document
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_497
 ---
 
@@ -14,6 +14,5 @@ tags:
 ## Connections
 - [[BACKLOG_OPEN]] - `references` [EXTRACTED]
 - [[Backlog L17703 — React dashboard 4th paper-close site]] - `semantically_similar_to` [INFERRED]
-- [[close_paper_early()]] - `references` [INFERRED]
 
-#graphify/document #graphify/INFERRED #community/Community_497
+#graphify/document #graphify/EXTRACTED #community/Community_497

@@ -10,7 +10,7 @@ members: 5
 **Members:** 5 nodes
 
 ## Members
-- [[dot-__init__()_10]] - code - tests/test_climatology.py
+- [[dot-__init__()_9]] - code - tests/test_climatology.py
 - [[dot-json()]] - code - tests/test_climatology.py
 - [[dot-raise_for_status()]] - code - tests/test_climatology.py
 - [[Minimal requests.Response stand-in for mocking climatology._session.get.]] - rationale - tests/test_climatology.py

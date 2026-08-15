@@ -18,7 +18,6 @@ tags:
 - [[_atomic_write_payload()]] - `calls` [EXTRACTED]
 - [[_read_temperature_scale_key()]] - `calls` [EXTRACTED]
 - [[check_emergency_copies()]] - `calls` [EXTRACTED]
-- [[paper.py]] - `imports` [EXTRACTED]
 - [[paths.py]] - `imports` [EXTRACTED]
 - [[safe_io.py]] - `contains` [EXTRACTED]
 - [[safe_io.py_2]] - `implements` [EXTRACTED]

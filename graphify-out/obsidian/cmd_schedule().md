@@ -1,25 +1,20 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
-location: "L8313"
+community: "Community 693"
+location: "L8464"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # cmd_schedule()
 
 ## Connections
+- [[Path_30]] - `calls` [INFERRED]
 - [[Register a Windows Task Scheduler job to auto-scan every hour.]] - `rationale_for` [EXTRACTED]
-- [[ZoneInfo]] - `calls` [INFERRED]
-- [[bold()]] - `calls` [EXTRACTED]
-- [[dim()]] - `calls` [EXTRACTED]
-- [[green()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[red()]] - `calls` [EXTRACTED]
-- [[yellow()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

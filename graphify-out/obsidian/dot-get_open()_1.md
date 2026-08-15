@@ -1,8 +1,8 @@
 ---
-source_file: "order_executor.py"
+source_file: "positions.py"
 type: "code"
 community: "Community 45"
-location: "L1155"
+location: "L87"
 tags:
   - graphify/code
   - graphify/EXTRACTED
@@ -12,9 +12,7 @@ tags:
 # .get_open()
 
 ## Connections
-- [[LivePositionStore]] - `method` [EXTRACTED]
 - [[Position]] - `references` [EXTRACTED]
-- [[_get_live_open_positions()]] - `calls` [EXTRACTED]
-- [[_live_dict_to_position()]] - `calls` [EXTRACTED]
+- [[PositionStore]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_45

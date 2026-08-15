@@ -58,18 +58,17 @@ SORT file.name ASC
 - 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 3 edges to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
 - 2 edges to [[_COMMUNITY_Community 164]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 157]]
+- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 215]]
 - 1 edge to [[_COMMUNITY_Community 300]]
 - 1 edge to [[_COMMUNITY_Community 329]]
 - 1 edge to [[_COMMUNITY_Community 389]]
 - 1 edge to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 85]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 
 ## Top bridge nodes
-- [[_reprice_or_cancel_pending_orders()]] - degree 27, connects to 11 communities
+- [[_reprice_or_cancel_pending_orders()]] - degree 25, connects to 10 communities
 - [[_amend_live_order()]] - degree 9, connects to 4 communities
 - [[_midpoint_price()]] - degree 8, connects to 4 communities
 - [[TestRepriceOrCancelPendingOrders]] - degree 19, connects to 2 communities

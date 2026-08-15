@@ -1,25 +1,19 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
-location: "L5087"
+community: "Community 693"
+location: "L5238"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # cmd_signals()
 
 ## Connections
 - [[Show the log-only-signal graduation report (backlog.txt SIGNAL GRADUATION IS A…]] - `rationale_for` [EXTRACTED]
-- [[bold()]] - `calls` [EXTRACTED]
-- [[dim()]] - `calls` [EXTRACTED]
-- [[get_signal_graduation_report()]] - `calls` [EXTRACTED]
-- [[green()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[test_p1_remaining.py]] - `calls` [EXTRACTED]
-- [[yellow()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

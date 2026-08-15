@@ -14,8 +14,6 @@ tags:
 ## Connections
 - [[TestTargetDateDue]] - `contains` [EXTRACTED]
 - [[Tests for main._target_date_due (backlog.txt RAIN  SNOW  HURRICANE MARKETS…]] - `rationale_for` [EXTRACTED]
-- [[_target_date_due()]] - `imports` [EXTRACTED]
-- [[main.py]] - `imports_from` [EXTRACTED]
 - [[main.py CLI Entrypoint]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_299

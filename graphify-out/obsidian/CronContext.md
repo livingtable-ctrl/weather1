@@ -16,13 +16,11 @@ tags:
 - [[KalshiClient]] - `uses` [INFERRED]
 - [[KalshiWebSocket]] - `uses` [INFERRED]
 - [[TradeCycleResult]] - `uses` [INFERRED]
-- [[_build_cron_context()]] - `references` [EXTRACTED]
 - [[_cmd_cron_body()]] - `references` [EXTRACTED]
 - [[_run_batch_prewarm()]] - `references` [EXTRACTED]
 - [[_run_batch_prewarm_for_pairs()]] - `references` [EXTRACTED]
 - [[cmd_cron()]] - `references` [EXTRACTED]
 - [[cron.py]] - `contains` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[run_trade_cycle()]] - `references` [EXTRACTED]
 - [[trade_cycle.py]] - `imports` [EXTRACTED]
 

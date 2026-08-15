@@ -37,13 +37,12 @@ SORT file.name ASC
 ## Connections to other communities
 - 5 edges to [[_COMMUNITY_Community 297]]
 - 4 edges to [[_COMMUNITY_Community 129]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_Community 243]]
 
 ## Top bridge nodes
-- [[test_config_validation.py]] - degree 12, connects to 5 communities
-- [[load_and_validate()]] - degree 5, connects to 3 communities
+- [[test_config_validation.py]] - degree 11, connects to 4 communities
 - [[get_config()]] - degree 4, connects to 2 communities
+- [[load_and_validate()]] - degree 4, connects to 2 communities
 - [[dot-from_env()]] - degree 5, connects to 1 community
 - [[reset_config()]] - degree 5, connects to 1 community

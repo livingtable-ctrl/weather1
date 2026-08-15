@@ -1,12 +1,12 @@
 ---
 source_file: "tests/conftest.py"
 type: "rationale"
-community: "Test Fixture Cache Clearing (conftest)"
+community: "Community 693"
 location: "L50"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Test_Fixture_Cache_Clearing_conftest
+  - community/Community_693
 ---
 
 # Redirect circuit_breaker's flash-crash history/cooldown paths to per-test temp…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[isolate_flash_crash_cb_state()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Test_Fixture_Cache_Clearing_conftest
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

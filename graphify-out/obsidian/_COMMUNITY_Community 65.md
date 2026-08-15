@@ -55,7 +55,7 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Tracker SQLite Storage Tests]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 
 ## Top bridge nodes
 - [[TestFetchAsosDailyTemp]] - degree 9, connects to 1 community

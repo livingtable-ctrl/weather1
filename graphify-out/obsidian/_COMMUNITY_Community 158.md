@@ -41,11 +41,10 @@ SORT file.name ASC
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_Community 145]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 272]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Community 159]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 
 ## Top bridge nodes
-- [[_passes_exit_gates()]] - degree 23, connects to 5 communities
+- [[_passes_exit_gates()]] - degree 21, connects to 4 communities
 - [[TestPassesExitGates]] - degree 14, connects to 1 community

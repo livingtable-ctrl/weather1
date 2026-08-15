@@ -17,9 +17,7 @@ tags:
 - [[TestDrawdownTierAbsolute]] - `contains` [EXTRACTED]
 - [[TestSaveEmbedsSHA256]] - `contains` [EXTRACTED]
 - [[TestTickerExposureDenominator]] - `contains` [EXTRACTED]
-- [[_exposure_denom()]] - `calls` [EXTRACTED]
 - [[_save()_load() SHA-256 checksum]] - `calls` [EXTRACTED]
 - [[paper._DRAWDOWN_TIER_1..4 constants]] - `calls` [EXTRACTED]
-- [[place_paper_order()_1]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_248

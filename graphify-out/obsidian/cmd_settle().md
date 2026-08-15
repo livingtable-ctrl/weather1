@@ -1,24 +1,21 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
+community: "Community 693"
 location: "L825"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # cmd_settle()
 
 ## Connections
-- [[KalshiClient]] - `references` [EXTRACTED]
+- [[KalshiClient_1]] - `references` [EXTRACTED]
 - [[Sync settled market outcomes from Kalshi and record them in the tracker.…]] - `rationale_for` [EXTRACTED]
 - [[auto_settle_paper_trades()]] - `calls` [EXTRACTED]
-- [[dim()]] - `calls` [EXTRACTED]
-- [[green()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[sync_outcomes()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

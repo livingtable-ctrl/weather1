@@ -19,6 +19,5 @@ tags:
 - [[dot-test_neutral_when_insufficient_samples()]] - `calls` [EXTRACTED]
 - [[dot-test_poor_brier_heavy_reduction()]] - `calls` [EXTRACTED]
 - [[TestCityKellyMultiplier]] - `method` [EXTRACTED]
-- [[_city_kelly_multiplier()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization

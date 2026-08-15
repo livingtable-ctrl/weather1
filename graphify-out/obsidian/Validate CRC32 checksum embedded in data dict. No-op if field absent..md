@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Safe I/O CRC Validation Tests"
+community: "Community 693"
 location: "L65"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Safe_I/O_CRC_Validation_Tests
+  - community/Community_693
 ---
 
 # Validate CRC32 checksum embedded in data dict. No-op if field absent.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_validate_crc()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Safe_I/O_CRC_Validation_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

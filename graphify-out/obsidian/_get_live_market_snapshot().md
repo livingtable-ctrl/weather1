@@ -1,12 +1,12 @@
 ---
 source_file: "web_app.py"
 type: "code"
-community: "Anomaly Detection & PDF Reporting"
-location: "L93"
+community: "Community 693"
+location: "L108"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # _get_live_market_snapshot()
@@ -16,6 +16,6 @@ tags:
 - [[_build_stream_data()]] - `calls` [EXTRACTED]
 - [[test_get_live_market_snapshot_returns_list()]] - `calls` [EXTRACTED]
 - [[test_web_app.py]] - `imports` [EXTRACTED]
-- [[web_app.py]] - `contains` [EXTRACTED]
+- [[web_app.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/code #graphify/EXTRACTED #community/Community_693

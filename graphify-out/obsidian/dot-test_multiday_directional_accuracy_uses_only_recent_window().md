@@ -15,6 +15,5 @@ tags:
 - [[dot-_make_multiday_trade()]] - `calls` [EXTRACTED]
 - [[TestEdgeRealizationRate]] - `method` [EXTRACTED]
 - [[The last `window` trades (by settled_at) should win 100%; the older trades…]] - `rationale_for` [EXTRACTED]
-- [[get_edge_realization_rate()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization

@@ -26,10 +26,7 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 1 edge to [[_COMMUNITY_Community 364]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 604]]
 - 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Community 146]]
 - 1 edge to [[_COMMUNITY_Community 162]]
 - 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
@@ -40,6 +37,5 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[backlog.txt]] - degree 8, connects to 6 communities
-- [[test_feature_importance_days_out.py]] - degree 6, connects to 4 communities
-- [[Backlog L12939 — Position read-model divergence]] - degree 3, connects to 1 community
+- [[test_feature_importance_days_out.py]] - degree 4, connects to 2 communities
 - [[Backlog L17703 — React dashboard 4th paper-close site]] - degree 3, connects to 1 community

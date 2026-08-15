@@ -1,13 +1,13 @@
 ---
 type: community
 cohesion: 0.04
-members: 54
+members: 52
 ---
 
 # Safe I/O CRC Validation Tests
 
 **Cohesion:** 0.04 - loosely connected
-**Members:** 54 nodes
+**Members:** 52 nodes
 
 ## Members
 - [[A PermissionError that never clears must eventually re-raise (not hang forever…]] - rationale - tests/test_safe_io.py
@@ -27,9 +27,7 @@ members: 54
 - [[Retries through N PermissionErrors, then returns normally once os.replace…]] - rationale - tests/test_safe_io.py
 - [[The actual bug class backlog.txt hurricane_climatology. fetch_hurdat2_raw's…]] - rationale - tests/test_safe_io.py
 - [[The temp scan is bounded to known data basenames specifically so it doesn't…]] - rationale - tests/test_safe_io.py
-- [[Validate CRC32 checksum embedded in data dict. No-op if field absent.]] - rationale - paper.py
 - [[When every candidate (primary write AND every emergency candidate) fails, the…]] - rationale - tests/test_safe_io.py
-- [[_validate_crc()]] - code - paper.py
 - [[_write_with_crc()]] - code - tests/test_safe_io.py
 - [[backlog.txt FORECAST_SIGMA.JSON ATOMIC WRITE CONTENTION multiple threads…]] - rationale - tests/test_safe_io.py
 - [[backlog.txt SAFE_IO -- NOTHING MONITORS data.emergency FOR REAL RECOVERY…]] - rationale - tests/test_safe_io.py
@@ -73,9 +71,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 6 edges to [[_COMMUNITY_Community 460]]
-- 6 edges to [[_COMMUNITY_Community 301]]
-- 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 5 edges to [[_COMMUNITY_Community 301]]
+- 4 edges to [[_COMMUNITY_Community 460]]
 - 1 edge to [[_COMMUNITY_Community 145]]
 - 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 47]]
@@ -86,5 +83,4 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 40]]
 
 ## Top bridge nodes
-- [[test_safe_io.py]] - degree 50, connects to 11 communities
-- [[_validate_crc()]] - degree 9, connects to 2 communities
+- [[test_safe_io.py]] - degree 46, connects to 10 communities

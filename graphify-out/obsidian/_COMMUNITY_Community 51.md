@@ -10,7 +10,7 @@ members: 39
 **Members:** 39 nodes
 
 ## Members
-- [[dot-__init__()_9]] - code - forecast_cache.py
+- [[dot-__init__()_8]] - code - forecast_cache.py
 - [[dot-__len__()]] - code - forecast_cache.py
 - [[dot-_effective_ttl()]] - code - forecast_cache.py
 - [[dot-_evict_oldest()]] - code - forecast_cache.py

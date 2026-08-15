@@ -17,7 +17,6 @@ tags:
 - [[TestCorrelationAppliedFlag]] - `contains` [EXTRACTED]
 - [[TestCorrelationMatrixIntegrity]] - `contains` [EXTRACTED]
 - [[_make_trade()]] - `contains` [EXTRACTED]
-- [[get_balance_history()]] - `calls` [AMBIGUOUS]
 - [[simulate_portfolio()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_134

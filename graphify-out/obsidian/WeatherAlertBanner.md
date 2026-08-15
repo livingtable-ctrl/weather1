@@ -1,17 +1,16 @@
 ---
 source_file: "weather app site V_3 (3)/src/tabs/PositionsTab.jsx"
 type: "code"
-community: "Community 692"
-location: "9"
+community: "Community 693"
 tags:
   - graphify/code
-  - graphify/INFERRED
-  - community/Community_692
+  - graphify/EXTRACTED
+  - community/Community_693
 ---
 
 # WeatherAlertBanner
 
 ## Connections
-- [[fetchWeatherAlerts]] - `shares_data_with` [INFERRED]
+- [[PositionsTab.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Community_692
+#graphify/code #graphify/EXTRACTED #community/Community_693

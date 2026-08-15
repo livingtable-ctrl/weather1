@@ -14,10 +14,8 @@ tags:
 ## Connections
 - [[Grade Audit Module Doc TIER 2 Files]] - `references` [EXTRACTED]
 - [[cron.py]] - `references` [EXTRACTED]
-- [[load_paper_trades()]] - `imports` [EXTRACTED]
 - [[load_swept_min_edge()]] - `contains` [EXTRACTED]
 - [[load_swept_min_edge() RF1 Corrupt Results Silently Discarded (510)]] - `references` [EXTRACTED]
-- [[main.py]] - `references` [EXTRACTED]
 - [[param_sweep.py Called Dead-Code Candidate (contested)]] - `references` [AMBIGUOUS]
 - [[param_sweep.py File Grade not dead code, 1 RF1 promotion]] - `references` [EXTRACTED]
 - [[param_sweep.py Grade Audit]] - `references` [EXTRACTED]

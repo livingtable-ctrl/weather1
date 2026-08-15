@@ -10,8 +10,8 @@ members: 27
 **Members:** 27 nodes
 
 ## Members
+- [[dot-__init__()_10]] - code - circuit_breaker.py
 - [[dot-__init__()_11]] - code - circuit_breaker.py
-- [[dot-__init__()_12]] - code - circuit_breaker.py
 - [[dot-_load_cooldowns()]] - code - circuit_breaker.py
 - [[dot-_load_history()]] - code - circuit_breaker.py
 - [[dot-_save_cooldowns()]] - code - circuit_breaker.py
@@ -60,4 +60,4 @@ SORT file.name ASC
 - [[test_flash_crash_cb.py]] - degree 6, connects to 2 communities
 - [[dot-_save_cooldowns()]] - degree 4, connects to 1 community
 - [[dot-_save_history()]] - degree 4, connects to 1 community
-- [[dot-__init__()_11]] - degree 2, connects to 1 community
+- [[dot-__init__()_10]] - degree 2, connects to 1 community

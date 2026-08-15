@@ -13,9 +13,6 @@ tags:
 
 ## Connections
 - [[Tests for P0.5 — get_state_snapshot() in paper.py and cron logging.]] - `rationale_for` [EXTRACTED]
-- [[get_balance()]] - `imports` [EXTRACTED]
-- [[get_peak_balance()]] - `imports` [EXTRACTED]
-- [[get_state_snapshot()]] - `calls` [EXTRACTED]
 - [[main.py CLI Entrypoint]] - `calls` [EXTRACTED]
 - [[test_cmd_cron_logs_state_snapshot()]] - `contains` [EXTRACTED]
 - [[test_get_state_snapshot_returns_required_keys()]] - `contains` [EXTRACTED]

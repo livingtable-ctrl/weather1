@@ -23,7 +23,6 @@ tags:
 - [[get_today_live_spend()]] - `calls` [EXTRACTED]
 - [[log_order()]] - `calls` [EXTRACTED]
 - [[log_order_result()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 - [[pre_live_trade_check()]] - `calls` [EXTRACTED]

@@ -13,7 +13,6 @@ tags:
 
 ## Connections
 - [[backup_to_s3 logs a warning and does not raise when boto3 is not installed.]] - `rationale_for` [EXTRACTED]
-- [[cloud_backup()]] - `indirect_call` [INFERRED]
 - [[test_cloud_backup.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_132

@@ -31,13 +31,12 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_Community 59]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 
 ## Top bridge nodes
 - [[cloud_backup.py]] - degree 9, connects to 3 communities
-- [[restore_data()]] - degree 7, connects to 2 communities
 - [[_find_sync_folder()]] - degree 6, connects to 1 community
+- [[restore_data()]] - degree 5, connects to 1 community
 - [[Path_14]] - degree 5, connects to 1 community

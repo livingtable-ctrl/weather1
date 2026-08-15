@@ -35,8 +35,8 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_Community 224]]
 - 2 edges to [[_COMMUNITY_Community 210]]
 - 1 edge to [[_COMMUNITY_Community 294]]
-- 1 edge to [[_COMMUNITY_Community 386]]
 - 1 edge to [[_COMMUNITY_Community 536]]
+- 1 edge to [[_COMMUNITY_Community 386]]
 
 ## Top bridge nodes
 - [[main.py module_1]] - degree 8, connects to 3 communities

@@ -34,12 +34,12 @@ SORT file.name ASC
 - 4 edges to [[_COMMUNITY_Community 135]]
 - 2 edges to [[_COMMUNITY_Tracker SQLite Storage Tests]]
 - 1 edge to [[_COMMUNITY_Community 264]]
-- 1 edge to [[_COMMUNITY_Community 436]]
-- 1 edge to [[_COMMUNITY_Community 438]]
-- 1 edge to [[_COMMUNITY_Community 315]]
 - 1 edge to [[_COMMUNITY_Community 411]]
+- 1 edge to [[_COMMUNITY_Community 436]]
 - 1 edge to [[_COMMUNITY_Community 487]]
 - 1 edge to [[_COMMUNITY_Community 437]]
+- 1 edge to [[_COMMUNITY_Community 438]]
+- 1 edge to [[_COMMUNITY_Community 315]]
 - 1 edge to [[_COMMUNITY_Community 439]]
 
 ## Top bridge nodes

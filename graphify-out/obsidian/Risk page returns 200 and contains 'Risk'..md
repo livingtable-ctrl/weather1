@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 43"
-location: "L228"
+community: "Community 693"
+location: "L250"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_43
+  - community/Community_693
 ---
 
 # Risk page returns 200 and contains 'Risk'.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_risk_route_returns_200_with_title()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_43
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

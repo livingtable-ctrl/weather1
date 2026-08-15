@@ -12,7 +12,7 @@ tags:
 # ._load_state()
 
 ## Connections
-- [[dot-__init__()_7]] - `calls` [EXTRACTED]
+- [[dot-__init__()_6]] - `calls` [EXTRACTED]
 - [[CircuitBreaker]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_44

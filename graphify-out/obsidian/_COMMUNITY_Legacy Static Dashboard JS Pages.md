@@ -1,13 +1,13 @@
 ---
 type: community
 cohesion: 0.06
-members: 55
+members: 54
 ---
 
 # Legacy Static Dashboard JS Pages
 
 **Cohesion:** 0.06 - loosely connected
-**Members:** 55 nodes
+**Members:** 54 nodes
 
 ## Members
 - [[EventSource apistream handler]] - code - static/dashboard.js
@@ -61,7 +61,6 @@ members: 55
 - [[staticrisk.js]] - code - static/risk.js
 - [[staticsignals.js]] - code - static/signals.js
 - [[statictrades.js]] - code - static/trades.js
-- [[testsconftest.py Fixtures]] - code - tests/conftest.py
 - [[tracker._conn()  init_db()]] - code - tracker.py
 - [[web_app.py api endpoints]] - code - web_app.py
 - [[window.runScan()]] - code - static/signals.js
@@ -74,10 +73,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 160]]
 - 1 edge to [[_COMMUNITY_Community 296]]
-- 1 edge to [[_COMMUNITY_Community 33]]
 
 ## Top bridge nodes
-- [[testsconftest.py Fixtures]] - degree 6, connects to 2 communities
-- [[tracker._conn()  init_db()]] - degree 2, connects to 1 community
+- [[tracker._conn()  init_db()]] - degree 1, connects to 1 community

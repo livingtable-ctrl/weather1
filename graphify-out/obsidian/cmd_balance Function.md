@@ -10,8 +10,4 @@ tags:
 
 # cmd_balance Function
 
-## Connections
-- [[get_balance()]] - `calls` [EXTRACTED]
-- [[validate_api_key()]] - `calls` [EXTRACTED]
-
 #graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

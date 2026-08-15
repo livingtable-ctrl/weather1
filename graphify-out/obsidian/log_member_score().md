@@ -14,9 +14,7 @@ tags:
 ## Connections
 - [[Log an ensemble member's temperature prediction vs actuals for accuracy…]] - `rationale_for` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
-- [[_score_ensemble_members()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[paper.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_570

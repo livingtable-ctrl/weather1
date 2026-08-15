@@ -16,10 +16,7 @@ tags:
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[apply_temperature_scaling()]] - `shares_data_with` [EXTRACTED]
 - [[atomic_write_json_with_history()]] - `calls` [EXTRACTED]
-- [[cmd_calibrate()]] - `calls` [EXTRACTED]
-- [[cmd_train_bias()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[ml_bias.py]] - `contains` [EXTRACTED]
 - [[test_ml_bias.py]] - `calls` [EXTRACTED]
 

@@ -13,8 +13,6 @@ tags:
 
 ## Connections
 - [[computeMark]] - `semantically_similar_to` [INFERRED]
-- [[handleBulkClose]] - `shares_data_with` [INFERRED]
-- [[handleClose]] - `shares_data_with` [INFERRED]
 - [[mapTrades (V3)]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/INFERRED #community/Community_692

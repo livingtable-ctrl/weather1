@@ -46,12 +46,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 467]]
 - 4 edges to [[_COMMUNITY_Community 336]]
+- 4 edges to [[_COMMUNITY_Community 467]]
 - 2 edges to [[_COMMUNITY_Community 225]]
-- 2 edges to [[_COMMUNITY_Community 511]]
 - 2 edges to [[_COMMUNITY_Community 366]]
 - 2 edges to [[_COMMUNITY_Community 510]]
+- 2 edges to [[_COMMUNITY_Community 511]]
 
 ## Top bridge nodes
 - [[dot-_make_client()_1]] - degree 30, connects to 5 communities

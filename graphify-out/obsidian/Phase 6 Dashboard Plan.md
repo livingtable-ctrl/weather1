@@ -18,6 +18,6 @@ tags:
 - [[get_component_attribution()]] - `implements` [EXTRACTED]
 - [[tracker.py_1]] - `references` [EXTRACTED]
 - [[weather_markets.py_2]] - `references` [EXTRACTED]
-- [[web_app.py_1]] - `references` [EXTRACTED]
+- [[web_app.py]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_36

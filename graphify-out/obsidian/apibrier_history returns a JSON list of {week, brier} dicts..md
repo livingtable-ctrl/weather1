@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 43"
-location: "L214"
+community: "Community 693"
+location: "L236"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_43
+  - community/Community_693
 ---
 
 # /api/brier_history returns a JSON list of {week, brier} dicts.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_api_brier_history_returns_list()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_43
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

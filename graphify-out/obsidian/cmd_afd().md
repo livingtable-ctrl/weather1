@@ -1,25 +1,19 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
-location: "L3805"
+community: "Community 693"
+location: "L3956"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # cmd_afd()
 
 ## Connections
-- [[CITY_WFO_OFFICE Dict]] - `references` [EXTRACTED]
 - [[Print the current NWS Area Forecast Discussion for a city (backlog.txt NWS AFD…]] - `rationale_for` [EXTRACTED]
-- [[bold()]] - `calls` [EXTRACTED]
-- [[fetch_afd_discussion Function]] - `calls` [EXTRACTED]
-- [[fetch_afd_discussion()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[red()]] - `calls` [EXTRACTED]
-- [[yellow()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

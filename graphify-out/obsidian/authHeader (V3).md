@@ -15,7 +15,5 @@ tags:
 - [[AnalyticsTab]] - `calls` [EXTRACTED]
 - [[OverviewTab_1]] - `calls` [EXTRACTED]
 - [[apiFetch (V3)]] - `calls` [EXTRACTED]
-- [[handleBulkClose]] - `calls` [EXTRACTED]
-- [[handleCloseConfirm]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_692

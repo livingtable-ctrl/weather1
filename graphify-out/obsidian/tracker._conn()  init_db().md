@@ -12,6 +12,5 @@ tags:
 
 ## Connections
 - [[_check_api_failure_rate()]] - `calls` [EXTRACTED]
-- [[testsconftest.py Fixtures]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages

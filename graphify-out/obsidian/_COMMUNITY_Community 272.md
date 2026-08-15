@@ -34,17 +34,16 @@ SORT file.name ASC
 ## Connections to other communities
 - 5 edges to [[_COMMUNITY_Community 231]]
 - 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 2 edges to [[_COMMUNITY_Community 145]]
 - 1 edge to [[_COMMUNITY_Community 158]]
 - 1 edge to [[_COMMUNITY_Community 333]]
 - 1 edge to [[_COMMUNITY_Community 463]]
+- 1 edge to [[_COMMUNITY_Community 145]]
 - 1 edge to [[_COMMUNITY_Community 45]]
 - 1 edge to [[_COMMUNITY_Community 235]]
 
 ## Top bridge nodes
-- [[test_early_exits.py]] - degree 19, connects to 8 communities
-- [[paper._passes_exit_gates]] - degree 4, connects to 2 communities
+- [[test_early_exits.py]] - degree 17, connects to 7 communities
 - [[TestCheckEarlyExitsApiCallCount]] - degree 3, connects to 1 community
 - [[dot-test_new_trade_not_exited_by_probability_shift()]] - degree 3, connects to 1 community
 - [[paper.check_breakeven_stops]] - degree 3, connects to 1 community
+- [[paper._passes_exit_gates]] - degree 3, connects to 1 community

@@ -13,7 +13,6 @@ tags:
 
 ## Connections
 - [[backup_to_s3 calls boto3.client('s3').upload_file with correct args.]] - `rationale_for` [EXTRACTED]
-- [[cloud_backup()]] - `indirect_call` [INFERRED]
 - [[test_cloud_backup.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_132

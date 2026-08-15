@@ -77,12 +77,11 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 12 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 8 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 8 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 7 edges to [[_COMMUNITY_Community 110]]
 - 6 edges to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 - 5 edges to [[_COMMUNITY_Community 422]]
 - 4 edges to [[_COMMUNITY_Community 97]]
+- 3 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 3 edges to [[_COMMUNITY_Community 67]]
 - 3 edges to [[_COMMUNITY_Community 111]]
 - 3 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
@@ -111,7 +110,7 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[test_execution_log.py]] - degree 21, connects to 9 communities
-- [[_place_live_order()]] - degree 17, connects to 9 communities
-- [[log_order()]] - degree 15, connects to 9 communities
 - [[execution_log.py]] - degree 41, connects to 8 communities
-- [[log_order_result()]] - degree 14, connects to 8 communities
+- [[_place_live_order()]] - degree 16, connects to 8 communities
+- [[log_order()]] - degree 13, connects to 7 communities
+- [[log_order_result()]] - degree 12, connects to 6 communities

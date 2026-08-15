@@ -1,16 +1,15 @@
 ---
 type: community
-cohesion: 0.12
-members: 23
+cohesion: 0.09
+members: 21
 ---
 
 # Community 132
 
-**Cohesion:** 0.12 - loosely connected
-**Members:** 23 nodes
+**Cohesion:** 0.09 - loosely connected
+**Members:** 21 nodes
 
 ## Members
-- [[105 Upload backup to S3 if KALSHI_S3_BUCKET is set. Returns None if skipped.]] - rationale - paper.py
 - [[dot-test_backup_creates_date_subdir()]] - code - tests/test_phase2_batch_g.py
 - [[dot-test_backup_prunes_old_dirs()]] - code - tests/test_phase2_batch_g.py
 - [[dot-test_restore_default_raises()]] - code - tests/test_phase2_batch_g.py
@@ -24,7 +23,6 @@ members: 23
 - [[backup_to_s3 calls boto3.client('s3').upload_file with correct args.]] - rationale - tests/test_cloud_backup.py
 - [[backup_to_s3 logs a warning and does not raise when boto3 is not installed.]] - rationale - tests/test_cloud_backup.py
 - [[backup_to_s3 with no bucket returns None.]] - rationale - tests/test_cloud_backup.py
-- [[cloud_backup()]] - code - paper.py
 - [[restore_data must snapshot current data before overwriting.]] - rationale - tests/test_phase2_batch_g.py
 - [[test_backup_to_s3_calls_upload()]] - code - tests/test_cloud_backup.py
 - [[test_backup_to_s3_skips_when_boto3_missing()]] - code - tests/test_cloud_backup.py
@@ -43,14 +41,9 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_Community 248]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 501]]
-- 1 edge to [[_COMMUNITY_Community 460]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Community 109]]
 
 ## Top bridge nodes
-- [[cloud_backup()]] - degree 16, connects to 4 communities
-- [[test_cloud_backup.py]] - degree 9, connects to 2 communities
+- [[test_cloud_backup.py]] - degree 7, connects to 1 community
 - [[TestRestoreDataConfirm]] - degree 6, connects to 1 community
 - [[TestCloudBackupTimestamped]] - degree 4, connects to 1 community

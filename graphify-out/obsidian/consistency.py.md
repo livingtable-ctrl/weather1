@@ -25,7 +25,6 @@ tags:
 - [[is_hurricane_count_ticker()]] - `imports` [EXTRACTED]
 - [[is_hurricane_next_event_ticker()]] - `imports` [EXTRACTED]
 - [[is_storm_order_ticker()]] - `imports` [EXTRACTED]
-- [[main.py]] - `imports_from` [EXTRACTED]
 - [[market_implied_rain_event_key()]] - `imports` [EXTRACTED]
 - [[parse_market_price()]] - `imports` [EXTRACTED]
 - [[test_consistency.py]] - `calls` [EXTRACTED]

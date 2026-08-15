@@ -16,7 +16,6 @@ tags:
 - [[Count live orders with status 'pending' — enforces max_open_positions limit.]] - `rationale_for` [EXTRACTED]
 - [[_place_live_order()]] - `calls` [EXTRACTED]
 - [[get_recent_orders()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[test_prelog.py]] - `imports` [EXTRACTED]
 

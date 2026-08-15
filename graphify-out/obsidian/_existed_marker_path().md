@@ -1,21 +1,21 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 693"
 location: "L113"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # _existed_marker_path()
 
 ## Connections
 - [[10 sentinel touched on every successful save, checked when DATA_PATH is…]] - `rationale_for` [EXTRACTED]
-- [[Path_20]] - `references` [EXTRACTED]
-- [[_load()]] - `calls` [EXTRACTED]
-- [[_save()]] - `calls` [EXTRACTED]
-- [[paper.py]] - `contains` [EXTRACTED]
+- [[Path_30]] - `references` [EXTRACTED]
+- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_save()_1]] - `calls` [EXTRACTED]
+- [[paper.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/code #graphify/EXTRACTED #community/Community_693

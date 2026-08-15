@@ -16,9 +16,7 @@ tags:
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[_run_batch_prewarm_for_pairs()]] - `calls` [EXTRACTED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]
-- [[cmd_watch()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[trade_cycle.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 

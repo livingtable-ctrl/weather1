@@ -18,10 +18,7 @@ tags:
 - [[_exit_live_position()]] - `calls` [EXTRACTED]
 - [[_micro_live_gate_ok()]] - `calls` [EXTRACTED]
 - [[_place_live_order()]] - `calls` [EXTRACTED]
-- [[_quick_paper_buy()]] - `calls` [EXTRACTED]
 - [[_replace_live_order()]] - `calls` [EXTRACTED]
-- [[cmd_order()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
 - [[trading_gates.py]] - `contains` [EXTRACTED]
 

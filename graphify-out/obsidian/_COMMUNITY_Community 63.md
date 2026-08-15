@@ -54,11 +54,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 7 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 6 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 
 ## Top bridge nodes
-- [[_daily_sameday_spend()]] - degree 7, connects to 2 communities
+- [[_daily_sameday_spend()]] - degree 6, connects to 2 communities
 - [[dot-_call()_3]] - degree 9, connects to 1 community
 - [[Phase 2 Batch O Same-Day Spend Tests]] - degree 7, connects to 1 community
 - [[Phase 2 Batch N Daily Spend Tests]] - degree 6, connects to 1 community

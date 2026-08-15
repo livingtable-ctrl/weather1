@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "rationale"
-community: "Community 108"
+community: "Community 693"
 location: "L249"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_108
+  - community/Community_693
 ---
 
 # _auto_place_trades(live=False) must never call _place_live_order.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPaperLiveSeparation]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_108
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

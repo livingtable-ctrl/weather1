@@ -15,8 +15,6 @@ tags:
 - [[Show P&L attribution by signal source.]] - `rationale_for` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
 - [[get_pnl_by_signal_source()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[output_formatters.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

@@ -16,7 +16,6 @@ tags:
 - [[CB_LABELS_1]] - `contains` [EXTRACTED]
 - [[ENDPOINTS_1]] - `contains` [EXTRACTED]
 - [[OverviewTab.jsx]] - `imports_from` [EXTRACTED]
-- [[PositionsTab.jsx]] - `imports_from` [EXTRACTED]
 - [[apiFetch()]] - `contains` [EXTRACTED]
 - [[authHeader()]] - `contains` [EXTRACTED]
 - [[computeMark()]] - `contains` [EXTRACTED]

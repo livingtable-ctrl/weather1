@@ -13,8 +13,6 @@ tags:
 
 ## Connections
 - [[Returns True if a valid (non-expired) manual override is active. Auto-clears…]] - `rationale_for` [EXTRACTED]
-- [[_build_cron_context()]] - `indirect_call` [INFERRED]
 - [[cron.py]] - `contains` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

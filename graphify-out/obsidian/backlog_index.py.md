@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Generate an index of unfinished backlog.txt entries. backlog.txt is a single…]] - `rationale_for` [EXTRACTED]
-- [[main()_1]] - `contains` [EXTRACTED]
+- [[main()]] - `contains` [EXTRACTED]
 - [[parse_entries()]] - `contains` [EXTRACTED]
 - [[render()]] - `contains` [EXTRACTED]
 

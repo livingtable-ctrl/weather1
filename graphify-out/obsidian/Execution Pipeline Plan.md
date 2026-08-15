@@ -14,7 +14,7 @@ tags:
 - [[_current_forecast_cycle()_1]] - `calls` [EXTRACTED]
 - [[execution_log.py_2]] - `references` [EXTRACTED]
 - [[kalshi_client.py_2]] - `references` [EXTRACTED]
-- [[main.py_1]] - `references` [EXTRACTED]
-- [[paper.py_1]] - `references` [EXTRACTED]
+- [[main.py]] - `references` [EXTRACTED]
+- [[paper.py]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_59

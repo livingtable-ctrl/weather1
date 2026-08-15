@@ -12,7 +12,6 @@ tags:
 # test_load_raises_on_tampered_file()
 
 ## Connections
-- [[_validate_crc()]] - `calls` [EXTRACTED]
 - [[test_safe_io.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Safe_I/O_CRC_Validation_Tests

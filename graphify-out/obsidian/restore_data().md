@@ -17,7 +17,5 @@ tags:
 - [[ValueError]] - `calls` [INFERRED]
 - [[_find_sync_folder()]] - `calls` [EXTRACTED]
 - [[cloud_backup.py]] - `contains` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_326

@@ -38,20 +38,19 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 15 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 11 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 6 edges to [[_COMMUNITY_Community 36]]
+- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Community 32]]
 - 1 edge to [[_COMMUNITY_Community 96]]
 - 1 edge to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
 - 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 78]]
 - 1 edge to [[_COMMUNITY_Community 162]]
 - 1 edge to [[_COMMUNITY_Community 52]]
 
 ## Top bridge nodes
-- [[sync_outcomes()]] - degree 24, connects to 8 communities
-- [[backfill_price_history()]] - degree 9, connects to 4 communities
+- [[sync_outcomes()]] - degree 16, connects to 7 communities
+- [[backfill_price_history()]] - degree 7, connects to 3 communities
 - [[log_outcome()]] - degree 7, connects to 3 communities
 - [[log_price_candles()]] - degree 8, connects to 2 communities
 - [[log_trades()]] - degree 7, connects to 2 communities

@@ -17,6 +17,5 @@ tags:
 - [[_near()]] - `contains` [EXTRACTED]
 - [[_real_trade()]] - `contains` [EXTRACTED]
 - [[order_executor.py_1]] - `conceptually_related_to` [EXTRACTED]
-- [[place_paper_order()_1]] - `conceptually_related_to` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_196

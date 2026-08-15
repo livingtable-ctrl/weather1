@@ -23,8 +23,6 @@ tags:
 - [[dot-test_string_zero_still_illiquid_not_truthy_string()]] - `calls` [EXTRACTED]
 - [[dot-test_volume_and_open_interest_are_summed()]] - `calls` [EXTRACTED]
 - [[Dynamic edge-threshold divisor by market liquidity (backlog.txt LIQUIDITY-…]] - `rationale_for` [EXTRACTED]
-- [[_analyze_once()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[run_trade_cycle()]] - `calls` [EXTRACTED]
 - [[test_weather_markets.py]] - `imports` [EXTRACTED]
 - [[trade_cycle.py]] - `imports` [EXTRACTED]

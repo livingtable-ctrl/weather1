@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 108"
-location: "L364"
+community: "Community 693"
+location: "L599"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_108
+  - community/Community_693
 ---
 
 # .test_drawdown_halt_default_is_20pct()
@@ -15,4 +15,4 @@ tags:
 - [[DRAWDOWN_HALT_PCT default must be 0.20, not 0.50.]] - `rationale_for` [EXTRACTED]
 - [[TestDrawdownHaltDefault]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_108
+#graphify/code #graphify/EXTRACTED #community/Community_693

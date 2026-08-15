@@ -18,9 +18,7 @@ tags:
 - [[Silent background scan — writes to datacron.log, auto-places strong paper…]] - `rationale_for` [EXTRACTED]
 - [[_cmd_cron_body()]] - `indirect_call` [INFERRED]
 - [[_install_cron_watchdog()]] - `calls` [EXTRACTED]
-- [[cmd_cron()_1]] - `calls` [EXTRACTED]
 - [[cron.py]] - `contains` [EXTRACTED]
 - [[kalshi_ws.KalshiWebSocket]] - `calls` [INFERRED]
-- [[main.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

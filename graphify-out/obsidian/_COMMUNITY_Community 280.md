@@ -32,12 +32,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 2 edges to [[_COMMUNITY_Community 56]]
 - 1 edge to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 
 ## Top bridge nodes
-- [[is_stale()]] - degree 17, connects to 4 communities
+- [[is_stale()]] - degree 15, connects to 3 communities
 - [[TestIsStale]] - degree 11, connects to 2 communities

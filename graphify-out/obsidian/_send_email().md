@@ -14,8 +14,6 @@ tags:
 ## Connections
 - [[Send an email notification via SMTP (STARTTLS). Reads SMTP_HOST, SMTP_PORT,…]] - `rationale_for` [EXTRACTED]
 - [[alert_strong_signal()]] - `calls` [EXTRACTED]
-- [[cmd_brief()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[notify.py]] - `contains` [EXTRACTED]
 - [[send_system_alert()]] - `calls` [EXTRACTED]
 

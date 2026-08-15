@@ -14,7 +14,6 @@ tags:
 ## Connections
 - [[Returns top-n opportunities ranked by EV = net_edge × kelly_dollars.]] - `rationale_for` [EXTRACTED]
 - [[TestSuggestedBetsEndpoint]] - `method` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_make_analysis()_1]] - `calls` [EXTRACTED]
 - [[_make_market()]] - `calls` [EXTRACTED]
 - [[patch]] - `references` [EXTRACTED]

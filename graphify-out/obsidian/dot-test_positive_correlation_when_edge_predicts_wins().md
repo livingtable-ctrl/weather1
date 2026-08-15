@@ -15,6 +15,5 @@ tags:
 - [[dot-_make_trade()]] - `calls` [EXTRACTED]
 - [[Higher edge trades should show higher win rate → positive correlation.]] - `rationale_for` [EXTRACTED]
 - [[TestEdgeRealizationRate]] - `method` [EXTRACTED]
-- [[get_edge_realization_rate()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization

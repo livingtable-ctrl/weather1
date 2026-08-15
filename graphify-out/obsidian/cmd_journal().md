@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
-location: "L4078"
+community: "Community 693"
+location: "L4229"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # cmd_journal()
@@ -14,14 +14,9 @@ tags:
 ## Connections
 - [[Print all paper trades that have a thesis note.]] - `rationale_for` [EXTRACTED]
 - [[_header()]] - `calls` [EXTRACTED]
-- [[bold()]] - `calls` [EXTRACTED]
 - [[cmd_menu()]] - `calls` [EXTRACTED]
-- [[dim()]] - `calls` [EXTRACTED]
 - [[get_all_trades()]] - `calls` [EXTRACTED]
-- [[green()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[red()]] - `calls` [EXTRACTED]
-- [[yellow()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

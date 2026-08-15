@@ -13,7 +13,6 @@ tags:
 
 ## Connections
 - [[Return the most recent N order log entries.]] - `rationale_for` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_check_startup_orders()]] - `calls` [EXTRACTED]
 - [[_conn()]] - `calls` [EXTRACTED]
 - [[_count_open_live_orders()]] - `calls` [EXTRACTED]
@@ -23,6 +22,5 @@ tags:
 - [[execution_log.py]] - `contains` [EXTRACTED]
 - [[init_log()]] - `calls` [EXTRACTED]
 - [[test_execution_stability.py_1]] - `references` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

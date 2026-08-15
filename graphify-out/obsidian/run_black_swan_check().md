@@ -18,8 +18,6 @@ tags:
 - [[alerts.py]] - `contains` [EXTRACTED]
 - [[check_black_swan_conditions()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
-- [[get_state_snapshot()]] - `calls` [EXTRACTED]
-- [[load_paper_trades()]] - `calls` [EXTRACTED]
 - [[test_cron_integration.py_1]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

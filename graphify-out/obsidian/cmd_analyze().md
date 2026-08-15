@@ -1,26 +1,23 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
+community: "Anomaly Detection & PDF Reporting"
 location: "L3201"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # cmd_analyze()
 
 ## Connections
-- [[KalshiClient]] - `references` [EXTRACTED]
+- [[KalshiClient_1]] - `references` [EXTRACTED]
 - [[_analyze_once()]] - `calls` [EXTRACTED]
 - [[_header()]] - `calls` [EXTRACTED]
 - [[_quick_paper_buy()]] - `calls` [EXTRACTED]
-- [[bold()]] - `calls` [EXTRACTED]
 - [[cmd_menu()]] - `calls` [EXTRACTED]
-- [[dim()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[test_menu_ux.py]] - `references` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

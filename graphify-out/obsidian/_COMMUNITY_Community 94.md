@@ -27,8 +27,8 @@ members: 27
 - [[TestAddAlert]] - code - tests/test_alerts.py
 - [[TestRemoveAlert]] - code - tests/test_alerts.py
 - [[Write alerts list to path using safe_io for resilient disk writes (8). P3-9…]] - rationale - alerts.py
-- [[_load()_1]] - code - alerts.py
-- [[_save()_1]] - code - alerts.py
+- [[_load()]] - code - alerts.py
+- [[_save()]] - code - alerts.py
 - [[add_alert()]] - code - alerts.py
 - [[alerts.py]] - code - alerts.py
 - [[get_alerts()]] - code - alerts.py
@@ -47,18 +47,18 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 9 edges to [[_COMMUNITY_Community 325]]
-- 9 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 5 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 4 edges to [[_COMMUNITY_Community 194]]
-- 4 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 3 edges to [[_COMMUNITY_Community 419]]
+- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 2 edges to [[_COMMUNITY_Community 461]]
+- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
+- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 1 edge to [[_COMMUNITY_Community 145]]
 - 1 edge to [[_COMMUNITY_Community 591]]
 - 1 edge to [[_COMMUNITY_Community 167]]
 - 1 edge to [[_COMMUNITY_Community 208]]
 - 1 edge to [[_COMMUNITY_Community 223]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 1 edge to [[_COMMUNITY_Community 565]]
 - 1 edge to [[_COMMUNITY_Community 71]]
 - 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
@@ -66,8 +66,8 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 59]]
 
 ## Top bridge nodes
-- [[alerts.py]] - degree 29, connects to 14 communities
+- [[alerts.py]] - degree 27, connects to 14 communities
 - [[test_alerts.py]] - degree 15, connects to 5 communities
-- [[add_alert()]] - degree 20, connects to 4 communities
-- [[get_alerts()]] - degree 12, connects to 3 communities
-- [[mark_triggered()]] - degree 6, connects to 2 communities
+- [[add_alert()]] - degree 18, connects to 3 communities
+- [[get_alerts()]] - degree 10, connects to 2 communities
+- [[_save()]] - degree 7, connects to 1 community

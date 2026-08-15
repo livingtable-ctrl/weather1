@@ -12,7 +12,7 @@ tags:
 # ForecastCache
 
 ## Connections
-- [[dot-__init__()_9]] - `method` [EXTRACTED]
+- [[dot-__init__()_8]] - `method` [EXTRACTED]
 - [[dot-__len__()]] - `method` [EXTRACTED]
 - [[dot-_effective_ttl()]] - `method` [EXTRACTED]
 - [[dot-_evict_oldest()]] - `method` [EXTRACTED]

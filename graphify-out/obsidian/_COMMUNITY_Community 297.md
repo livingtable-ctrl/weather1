@@ -32,13 +32,13 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 5 edges to [[_COMMUNITY_Community 212]]
-- 3 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 243]]
 - 2 edges to [[_COMMUNITY_Community 129]]
 - 1 edge to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_Community 454]]
+- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 
 ## Top bridge nodes
-- [[BotConfig]] - degree 20, connects to 6 communities
+- [[BotConfig]] - degree 18, connects to 5 communities
 - [[test_config.py]] - degree 10, connects to 2 communities
 - [[dot-validate()]] - degree 3, connects to 1 community

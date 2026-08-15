@@ -13,10 +13,8 @@ tags:
 
 ## Connections
 - [[Return average blend-source weights per city from settled predictions.]] - `rationale_for` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

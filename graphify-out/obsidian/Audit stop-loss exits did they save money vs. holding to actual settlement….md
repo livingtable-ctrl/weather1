@@ -12,6 +12,6 @@ tags:
 # Audit stop-loss exits: did they save money vs. holding to actual settlement?…
 
 ## Connections
-- [[get_stop_loss_accuracy()_1]] - `rationale_for` [EXTRACTED]
+- [[get_stop_loss_accuracy()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

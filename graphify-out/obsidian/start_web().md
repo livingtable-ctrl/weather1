@@ -1,12 +1,12 @@
 ---
 source_file: "web_app.py"
 type: "code"
-community: "Anomaly Detection & PDF Reporting"
-location: "L3202"
+community: "Community 693"
+location: "L3289"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # start_web()
@@ -15,7 +15,7 @@ tags:
 - [[Start the Flask web dashboard.]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[cmd_web()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
-- [[web_app.py]] - `contains` [EXTRACTED]
+- [[main.py_1]] - `imports` [EXTRACTED]
+- [[web_app.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/code #graphify/EXTRACTED #community/Community_693

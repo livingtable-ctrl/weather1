@@ -20,8 +20,6 @@ tags:
 - [[TestManualPlacementPathsHourlyGuard]] - `contains` [EXTRACTED]
 - [[Tests for backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS (KXTEMPxxxH).…]] - `rationale_for` [EXTRACTED]
 - [[analyze_trade()]] - `references` [EXTRACTED]
-- [[check_position_limits()]] - `references` [EXTRACTED]
-- [[cmd_order()]] - `references` [EXTRACTED]
 - [[get_live_observation()]] - `imports` [EXTRACTED]
 - [[hourly KXTEMPxxxH model  _hourly_gates_active()  refresh_hourly_target_hours()]] - `references` [EXTRACTED]
 - [[test_snow_markets.py (referenced, not in this chunk)]] - `cites` [EXTRACTED]

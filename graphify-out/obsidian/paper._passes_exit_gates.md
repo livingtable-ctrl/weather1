@@ -12,7 +12,6 @@ tags:
 
 ## Connections
 - [[_check_early_exits()]] - `calls` [INFERRED]
-- [[check_model_exits()]] - `calls` [INFERRED]
 - [[paper.check_breakeven_stops]] - `calls` [INFERRED]
 - [[test_early_exits.py]] - `calls` [EXTRACTED]
 

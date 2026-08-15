@@ -40,16 +40,16 @@ SORT file.name ASC
 - 4 edges to [[_COMMUNITY_Community 40]]
 - 3 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 219]]
 - 1 edge to [[_COMMUNITY_Community 45]]
 - 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
+- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 111]]
 - 1 edge to [[_COMMUNITY_Community 225]]
 
 ## Top bridge nodes
 - [[_place_live_order()_poll_pending_orders()_auto_place_trades()]] - degree 7, connects to 5 communities
-- [[_resolve_micro_live_config()]] - degree 8, connects to 4 communities
 - [[_resolve_live_balance()]] - degree 8, connects to 3 communities
+- [[_resolve_micro_live_config()]] - degree 7, connects to 3 communities
 - [[test_prelog.py]] - degree 9, connects to 2 communities
 - [[execution_log.py_1]] - degree 4, connects to 2 communities

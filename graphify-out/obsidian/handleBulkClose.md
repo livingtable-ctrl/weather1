@@ -1,18 +1,17 @@
 ---
 source_file: "weather app site V_3 (3)/src/tabs/PositionsTab.jsx"
 type: "code"
-community: "Community 692"
-location: "121"
+community: "Community 693"
 tags:
   - graphify/code
-  - graphify/EXTRACTED
-  - community/Community_692
+  - graphify/INFERRED
+  - community/Community_693
 ---
 
 # handleBulkClose
 
 ## Connections
-- [[authHeader (V3)]] - `calls` [EXTRACTED]
-- [[computeMark (V3)]] - `shares_data_with` [INFERRED]
+- [[TestApiTradesLiveQuoteEnrichment]] - `semantically_similar_to` [INFERRED]
+- [[rowKey helper]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_692
+#graphify/code #graphify/INFERRED #community/Community_693

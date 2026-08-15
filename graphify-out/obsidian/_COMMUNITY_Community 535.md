@@ -22,11 +22,3 @@ members: 5
 TABLE source_file, type FROM #community/Community_535
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 3 edges to [[_COMMUNITY_Black Swan Halt State]]
-
-## Top bridge nodes
-- [[build_client() RF5 Hardcoded demo Default 3x (610)]] - degree 3, connects to 1 community
-- [[cmd_order() No KALSHI_ENV=prod Warning Before Live Order (610)]] - degree 2, connects to 1 community
-- [[validate_env() AC4 Fail No KALSHI_ENV Value Check (710)]] - degree 2, connects to 1 community

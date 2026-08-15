@@ -14,11 +14,9 @@ tags:
 ## Connections
 - [[Color an edge value green if strong positive, red if strong negative, yellow…]] - `rationale_for` [EXTRACTED]
 - [[cmd_history()]] - `calls` [EXTRACTED]
-- [[cmd_market()]] - `calls` [EXTRACTED]
 - [[colors.py]] - `contains` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[output_formatters.py]] - `imports` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 - [[yellow()]] - `calls` [EXTRACTED]

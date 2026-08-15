@@ -1,23 +1,19 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Community 32"
-location: "L8761"
+community: "Community 693"
+location: "L8912"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_32
+  - community/Community_693
 ---
 
 # cmd_sweep()
 
 ## Connections
 - [[Run a parameter sweep against historical paper trades.]] - `rationale_for` [EXTRACTED]
-- [[bold()]] - `calls` [EXTRACTED]
-- [[dim()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[run_sweep Function]] - `calls` [EXTRACTED]
-- [[run_sweep()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_32
+#graphify/code #graphify/EXTRACTED #community/Community_693

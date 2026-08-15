@@ -2,7 +2,7 @@
 source_file: "tests/conftest.py"
 type: "rationale"
 community: "Test Fixture Cache Clearing (conftest)"
-location: "L591"
+location: "L607"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED

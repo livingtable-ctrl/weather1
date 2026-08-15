@@ -13,6 +13,5 @@ tags:
 
 ## Connections
 - [[TestCloudBackupTimestamped]] - `method` [EXTRACTED]
-- [[cloud_backup()]] - `indirect_call` [INFERRED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_132

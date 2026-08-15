@@ -15,11 +15,9 @@ tags:
 - [[65 Return aggregate price improvement statistics. Returns None if fewer than…]] - `rationale_for` [EXTRACTED]
 - [[Phase 5 Trading Portfolio Plan]] - `implements` [EXTRACTED]
 - [[Tracker Grade Audit]] - `references` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 - [[tracker.py_1]] - `implements` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_36

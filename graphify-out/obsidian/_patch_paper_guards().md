@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 108"
+community: "Community 693"
 location: "L46"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_108
+  - community/Community_693
 ---
 
 # _patch_paper_guards()
@@ -21,4 +21,4 @@ tags:
 - [[Patch all paper guard functions imported inside _auto_place_trades.]] - `rationale_for` [EXTRACTED]
 - [[test_risk_control.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_108
+#graphify/code #graphify/EXTRACTED #community/Community_693

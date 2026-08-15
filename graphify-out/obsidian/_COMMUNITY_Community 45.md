@@ -10,12 +10,12 @@ members: 43
 **Members:** 43 nodes
 
 ## Members
-- [[dot-__init__()_8]] - code - order_executor.py
-- [[dot-exit()_1]] - code - order_executor.py
-- [[dot-get_open()_1]] - code - order_executor.py
-- [[dot-get_open()_2]] - code - positions.py
-- [[dot-save_peak()_1]] - code - order_executor.py
-- [[dot-save_peak()_2]] - code - positions.py
+- [[dot-__init__()_7]] - code - order_executor.py
+- [[dot-exit()]] - code - order_executor.py
+- [[dot-get_open()]] - code - order_executor.py
+- [[dot-get_open()_1]] - code - positions.py
+- [[dot-save_peak()]] - code - order_executor.py
+- [[dot-save_peak()_1]] - code - positions.py
 - [[dot-setup_method()_30]] - code - tests/test_live_execution.py
 - [[dot-setup_method()_31]] - code - tests/test_positions.py
 - [[dot-teardown_method()_22]] - code - tests/test_live_execution.py
@@ -63,14 +63,14 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 17 edges to [[_COMMUNITY_Community 111]]
-- 15 edges to [[_COMMUNITY_Community 145]]
-- 8 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 9 edges to [[_COMMUNITY_Community 145]]
 - 8 edges to [[_COMMUNITY_Community 110]]
 - 8 edges to [[_COMMUNITY_Community 144]]
 - 5 edges to [[_COMMUNITY_Community 56]]
 - 4 edges to [[_COMMUNITY_Community 157]]
 - 4 edges to [[_COMMUNITY_Community 159]]
 - 4 edges to [[_COMMUNITY_Community 215]]
+- 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 4 edges to [[_COMMUNITY_Community 67]]
 - 4 edges to [[_COMMUNITY_Community 484]]
 - 3 edges to [[_COMMUNITY_Community 138]]
@@ -97,7 +97,6 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 33]]
 - 1 edge to [[_COMMUNITY_Community 330]]
 - 1 edge to [[_COMMUNITY_Community 343]]
-- 1 edge to [[_COMMUNITY_Community 354]]
 - 1 edge to [[_COMMUNITY_Community 371]]
 - 1 edge to [[_COMMUNITY_Community 402]]
 - 1 edge to [[_COMMUNITY_Community 183]]
@@ -113,8 +112,8 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 125]]
 
 ## Top bridge nodes
-- [[Position]] - degree 92, connects to 40 communities
+- [[Position]] - degree 84, connects to 39 communities
 - [[LivePositionStore]] - degree 51, connects to 21 communities
-- [[update_peak_profits()]] - degree 20, connects to 8 communities
-- [[test_positions.py]] - degree 14, connects to 5 communities
+- [[update_peak_profits()]] - degree 18, connects to 8 communities
+- [[test_positions.py]] - degree 13, connects to 5 communities
 - [[_LiveDBTestBase]] - degree 11, connects to 3 communities

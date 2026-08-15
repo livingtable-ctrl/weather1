@@ -37,7 +37,6 @@ tags:
 - [[get_recent_city_correlations()]] - `calls` [EXTRACTED]
 - [[get_regional_recent_bias()]] - `calls` [EXTRACTED]
 - [[get_retired_strategies()]] - `calls` [EXTRACTED]
-- [[graduation_check()]] - `calls` [EXTRACTED]
 - [[order_executor.py_1]] - `references` [EXTRACTED]
 - [[run_stress_test()]] - `calls` [EXTRACTED]
 - [[test_get_recent_city_correlations_computes_correlation()]] - `contains` [EXTRACTED]

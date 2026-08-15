@@ -10,7 +10,4 @@ tags:
 
 # CITY_WFO_OFFICE Dict
 
-## Connections
-- [[cmd_afd()]] - `references` [EXTRACTED]
-
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

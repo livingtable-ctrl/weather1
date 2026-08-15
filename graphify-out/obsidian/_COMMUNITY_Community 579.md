@@ -1,19 +1,16 @@
 ---
 type: community
-cohesion: 0.50
-members: 4
+cohesion: 1.00
+members: 1
 ---
 
 # Community 579
 
-**Cohesion:** 0.50 - moderately connected
-**Members:** 4 nodes
+**Cohesion:** 1.00 - tightly connected
+**Members:** 1 nodes
 
 ## Members
-- [[Set DASHBOARD_UNPROTECTED=true so _build_app doesn't require…]] - rationale - tests/test_web_app.py
-- [[_force_demo_env()_1]] - code - tests/test_web_app.py
-- [[client()]] - code - tests/test_web_app.py
-- [[fixture_13]] - code
+- [[_force_demo_env()_2]] - code - tests/test_web_app.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -23,9 +20,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 43]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 3 edges to [[_COMMUNITY_Community 693]]
 
 ## Top bridge nodes
-- [[client()]] - degree 3, connects to 2 communities
-- [[_force_demo_env()_1]] - degree 3, connects to 1 community
+- [[_force_demo_env()_2]] - degree 3, connects to 1 community

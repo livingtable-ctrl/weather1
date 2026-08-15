@@ -10,7 +10,4 @@ tags:
 
 # sample_forecast.json
 
-## Connections
-- [[testsconftest.py Fixtures]] - `references` [EXTRACTED]
-
 #graphify/document #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages

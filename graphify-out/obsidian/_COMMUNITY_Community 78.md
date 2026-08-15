@@ -1,13 +1,13 @@
 ---
 type: community
 cohesion: 0.07
-members: 31
+members: 29
 ---
 
 # Community 78
 
 **Cohesion:** 0.07 - loosely connected
-**Members:** 31 nodes
+**Members:** 29 nodes
 
 ## Members
 - [[dot-test_bad_drawdown_env_var_uses_default()]] - code - tests/test_debug_fixes.py
@@ -31,8 +31,6 @@ members: 31
 - [[TestLogPredictionWarning]] - code - tests/test_debug_fixes.py
 - [[TestSyncOutcomesWarning]] - code - tests/test_debug_fixes.py
 - [[When log_prediction raises, cmd_analyze logs a warning.]] - rationale - tests/test_debug_fixes.py
-- [[_env_float()_1]] - code - paper.py
-- [[_env_int()_1]] - code - paper.py
 - [[entry_prob=0.0 on an open trade must not be replaced by 0.5 in covariance math.]] - rationale - tests/test_debug_fixes.py
 - [[fixture_17]] - code
 - [[get_attribution must not substitute 0.5 when entry_prob is 0.0.]] - rationale - tests/test_debug_fixes.py
@@ -50,13 +48,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 5 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_Community 361]]
 - 1 edge to [[_COMMUNITY_Community 184]]
 - 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
 
 ## Top bridge nodes
-- [[test_debug_fixes.py]] - degree 18, connects to 5 communities
-- [[_env_float()_1]] - degree 2, connects to 1 community
-- [[_env_int()_1]] - degree 2, connects to 1 community
+- [[test_debug_fixes.py]] - degree 13, connects to 4 communities

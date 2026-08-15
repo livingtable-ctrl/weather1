@@ -12,7 +12,7 @@ tags:
 # update_peak_profits()
 
 ## Connections
-- [[dot-save_peak()_2]] - `calls` [EXTRACTED]
+- [[dot-save_peak()_1]] - `calls` [EXTRACTED]
 - [[dot-test_does_not_overwrite_a_higher_stored_peak()]] - `calls` [EXTRACTED]
 - [[dot-test_records_new_peak_when_higher()]] - `calls` [EXTRACTED]
 - [[dot-test_save_peak_called_once_per_improved_position_not_batched()]] - `calls` [EXTRACTED]
@@ -23,10 +23,8 @@ tags:
 - [[Position]] - `references` [EXTRACTED]
 - [[Update peak_profit_pct on open positions if current unrealized profit is a new…]] - `rationale_for` [EXTRACTED]
 - [[_check_live_position_exits()]] - `calls` [EXTRACTED]
-- [[check_paper_position_exits()]] - `calls` [EXTRACTED]
 - [[liquidation_price()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
-- [[paper.py]] - `imports` [EXTRACTED]
 - [[positions.py]] - `contains` [EXTRACTED]
 - [[test_early_exits.py]] - `calls` [EXTRACTED]
 - [[test_live_execution.py]] - `imports` [EXTRACTED]

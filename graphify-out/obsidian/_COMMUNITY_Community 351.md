@@ -29,7 +29,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Black Swan Halt State]]
+- 3 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
 - 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
@@ -39,7 +39,6 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 226]]
 - 1 edge to [[_COMMUNITY_Community 36]]
 - 1 edge to [[_COMMUNITY_Community 86]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 1 edge to [[_COMMUNITY_Community 142]]
 - 1 edge to [[_COMMUNITY_Community 180]]
@@ -47,7 +46,7 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 195]]
 
 ## Top bridge nodes
-- [[kalshi_client.py]] - degree 26, connects to 14 communities
+- [[kalshi_client.py]] - degree 24, connects to 13 communities
 - [[dot-__init__()_5]] - degree 2, connects to 1 community
 - [[_find_order_by_client_id() RF1 Bare Except (710)]] - degree 2, connects to 1 community
 - [[place_order() client_order_id Idempotency Design (810)]] - degree 2, connects to 1 community

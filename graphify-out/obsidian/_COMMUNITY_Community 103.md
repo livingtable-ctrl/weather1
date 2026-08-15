@@ -52,12 +52,11 @@ SORT file.name ASC
 - 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 2 edges to [[_COMMUNITY_Community 109]]
 - 1 edge to [[_COMMUNITY_Community 72]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
 - 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 
 ## Top bridge nodes
-- [[test_calibration.py]] - degree 23, connects to 9 communities
+- [[test_calibration.py]] - degree 22, connects to 8 communities
 - [[load_condition_weights()]] - degree 9, connects to 3 communities
 - [[load_seasonal_weights()]] - degree 9, connects to 3 communities
 - [[load_city_weights()]] - degree 8, connects to 3 communities

@@ -12,7 +12,6 @@ tags:
 # fetchWeatherAlerts
 
 ## Connections
-- [[WeatherAlertBanner]] - `shares_data_with` [INFERRED]
 - [[safe (V3)]] - `calls` [EXTRACTED]
 - [[useData hook (V3)]] - `calls` [EXTRACTED]
 

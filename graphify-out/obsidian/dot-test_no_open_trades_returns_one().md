@@ -13,6 +13,5 @@ tags:
 
 ## Connections
 - [[TestCorrKellyScale]] - `method` [EXTRACTED]
-- [[corr_kelly_scale()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_459

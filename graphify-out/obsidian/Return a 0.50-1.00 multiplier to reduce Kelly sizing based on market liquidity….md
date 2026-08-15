@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Community 250"
-location: "L1869"
+community: "Community 693"
+location: "L1887"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_250
+  - community/Community_693
 ---
 
 # Return a 0.50-1.00 multiplier to reduce Kelly sizing based on market liquidity…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[liquidity_kelly_scale()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_250
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

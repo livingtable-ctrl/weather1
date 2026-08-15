@@ -14,6 +14,5 @@ tags:
 ## Connections
 - [[Graduation Toast Shows Stale Brier ≤0.20 (L2048)]] - `conceptually_related_to` [INFERRED]
 - [[Stale Brier Threshold Display Bug]] - `references` [EXTRACTED]
-- [[main.py]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_585

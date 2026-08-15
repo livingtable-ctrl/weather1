@@ -18,7 +18,6 @@ tags:
 - [[TestCmdBrief]] - `contains` [EXTRACTED]
 - [[TestCmdCronGuards]] - `contains` [EXTRACTED]
 - [[TestCmdUndo]] - `contains` [EXTRACTED]
-- [[cmd_cron()_1]] - `references` [EXTRACTED]
 - [[cron.py_1]] - `references` [EXTRACTED]
 - [[format_brier_alert()]] - `references` [EXTRACTED]
 - [[minimal_mocks()]] - `contains` [EXTRACTED]

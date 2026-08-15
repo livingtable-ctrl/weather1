@@ -14,7 +14,6 @@ tags:
 ## Connections
 - [[BotConfig]] - `imports` [EXTRACTED]
 - [[config.py]] - `calls` [EXTRACTED]
-- [[main.py]] - `calls` [EXTRACTED]
 - [[paths.py]] - `calls` [EXTRACTED]
 - [[reset_config()]] - `imports` [EXTRACTED]
 - [[test_bot_config_defaults_are_sane()]] - `contains` [EXTRACTED]

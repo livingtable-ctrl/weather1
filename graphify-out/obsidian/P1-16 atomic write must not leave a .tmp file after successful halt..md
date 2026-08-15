@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 416"
-location: "L561"
+community: "Community 693"
+location: "L767"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_416
+  - community/Community_693
 ---
 
 # P1-16: atomic write must not leave a .tmp file after successful halt.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_halt_no_leftover_tmp_file()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_416
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

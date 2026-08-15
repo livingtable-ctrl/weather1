@@ -11,7 +11,6 @@ tags:
 # Trading Logic Audit 2026-04-23
 
 ## Connections
-- [[close_paper_early()]] - `references` [EXTRACTED]
 - [[kelly_fraction()]] - `references` [EXTRACTED]
 - [[load_learned_weights()]] - `references` [EXTRACTED]
 - [[weather_markets.py]] - `references` [EXTRACTED]

@@ -77,10 +77,9 @@ SORT file.name ASC
 ## Connections to other communities
 - 18 edges to [[_COMMUNITY_Community 51]]
 - 4 edges to [[_COMMUNITY_Community 182]]
-- 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 4 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 - 1 edge to [[_COMMUNITY_Community 73]]
 

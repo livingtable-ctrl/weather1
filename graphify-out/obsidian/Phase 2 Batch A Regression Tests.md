@@ -19,7 +19,6 @@ tags:
 - [[TestStreakPausedSortOrder]] - `contains` [EXTRACTED]
 - [[_paper_min_edge_default()]] - `calls` [EXTRACTED]
 - [[_parse_temp()]] - `imports` [EXTRACTED]
-- [[is_streak_paused()]] - `calls` [EXTRACTED]
 - [[kelly_fraction()]] - `imports` [EXTRACTED]
 - [[utils.KALSHI_FEE_RATE]] - `references` [EXTRACTED]
 

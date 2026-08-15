@@ -10,7 +10,7 @@ members: 43
 **Members:** 43 nodes
 
 ## Members
-- [[dot-__init__()_7]] - code - circuit_breaker.py
+- [[dot-__init__()_6]] - code - circuit_breaker.py
 - [[dot-_load_state()]] - code - circuit_breaker.py
 - [[dot-_save_state()]] - code - circuit_breaker.py
 - [[dot-execute()]] - code - circuit_breaker.py

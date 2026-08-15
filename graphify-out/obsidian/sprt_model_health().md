@@ -14,7 +14,6 @@ tags:
 ## Connections
 - [[Run SPRT on the last `window` settled trades. Sequential Probability Ratio Test…]] - `rationale_for` [EXTRACTED]
 - [[_get_recent_win_loss()]] - `calls` [EXTRACTED]
-- [[is_accuracy_halted()]] - `calls` [EXTRACTED]
 - [[test_sprt.py]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 - [[tracker.py_2]] - `implements` [EXTRACTED]

@@ -11,7 +11,6 @@ tags:
 # fit_emos Function
 
 ## Connections
-- [[_cmd_emos_train()]] - `calls` [EXTRACTED]
 - [[emos_exceedance_prob Function]] - `shares_data_with` [INFERRED]
 - [[emos_interval_prob Function]] - `shares_data_with` [INFERRED]
 - [[save_emos_params Function]] - `shares_data_with` [INFERRED]

@@ -10,7 +10,4 @@ tags:
 
 # fetch_afd_discussion Function
 
-## Connections
-- [[cmd_afd()]] - `calls` [EXTRACTED]
-
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

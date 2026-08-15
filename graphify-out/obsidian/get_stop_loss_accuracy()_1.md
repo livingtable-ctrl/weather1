@@ -1,20 +1,19 @@
 ---
-source_file: "tracker.py"
+source_file: "paper.py"
 type: "code"
-community: "Tracker P&L Attribution Tests"
-location: "L1098"
+community: "Community 693"
+location: "L1931"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_693
 ---
 
 # get_stop_loss_accuracy()
 
 ## Connections
-- [[Audit stop-loss exits did they save money vs. holding to actual settlement…]] - `rationale_for` [EXTRACTED]
-- [[_conn()_1]] - `calls` [EXTRACTED]
-- [[init_db()]] - `calls` [EXTRACTED]
-- [[tracker.py]] - `contains` [EXTRACTED]
+- [[Audit whether stop-loss exits actually saved money vs. holding to settlement.…]] - `rationale_for` [EXTRACTED]
+- [[get_all_trades()]] - `calls` [EXTRACTED]
+- [[paper.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_693

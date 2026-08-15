@@ -12,7 +12,7 @@ tags:
 # CircuitOpenError
 
 ## Connections
-- [[dot-__init__()_11]] - `method` [EXTRACTED]
+- [[dot-__init__()_10]] - `method` [EXTRACTED]
 - [[dot-execute()]] - `calls` [EXTRACTED]
 - [[Exception_1]] - `inherits` [EXTRACTED]
 - [[KalshiClient]] - `uses` [INFERRED]

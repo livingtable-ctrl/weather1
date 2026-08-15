@@ -58,7 +58,7 @@ members: 49
 - [[test_get_component_attribution_returns_per_source_brier()]] - code - tests/test_tracker.py
 - [[test_get_component_attribution_works()]] - code - tests/test_tracker.py
 - [[tracker.py_1]] - code - tracker.py
-- [[web_app.py_1]] - code - web_app.py
+- [[web_app.py]] - code - web_app.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -70,28 +70,27 @@ SORT file.name ASC
 ## Connections to other communities
 - 83 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 20 edges to [[_COMMUNITY_Community 59]]
-- 18 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 14 edges to [[_COMMUNITY_Black Swan Halt State]]
+- 12 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 9 edges to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 7 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 6 edges to [[_COMMUNITY_Community 184]]
-- 6 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 5 edges to [[_COMMUNITY_Community 71]]
 - 4 edges to [[_COMMUNITY_Community 52]]
 - 4 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
-- 3 edges to [[_COMMUNITY_Community 385]]
 - 3 edges to [[_COMMUNITY_Community 494]]
+- 3 edges to [[_COMMUNITY_Community 385]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 2 edges to [[_COMMUNITY_Community 296]]
 - 2 edges to [[_COMMUNITY_Community 582]]
-- 2 edges to [[_COMMUNITY_Community 570]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 226]]
-- 1 edge to [[_COMMUNITY_Kelly City Multiplier & Edge Realization]]
 - 1 edge to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
 - 1 edge to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 384]]
-- 1 edge to [[_COMMUNITY_Community 580]]
 - 1 edge to [[_COMMUNITY_Community 581]]
 - 1 edge to [[_COMMUNITY_Community 533]]
+- 1 edge to [[_COMMUNITY_Community 580]]
+- 1 edge to [[_COMMUNITY_Community 570]]
 - 1 edge to [[_COMMUNITY_Community 500]]
 - 1 edge to [[_COMMUNITY_Community 575]]
 - 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
@@ -99,8 +98,8 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 160]]
 
 ## Top bridge nodes
-- [[init_db()]] - degree 111, connects to 19 communities
-- [[get_calibration_by_city()]] - degree 14, connects to 4 communities
-- [[get_brier_over_time()]] - degree 12, connects to 4 communities
+- [[init_db()]] - degree 105, connects to 19 communities
 - [[log_api_request()]] - degree 10, connects to 4 communities
 - [[get_quintile_bias()]] - degree 14, connects to 3 communities
+- [[Phase 5 Trading Portfolio Plan]] - degree 11, connects to 3 communities
+- [[get_brier_over_time()]] - degree 10, connects to 3 communities

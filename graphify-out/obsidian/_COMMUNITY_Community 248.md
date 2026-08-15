@@ -33,22 +33,21 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 5 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 132]]
+- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 260]]
 - 1 edge to [[_COMMUNITY_Community 403]]
 - 1 edge to [[_COMMUNITY_Community 404]]
 - 1 edge to [[_COMMUNITY_Community 514]]
 - 1 edge to [[_COMMUNITY_Community 515]]
 - 1 edge to [[_COMMUNITY_Community 516]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 - 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
 - 1 edge to [[_COMMUNITY_Community 85]]
 - 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
 
 ## Top bridge nodes
-- [[Phase 2 Batch G Regression Tests]] - degree 13, connects to 6 communities
-- [[Phase 2 Batch B Regression Tests]] - degree 10, connects to 4 communities
-- [[test_drawdown_tiers.py_1]] - degree 4, connects to 3 communities
+- [[Phase 2 Batch G Regression Tests]] - degree 12, connects to 5 communities
+- [[Phase 2 Batch B Regression Tests]] - degree 8, connects to 4 communities
 - [[_save()_load() SHA-256 checksum]] - degree 3, connects to 2 communities
+- [[test_drawdown_tiers.py_1]] - degree 3, connects to 2 communities

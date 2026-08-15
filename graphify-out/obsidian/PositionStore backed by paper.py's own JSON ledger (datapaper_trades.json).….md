@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Community 145"
-location: "L1345"
+community: "Community 693"
+location: "L1363"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_145
+  - community/Community_693
 ---
 
 # PositionStore backed by paper.py's own JSON ledger (data/paper_trades.json).…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[PaperPositionStore]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_145
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

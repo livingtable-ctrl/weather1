@@ -33,10 +33,8 @@ tags:
 - [[_midpoint_price()]] - `calls` [EXTRACTED]
 - [[_replace_live_order()]] - `calls` [EXTRACTED]
 - [[_validate_trade_opportunity()]] - `calls` [EXTRACTED]
-- [[cmd_watch()]] - `calls` [EXTRACTED]
 - [[coalesce_market_price()]] - `calls` [EXTRACTED]
 - [[get_recent_orders()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[test_live_execution.py]] - `imports` [EXTRACTED]
 

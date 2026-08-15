@@ -1,33 +1,28 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
-location: "L5399"
+community: "Community 693"
+location: "L5550"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # cmd_settings()
 
 ## Connections
-- [[KalshiClient]] - `references` [EXTRACTED]
+- [[KalshiClient_1]] - `references` [EXTRACTED]
+- [[Path_30]] - `calls` [INFERRED]
 - [[View and edit configurable settings.]] - `rationale_for` [EXTRACTED]
 - [[_header()]] - `calls` [EXTRACTED]
-- [[bold()]] - `calls` [EXTRACTED]
 - [[build_client()]] - `calls` [EXTRACTED]
 - [[cmd_export()]] - `calls` [EXTRACTED]
-- [[cmd_history()]] - `calls` [EXTRACTED]
 - [[cmd_menu()]] - `calls` [EXTRACTED]
 - [[cmd_simulate()]] - `calls` [EXTRACTED]
 - [[cmd_web()]] - `calls` [EXTRACTED]
 - [[cmd_weekly_summary()]] - `calls` [EXTRACTED]
-- [[cyan()]] - `calls` [EXTRACTED]
-- [[dim()]] - `calls` [EXTRACTED]
-- [[green()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[red()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

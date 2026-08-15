@@ -14,6 +14,5 @@ tags:
 ## Connections
 - [[TestCmdSetupPreservesExistingEnv]] - `contains` [EXTRACTED]
 - [[cmd_setup() must not destroy existing .env settings when re-run.]] - `rationale_for` [EXTRACTED]
-- [[main.py]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_543

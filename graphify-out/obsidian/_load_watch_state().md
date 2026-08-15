@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 693"
 location: "L442"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_693
 ---
 
 # _load_watch_state()
@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[Load the set of previously-seen tickers from disk (survives restarts).]] - `rationale_for` [EXTRACTED]
 - [[cmd_watch()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_693

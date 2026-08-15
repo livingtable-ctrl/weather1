@@ -19,7 +19,7 @@ members: 11
 - [[After a successful paper order, the pre-logged row must be updated to 'filled'.]] - rationale - tests/test_p0_10_paper_prelog.py
 - [[If place_paper_order raises, the pre-logged row must be updated to 'failed'.]] - rationale - tests/test_p0_10_paper_prelog.py
 - [[TestPaperPreLog]] - code - tests/test_p0_10_paper_prelog.py
-- [[_make_opp()_2]] - code - tests/test_p0_10_paper_prelog.py
+- [[_make_opp()_1]] - code - tests/test_p0_10_paper_prelog.py
 - [[_stub_prereqs()]] - code - tests/test_p0_10_paper_prelog.py
 
 ## Live Query (requires Dataview plugin)
@@ -34,5 +34,5 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[TestPaperPreLog]] - degree 6, connects to 1 community
-- [[_make_opp()_2]] - degree 4, connects to 1 community
+- [[_make_opp()_1]] - degree 4, connects to 1 community
 - [[_stub_prereqs()]] - degree 4, connects to 1 community

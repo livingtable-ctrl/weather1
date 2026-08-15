@@ -14,9 +14,7 @@ tags:
 ## Connections
 - [[P9.1 Brier score and sample count grouped by edge_calc_version. Returns…]] - `rationale_for` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
-- [[cmd_version_compare()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[test_p9_p10.py]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 

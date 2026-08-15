@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 354"
+community: "Community 693"
 location: "L165"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_354
+  - community/Community_693
 ---
 
 # .release()
@@ -16,4 +16,4 @@ tags:
 - [[dot-_release_file_lock()]] - `calls` [EXTRACTED]
 - [[_CrossProcessDataLock]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_354
+#graphify/code #graphify/EXTRACTED #community/Community_693

@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
-location: "L4951"
+community: "Community 693"
+location: "L5102"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # cmd_readiness()
@@ -14,11 +14,8 @@ tags:
 ## Connections
 - [[Run pre-live-trading checklist. Returns True only if ALL gates pass. Usage py…]] - `rationale_for` [EXTRACTED]
 - [[_header()]] - `calls` [EXTRACTED]
-- [[dim()]] - `calls` [EXTRACTED]
 - [[get_max_drawdown_pct()]] - `calls` [EXTRACTED]
-- [[green()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[red()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

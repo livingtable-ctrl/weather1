@@ -14,8 +14,6 @@ tags:
 ## Connections
 - [[Fetch and return the current AFD's narrative reasoning text for a city.…]] - `rationale_for` [EXTRACTED]
 - [[_section_body()]] - `calls` [EXTRACTED]
-- [[cmd_afd()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[nws_afd.py]] - `contains` [EXTRACTED]
 - [[test_nws_afd.py]] - `calls` [EXTRACTED]
 

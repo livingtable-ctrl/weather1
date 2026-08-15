@@ -15,8 +15,6 @@ tags:
 - [[_run_batch_prewarm()]] - `calls` [EXTRACTED]
 - [[backlog.txt]] - `cites` [EXTRACTED]
 - [[check_market_anomalies()]] - `calls` [EXTRACTED]
-- [[check_paper_position_exits()]] - `references` [EXTRACTED]
-- [[cmd_cron()_1]] - `calls` [EXTRACTED]
 - [[cron._active_ws (KalshiWebSocket lifecycle)]] - `references` [EXTRACTED]
 - [[detect_brier_drift()]] - `calls` [EXTRACTED]
 - [[kalshi_ws.KalshiWebSocket]] - `references` [EXTRACTED]

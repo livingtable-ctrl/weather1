@@ -12,7 +12,7 @@ tags:
 # ._load_history()
 
 ## Connections
-- [[dot-__init__()_12]] - `calls` [EXTRACTED]
+- [[dot-__init__()_11]] - `calls` [EXTRACTED]
 - [[FlashCrashCB]] - `method` [EXTRACTED]
 - [[Load persisted price history from disk, discarding any observations already…]] - `rationale_for` [EXTRACTED]
 

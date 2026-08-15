@@ -19,9 +19,7 @@ tags:
 - [[Train a bias correction model per city from tracker DB data. Saves models to…]] - `rationale_for` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[_write_hmac()]] - `calls` [EXTRACTED]
-- [[cmd_train_bias()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[ml_bias.py]] - `contains` [EXTRACTED]
 - [[test_ml_bias.py]] - `calls` [EXTRACTED]
 

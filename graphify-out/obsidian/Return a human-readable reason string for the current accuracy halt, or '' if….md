@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L2496"
+community: "Community 693"
+location: "L2633"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_693
 ---
 
 # Return a human-readable reason string for the current accuracy halt, or '' if…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_accuracy_halt_reason()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

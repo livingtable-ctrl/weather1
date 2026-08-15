@@ -1,12 +1,11 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 108"
-location: "L248"
+community: "Community 693"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_108
+  - community/Community_693
 ---
 
 # TestPaperLiveSeparation
@@ -16,6 +15,7 @@ tags:
 - [[dot-test_paper_mode_never_calls_place_live_order()]] - `method` [EXTRACTED]
 - [[dot-test_prod_env_uses_prod_base_url()]] - `method` [EXTRACTED]
 - [[_auto_place_trades(live=False) must never call _place_live_order.]] - `rationale_for` [EXTRACTED]
+- [[paper subcommand group]] - `conceptually_related_to` [INFERRED]
 - [[test_risk_control.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_108
+#graphify/code #graphify/EXTRACTED #community/Community_693

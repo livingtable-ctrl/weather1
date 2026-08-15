@@ -1,12 +1,12 @@
 ---
 source_file: "web_app.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
-location: "L3203"
+community: "Community 693"
+location: "L3290"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # Start the Flask web dashboard.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[start_web()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

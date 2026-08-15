@@ -13,7 +13,6 @@ tags:
 
 ## Connections
 - [[LivePositionStore]] - `calls` [EXTRACTED]
-- [[PaperPositionStore]] - `calls` [EXTRACTED]
 - [[Position]] - `calls` [EXTRACTED]
 - [[Shared Position Read-Model Module]] - `calls` [EXTRACTED]
 - [[TestLivePositionStore]] - `contains` [EXTRACTED]

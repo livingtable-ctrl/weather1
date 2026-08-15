@@ -15,12 +15,8 @@ tags:
 - [[dot-test_list_all_summaries_includes_saved_test()]] - `calls` [EXTRACTED]
 - [[dot-test_list_all_summaries_returns_dict()]] - `calls` [EXTRACTED]
 - [[Return summary stats for all tests found on disk.]] - `rationale_for` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_load_test_state()]] - `calls` [EXTRACTED]
 - [[ab_test.py]] - `contains` [EXTRACTED]
-- [[cmd_ab_summary()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[test_ab_test.py]] - `imports` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_33

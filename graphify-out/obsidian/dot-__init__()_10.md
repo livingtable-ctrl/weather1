@@ -1,17 +1,18 @@
 ---
-source_file: "tests/test_climatology.py"
+source_file: "circuit_breaker.py"
 type: "code"
-community: "Community 542"
-location: "L34"
+community: "Community 95"
+location: "L35"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_542
+  - community/Community_95
 ---
 
 # .__init__()
 
 ## Connections
-- [[_FakeResponse]] - `method` [EXTRACTED]
+- [[dot-__init__()_11]] - `calls` [EXTRACTED]
+- [[CircuitOpenError]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_542
+#graphify/code #graphify/EXTRACTED #community/Community_95

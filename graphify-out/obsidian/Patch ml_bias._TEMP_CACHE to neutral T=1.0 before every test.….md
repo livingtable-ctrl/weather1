@@ -1,12 +1,12 @@
 ---
 source_file: "tests/conftest.py"
 type: "rationale"
-community: "Test Fixture Cache Clearing (conftest)"
+community: "Community 693"
 location: "L160"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Test_Fixture_Cache_Clearing_conftest
+  - community/Community_693
 ---
 
 # Patch ml_bias._TEMP_CACHE to neutral T=1.0 before every test.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[neutral_temperature_scaling()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Test_Fixture_Cache_Clearing_conftest
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

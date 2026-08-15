@@ -1,13 +1,13 @@
 ---
 type: community
-cohesion: 0.05
-members: 44
+cohesion: 0.06
+members: 42
 ---
 
 # Community 40
 
-**Cohesion:** 0.05 - loosely connected
-**Members:** 44 nodes
+**Cohesion:** 0.06 - loosely connected
+**Members:** 42 nodes
 
 ## Members
 - [[Bool wrapper around trading_gates.pre_live_trade_check() for the micro-live…]] - rationale - order_executor.py
@@ -22,7 +22,6 @@ members: 44
 - [[P10.1 Detect slow Brier score degradation over time. Splits available weekly…]] - rationale - tracker.py
 - [[Paper Trading Ledger Module]] - code - paper.py
 - [[Patch every external call cmd_cron makes so it can run without network.]] - rationale - tests/test_main_cron_smoke.py
-- [[Return True if rolling win rate over last ACCURACY_WINDOW_TRADES is below…]] - rationale - paper.py
 - [[Return a string identifier for the current NWS forecast cycle. NWS model runs…]] - rationale - order_executor.py
 - [[Shared Position Read-Model Module]] - code - positions.py
 - [[Smoke tests for cmd_cron — the main production execution path. Tests the guards…]] - rationale - tests/test_main_cron_smoke.py
@@ -41,7 +40,6 @@ members: 44
 - [[fixture_9]] - code
 - [[format_brier_alert() output should include actionable next steps.]] - rationale - tests/test_main_cron_smoke.py
 - [[get_forecast_run_trend_from_analysis()]] - code - tracker.py
-- [[is_accuracy_halted()]] - code - paper.py
 - [[main._auto_place_trades]] - code - main.py
 - [[main.py CLI Entrypoint]] - code - main.py
 - [[minimal_mocks()]] - code - tests/test_main_cron_smoke.py
@@ -63,28 +61,25 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 26 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 16 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 14 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 11 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 7 edges to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 6 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 5 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 5 edges to [[_COMMUNITY_Community 52]]
 - 4 edges to [[_COMMUNITY_Community 183]]
 - 4 edges to [[_COMMUNITY_Community 244]]
 - 3 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
 - 3 edges to [[_COMMUNITY_Community 340]]
 - 3 edges to [[_COMMUNITY_Community 54]]
 - 3 edges to [[_COMMUNITY_Community 97]]
+- 3 edges to [[_COMMUNITY_Community 52]]
 - 3 edges to [[_COMMUNITY_Community 92]]
 - 2 edges to [[_COMMUNITY_Community 45]]
 - 2 edges to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
 - 2 edges to [[_COMMUNITY_Community 424]]
 - 2 edges to [[_COMMUNITY_Community 125]]
-- 2 edges to [[_COMMUNITY_Community 108]]
 - 2 edges to [[_COMMUNITY_Community 50]]
 - 2 edges to [[_COMMUNITY_Community 74]]
 - 2 edges to [[_COMMUNITY_Community 71]]
-- 1 edge to [[_COMMUNITY_Community 145]]
 - 1 edge to [[_COMMUNITY_Community 346]]
 - 1 edge to [[_COMMUNITY_Community 444]]
 - 1 edge to [[_COMMUNITY_Community 470]]
@@ -100,9 +95,6 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 - 1 edge to [[_COMMUNITY_Community 146]]
 - 1 edge to [[_COMMUNITY_Community 85]]
-- 1 edge to [[_COMMUNITY_Community 582]]
-- 1 edge to [[_COMMUNITY_Community 96]]
-- 1 edge to [[_COMMUNITY_Community 380]]
 - 1 edge to [[_COMMUNITY_Community 47]]
 - 1 edge to [[_COMMUNITY_Community 196]]
 - 1 edge to [[_COMMUNITY_Community 109]]
@@ -120,8 +112,8 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Kelly City Multiplier & Edge Realization]]
 
 ## Top bridge nodes
-- [[Paper Trading Ledger Module]] - degree 21, connects to 14 communities
-- [[main.py CLI Entrypoint]] - degree 18, connects to 10 communities
+- [[Paper Trading Ledger Module]] - degree 16, connects to 11 communities
+- [[main.py CLI Entrypoint]] - degree 17, connects to 9 communities
 - [[order_executor.py_1]] - degree 15, connects to 9 communities
 - [[_current_forecast_cycle()]] - degree 13, connects to 8 communities
-- [[_log_shadow_predictions()]] - degree 13, connects to 8 communities
+- [[test_main_cron_smoke.py]] - degree 11, connects to 6 communities

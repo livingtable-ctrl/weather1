@@ -14,8 +14,6 @@ tags:
 ## Connections
 - [[dot-test_fit_emos_returns_four_floats()]] - `calls` [EXTRACTED]
 - [[Fit EMOS parameters (a, b, c, d) minimising mean CRPS. Model T ~ N(mu,…]] - `rationale_for` [EXTRACTED]
-- [[_cmd_emos_train()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[ml_bias.py]] - `contains` [EXTRACTED]
 - [[ndarray]] - `references` [EXTRACTED]
 - [[test_ml_bias.py]] - `imports` [EXTRACTED]

@@ -12,12 +12,10 @@ tags:
 # init_db()
 
 ## Connections
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_check_api_failure_rate()]] - `calls` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
 - [[_get_recent_win_loss()]] - `calls` [EXTRACTED]
 - [[_run_migrations()_1]] - `calls` [EXTRACTED]
-- [[_score_ensemble_members()]] - `calls` [EXTRACTED]
 - [[backfill_daily_temp_settlement()]] - `calls` [EXTRACTED]
 - [[backfill_emos_data()]] - `calls` [EXTRACTED]
 - [[backfill_ensemble_member_scores_var()]] - `calls` [EXTRACTED]
@@ -87,7 +85,7 @@ tags:
 - [[get_sameday_calibration()]] - `calls` [EXTRACTED]
 - [[get_sameday_calibration_cli()]] - `calls` [EXTRACTED]
 - [[get_source_reliability()]] - `calls` [EXTRACTED]
-- [[get_stop_loss_accuracy()_1]] - `calls` [EXTRACTED]
+- [[get_stop_loss_accuracy()]] - `calls` [EXTRACTED]
 - [[get_trade_flow_settlement_correlation()]] - `calls` [EXTRACTED]
 - [[get_trade_history()]] - `calls` [EXTRACTED]
 - [[get_unselected_bias()]] - `calls` [EXTRACTED]
@@ -102,11 +100,8 @@ tags:
 - [[log_price_improvement()]] - `calls` [EXTRACTED]
 - [[log_source_attempt()]] - `calls` [EXTRACTED]
 - [[log_trades()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[mark_outcome_disputed()]] - `calls` [EXTRACTED]
 - [[mark_outcome_undisputed()]] - `calls` [EXTRACTED]
-- [[paper.py]] - `imports` [EXTRACTED]
 - [[prune_api_requests()]] - `calls` [EXTRACTED]
 - [[prune_old_analysis_attempts()]] - `calls` [EXTRACTED]
 - [[purge_old_predictions()]] - `calls` [EXTRACTED]
@@ -122,6 +117,5 @@ tags:
 - [[test_obs_weight.py]] - `calls` [EXTRACTED]
 - [[test_tracker.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_36

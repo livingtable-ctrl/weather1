@@ -14,6 +14,5 @@ tags:
 ## Connections
 - [[TestCityKellyMultiplier]] - `method` [EXTRACTED]
 - [[_city_kelly_multiplier is called inside portfolio_kelly_fraction.]] - `rationale_for` [EXTRACTED]
-- [[portfolio_kelly_fraction()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization

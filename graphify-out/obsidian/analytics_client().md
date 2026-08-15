@@ -12,7 +12,6 @@ tags:
 # analytics_client()
 
 ## Connections
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[fixture_16]] - `references` [EXTRACTED]
 - [[test_web_analytics.py]] - `contains` [EXTRACTED]
 

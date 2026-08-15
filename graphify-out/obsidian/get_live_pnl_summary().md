@@ -13,10 +13,8 @@ tags:
 
 ## Connections
 - [[Return live order P&L summary for the dashboard. Returns today_pnl sum of pnl…]] - `rationale_for` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_conn()]] - `calls` [EXTRACTED]
 - [[execution_log.py]] - `contains` [EXTRACTED]
 - [[init_log()]] - `calls` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking

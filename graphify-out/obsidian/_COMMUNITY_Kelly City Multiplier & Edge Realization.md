@@ -1,13 +1,13 @@
 ---
 type: community
-cohesion: 0.06
-members: 55
+cohesion: 0.05
+members: 51
 ---
 
 # Kelly City Multiplier & Edge Realization
 
-**Cohesion:** 0.06 - loosely connected
-**Members:** 55 nodes
+**Cohesion:** 0.05 - loosely connected
+**Members:** 51 nodes
 
 ## Members
 - [[dot-_make_multiday_trade()]] - code - tests/test_backlog_batch.py
@@ -45,8 +45,6 @@ members: 55
 - [[Cap is per-date 4 positions on May-20 don't block a May-21 trade.]] - rationale - tests/test_backlog_batch.py
 - [[Correlation  0.10 should not be marked as calibrated.]] - rationale - tests/test_backlog_batch.py
 - [[Higher edge trades should show higher win rate → positive correlation.]] - rationale - tests/test_backlog_batch.py
-- [[Measure how well the model's computed net_edge predicts actual outcomes.…]] - rationale - paper.py
-- [[Scale Kelly down for cities where the model has historically underperformed.…]] - rationale - paper.py
 - [[Settled trades with the same ticker should not block re-entry.]] - rationale - tests/test_backlog_batch.py
 - [[System Audit Findings 2026-06-04]] - document - docs/audit_findings_2026-06-04.md
 - [[TestCityKellyMultiplier]] - code - tests/test_backlog_batch.py
@@ -60,8 +58,6 @@ members: 55
 - [[With only 2 positions on the date, a 3rd is allowed (cap=4).]] - rationale - tests/test_backlog_batch.py
 - [[Write a paper state JSON with an optional open trade.]] - rationale - tests/test_backlog_batch.py
 - [[_city_kelly_multiplier is called inside portfolio_kelly_fraction.]] - rationale - tests/test_backlog_batch.py
-- [[_city_kelly_multiplier()]] - code - paper.py
-- [[get_edge_realization_rate()]] - code - paper.py
 - [[min_samples=0 with zero trades must not raise ZeroDivisionError — the old…]] - rationale - tests/test_backlog_batch.py
 - [[place_paper_order raises ValueError if the same ticker is already open.]] - rationale - tests/test_backlog_batch.py
 - [[test_backlog_batch.py]] - code - tests/test_backlog_batch.py
@@ -74,16 +70,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 8 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 36]]
-- 1 edge to [[_COMMUNITY_Community 451]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_Community 40]]
 
 ## Top bridge nodes
-- [[get_edge_realization_rate()]] - degree 19, connects to 3 communities
-- [[test_backlog_batch.py]] - degree 11, connects to 2 communities
-- [[_city_kelly_multiplier()]] - degree 8, connects to 2 communities
-- [[dot-test_applied_in_portfolio_kelly_fraction()]] - degree 3, connects to 1 community
-- [[System Audit Findings 2026-06-04]] - degree 2, connects to 1 community
+- [[test_backlog_batch.py]] - degree 7, connects to 2 communities
+- [[System Audit Findings 2026-06-04]] - degree 1, connects to 1 community

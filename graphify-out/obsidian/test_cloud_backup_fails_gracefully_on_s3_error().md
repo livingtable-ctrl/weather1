@@ -12,7 +12,6 @@ tags:
 # test_cloud_backup_fails_gracefully_on_s3_error()
 
 ## Connections
-- [[cloud_backup()]] - `calls` [EXTRACTED]
 - [[test_cloud_backup.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_132

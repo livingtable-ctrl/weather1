@@ -25,7 +25,6 @@ tags:
 - [[edge_color() Dead Branch Bug (610)]] - `references` [EXTRACTED]
 - [[green()]] - `contains` [EXTRACTED]
 - [[liquidity_color()]] - `contains` [EXTRACTED]
-- [[main.py]] - `imports_from` [EXTRACTED]
 - [[order_executor.py]] - `imports_from` [EXTRACTED]
 - [[output_formatters.py]] - `imports_from` [EXTRACTED]
 - [[prob_color()]] - `contains` [EXTRACTED]

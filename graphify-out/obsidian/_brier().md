@@ -20,7 +20,6 @@ tags:
 - [[Compute weighted Brier score. Rows are (e, c, n, s, weight). Skips None…]] - `rationale_for` [EXTRACTED]
 - [[Phase 3 Batch C Calibration Tests]] - `imports` [EXTRACTED]
 - [[_best_weights()]] - `calls` [EXTRACTED]
-- [[_dynamic_kelly_cap()]] - `calls` [INFERRED]
 - [[calibration.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_387

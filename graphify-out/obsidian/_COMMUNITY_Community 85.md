@@ -62,12 +62,11 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 42]]
 - 1 edge to [[_COMMUNITY_Community 596]]
 - 1 edge to [[_COMMUNITY_Community 67]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 248]]
 
 ## Top bridge nodes
-- [[_validate_trade_opportunity()]] - degree 32, connects to 14 communities
+- [[_validate_trade_opportunity()]] - degree 31, connects to 13 communities
 - [[test_trade_validation.py]] - degree 21, connects to 3 communities
 - [[_opp()]] - degree 19, connects to 2 communities
 - [[dot-test_live_placement_appends_to_open_trades_list()]] - degree 2, connects to 1 community

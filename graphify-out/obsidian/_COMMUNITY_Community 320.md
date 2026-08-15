@@ -31,12 +31,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 92]]
 
 ## Top bridge nodes
 - [[TestSlippageAdjustedPrice]] - degree 7, connects to 1 community
-- [[dot-test_buy_no_decreases_price()]] - degree 3, connects to 1 community
-- [[dot-test_buy_yes_increases_price()]] - degree 3, connects to 1 community
-- [[dot-test_clamped_to_0_01_0_99()]] - degree 3, connects to 1 community
-- [[dot-test_zero_slippage_at_quantity_zero()]] - degree 3, connects to 1 community

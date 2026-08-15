@@ -1,13 +1,13 @@
 ---
 type: community
 cohesion: 0.05
-members: 52
+members: 50
 ---
 
 # Community 32
 
 **Cohesion:** 0.05 - loosely connected
-**Members:** 52 nodes
+**Members:** 50 nodes
 
 ## Members
 - [[dot-_make_trades()]] - code - tests/test_phase2_batch_m.py
@@ -30,14 +30,12 @@ members: 52
 - [[Phase 2 Batch M Regression Tests]] - code - tests/test_phase2_batch_m.py
 - [[Phase 2 Batch M regression tests P2-353738424446.]] - rationale - tests/test_phase2_batch_m.py
 - [[Record which features were present for a trade and (optionally) the outcome.…]] - rationale - feature_importance.py
-- [[Run a parameter sweep against historical paper trades.]] - rationale - main.py
 - [[Run a sweep across key parameters using historical paper trades. Uses a 7030…]] - rationale - param_sweep.py
 - [[TestGbmHoldoutValidation]] - code - tests/test_phase2_batch_m.py
 - [[TestParamSweepTemporalSplit]] - code - tests/test_phase2_batch_m.py
 - [[Train a bias correction model per city from tracker DB data. Saves models to…]] - rationale - ml_bias.py
 - [[_group_markets()]] - code - consistency.py
 - [[_group_markets() No tryexcept Aborts Whole Scan (710)]] - document - docs/grade_audit/outputs/consistency.py.md
-- [[cmd_sweep()]] - code - main.py
 - [[consistency.py]] - code - consistency.py
 - [[consistency.py Detect-Only, No Enforcement Path (INFO)]] - document - docs/grade_audit/outputs/consistency.py.md
 - [[consistency.py File Grade median 710, no TIER1 promotions]] - document - docs/grade_audit/outputs/consistency.py.md
@@ -71,9 +69,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 14 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 13 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 10 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 9 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 6 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 4 edges to [[_COMMUNITY_Community 51]]
 - 4 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
@@ -81,6 +78,7 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_Community 35]]
 - 3 edges to [[_COMMUNITY_Community 109]]
 - 2 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
+- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_Community 96]]
 - 1 edge to [[_COMMUNITY_Community 33]]
 - 1 edge to [[_COMMUNITY_Community 345]]
@@ -88,7 +86,6 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 555]]
 - 1 edge to [[_COMMUNITY_Community 184]]
 - 1 edge to [[_COMMUNITY_Community 186]]
-- 1 edge to [[_COMMUNITY_Community 353]]
 - 1 edge to [[_COMMUNITY_Community 151]]
 - 1 edge to [[_COMMUNITY_Community 454]]
 - 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
@@ -100,8 +97,8 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 567]]
 
 ## Top bridge nodes
-- [[Grade Audit Module Doc TIER 2 Files]] - degree 22, connects to 12 communities
+- [[Grade Audit Module Doc TIER 2 Files]] - degree 20, connects to 12 communities
 - [[Phase 2 Batch M Regression Tests]] - degree 15, connects to 7 communities
-- [[consistency.py]] - degree 18, connects to 6 communities
-- [[param_sweep.py]] - degree 13, connects to 6 communities
-- [[train_bias_model()]] - degree 12, connects to 5 communities
+- [[consistency.py]] - degree 17, connects to 5 communities
+- [[_group_markets()]] - degree 11, connects to 5 communities
+- [[param_sweep.py]] - degree 11, connects to 4 communities

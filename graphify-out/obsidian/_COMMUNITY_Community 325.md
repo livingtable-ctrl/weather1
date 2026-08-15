@@ -31,12 +31,10 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 9 edges to [[_COMMUNITY_Community 94]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 
 ## Top bridge nodes
-- [[check_alerts()]] - degree 12, connects to 4 communities
+- [[check_alerts()]] - degree 10, connects to 2 communities
 - [[_FakeClient_1]] - degree 8, connects to 1 community
 - [[TestCheckAlerts]] - degree 6, connects to 1 community
 - [[dot-test_above_direction_does_not_fire_when_price_below_target()]] - degree 4, connects to 1 community

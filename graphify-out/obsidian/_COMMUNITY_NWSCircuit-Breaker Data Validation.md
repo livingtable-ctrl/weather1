@@ -47,7 +47,7 @@ members: 63
 - [[_load_station_cache()]] - code - nws.py
 - [[_place_live_order() KeyError Risk max_open_positions (710)]] - document - docs/grade_audit/outputs/order_executor.py.md
 - [[_save_station_cache()]] - code - nws.py
-- [[_setup_logging()_1]] - code - utils.py
+- [[_setup_logging()]] - code - utils.py
 - [[_station_key_to_str()]] - code - nws.py
 - [[_station_str_to_key()]] - code - nws.py
 - [[check_edge.py]] - code - check_edge.py
@@ -84,8 +84,8 @@ SORT file.name ASC
 ## Connections to other communities
 - 19 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 16 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 9 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 8 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
+- 7 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 5 edges to [[_COMMUNITY_Weather Probability Math Tests]]
 - 5 edges to [[_COMMUNITY_Community 59]]
 - 4 edges to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
@@ -103,7 +103,6 @@ SORT file.name ASC
 - 2 edges to [[_COMMUNITY_Community 84]]
 - 2 edges to [[_COMMUNITY_Community 99]]
 - 2 edges to [[_COMMUNITY_Community 164]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_Community 351]]
 - 2 edges to [[_COMMUNITY_Community 198]]
 - 2 edges to [[_COMMUNITY_Community 26]]
@@ -135,14 +134,13 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 212]]
 - 1 edge to [[_COMMUNITY_Community 194]]
 - 1 edge to [[_COMMUNITY_Community 58]]
-- 1 edge to [[_COMMUNITY_Community 43]]
 - 1 edge to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
 - 1 edge to [[_COMMUNITY_Community 229]]
 - 1 edge to [[_COMMUNITY_Community 567]]
 
 ## Top bridge nodes
-- [[paths.py]] - degree 43, connects to 26 communities
-- [[utils.py]] - degree 42, connects to 22 communities
+- [[paths.py]] - degree 41, connects to 25 communities
+- [[utils.py]] - degree 39, connects to 20 communities
 - [[circuit_breaker.py]] - degree 20, connects to 13 communities
 - [[nws.py]] - degree 37, connects to 11 communities
 - [[schema_validator.py]] - degree 12, connects to 7 communities

@@ -37,14 +37,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
 - 1 edge to [[_COMMUNITY_Community 235]]
 - 1 edge to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 56]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 105]]
-- 1 edge to [[_COMMUNITY_Test Fixture Cache Clearing (conftest)]]
 - 1 edge to [[_COMMUNITY_Community 273]]
 - 1 edge to [[_COMMUNITY_Community 351]]
 - 1 edge to [[_COMMUNITY_Community 49]]
@@ -52,7 +50,7 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 142]]
 
 ## Top bridge nodes
-- [[Grade Audit Module Doc paper.py]] - degree 9, connects to 5 communities
 - [[Grade Audit Module Doc order_executor.py]] - degree 7, connects to 5 communities
-- [[Grade Audit Module Doc main.py]] - degree 6, connects to 3 communities
+- [[Grade Audit Module Doc paper.py]] - degree 7, connects to 3 communities
+- [[Grade Audit Module Doc main.py]] - degree 5, connects to 2 communities
 - [[client_order_id Idempotency Check]] - degree 2, connects to 1 community

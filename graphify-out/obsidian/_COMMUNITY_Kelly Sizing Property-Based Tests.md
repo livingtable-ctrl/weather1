@@ -72,20 +72,20 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 6 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 4 edges to [[_COMMUNITY_Community 59]]
 - 3 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
 - 2 edges to [[_COMMUNITY_Community 168]]
 - 2 edges to [[_COMMUNITY_Weather Probability Math Tests]]
 - 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 58]]
 - 1 edge to [[_COMMUNITY_Community 36]]
 - 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 
 ## Top bridge nodes
-- [[kelly_fraction()]] - degree 39, connects to 9 communities
-- [[test_kelly_property.py]] - degree 12, connects to 2 communities
+- [[kelly_fraction()]] - degree 36, connects to 9 communities
+- [[test_kelly_property.py]] - degree 11, connects to 1 community
 - [[TestKellyFraction]] - degree 7, connects to 1 community
 - [[TestKellyFractionFeeDefault]] - degree 5, connects to 1 community
 - [[TestKellyFeeRate]] - degree 5, connects to 1 community

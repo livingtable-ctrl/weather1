@@ -13,6 +13,5 @@ tags:
 
 ## Connections
 - [[TestTargetDateDue]] - `method` [EXTRACTED]
-- [[_target_date_due()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_299

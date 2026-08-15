@@ -46,16 +46,15 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_Community 454]]
 - 3 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 2 edges to [[_COMMUNITY_Community 297]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 2 edges to [[_COMMUNITY_Community 243]]
 - 1 edge to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_Community 186]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Community 182]]
 - 1 edge to [[_COMMUNITY_Community 32]]
 - 1 edge to [[_COMMUNITY_Community 195]]
 
 ## Top bridge nodes
-- [[config.py]] - degree 33, connects to 11 communities
+- [[config.py]] - degree 32, connects to 10 communities
 - [[_env_float()]] - degree 9, connects to 1 community
 - [[_env_int()]] - degree 4, connects to 1 community

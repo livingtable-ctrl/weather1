@@ -46,12 +46,11 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 173]]
 - 1 edge to [[_COMMUNITY_Community 271]]
 - 1 edge to [[_COMMUNITY_Community 388]]
-- 1 edge to [[_COMMUNITY_Legacy Static Dashboard JS Pages]]
 - 1 edge to [[_COMMUNITY_Community 230]]
 - 1 edge to [[_COMMUNITY_Community 36]]
 
 ## Top bridge nodes
-- [[ensemble_stats()]] - degree 24, connects to 9 communities
+- [[ensemble_stats()]] - degree 23, connects to 8 communities
 - [[Group A Testing Plan]] - degree 3, connects to 2 communities
 - [[TestEnsembleStats]] - degree 7, connects to 1 community
 - [[TestEnsembleStats_1]] - degree 4, connects to 1 community

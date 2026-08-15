@@ -14,7 +14,6 @@ tags:
 - [[_acquire_cron_lock()]] - `calls` [EXTRACTED]
 - [[_clear_cron_running_flag()]] - `calls` [EXTRACTED]
 - [[_write_cron_running_flag()]] - `calls` [EXTRACTED]
-- [[cmd_cron()_1]] - `calls` [EXTRACTED]
 - [[get_recent_orders()]] - `references` [EXTRACTED]
 - [[main._check_startup_orders]] - `calls` [EXTRACTED]
 - [[main._release_cron_lock]] - `calls` [EXTRACTED]

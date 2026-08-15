@@ -1,17 +1,17 @@
 ---
 source_file: "web_app.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
-location: "L1721"
+community: "Community 693"
+location: "L1799"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # # NOTE: count_settled_predictions() excludes condition_type='between'
 
 ## Connections
-- [[web_app.py]] - `rationale_for` [EXTRACTED]
+- [[web_app.py_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

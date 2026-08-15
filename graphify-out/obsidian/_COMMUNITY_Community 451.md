@@ -27,11 +27,9 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Kelly City Multiplier & Edge Realization]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 109]]
 - 1 edge to [[_COMMUNITY_Community 565]]
 
 ## Top bridge nodes
-- [[Full System Audit Prompt]] - degree 7, connects to 4 communities
-- [[Full System Grade Prompt]] - degree 7, connects to 2 communities
+- [[Full System Audit Prompt]] - degree 6, connects to 3 communities
+- [[Full System Grade Prompt]] - degree 6, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Community 145"
-location: "L1322"
+community: "Community 693"
+location: "L1340"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_145
+  - community/Community_693
 ---
 
 # Adapt one paper_trades.json trade dict into the shared Position shape…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_trade_to_position()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_145
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

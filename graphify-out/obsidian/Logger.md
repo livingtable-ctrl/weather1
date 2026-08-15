@@ -11,6 +11,6 @@ tags:
 # Logger
 
 ## Connections
-- [[_setup_logging()_1]] - `references` [EXTRACTED]
+- [[_setup_logging()]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation

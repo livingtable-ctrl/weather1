@@ -13,6 +13,5 @@ tags:
 
 ## Connections
 - [[RF1 Silent Exception Swallow]] - `references` [EXTRACTED]
-- [[paper.py]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_195

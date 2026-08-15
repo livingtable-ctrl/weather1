@@ -13,6 +13,5 @@ tags:
 
 ## Connections
 - [[I2 _DATA_LOCK RMW Discipline]] - `references` [EXTRACTED]
-- [[paper.py]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

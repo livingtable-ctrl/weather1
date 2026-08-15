@@ -40,7 +40,6 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_Community 181]]
 - 3 edges to [[_COMMUNITY_Community 198]]
 - 3 edges to [[_COMMUNITY_Community 96]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
 - 2 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
 - 1 edge to [[_COMMUNITY_Community 129]]

@@ -30,10 +30,8 @@ tags:
 - [[_check_live_model_exits Function]] - `calls` [EXTRACTED]
 - [[_check_live_model_exits()]] - `calls` [EXTRACTED]
 - [[check_breakeven_stops()]] - `calls` [EXTRACTED]
-- [[check_model_exits()]] - `calls` [EXTRACTED]
 - [[check_stop_losses()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
-- [[paper.py]] - `imports` [EXTRACTED]
 - [[positions.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/INFERRED #community/Community_158

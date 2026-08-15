@@ -1,12 +1,12 @@
 ---
 source_file: "tests/conftest.py"
 type: "rationale"
-community: "Test Fixture Cache Clearing (conftest)"
-location: "L544"
+community: "Community 693"
+location: "L560"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Test_Fixture_Cache_Clearing_conftest
+  - community/Community_693
 ---
 
 # Patch paper to use a temp data file and start with $1000 balance.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[mock_balance_1000()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Test_Fixture_Cache_Clearing_conftest
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

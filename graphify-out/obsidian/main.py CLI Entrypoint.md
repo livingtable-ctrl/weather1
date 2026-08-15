@@ -21,7 +21,6 @@ tags:
 - [[cron.py_1]] - `shares_data_with` [EXTRACTED]
 - [[test_prediction_kwargs.py]] - `calls` [EXTRACTED]
 - [[test_regression.py]] - `calls` [EXTRACTED]
-- [[test_risk_control.py]] - `calls` [EXTRACTED]
 - [[test_snow_markets.py]] - `calls` [EXTRACTED]
 - [[test_spend_validation.py]] - `calls` [EXTRACTED]
 - [[test_state_consistency.py]] - `calls` [EXTRACTED]

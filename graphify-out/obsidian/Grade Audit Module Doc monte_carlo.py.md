@@ -12,6 +12,5 @@ tags:
 
 ## Connections
 - [[monte_carlo.py]] - `references` [EXTRACTED]
-- [[test_risk_control.py_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_181

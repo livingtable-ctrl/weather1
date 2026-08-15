@@ -1,13 +1,13 @@
 ---
 type: community
 cohesion: 0.02
-members: 185
+members: 163
 ---
 
 # Black Swan Detection & Walk-Forward Backtest
 
 **Cohesion:** 0.02 - loosely connected
-**Members:** 185 nodes
+**Members:** 163 nodes
 
 ## Members
 - [[NOTE this covers a DIFFERENT failure mode than auto_retire_strategies()'s]] - rationale - cron.py
@@ -17,7 +17,6 @@ members: 185
 - [[dot-test_resting_order_recovery_preserves_response_for_fill_polling()]] - code - tests/test_live_execution.py
 - [[All callable dependencies that cmd_cron needs from outside cron.py. Constructed…]] - rationale - cron.py
 - [[Attach forecast data to a market dict. Parses city, date, and (for hourly…]] - rationale - weather_markets.py
-- [[Build a CronContext from the current (possibly monkeypatched) main namespace.…]] - rationale - main.py
 - [[Check fill status of all pending live orders and update execution_log. Also…]] - rationale - order_executor.py
 - [[Combine paper.is_accuracy_halted()get_accuracy_halt_reason() into the single…]] - rationale - cron.py
 - [[Copy important files from data into sync_folderKalshiBotdata. Returns…]] - rationale - cloud_backup.py
@@ -29,7 +28,6 @@ members: 185
 - [[Delete RUNNING_FLAG_PATH if it exists.]] - rationale - cron.py
 - [[Delete the cron lock file.]] - rationale - cron.py
 - [[Describe a tier's actual placement outcome for the STRONGMED console banners.…]] - rationale - cron.py
-- [[Determine STRONG-tier per-trade cap from current Brier score. Returns a…]] - rationale - paper.py
 - [[Everything a caller (cron.py's wrapper, main.py's watch loop) needs to…]] - rationale - trade_cycle.py
 - [[F5-adjacent the manual-override path was hardcoded independently in cron.py,…]] - rationale - tests/test_cron_group_c.py
 - [[Fetch PDO and PNA indices from NOAA and save to datapdo_pna.json.]] - rationale - climate_indices.py
@@ -40,9 +38,7 @@ members: 185
 - [[Kill Switch Mid-Placement Gap]] - document - docs/grade_audit/outputs
 - [[Live equivalent of _check_early_exits (paper-only, above) re-analyze each open…]] - rationale - order_executor.py
 - [[Live-refreshed PAPER_MIN_EDGE — call this, not a frozen import, from any long-…]] - rationale - utils.py
-- [[Load live trading hard stops from datalive_config.json. Creates the file with…]] - rationale - main.py
 - [[Load paper-trade history and run walk_forward_backtest against it. Shared core…]] - rationale - backtest.py
-- [[Load the set of previously-seen tickers from disk (survives restarts).]] - rationale - main.py
 - [[Log a deferred-items checklist once per day after _PROD_REMINDER_DATE in prod…]] - rationale - cron.py
 - [[Log a warning if the open_meteo_ensemble circuit has been open for 24 hours.…]] - rationale - weather_markets.py
 - [[Minimum probability-edge required based on market horizon. Further-out markets…]] - rationale - utils.py
@@ -55,9 +51,7 @@ members: 185
 - [[P10.3 Compare current config against the last-seen fingerprint. Writes the…]] - rationale - utils.py
 - [[P10.3 Return a snapshot of all env-configurable parameters. This is the single…]] - rationale - utils.py
 - [[Parse Kalshi's fill_count_fp field (a fixed-point-formatted string, e.g.…]] - rationale - order_executor.py
-- [[Per-UTC-time-band win rates for settled same-day abovebelow trades. Returns…]] - rationale - paper.py
 - [[Persist per-city model weights to datalearned_weights.json atomically. Called…]] - rationale - weather_markets.py
-- [[Persist the set of seen tickers so the next run knows what's new.]] - rationale - main.py
 - [[Phase 2 Batch E Regression Tests]] - code - tests/test_phase2_batch_e.py
 - [[Phase 2 Batch E regression tests P2-5 (WebSocket dead-code fix).]] - rationale - tests/test_phase2_batch_e.py
 - [[Phase 3 Batch E AB TestConsistency Tests]] - code - tests/test_phase3_batch_e.py
@@ -71,15 +65,12 @@ members: 185
 - [[Reconcile 'pending' execution_log rows against the Kalshi API at startup. A…]] - rationale - order_executor.py
 - [[Regression tests for cron.py's Group C Fable findings manual-override fail-…]] - rationale - tests/test_cron_group_c.py
 - [[Return WS thread health info for monitoring.]] - rationale - kalshi_ws.py
-- [[Return a human-readable reason string for the current accuracy halt, or '' if…]] - rationale - paper.py
 - [[Return a multi-line BrierAlert string with explanation and actionable next…]] - rationale - tracker.py
-- [[Return open paper trades whose markets close within warn_hours. Each entry…]] - rationale - paper.py
 - [[Return signals where blended_prob − market_price  _ANOMALY_THRESHOLD.]] - rationale - cron.py
 - [[Return the most recent N order log entries.]] - rationale - execution_log.py
 - [[Returns True if a valid (non-expired) manual override is active. Auto-clears…]] - rationale - cron.py
 - [[Run one full recover-pending - settle - scan - analyze - decide place…]] - rationale - trade_cycle.py
 - [[Scan a list of markets and return all monotonicity violations. Only checks…]] - rationale - consistency.py
-- [[Settle any open paper trades whose tickers have recorded outcomes. First checks…]] - rationale - paper.py
 - [[Silent background scan — writes to datacron.log, auto-places strong paper…]] - rationale - cron.py
 - [[Single shared lookup for one market's market-implied-distribution result out of…]] - rationale - weather_markets.py
 - [[TestAnomalyBlackSwanCallsFailClosed]] - code - tests/test_cron_group_c.py
@@ -92,15 +83,12 @@ members: 185
 - [[Try to acquire the cron file lock. Fail CLOSED on every error. Returns True…]] - rationale - cron.py
 - [[Warn if MAX_DAILY_SPEND exceeds the current paper balance. A spend cap that…]] - rationale - cron.py
 - [[Warn if any orders were placed in the last 5 minutes (double-execution guard).]] - rationale - cron.py
-- [[Wrapper that builds CronContext from the current namespace and delegates to…]] - rationale - main.py
 - [[Write UTC ISO timestamp to RUNNING_FLAG_PATH; warn if a fresh flag already…]] - rationale - cron.py
 - [[Write all pending ensemble entries to disk in one atomic operation. Call this…]] - rationale - weather_markets.py
 - [[Write all pending forecast entries to disk in one atomic operation. Call this…]] - rationale - weather_markets.py
 - [[Write data to path atomically (write temp → fsync → rename). Retries up to…]] - rationale - safe_io.py
 - [[_acquire_cron_lock()]] - code - cron.py
 - [[_acquire_cron_lock() Excellent Fail-Closed Design (910)]] - document - docs/grade_audit/outputs/cron.py.md
-- [[_analyze_once()]] - code - main.py
-- [[_build_cron_context()]] - code - main.py
 - [[_check_accuracy_halt()]] - code - cron.py
 - [[_check_early_exits()]] - code - order_executor.py
 - [[_check_graduation_gate()]] - code - cron.py
@@ -113,10 +101,7 @@ members: 185
 - [[_cmd_cron_body()]] - code - cron.py
 - [[_cmd_cron_body() AC1 Kill-Switch Mid-Placement Gap (610)]] - document - docs/grade_audit/outputs/cron.py.md
 - [[_count_open_live_orders()]] - code - order_executor.py
-- [[_dynamic_kelly_cap()]] - code - paper.py
 - [[_kalshi_status_to_internal()]] - code - order_executor.py
-- [[_load_live_config()]] - code - main.py
-- [[_load_watch_state()]] - code - main.py
 - [[_placement_outcome_phrase()]] - code - cron.py
 - [[_poll_pending_orders()]] - code - order_executor.py
 - [[_recover_pending_orders()]] - code - order_executor.py
@@ -124,22 +109,17 @@ members: 185
 - [[_run_batch_prewarm()]] - code - trade_cycle.py
 - [[_run_batch_prewarm_for_pairs()]] - code - trade_cycle.py
 - [[_save_forecast_disk_entry()]] - code - weather_markets.py
-- [[_save_watch_state()]] - code - main.py
 - [[_to_fill_count()]] - code - order_executor.py
 - [[_write_cron_running_flag()]] - code - cron.py
 - [[atomic_write_json()]] - code - safe_io.py
-- [[auto_settle_paper_trades()]] - code - paper.py
 - [[backup_data()]] - code - cloud_backup.py
 - [[batch_prewarm_forecasts()]] - code - weather_markets.py
 - [[check_config_integrity()]] - code - utils.py
 - [[check_ensemble_circuit_health()]] - code - weather_markets.py
-- [[check_expiring_trades()]] - code - paper.py
 - [[check_market_anomalies()]] - code - cron.py
 - [[check_retirement_probation()]] - code - weather_markets.py
 - [[check_series_drift()]] - code - weather_markets.py
 - [[cmd_cron()]] - code - cron.py
-- [[cmd_cron()_1]] - code - main.py
-- [[cmd_watch()]] - code - main.py
 - [[cron._active_ws (KalshiWebSocket lifecycle)]] - code - cron.py
 - [[cron.py]] - code - cron.py
 - [[cron.py File Grade median 7.510]] - document - docs/grade_audit/outputs/cron.py.md
@@ -152,12 +132,10 @@ members: 185
 - [[flush_ensemble_disk_cache()]] - code - weather_markets.py
 - [[flush_forecast_disk_cache()]] - code - weather_markets.py
 - [[format_brier_alert()]] - code - tracker.py
-- [[get_accuracy_halt_reason()]] - code - paper.py
 - [[get_config_fingerprint()]] - code - utils.py
 - [[get_gate_counts()]] - code - weather_markets.py
 - [[get_paper_min_edge()]] - code - utils.py
 - [[get_recent_orders()]] - code - execution_log.py
-- [[get_sameday_band_stats()]] - code - paper.py
 - [[get_weather_forecast()]] - code - weather_markets.py
 - [[get_weather_markets()]] - code - weather_markets.py
 - [[get_ws_health()]] - code - kalshi_ws.py
@@ -204,21 +182,21 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 121 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 74 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 55 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 22 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
+- 49 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 29 edges to [[_COMMUNITY_Black Swan Halt State]]
+- 21 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 21 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 19 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 19 edges to [[_COMMUNITY_Community 35]]
-- 16 edges to [[_COMMUNITY_Community 40]]
-- 13 edges to [[_COMMUNITY_Community 96]]
 - 12 edges to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
+- 11 edges to [[_COMMUNITY_Community 40]]
 - 10 edges to [[_COMMUNITY_Community 32]]
+- 9 edges to [[_COMMUNITY_Community 96]]
 - 8 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 7 edges to [[_COMMUNITY_Community 142]]
-- 7 edges to [[_COMMUNITY_Community 144]]
 - 6 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
 - 6 edges to [[_COMMUNITY_Community 111]]
+- 6 edges to [[_COMMUNITY_Community 144]]
 - 5 edges to [[_COMMUNITY_Community 338]]
 - 5 edges to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
 - 5 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
@@ -227,39 +205,33 @@ SORT file.name ASC
 - 5 edges to [[_COMMUNITY_Community 217]]
 - 4 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
 - 4 edges to [[_COMMUNITY_Community 245]]
-- 4 edges to [[_COMMUNITY_Community 94]]
-- 4 edges to [[_COMMUNITY_Community 280]]
 - 3 edges to [[_COMMUNITY_Community 308]]
 - 3 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
 - 3 edges to [[_COMMUNITY_Community 110]]
-- 3 edges to [[_COMMUNITY_Community 145]]
 - 3 edges to [[_COMMUNITY_Community 157]]
-- 3 edges to [[_COMMUNITY_Community 178]]
+- 3 edges to [[_COMMUNITY_Community 94]]
 - 3 edges to [[_COMMUNITY_Community 326]]
-- 3 edges to [[_COMMUNITY_Community 455]]
-- 3 edges to [[_COMMUNITY_Community 222]]
-- 3 edges to [[_COMMUNITY_Community 353]]
 - 3 edges to [[_COMMUNITY_Community 272]]
 - 3 edges to [[_COMMUNITY_Community 59]]
 - 3 edges to [[_COMMUNITY_Community 50]]
+- 3 edges to [[_COMMUNITY_Community 280]]
 - 3 edges to [[_COMMUNITY_Community 85]]
 - 3 edges to [[_COMMUNITY_Community 53]]
-- 2 edges to [[_COMMUNITY_Community 33]]
 - 2 edges to [[_COMMUNITY_Community 118]]
 - 2 edges to [[_COMMUNITY_Community 119]]
+- 2 edges to [[_COMMUNITY_Community 145]]
 - 2 edges to [[_COMMUNITY_Community 158]]
 - 2 edges to [[_COMMUNITY_Community 164]]
-- 2 edges to [[_COMMUNITY_Community 183]]
+- 2 edges to [[_COMMUNITY_Community 178]]
 - 2 edges to [[_COMMUNITY_Community 196]]
 - 2 edges to [[_COMMUNITY_Community 37]]
-- 2 edges to [[_COMMUNITY_Kelly City Multiplier & Edge Realization]]
+- 2 edges to [[_COMMUNITY_Community 455]]
 - 2 edges to [[_COMMUNITY_Community 36]]
-- 2 edges to [[_COMMUNITY_Community 67]]
 - 2 edges to [[_COMMUNITY_Community 198]]
-- 2 edges to [[_COMMUNITY_Community 348]]
 - 2 edges to [[_COMMUNITY_Community 62]]
 - 2 edges to [[_COMMUNITY_Community 95]]
 - 2 edges to [[_COMMUNITY_Forecast Persistent Cache]]
+- 2 edges to [[_COMMUNITY_Community 222]]
 - 2 edges to [[_COMMUNITY_Community 252]]
 - 2 edges to [[_COMMUNITY_Community 356]]
 - 2 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
@@ -267,26 +239,22 @@ SORT file.name ASC
 - 2 edges to [[_COMMUNITY_Community 351]]
 - 2 edges to [[_COMMUNITY_Community 109]]
 - 1 edge to [[_COMMUNITY_Community 261]]
+- 1 edge to [[_COMMUNITY_Community 33]]
 - 1 edge to [[_COMMUNITY_Community 375]]
 - 1 edge to [[_COMMUNITY_Community 462]]
 - 1 edge to [[_COMMUNITY_Community 502]]
 - 1 edge to [[_COMMUNITY_Community 544]]
 - 1 edge to [[_COMMUNITY_Community 136]]
 - 1 edge to [[_COMMUNITY_Community 137]]
-- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 - 1 edge to [[_COMMUNITY_Community 167]]
 - 1 edge to [[_COMMUNITY_Community 181]]
-- 1 edge to [[_COMMUNITY_Community 184]]
 - 1 edge to [[_COMMUNITY_Community 565]]
 - 1 edge to [[_COMMUNITY_Community 417]]
+- 1 edge to [[_COMMUNITY_Community 67]]
 - 1 edge to [[_COMMUNITY_Community 246]]
-- 1 edge to [[_COMMUNITY_Community 325]]
 - 1 edge to [[_COMMUNITY_Community 219]]
+- 1 edge to [[_COMMUNITY_Community 183]]
 - 1 edge to [[_COMMUNITY_Community 329]]
-- 1 edge to [[_COMMUNITY_Community 71]]
-- 1 edge to [[_COMMUNITY_Community 387]]
-- 1 edge to [[_COMMUNITY_Community 582]]
-- 1 edge to [[_COMMUNITY_Community 74]]
 - 1 edge to [[_COMMUNITY_Community 182]]
 - 1 edge to [[_COMMUNITY_Safe IO CRC Validation Tests]]
 - 1 edge to [[_COMMUNITY_Community 331]]
@@ -308,8 +276,8 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 497]]
 
 ## Top bridge nodes
-- [[cron.py]] - degree 104, connects to 25 communities
-- [[atomic_write_json()]] - degree 55, connects to 22 communities
-- [[_cmd_cron_body()]] - degree 76, connects to 17 communities
-- [[trade_cycle.py]] - degree 37, connects to 11 communities
-- [[run_trade_cycle()]] - degree 36, connects to 11 communities
+- [[cron.py]] - degree 93, connects to 24 communities
+- [[atomic_write_json()]] - degree 51, connects to 21 communities
+- [[_cmd_cron_body()]] - degree 67, connects to 16 communities
+- [[trade_cycle.py]] - degree 35, connects to 11 communities
+- [[run_trade_cycle()]] - degree 32, connects to 11 communities

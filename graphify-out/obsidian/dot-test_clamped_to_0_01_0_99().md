@@ -14,6 +14,5 @@ tags:
 ## Connections
 - [[Output must always be in 0.01, 0.99.]] - `rationale_for` [EXTRACTED]
 - [[TestSlippageAdjustedPrice]] - `method` [EXTRACTED]
-- [[slippage_adjusted_price()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_320

@@ -12,6 +12,5 @@ tags:
 
 ## Connections
 - [[cron.py_1]] - `references` [EXTRACTED]
-- [[get_edge_realization_rate()]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization

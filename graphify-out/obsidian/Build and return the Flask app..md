@@ -1,12 +1,12 @@
 ---
 source_file: "web_app.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
-location: "L120"
+community: "Community 693"
+location: "L135"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # Build and return the Flask app.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_build_app()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

@@ -22,9 +22,3 @@ members: 5
 TABLE source_file, type FROM #community/Community_543
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
-
-## Top bridge nodes
-- [[test_cmd_setup.py]] - degree 3, connects to 1 community

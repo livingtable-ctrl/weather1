@@ -302,13 +302,6 @@
       }
     },
     {
-      "query": "tag:#community/Community_43",
-      "color": {
-        "a": 1,
-        "rgb": 7780274
-      }
-    },
-    {
       "query": "tag:#community/Community_44",
       "color": {
         "a": 1,
@@ -754,13 +747,6 @@
       "color": {
         "a": 1,
         "rgb": 16752039
-      }
-    },
-    {
-      "query": "tag:#community/Community_108",
-      "color": {
-        "a": 1,
-        "rgb": 10253663
       }
     },
     {
@@ -2479,13 +2465,6 @@
       }
     },
     {
-      "query": "tag:#community/Community_354",
-      "color": {
-        "a": 1,
-        "rgb": 5873999
-      }
-    },
-    {
       "query": "tag:#community/Community_355",
       "color": {
         "a": 1,
@@ -2871,13 +2850,6 @@
       }
     },
     {
-      "query": "tag:#community/Community_410",
-      "color": {
-        "a": 1,
-        "rgb": 5142951
-      }
-    },
-    {
       "query": "tag:#community/Community_411",
       "color": {
         "a": 1,
@@ -2910,13 +2882,6 @@
       "color": {
         "a": 1,
         "rgb": 15583560
-      }
-    },
-    {
-      "query": "tag:#community/Community_416",
-      "color": {
-        "a": 1,
-        "rgb": 11565729
       }
     },
     {
@@ -3043,13 +3008,6 @@
       "color": {
         "a": 1,
         "rgb": 5873999
-      }
-    },
-    {
-      "query": "tag:#community/Community_435",
-      "color": {
-        "a": 1,
-        "rgb": 15583560
       }
     },
     {
@@ -3452,13 +3410,6 @@
       }
     },
     {
-      "query": "tag:#community/Community_493",
-      "color": {
-        "a": 1,
-        "rgb": 7780274
-      }
-    },
-    {
       "query": "tag:#community/Community_494",
       "color": {
         "a": 1,
@@ -3487,13 +3438,6 @@
       }
     },
     {
-      "query": "tag:#community/Community_498",
-      "color": {
-        "a": 1,
-        "rgb": 10253663
-      }
-    },
-    {
       "query": "tag:#community/Community_499",
       "color": {
         "a": 1,
@@ -3505,13 +3449,6 @@
       "color": {
         "a": 1,
         "rgb": 5142951
-      }
-    },
-    {
-      "query": "tag:#community/Community_501",
-      "color": {
-        "a": 1,
-        "rgb": 15896107
       }
     },
     {
@@ -3648,13 +3585,6 @@
       }
     },
     {
-      "query": "tag:#community/Community_521",
-      "color": {
-        "a": 1,
-        "rgb": 15896107
-      }
-    },
-    {
       "query": "tag:#community/Community_522",
       "color": {
         "a": 1,
@@ -3722,13 +3652,6 @@
       "color": {
         "a": 1,
         "rgb": 15896107
-      }
-    },
-    {
-      "query": "tag:#community/Community_532",
-      "color": {
-        "a": 1,
-        "rgb": 14767961
       }
     },
     {
@@ -3932,13 +3855,6 @@
       "color": {
         "a": 1,
         "rgb": 15896107
-      }
-    },
-    {
-      "query": "tag:#community/Community_562",
-      "color": {
-        "a": 1,
-        "rgb": 14767961
       }
     },
     {
@@ -4229,13 +4145,6 @@
       }
     },
     {
-      "query": "tag:#community/Community_604",
-      "color": {
-        "a": 1,
-        "rgb": 5873999
-      }
-    },
-    {
       "query": "tag:#community/Community_605",
       "color": {
         "a": 1,
@@ -4464,34 +4373,6 @@
       "color": {
         "a": 1,
         "rgb": 16752039
-      }
-    },
-    {
-      "query": "tag:#community/Community_638",
-      "color": {
-        "a": 1,
-        "rgb": 10253663
-      }
-    },
-    {
-      "query": "tag:#community/Community_639",
-      "color": {
-        "a": 1,
-        "rgb": 12234924
-      }
-    },
-    {
-      "query": "tag:#community/Community_640",
-      "color": {
-        "a": 1,
-        "rgb": 5142951
-      }
-    },
-    {
-      "query": "tag:#community/Community_641",
-      "color": {
-        "a": 1,
-        "rgb": 15896107
       }
     },
     {
@@ -4842,6 +4723,13 @@
       "color": {
         "a": 1,
         "rgb": 14767961
+      }
+    },
+    {
+      "query": "tag:#community/Community_693",
+      "color": {
+        "a": 1,
+        "rgb": 7780274
       }
     }
   ]

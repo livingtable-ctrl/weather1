@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 145"
-location: "L1420"
+community: "Community 693"
+location: "L1438"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_145
+  - community/Community_693
 ---
 
 # check_paper_position_exits()
@@ -15,13 +15,7 @@ tags:
 - [[PaperPositionStore]] - `calls` [EXTRACTED]
 - [[Price-based stop-loss and breakeven-stop check for every open paper position --…]] - `rationale_for` [EXTRACTED]
 - [[_trade_to_position()]] - `calls` [EXTRACTED]
-- [[check_breakeven_stops()]] - `calls` [EXTRACTED]
-- [[check_stop_losses()]] - `calls` [EXTRACTED]
 - [[get_open_trades()]] - `calls` [EXTRACTED]
-- [[liquidation_price()]] - `calls` [EXTRACTED]
-- [[paper.py]] - `contains` [EXTRACTED]
-- [[parse_market_price()]] - `calls` [EXTRACTED]
-- [[test_cron_integration.py_1]] - `references` [EXTRACTED]
-- [[update_peak_profits()]] - `calls` [EXTRACTED]
+- [[paper.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_145
+#graphify/code #graphify/EXTRACTED #community/Community_693

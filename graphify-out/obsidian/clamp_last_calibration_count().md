@@ -13,8 +13,6 @@ tags:
 
 ## Connections
 - [[Clamp a `.last_calibration_count` sentinel value against today's live…]] - `rationale_for` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

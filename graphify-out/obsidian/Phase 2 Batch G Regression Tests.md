@@ -21,7 +21,6 @@ tags:
 - [[TestTrackerMigrationComments]] - `contains` [EXTRACTED]
 - [[append_entry()]] - `calls` [EXTRACTED]
 - [[cloud_backup.backup_data  restore_data]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
 - [[paper._DRAWDOWN_TIER_1..4 constants]] - `calls` [EXTRACTED]
 - [[tracker._SCHEMA_VERSION  _MIGRATIONS]] - `references` [EXTRACTED]
 

@@ -12,15 +12,10 @@ tags:
 
 ## Connections
 - [[LiveTradingGate class]] - `calls` [EXTRACTED]
-- [[PaperPositionStore]] - `implements` [EXTRACTED]
 - [[STARTING_BALANCE]] - `implements` [EXTRACTED]
 - [[Shared Position Read-Model Module]] - `shares_data_with` [EXTRACTED]
 - [[_DEFAULT_CORRELATIONS Dict]] - `references` [EXTRACTED]
 - [[_sameday_effective_cap()]] - `calls` [EXTRACTED]
-- [[cmd_dashboard()]] - `calls` [EXTRACTED]
-- [[get_state_snapshot()]] - `implements` [EXTRACTED]
-- [[is_accuracy_halted()]] - `implements` [EXTRACTED]
-- [[kelly_bet_dollars()]] - `implements` [EXTRACTED]
 - [[run_trade_cycle()]] - `calls` [EXTRACTED]
 - [[safe_io.py_1]] - `shares_data_with` [AMBIGUOUS]
 - [[test_main_cron_smoke.py]] - `references` [EXTRACTED]

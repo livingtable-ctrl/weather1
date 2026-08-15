@@ -30,8 +30,7 @@ SORT file.name ASC
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_Community 72]]
 - 2 edges to [[_COMMUNITY_Community 118]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 
 ## Top bridge nodes
-- [[_brier()]] - degree 10, connects to 3 communities
+- [[_brier()]] - degree 9, connects to 2 communities
 - [[TestBrierNoneFiltering]] - degree 7, connects to 1 community

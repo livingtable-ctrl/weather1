@@ -14,6 +14,5 @@ tags:
 ## Connections
 - [[I10 KALSHI_ENV Live-Trade Gate]] - `references` [EXTRACTED]
 - [[RF5 Hardcoded Threshold]] - `references` [EXTRACTED]
-- [[main.py]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_535

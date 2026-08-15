@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
+community: "Community 693"
 location: "L501"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # _header()
@@ -14,7 +14,6 @@ tags:
 ## Connections
 - [[Print a styled section header.]] - `rationale_for` [EXTRACTED]
 - [[_cmd_alerts()]] - `calls` [EXTRACTED]
-- [[bold()]] - `calls` [EXTRACTED]
 - [[cmd_analyze()]] - `calls` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
 - [[cmd_browse()]] - `calls` [EXTRACTED]
@@ -36,6 +35,6 @@ tags:
 - [[cmd_simulate()]] - `calls` [EXTRACTED]
 - [[cmd_version_compare()]] - `calls` [EXTRACTED]
 - [[cmd_walkforward()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

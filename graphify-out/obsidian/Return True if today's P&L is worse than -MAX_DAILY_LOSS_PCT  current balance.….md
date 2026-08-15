@@ -2,7 +2,7 @@
 source_file: "paper.py"
 type: "rationale"
 community: "Anomaly Detection & PDF Reporting"
-location: "L2587"
+location: "L2724"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED

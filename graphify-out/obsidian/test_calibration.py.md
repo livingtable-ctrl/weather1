@@ -28,7 +28,6 @@ tags:
 - [[load_city_weights()]] - `imports` [EXTRACTED]
 - [[load_condition_weights()]] - `imports` [EXTRACTED]
 - [[load_seasonal_weights()]] - `imports` [EXTRACTED]
-- [[main.py]] - `calls` [EXTRACTED]
 - [[ml_bias.py]] - `references` [EXTRACTED]
 - [[test_backtest.py]] - `shares_data_with` [INFERRED]
 - [[test_calibrate_condition_weights_returns_per_type_dict()]] - `contains` [EXTRACTED]

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "rationale"
-community: "Community 435"
-location: "L393"
+community: "Community 693"
+location: "L628"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_435
+  - community/Community_693
 ---
 
 # When balance equals STARTING_BALANCE, behavior matches the old threshold.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_threshold_at_starting_balance_unchanged()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_435
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Black Swan Halt State"
-location: "L2562"
+community: "Community 693"
+location: "L2699"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # reset_daily_loss_limit()
@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Waive the daily loss limit for the rest of today (UTC). Writes a flag file…]] - `rationale_for` [EXTRACTED]
 - [[cmd_admin()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
-- [[paper.py]] - `contains` [EXTRACTED]
+- [[main.py_1]] - `imports` [EXTRACTED]
+- [[paper.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

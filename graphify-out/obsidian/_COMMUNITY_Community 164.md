@@ -40,9 +40,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_Community 50]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 2 edges to [[_COMMUNITY_Community 67]]
+- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_Community 144]]
@@ -51,5 +50,5 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 96]]
 
 ## Top bridge nodes
-- [[coalesce_market_price()]] - degree 26, connects to 10 communities
+- [[coalesce_market_price()]] - degree 24, connects to 9 communities
 - [[TestCoalesceMarketPrice]] - degree 13, connects to 1 community

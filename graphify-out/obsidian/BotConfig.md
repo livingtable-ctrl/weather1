@@ -15,7 +15,6 @@ tags:
 - [[dot-from_env()]] - `references` [EXTRACTED]
 - [[dot-validate()]] - `method` [EXTRACTED]
 - [[ForecastCache]] - `uses` [INFERRED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_paper_min_edge_default()]] - `shares_data_with` [EXTRACTED]
 - [[config.py]] - `contains` [EXTRACTED]
 - [[get_config()]] - `references` [EXTRACTED]
@@ -31,6 +30,5 @@ tags:
 - [[test_maker_fee_rate_out_of_range_raises()]] - `calls` [EXTRACTED]
 - [[test_min_edge_above_strong_edge_raises()]] - `calls` [EXTRACTED]
 - [[test_valid_config_passes()]] - `calls` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_297

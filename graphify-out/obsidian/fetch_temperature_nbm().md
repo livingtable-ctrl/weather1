@@ -19,12 +19,10 @@ tags:
 - [[dot-test_fetch_temperature_nbm_unknown_station_skips_iem()]] - `calls` [EXTRACTED]
 - [[dot-test_openmeteo_fallback_does_not_clobber_iem_value_for_other_var()]] - `calls` [EXTRACTED]
 - [[Fetch the real NBM (National Blend of Models) daily maxmin for a city, via…]] - `rationale_for` [EXTRACTED]
-- [[_build_cron_context()]] - `indirect_call` [INFERRED]
 - [[_metar_station_for_city()]] - `calls` [EXTRACTED]
 - [[_om_request()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[date_2]] - `references` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[test_nbm.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 

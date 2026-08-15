@@ -1,17 +1,17 @@
 ---
-source_file: "paper.py"
+source_file: "main.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
-location: "L2917"
+community: "Community 693"
+location: "L8793"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # Reverse the most recently placed (unsettled) paper trade if it was placed…
 
 ## Connections
-- [[undo_last_trade()]] - `rationale_for` [EXTRACTED]
+- [[cmd_undo()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

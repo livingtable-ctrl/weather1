@@ -13,6 +13,5 @@ tags:
 
 ## Connections
 - [[TestCityKellyMultiplier]] - `method` [EXTRACTED]
-- [[_city_kelly_multiplier()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization

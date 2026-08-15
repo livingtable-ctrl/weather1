@@ -85,15 +85,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
+- 9 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 8 edges to [[_COMMUNITY_Community 211]]
-- 8 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 6 edges to [[_COMMUNITY_Community 64]]
 - 6 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 3 edges to [[_COMMUNITY_Community 388]]
-- 3 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 3 edges to [[_COMMUNITY_Community 73]]
 - 2 edges to [[_COMMUNITY_Community 172]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 2 edges to [[_COMMUNITY_Community 59]]
 - 1 edge to [[_COMMUNITY_Community 205]]

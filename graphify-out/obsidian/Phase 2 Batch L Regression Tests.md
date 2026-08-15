@@ -21,7 +21,6 @@ tags:
 - [[TestValidateMarketPriceRange]] - `contains` [EXTRACTED]
 - [[_cmd_cron_body()]] - `references` [EXTRACTED]
 - [[_is_halt_level()]] - `imports` [EXTRACTED]
-- [[_kalshi_env()]] - `calls` [EXTRACTED]
 - [[_safe_price()]] - `imports` [EXTRACTED]
 - [[is_all_null()]] - `imports` [EXTRACTED]
 - [[kalshi_client.KalshiClient  _check_error_body]] - `calls` [EXTRACTED]

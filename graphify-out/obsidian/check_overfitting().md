@@ -13,8 +13,6 @@ tags:
 
 ## Connections
 - [[Formal overfitting guard compare in-sample vs out-of-sample Brier scores.…]] - `rationale_for` [EXTRACTED]
-- [[auto_backtest()]] - `calls` [EXTRACTED]
 - [[backtest.py]] - `contains` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_245

@@ -33,7 +33,6 @@ tags:
 - [[hurricane_climatology.py]] - `imports` [EXTRACTED]
 - [[monte_carlo.py]] - `imports` [EXTRACTED]
 - [[notify.py]] - `imports_from` [EXTRACTED]
-- [[paper.py]] - `imports_from` [EXTRACTED]
 - [[paths.py]] - `imports_from` [EXTRACTED]
 - [[project_root()]] - `contains` [EXTRACTED]
 - [[settlement_monitor.py]] - `imports_from` [EXTRACTED]

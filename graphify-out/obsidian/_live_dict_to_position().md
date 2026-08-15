@@ -12,7 +12,7 @@ tags:
 # _live_dict_to_position()
 
 ## Connections
-- [[dot-get_open()_1]] - `calls` [EXTRACTED]
+- [[dot-get_open()]] - `calls` [EXTRACTED]
 - [[Adapt one _get_live_open_positions() dict into the shared Position shape…]] - `rationale_for` [EXTRACTED]
 - [[Position]] - `references` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]

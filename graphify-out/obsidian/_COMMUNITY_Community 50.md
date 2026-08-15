@@ -65,7 +65,6 @@ SORT file.name ASC
 - 2 edges to [[_COMMUNITY_Community 164]]
 - 2 edges to [[_COMMUNITY_Community 167]]
 - 2 edges to [[_COMMUNITY_Community 342]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 384]]
 - 2 edges to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 279]]
@@ -75,6 +74,7 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 475]]
 - 1 edge to [[_COMMUNITY_Community 476]]
 - 1 edge to [[_COMMUNITY_Community 576]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 
 ## Top bridge nodes
-- [[test_p9_p10.py]] - degree 46, connects to 16 communities
+- [[test_p9_p10.py]] - degree 45, connects to 16 communities

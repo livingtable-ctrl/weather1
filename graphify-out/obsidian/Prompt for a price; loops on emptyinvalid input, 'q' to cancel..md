@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Black Swan Halt State"
+community: "Anomaly Detection & PDF Reporting"
 location: "L2151"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Prompt for a price; loops on empty/invalid input, 'q' to cancel.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_prompt_price()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

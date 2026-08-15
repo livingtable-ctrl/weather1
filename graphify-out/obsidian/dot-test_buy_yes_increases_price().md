@@ -14,6 +14,5 @@ tags:
 ## Connections
 - [[Buying YES adds slippage to base price.]] - `rationale_for` [EXTRACTED]
 - [[TestSlippageAdjustedPrice]] - `method` [EXTRACTED]
-- [[slippage_adjusted_price()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_320

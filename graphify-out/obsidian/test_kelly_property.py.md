@@ -13,7 +13,6 @@ tags:
 ## Connections
 - [[KELLY_CAP constant]] - `references` [EXTRACTED]
 - [[Property-based tests for Kelly sizing using Hypothesis.]] - `rationale_for` [EXTRACTED]
-- [[kelly_bet_dollars()]] - `references` [EXTRACTED]
 - [[kelly_fraction()]] - `references` [EXTRACTED]
 - [[test_forecasting.py]] - `semantically_similar_to` [INFERRED]
 - [[test_kelly_bet_dollars_never_exceeds_balance()]] - `contains` [EXTRACTED]

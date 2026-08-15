@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L1970"
+community: "Community 693"
+location: "L1988"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_693
 ---
 
 # Per-UTC-time-band win rates for settled same-day above/below trades. Returns…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_sameday_band_stats()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

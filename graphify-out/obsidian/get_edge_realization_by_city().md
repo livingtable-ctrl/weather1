@@ -12,10 +12,8 @@ tags:
 # get_edge_realization_by_city()
 
 ## Connections
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

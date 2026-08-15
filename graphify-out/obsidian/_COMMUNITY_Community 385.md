@@ -30,14 +30,12 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 8 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 6 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 3 edges to [[_COMMUNITY_Community 36]]
 - 1 edge to [[_COMMUNITY_Community 47]]
 
 ## Top bridge nodes
-- [[get_multiday_calibration_cli()]] - degree 9, connects to 3 communities
-- [[get_sameday_calibration_cli()]] - degree 9, connects to 3 communities
-- [[get_sameday_calibration()]] - degree 8, connects to 3 communities
-- [[_calibration_curve()]] - degree 7, connects to 2 communities
+- [[get_multiday_calibration_cli()]] - degree 6, connects to 2 communities
+- [[get_sameday_calibration()]] - degree 6, connects to 2 communities
+- [[get_sameday_calibration_cli()]] - degree 6, connects to 2 communities
 - [[_read_temperature_scale_key()]] - degree 6, connects to 2 communities
+- [[_calibration_curve()]] - degree 5, connects to 1 community

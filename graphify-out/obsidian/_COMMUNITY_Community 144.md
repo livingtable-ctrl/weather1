@@ -41,17 +41,16 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 8 edges to [[_COMMUNITY_Community 45]]
-- 7 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 6 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 4 edges to [[_COMMUNITY_Community 111]]
 - 2 edges to [[_COMMUNITY_Community 145]]
 - 1 edge to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 164]]
 - 1 edge to [[_COMMUNITY_Community 159]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 
 ## Top bridge nodes
-- [[_check_live_position_exits()]] - degree 22, connects to 9 communities
+- [[_check_live_position_exits()]] - degree 20, connects to 8 communities
 - [[TestCheckLivePositionExits]] - degree 12, connects to 2 communities
 - [[TestCheckLiveModelExits]] - degree 9, connects to 2 communities
 - [[dot-test_missing_entry_prob_is_skipped()]] - degree 3, connects to 1 community

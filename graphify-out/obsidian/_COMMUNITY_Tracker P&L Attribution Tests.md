@@ -123,7 +123,7 @@ members: 127
 - [[get_pnl_by_signal_source()]] - code - tracker.py
 - [[get_recent_city_correlations()]] - code - tracker.py
 - [[get_regional_recent_bias()]] - code - tracker.py
-- [[get_stop_loss_accuracy()_1]] - code - tracker.py
+- [[get_stop_loss_accuracy()]] - code - tracker.py
 - [[log_audit()]] - code - tracker.py
 - [[log_prediction()]] - code - tracker.py
 - [[log_source_attempt()]] - code - tracker.py
@@ -147,12 +147,12 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 83 edges to [[_COMMUNITY_Community 36]]
-- 32 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 31 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 29 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 22 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 21 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 21 edges to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 16 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 15 edges to [[_COMMUNITY_Community 184]]
+- 13 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 9 edges to [[_COMMUNITY_Community 71]]
 - 8 edges to [[_COMMUNITY_Community 384]]
 - 8 edges to [[_COMMUNITY_Community 385]]
@@ -162,10 +162,8 @@ SORT file.name ASC
 - 5 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 5 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 4 edges to [[_COMMUNITY_Community 137]]
-- 3 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
 - 3 edges to [[_COMMUNITY_Weather Probability Math Tests]]
 - 3 edges to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 3 edges to [[_COMMUNITY_Community 570]]
 - 3 edges to [[_COMMUNITY_Community 582]]
 - 3 edges to [[_COMMUNITY_Community 500]]
 - 3 edges to [[_COMMUNITY_Community 50]]
@@ -174,10 +172,12 @@ SORT file.name ASC
 - 2 edges to [[_COMMUNITY_Community 296]]
 - 2 edges to [[_COMMUNITY_Community 47]]
 - 2 edges to [[_COMMUNITY_Community 78]]
-- 2 edges to [[_COMMUNITY_Community 580]]
 - 2 edges to [[_COMMUNITY_Community 581]]
 - 2 edges to [[_COMMUNITY_Community 533]]
+- 2 edges to [[_COMMUNITY_Community 580]]
+- 2 edges to [[_COMMUNITY_Community 570]]
 - 2 edges to [[_COMMUNITY_Community 64]]
+- 2 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
 - 2 edges to [[_COMMUNITY_Community 583]]
 - 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_Community 483]]
@@ -201,8 +201,8 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Kelly City Multiplier & Edge Realization]]
 
 ## Top bridge nodes
-- [[tracker.py]] - degree 162, connects to 33 communities
-- [[_conn()_1]] - degree 113, connects to 19 communities
-- [[log_prediction()]] - degree 24, connects to 11 communities
+- [[tracker.py]] - degree 160, connects to 33 communities
+- [[_conn()_1]] - degree 109, connects to 19 communities
+- [[log_prediction()]] - degree 19, connects to 10 communities
 - [[audit_settlement()]] - degree 17, connects to 6 communities
-- [[backfill_emos_data()]] - degree 14, connects to 5 communities
+- [[get_recent_city_correlations()]] - degree 8, connects to 5 communities

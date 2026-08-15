@@ -12,7 +12,7 @@ tags:
 # _FakeResponse
 
 ## Connections
-- [[dot-__init__()_10]] - `method` [EXTRACTED]
+- [[dot-__init__()_9]] - `method` [EXTRACTED]
 - [[dot-json()]] - `method` [EXTRACTED]
 - [[dot-raise_for_status()]] - `method` [EXTRACTED]
 - [[Minimal requests.Response stand-in for mocking climatology._session.get.]] - `rationale_for` [EXTRACTED]

@@ -12,7 +12,7 @@ tags:
 # _get_live_open_positions()
 
 ## Connections
-- [[dot-get_open()_1]] - `calls` [EXTRACTED]
+- [[dot-get_open()]] - `calls` [EXTRACTED]
 - [[dot-test_builds_check_function_compatible_dicts()]] - `calls` [EXTRACTED]
 - [[dot-test_excludes_already_early_exited_positions()]] - `calls` [EXTRACTED]
 - [[dot-test_full_fill_exit_order_not_treated_as_new_open_position()]] - `calls` [EXTRACTED]

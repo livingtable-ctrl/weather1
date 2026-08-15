@@ -34,7 +34,6 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 122]]
 - 1 edge to [[_COMMUNITY_Community 278]]
 - 1 edge to [[_COMMUNITY_Community 304]]
@@ -46,6 +45,6 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 90]]
 
 ## Top bridge nodes
-- [[test_hourly_markets.py]] - degree 14, connects to 8 communities
+- [[test_hourly_markets.py]] - degree 12, connects to 7 communities
 - [[test_snow_markets.py (referenced, not in this chunk)]] - degree 2, connects to 1 community
 - [[hourly KXTEMPxxxH model  _hourly_gates_active()  refresh_hourly_target_hours()]] - degree 2, connects to 1 community

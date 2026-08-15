@@ -44,13 +44,13 @@ SORT file.name ASC
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_Community 313]]
 - 3 edges to [[_COMMUNITY_Community 436]]
-- 3 edges to [[_COMMUNITY_Community 438]]
 - 3 edges to [[_COMMUNITY_Community 487]]
+- 3 edges to [[_COMMUNITY_Community 438]]
 - 3 edges to [[_COMMUNITY_Community 439]]
 - 2 edges to [[_COMMUNITY_Tracker SQLite Storage Tests]]
 - 2 edges to [[_COMMUNITY_Community 437]]
-- 1 edge to [[_COMMUNITY_Community 315]]
 - 1 edge to [[_COMMUNITY_Community 411]]
+- 1 edge to [[_COMMUNITY_Community 315]]
 
 ## Top bridge nodes
 - [[dot-_add()]] - degree 27, connects to 8 communities

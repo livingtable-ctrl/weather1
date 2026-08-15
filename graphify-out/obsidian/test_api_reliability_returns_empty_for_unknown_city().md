@@ -12,7 +12,6 @@ tags:
 # test_api_reliability_returns_empty_for_unknown_city()
 
 ## Connections
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Tracker_SQLite_Storage_Tests

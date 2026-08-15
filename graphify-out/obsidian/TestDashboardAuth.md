@@ -1,12 +1,11 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "code"
-community: "Community 493"
-location: "L159"
+community: "Community 693"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_493
+  - community/Community_693
 ---
 
 # TestDashboardAuth
@@ -17,4 +16,4 @@ tags:
 - [[dot-test_no_auth_required_when_password_unset()]] - `method` [EXTRACTED]
 - [[test_web_app.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_493
+#graphify/code #graphify/EXTRACTED #community/Community_693

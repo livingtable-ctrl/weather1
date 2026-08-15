@@ -1,21 +1,21 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Black Swan Halt State"
-location: "L6462"
+community: "Community 693"
+location: "L6613"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_693
 ---
 
 # _menu_watch()
 
 ## Connections
-- [[KalshiClient]] - `references` [EXTRACTED]
+- [[KalshiClient_1]] - `references` [EXTRACTED]
 - [[Prompt for edge threshold before entering watch mode.]] - `rationale_for` [EXTRACTED]
 - [[cmd_menu()]] - `calls` [EXTRACTED]
 - [[cmd_watch()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
+- [[main.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_693

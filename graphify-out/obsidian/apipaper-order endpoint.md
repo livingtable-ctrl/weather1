@@ -16,7 +16,5 @@ tags:
 - [[cron.py_1]] - `references` [EXTRACTED]
 - [[is_trading_paused()]] - `calls` [EXTRACTED]
 - [[kelly_fraction()]] - `calls` [EXTRACTED]
-- [[kelly_quantity()]] - `calls` [EXTRACTED]
-- [[place_paper_order()_1]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

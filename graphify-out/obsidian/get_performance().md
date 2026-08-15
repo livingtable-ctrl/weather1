@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Anomaly Detection & PDF Reporting"
-location: "L1998"
+community: "Community 693"
+location: "L2016"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # get_performance()
@@ -14,9 +14,7 @@ tags:
 ## Connections
 - [[Summary stats across all settled trades.]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
-- [[_collect_data Function]] - `calls` [EXTRACTED]
-- [[_collect_data()]] - `calls` [EXTRACTED]
-- [[_load()]] - `calls` [EXTRACTED]
+- [[_load()_1]] - `calls` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
 - [[cmd_dashboard()]] - `calls` [EXTRACTED]
 - [[cmd_paper()]] - `calls` [EXTRACTED]
@@ -26,9 +24,8 @@ tags:
 - [[get_peak_balance()]] - `calls` [EXTRACTED]
 - [[get_profit_factor()]] - `calls` [EXTRACTED]
 - [[graduation_check()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
-- [[paper.py]] - `contains` [EXTRACTED]
-- [[pdf_report.py]] - `imports` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
+- [[main.py_1]] - `imports` [EXTRACTED]
+- [[paper.py_1]] - `contains` [EXTRACTED]
+- [[web_app.py_1]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/code #graphify/EXTRACTED #community/Community_693

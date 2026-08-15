@@ -16,11 +16,9 @@ tags:
 - [[Per-model MAE from ensemble_member_scores, stratified by city and season (18).…]] - `rationale_for` [EXTRACTED]
 - [[Phase 3 Tracker Analytics Plan]] - `implements` [EXTRACTED]
 - [[Tracker Grade Audit]] - `references` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 - [[tracker.py_1]] - `implements` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_36

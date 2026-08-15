@@ -22,8 +22,6 @@ tags:
 - [[analyze_trade()]] - `implements` [EXTRACTED]
 - [[check_retirement_probation()]] - `implements` [EXTRACTED]
 - [[check_series_drift()]] - `implements` [EXTRACTED]
-- [[cmd_cron()_1]] - `calls` [EXTRACTED]
-- [[mock_market fixture]] - `conceptually_related_to` [INFERRED]
 - [[run_trade_cycle()]] - `calls` [EXTRACTED]
 - [[settlement_monitor.py_1]] - `calls` [EXTRACTED]
 - [[test_infrastructure.py]] - `references` [EXTRACTED]

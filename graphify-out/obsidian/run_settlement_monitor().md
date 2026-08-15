@@ -15,8 +15,6 @@ tags:
 - [[Run the settlement lag monitoring loop. Polls METAR every…]] - `rationale_for` [EXTRACTED]
 - [[ZoneInfo]] - `calls` [INFERRED]
 - [[check_city_settlement()]] - `calls` [EXTRACTED]
-- [[cmd_settlement_monitor()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[read_settlement_signals()]] - `calls` [EXTRACTED]
 - [[settlement_monitor.py]] - `contains` [EXTRACTED]
 - [[write_settlement_signals()]] - `calls` [EXTRACTED]

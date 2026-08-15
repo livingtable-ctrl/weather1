@@ -14,7 +14,6 @@ tags:
 - [[apipaper-order endpoint]] - `references` [EXTRACTED]
 - [[Live Trading Runbook]] - `references` [EXTRACTED]
 - [[System Audit Findings 2026-06-04]] - `references` [EXTRACTED]
-- [[cmd_cron()_1]] - `shares_data_with` [EXTRACTED]
 - [[detect_brier_drift()]] - `conceptually_related_to` [INFERRED]
 - [[main.py CLI Entrypoint]] - `shares_data_with` [EXTRACTED]
 - [[run_trade_cycle()]] - `references` [EXTRACTED]

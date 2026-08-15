@@ -24,7 +24,6 @@ tags:
 - [[alert_strong_signal()]] - `contains` [EXTRACTED]
 - [[alert_strong_signal() RF1 Promotion (610)]] - `references` [EXTRACTED]
 - [[atomic_write_json()]] - `imports` [EXTRACTED]
-- [[main.py]] - `imports_from` [EXTRACTED]
 - [[notify.py File Grade median 610, zero test coverage]] - `references` [EXTRACTED]
 - [[notify.py Grade Audit]] - `references` [EXTRACTED]
 - [[paths.py]] - `imports_from` [EXTRACTED]

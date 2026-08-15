@@ -35,11 +35,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 2 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
+- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 
 ## Top bridge nodes
-- [[_liquidity_edge_scale()]] - degree 17, connects to 4 communities
+- [[_liquidity_edge_scale()]] - degree 15, connects to 3 communities
 - [[TestLiquidityEdgeScale]] - degree 12, connects to 1 community

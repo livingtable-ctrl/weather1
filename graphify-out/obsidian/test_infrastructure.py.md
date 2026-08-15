@@ -60,7 +60,6 @@ tags:
 - [[test_station_cache_loads_pre_migration_flat_format()]] - `contains` [EXTRACTED]
 - [[test_verify_db_backup_counts_rows()]] - `contains` [EXTRACTED]
 - [[test_verify_db_backup_raises_on_empty()]] - `contains` [EXTRACTED]
-- [[verify_db_backup()]] - `references` [EXTRACTED]
 - [[weather_markets.py_1]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Circuit_Breaker__Session_Retry_Infrastructure

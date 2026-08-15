@@ -13,10 +13,8 @@ tags:
 
 ## Connections
 - [[Fetch highlow from weatherapi.com (free tier 1M callsmonth). Returns…]] - `rationale_for` [EXTRACTED]
-- [[_build_cron_context()]] - `indirect_call` [INFERRED]
 - [[date_2]] - `references` [EXTRACTED]
 - [[get_weather_forecast()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

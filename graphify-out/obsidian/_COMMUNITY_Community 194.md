@@ -39,7 +39,6 @@ SORT file.name ASC
 - 7 edges to [[_COMMUNITY_Community 208]]
 - 4 edges to [[_COMMUNITY_Community 167]]
 - 4 edges to [[_COMMUNITY_Community 94]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 200]]
 - 1 edge to [[_COMMUNITY_Community 223]]
 - 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
@@ -50,7 +49,7 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[test_alerts_side.py]] - degree 15, connects to 8 communities
-- [[get_win_rate_window()]] - degree 9, connects to 3 communities
 - [[_trade_lost()]] - degree 6, connects to 3 communities
 - [[_recent_settled()]] - degree 5, connects to 3 communities
+- [[get_win_rate_window()]] - degree 7, connects to 2 communities
 - [[_trade_won()]] - degree 10, connects to 1 community

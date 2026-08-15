@@ -1,13 +1,13 @@
 ---
 type: community
 cohesion: 0.03
-members: 111
+members: 101
 ---
 
 # Community 692
 
 **Cohesion:** 0.03 - loosely connected
-**Members:** 111 nodes
+**Members:** 101 nodes
 
 ## Members
 - [[AnalyticsTab]] - code - weather app site V_3 (3)/src/tabs/AnalyticsTab.jsx
@@ -42,11 +42,6 @@ members: 111
 - [[OverviewTab_1]] - code - weather app site V_3 (3)/src/tabs/OverviewTab.jsx
 - [[OverviewTab()]] - code - weather app site V_3 (3)/src/tabs/OverviewTab.jsx
 - [[OverviewTab.jsx]] - code - weather app site V_3 (3)/src/tabs/OverviewTab.jsx
-- [[PortfolioEvCard]] - code - weather app site V_3 (3)/src/tabs/PositionsTab.jsx
-- [[PortfolioEvCard()]] - code - weather app site V_3 (3)/src/tabs/PositionsTab.jsx
-- [[PositionsTab_1]] - code - weather app site V_3 (3)/src/tabs/PositionsTab.jsx
-- [[PositionsTab()]] - code - weather app site V_3 (3)/src/tabs/PositionsTab.jsx
-- [[PositionsTab.jsx]] - code - weather app site V_3 (3)/src/tabs/PositionsTab.jsx
 - [[ReliabilityDiagramChart]] - code - weather app site V_3 (3)/src/tabs/AnalyticsTab.jsx
 - [[ReliabilityDiagramChart()]] - code - weather app site V_3 (3)/src/tabs/AnalyticsTab.jsx
 - [[RollingWinRateChart]] - code - weather app site V_3 (3)/src/tabs/AnalyticsTab.jsx
@@ -55,8 +50,6 @@ members: 111
 - [[SameDayPerfCard()]] - code - weather app site V_3 (3)/src/tabs/AnalyticsTab.jsx
 - [[SamedayCalibCard]] - code - weather app site V_3 (3)/src/tabs/AnalyticsTab.jsx
 - [[SamedayCalibCard()]] - code - weather app site V_3 (3)/src/tabs/AnalyticsTab.jsx
-- [[WeatherAlertBanner]] - code - weather app site V_3 (3)/src/tabs/PositionsTab.jsx
-- [[WeatherAlertBanner()]] - code - weather app site V_3 (3)/src/tabs/PositionsTab.jsx
 - [[apiFetch]] - code - frontend/src/useData.js
 - [[apiFetch (V3)]] - code - weather app site V_3 (3)/src/useData.js
 - [[apiFetch()]] - code - weather app site V_3 (3)/src/useData.js
@@ -78,9 +71,6 @@ members: 111
 - [[frontendsrcuseData.js]] - code - frontend/src/useData.js
 - [[getStoredPwd()]] - code - frontend/src/useData.js
 - [[getStoredPwd()_1]] - code - weather app site V_3 (3)/src/useData.js
-- [[handleBulkClose]] - code - weather app site V_3 (3)/src/tabs/PositionsTab.jsx
-- [[handleClose]] - code - weather app site V_3 (3)/src/tabs/PositionsTab.jsx
-- [[handleCloseConfirm]] - code - weather app site V_3 (3)/src/tabs/PositionsTab.jsx
 - [[handleSSEEvent]] - code - frontend/src/useData.js
 - [[handleSSEEvent (V3)]] - code - weather app site V_3 (3)/src/useData.js
 - [[makeFetchMock()]] - code - frontend/src/useData.test.js

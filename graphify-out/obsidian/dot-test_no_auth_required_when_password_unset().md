@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "code"
-community: "Community 493"
-location: "L160"
+community: "Community 693"
+location: "L182"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_493
+  - community/Community_693
 ---
 
 # .test_no_auth_required_when_password_unset()
@@ -15,4 +15,4 @@ tags:
 - [[Dashboard is open when DASHBOARD_PASSWORD is empty.]] - `rationale_for` [EXTRACTED]
 - [[TestDashboardAuth]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_493
+#graphify/code #graphify/EXTRACTED #community/Community_693

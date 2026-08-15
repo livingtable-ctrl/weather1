@@ -13,7 +13,6 @@ tags:
 
 ## Connections
 - [[P1-5 empty checksum string must raise CorruptionError (was silently passing).]] - `rationale_for` [EXTRACTED]
-- [[_validate_checksum()]] - `calls` [EXTRACTED]
 - [[test_safe_io.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_301

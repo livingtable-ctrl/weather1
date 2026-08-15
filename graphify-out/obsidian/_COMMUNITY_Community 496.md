@@ -13,7 +13,7 @@ members: 6
 - [[Generate an index of unfinished backlog.txt entries. backlog.txt is a single…]] - rationale - backlog_index.py
 - [[Split backlog.txt into entries anchored on '' at column 0, and return one dict…]] - rationale - backlog_index.py
 - [[backlog_index.py]] - code - backlog_index.py
-- [[main()_1]] - code - backlog_index.py
+- [[main()]] - code - backlog_index.py
 - [[parse_entries()]] - code - backlog_index.py
 - [[render()]] - code - backlog_index.py
 

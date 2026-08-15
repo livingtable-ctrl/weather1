@@ -25,13 +25,11 @@ tags:
 - [[_get_live_open_positions()]] - `calls` [EXTRACTED]
 - [[_passes_exit_gates()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[cmd_watch()]] - `calls` [EXTRACTED]
 - [[coalesce_market_price()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[enrich_with_forecast()]] - `calls` [EXTRACTED]
 - [[get_weather_markets()]] - `calls` [EXTRACTED]
 - [[liquidation_price()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[test_live_execution.py]] - `imports` [EXTRACTED]
 

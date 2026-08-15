@@ -42,8 +42,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 246]]
 
 ## Top bridge nodes
-- [[Phase 2 Batch F Regression Tests]] - degree 8, connects to 2 communities
+- [[Phase 2 Batch F Regression Tests]] - degree 7, connects to 2 communities

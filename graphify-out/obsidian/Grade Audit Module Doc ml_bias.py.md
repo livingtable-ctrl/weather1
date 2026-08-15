@@ -12,7 +12,6 @@ tags:
 
 ## Connections
 - [[Multi-day days_out Filter Invariant]] - `references` [EXTRACTED]
-- [[conftest.py]] - `references` [EXTRACTED]
 - [[ml_bias.py]] - `references` [EXTRACTED]
 - [[test_hmac_bias.py]] - `references` [EXTRACTED]
 - [[test_ml_bias.py]] - `references` [EXTRACTED]

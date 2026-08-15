@@ -14,7 +14,6 @@ tags:
 ## Connections
 - [[_install_cron_watchdog must disarm once the caller signals completion.…]] - `rationale_for` [EXTRACTED]
 - [[_install_cron_watchdog()]] - `calls` [EXTRACTED]
-- [[cmd_cron()_1]] - `conceptually_related_to` [INFERRED]
 - [[test_watchdog_disarms_on_completion_event()]] - `contains` [EXTRACTED]
 - [[test_watchdog_still_fires_on_genuine_hang()]] - `contains` [EXTRACTED]
 

@@ -34,7 +34,7 @@ SORT file.name ASC
 - 7 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 4 edges to [[_COMMUNITY_Community 86]]
 - 2 edges to [[_COMMUNITY_Community 226]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 1 edge to [[_COMMUNITY_Community 225]]
 
 ## Top bridge nodes

@@ -29,10 +29,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 9 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 8 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 5 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 2 edges to [[_COMMUNITY_Community 583]]
 - 2 edges to [[_COMMUNITY_Community 50]]
@@ -40,8 +39,8 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 124]]
 
 ## Top bridge nodes
-- [[get_retired_strategies()]] - degree 12, connects to 6 communities
-- [[auto_retire_strategies()]] - degree 12, connects to 5 communities
-- [[brier_score_by_method()]] - degree 9, connects to 4 communities
-- [[unretire_strategy()]] - degree 8, connects to 3 communities
+- [[get_retired_strategies()]] - degree 9, connects to 5 communities
+- [[auto_retire_strategies()]] - degree 10, connects to 4 communities
+- [[brier_score_by_method()]] - degree 7, connects to 3 communities
+- [[unretire_strategy()]] - degree 6, connects to 2 communities
 - [[_save_retired_strategies()]] - degree 4, connects to 2 communities

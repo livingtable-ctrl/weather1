@@ -16,7 +16,6 @@ tags:
 - [[NOTIFY_COOLDOWN_STATE_PATH Constant]] - `references` [EXTRACTED]
 - [[ValueError]] - `calls` [INFERRED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]
-- [[is_accuracy_halted()]] - `conceptually_related_to` [AMBIGUOUS]
 - [[notify.py]] - `contains` [EXTRACTED]
 - [[send_system_alert()]] - `calls` [EXTRACTED]
 - [[test_notify.py]] - `calls` [EXTRACTED]

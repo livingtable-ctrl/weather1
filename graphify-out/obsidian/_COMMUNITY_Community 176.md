@@ -38,17 +38,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 1 edge to [[_COMMUNITY_Community 242]]
-- 1 edge to [[_COMMUNITY_Community 43]]
 - 1 edge to [[_COMMUNITY_Community 71]]
 - 1 edge to [[_COMMUNITY_Community 564]]
 
 ## Top bridge nodes
-- [[web_app.py (Flask dashboardAPI)]] - degree 5, connects to 4 communities
-- [[test_suggested_bets.py]] - degree 10, connects to 3 communities
-- [[dot-test_returns_top_n_sorted_by_ev()]] - degree 6, connects to 1 community
-- [[dot-test_empty_when_no_opportunities()]] - degree 5, connects to 1 community
-- [[dot-test_market_fetch_failure_returns_500()]] - degree 4, connects to 1 community
+- [[web_app.py (Flask dashboardAPI)]] - degree 4, connects to 3 communities
+- [[test_suggested_bets.py]] - degree 9, connects to 2 communities

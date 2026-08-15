@@ -14,9 +14,7 @@ tags:
 ## Connections
 - [[Return the recorded outcome for a ticker (True=YES, False=NO), or None if no…]] - `rationale_for` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
-- [[auto_settle_paper_trades()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[paper.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

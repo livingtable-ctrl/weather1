@@ -61,7 +61,6 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_METAR Lock-In Confidence Tests]]
 - 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 3 edges to [[_COMMUNITY_Community 99]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_Community 112]]
 - 1 edge to [[_COMMUNITY_Community 122]]
@@ -70,5 +69,5 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 394]]
 
 ## Top bridge nodes
-- [[ZoneInfo]] - degree 46, connects to 14 communities
-- [[test_cmd_schedule_settlement_monitor.py]] - degree 18, connects to 3 communities
+- [[ZoneInfo]] - degree 45, connects to 13 communities
+- [[test_cmd_schedule_settlement_monitor.py]] - degree 17, connects to 2 communities

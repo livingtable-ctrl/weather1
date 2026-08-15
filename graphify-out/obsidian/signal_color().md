@@ -13,12 +13,9 @@ tags:
 
 ## Connections
 - [[Apply color to a signal string based on strength.]] - `rationale_for` [EXTRACTED]
-- [[cmd_market()]] - `calls` [EXTRACTED]
-- [[cmd_markets()]] - `calls` [EXTRACTED]
 - [[colors.py]] - `contains` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 - [[yellow()]] - `calls` [EXTRACTED]
 

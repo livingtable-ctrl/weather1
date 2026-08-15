@@ -81,10 +81,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 23 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 14 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 7 edges to [[_COMMUNITY_Community 40]]
 - 6 edges to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 5 edges to [[_COMMUNITY_Black Swan Halt State]]
+- 4 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 3 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 2 edges to [[_COMMUNITY_Community 183]]
@@ -93,18 +93,14 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 63]]
 - 1 edge to [[_COMMUNITY_Community 85]]
 - 1 edge to [[_COMMUNITY_Community 97]]
-- 1 edge to [[_COMMUNITY_Community 459]]
-- 1 edge to [[_COMMUNITY_Community 250]]
 - 1 edge to [[_COMMUNITY_Community 328]]
 - 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
 - 1 edge to [[_COMMUNITY_Community 500]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 92]]
-- 1 edge to [[_COMMUNITY_Community 52]]
 - 1 edge to [[_COMMUNITY_Community 248]]
-- 1 edge to [[_COMMUNITY_Community 108]]
+- 1 edge to [[_COMMUNITY_Community 52]]
 
 ## Top bridge nodes
-- [[_auto_place_trades()]] - degree 90, connects to 22 communities
+- [[_auto_place_trades()]] - degree 76, connects to 18 communities
 - [[test_shadow_predictions.py]] - degree 35, connects to 2 communities
 - [[_fetch()]] - degree 28, connects to 1 community

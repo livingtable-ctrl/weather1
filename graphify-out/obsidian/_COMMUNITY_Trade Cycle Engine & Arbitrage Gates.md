@@ -103,12 +103,11 @@ SORT file.name ASC
 - 2 edges to [[_COMMUNITY_Community 474]]
 - 2 edges to [[_COMMUNITY_Community 473]]
 - 2 edges to [[_COMMUNITY_Community 37]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_Community 54]]
 - 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 
 ## Top bridge nodes
-- [[LiveTradingGate]] - degree 49, connects to 21 communities
+- [[LiveTradingGate]] - degree 47, connects to 20 communities
 - [[Violation]] - degree 45, connects to 19 communities
 - [[test_trade_cycle_engine.py]] - degree 36, connects to 10 communities
 - [[TestCmdBackfillPriceHistory]] - degree 7, connects to 1 community

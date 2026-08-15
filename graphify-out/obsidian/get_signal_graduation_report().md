@@ -14,8 +14,6 @@ tags:
 ## Connections
 - [[Standing report replacing backlog.txt's per-entry prose ENABLEMENT TRIGGER text…]] - `rationale_for` [EXTRACTED]
 - [[_notify_feature_activation()]] - `calls` [EXTRACTED]
-- [[cmd_signals()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[test_p1_remaining.py]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 

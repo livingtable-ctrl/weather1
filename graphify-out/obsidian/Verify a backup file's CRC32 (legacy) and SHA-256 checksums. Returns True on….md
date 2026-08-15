@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Community 460"
-location: "L448"
+community: "Community 693"
+location: "L466"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_460
+  - community/Community_693
 ---
 
 # Verify a backup file's CRC32 (legacy) and SHA-256 checksums. Returns True on…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[verify_backup()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_460
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

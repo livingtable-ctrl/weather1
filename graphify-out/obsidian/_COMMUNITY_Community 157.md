@@ -42,8 +42,8 @@ SORT file.name ASC
 - 4 edges to [[_COMMUNITY_Community 45]]
 - 3 edges to [[_COMMUNITY_Community 111]]
 - 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 300]]
 - 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
+- 1 edge to [[_COMMUNITY_Community 300]]
 - 1 edge to [[_COMMUNITY_Community 67]]
 - 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 

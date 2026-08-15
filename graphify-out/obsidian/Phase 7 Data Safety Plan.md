@@ -16,8 +16,8 @@ tags:
 - [[Phase 6 Dashboard Plan]] - `conceptually_related_to` [INFERRED]
 - [[_confidence_scaled_blend_weights()]] - `implements` [EXTRACTED]
 - [[cloud_backup.py]] - `implements` [AMBIGUOUS]
-- [[main.py_1]] - `references` [EXTRACTED]
-- [[paper.py_1]] - `references` [EXTRACTED]
+- [[main.py]] - `references` [EXTRACTED]
+- [[paper.py]] - `references` [EXTRACTED]
 - [[tracker.py_1]] - `references` [EXTRACTED]
 - [[weather_markets.py_2]] - `references` [EXTRACTED]
 

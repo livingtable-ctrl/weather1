@@ -13,7 +13,6 @@ tags:
 
 ## Connections
 - [[TestEdgeRealizationRate]] - `method` [EXTRACTED]
-- [[get_edge_realization_rate()]] - `calls` [EXTRACTED]
 - [[min_samples=0 with zero trades must not raise ZeroDivisionError — the old…]] - `rationale_for` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization

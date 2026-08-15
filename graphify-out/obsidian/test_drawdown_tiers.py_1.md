@@ -13,7 +13,6 @@ tags:
 ## Connections
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[_validate_trade_opportunity()]] - `references` [EXTRACTED]
-- [[drawdown_scaling_factor()]] - `calls` [EXTRACTED]
 - [[paper._DRAWDOWN_TIER_1..4 constants]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_248

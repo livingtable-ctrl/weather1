@@ -12,16 +12,12 @@ tags:
 # PositionStore
 
 ## Connections
-- [[dot-get_open()_2]] - `method` [EXTRACTED]
-- [[dot-save_peak()_2]] - `method` [EXTRACTED]
-- [[CorruptionError]] - `uses` [INFERRED]
+- [[dot-get_open()_1]] - `method` [EXTRACTED]
+- [[dot-save_peak()_1]] - `method` [EXTRACTED]
 - [[LivePositionStore]] - `uses` [INFERRED]
-- [[PaperPositionStore]] - `uses` [INFERRED]
 - [[Protocol]] - `inherits` [EXTRACTED]
 - [[The genuinely shared surface between paper.PaperPositionStore and…]] - `rationale_for` [EXTRACTED]
-- [[_CrossProcessDataLock]] - `uses` [INFERRED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
-- [[paper.py]] - `imports` [EXTRACTED]
 - [[positions.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_145

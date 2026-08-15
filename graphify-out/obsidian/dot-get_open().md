@@ -1,21 +1,20 @@
 ---
-source_file: "paper.py"
+source_file: "order_executor.py"
 type: "code"
-community: "Community 145"
-location: "L1357"
+community: "Community 45"
+location: "L1155"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_145
+  - community/Community_45
 ---
 
 # .get_open()
 
 ## Connections
-- [[Not called by check_paper_position_exits itself (below) -- that function needs…]] - `rationale_for` [EXTRACTED]
-- [[PaperPositionStore]] - `method` [EXTRACTED]
+- [[LivePositionStore]] - `method` [EXTRACTED]
 - [[Position]] - `references` [EXTRACTED]
-- [[_trade_to_position()]] - `calls` [EXTRACTED]
-- [[get_open_trades()]] - `calls` [EXTRACTED]
+- [[_get_live_open_positions()]] - `calls` [EXTRACTED]
+- [[_live_dict_to_position()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_145
+#graphify/code #graphify/EXTRACTED #community/Community_45

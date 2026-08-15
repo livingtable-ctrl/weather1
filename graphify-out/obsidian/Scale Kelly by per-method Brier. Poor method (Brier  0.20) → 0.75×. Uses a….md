@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
-location: "L707"
+community: "Community 693"
+location: "L725"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # Scale Kelly by per-method Brier. Poor method (Brier > 0.20) → 0.75×. Uses a…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_method_kelly_multiplier()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

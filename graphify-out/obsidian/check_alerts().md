@@ -19,9 +19,7 @@ tags:
 - [[dot-test_no_active_alerts_returns_empty_without_fetching()]] - `calls` [EXTRACTED]
 - [[Fetch current YES prices for all alert tickers and check which alerts have been…]] - `rationale_for` [EXTRACTED]
 - [[alerts.py]] - `contains` [EXTRACTED]
-- [[cmd_watch()]] - `calls` [EXTRACTED]
 - [[get_alerts()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 - [[test_alerts.py]] - `imports` [EXTRACTED]
 

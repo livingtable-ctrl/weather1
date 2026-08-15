@@ -90,16 +90,15 @@ SORT file.name ASC
 - 8 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 8 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 8 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
-- 7 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 6 edges to [[_COMMUNITY_Community 62]]
 - 5 edges to [[_COMMUNITY_Community 51]]
-- 5 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 5 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 4 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 - 3 edges to [[_COMMUNITY_Community 169]]
 - 3 edges to [[_COMMUNITY_Community 26]]
 - 3 edges to [[_COMMUNITY_Community 79]]
 - 2 edges to [[_COMMUNITY_Community 44]]
+- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Weather Probability Math Tests]]
 - 2 edges to [[_COMMUNITY_Community 344]]
 - 2 edges to [[_COMMUNITY_Community 87]]
@@ -114,8 +113,6 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 554]]
 - 1 edge to [[_COMMUNITY_Community 168]]
 - 1 edge to [[_COMMUNITY_Community 288]]
-- 1 edge to [[_COMMUNITY_Community 501]]
-- 1 edge to [[_COMMUNITY_Community 604]]
 - 1 edge to [[_COMMUNITY_Community 82]]
 - 1 edge to [[_COMMUNITY_Community 32]]
 - 1 edge to [[_COMMUNITY_Community 194]]
@@ -129,7 +126,7 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 31]]
 
 ## Top bridge nodes
-- [[utc_today()]] - degree 51, connects to 21 communities
+- [[utc_today()]] - degree 43, connects to 18 communities
 - [[climatology.py]] - degree 29, connects to 11 communities
 - [[Phase 2 Batch H Regression Tests]] - degree 13, connects to 9 communities
 - [[climate_indices.py]] - degree 20, connects to 7 communities

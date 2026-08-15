@@ -23,11 +23,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
+- 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 1 edge to [[_COMMUNITY_Community 36]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 
 ## Top bridge nodes
 - [[count_model_observations()]] - degree 6, connects to 3 communities
-- [[_count_model_obs()]] - degree 4, connects to 2 communities
+- [[_count_model_obs()]] - degree 4, connects to 1 community

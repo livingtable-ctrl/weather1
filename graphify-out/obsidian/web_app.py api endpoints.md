@@ -29,7 +29,6 @@ tags:
 - [[loadSourceReliability() (analytics.js)]] - `calls` [EXTRACTED]
 - [[loadTodayForecasts()]] - `calls` [EXTRACTED]
 - [[loadTrades()]] - `calls` [EXTRACTED]
-- [[testsconftest.py Fixtures]] - `references` [EXTRACTED]
 - [[window.runScan()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages

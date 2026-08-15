@@ -35,12 +35,10 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 5 edges to [[_COMMUNITY_Community 272]]
-- 3 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Community 333]]
 
 ## Top bridge nodes
 - [[_make_trade()_2]] - degree 9, connects to 2 communities
 - [[TestCheckModelExitsThresholds]] - degree 4, connects to 1 community
 - [[TestModelExitShiftPpIsConfigurable]] - degree 4, connects to 1 community
-- [[dot-test_edge_gone_threshold_is_negative()]] - degree 4, connects to 1 community
-- [[dot-test_minimum_hold_time_prevents_early_exit()]] - degree 4, connects to 1 community
+- [[dot-test_get_weather_markets_called_once_for_multiple_trades()]] - degree 3, connects to 1 community

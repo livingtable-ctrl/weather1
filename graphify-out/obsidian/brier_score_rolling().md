@@ -13,9 +13,7 @@ tags:
 
 ## Connections
 - [[Brier score over the most recent `weeks` weeks of settled multi-day predictions.]] - `rationale_for` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[brier_score()]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_71

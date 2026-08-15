@@ -1,18 +1,18 @@
 ---
 source_file: "web_app.py"
 type: "code"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 693"
 location: "L86"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # _now_utc()
 
 ## Connections
 - [[Mockable UTC timestamp for tests.]] - `rationale_for` [EXTRACTED]
-- [[web_app.py]] - `contains` [EXTRACTED]
+- [[web_app.py_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/code #graphify/EXTRACTED #community/Community_693

@@ -14,6 +14,5 @@ tags:
 - [[_collect_data Function]] - `calls` [EXTRACTED]
 - [[_generate_html Function]] - `calls` [EXTRACTED]
 - [[_generate_pdf Function]] - `calls` [EXTRACTED]
-- [[cmd_report()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_590

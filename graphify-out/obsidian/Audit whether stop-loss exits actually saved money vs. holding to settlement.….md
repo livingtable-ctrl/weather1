@@ -1,17 +1,17 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
-location: "L1914"
+community: "Community 693"
+location: "L1932"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # Audit whether stop-loss exits actually saved money vs. holding to settlement.…
 
 ## Connections
-- [[get_stop_loss_accuracy()]] - `rationale_for` [EXTRACTED]
+- [[get_stop_loss_accuracy()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

@@ -12,12 +12,8 @@ tags:
 # AtomicWriteError
 
 ## Connections
-- [[CorruptionError]] - `uses` [INFERRED]
 - [[Exception]] - `inherits` [EXTRACTED]
-- [[PaperPositionStore]] - `uses` [INFERRED]
-- [[_CrossProcessDataLock]] - `uses` [INFERRED]
 - [[_atomic_write_payload()]] - `references` [EXTRACTED]
-- [[paper.py]] - `imports` [EXTRACTED]
 - [[safe_io.py]] - `contains` [EXTRACTED]
 - [[test_alerts.py]] - `references` [EXTRACTED]
 - [[test_infrastructure.py]] - `imports` [EXTRACTED]

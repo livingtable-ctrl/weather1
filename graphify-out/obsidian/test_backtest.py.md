@@ -25,7 +25,6 @@ tags:
 - [[atomic_write_json()_1]] - `calls` [EXTRACTED]
 - [[backtest.py_2]] - `calls` [EXTRACTED]
 - [[fetch_previous_run_ensemble()]] - `imports` [EXTRACTED]
-- [[main.py]] - `calls` [EXTRACTED]
 - [[run_backtest()]] - `imports` [EXTRACTED]
 - [[safe_io.py]] - `calls` [EXTRACTED]
 - [[test_backtest_reports_funnel_breakdown_when_empty()]] - `contains` [EXTRACTED]

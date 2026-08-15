@@ -12,6 +12,6 @@ tags:
 # Redirect circuit_breaker._CB_STATE_PATH to a per-test temp file.…
 
 ## Connections
-- [[isolate_circuit_breaker_state()]] - `rationale_for` [EXTRACTED]
+- [[isolate_circuit_breaker_state fixture]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Test_Fixture_Cache_Clearing_conftest

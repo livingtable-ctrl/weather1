@@ -33,12 +33,10 @@ tags:
 - [[System Priority Checklist]] - `references` [EXTRACTED]
 - [[Trading Logic Audit 2026-04-23]] - `references` [EXTRACTED]
 - [[Weather Markets Grade Audit]] - `references` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_price_and_size()]] - `calls` [EXTRACTED]
 - [[backtest.py]] - `imports` [EXTRACTED]
 - [[bayesian_kelly()]] - `calls` [EXTRACTED]
-- [[kelly_bet_dollars()]] - `shares_data_with` [INFERRED]
-- [[paper.py_1]] - `semantically_similar_to` [INFERRED]
+- [[paper.py]] - `semantically_similar_to` [INFERRED]
 - [[run_backtest()]] - `calls` [EXTRACTED]
 - [[test_kelly_fraction_never_exceeds_cap()]] - `calls` [EXTRACTED]
 - [[test_kelly_fraction_never_negative()]] - `calls` [EXTRACTED]
@@ -50,6 +48,5 @@ tags:
 - [[test_weather_markets.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 - [[weather_markets.py_2]] - `implements` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests

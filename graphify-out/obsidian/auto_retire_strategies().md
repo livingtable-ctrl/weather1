@@ -17,11 +17,9 @@ tags:
 - [[_save_retired_strategies()]] - `calls` [EXTRACTED]
 - [[brier_score_by_method()]] - `calls` [EXTRACTED]
 - [[brier_score_by_method_rolling()]] - `calls` [EXTRACTED]
-- [[cmd_retire_strategies()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[get_retired_strategies()]] - `calls` [EXTRACTED]
 - [[is_strategy_pinned()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[test_p9_p10.py]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 

@@ -18,12 +18,7 @@ tags:
 - [[Phase 2 Batch O Same-Day Spend Tests]] - `imports` [EXTRACTED]
 - [[Sum of multi-day paper trade costs placed today (UTC date). Used for daily…]] - `rationale_for` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
-- [[_load()]] - `calls` [EXTRACTED]
 - [[_save()_load() SHA-256 checksum]] - `shares_data_with` [EXTRACTED]
-- [[cmd_today()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

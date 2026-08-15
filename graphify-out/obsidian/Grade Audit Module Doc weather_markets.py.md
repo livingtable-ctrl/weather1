@@ -14,7 +14,6 @@ tags:
 - [[Between-Market METAR Lock-in Daily-Extreme Bug]] - `references` [EXTRACTED]
 - [[Multi-day days_out Filter Invariant]] - `references` [EXTRACTED]
 - [[backlog.txt]] - `cites` [EXTRACTED]
-- [[conftest.py]] - `references` [EXTRACTED]
 - [[nws.py]] - `references` [EXTRACTED]
 - [[test_edge_threshold.py]] - `references` [EXTRACTED]
 - [[test_forecasting.py]] - `references` [EXTRACTED]

@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Community 570"
-location: "L1163"
+community: "Community 693"
+location: "L1181"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_570
+  - community/Community_693
 ---
 
 # Log per-model forecast accuracy after settlement for _dynamic_model_weights().…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_score_ensemble_members()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_570
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

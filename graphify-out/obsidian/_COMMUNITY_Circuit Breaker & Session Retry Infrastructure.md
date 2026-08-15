@@ -88,7 +88,6 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
 - 1 edge to [[_COMMUNITY_Community 227]]
 - 1 edge to [[_COMMUNITY_Community 36]]
-- 1 edge to [[_COMMUNITY_Community 501]]
 - 1 edge to [[_COMMUNITY_Community 130]]
 - 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 1 edge to [[_COMMUNITY_Community 180]]
@@ -98,7 +97,7 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 96]]
 
 ## Top bridge nodes
-- [[test_infrastructure.py]] - degree 51, connects to 13 communities
+- [[test_infrastructure.py]] - degree 50, connects to 12 communities
 - [[_build_session()]] - degree 9, connects to 3 communities
 - [[CircuitBreaker class]] - degree 5, connects to 2 communities
 - [[flash_crash_cb (FlashCrashCB instance)]] - degree 3, connects to 2 communities

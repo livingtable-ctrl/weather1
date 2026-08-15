@@ -1,19 +1,19 @@
 ---
-source_file: "main.py"
+source_file: "utils.py"
 type: "code"
-community: "Black Swan Halt State"
-location: "L8811"
+community: "NWS/Circuit-Breaker Data Validation"
+location: "L424"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/NWS/Circuit-Breaker_Data_Validation
 ---
 
 # _setup_logging()
 
 ## Connections
-- [[main()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
-- [[test_log_rotation.py]] - `references` [EXTRACTED]
+- [[106107 Configure structured logging. Each module should use…]] - `rationale_for` [EXTRACTED]
+- [[Logger]] - `references` [EXTRACTED]
+- [[utils.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation

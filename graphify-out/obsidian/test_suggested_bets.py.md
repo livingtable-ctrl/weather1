@@ -15,7 +15,6 @@ tags:
 - [[Paper Trading Ledger Module]] - `references` [EXTRACTED]
 - [[TestSuggestedBetsEndpoint]] - `contains` [EXTRACTED]
 - [[Tests for the apisuggested_bets endpoint.]] - `rationale_for` [EXTRACTED]
-- [[_build_app()]] - `imports` [EXTRACTED]
 - [[_force_demo_env()]] - `contains` [EXTRACTED]
 - [[_make_analysis()_1]] - `contains` [EXTRACTED]
 - [[_make_market()]] - `contains` [EXTRACTED]

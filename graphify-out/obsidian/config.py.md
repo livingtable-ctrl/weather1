@@ -38,7 +38,6 @@ tags:
 - [[load_and_validate()]] - `contains` [EXTRACTED]
 - [[load_and_validate() Bypasses lru_cache Clear (610)]] - `references` [EXTRACTED]
 - [[load_swept_min_edge()]] - `imports` [EXTRACTED]
-- [[main.py]] - `imports_from` [EXTRACTED]
 - [[paths.py]] - `imports_from` [EXTRACTED]
 - [[reset_config()]] - `contains` [EXTRACTED]
 - [[test_config.py]] - `calls` [EXTRACTED]

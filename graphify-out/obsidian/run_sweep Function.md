@@ -10,8 +10,4 @@ tags:
 
 # run_sweep Function
 
-## Connections
-- [[cmd_sweep()]] - `calls` [EXTRACTED]
-- [[load_paper_trades()]] - `calls` [EXTRACTED]
-
 #graphify/code #graphify/EXTRACTED #community/Community_32

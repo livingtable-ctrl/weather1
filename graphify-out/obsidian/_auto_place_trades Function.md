@@ -11,7 +11,6 @@ tags:
 # _auto_place_trades Function
 
 ## Connections
-- [[is_paused_drawdown()]] - `calls` [EXTRACTED]
 - [[log_live_fill()]] - `calls` [EXTRACTED]
 - [[log_prediction()]] - `calls` [EXTRACTED]
 - [[portfolio_var Function]] - `calls` [EXTRACTED]

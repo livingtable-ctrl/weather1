@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L2987"
+community: "Community 693"
+location: "L3124"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_693
 ---
 
 # Settle any open paper trades whose tickers have recorded outcomes. First checks…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[auto_settle_paper_trades()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

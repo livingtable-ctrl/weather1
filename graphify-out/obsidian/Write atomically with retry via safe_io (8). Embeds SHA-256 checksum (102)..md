@@ -1,17 +1,17 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
-location: "L430"
+community: "Community 693"
+location: "L448"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # Write atomically with retry via safe_io (#8). Embeds SHA-256 checksum (#102).
 
 ## Connections
-- [[_save()]] - `rationale_for` [EXTRACTED]
+- [[_save()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_693

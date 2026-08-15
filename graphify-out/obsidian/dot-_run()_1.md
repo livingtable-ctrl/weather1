@@ -14,7 +14,5 @@ tags:
 ## Connections
 - [[KalshiWebSocket]] - `method` [EXTRACTED]
 - [[_ws_listener()]] - `calls` [EXTRACTED]
-- [[auto_backtest()]] - `indirect_call` [INFERRED]
-- [[auto_settle()]] - `indirect_call` [INFERRED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_245

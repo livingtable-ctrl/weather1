@@ -29,8 +29,6 @@ tags:
 - [[Compute apparent (feels-like) temperature from actual temp, wind, and humidity.…]] - `rationale_for` [EXTRACTED]
 - [[Phase 4 Improvement Tests]] - `imports` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[cmd_market()]] - `calls` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
 - [[test_forecasting.py]] - `imports` [EXTRACTED]
 - [[test_weather_markets.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]

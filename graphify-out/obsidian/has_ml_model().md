@@ -18,11 +18,9 @@ tags:
 - [[dot-test_platt_not_called_when_gbm_model_present()]] - `calls` [EXTRACTED]
 - [[Phase 2 Batch K Regression Tests]] - `imports` [EXTRACTED]
 - [[Return True if a trained GBM correction model exists for this city.]] - `rationale_for` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
 - [[_load_models()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[ml_bias.py]] - `contains` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
-- [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_214

@@ -96,7 +96,6 @@ SORT file.name ASC
 ## Connections to other communities
 - 21 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 9 edges to [[_COMMUNITY_Community 36]]
-- 8 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 4 edges to [[_COMMUNITY_Community 46]]
 - 3 edges to [[_COMMUNITY_Community 65]]
 - 2 edges to [[_COMMUNITY_Community 135]]
@@ -140,14 +139,14 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 525]]
 - 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 - 1 edge to [[_COMMUNITY_Community 184]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 78]]
 - 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 1 edge to [[_COMMUNITY_Community 109]]
 
 ## Top bridge nodes
-- [[test_tracker.py]] - degree 90, connects to 45 communities
-- [[log_analysis_attempt()]] - degree 14, connects to 6 communities
-- [[settle_analysis_attempt()]] - degree 10, connects to 4 communities
+- [[test_tracker.py]] - degree 89, connects to 44 communities
+- [[log_analysis_attempt()]] - degree 12, connects to 5 communities
+- [[settle_analysis_attempt()]] - degree 8, connects to 3 communities
 - [[get_unselected_bias()]] - degree 7, connects to 2 communities
 - [[test_backfill_emos_data_excludes_rain_from_non_force_part1()]] - degree 5, connects to 2 communities

@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Anomaly Detection & PDF Reporting"
-location: "L1580"
+community: "Community 693"
+location: "L1598"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_693
 ---
 
 # get_city_date_exposure()
@@ -16,7 +16,7 @@ tags:
 - [[_exposure_denom()]] - `calls` [EXTRACTED]
 - [[check_position_limits()]] - `calls` [EXTRACTED]
 - [[get_open_trades()]] - `calls` [EXTRACTED]
-- [[paper.py]] - `contains` [EXTRACTED]
+- [[paper.py_1]] - `contains` [EXTRACTED]
 - [[portfolio_kelly_fraction()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/code #graphify/EXTRACTED #community/Community_693

@@ -75,7 +75,6 @@ tags:
 - [[TestTradeHistory]] - `contains` [EXTRACTED]
 - [[Unit tests for tracker.py — SQLite prediction logging, bias, and Brier scoring.…]] - `rationale_for` [EXTRACTED]
 - [[_Phase3Base]] - `contains` [EXTRACTED]
-- [[_build_app()]] - `imports` [EXTRACTED]
 - [[_conn()_1]] - `imports` [EXTRACTED]
 - [[_in_memory_conn()]] - `contains` [EXTRACTED]
 - [[backfill_emos_data()]] - `imports` [EXTRACTED]

@@ -15,8 +15,6 @@ tags:
 - [[Grade Audit Module Doc order_executor.py]] - `conceptually_related_to` [INFERRED]
 - [[Graduation Brier Threshold (≤0.23)]] - `references` [EXTRACTED]
 - [[_drawdown_snapshot() Effective Balance Gate]] - `references` [EXTRACTED]
-- [[conftest.py]] - `references` [EXTRACTED]
-- [[paper.py]] - `references` [EXTRACTED]
 - [[test_drawdown_tiers.py]] - `references` [EXTRACTED]
 - [[test_paper.py]] - `references` [EXTRACTED]
 - [[test_paper_metrics.py]] - `references` [EXTRACTED]

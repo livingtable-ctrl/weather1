@@ -14,7 +14,6 @@ tags:
 ## Connections
 - [[AnalyticsTab]] - `shares_data_with` [INFERRED]
 - [[OverviewTab_1]] - `shares_data_with` [INFERRED]
-- [[PositionsTab_1]] - `shares_data_with` [INFERRED]
 - [[computeMark (V3)]] - `calls` [EXTRACTED]
 - [[fetchAll inner (V3)]] - `calls` [EXTRACTED]
 - [[mapTrades]] - `semantically_similar_to` [INFERRED]

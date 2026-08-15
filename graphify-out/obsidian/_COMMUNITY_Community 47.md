@@ -69,16 +69,14 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 145]]
 - 1 edge to [[_COMMUNITY_Community 385]]
 - 1 edge to [[_COMMUNITY_Community 55]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
 - 1 edge to [[_COMMUNITY_Safe IO CRC Validation Tests]]
 - 1 edge to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 
 ## Top bridge nodes
-- [[project_root()]] - degree 12, connects to 7 communities
+- [[project_root()]] - degree 11, connects to 6 communities
 - [[atomic_write_json_with_history()]] - degree 13, connects to 5 communities
-- [[test_cleanup_data_dir.py]] - degree 12, connects to 3 communities
 - [[_atomic_write_payload()]] - degree 8, connects to 3 communities
 - [[_replace_with_retry()]] - degree 7, connects to 3 communities
+- [[atomic_write_text()]] - degree 6, connects to 3 communities

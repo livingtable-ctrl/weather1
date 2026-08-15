@@ -12,9 +12,7 @@ tags:
 # test_cloud_backup.py
 
 ## Connections
-- [[cloud_backup()]] - `imports` [EXTRACTED]
 - [[cloud_backup.py_1]] - `calls` [EXTRACTED]
-- [[paper.py]] - `calls` [EXTRACTED]
 - [[test_backup_to_s3_calls_upload()]] - `contains` [EXTRACTED]
 - [[test_backup_to_s3_skips_when_boto3_missing()]] - `contains` [EXTRACTED]
 - [[test_backup_to_s3_skips_without_env()]] - `contains` [EXTRACTED]
