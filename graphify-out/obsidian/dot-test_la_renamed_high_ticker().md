@@ -12,7 +12,7 @@ tags:
 # .test_la_renamed_high_ticker()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[KXHIGHLAX (renamed from KXHIGHLA) → LA.]] - `rationale_for` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 

@@ -1,17 +1,18 @@
 ---
-source_file: "tests/test_hurricane_markets.py"
+source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 398"
-location: "L390"
+community: "Community 312"
+location: "L331"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_398
+  - community/Community_312
 ---
 
 # .test_falsy_env_var_values_stay_false()
 
 ## Connections
-- [[TestHurricaneCountGatesActive]] - `method` [EXTRACTED]
+- [[Review-caught gap only unset1 were ever exercised -- must confirm explicit…]] - `rationale_for` [EXTRACTED]
+- [[TestSnowGatesActive]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_398
+#graphify/code #graphify/EXTRACTED #community/Community_312

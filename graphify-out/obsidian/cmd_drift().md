@@ -17,7 +17,7 @@ tags:
 - [[detect_brier_drift()]] - `calls` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 

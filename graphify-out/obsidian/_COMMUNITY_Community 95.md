@@ -10,13 +10,13 @@ members: 27
 **Members:** 27 nodes
 
 ## Members
-- [[dot-__init__()_1]] - code - circuit_breaker.py
-- [[dot-__init__()_3]] - code - circuit_breaker.py
+- [[dot-__init__()_11]] - code - circuit_breaker.py
+- [[dot-__init__()_12]] - code - circuit_breaker.py
 - [[dot-_load_cooldowns()]] - code - circuit_breaker.py
 - [[dot-_load_history()]] - code - circuit_breaker.py
 - [[dot-_save_cooldowns()]] - code - circuit_breaker.py
 - [[dot-_save_history()]] - code - circuit_breaker.py
-- [[dot-check()]] - code - circuit_breaker.py
+- [[dot-check()_1]] - code - circuit_breaker.py
 - [[dot-is_in_cooldown()]] - code - circuit_breaker.py
 - [[dot-test_rapid_successive_calls_skip_disk_save_but_still_detect_crash()]] - code - tests/test_flash_crash_cb.py
 - [[dot-test_save_resumes_once_interval_elapses()]] - code - tests/test_flash_crash_cb.py
@@ -48,11 +48,11 @@ SORT file.name ASC
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_Community 365]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 167]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_Community 84]]
+- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_Community 227]]
 - 1 edge to [[_COMMUNITY_Community 85]]
+- 1 edge to [[_COMMUNITY_Community 167]]
 - 1 edge to [[_COMMUNITY_Community 293]]
 
 ## Top bridge nodes
@@ -60,4 +60,4 @@ SORT file.name ASC
 - [[test_flash_crash_cb.py]] - degree 6, connects to 2 communities
 - [[dot-_save_cooldowns()]] - degree 4, connects to 1 community
 - [[dot-_save_history()]] - degree 4, connects to 1 community
-- [[dot-__init__()_1]] - degree 2, connects to 1 community
+- [[dot-__init__()_11]] - degree 2, connects to 1 community

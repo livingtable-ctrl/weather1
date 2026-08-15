@@ -17,7 +17,7 @@ tags:
 - [[Phase 2 Batch O Same-Day Spend Tests]] - `imports` [EXTRACTED]
 - [[Sum of same-day paper trade costs placed today (UTC date). Used for same-day…]] - `rationale_for` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_63

@@ -10,7 +10,7 @@ members: 8
 **Members:** 8 nodes
 
 ## Members
-- [[dot-_make_enriched()_3]] - code - tests/test_trading.py
+- [[dot-_make_enriched()_4]] - code - tests/test_trading.py
 - [[dot-_run()_5]] - code - tests/test_trading.py
 - [[dot-test_adjusted_edge_zero_at_close()]] - code - tests/test_trading.py
 - [[dot-test_net_edge_reduced_near_close_vs_far()]] - code - tests/test_trading.py

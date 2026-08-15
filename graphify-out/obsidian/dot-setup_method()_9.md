@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "code"
-community: "Community 393"
-location: "L723"
+community: "Community 133"
+location: "L274"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_393
+  - community/Community_133
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestWasOrderedRecentlyTimestampBoundary]] - `method` [EXTRACTED]
+- [[TestLiveSettlement]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_393
+#graphify/code #graphify/EXTRACTED #community/Community_133

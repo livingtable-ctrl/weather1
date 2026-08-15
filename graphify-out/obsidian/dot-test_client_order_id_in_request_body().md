@@ -12,7 +12,7 @@ tags:
 # .test_client_order_id_in_request_body()
 
 ## Connections
-- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_3]] - `calls` [EXTRACTED]
 - [[TestClientOrderId]] - `method` [EXTRACTED]
 - [[client_order_id must appear in the POST body.]] - `rationale_for` [EXTRACTED]
 

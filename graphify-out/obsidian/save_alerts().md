@@ -12,7 +12,7 @@ tags:
 # save_alerts()
 
 ## Connections
-- [[Path_2]] - `references` [EXTRACTED]
+- [[Path_29]] - `references` [EXTRACTED]
 - [[Write alerts list to path using safe_io for resilient disk writes (8). P3-9…]] - `rationale_for` [EXTRACTED]
 - [[alerts.py]] - `contains` [EXTRACTED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]

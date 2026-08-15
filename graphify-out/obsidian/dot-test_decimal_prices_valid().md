@@ -12,7 +12,7 @@ tags:
 # .test_decimal_prices_valid()
 
 ## Connections
-- [[dot-_call()_2]] - `calls` [EXTRACTED]
+- [[dot-_call()_5]] - `calls` [EXTRACTED]
 - [[Prices already in decimal (0–1) must pass.]] - `rationale_for` [EXTRACTED]
 - [[TestValidateMarketPriceRange]] - `method` [EXTRACTED]
 

@@ -12,7 +12,7 @@ tags:
 # .test_min_var_does_not_return_the_max_value()
 
 ## Connections
-- [[Mutation-proof requesting var='min' on a date that only has a max entry must…_1]] - `rationale_for` [EXTRACTED]
+- [[Mutation-proof requesting var='min' on a date that only has a max entry must…]] - `rationale_for` [EXTRACTED]
 - [[TestFetchNbmIem]] - `method` [EXTRACTED]
 - [[_mock_nbs_response()]] - `calls` [EXTRACTED]
 - [[_row()]] - `calls` [EXTRACTED]

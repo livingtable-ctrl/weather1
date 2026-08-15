@@ -27,7 +27,7 @@ members: 23
 - [[When run_trade_cycle() returns a real (non-None) cycle_result, cmd_watch must…]] - rationale - tests/test_trade_cycle_engine.py
 - [[_analyze_once's own scan loop fires alert_strong_signal() for a new STRONG…]] - rationale - tests/test_trade_cycle_engine.py
 - [[_is_hedge isn't computed by run_trade_cycle() itself (it has no use for it) --…]] - rationale - tests/test_trade_cycle_engine.py
-- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…_1]] - rationale - tests/test_trade_cycle_engine.py
+- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…]] - rationale - tests/test_trade_cycle_engine.py
 - [[backlog.txt 'DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF SIGNAL TEXT, NOT…]] - rationale - tests/test_trade_cycle_engine.py
 - [[cmd_watch's auto-trading display must source from run_trade_cycle()'s own…]] - rationale - tests/test_trade_cycle_engine.py
 - [[cycle_result.markets is the RAW pre-dedup fetch result;…]] - rationale - tests/test_trade_cycle_engine.py

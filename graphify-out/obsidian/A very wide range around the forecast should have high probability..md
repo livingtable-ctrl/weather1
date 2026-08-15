@@ -12,6 +12,6 @@ tags:
 # A very wide range around the forecast should have high probability.
 
 ## Connections
-- [[dot-test_between_condition()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-test_between_condition()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Weather_Probability_Math_Tests

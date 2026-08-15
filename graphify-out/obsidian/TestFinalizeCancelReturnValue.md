@@ -12,8 +12,8 @@ tags:
 # TestFinalizeCancelReturnValue
 
 ## Connections
-- [[dot-setup_method()_15]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_14]] - `method` [EXTRACTED]
+- [[dot-setup_method()_11]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_6]] - `method` [EXTRACTED]
 - [[dot-test_raw_api_status_preserved_when_still_resting()]] - `method` [EXTRACTED]
 - [[dot-test_returns_canceled_zero_on_clean_cancel()]] - `method` [EXTRACTED]
 - [[dot-test_returns_filled_with_count_on_partial_fill()]] - `method` [EXTRACTED]

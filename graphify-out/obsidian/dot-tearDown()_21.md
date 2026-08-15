@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 286"
-location: "L2291"
+community: "Community 317"
+location: "L3392"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_286
+  - community/Community_317
 ---
 
 # .tearDown()
 
 ## Connections
-- [[TestEdgeDecayCurveConditionTypeGrpB]] - `method` [EXTRACTED]
+- [[TestPriceHistory]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_286
+#graphify/code #graphify/EXTRACTED #community/Community_317

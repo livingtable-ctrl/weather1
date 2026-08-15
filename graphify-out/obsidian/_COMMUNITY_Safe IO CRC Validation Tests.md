@@ -22,7 +22,7 @@ members: 54
 - [[P1-6 AtomicWriteError must be raised when the primary path is unwritable.]] - rationale - tests/test_safe_io.py
 - [[P1-6 emergency copy is written to fallback_dir before raising.]] - rationale - tests/test_safe_io.py
 - [[Passing an explicit base_dir (as most tests in this file do, for isolation)…]] - rationale - tests/test_safe_io.py
-- [[Path_29]] - code
+- [[Path_12]] - code
 - [[Regression test for the 2026-07-27 live bug every real caller omits…]] - rationale - tests/test_safe_io.py
 - [[Retries through N PermissionErrors, then returns normally once os.replace…]] - rationale - tests/test_safe_io.py
 - [[The actual bug class backlog.txt hurricane_climatology. fetch_hurdat2_raw's…]] - rationale - tests/test_safe_io.py
@@ -33,8 +33,8 @@ members: 54
 - [[_write_with_crc()]] - code - tests/test_safe_io.py
 - [[backlog.txt FORECAST_SIGMA.JSON ATOMIC WRITE CONTENTION multiple threads…]] - rationale - tests/test_safe_io.py
 - [[backlog.txt SAFE_IO -- NOTHING MONITORS data.emergency FOR REAL RECOVERY…]] - rationale - tests/test_safe_io.py
+- [[backlog.txt climate_indices.py's PDOPNA CACHE AND backtest.py's OWN CACHE…_1]] - rationale - tests/test_safe_io.py
 - [[backlog.txt climate_indices.py's PDOPNA CACHE AND backtest.py's OWN CACHE…_2]] - rationale - tests/test_safe_io.py
-- [[backlog.txt climate_indices.py's PDOPNA CACHE AND backtest.py's OWN CACHE…_3]] - rationale - tests/test_safe_io.py
 - [[test_atomic_write_concurrent_threads_same_target_no_collision()]] - code - tests/test_safe_io.py
 - [[test_atomic_write_default_fallback_does_not_clobber_original()]] - code - tests/test_safe_io.py
 - [[test_atomic_write_emergency_copy_written_on_failure()]] - code - tests/test_safe_io.py
@@ -77,11 +77,11 @@ SORT file.name ASC
 - 6 edges to [[_COMMUNITY_Community 301]]
 - 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 145]]
-- 1 edge to [[_COMMUNITY_Community 47]]
 - 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 1 edge to [[_COMMUNITY_Community 47]]
 - 1 edge to [[_COMMUNITY_Community 610]]
-- 1 edge to [[_COMMUNITY_Community 612]]
 - 1 edge to [[_COMMUNITY_Community 611]]
+- 1 edge to [[_COMMUNITY_Community 612]]
 - 1 edge to [[_COMMUNITY_Community 613]]
 - 1 edge to [[_COMMUNITY_Community 40]]
 

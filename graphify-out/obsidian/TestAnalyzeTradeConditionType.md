@@ -12,8 +12,8 @@ tags:
 # TestAnalyzeTradeConditionType
 
 ## Connections
-- [[dot-setup_method()_38]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_29]] - `method` [EXTRACTED]
+- [[dot-setup_method()_35]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_27]] - `method` [EXTRACTED]
 - [[dot-test_bias_correction_condition_type_param_accepted()]] - `method` [EXTRACTED]
 - [[dot-test_condition_type_scale_in_kelly()]] - `method` [EXTRACTED]
 - [[dot-test_monthly_rain_and_snow_condition_confidence()]] - `method` [EXTRACTED]

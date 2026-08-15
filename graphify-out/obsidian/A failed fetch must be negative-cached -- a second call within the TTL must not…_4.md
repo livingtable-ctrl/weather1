@@ -1,12 +1,12 @@
 ---
-source_file: "tests/test_weather_markets.py"
+source_file: "tests/test_metar.py"
 type: "rationale"
-community: "Community 447"
-location: "L2412"
+community: "Community 73"
+location: "L81"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_447
+  - community/Community_73
 ---
 
 # A failed fetch must be negative-cached -- a second call within the TTL must not…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_negative_caches_failure()_2]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_447
+#graphify/rationale #graphify/EXTRACTED #community/Community_73

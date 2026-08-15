@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[TestCorrelationMatrixIntegrity]] - `method` [EXTRACTED]
-- [[_make_trade()_3]] - `calls` [EXTRACTED]
+- [[_make_trade()]] - `calls` [EXTRACTED]
 - [[simulate_portfolio must always return correlation_applied in the result.]] - `rationale_for` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_134

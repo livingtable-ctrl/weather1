@@ -1,17 +1,18 @@
 ---
-source_file: "tests/test_execution_proof.py"
+source_file: "circuit_breaker.py"
 type: "code"
-community: "Community 105"
-location: "L198"
+community: "Community 95"
+location: "L35"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_105
+  - community/Community_95
 ---
 
 # .__init__()
 
 ## Connections
-- [[_FakeClient_1]] - `method` [EXTRACTED]
+- [[dot-__init__()_12]] - `calls` [EXTRACTED]
+- [[CircuitOpenError]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_105
+#graphify/code #graphify/EXTRACTED #community/Community_95

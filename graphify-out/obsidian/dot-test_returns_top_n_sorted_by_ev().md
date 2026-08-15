@@ -17,6 +17,6 @@ tags:
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[_make_analysis()_1]] - `calls` [EXTRACTED]
 - [[_make_market()]] - `calls` [EXTRACTED]
-- [[patch_1]] - `references` [EXTRACTED]
+- [[patch]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_176

@@ -12,7 +12,7 @@ tags:
 # .test_distribution_absent_by_default()
 
 ## Connections
-- [[dot-_run_sim()_1]] - `calls` [EXTRACTED]
+- [[dot-_run_sim()]] - `calls` [EXTRACTED]
 - [[TestPnlDistributionGated]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_246

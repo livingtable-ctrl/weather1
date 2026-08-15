@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_snow_markets.py"
+source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 312"
-location: "L298"
+community: "Community 434"
+location: "L154"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_312
+  - community/Community_434
 ---
 
 # .test_false_when_env_var_set_but_below_sample_floor()
 
 ## Connections
-- [[TestSnowGatesActive]] - `method` [EXTRACTED]
+- [[TestRainGatesActive]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_312
+#graphify/code #graphify/EXTRACTED #community/Community_434

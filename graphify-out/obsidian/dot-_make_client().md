@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_idempotency.py"
+source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 143"
-location: "L29"
+community: "Community 100"
+location: "L181"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_143
+  - community/Community_100
 ---
 
 # ._make_client()
 
 ## Connections
-- [[TestClientOrderId]] - `method` [EXTRACTED]
+- [[TestAmendOrder]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_143
+#graphify/code #graphify/EXTRACTED #community/Community_100

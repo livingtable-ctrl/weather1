@@ -12,9 +12,9 @@ tags:
 # TestFetchNbpPercentiles
 
 ## Connections
-- [[dot-setup_method()_24]] - `method` [EXTRACTED]
+- [[dot-setup_method()_5]] - `method` [EXTRACTED]
 - [[dot-test_bad_station_suffix_length_returns_none_without_network_call()]] - `method` [EXTRACTED]
-- [[dot-test_network_failure_returns_none_and_caches_the_miss()]] - `method` [EXTRACTED]
+- [[dot-test_network_failure_returns_none_and_caches_the_miss()_1]] - `method` [EXTRACTED]
 - [[dot-test_parses_real_shaped_html_response()]] - `method` [EXTRACTED]
 - [[dot-test_pil_derived_from_station_suffix()]] - `method` [EXTRACTED]
 - [[dot-test_repeat_calls_within_ttl_hit_cache_not_network()]] - `method` [EXTRACTED]

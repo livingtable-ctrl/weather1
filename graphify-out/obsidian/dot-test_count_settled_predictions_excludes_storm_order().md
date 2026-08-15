@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_log_settled()_2]] - `calls` [EXTRACTED]
-- [[dot-_seed_baseline()_1]] - `calls` [EXTRACTED]
+- [[dot-_seed_baseline()]] - `calls` [EXTRACTED]
 - [[TestLiveTradingGateConditionTypeFilter]] - `method` [EXTRACTED]
 - [[backlog.txt HURRICANE MARKETS -- storm-order model (2026-08-07) same this…]] - `rationale_for` [EXTRACTED]
 

@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_add_disputed_emos_outlier()]] - `calls` [EXTRACTED]
-- [[dot-_seed_baseline()_1]] - `calls` [EXTRACTED]
+- [[dot-_seed_baseline()]] - `calls` [EXTRACTED]
 - [[TestDisputedOutcomeTracking]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Tracker_Disputed_Outcome_Restoration

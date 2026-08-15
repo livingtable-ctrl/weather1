@@ -5,7 +5,7 @@ community: "Community 141"
 location: "line 20"
 tags:
   - graphify/code
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_141
 ---
 
@@ -15,4 +15,4 @@ tags:
 - [[kalshi_ws.py Module]] - `conceptually_related_to` [INFERRED]
 - [[requirements.txt (Python Dependencies)]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Community_141
+#graphify/code #graphify/EXTRACTED #community/Community_141

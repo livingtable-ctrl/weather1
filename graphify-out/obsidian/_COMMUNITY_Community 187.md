@@ -10,17 +10,17 @@ members: 18
 **Members:** 18 nodes
 
 ## Members
-- [[dot-setup_method()_23]] - code - tests/test_mos.py
+- [[dot-setup_method()_14]] - code - tests/test_mos.py
 - [[dot-test_days_out_uses_city_local_today_not_utc()]] - code - tests/test_mos.py
 - [[dot-test_fetch_mos_best_routing_uses_city_local_today_not_utc()]] - code - tests/test_mos.py
 - [[dot-test_max_temp_is_highest_in_day()]] - code - tests/test_mos.py
-- [[dot-test_negative_caches_failure()_1]] - code - tests/test_mos.py
+- [[dot-test_negative_caches_failure()]] - code - tests/test_mos.py
 - [[dot-test_returns_dict_on_success()]] - code - tests/test_mos.py
 - [[dot-test_returns_none_on_empty_data()]] - code - tests/test_mos.py
 - [[dot-test_returns_none_on_request_exception()]] - code - tests/test_mos.py
 - [[dot-test_station_lookup()]] - code - tests/test_mos.py
 - [[dot-test_unknown_city_returns_none()_1]] - code - tests/test_mos.py
-- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_3]] - rationale - tests/test_mos.py
+- [[A failed fetch must be negative-cached -- a second call within the TTL must not…]] - rationale - tests/test_mos.py
 - [[Clear the MOS in-process cache before each test.]] - rationale - tests/test_mos.py
 - [[TestFetchMos]] - code - tests/test_mos.py
 - [[fetch_mos returns a dict with max_temp_f on success.]] - rationale - tests/test_mos.py

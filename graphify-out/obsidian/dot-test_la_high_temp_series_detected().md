@@ -12,7 +12,7 @@ tags:
 # .test_la_high_temp_series_detected()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[KXHIGHLA temperature series → city == 'LA'.]] - `rationale_for` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 

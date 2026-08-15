@@ -19,8 +19,8 @@ members: 12
 - [[_check_api_failure_rate()]] - code - system_health.py
 - [[_check_platt_sanity()]] - code - system_health.py
 - [[check_system_health()]] - code - system_health.py
-- [[system_health.py_2]] - code - system_health.py
 - [[system_health.py]] - code - system_health.py
+- [[system_health.py_1]] - code - system_health.py
 - [[system_health.py — lightweight health checks before trade execution.]] - rationale - system_health.py
 
 ## Live Query (requires Dataview plugin)
@@ -31,14 +31,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 2 edges to [[_COMMUNITY_Community 36]]
+- 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 85]]
-- 1 edge to [[_COMMUNITY_Community 32]]
 - 1 edge to [[_COMMUNITY_Legacy Static Dashboard JS Pages]]
+- 1 edge to [[_COMMUNITY_Community 85]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 40]]
+- 1 edge to [[_COMMUNITY_Community 32]]
 - 1 edge to [[_COMMUNITY_Community 59]]
 
 ## Top bridge nodes

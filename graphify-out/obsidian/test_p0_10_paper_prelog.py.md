@@ -13,7 +13,7 @@ tags:
 ## Connections
 - [[P0-10 execution_log pre-log ordering for paper trades. Verifies that a…]] - `rationale_for` [EXTRACTED]
 - [[TestPaperPreLog]] - `contains` [EXTRACTED]
-- [[_make_opp()_1]] - `contains` [EXTRACTED]
+- [[_make_opp()_2]] - `contains` [EXTRACTED]
 - [[_stub_prereqs()]] - `contains` [EXTRACTED]
 - [[execution_log.py]] - `imports` [EXTRACTED]
 - [[execution_log.py_1]] - `calls` [EXTRACTED]

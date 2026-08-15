@@ -11,8 +11,8 @@ members: 9
 
 ## Members
 - [[dot-_insert_raw()]] - code - tests/test_tracker.py
-- [[dot-setUp()_18]] - code - tests/test_tracker.py
-- [[dot-tearDown()_18]] - code - tests/test_tracker.py
+- [[dot-setUp()_30]] - code - tests/test_tracker.py
+- [[dot-tearDown()_29]] - code - tests/test_tracker.py
 - [[dot-test_trend_bucket_uses_market_date_week()]] - code - tests/test_tracker.py
 - [[dot-test_trend_returns_list_of_dicts_with_week_brier_n()]] - code - tests/test_tracker.py
 - [[Each trend entry must have week, brier, and n keys.]] - rationale - tests/test_tracker.py

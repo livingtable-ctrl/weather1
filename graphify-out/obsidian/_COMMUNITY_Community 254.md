@@ -17,7 +17,7 @@ members: 14
 - [[Baseline sanity check the normal (no collision) alias-import cross-file call…]] - rationale - tests/test_dead_code_scan.py
 - [[Mutation-proof pair to the first test even when another file defines its OWN…]] - rationale - tests/test_dead_code_scan.py
 - [[No collision (module_c doesn't define its own `helper`) -- a plain, unaliased…]] - rationale - tests/test_dead_code_scan.py
-- [[Path_19]] - code
+- [[Path_13]] - code
 - [[Remove `def name(...)` so a function's own definition doesn't count as a self-…]] - rationale - tests/test_dead_code_scan.py
 - [[Return (has_real_call, has_string_reference) for `name` (a module-level…]] - rationale - tests/test_dead_code_scan.py
 - [[TestSameNameCollisionResolution]] - code - tests/test_dead_code_scan.py
@@ -37,6 +37,6 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[_resolve_prod_evidence()]] - degree 12, connects to 1 community
-- [[Path_19]] - degree 6, connects to 1 community
 - [[TestSameNameCollisionResolution]] - degree 6, connects to 1 community
+- [[Path_13]] - degree 6, connects to 1 community
 - [[_strip_def_line()]] - degree 3, connects to 1 community

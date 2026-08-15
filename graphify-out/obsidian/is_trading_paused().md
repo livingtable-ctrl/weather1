@@ -12,7 +12,7 @@ tags:
 # is_trading_paused()
 
 ## Connections
-- [[dot-check()_1]] - `calls` [EXTRACTED]
+- [[dot-check()]] - `calls` [EXTRACTED]
 - [[apipaper-order endpoint]] - `calls` [EXTRACTED]
 - [[Single source of truth for the TRADING_PAUSED kill-switch. Was previously re-…]] - `rationale_for` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]

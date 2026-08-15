@@ -12,7 +12,7 @@ tags:
 # .test_low_market_above_already_below_margin_is_locked()
 
 ## Connections
-- [[dot-_call()_5]] - `calls` [EXTRACTED]
+- [[dot-_call()_2]] - `calls` [EXTRACTED]
 - [[TestMetarLockInLowMarketAsymmetry]] - `method` [EXTRACTED]
 - [[low above 40', running min=30 (= 40-3 margin) monotone-safe — the min can…]] - `rationale_for` [EXTRACTED]
 

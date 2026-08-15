@@ -12,7 +12,7 @@ tags:
 # .test_position_limit_failure_does_not_suppress_runner_ups()
 
 ## Connections
-- [[dot-_analysis()_2]] - `calls` [EXTRACTED]
+- [[dot-_analysis()_4]] - `calls` [EXTRACTED]
 - [[dot-_market()_5]] - `calls` [EXTRACTED]
 - [[Round-2 review caught the limit-check-failed branch used to `return` early,…]] - `rationale_for` [EXTRACTED]
 - [[TestCmdTodayPlacementGates]] - `method` [EXTRACTED]

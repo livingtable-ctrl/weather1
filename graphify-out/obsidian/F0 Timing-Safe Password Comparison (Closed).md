@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[2a Timing-Safe Dashboard Password Comparison]] - `implements` [EXTRACTED]
-- [[web_app.py Module_1]] - `references` [EXTRACTED]
+- [[web_app.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_104

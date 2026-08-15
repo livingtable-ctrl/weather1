@@ -15,7 +15,7 @@ members: 24
 - [[Grid-search optimal blend weights per condition type (abovebelowbetween).…]] - rationale - calibration.py
 - [[Grid-search optimal blend weights per season. Returns {season {ensemble,…]] - rationale - calibration.py
 - [[Offline blend-weight calibration for seasonal and per-city model optimization.…]] - rationale - calibration.py
-- [[Path_4]] - code
+- [[Path_2]] - code
 - [[Random-search 200 simplex samples on train_rows; gate on val Brier improvement…]] - rationale - calibration.py
 - [[Row]] - code
 - [[Run all three blend-weight calibrations and write results atomically to disk.…]] - rationale - calibration.py
@@ -52,13 +52,13 @@ SORT file.name ASC
 - 2 edges to [[_COMMUNITY_Community 387]]
 - 2 edges to [[_COMMUNITY_Community 47]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 1 edge to [[_COMMUNITY_Community 37]]
+- 1 edge to [[_COMMUNITY_Community 353]]
+- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
+- 1 edge to [[_COMMUNITY_Community 151]]
+- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_Community 353]]
-- 1 edge to [[_COMMUNITY_Community 151]]
 
 ## Top bridge nodes
 - [[calibration.py]] - degree 20, connects to 8 communities

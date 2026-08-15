@@ -10,8 +10,8 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-setUp()_4]] - code - tests/test_paper.py
-- [[dot-tearDown()_4]] - code - tests/test_paper.py
+- [[dot-setUp()_26]] - code - tests/test_paper.py
+- [[dot-tearDown()_25]] - code - tests/test_paper.py
 - [[dot-test_drawdown_zero_at_start()]] - code - tests/test_paper.py
 - [[dot-test_max_drawdown_pct_correct()]] - code - tests/test_paper.py
 - [[dot-test_paused_from_peak_not_start()]] - code - tests/test_paper.py
@@ -29,8 +29,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 45]]
 - 1 edge to [[_COMMUNITY_Community 56]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
 - [[TestHighWaterMark]] - degree 10, connects to 2 communities

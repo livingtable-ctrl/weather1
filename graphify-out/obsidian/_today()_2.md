@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[test_gated_to_run_once_per_day()_1]] - `calls` [EXTRACTED]
 - [[test_retirement_probation.py]] - `contains` [EXTRACTED]
-- [[test_runs_again_on_a_new_day()_1]] - `calls` [EXTRACTED]
+- [[test_runs_again_on_a_new_day()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_140

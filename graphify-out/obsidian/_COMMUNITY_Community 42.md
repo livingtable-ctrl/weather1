@@ -52,7 +52,7 @@ members: 44
 - [[cron.py's anomaly-detection  black-swan-check-error halt reason, computed…]] - rationale - tests/test_trade_cycle_engine.py
 - [[oppadjusted_edge present but None must not raise TypeError from…]] - rationale - tests/test_trade_cycle_engine.py
 - [[oppnet_edge present but None (as opposed to simply absent) must not raise…]] - rationale - tests/test_trade_cycle_engine.py
-- [[parametrize_3]] - code
+- [[parametrize_2]] - code
 - [[validate() rejects strictly-below 0.002, so exactly 0.002 clears.]] - rationale - tests/test_trade_cycle_engine.py
 
 ## Live Query (requires Dataview plugin)

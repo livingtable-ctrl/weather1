@@ -10,8 +10,8 @@ members: 26
 **Members:** 26 nodes
 
 ## Members
-- [[dot-setUp()_3]] - code - tests/test_paper.py
-- [[dot-tearDown()_3]] - code - tests/test_paper.py
+- [[dot-setUp()_1]] - code - tests/test_paper.py
+- [[dot-tearDown()_1]] - code - tests/test_paper.py
 - [[dot-test_exposure_ignores_other_city()]] - code - tests/test_paper.py
 - [[dot-test_exposure_ignores_settled_trade()]] - code - tests/test_paper.py
 - [[dot-test_exposure_with_matching_trade()]] - code - tests/test_paper.py
@@ -45,8 +45,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 45]]
 - 1 edge to [[_COMMUNITY_Community 56]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
 - [[TestPortfolioKelly]] - degree 16, connects to 2 communities

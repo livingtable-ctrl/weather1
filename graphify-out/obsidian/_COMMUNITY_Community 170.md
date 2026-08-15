@@ -38,8 +38,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
+- 1 edge to [[_COMMUNITY_Community 51]]
 
 ## Top bridge nodes
 - [[TestSignalGraduationRegistry]] - degree 14, connects to 2 communities

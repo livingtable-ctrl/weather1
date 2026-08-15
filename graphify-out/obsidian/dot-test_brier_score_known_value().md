@@ -12,7 +12,7 @@ tags:
 # .test_brier_score_known_value()
 
 ## Connections
-- [[dot-_seed()_4]] - `calls` [EXTRACTED]
+- [[dot-_seed()_2]] - `calls` [EXTRACTED]
 - [[BS on 0.9-YES, 0.1-NO, 0.8-YES, 0.2-NO must equal 0.025.]] - `rationale_for` [EXTRACTED]
 - [[TestBrierScoreComputation]] - `method` [EXTRACTED]
 

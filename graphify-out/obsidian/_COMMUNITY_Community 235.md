@@ -35,13 +35,13 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 570]]
-- 1 edge to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 180]]
-- 1 edge to [[_COMMUNITY_Community 272]]
+- 1 edge to [[_COMMUNITY_Community 306]]
 - 1 edge to [[_COMMUNITY_Community 401]]
 - 1 edge to [[_COMMUNITY_Community 477]]
-- 1 edge to [[_COMMUNITY_Community 306]]
+- 1 edge to [[_COMMUNITY_Community 45]]
+- 1 edge to [[_COMMUNITY_Community 570]]
+- 1 edge to [[_COMMUNITY_Community 272]]
+- 1 edge to [[_COMMUNITY_Community 180]]
 
 ## Top bridge nodes
 - [[test_paper_metrics.py]] - degree 19, connects to 8 communities

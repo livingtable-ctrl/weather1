@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Fetch all ensemble member temps from one model for a given locationdate. var…]] - `rationale_for` [EXTRACTED]
 - [[_om_request()]] - `calls` [EXTRACTED]
-- [[date_11]] - `references` [EXTRACTED]
+- [[date_2]] - `references` [EXTRACTED]
 - [[get_ensemble_members()]] - `calls` [EXTRACTED]
 - [[get_ensemble_temps()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]

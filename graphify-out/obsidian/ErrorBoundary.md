@@ -16,6 +16,5 @@ tags:
 - [[dot-render()]] - `method` [EXTRACTED]
 - [[frontendsrcApp.jsx]] - `contains` [EXTRACTED]
 - [[main.jsx entry point]] - `calls` [EXTRACTED]
-- [[useData.js (hook module)]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_499

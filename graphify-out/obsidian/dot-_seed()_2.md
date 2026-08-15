@@ -1,17 +1,20 @@
 ---
-source_file: "tests/test_ml_bias.py"
+source_file: "tests/test_regression.py"
 type: "code"
-community: "Community 79"
-location: "L788"
+community: "Community 284"
+location: "L95"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_79
+  - community/Community_284
 ---
 
 # ._seed()
 
 ## Connections
-- [[TestTrainAllTemperatureScalingHourlyPool]] - `method` [EXTRACTED]
+- [[dot-test_brier_score_known_value()]] - `calls` [EXTRACTED]
+- [[dot-test_roc_auc_perfect_classifier()]] - `calls` [EXTRACTED]
+- [[Log predictions+outcomes into the temp DB.]] - `rationale_for` [EXTRACTED]
+- [[TestBrierScoreComputation]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_79
+#graphify/code #graphify/EXTRACTED #community/Community_284

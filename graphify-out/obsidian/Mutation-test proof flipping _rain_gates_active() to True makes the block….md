@@ -12,6 +12,6 @@ tags:
 # Mutation-test proof: flipping _rain_gates_active() to True makes the block…
 
 ## Connections
-- [[dot-test_does_not_block_when_gate_active()_4]] - `rationale_for` [EXTRACTED]
+- [[dot-test_does_not_block_when_gate_active()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_237

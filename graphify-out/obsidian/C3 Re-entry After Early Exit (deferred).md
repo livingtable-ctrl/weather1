@@ -4,7 +4,7 @@ type: "document"
 community: "Community 210"
 tags:
   - graphify/document
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_210
 ---
 
@@ -14,4 +14,4 @@ tags:
 - [[Category C Position Management Plan]] - `references` [EXTRACTED]
 - [[check_model_exits Threshold + Hold Time Fix]] - `semantically_similar_to` [INFERRED]
 
-#graphify/document #graphify/INFERRED #community/Community_210
+#graphify/document #graphify/EXTRACTED #community/Community_210

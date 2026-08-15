@@ -12,8 +12,8 @@ tags:
 # TestCalibrateCLI
 
 ## Connections
-- [[dot-setup_method()_3]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_3]] - `method` [EXTRACTED]
+- [[dot-setup_method()_39]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_30]] - `method` [EXTRACTED]
 - [[dot-test_calibrate_calls_update_learned_weights()]] - `method` [EXTRACTED]
 - [[dot-test_calibrate_platt_excludes_rain_only_city()]] - `method` [EXTRACTED]
 - [[dot-test_calibrate_platt_excludes_snow_only_city()]] - `method` [EXTRACTED]

@@ -12,7 +12,7 @@ tags:
 # .test_other_hurricane_shapes_always_refused_regardless_of_gate()
 
 ## Connections
-- [[dot-_analysis()_2]] - `calls` [EXTRACTED]
+- [[dot-_analysis()_4]] - `calls` [EXTRACTED]
 - [[dot-_market()_5]] - `calls` [EXTRACTED]
 - [[dot-_run_with_cpl_spy()]] - `calls` [EXTRACTED]
 - [[KXHURCAT (per-storm category) has no model at all -- must refuse…]] - `rationale_for` [EXTRACTED]

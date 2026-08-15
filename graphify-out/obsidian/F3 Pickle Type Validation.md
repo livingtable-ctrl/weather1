@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Security Audit Scope]] - `conceptually_related_to` [INFERRED]
 - [[databias_models.pkl]] - `conceptually_related_to` [INFERRED]
-- [[main.py Module_1]] - `references` [EXTRACTED]
+- [[main.py Module]] - `references` [EXTRACTED]
 - [[ml_bias.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/INFERRED #community/Community_179

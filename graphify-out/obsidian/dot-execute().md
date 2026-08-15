@@ -15,7 +15,7 @@ tags:
 - [[dot-is_open()]] - `calls` [EXTRACTED]
 - [[dot-record_failure()]] - `calls` [EXTRACTED]
 - [[dot-record_success()]] - `calls` [EXTRACTED]
-- [[Any_1]] - `references` [EXTRACTED]
+- [[Any_2]] - `references` [EXTRACTED]
 - [[Call fn(args, kwargs) with automatic circuit protection. Raises…]] - `rationale_for` [EXTRACTED]
 - [[CircuitBreaker]] - `method` [EXTRACTED]
 - [[CircuitOpenError]] - `calls` [EXTRACTED]

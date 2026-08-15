@@ -12,7 +12,7 @@ tags:
 # .test_missing_yes_bid_invalid()
 
 ## Connections
-- [[dot-_call()_2]] - `calls` [EXTRACTED]
+- [[dot-_call()_5]] - `calls` [EXTRACTED]
 - [[TestValidateMarketPriceRange]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_80

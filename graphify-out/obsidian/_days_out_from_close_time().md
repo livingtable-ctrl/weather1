@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[datetime_4]] - `references` [EXTRACTED]
+- [[datetime_2]] - `references` [EXTRACTED]
 - [[max(0, (close_dt.date() - today).days) -- the monthly-rain analog of the daily…]] - `rationale_for` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 

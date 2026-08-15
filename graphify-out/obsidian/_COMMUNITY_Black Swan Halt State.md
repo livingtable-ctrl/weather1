@@ -73,7 +73,7 @@ members: 200
 - [[Return recent predictions with outcomes where available.]] - rationale - tracker.py
 - [[Return the correct Kalshi base URL based on the current env setting.]] - rationale - main.py
 - [[Returns (brier, n) for the rolling window in a single query. Use this at…]] - rationale - tracker.py
-- [[Reverse the most recently placed (unsettled) paper trade if it was placed…]] - rationale - main.py
+- [[Reverse the most recently placed (unsettled) paper trade if it was placed…_1]] - rationale - main.py
 - [[Run 1000 Monte Carlo simulations on the current open paper positions.]] - rationale - main.py
 - [[Run METAR settlement lag monitor (polls from 5-7 PM local time).]] - rationale - main.py
 - [[Run a backtest on finalized Kalshi markets. Usage py main.py backtest city…]] - rationale - main.py
@@ -190,7 +190,7 @@ members: 200
 - [[get_source_reliability()]] - code - tracker.py
 - [[green()]] - code - colors.py
 - [[liquidity_color()]] - code - colors.py
-- [[main()_1]] - code - main.py
+- [[main()]] - code - main.py
 - [[main._liquidation_price]] - code - main.py
 - [[main.py]] - code - main.py
 - [[main.py File Grade median T1 710]] - document - docs/grade_audit/outputs/main.py.md
@@ -231,13 +231,13 @@ SORT file.name ASC
 - 9 edges to [[_COMMUNITY_Community 96]]
 - 9 edges to [[_COMMUNITY_Community 384]]
 - 8 edges to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
+- 7 edges to [[_COMMUNITY_Community 57]]
+- 7 edges to [[_COMMUNITY_Community 298]]
+- 7 edges to [[_COMMUNITY_Community 353]]
 - 7 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 7 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 7 edges to [[_COMMUNITY_Community 353]]
-- 7 edges to [[_COMMUNITY_Community 298]]
-- 7 edges to [[_COMMUNITY_Community 57]]
-- 6 edges to [[_COMMUNITY_Community 40]]
 - 6 edges to [[_COMMUNITY_Community 385]]
+- 6 edges to [[_COMMUNITY_Community 40]]
 - 5 edges to [[_COMMUNITY_Community 245]]
 - 5 edges to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 - 4 edges to [[_COMMUNITY_Community 351]]
@@ -245,68 +245,68 @@ SORT file.name ASC
 - 4 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
 - 3 edges to [[_COMMUNITY_Community 143]]
 - 3 edges to [[_COMMUNITY_Community 417]]
-- 3 edges to [[_COMMUNITY_Community 535]]
-- 3 edges to [[_COMMUNITY_Community 498]]
+- 3 edges to [[_COMMUNITY_Community 178]]
 - 3 edges to [[_COMMUNITY_Community 299]]
 - 3 edges to [[_COMMUNITY_Community 71]]
-- 3 edges to [[_COMMUNITY_Community 178]]
-- 3 edges to [[_COMMUNITY_Community 195]]
 - 3 edges to [[_COMMUNITY_Community 231]]
-- 2 edges to [[_COMMUNITY_Community 33]]
-- 2 edges to [[_COMMUNITY_Community 44]]
-- 2 edges to [[_COMMUNITY_Community 326]]
-- 2 edges to [[_COMMUNITY_Community 212]]
+- 3 edges to [[_COMMUNITY_Community 498]]
+- 3 edges to [[_COMMUNITY_Community 535]]
+- 3 edges to [[_COMMUNITY_Community 195]]
 - 2 edges to [[_COMMUNITY_Community 53]]
-- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 2 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
-- 2 edges to [[_COMMUNITY_Community 52]]
+- 2 edges to [[_COMMUNITY_Community 44]]
 - 2 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 2 edges to [[_COMMUNITY_Community 164]]
+- 2 edges to [[_COMMUNITY_Community 33]]
+- 2 edges to [[_COMMUNITY_Community 52]]
 - 2 edges to [[_COMMUNITY_Community 70]]
+- 2 edges to [[_COMMUNITY_Community 164]]
 - 2 edges to [[_COMMUNITY_Community 64]]
+- 2 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
+- 2 edges to [[_COMMUNITY_Community 326]]
 - 2 edges to [[_COMMUNITY_Community 182]]
 - 2 edges to [[_COMMUNITY_Community 272]]
-- 1 edge to [[_COMMUNITY_Community 325]]
-- 1 edge to [[_COMMUNITY_Community 118]]
+- 2 edges to [[_COMMUNITY_Community 212]]
+- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_Community 84]]
-- 1 edge to [[_COMMUNITY_Community 599]]
-- 1 edge to [[_COMMUNITY_Community 129]]
 - 1 edge to [[_COMMUNITY_Community 548]]
 - 1 edge to [[_COMMUNITY_Community 356]]
 - 1 edge to [[_COMMUNITY_Community 283]]
 - 1 edge to [[_COMMUNITY_Community 373]]
 - 1 edge to [[_COMMUNITY_Community 223]]
 - 1 edge to [[_COMMUNITY_Community 80]]
-- 1 edge to [[_COMMUNITY_Community 180]]
-- 1 edge to [[_COMMUNITY_Community 585]]
-- 1 edge to [[_COMMUNITY_Community 604]]
-- 1 edge to [[_COMMUNITY_Community 144]]
-- 1 edge to [[_COMMUNITY_Community 67]]
-- 1 edge to [[_COMMUNITY_Community 85]]
-- 1 edge to [[_COMMUNITY_Community 132]]
-- 1 edge to [[_COMMUNITY_Community 460]]
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
-- 1 edge to [[_COMMUNITY_Community 348]]
-- 1 edge to [[_COMMUNITY_Community 280]]
-- 1 edge to [[_COMMUNITY_Community 222]]
-- 1 edge to [[_COMMUNITY_Test Fixture Cache Clearing (conftest)]]
-- 1 edge to [[_COMMUNITY_Community 103]]
-- 1 edge to [[_COMMUNITY_Community 47]]
-- 1 edge to [[_COMMUNITY_Community 543]]
-- 1 edge to [[_COMMUNITY_Community 497]]
-- 1 edge to [[_COMMUNITY_Community 590]]
+- 1 edge to [[_COMMUNITY_Community 305]]
+- 1 edge to [[_COMMUNITY_Community 551]]
+- 1 edge to [[_COMMUNITY_Community 592]]
+- 1 edge to [[_COMMUNITY_Community 593]]
+- 1 edge to [[_COMMUNITY_Community 599]]
 - 1 edge to [[_COMMUNITY_Community 568]]
+- 1 edge to [[_COMMUNITY_Community 590]]
 - 1 edge to [[_COMMUNITY_Community 248]]
 - 1 edge to [[_COMMUNITY_Community 68]]
 - 1 edge to [[_COMMUNITY_Community 158]]
-- 1 edge to [[_COMMUNITY_Community 593]]
-- 1 edge to [[_COMMUNITY_Community 592]]
-- 1 edge to [[_COMMUNITY_Community 551]]
-- 1 edge to [[_COMMUNITY_Community 305]]
+- 1 edge to [[_COMMUNITY_Community 118]]
+- 1 edge to [[_COMMUNITY_Community 132]]
+- 1 edge to [[_COMMUNITY_Community 144]]
+- 1 edge to [[_COMMUNITY_Community 222]]
+- 1 edge to [[_COMMUNITY_Community 280]]
+- 1 edge to [[_COMMUNITY_Community 325]]
+- 1 edge to [[_COMMUNITY_Community 348]]
+- 1 edge to [[_COMMUNITY_Community 460]]
+- 1 edge to [[_COMMUNITY_Community 604]]
+- 1 edge to [[_COMMUNITY_Community 67]]
+- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 85]]
+- 1 edge to [[_COMMUNITY_Test Fixture Cache Clearing (conftest)]]
+- 1 edge to [[_COMMUNITY_Community 497]]
+- 1 edge to [[_COMMUNITY_Community 129]]
+- 1 edge to [[_COMMUNITY_Community 103]]
+- 1 edge to [[_COMMUNITY_Community 47]]
+- 1 edge to [[_COMMUNITY_Community 543]]
+- 1 edge to [[_COMMUNITY_Community 180]]
+- 1 edge to [[_COMMUNITY_Community 585]]
 
 ## Top bridge nodes
 - [[main.py]] - degree 320, connects to 56 communities
 - [[KalshiClient]] - degree 107, connects to 20 communities
 - [[output_formatters.py]] - degree 44, connects to 11 communities
-- [[main()_1]] - degree 82, connects to 9 communities
+- [[main()]] - degree 82, connects to 9 communities
 - [[cmd_market()]] - degree 25, connects to 7 communities

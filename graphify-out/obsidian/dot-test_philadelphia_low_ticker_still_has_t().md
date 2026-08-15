@@ -12,7 +12,7 @@ tags:
 # .test_philadelphia_low_ticker_still_has_t()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[KXLOWTPHIL (unrenamed, still has 'T') → Philadelphia.]] - `rationale_for` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 

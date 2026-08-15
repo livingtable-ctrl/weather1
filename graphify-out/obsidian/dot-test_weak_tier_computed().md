@@ -12,7 +12,7 @@ tags:
 # .test_weak_tier_computed()
 
 ## Connections
-- [[dot-_seed()_6]] - `calls` [EXTRACTED]
+- [[dot-_seed()_1]] - `calls` [EXTRACTED]
 - [[TestGetBrierByTier]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_127

@@ -12,7 +12,7 @@ tags:
 # TestParamSweepTemporalSplit
 
 ## Connections
-- [[dot-_make_trades()_1]] - `method` [EXTRACTED]
+- [[dot-_make_trades()]] - `method` [EXTRACTED]
 - [[dot-test_fewer_than_20_returns_error()]] - `method` [EXTRACTED]
 - [[dot-test_results_not_saved_when_holdout_fails()]] - `method` [EXTRACTED]
 - [[dot-test_sweep_parameter_unchanged()]] - `method` [EXTRACTED]

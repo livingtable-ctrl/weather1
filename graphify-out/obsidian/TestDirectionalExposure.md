@@ -12,8 +12,8 @@ tags:
 # TestDirectionalExposure
 
 ## Connections
-- [[dot-setUp()_5]] - `method` [EXTRACTED]
-- [[dot-tearDown()_5]] - `method` [EXTRACTED]
+- [[dot-setUp()_25]] - `method` [EXTRACTED]
+- [[dot-tearDown()_24]] - `method` [EXTRACTED]
 - [[dot-test_directional_exposure_other_side()]] - `method` [EXTRACTED]
 - [[dot-test_directional_exposure_same_side()]] - `method` [EXTRACTED]
 - [[dot-test_directional_penalty_applies_before_city_cap()]] - `method` [EXTRACTED]

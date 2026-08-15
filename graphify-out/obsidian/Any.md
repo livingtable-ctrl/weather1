@@ -1,18 +1,17 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 33"
+community: "Forecast Persistent Cache"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_33
+  - community/Forecast_Persistent_Cache
 ---
 
 # Any
 
 ## Connections
-- [[dot-__init__()]] - `references` [EXTRACTED]
-- [[dot-pick_variant()]] - `references` [EXTRACTED]
-- [[get_active_variant()]] - `references` [EXTRACTED]
+- [[dot-dump_to_disk()]] - `references` [EXTRACTED]
+- [[dot-load_from_disk()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_33
+#graphify/code #graphify/EXTRACTED #community/Forecast_Persistent_Cache

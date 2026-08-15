@@ -12,7 +12,7 @@ tags:
 # .test_multiple_predictions_averaged()
 
 ## Connections
-- [[dot-_seed()_6]] - `calls` [EXTRACTED]
+- [[dot-_seed()_1]] - `calls` [EXTRACTED]
 - [[TestGetBrierByTier]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_127

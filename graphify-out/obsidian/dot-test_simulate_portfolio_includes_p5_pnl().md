@@ -12,7 +12,7 @@ tags:
 # .test_simulate_portfolio_includes_p5_pnl()
 
 ## Connections
-- [[dot-_trade()_2]] - `calls` [EXTRACTED]
+- [[dot-_trade()_1]] - `calls` [EXTRACTED]
 - [[TestPortfolioVar]] - `method` [EXTRACTED]
 - [[simulate_portfolio()]] - `calls` [EXTRACTED]
 

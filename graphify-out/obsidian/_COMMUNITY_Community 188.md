@@ -10,8 +10,8 @@ members: 18
 **Members:** 18 nodes
 
 ## Members
-- [[dot-setUp()_7]] - code - tests/test_paper.py
-- [[dot-tearDown()_7]] - code - tests/test_paper.py
+- [[dot-setUp()_9]] - code - tests/test_paper.py
+- [[dot-tearDown()_9]] - code - tests/test_paper.py
 - [[dot-test_full_scaling_at_peak()]] - code - tests/test_paper.py
 - [[dot-test_kelly_scaled_at_partial_recovery()]] - code - tests/test_paper.py
 - [[dot-test_kelly_zero_below_20_pct()]] - code - tests/test_paper.py
@@ -37,8 +37,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 45]]
 - 1 edge to [[_COMMUNITY_Community 56]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
 - [[TestDrawdownScaling]] - degree 12, connects to 2 communities

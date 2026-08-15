@@ -12,7 +12,7 @@ tags:
 # .test_new_orleans_title_detected()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 - [[new orleans' in title → NewOrleans even with a generic ticker.]] - `rationale_for` [EXTRACTED]
 

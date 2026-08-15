@@ -12,7 +12,7 @@ tags:
 # _trade_to_position()
 
 ## Connections
-- [[dot-get_open()_1]] - `calls` [EXTRACTED]
+- [[dot-get_open()]] - `calls` [EXTRACTED]
 - [[Adapt one paper_trades.json trade dict into the shared Position shape…]] - `rationale_for` [EXTRACTED]
 - [[Position]] - `references` [EXTRACTED]
 - [[check_paper_position_exits()]] - `calls` [EXTRACTED]

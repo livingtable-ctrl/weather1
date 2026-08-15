@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Generate HTML report as fallback when fpdf2 is not installed.]] - `rationale_for` [EXTRACTED]
-- [[Path_13]] - `references` [EXTRACTED]
+- [[Path]] - `references` [EXTRACTED]
 - [[generate_weekly_report()]] - `calls` [EXTRACTED]
 - [[pdf_report.py]] - `contains` [EXTRACTED]
 

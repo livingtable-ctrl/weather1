@@ -12,9 +12,9 @@ tags:
 # TestCmdTodayPlacementGates
 
 ## Connections
-- [[dot-_analysis()_2]] - `method` [EXTRACTED]
+- [[dot-_analysis()_4]] - `method` [EXTRACTED]
 - [[dot-_market()_5]] - `method` [EXTRACTED]
-- [[dot-_run()_3]] - `method` [EXTRACTED]
+- [[dot-_run()_4]] - `method` [EXTRACTED]
 - [[dot-_run_with_cpl_spy()]] - `method` [EXTRACTED]
 - [[dot-test_check_position_limits_called_with_real_city_and_date()]] - `method` [EXTRACTED]
 - [[dot-test_fails_open_when_check_position_limits_raises()]] - `method` [EXTRACTED]

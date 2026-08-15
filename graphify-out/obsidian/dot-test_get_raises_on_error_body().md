@@ -12,7 +12,7 @@ tags:
 # .test_get_raises_on_error_body()
 
 ## Connections
-- [[dot-_make_client()_9]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_4]] - `calls` [EXTRACTED]
 - [[TestKalshiClientErrorBody]] - `method` [EXTRACTED]
 - [[_get must raise ValueError when response JSON has an error field.]] - `rationale_for` [EXTRACTED]
 

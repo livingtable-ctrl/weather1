@@ -17,7 +17,7 @@ tags:
 - [[Phase 2 Infrastructure Plan]] - `implements` [EXTRACTED]
 - [[Tracker Grade Audit]] - `references` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[tracker.py_2]] - `implements` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
+- [[tracker.py_1]] - `implements` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_36

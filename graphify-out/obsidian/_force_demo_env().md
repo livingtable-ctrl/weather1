@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[Ensure KALSHI_ENV=demo so _build_app doesn't require DASHBOARD_PASSWORD.]] - `rationale_for` [EXTRACTED]
-- [[fixture_12]] - `references` [EXTRACTED]
-- [[patch_1]] - `calls` [EXTRACTED]
+- [[fixture_3]] - `references` [EXTRACTED]
+- [[patch]] - `calls` [EXTRACTED]
 - [[test_suggested_bets.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_176

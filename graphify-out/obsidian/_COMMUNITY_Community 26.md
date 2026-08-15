@@ -48,7 +48,7 @@ members: 53
 - [[Unknown city returns the default sigma in the NWS RMSE range.]] - rationale - tests/test_gaussian_prob.py
 - [[When get_ensemble_members succeeds, blend_sources includes 'ensemble_cdf'.]] - rationale - tests/test_gaussian_prob.py
 - [[_load_dynamic_sigma()]] - code - weather_markets.py
-- [[_month_to_season()_1]] - code - weather_markets.py
+- [[_month_to_season()]] - code - weather_markets.py
 - [[gaussian_probability always returns a value in 0, 1.]] - rationale - tests/test_gaussian_prob.py
 - [[gaussian_probability()]] - code - weather_markets.py
 - [[get_ensemble_members returns None when the API errors.]] - rationale - tests/test_gaussian_prob.py
@@ -74,25 +74,25 @@ SORT file.name ASC
 ## Connections to other communities
 - 9 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 3 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 2 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 - 2 edges to [[_COMMUNITY_Community 257]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Test Fixture Cache Clearing (conftest)]]
-- 1 edge to [[_COMMUNITY_Community 217]]
+- 2 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
+- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_Community 163]]
-- 1 edge to [[_COMMUNITY_Community 465]]
 - 1 edge to [[_COMMUNITY_Community 277]]
+- 1 edge to [[_COMMUNITY_Community 465]]
+- 1 edge to [[_COMMUNITY_Community 82]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 41]]
 - 1 edge to [[_COMMUNITY_Community 575]]
-- 1 edge to [[_COMMUNITY_Community 82]]
-- 1 edge to [[_COMMUNITY_Community 497]]
-- 1 edge to [[_COMMUNITY_Community 211]]
+- 1 edge to [[_COMMUNITY_Test Fixture Cache Clearing (conftest)]]
+- 1 edge to [[_COMMUNITY_Community 217]]
 - 1 edge to [[_COMMUNITY_Community 109]]
+- 1 edge to [[_COMMUNITY_Community 211]]
+- 1 edge to [[_COMMUNITY_Community 497]]
 
 ## Top bridge nodes
 - [[Grade Audit Module Doc weather_markets.py]] - degree 10, connects to 8 communities
 - [[test_gaussian_prob.py]] - degree 21, connects to 7 communities
 - [[get_historical_sigma()]] - degree 15, connects to 3 communities
 - [[gaussian_probability()]] - degree 11, connects to 3 communities
-- [[Grade Audit Module Doc nws.py]] - degree 4, connects to 2 communities
+- [[_load_dynamic_sigma()]] - degree 4, connects to 2 communities

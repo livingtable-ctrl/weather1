@@ -10,8 +10,8 @@ members: 24
 **Members:** 24 nodes
 
 ## Members
-- [[dot-setUp()_41]] - code - tests/test_tracker.py
-- [[dot-tearDown()_40]] - code - tests/test_tracker.py
+- [[dot-setUp()_2]] - code - tests/test_tracker.py
+- [[dot-tearDown()_2]] - code - tests/test_tracker.py
 - [[dot-test_count_model_observations_counts_settled_rows_for_model_only()]] - code - tests/test_tracker.py
 - [[dot-test_count_model_observations_excludes_unsettled_rows()]] - code - tests/test_tracker.py
 - [[dot-test_count_model_observations_zero_for_unknown_model()]] - code - tests/test_tracker.py

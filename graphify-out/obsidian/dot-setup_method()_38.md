@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_signal_quality.py"
+source_file: "tests/test_nws_afd.py"
 type: "code"
-community: "Community 52"
-location: "L78"
+community: "Community 68"
+location: "L195"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_52
+  - community/Community_68
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestAnalyzeTradeConditionType]] - `method` [EXTRACTED]
+- [[TestFetchAfdDiscussion]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_52
+#graphify/code #graphify/EXTRACTED #community/Community_68

@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[No .py file anywhere in the repo should construct its own data path locally.…]] - `rationale_for` [EXTRACTED]
-- [[_all_source_files()_1]] - `calls` [EXTRACTED]
+- [[_all_source_files()]] - `calls` [EXTRACTED]
 - [[test_paths_bypass_guard.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_355

@@ -12,7 +12,7 @@ tags:
 # .test_las_vegas_low_ticker_detected()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_116

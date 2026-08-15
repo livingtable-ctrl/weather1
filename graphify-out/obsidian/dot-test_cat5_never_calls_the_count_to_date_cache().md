@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()_2]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_4]] - `calls` [EXTRACTED]
+- [[dot-_enriched()_3]] - `calls` [EXTRACTED]
 - [[TestAnalyzeHurricaneNextEventTrade]] - `method` [EXTRACTED]
 - [[cat5_hurricane has no live already occurred signal in this pass -- must never…]] - `rationale_for` [EXTRACTED]
 

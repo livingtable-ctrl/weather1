@@ -12,7 +12,7 @@ tags:
 
 ## Connections
 - [[Category C Position Management Plan]] - `implements` [EXTRACTED]
-- [[cron.py module]] - `references` [EXTRACTED]
+- [[cron.py module_1]] - `references` [EXTRACTED]
 - [[order_executor.py module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_210

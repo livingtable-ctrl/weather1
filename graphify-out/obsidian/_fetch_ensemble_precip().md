@@ -15,7 +15,7 @@ tags:
 - [[Fetch ensemble precipitation members (inches) for a citydate. ECMWF is fetched…]] - `rationale_for` [EXTRACTED]
 - [[_analyze_precip_trade()]] - `calls` [EXTRACTED]
 - [[_analyze_snow_trade()]] - `calls` [EXTRACTED]
-- [[date_11]] - `references` [EXTRACTED]
+- [[date_2]] - `references` [EXTRACTED]
 - [[is_all_null()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 

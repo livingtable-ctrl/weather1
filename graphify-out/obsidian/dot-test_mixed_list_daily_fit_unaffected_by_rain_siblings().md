@@ -12,7 +12,7 @@ tags:
 # .test_mixed_list_daily_fit_unaffected_by_rain_siblings()
 
 ## Connections
-- [[dot-_daily_market()_1]] - `calls` [EXTRACTED]
+- [[dot-_daily_market()]] - `calls` [EXTRACTED]
 - [[dot-_rain_market()]] - `calls` [EXTRACTED]
 - [[Rain siblings must not leak into the temperature event's own fit -- they're…]] - `rationale_for` [EXTRACTED]
 - [[TestComputeMarketImpliedGroupsMonthlyRain]] - `method` [EXTRACTED]

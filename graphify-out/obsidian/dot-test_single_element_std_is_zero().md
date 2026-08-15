@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Single-element ensemble std=0, min=max=mean=the value.]] - `rationale_for` [EXTRACTED]
-- [[TestEnsembleStats_1]] - `method` [EXTRACTED]
+- [[TestEnsembleStats]] - `method` [EXTRACTED]
 - [[ensemble_stats()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_160

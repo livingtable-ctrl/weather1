@@ -15,7 +15,7 @@ tags:
 - [[Returns (win, N) or (loss, N) or (none, 0) based on the last N…]] - `rationale_for` [EXTRACTED]
 - [[_collect_data Function]] - `calls` [EXTRACTED]
 - [[_collect_data()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
 - [[fear_greed_index()]] - `calls` [EXTRACTED]
 - [[is_streak_paused()]] - `calls` [EXTRACTED]

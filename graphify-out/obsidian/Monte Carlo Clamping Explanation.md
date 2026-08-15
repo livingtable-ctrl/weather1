@@ -4,7 +4,7 @@ type: "document"
 community: "Community 294"
 tags:
   - graphify/document
-  - graphify/EXTRACTED
+  - graphify/INFERRED
   - community/Community_294
 ---
 
@@ -14,4 +14,4 @@ tags:
 - [[B6 Tail-Risk Stress Testing]] - `semantically_similar_to` [INFERRED]
 - [[Bug Fixes April 30 2026 Plan]] - `implements` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_294
+#graphify/document #graphify/INFERRED #community/Community_294

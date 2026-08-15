@@ -1,19 +1,19 @@
 ---
-source_file: "acis_precip.py"
+source_file: "hurricane_climatology.py"
 type: "code"
-community: "Community 62"
-location: "L169"
+community: "Community 55"
+location: "L98"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_62
+  - community/Community_55
 ---
 
 # _cache_path()
 
 ## Connections
-- [[Path]] - `references` [EXTRACTED]
-- [[acis_precip.py]] - `contains` [EXTRACTED]
-- [[fetch_historical_daily()]] - `calls` [EXTRACTED]
+- [[Path_23]] - `references` [EXTRACTED]
+- [[fetch_hurdat2_raw()]] - `calls` [EXTRACTED]
+- [[hurricane_climatology.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_62
+#graphify/code #graphify/EXTRACTED #community/Community_55

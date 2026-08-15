@@ -12,7 +12,7 @@ tags:
 # .test_bid_zero_accepted()
 
 ## Connections
-- [[dot-_call()_2]] - `calls` [EXTRACTED]
+- [[dot-_call()_5]] - `calls` [EXTRACTED]
 - [[dot-_valid()]] - `calls` [EXTRACTED]
 - [[TestValidateMarketPriceRange]] - `method` [EXTRACTED]
 - [[yes_bid=0 (0¢) means no resting buy order — a normal illiquid quote.]] - `rationale_for` [EXTRACTED]

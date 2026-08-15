@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[3b Per-Station Bias Calibration]] - `conceptually_related_to` [INFERRED]
-- [[paper.py Module_1]] - `references` [EXTRACTED]
-- [[tracker.py Module_1]] - `references` [EXTRACTED]
+- [[paper.py Module]] - `references` [EXTRACTED]
+- [[tracker.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_249

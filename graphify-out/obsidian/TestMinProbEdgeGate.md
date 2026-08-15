@@ -12,7 +12,7 @@ tags:
 # TestMinProbEdgeGate
 
 ## Connections
-- [[dot-_make_enriched()_2]] - `method` [EXTRACTED]
+- [[dot-_make_enriched()_3]] - `method` [EXTRACTED]
 - [[dot-test_cron_imports_min_prob_edge()]] - `method` [EXTRACTED]
 - [[dot-test_low_prob_edge_signal_skipped()]] - `method` [EXTRACTED]
 - [[dot-test_min_prob_edge_constant_exists()]] - `method` [EXTRACTED]

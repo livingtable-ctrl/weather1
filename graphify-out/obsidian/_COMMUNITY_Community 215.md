@@ -38,8 +38,8 @@ SORT file.name ASC
 - 4 edges to [[_COMMUNITY_Community 111]]
 - 4 edges to [[_COMMUNITY_Community 45]]
 - 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 252]]
 - 1 edge to [[_COMMUNITY_Community 67]]
+- 1 edge to [[_COMMUNITY_Community 252]]
 
 ## Top bridge nodes
 - [[_clears_taker_fee()]] - degree 11, connects to 3 communities

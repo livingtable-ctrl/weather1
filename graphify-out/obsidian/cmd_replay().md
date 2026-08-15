@@ -17,7 +17,7 @@ tags:
 - [[dim()]] - `calls` [EXTRACTED]
 - [[get_order_by_id()]] - `calls` [EXTRACTED]
 - [[load_paper_trades()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 

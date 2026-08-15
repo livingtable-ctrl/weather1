@@ -14,10 +14,10 @@ tags:
 ## Connections
 - [[1a Extract paths.py (break circular dep)]] - `implements` [EXTRACTED]
 - [[System Audit Prompt (Enterprise Audit)]] - `conceptually_related_to` [INFERRED]
-- [[cron.py Module_1]] - `references` [EXTRACTED]
+- [[cron.py Module]] - `references` [EXTRACTED]
 - [[ml_bias.py Module]] - `references` [EXTRACTED]
-- [[paper.py Module_1]] - `references` [EXTRACTED]
+- [[paper.py Module]] - `references` [EXTRACTED]
 - [[paths.py Module]] - `references` [EXTRACTED]
-- [[tracker.py Module_1]] - `references` [EXTRACTED]
+- [[tracker.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_199

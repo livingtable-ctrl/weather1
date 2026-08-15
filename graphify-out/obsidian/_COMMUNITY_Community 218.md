@@ -25,7 +25,7 @@ members: 16
 - [[TestIsHurricaneNextEventTicker]] - code - tests/test_hurricane_markets.py
 - [[TestIsStormOrderTicker]] - code - tests/test_hurricane_markets.py
 - [[The exact bug class this must avoid KXHURCTOT is a strict string-prefix of…]] - rationale - tests/test_hurricane_markets.py
-- [[parametrize_2]] - code
+- [[parametrize]] - code
 
 ## Live Query (requires Dataview plugin)
 

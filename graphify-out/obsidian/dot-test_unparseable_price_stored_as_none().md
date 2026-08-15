@@ -12,7 +12,7 @@ tags:
 # .test_unparseable_price_stored_as_none()
 
 ## Connections
-- [[dot-_trade()_4]] - `calls` [EXTRACTED]
+- [[dot-_trade()_2]] - `calls` [EXTRACTED]
 - [[A malformed price string must not crash the bulk insert -- fail soft on that…]] - `rationale_for` [EXTRACTED]
 - [[TestTradeHistory]] - `method` [EXTRACTED]
 

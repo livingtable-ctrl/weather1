@@ -12,7 +12,7 @@ tags:
 # .test_returns_raw_post_response_unchanged()
 
 ## Connections
-- [[dot-_make_client()_8]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
 - [[No get_order() follow-up (unlike place_order) -- the amend response already…]] - `rationale_for` [EXTRACTED]
 - [[TestAmendOrder]] - `method` [EXTRACTED]
 

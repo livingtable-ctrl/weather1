@@ -12,7 +12,6 @@ tags:
 
 ## Connections
 - [[App.jsx (V3 React app shell)]] - `semantically_similar_to` [INFERRED]
-- [[OverviewTab.jsx (V3)]] - `semantically_similar_to` [INFERRED]
 - [[mockData.js (V3 temporary API scaffold)]] - `shares_data_with` [INFERRED]
 - [[risk.js (risk page)]] - `semantically_similar_to` [INFERRED]
 - [[utils.py]] - `conceptually_related_to` [INFERRED]

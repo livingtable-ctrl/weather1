@@ -12,7 +12,7 @@ tags:
 # TestRegressionFittedOriginalTen
 
 ## Connections
-- [[dot-_adjustment()_2]] - `method` [EXTRACTED]
+- [[dot-_adjustment()_1]] - `method` [EXTRACTED]
 - [[dot-test_denver_negative_enso_other_reverses_the_hand_set_sign()]] - `method` [EXTRACTED]
 - [[dot-test_seattle_positive_enso_other_fitted_spring_and_other_share_it()]] - `method` [EXTRACTED]
 - [[dot-test_seven_of_ten_original_cities_are_entirely_default()]] - `method` [EXTRACTED]

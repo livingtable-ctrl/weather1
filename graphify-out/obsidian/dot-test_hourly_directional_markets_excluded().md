@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[TestConsistency]] - `method` [EXTRACTED]
-- [[_market()]] - `calls` [EXTRACTED]
+- [[_market()_1]] - `calls` [EXTRACTED]
 - [[backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 1 KXTEMPxxxH…]] - `rationale_for` [EXTRACTED]
 - [[find_violations()]] - `calls` [EXTRACTED]
 

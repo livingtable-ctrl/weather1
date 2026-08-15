@@ -26,7 +26,7 @@ members: 29
 - [[dot-test_trip_count_increments_on_probe_failure()]] - code - tests/test_phase3_batch_b.py
 - [[CircuitOpenError]] - code - circuit_breaker.py
 - [[Create a non-persisting CircuitBreaker for tests.]] - rationale - tests/test_phase3_batch_b.py
-- [[Exception]] - code
+- [[Exception_1]] - code
 - [[P3-4 execute() provides automatic check → call → record protection.]] - rationale - tests/test_phase3_batch_b.py
 - [[P3-6 HALF-OPEN must allow exactly one probe and reopen on probe failure.]] - rationale - tests/test_phase3_batch_b.py
 - [[Phase 3 Batch B Circuit Breaker Tests]] - code - tests/test_phase3_batch_b.py
@@ -51,9 +51,9 @@ SORT file.name ASC
 - 6 edges to [[_COMMUNITY_Community 44]]
 - 4 edges to [[_COMMUNITY_Community 226]]
 - 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Community 95]]
-- 1 edge to [[_COMMUNITY_Community 351]]
 - 1 edge to [[_COMMUNITY_Black Swan Halt State]]
+- 1 edge to [[_COMMUNITY_Community 351]]
+- 1 edge to [[_COMMUNITY_Community 95]]
 
 ## Top bridge nodes
 - [[CircuitOpenError]] - degree 12, connects to 6 communities

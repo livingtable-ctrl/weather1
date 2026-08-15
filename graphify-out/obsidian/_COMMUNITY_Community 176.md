@@ -24,8 +24,8 @@ members: 19
 - [[_make_analysis()_1]] - code - tests/test_suggested_bets.py
 - [[_make_market()]] - code - tests/test_suggested_bets.py
 - [[_no_dashboard_password()]] - code - tests/test_suggested_bets.py
-- [[fixture_12]] - code
-- [[patch_1]] - code
+- [[fixture_3]] - code
+- [[patch]] - code
 - [[test_suggested_bets.py]] - code - tests/test_suggested_bets.py
 - [[utils.DASHBOARD_PASSWORD is cached at import time (conftest.py imports main,…]] - rationale - tests/test_suggested_bets.py
 - [[web_app.py (Flask dashboardAPI)]] - code - web_app.py
@@ -41,9 +41,9 @@ SORT file.name ASC
 - 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 71]]
-- 1 edge to [[_COMMUNITY_Community 43]]
 - 1 edge to [[_COMMUNITY_Community 242]]
+- 1 edge to [[_COMMUNITY_Community 43]]
+- 1 edge to [[_COMMUNITY_Community 71]]
 - 1 edge to [[_COMMUNITY_Community 564]]
 
 ## Top bridge nodes

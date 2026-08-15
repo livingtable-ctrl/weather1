@@ -1,16 +1,16 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 42"
+community: "Community 94"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_42
+  - community/Community_94
 ---
 
 # parametrize
 
 ## Connections
-- [[dot-test_tiered_candidate_clears_validates_own_edge_gates()]] - `references` [EXTRACTED]
+- [[dot-test_add_alert_invalid_target_price_raises()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_42
+#graphify/code #graphify/EXTRACTED #community/Community_94

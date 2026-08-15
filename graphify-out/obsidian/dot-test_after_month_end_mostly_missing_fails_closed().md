@@ -12,7 +12,7 @@ tags:
 # .test_after_month_end_mostly_missing_fails_closed()
 
 ## Connections
-- [[dot-_history_all_years_value()_2]] - `calls` [EXTRACTED]
+- [[dot-_history_all_years_value()]] - `calls` [EXTRACTED]
 - [[Opus-review-caught HIGH finding, exact reproduction scenario the ticket is…]] - `rationale_for` [EXTRACTED]
 - [[TestAnalyzeMonthlySnowTradeEndToEnd]] - `method` [EXTRACTED]
 

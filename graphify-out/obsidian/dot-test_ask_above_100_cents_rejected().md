@@ -12,7 +12,7 @@ tags:
 # .test_ask_above_100_cents_rejected()
 
 ## Connections
-- [[dot-_call()_2]] - `calls` [EXTRACTED]
+- [[dot-_call()_5]] - `calls` [EXTRACTED]
 - [[dot-_valid()]] - `calls` [EXTRACTED]
 - [[TestValidateMarketPriceRange]] - `method` [EXTRACTED]
 - [[yes_ask=150 normalizes to 1.5 — out of range.]] - `rationale_for` [EXTRACTED]

@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_log_settled()_2]] - `calls` [EXTRACTED]
-- [[dot-_seed_baseline()_1]] - `calls` [EXTRACTED]
+- [[dot-_seed_baseline()]] - `calls` [EXTRACTED]
 - [[Opus-review-caught (2026-08-07, LOW) the rainsnow exclusion tests above have…]] - `rationale_for` [EXTRACTED]
 - [[TestDisputedOutcomeTracking]] - `method` [EXTRACTED]
 

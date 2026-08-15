@@ -12,7 +12,7 @@ tags:
 # .test_mutation_flipping_a_sensitivity_value_changes_the_result()
 
 ## Connections
-- [[dot-_adjustment()_2]] - `calls` [EXTRACTED]
+- [[dot-_adjustment()_1]] - `calls` [EXTRACTED]
 - [[Direct proof the module-level tables are actually what temperature_adjustment()…]] - `rationale_for` [EXTRACTED]
 - [[TestTemperatureAdjustmentComputedValues]] - `method` [EXTRACTED]
 

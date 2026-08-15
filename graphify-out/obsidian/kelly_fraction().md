@@ -48,8 +48,8 @@ tags:
 - [[test_kelly_property.py]] - `references` [EXTRACTED]
 - [[test_weather.py]] - `imports` [EXTRACTED]
 - [[test_weather_markets.py]] - `imports` [EXTRACTED]
-- [[weather_markets.py_2]] - `implements` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
+- [[weather_markets.py_2]] - `implements` [EXTRACTED]
 - [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests

@@ -30,9 +30,9 @@ tags:
 - [[test_regression.py]] - `calls` [EXTRACTED]
 - [[test_tracker.py_1]] - `references` [EXTRACTED]
 - [[test_web_analytics.py]] - `references` [EXTRACTED]
-- [[tracker.py_2]] - `implements` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 - [[tracker.py_1]] - `implements` [EXTRACTED]
+- [[tracker.py_2]] - `implements` [EXTRACTED]
 - [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_71

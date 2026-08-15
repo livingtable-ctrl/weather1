@@ -12,7 +12,7 @@ tags:
 # auto_backtest()
 
 ## Connections
-- [[dot-_run()]] - `indirect_call` [INFERRED]
+- [[dot-_run()_1]] - `indirect_call` [INFERRED]
 - [[KalshiClient]] - `references` [EXTRACTED]
 - [[Run a quick 7-day backtest silently in a background thread on startup. If…]] - `rationale_for` [EXTRACTED]
 - [[brier_score()]] - `calls` [EXTRACTED]

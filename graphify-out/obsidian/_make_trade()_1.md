@@ -1,25 +1,26 @@
 ---
-source_file: "tests/test_early_exits.py"
+source_file: "tests/test_alerts_side.py"
 type: "code"
-community: "Community 231"
-location: "L9"
+community: "Community 208"
+location: "L8"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_231
+  - community/Community_208
 ---
 
 # _make_trade()
 
 ## Connections
-- [[dot-_shifted_trade_and_analysis()]] - `calls` [EXTRACTED]
-- [[dot-test_default_threshold_does_not_trigger_same_shift()]] - `calls` [EXTRACTED]
-- [[dot-test_edge_gone_threshold_is_negative()]] - `calls` [EXTRACTED]
-- [[dot-test_get_weather_markets_called_once_for_multiple_trades()]] - `calls` [EXTRACTED]
-- [[dot-test_lowering_threshold_triggers_previously_subthreshold_shift()]] - `calls` [EXTRACTED]
-- [[dot-test_minimum_hold_time_prevents_early_exit()]] - `calls` [EXTRACTED]
-- [[dot-test_model_flipped_requires_10pct_net_edge()]] - `calls` [EXTRACTED]
-- [[dot-test_new_trade_not_exited_by_probability_shift()]] - `calls` [EXTRACTED]
-- [[test_early_exits.py]] - `contains` [EXTRACTED]
+- [[dot-test_brier_check_failure_fails_closed()]] - `calls` [EXTRACTED]
+- [[dot-test_days_out_none_does_not_crash()]] - `calls` [EXTRACTED]
+- [[dot-test_mixed_sides_correct_win_count()]] - `calls` [EXTRACTED]
+- [[dot-test_no_side_consecutive_losses_trigger()]] - `calls` [EXTRACTED]
+- [[dot-test_no_side_consecutive_losses_trigger_black_swan()]] - `calls` [EXTRACTED]
+- [[dot-test_no_side_consecutive_wins_not_black_swan()]] - `calls` [EXTRACTED]
+- [[dot-test_no_side_losses_trigger_collapse()]] - `calls` [EXTRACTED]
+- [[dot-test_no_side_wins_not_counted_as_consec_losses()]] - `calls` [EXTRACTED]
+- [[dot-test_no_side_wins_not_counted_as_losses()]] - `calls` [EXTRACTED]
+- [[test_alerts_side.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_231
+#graphify/code #graphify/EXTRACTED #community/Community_208

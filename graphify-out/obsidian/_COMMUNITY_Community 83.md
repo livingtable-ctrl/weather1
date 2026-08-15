@@ -15,16 +15,16 @@ members: 30
 - [[dot-test_custom_kt_threshold_major_hurricane()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_hurricane_attainment_race_not_naming_race()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_named_storms_in_naming_order_excludes_unnamed_systems()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_no_qualifying_storm_returns_none()_1]] - code - tests/test_hurricane_climatology.py
+- [[dot-test_no_qualifying_storm_returns_none()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_pass_zero_is_the_documented_unconditional_identity()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_position_is_first_storm_to_reach_kt_not_first_storm_of_season()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_probability_reuses_next_event_probability_directly()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_same_day_tie_breaks_to_lowest_sequence_number()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_single_storm_season()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_unconditional_mode_hand_computed()_1]] - code - tests/test_hurricane_climatology.py
+- [[dot-test_unconditional_mode_hand_computed()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_unnamed_storm_does_not_consume_a_name_index_slot()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_untracked_kt_raises_valueerror()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_zero_storm_season_contributes_a_real_false_not_dropped()_1]] - code - tests/test_hurricane_climatology.py
+- [[dot-test_zero_storm_season_contributes_a_real_false_not_dropped()]] - code - tests/test_hurricane_climatology.py
 - [[2001's AL01 never reaches hurricane strength -- AL02 (the 2nd named storm) is…]] - rationale - tests/test_hurricane_climatology.py
 - [[2002 (no storm ever reaches HU) must still contribute a real False for any real…]] - rationale - tests/test_hurricane_climatology.py
 - [[2004 AL01 formed first (named first) but reaches HU on Sep 10; AL02 formed…]] - rationale - tests/test_hurricane_climatology.py

@@ -12,7 +12,7 @@ tags:
 # .dump_to_disk()
 
 ## Connections
-- [[Any_2]] - `references` [EXTRACTED]
+- [[Any]] - `references` [EXTRACTED]
 - [[Path_10]] - `references` [EXTRACTED]
 - [[Persist the entire cache to `path` as JSON, atomically (via…]] - `rationale_for` [EXTRACTED]
 - [[PersistentForecastCache]] - `method` [EXTRACTED]

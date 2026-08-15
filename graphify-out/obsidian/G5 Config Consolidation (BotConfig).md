@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[1b Wire MAX_DRAWDOWN_FRACTION through BotConfig]] - `conceptually_related_to` [INFERRED]
 - [[config.py Module (BotConfig)]] - `references` [EXTRACTED]
-- [[main.py Module_1]] - `references` [EXTRACTED]
-- [[paper.py Module_1]] - `references` [EXTRACTED]
+- [[main.py Module]] - `references` [EXTRACTED]
+- [[paper.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_156

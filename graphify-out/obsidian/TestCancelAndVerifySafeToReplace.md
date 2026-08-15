@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[dot-_seed_row()]] - `method` [EXTRACTED]
-- [[dot-setup_method()_16]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_15]] - `method` [EXTRACTED]
+- [[dot-setup_method()_19]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_12]] - `method` [EXTRACTED]
 - [[dot-test_false_when_cancel_call_itself_raises()]] - `method` [EXTRACTED]
 - [[dot-test_false_when_order_still_resting_despite_zero_fill_count()]] - `method` [EXTRACTED]
 - [[dot-test_false_when_partial_fill_detected()]] - `method` [EXTRACTED]

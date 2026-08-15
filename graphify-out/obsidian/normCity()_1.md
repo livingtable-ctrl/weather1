@@ -12,16 +12,9 @@ tags:
 # normCity()
 
 ## Connections
-- [[AnalyticsTab()_1]] - `calls` [EXTRACTED]
-- [[AnalyticsTab.jsx]] - `imports` [EXTRACTED]
-- [[CityPnLChart()]] - `calls` [EXTRACTED]
 - [[CommandPalette()]] - `calls` [EXTRACTED]
-- [[ForecastHeatmapChart()]] - `calls` [EXTRACTED]
 - [[ForecastTab()_1]] - `calls` [EXTRACTED]
 - [[ForecastTab.jsx]] - `imports` [EXTRACTED]
-- [[OverviewTab.jsx]] - `imports` [EXTRACTED]
-- [[PositionsTab()]] - `calls` [EXTRACTED]
-- [[PositionsTab.jsx]] - `imports` [EXTRACTED]
 - [[SignalsTab()]] - `calls` [EXTRACTED]
 - [[SignalsTab.jsx]] - `imports` [EXTRACTED]
 - [[TradesTab()_1]] - `calls` [EXTRACTED]

@@ -21,7 +21,7 @@ members: 32
 - [[dot-test_cutoff_excludes_future_rows_from_training()]] - code - tests/test_phase3_batch_c.py
 - [[dot-test_n_random_search_is_200()]] - code - tests/test_phase3_batch_c.py
 - [[dot-test_seasonal_accepts_cutoff_date_kwarg()]] - code - tests/test_phase3_batch_c.py
-- [[dot-test_weights_sum_to_one()_3]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_weights_sum_to_one()_5]] - code - tests/test_phase3_batch_c.py
 - [[dot-test_weights_with_explicit_cutoff_sum_to_one()]] - code - tests/test_phase3_batch_c.py
 - [[Generate n rows with spread-out dates for stable 8020 splits.]] - rationale - tests/test_phase3_batch_c.py
 - [[Grid-search optimal blend weights per city. Returns {city {ensemble,…]] - rationale - calibration.py

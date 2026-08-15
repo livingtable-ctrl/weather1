@@ -1,18 +1,18 @@
 ---
-source_file: "frontend/src/App.jsx"
+source_file: "weather app site V_3 (3)/src/tabs/RiskTab.jsx"
 type: "code"
-community: "Community 327"
-location: "L1481"
+community: "Community 193"
+location: "L180"
 tags:
   - graphify/code
-  - graphify/INFERRED
-  - community/Community_327
+  - graphify/EXTRACTED
+  - community/Community_193
 ---
 
 # RiskTab()
 
 ## Connections
-- [[authHeader Function]] - `calls` [EXTRACTED]
-- [[frontendsrcApp.jsx]] - `indirect_call` [INFERRED]
+- [[RiskTab.jsx]] - `contains` [EXTRACTED]
+- [[weather app site V_3 (3)srcApp.jsx]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_327
+#graphify/code #graphify/EXTRACTED #community/Community_193

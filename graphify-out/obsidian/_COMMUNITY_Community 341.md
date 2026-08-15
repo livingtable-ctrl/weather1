@@ -20,7 +20,7 @@ members: 11
 - [[If _is_cron_running() returns True, endpoint must return 409.]] - rationale - tests/test_p0_16_cron_endpoint.py
 - [[TestRunCronConcurrentGuard]] - code - tests/test_p0_16_cron_endpoint.py
 - [[_auth_headers()]] - code - tests/test_p0_16_cron_endpoint.py
-- [[_make_app()]] - code - tests/test_p0_16_cron_endpoint.py
+- [[_make_app()_1]] - code - tests/test_p0_16_cron_endpoint.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,6 +33,6 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_Community 566]]
 
 ## Top bridge nodes
-- [[_make_app()]] - degree 5, connects to 1 community
 - [[TestRunCronConcurrentGuard]] - degree 5, connects to 1 community
+- [[_make_app()_1]] - degree 5, connects to 1 community
 - [[_auth_headers()]] - degree 4, connects to 1 community

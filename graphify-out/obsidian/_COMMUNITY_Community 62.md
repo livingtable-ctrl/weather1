@@ -23,15 +23,15 @@ members: 35
 - [[POST to ACIS StnData for sdate=YYYY-MM-01 through through_day (always…_1]] - rationale - acis_snow.py
 - [[Parse one ACIS 'pcpn' daily value. Returns None for missing unparseable (never…]] - rationale - acis_precip.py
 - [[Parse one ACIS 'snow' daily value. Returns None for missing unparseable (never…]] - rationale - acis_snow.py
-- [[Path]] - code
-- [[Path_1]] - code
+- [[Path_24]] - code
+- [[Path_25]] - code
 - [[Returns (possibly-shifted remaining_sums, tilt_applied). No-ops…]] - rationale - acis_precip.py
-- [[_cache_is_stale()]] - code - acis_precip.py
-- [[_cache_is_stale()_1]] - code - acis_snow.py
-- [[_cache_path()]] - code - acis_precip.py
-- [[_cache_path()_1]] - code - acis_snow.py
-- [[_load_stale_cache_or_none()]] - code - acis_precip.py
-- [[_load_stale_cache_or_none()_1]] - code - acis_snow.py
+- [[_cache_is_stale()_1]] - code - acis_precip.py
+- [[_cache_is_stale()_2]] - code - acis_snow.py
+- [[_cache_path()_1]] - code - acis_precip.py
+- [[_cache_path()_2]] - code - acis_snow.py
+- [[_load_stale_cache_or_none()_1]] - code - acis_precip.py
+- [[_load_stale_cache_or_none()_2]] - code - acis_snow.py
 - [[_parse_pcpn_value()]] - code - acis_precip.py
 - [[_parse_snow_value()]] - code - acis_snow.py
 - [[_station_sid_for_city()]] - code - acis_precip.py
@@ -57,14 +57,14 @@ SORT file.name ASC
 - 6 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 4 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 2 edges to [[_COMMUNITY_Community 44]]
-- 2 edges to [[_COMMUNITY_Community 182]]
 - 2 edges to [[_COMMUNITY_Community 51]]
-- 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 271]]
-- 1 edge to [[_COMMUNITY_Community 237]]
+- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 2 edges to [[_COMMUNITY_Community 182]]
+- 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 1 edge to [[_COMMUNITY_Community 174]]
+- 1 edge to [[_COMMUNITY_Community 237]]
+- 1 edge to [[_COMMUNITY_Community 271]]
 
 ## Top bridge nodes
 - [[acis_precip.py]] - degree 23, connects to 9 communities

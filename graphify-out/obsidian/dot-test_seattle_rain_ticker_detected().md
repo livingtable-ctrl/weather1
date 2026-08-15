@@ -12,7 +12,7 @@ tags:
 # .test_seattle_rain_ticker_detected()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[Real ticker shape pulled live 2026-07-20. Would return None without the…]] - `rationale_for` [EXTRACTED]
 - [[TestMonthlyRainCityDetection]] - `method` [EXTRACTED]
 

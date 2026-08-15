@@ -12,7 +12,7 @@ tags:
 # TestBlendSourcesNormalisation
 
 ## Connections
-- [[dot-_make_enriched()_1]] - `method` [EXTRACTED]
+- [[dot-_make_enriched()]] - `method` [EXTRACTED]
 - [[dot-test_blend_sources_weights_sum_to_one_with_mos()]] - `method` [EXTRACTED]
 - [[dot-test_blend_sources_weights_sum_to_one_without_mos()]] - `method` [EXTRACTED]
 - [[Regression tests for L6-E MOS injection must not push blend_sources weights…]] - `rationale_for` [EXTRACTED]

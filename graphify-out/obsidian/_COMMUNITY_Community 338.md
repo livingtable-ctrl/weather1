@@ -10,8 +10,8 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-setup_method()_12]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_11]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_21]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_14]] - code - tests/test_live_execution.py
 - [[dot-test_canceled_order_resolves_to_canceled()]] - code - tests/test_live_execution.py
 - [[dot-test_executed_order_resolves_to_internal_filled_status()]] - code - tests/test_live_execution.py
 - [[dot-test_partial_fill_then_cancel_resolves_to_filled()]] - code - tests/test_live_execution.py

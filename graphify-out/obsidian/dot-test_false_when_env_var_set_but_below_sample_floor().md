@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_hourly_markets.py"
+source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 395"
-location: "L444"
+community: "Community 312"
+location: "L298"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_395
+  - community/Community_312
 ---
 
 # .test_false_when_env_var_set_but_below_sample_floor()
 
 ## Connections
-- [[TestHourlyGatesActive]] - `method` [EXTRACTED]
+- [[TestSnowGatesActive]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_395
+#graphify/code #graphify/EXTRACTED #community/Community_312

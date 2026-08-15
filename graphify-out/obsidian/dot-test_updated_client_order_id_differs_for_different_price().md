@@ -12,7 +12,7 @@ tags:
 # .test_updated_client_order_id_differs_for_different_price()
 
 ## Connections
-- [[dot-_make_client()_8]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
 - [[TestAmendOrder]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_100

@@ -12,8 +12,8 @@ tags:
 # TestWasOrderedRecentlyCanceledSpelling
 
 ## Connections
-- [[dot-setup_method()_8]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_8]] - `method` [EXTRACTED]
+- [[dot-setup_method()_28]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_20]] - `method` [EXTRACTED]
 - [[dot-test_api_canceled_order_does_not_block_reentry()]] - `method` [EXTRACTED]
 - [[dot-test_filled_order_still_blocks_reentry()]] - `method` [EXTRACTED]
 - [[dot-test_legacy_british_cancelled_spelling_does_not_block_reentry()]] - `method` [EXTRACTED]

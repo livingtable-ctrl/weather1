@@ -38,8 +38,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 1 edge to [[_COMMUNITY_Community 146]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 1 edge to [[_COMMUNITY_Community 146]]
 
 ## Top bridge nodes
 - [[censoring_correction()]] - degree 11, connects to 3 communities

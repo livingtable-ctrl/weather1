@@ -20,7 +20,7 @@ members: 57
 - [[LiveTradingGate.check()pre_live_trade_check()]] - code - trading_gates.py
 - [[Mark an open live position closed via an early protective exit (stop-…]] - rationale - execution_log.py
 - [[PaperPositionStore.save_peak]] - code - paper.py
-- [[Path_9]] - code
+- [[Path_8]] - code
 - [[Place a live Kalshi order with hard-stop guards. Returns (placed, dollar_cost).…]] - rationale - order_executor.py
 - [[Reconcile an open live position's tracked size after an IOC exit order only…]] - rationale - execution_log.py
 - [[Record a live order attempt. Returns the new row ID. Call with status='sent'…]] - rationale - execution_log.py
@@ -83,30 +83,30 @@ SORT file.name ASC
 - 6 edges to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 - 5 edges to [[_COMMUNITY_Community 422]]
 - 4 edges to [[_COMMUNITY_Community 97]]
-- 3 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 3 edges to [[_COMMUNITY_Community 67]]
 - 3 edges to [[_COMMUNITY_Community 111]]
-- 2 edges to [[_COMMUNITY_Community 195]]
-- 2 edges to [[_COMMUNITY_Community 40]]
+- 3 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 2 edges to [[_COMMUNITY_Community 389]]
-- 1 edge to [[_COMMUNITY_Community 167]]
-- 1 edge to [[_COMMUNITY_Community 32]]
-- 1 edge to [[_COMMUNITY_Community 157]]
-- 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
-- 1 edge to [[_COMMUNITY_Community 248]]
-- 1 edge to [[_COMMUNITY_Community 183]]
-- 1 edge to [[_COMMUNITY_Community 143]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 274]]
-- 1 edge to [[_COMMUNITY_Community 363]]
+- 2 edges to [[_COMMUNITY_Community 40]]
+- 2 edges to [[_COMMUNITY_Community 195]]
 - 1 edge to [[_COMMUNITY_Community 133]]
 - 1 edge to [[_COMMUNITY_Community 256]]
-- 1 edge to [[_COMMUNITY_Community 421]]
+- 1 edge to [[_COMMUNITY_Community 274]]
+- 1 edge to [[_COMMUNITY_Community 363]]
 - 1 edge to [[_COMMUNITY_Community 393]]
-- 1 edge to [[_COMMUNITY_Community 497]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
+- 1 edge to [[_COMMUNITY_Community 421]]
+- 1 edge to [[_COMMUNITY_Community 157]]
+- 1 edge to [[_COMMUNITY_Community 167]]
+- 1 edge to [[_COMMUNITY_Community 248]]
+- 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
+- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 1 edge to [[_COMMUNITY_Community 143]]
+- 1 edge to [[_COMMUNITY_Community 183]]
 - 1 edge to [[_COMMUNITY_Community 225]]
 - 1 edge to [[_COMMUNITY_Community 96]]
+- 1 edge to [[_COMMUNITY_Community 32]]
+- 1 edge to [[_COMMUNITY_Community 497]]
+- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_Community 351]]
 
 ## Top bridge nodes

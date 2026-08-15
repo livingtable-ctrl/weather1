@@ -10,8 +10,8 @@ members: 13
 **Members:** 13 nodes
 
 ## Members
-- [[dot-setup_method()_6]] - code - tests/test_execution_log.py
-- [[dot-teardown_method()_6]] - code - tests/test_execution_log.py
+- [[dot-setup_method()_17]] - code - tests/test_execution_log.py
+- [[dot-teardown_method()_10]] - code - tests/test_execution_log.py
 - [[dot-test_add_live_loss_write_failure_fails_closed()]] - code - tests/test_execution_log.py
 - [[dot-test_daily_live_loss_accumulates()]] - code - tests/test_execution_log.py
 - [[dot-test_daily_live_loss_add_returns_new_total()]] - code - tests/test_execution_log.py

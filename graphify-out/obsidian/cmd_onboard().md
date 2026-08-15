@@ -16,7 +16,7 @@ tags:
 - [[bold()]] - `calls` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[yellow()]] - `calls` [EXTRACTED]
 

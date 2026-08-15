@@ -12,6 +12,6 @@ tags:
 
 ## Connections
 - [[Graduation Progress Panel (TradesP&LBrier gates to go live)]] - `shares_data_with` [EXTRACTED]
-- [[Metric Cards Row (Paper balance, Open positions, Win rate, Brier score)]] - `references` [EXTRACTED]
+- [[Metric Cards Row (Paper balance, Open positions, Win rate, Brier score)_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_247

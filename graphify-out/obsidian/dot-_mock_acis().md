@@ -12,7 +12,7 @@ tags:
 # ._mock_acis()
 
 ## Connections
-- [[dot-_history_all_years_value()_1]] - `calls` [EXTRACTED]
+- [[dot-_history_all_years_value()_2]] - `calls` [EXTRACTED]
 - [[dot-test_boundary_exactly_16_day_horizon_does_fetch()]] - `calls` [EXTRACTED]
 - [[dot-test_boundary_just_over_16_days_skips_fetch()]] - `calls` [EXTRACTED]
 - [[dot-test_ensemble_fetch_none_fails_open()]] - `calls` [EXTRACTED]

@@ -12,6 +12,6 @@ tags:
 # Ensure KALSHI_ENV=demo so _build_app doesn't require DASHBOARD_PASSWORD.
 
 ## Connections
-- [[_force_demo_env()_1]] - `rationale_for` [EXTRACTED]
+- [[_force_demo_env()_2]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_71

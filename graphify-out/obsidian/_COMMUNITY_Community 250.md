@@ -13,7 +13,7 @@ members: 14
 - [[dot-test_current_api_fp_field_names_are_read()]] - code - tests/test_paper.py
 - [[dot-test_fp_field_names_preferred_over_legacy_when_both_present()]] - code - tests/test_paper.py
 - [[dot-test_illiquid_market_returns_0_50()]] - code - tests/test_paper.py
-- [[dot-test_liquid_market_returns_1_0()]] - code - tests/test_paper.py
+- [[dot-test_liquid_market_returns_1_0()_1]] - code - tests/test_paper.py
 - [[dot-test_low_liquidity_returns_0_70()]] - code - tests/test_paper.py
 - [[dot-test_medium_liquidity_returns_0_85()]] - code - tests/test_paper.py
 - [[dot-test_missing_fields_treated_as_zero_not_typeerror()]] - code - tests/test_paper.py
@@ -33,10 +33,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 56]]
-- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
+- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 45]]
+- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 
 ## Top bridge nodes
 - [[liquidity_kelly_scale()]] - degree 15, connects to 3 communities

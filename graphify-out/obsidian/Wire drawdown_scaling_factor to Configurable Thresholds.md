@@ -14,6 +14,6 @@ tags:
 - [[B1 Per-Trade Drawdown Re-check]] - `semantically_similar_to` [INFERRED]
 - [[Code Review Remediation Plan]] - `implements` [EXTRACTED]
 - [[Tighten DRAWDOWN_HALT_PCT to 20%]] - `references` [EXTRACTED]
-- [[paper.py module]] - `references` [EXTRACTED]
+- [[paper.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_224

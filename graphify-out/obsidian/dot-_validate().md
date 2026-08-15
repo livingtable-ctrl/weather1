@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[dot-get_candlesticks()]] - `calls` [EXTRACTED]
 - [[dot-get_events()]] - `calls` [EXTRACTED]
-- [[dot-get_market()]] - `calls` [EXTRACTED]
+- [[dot-get_market()_3]] - `calls` [EXTRACTED]
 - [[dot-get_markets()]] - `calls` [EXTRACTED]
 - [[dot-get_open_orders()]] - `calls` [EXTRACTED]
 - [[dot-get_orderbook()]] - `calls` [EXTRACTED]

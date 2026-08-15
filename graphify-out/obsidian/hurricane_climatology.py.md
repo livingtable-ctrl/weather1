@@ -13,9 +13,9 @@ tags:
 
 ## Connections
 - [[NOAA HURDAT2 best-track climatology for Kalshi's season-total hurricane…]] - `rationale_for` [EXTRACTED]
-- [[_cache_is_stale()_3]] - `contains` [EXTRACTED]
-- [[_cache_path()_3]] - `contains` [EXTRACTED]
-- [[_load_stale_cache_or_none()_2]] - `contains` [EXTRACTED]
+- [[_cache_is_stale()]] - `contains` [EXTRACTED]
+- [[_cache_path()]] - `contains` [EXTRACTED]
+- [[_load_stale_cache_or_none()]] - `contains` [EXTRACTED]
 - [[_named_storms_in_naming_order()]] - `contains` [EXTRACTED]
 - [[_warn_if_stale()]] - `contains` [EXTRACTED]
 - [[bootstrap_ci()]] - `contains` [EXTRACTED]

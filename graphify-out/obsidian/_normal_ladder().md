@@ -24,7 +24,7 @@ tags:
 - [[dot-test_returns_none_below_three_liquid_brackets()]] - `calls` [EXTRACTED]
 - [[dot-test_zero_volume_brackets_excluded_from_thin_book_count()]] - `calls` [EXTRACTED]
 - [[Build a sibling ladder whose mid-prices are the exact implied probability…]] - `rationale_for` [EXTRACTED]
-- [[_market()_1]] - `calls` [EXTRACTED]
+- [[_market()_2]] - `calls` [EXTRACTED]
 - [[test_market_implied_distribution.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_41

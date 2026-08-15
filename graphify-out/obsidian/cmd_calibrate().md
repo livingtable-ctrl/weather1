@@ -17,7 +17,7 @@ tags:
 - [[count_settled_predictions()]] - `calls` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[train_all_temperature_scaling Function]] - `calls` [EXTRACTED]
 - [[train_all_temperature_scaling()]] - `calls` [EXTRACTED]

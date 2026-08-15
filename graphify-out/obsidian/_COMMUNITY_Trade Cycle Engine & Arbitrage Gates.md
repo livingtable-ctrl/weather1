@@ -68,7 +68,7 @@ members: 63
 - [[cron.py's '!! N STRONG SIGNAL(S) -- placing paper trades !!' console banner…]] - rationale - tests/test_trade_cycle_engine.py
 - [[ctx.check_graduation_gate() is new to watch's path -- it never existed pre-…]] - rationale - tests/test_trade_cycle_engine.py
 - [[engine_env()]] - code - tests/test_trade_cycle_engine.py
-- [[fixture_14]] - code
+- [[fixture_1]] - code
 - [[main.cmd_backfill_price_history -- the `backfill-price-history` CLI command,…]] - rationale - tests/test_p1_remaining.py
 - [[test_trade_cycle_engine.py]] - code - tests/test_trade_cycle_engine.py
 - [[watch's live-capable path must not attempt to place an illiquid candidate, even…]] - rationale - tests/test_trade_cycle_engine.py

@@ -12,7 +12,7 @@ tags:
 # .test_falls_back_to_global_when_quintile_empty()
 
 ## Connections
-- [[dot-_seed()_8]] - `calls` [EXTRACTED]
+- [[dot-_seed()_3]] - `calls` [EXTRACTED]
 - [[TestGetQuintileBias]] - `method` [EXTRACTED]
 - [[With no data in the target quintile, returns global bias.]] - `rationale_for` [EXTRACTED]
 

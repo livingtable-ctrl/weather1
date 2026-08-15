@@ -27,8 +27,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Community 135]]
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
 - 1 edge to [[_COMMUNITY_Community 313]]
+- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
 
 ## Top bridge nodes
 - [[TestGetOptimalThreshold]] - degree 6, connects to 2 communities

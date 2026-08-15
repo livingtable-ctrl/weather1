@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Patch every external call cmd_cron makes so it can run without network.]] - `rationale_for` [EXTRACTED]
-- [[fixture_8]] - `references` [EXTRACTED]
+- [[fixture_9]] - `references` [EXTRACTED]
 - [[test_main_cron_smoke.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_40

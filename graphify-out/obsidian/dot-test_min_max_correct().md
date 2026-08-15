@@ -12,7 +12,7 @@ tags:
 # .test_min_max_correct()
 
 ## Connections
-- [[TestEnsembleStats_1]] - `method` [EXTRACTED]
+- [[TestEnsembleStats]] - `method` [EXTRACTED]
 - [[ensemble_stats()]] - `calls` [EXTRACTED]
 - [[min and max match the actual extremes.]] - `rationale_for` [EXTRACTED]
 

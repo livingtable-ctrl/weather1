@@ -17,7 +17,7 @@ tags:
 - [[dot-test_partial_call_preserves_other_cities_on_disk()]] - `method` [EXTRACTED]
 - [[dot-test_recomputing_a_city_overwrites_only_that_citys_entry()]] - `method` [EXTRACTED]
 - [[dot-test_sequential_partial_calls_accumulate_full_table()]] - `method` [EXTRACTED]
-- [[backlog.txt PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE…]] - `rationale_for` [EXTRACTED]
+- [[backlog.txt PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE…_1]] - `rationale_for` [EXTRACTED]
 - [[test_climatology.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_392

@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_mos_nbs.py"
+source_file: "tests/test_mos_nbp.py"
 type: "rationale"
-community: "Community 114"
-location: "L164"
+community: "Community 123"
+location: "L306"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_114
+  - community/Community_123
 ---
 
 # Mutation-proof: requesting var='min' on a date that only has a max entry must…
 
 ## Connections
-- [[dot-test_min_var_does_not_return_the_max_value()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_min_var_does_not_return_the_max_quantiles()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_114
+#graphify/rationale #graphify/EXTRACTED #community/Community_123

@@ -35,10 +35,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
 - 2 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 2 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
+- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 
 ## Top bridge nodes
 - [[has_ml_model()]] - degree 12, connects to 4 communities

@@ -35,17 +35,17 @@ SORT file.name ASC
 ## Connections to other communities
 - 5 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 132]]
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_Community 85]]
-- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
 - 1 edge to [[_COMMUNITY_Community 260]]
 - 1 edge to [[_COMMUNITY_Community 403]]
+- 1 edge to [[_COMMUNITY_Community 404]]
 - 1 edge to [[_COMMUNITY_Community 514]]
 - 1 edge to [[_COMMUNITY_Community 515]]
-- 1 edge to [[_COMMUNITY_Community 404]]
 - 1 edge to [[_COMMUNITY_Community 516]]
+- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
+- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
+- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
+- 1 edge to [[_COMMUNITY_Community 85]]
+- 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
 
 ## Top bridge nodes
 - [[Phase 2 Batch G Regression Tests]] - degree 13, connects to 6 communities

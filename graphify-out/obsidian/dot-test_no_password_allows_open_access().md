@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[TestMutationEndpointsRequireAuth]] - `method` [EXTRACTED]
 - [[When DASHBOARD_PASSWORD is empty, mutation endpoints are open (dev mode).]] - `rationale_for` [EXTRACTED]
-- [[_make_app()_1]] - `calls` [EXTRACTED]
+- [[_make_app()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_242

@@ -12,7 +12,7 @@ tags:
 # TestGaussianBlendSeparateSource
 
 ## Connections
-- [[dot-_make_enriched()]] - `method` [EXTRACTED]
+- [[dot-_make_enriched()_1]] - `method` [EXTRACTED]
 - [[dot-test_blend_sources_reports_gaussian_separately()]] - `method` [EXTRACTED]
 - [[dot-test_ensemble_prob_is_raw_member_fraction()]] - `method` [EXTRACTED]
 - [[Regression tests for L6-B Gaussian contribution must appear in blend_sources…]] - `rationale_for` [EXTRACTED]

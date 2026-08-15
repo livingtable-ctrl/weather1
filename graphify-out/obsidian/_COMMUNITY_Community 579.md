@@ -11,9 +11,9 @@ members: 4
 
 ## Members
 - [[Set DASHBOARD_UNPROTECTED=true so _build_app doesn't require…]] - rationale - tests/test_web_app.py
-- [[_force_demo_env()_2]] - code - tests/test_web_app.py
+- [[_force_demo_env()_1]] - code - tests/test_web_app.py
 - [[client()]] - code - tests/test_web_app.py
-- [[fixture_17]] - code
+- [[fixture_13]] - code
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,4 +28,4 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[client()]] - degree 3, connects to 2 communities
-- [[_force_demo_env()_2]] - degree 3, connects to 1 community
+- [[_force_demo_env()_1]] - degree 3, connects to 1 community

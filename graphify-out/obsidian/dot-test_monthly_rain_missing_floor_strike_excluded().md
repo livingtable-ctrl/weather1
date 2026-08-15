@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[A rain market missing floor_strike (malformedunexpected API shape) must be…]] - `rationale_for` [EXTRACTED]
 - [[TestConsistency]] - `method` [EXTRACTED]
-- [[_rain_market()]] - `calls` [EXTRACTED]
+- [[_rain_market()_1]] - `calls` [EXTRACTED]
 - [[find_violations()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_35

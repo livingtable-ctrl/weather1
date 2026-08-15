@@ -11,8 +11,8 @@ members: 9
 
 ## Members
 - [[18 - get_ensemble_member_accuracy() must stratify by city and season.]] - rationale - tests/test_tracker.py
-- [[dot-setUp()_22]] - code - tests/test_tracker.py
-- [[dot-tearDown()_22]] - code - tests/test_tracker.py
+- [[dot-setUp()_31]] - code - tests/test_tracker.py
+- [[dot-tearDown()_30]] - code - tests/test_tracker.py
 - [[dot-test_grpb_ensemble_city_filter()]] - code - tests/test_tracker.py
 - [[dot-test_grpb_ensemble_empty_returns_none()]] - code - tests/test_tracker.py
 - [[dot-test_grpb_ensemble_return_shape()]] - code - tests/test_tracker.py

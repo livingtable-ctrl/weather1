@@ -15,7 +15,7 @@ tags:
 - [[dot-test_high_ens_std_reduces_ensemble_weight()]] - `method` [EXTRACTED]
 - [[dot-test_low_ens_std_increases_ensemble_weight()]] - `method` [EXTRACTED]
 - [[dot-test_none_ens_std_returns_base_weights()]] - `method` [EXTRACTED]
-- [[dot-test_weights_sum_to_one()]] - `method` [EXTRACTED]
+- [[dot-test_weights_sum_to_one()_3]] - `method` [EXTRACTED]
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[test_forecasting.py]] - `contains` [EXTRACTED]
 

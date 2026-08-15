@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-test_circuit_breaker_skips_when_open()]] - `method` [EXTRACTED]
-- [[dot-test_negative_caches_failure()_2]] - `method` [EXTRACTED]
+- [[dot-test_negative_caches_failure()_1]] - `method` [EXTRACTED]
 - [[dot-test_parses_response_correctly()]] - `method` [EXTRACTED]
 - [[dot-test_returns_none_on_request_failure()]] - `method` [EXTRACTED]
 - [[dot-test_returns_none_when_key_missing()]] - `method` [EXTRACTED]

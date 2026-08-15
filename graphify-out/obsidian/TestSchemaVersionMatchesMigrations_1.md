@@ -12,8 +12,8 @@ tags:
 # TestSchemaVersionMatchesMigrations
 
 ## Connections
-- [[dot-setUp()_32]] - `method` [EXTRACTED]
-- [[dot-tearDown()_32]] - `method` [EXTRACTED]
+- [[dot-setUp()_21]] - `method` [EXTRACTED]
+- [[dot-tearDown()_20]] - `method` [EXTRACTED]
 - [[dot-test_local_hour_column_exists_after_init()]] - `method` [EXTRACTED]
 - [[dot-test_log_prediction_succeeds_with_local_hour()]] - `method` [EXTRACTED]
 - [[dot-test_schema_version_equals_migration_count()_1]] - `method` [EXTRACTED]

@@ -12,7 +12,7 @@ tags:
 # .test_healthy_position_is_left_alone()
 
 ## Connections
-- [[dot-_open_position_row()_1]] - `calls` [EXTRACTED]
+- [[dot-_open_position_row()]] - `calls` [EXTRACTED]
 - [[TestCheckLivePositionExits]] - `method` [EXTRACTED]
 - [[_check_live_position_exits()]] - `calls` [EXTRACTED]
 

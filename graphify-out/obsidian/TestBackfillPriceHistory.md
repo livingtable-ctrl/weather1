@@ -13,9 +13,9 @@ tags:
 
 ## Connections
 - [[dot-_candles()]] - `method` [EXTRACTED]
-- [[dot-_settle()]] - `method` [EXTRACTED]
-- [[dot-setUp()_42]] - `method` [EXTRACTED]
-- [[dot-tearDown()_41]] - `method` [EXTRACTED]
+- [[dot-_settle()_1]] - `method` [EXTRACTED]
+- [[dot-setUp()_43]] - `method` [EXTRACTED]
+- [[dot-tearDown()_42]] - `method` [EXTRACTED]
 - [[dot-test_backfills_settled_tickers_missing_price_history()]] - `method` [EXTRACTED]
 - [[dot-test_candlestick_fetch_failure_for_one_ticker_does_not_abort_the_pass()]] - `method` [EXTRACTED]
 - [[dot-test_disputed_settled_tickers_are_included()]] - `method` [EXTRACTED]

@@ -4558,13 +4558,6 @@
       }
     },
     {
-      "query": "tag:#community/Community_651",
-      "color": {
-        "a": 1,
-        "rgb": 15896107
-      }
-    },
-    {
       "query": "tag:#community/Community_652",
       "color": {
         "a": 1,
@@ -4842,6 +4835,13 @@
       "color": {
         "a": 1,
         "rgb": 15896107
+      }
+    },
+    {
+      "query": "tag:#community/Community_692",
+      "color": {
+        "a": 1,
+        "rgb": 14767961
       }
     }
   ]

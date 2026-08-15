@@ -18,7 +18,7 @@ tags:
 - [[Phase 5 Trading Portfolio Plan]] - `references` [INFERRED]
 - [[Phase 6 Dashboard Plan]] - `references` [INFERRED]
 - [[Phase 7 Data Safety Plan]] - `references` [INFERRED]
-- [[tracker.py_2]] - `references` [EXTRACTED]
+- [[tracker.py_1]] - `references` [EXTRACTED]
 - [[weather_markets.py_2]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/INFERRED #community/Community_36

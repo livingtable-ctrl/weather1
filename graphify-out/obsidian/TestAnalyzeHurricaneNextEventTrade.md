@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()_1]] - `method` [EXTRACTED]
-- [[dot-_enriched()_3]] - `method` [EXTRACTED]
+- [[dot-_enriched()_2]] - `method` [EXTRACTED]
 - [[dot-test_already_occurred_short_circuits_to_near_certain()]] - `method` [EXTRACTED]
 - [[dot-test_cat5_kt_derived_correctly()]] - `method` [EXTRACTED]
 - [[dot-test_cat5_never_calls_the_count_to_date_cache()]] - `method` [EXTRACTED]

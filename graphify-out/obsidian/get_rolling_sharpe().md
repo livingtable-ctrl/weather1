@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Annualised Sharpe ratio over the last window_days calendar days. Uses daily P&L…]] - `rationale_for` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[cmd_dashboard()]] - `calls` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]

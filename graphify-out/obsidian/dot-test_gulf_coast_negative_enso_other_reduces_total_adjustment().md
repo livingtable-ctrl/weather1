@@ -12,7 +12,7 @@ tags:
 # .test_gulf_coast_negative_enso_other_reduces_total_adjustment()
 
 ## Connections
-- [[dot-_adjustment()_2]] - `calls` [EXTRACTED]
+- [[dot-_adjustment()_1]] - `calls` [EXTRACTED]
 - [[TestRegressionFittedGapCities]] - `method` [EXTRACTED]
 - [[The 3 cities with a fitted negative ENSO other coefficient -- confirm it…]] - `rationale_for` [EXTRACTED]
 

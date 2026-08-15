@@ -12,8 +12,8 @@ tags:
 # TestSchemaVersionMatchesMigrations
 
 ## Connections
-- [[dot-setup_method()_5]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_5]] - `method` [EXTRACTED]
+- [[dot-setup_method()_16]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_9]] - `method` [EXTRACTED]
 - [[dot-test_all_migrated_columns_present_on_fresh_db()]] - `method` [EXTRACTED]
 - [[dot-test_genuine_operational_error_is_not_swallowed()]] - `method` [EXTRACTED]
 - [[dot-test_legacy_db_with_all_columns_but_no_version_self_heals()]] - `method` [EXTRACTED]

@@ -11,8 +11,8 @@ members: 53
 
 ## Members
 - [[dot-_fake_analysis()]] - code - tests/test_tracker.py
-- [[dot-setUp()_10]] - code - tests/test_tracker.py
-- [[dot-tearDown()_10]] - code - tests/test_tracker.py
+- [[dot-setUp()_13]] - code - tests/test_tracker.py
+- [[dot-tearDown()_13]] - code - tests/test_tracker.py
 - [[dot-test_bias_insufficient_data()]] - code - tests/test_tracker.py
 - [[dot-test_brier_returns_none_when_empty()]] - code - tests/test_tracker.py
 - [[dot-test_brier_score()]] - code - tests/test_tracker.py

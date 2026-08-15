@@ -5,7 +5,7 @@ community: "Community 48"
 location: "L514"
 tags:
   - graphify/code
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_48
 ---
 
@@ -15,4 +15,4 @@ tags:
 - [[__twkIsLight()]] - `calls` [EXTRACTED]
 - [[tweaks-panel.jsx]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_48
+#graphify/code #graphify/EXTRACTED #community/Community_48

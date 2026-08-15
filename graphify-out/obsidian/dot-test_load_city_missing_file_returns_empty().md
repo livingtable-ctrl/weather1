@@ -12,7 +12,7 @@ tags:
 # .test_load_city_missing_file_returns_empty()
 
 ## Connections
-- [[Path_16]] - `calls` [EXTRACTED]
+- [[Path_1]] - `calls` [EXTRACTED]
 - [[TestLoadWeights]] - `method` [EXTRACTED]
 - [[load_city_weights()]] - `calls` [EXTRACTED]
 

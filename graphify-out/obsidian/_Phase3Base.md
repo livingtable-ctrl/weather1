@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[dot-_add()]] - `method` [EXTRACTED]
-- [[dot-setUp()_17]] - `method` [EXTRACTED]
-- [[dot-tearDown()_17]] - `method` [EXTRACTED]
+- [[dot-setUp()_20]] - `method` [EXTRACTED]
+- [[dot-tearDown()_19]] - `method` [EXTRACTED]
 - [[Shared setUptearDown for Phase 3 test classes.]] - `rationale_for` [EXTRACTED]
 - [[TestBrierSkillScore]] - `inherits` [EXTRACTED]
 - [[TestCalibrationByCityConditionType]] - `inherits` [EXTRACTED]

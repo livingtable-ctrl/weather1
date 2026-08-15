@@ -23,8 +23,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 26]]
 - 1 edge to [[_COMMUNITY_Community 36]]
+- 1 edge to [[_COMMUNITY_Community 26]]
 
 ## Top bridge nodes
 - [[test_obs_weight.py]] - degree 4, connects to 2 communities

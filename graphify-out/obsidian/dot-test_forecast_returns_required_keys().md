@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[TestForecastAccuracyFixtures]] - `method` [EXTRACTED]
 - [[_open_meteo_response()]] - `calls` [EXTRACTED]
-- [[activate]] - `references` [EXTRACTED]
+- [[activate_1]] - `references` [EXTRACTED]
 - [[get_weather_forecast() always returns the expected schema keys.]] - `rationale_for` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_232

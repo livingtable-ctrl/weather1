@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[G1 Extract paths.py]] - `implements` [EXTRACTED]
-- [[cron.py Module_1]] - `references` [EXTRACTED]
-- [[main.py Module_1]] - `references` [EXTRACTED]
+- [[cron.py Module]] - `references` [EXTRACTED]
+- [[main.py Module]] - `references` [EXTRACTED]
 - [[paths.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_199

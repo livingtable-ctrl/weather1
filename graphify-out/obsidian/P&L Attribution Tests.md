@@ -16,6 +16,6 @@ tags:
 - [[Tests for strategy P&L attribution by signal source.]] - `rationale_for` [EXTRACTED]
 - [[get_pnl_by_signal_source()]] - `calls` [EXTRACTED]
 - [[log_prediction()]] - `calls` [EXTRACTED]
-- [[tmp_tracker()_2]] - `contains` [EXTRACTED]
+- [[tmp_tracker()_1]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

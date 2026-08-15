@@ -11,7 +11,7 @@ tags:
 # Brier Score Metric Card (0.151, -0.012, target <=0.20)
 
 ## Connections
-- [[Metric Cards Row (Paper balance, Open positions, Win rate, Brier score)_1]] - `references` [EXTRACTED]
+- [[Metric Cards Row (Paper balance, Open positions, Win rate, Brier score)]] - `references` [EXTRACTED]
 - [[Weather1 Paper Trading Engine (backend concept)]] - `shares_data_with` [INFERRED]
 
 #graphify/image #graphify/INFERRED #community/Community_192

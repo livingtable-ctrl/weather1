@@ -12,7 +12,7 @@ tags:
 # .test_p10_less_than_p90()
 
 ## Connections
-- [[TestEnsembleStats_1]] - `method` [EXTRACTED]
+- [[TestEnsembleStats]] - `method` [EXTRACTED]
 - [[ensemble_stats()]] - `calls` [EXTRACTED]
 - [[p10 = mean = p90 for a non-degenerate ensemble.]] - `rationale_for` [EXTRACTED]
 

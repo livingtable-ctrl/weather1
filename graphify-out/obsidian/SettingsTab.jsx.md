@@ -17,8 +17,6 @@ tags:
 - [[apiresume route]] - `calls` [EXTRACTED]
 - [[apiweekly-report route]] - `calls` [EXTRACTED]
 - [[SettingsTab()_1]] - `contains` [EXTRACTED]
-- [[authHeader()]] - `imports` [EXTRACTED]
 - [[weather app site V_3 (3)srcApp.jsx]] - `imports_from` [EXTRACTED]
-- [[weather app site V_3 (3)srcuseData.js]] - `imports_from` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_534

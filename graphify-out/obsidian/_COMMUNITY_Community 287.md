@@ -11,8 +11,8 @@ members: 13
 
 ## Members
 - [[dot-_log_and_settle()]] - code - tests/test_tracker.py
-- [[dot-setUp()_27]] - code - tests/test_tracker.py
-- [[dot-tearDown()_27]] - code - tests/test_tracker.py
+- [[dot-setUp()_15]] - code - tests/test_tracker.py
+- [[dot-tearDown()_15]] - code - tests/test_tracker.py
 - [[dot-test_column_exists_after_init()]] - code - tests/test_tracker.py
 - [[dot-test_probation_rolling_isolates_from_non_probation_rows()]] - code - tests/test_tracker.py
 - [[dot-test_probation_rolling_none_below_min_samples()]] - code - tests/test_tracker.py

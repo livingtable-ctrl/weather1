@@ -31,9 +31,9 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 1 edge to [[_COMMUNITY_Community 131]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Weather Probability Math Tests]]
+- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 
 ## Top bridge nodes
 - [[sigma_audit.py]] - degree 7, connects to 1 community

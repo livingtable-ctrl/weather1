@@ -12,7 +12,7 @@ tags:
 # _degraded_flag_path()
 
 ## Connections
-- [[Path_9]] - `references` [EXTRACTED]
+- [[Path_8]] - `references` [EXTRACTED]
 - [[_clear_degraded_flag()]] - `calls` [EXTRACTED]
 - [[_degraded_for_today()]] - `calls` [EXTRACTED]
 - [[_set_degraded_flag()]] - `calls` [EXTRACTED]

@@ -11,35 +11,35 @@ members: 31
 
 ## Members
 - [[MOCK]] - code - weather app site V_3 (3)/src/mockData.js
-- [[_brng()_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[agedPositions_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[alerts_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[balanceHist_1]] - code - weather app site V_3 (3)/src/mockData.js
+- [[_brng()]] - code - weather app site V_3 (3)/src/mockData.js
+- [[agedPositions]] - code - weather app site V_3 (3)/src/mockData.js
+- [[alerts]] - code - weather app site V_3 (3)/src/mockData.js
+- [[balanceHist]] - code - weather app site V_3 (3)/src/mockData.js
 - [[balanceWalk()_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[brierByDays_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[brierHist_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[calibration_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[circuitBreakers_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[cities_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[cityBrier_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[cityCalibration_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[closedTrades_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[correlatedEvents_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[directionalBias_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[expiryCluster_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[forecastDetail_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[mlModels_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[modelAccuracy_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[opportunities_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[pnlAttribution_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[positions_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[priceImprovement_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[recentTrades_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[rocCurve_1]] - code - weather app site V_3 (3)/src/mockData.js
+- [[brierByDays]] - code - weather app site V_3 (3)/src/mockData.js
+- [[brierHist]] - code - weather app site V_3 (3)/src/mockData.js
+- [[calibration]] - code - weather app site V_3 (3)/src/mockData.js
+- [[circuitBreakers]] - code - weather app site V_3 (3)/src/mockData.js
+- [[cities]] - code - weather app site V_3 (3)/src/mockData.js
+- [[cityBrier]] - code - weather app site V_3 (3)/src/mockData.js
+- [[cityCalibration]] - code - weather app site V_3 (3)/src/mockData.js
+- [[closedTrades]] - code - weather app site V_3 (3)/src/mockData.js
+- [[correlatedEvents]] - code - weather app site V_3 (3)/src/mockData.js
+- [[directionalBias]] - code - weather app site V_3 (3)/src/mockData.js
+- [[expiryCluster]] - code - weather app site V_3 (3)/src/mockData.js
+- [[forecastDetail]] - code - weather app site V_3 (3)/src/mockData.js
+- [[mlModels]] - code - weather app site V_3 (3)/src/mockData.js
+- [[modelAccuracy]] - code - weather app site V_3 (3)/src/mockData.js
+- [[opportunities]] - code - weather app site V_3 (3)/src/mockData.js
+- [[pnlAttribution]] - code - weather app site V_3 (3)/src/mockData.js
+- [[positions]] - code - weather app site V_3 (3)/src/mockData.js
+- [[priceImprovement]] - code - weather app site V_3 (3)/src/mockData.js
+- [[recentTrades]] - code - weather app site V_3 (3)/src/mockData.js
+- [[rocCurve]] - code - weather app site V_3 (3)/src/mockData.js
 - [[samedayCalibration]] - code - weather app site V_3 (3)/src/mockData.js
-- [[stats_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[todayForecasts_1]] - code - weather app site V_3 (3)/src/mockData.js
-- [[tomorrowForecasts_1]] - code - weather app site V_3 (3)/src/mockData.js
+- [[stats]] - code - weather app site V_3 (3)/src/mockData.js
+- [[todayForecasts]] - code - weather app site V_3 (3)/src/mockData.js
+- [[tomorrowForecasts]] - code - weather app site V_3 (3)/src/mockData.js
 - [[weather app site V_3 (3)srcmockData.js]] - code - weather app site V_3 (3)/src/mockData.js
 
 ## Live Query (requires Dataview plugin)
@@ -48,10 +48,3 @@ members: 31
 TABLE source_file, type FROM #community/Community_81
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 66]]
-
-## Top bridge nodes
-- [[weather app site V_3 (3)srcmockData.js]] - degree 31, connects to 1 community
-- [[MOCK]] - degree 2, connects to 1 community

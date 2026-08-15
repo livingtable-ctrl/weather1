@@ -1,18 +1,20 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 232"
+community: "Community 142"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_232
+  - community/Community_142
 ---
 
 # activate
 
 ## Connections
-- [[dot-test_forecast_gracefully_handles_api_failure()]] - `references` [EXTRACTED]
-- [[dot-test_forecast_returns_required_keys()]] - `references` [EXTRACTED]
-- [[dot-test_forecast_within_tolerance()]] - `references` [EXTRACTED]
+- [[dot-test_all_models_fail_returns_none()]] - `references` [EXTRACTED]
+- [[dot-test_dead_model_all_null_response_treated_as_failure()]] - `references` [EXTRACTED]
+- [[dot-test_partial_model_failure_still_returns()]] - `references` [EXTRACTED]
+- [[dot-test_returns_forecast_when_all_models_respond()]] - `references` [EXTRACTED]
+- [[dot-test_returns_none_when_target_date_missing()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_232
+#graphify/code #graphify/EXTRACTED #community/Community_142

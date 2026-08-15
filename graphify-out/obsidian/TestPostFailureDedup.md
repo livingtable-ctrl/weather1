@@ -12,7 +12,7 @@ tags:
 # TestPostFailureDedup
 
 ## Connections
-- [[dot-_make_client()_1]] - `method` [EXTRACTED]
+- [[dot-_make_client()_3]] - `method` [EXTRACTED]
 - [[dot-test_find_order_by_client_id_returns_none_on_api_error()]] - `method` [EXTRACTED]
 - [[dot-test_reraises_when_post_fails_and_order_not_found()]] - `method` [EXTRACTED]
 - [[dot-test_returns_existing_order_when_post_fails_but_order_landed()]] - `method` [EXTRACTED]

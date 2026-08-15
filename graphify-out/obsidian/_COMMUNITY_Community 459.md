@@ -28,9 +28,9 @@ SORT file.name ASC
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 56]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 - 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 - 1 edge to [[_COMMUNITY_Community 330]]
-- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
 - [[corr_kelly_scale()]] - degree 12, connects to 4 communities

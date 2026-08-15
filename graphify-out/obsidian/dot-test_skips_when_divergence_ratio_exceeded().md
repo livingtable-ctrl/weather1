@@ -12,9 +12,9 @@ tags:
 # .test_skips_when_divergence_ratio_exceeded()
 
 ## Connections
-- [[dot-_analysis()_2]] - `calls` [EXTRACTED]
+- [[dot-_analysis()_4]] - `calls` [EXTRACTED]
 - [[dot-_market()_5]] - `calls` [EXTRACTED]
-- [[dot-_run()_3]] - `calls` [EXTRACTED]
+- [[dot-_run()_4]] - `calls` [EXTRACTED]
 - [[TestAnalyzeOnceDirectionalConsensusGates]] - `method` [EXTRACTED]
 - [[recommended_side=yes, market_prob=0.30, forecast_prob=0.70 - _mkt_dir=0.30,…]] - `rationale_for` [EXTRACTED]
 

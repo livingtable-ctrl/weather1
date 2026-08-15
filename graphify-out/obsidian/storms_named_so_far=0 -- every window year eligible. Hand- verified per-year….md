@@ -12,6 +12,6 @@ tags:
 # storms_named_so_far=0 -- every window year eligible. Hand- verified per-year…
 
 ## Connections
-- [[dot-test_unconditional_mode_hand_computed()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-test_unconditional_mode_hand_computed()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_83

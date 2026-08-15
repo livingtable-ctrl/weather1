@@ -42,14 +42,14 @@ SORT file.name ASC
 ## Connections to other communities
 - 8 edges to [[_COMMUNITY_Community 254]]
 - 3 edges to [[_COMMUNITY_Community 494]]
-- 1 edge to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Community 202]]
-- 1 edge to [[_COMMUNITY_Community 497]]
-- 1 edge to [[_COMMUNITY_Community 162]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_Community 191]]
+- 1 edge to [[_COMMUNITY_Community 40]]
+- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 - 1 edge to [[_COMMUNITY_Community 355]]
+- 1 edge to [[_COMMUNITY_Community 497]]
+- 1 edge to [[_COMMUNITY_Community 202]]
+- 1 edge to [[_COMMUNITY_Community 162]]
 
 ## Top bridge nodes
 - [[test_dead_code_scan.py]] - degree 26, connects to 10 communities

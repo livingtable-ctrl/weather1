@@ -12,9 +12,9 @@ tags:
 # .test_refuses_hurricane_count_ticker_even_when_check_position_limits_raises()
 
 ## Connections
-- [[dot-_analysis()_2]] - `calls` [EXTRACTED]
+- [[dot-_analysis()_4]] - `calls` [EXTRACTED]
 - [[dot-_market()_5]] - `calls` [EXTRACTED]
-- [[dot-_run()_3]] - `calls` [EXTRACTED]
+- [[dot-_run()_4]] - `calls` [EXTRACTED]
 - [[TestCmdTodayPlacementGates]] - `method` [EXTRACTED]
 - [[The real point of the round-2 fix check_position_limits() itself raising must…]] - `rationale_for` [EXTRACTED]
 

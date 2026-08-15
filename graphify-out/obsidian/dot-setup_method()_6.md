@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_execution_log.py"
+source_file: "tests/test_mos_nbp.py"
 type: "code"
-community: "Community 274"
-location: "L202"
+community: "Community 123"
+location: "L331"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_274
+  - community/Community_123
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestDailyLiveLoss]] - `method` [EXTRACTED]
+- [[TestNbpFeedsNwsProbFromQuantiles]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_274
+#graphify/code #graphify/EXTRACTED #community/Community_123

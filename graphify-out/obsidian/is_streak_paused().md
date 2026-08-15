@@ -13,10 +13,10 @@ tags:
 
 ## Connections
 - [[45 Return True if on a 3+ consecutive loss streak AND total streak losses…]] - `rationale_for` [EXTRACTED]
-- [[dot-check()_1]] - `calls` [EXTRACTED]
+- [[dot-check()]] - `calls` [EXTRACTED]
 - [[Phase 2 Batch A Regression Tests]] - `calls` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[_quick_paper_buy()]] - `calls` [EXTRACTED]
 - [[get_current_streak()]] - `calls` [EXTRACTED]
 - [[kelly_bet_dollars()]] - `calls` [EXTRACTED]

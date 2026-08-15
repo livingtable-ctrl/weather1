@@ -12,7 +12,7 @@ tags:
 # .test_single_page_returns_all_markets()
 
 ## Connections
-- [[dot-_make_client()_8]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
 - [[No cursor in response → single call, all markets returned.]] - `rationale_for` [EXTRACTED]
 - [[TestGetMarketsPagination]] - `method` [EXTRACTED]
 

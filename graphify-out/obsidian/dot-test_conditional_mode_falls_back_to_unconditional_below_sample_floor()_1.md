@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()_2]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_4]] - `calls` [EXTRACTED]
+- [[dot-_enriched()_3]] - `calls` [EXTRACTED]
 - [[Same opus-review-caught pattern next_event's own test documents a known, non-…]] - `rationale_for` [EXTRACTED]
 - [[TestAnalyzeStormOrderTrade]] - `method` [EXTRACTED]
 

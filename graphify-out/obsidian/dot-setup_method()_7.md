@@ -1,17 +1,18 @@
 ---
-source_file: "tests/test_execution_log.py"
+source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 133"
-location: "L274"
+community: "Community 127"
+location: "L290"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_133
+  - community/Community_127
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestLiveSettlement]] - `method` [EXTRACTED]
+- [[Point tracker at a fresh temp DB for isolation.]] - `rationale_for` [EXTRACTED]
+- [[TestGetBrierByTier]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_133
+#graphify/code #graphify/EXTRACTED #community/Community_127

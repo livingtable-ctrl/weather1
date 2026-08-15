@@ -15,7 +15,7 @@ members: 7
 - [[dot-test_mark_triggered_unknown_id_does_not_raise()]] - code - tests/test_alerts.py
 - [[Redirect alerts._DATA_PATH to a per-test temp file so tests never touch the…]] - rationale - tests/test_alerts.py
 - [[TestMarkTriggered]] - code - tests/test_alerts.py
-- [[fixture_3]] - code
+- [[fixture_10]] - code
 - [[isolate_alerts_data()]] - code - tests/test_alerts.py
 
 ## Live Query (requires Dataview plugin)

@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Estimate precipitation probability for target_date using the prior window_days…]] - `rationale_for` [EXTRACTED]
 - [[backtest.py]] - `contains` [EXTRACTED]
-- [[date]] - `references` [EXTRACTED]
+- [[date_7]] - `references` [EXTRACTED]
 - [[run_backtest()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes

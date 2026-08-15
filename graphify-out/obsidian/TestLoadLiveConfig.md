@@ -5,7 +5,7 @@ community: "Community 45"
 location: "L27"
 tags:
   - graphify/code
-  - graphify/EXTRACTED
+  - graphify/INFERRED
   - community/Community_45
 ---
 
@@ -17,4 +17,4 @@ tags:
 - [[Position]] - `uses` [INFERRED]
 - [[test_live_execution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_45
+#graphify/code #graphify/INFERRED #community/Community_45

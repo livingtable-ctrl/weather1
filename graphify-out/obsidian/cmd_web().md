@@ -15,7 +15,7 @@ tags:
 - [[KalshiClient]] - `references` [EXTRACTED]
 - [[Start local web dashboard on httplocalhost5000]] - `rationale_for` [EXTRACTED]
 - [[cmd_settings()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[start_web()]] - `calls` [EXTRACTED]
 

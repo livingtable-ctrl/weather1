@@ -12,7 +12,7 @@ members: 17
 ## Members
 - [[Fails if a function calls date.today() without a documented reason in…]] - rationale - tests/test_date_today_guard.py
 - [[Inverse check every allowlisted function must still actually call date.today()…]] - rationale - tests/test_date_today_guard.py
-- [[Path_18]] - code
+- [[Path_11]] - code
 - [[Regression for an opus-review finding on this guard Python 3.12+ tokenizes…]] - rationale - tests/test_date_today_guard.py
 - [[Regression this guard's own first version flagged a false positive on…]] - rationale - tests/test_date_today_guard.py
 - [[Return (file, line_number, enclosing_function_name) for every date.today() call…]] - rationale - tests/test_date_today_guard.py
@@ -36,10 +36,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 497]]
+- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 1 edge to [[_COMMUNITY_Community 146]]
 - 1 edge to [[_COMMUNITY_Community 162]]
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
+- 1 edge to [[_COMMUNITY_Community 497]]
 
 ## Top bridge nodes
 - [[test_date_today_guard.py]] - degree 12, connects to 4 communities

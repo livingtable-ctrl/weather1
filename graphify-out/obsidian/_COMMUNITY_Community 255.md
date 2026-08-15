@@ -18,7 +18,7 @@ members: 14
 - [[dot-test_fetch_temperature_ecmwf_returns_float_or_none()]] - code - tests/test_ecmwf.py
 - [[dot-test_spread_single_valid_member_returns_zero()]] - code - tests/test_ecmwf.py
 - [[A dead model returns HTTP 200 with every hourly value null — this must be…]] - rationale - tests/test_ecmwf.py
-- [[A failed fetch must be negative-cached -- a second call within the TTL must not…]] - rationale - tests/test_ecmwf.py
+- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_1]] - rationale - tests/test_ecmwf.py
 - [[ENSEMBLE_MODELS_EXTENDED includes an ecmwf entry.]] - rationale - tests/test_ecmwf.py
 - [[TestECMWFAIFS]] - code - tests/test_ecmwf.py
 - [[_compute_ensemble_spread returns 0.0 when only one member is valid.]] - rationale - tests/test_ecmwf.py

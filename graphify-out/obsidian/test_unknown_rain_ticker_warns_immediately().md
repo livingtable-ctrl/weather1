@@ -12,7 +12,7 @@ tags:
 # test_unknown_rain_ticker_warns_immediately()
 
 ## Connections
-- [[_mock_client()_2]] - `calls` [EXTRACTED]
+- [[_mock_client()_1]] - `calls` [EXTRACTED]
 - [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 1 a genuinely novelunknown…]] - `rationale_for` [EXTRACTED]
 - [[test_series_drift.py]] - `contains` [EXTRACTED]
 

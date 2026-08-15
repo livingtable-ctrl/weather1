@@ -12,7 +12,7 @@ tags:
 # TestCheckLiveModelExits
 
 ## Connections
-- [[dot-_open_position_row()_1]] - `method` [EXTRACTED]
+- [[dot-_open_position_row()]] - `method` [EXTRACTED]
 - [[dot-test_missing_entry_prob_is_skipped()]] - `method` [EXTRACTED]
 - [[dot-test_model_flip_beyond_threshold_triggers_exit()]] - `method` [EXTRACTED]
 - [[dot-test_no_client_returns_zero()]] - `method` [EXTRACTED]

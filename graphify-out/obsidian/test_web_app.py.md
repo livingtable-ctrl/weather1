@@ -19,7 +19,7 @@ tags:
 - [[Tests for web_app.py dashboard API endpoints.]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `imports` [EXTRACTED]
 - [[_build_stream_data()]] - `imports` [EXTRACTED]
-- [[_force_demo_env()_2]] - `contains` [EXTRACTED]
+- [[_force_demo_env()_1]] - `contains` [EXTRACTED]
 - [[_get_live_market_snapshot()]] - `imports` [EXTRACTED]
 - [[client()]] - `contains` [EXTRACTED]
 - [[test_analytics_route_returns_200_with_title()]] - `contains` [EXTRACTED]
@@ -47,7 +47,7 @@ tags:
 - [[test_status_includes_brier_drift()]] - `contains` [EXTRACTED]
 - [[test_stream_markets_content_type()]] - `contains` [EXTRACTED]
 - [[test_trades_route_returns_200_with_title()]] - `contains` [EXTRACTED]
-- [[tracker.py_1]] - `shares_data_with` [INFERRED]
+- [[tracker.py_2]] - `shares_data_with` [INFERRED]
 - [[utils.py]] - `imports` [EXTRACTED]
 - [[web_app.py (Flask dashboardAPI)]] - `references` [EXTRACTED]
 

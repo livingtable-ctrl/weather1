@@ -12,8 +12,8 @@ tags:
 # TestGetAccuracyHaltReason
 
 ## Connections
-- [[dot-setup_method()_31]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_23]] - `method` [EXTRACTED]
+- [[dot-setup_method()_27]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_19]] - `method` [EXTRACTED]
 - [[dot-test_returns_empty_string_when_not_halted()]] - `method` [EXTRACTED]
 - [[dot-test_returns_sprt_reason_when_degraded()]] - `method` [EXTRACTED]
 - [[dot-test_returns_string_when_win_rate_low()]] - `method` [EXTRACTED]

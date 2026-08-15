@@ -12,8 +12,8 @@ tags:
 # KalshiWebSocket
 
 ## Connections
-- [[dot-__init__()_6]] - `method` [EXTRACTED]
-- [[dot-_run()]] - `method` [EXTRACTED]
+- [[dot-__init__()_2]] - `method` [EXTRACTED]
+- [[dot-_run()_1]] - `method` [EXTRACTED]
 - [[dot-start()]] - `method` [EXTRACTED]
 - [[dot-stop()]] - `method` [EXTRACTED]
 - [[dot-subscribe()]] - `method` [EXTRACTED]

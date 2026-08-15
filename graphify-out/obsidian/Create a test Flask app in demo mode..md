@@ -12,6 +12,6 @@ tags:
 # Create a test Flask app in demo mode.
 
 ## Connections
-- [[_make_app()_1]] - `rationale_for` [EXTRACTED]
+- [[_make_app()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_242

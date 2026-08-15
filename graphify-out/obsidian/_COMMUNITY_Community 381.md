@@ -11,8 +11,8 @@ members: 10
 
 ## Members
 - [[dot-_make_attempt()]] - code - tests/test_tracker.py
-- [[dot-setUp()_19]] - code - tests/test_tracker.py
-- [[dot-tearDown()_19]] - code - tests/test_tracker.py
+- [[dot-setUp()_27]] - code - tests/test_tracker.py
+- [[dot-tearDown()_26]] - code - tests/test_tracker.py
 - [[dot-test_batch_log_empty_list_is_noop()]] - code - tests/test_tracker.py
 - [[dot-test_batch_log_logs_all_items()]] - code - tests/test_tracker.py
 - [[dot-test_batch_log_stores_correct_probs()]] - code - tests/test_tracker.py

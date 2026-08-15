@@ -10,8 +10,8 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[dot-setUp()_15]] - code - tests/test_tracker.py
-- [[dot-tearDown()_15]] - code - tests/test_tracker.py
+- [[dot-setUp()_24]] - code - tests/test_tracker.py
+- [[dot-tearDown()_23]] - code - tests/test_tracker.py
 - [[dot-test_returns_float_or_zero_with_no_data_for_none_city()]] - code - tests/test_tracker.py
 - [[dot-test_returns_float_type()]] - code - tests/test_tracker.py
 - [[dot-test_returns_zero_below_min_samples()]] - code - tests/test_tracker.py

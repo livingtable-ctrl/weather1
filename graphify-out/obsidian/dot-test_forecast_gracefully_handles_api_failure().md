@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[TestForecastAccuracyFixtures]] - `method` [EXTRACTED]
 - [[When all sources fail, get_weather_forecast() returns None without raising.]] - `rationale_for` [EXTRACTED]
-- [[activate]] - `references` [EXTRACTED]
+- [[activate_1]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_232

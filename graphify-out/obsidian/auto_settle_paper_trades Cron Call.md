@@ -12,7 +12,7 @@ tags:
 
 ## Connections
 - [[Fix Cron Trade Updates Plan]] - `implements` [EXTRACTED]
-- [[cron.py module]] - `references` [INFERRED]
-- [[paper.py module]] - `references` [EXTRACTED]
+- [[cron.py module_1]] - `references` [INFERRED]
+- [[paper.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_294

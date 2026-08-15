@@ -15,7 +15,7 @@ members: 8
 - [[dot-test_prune_deletes_old_rows()]] - code - tests/test_phase2_batch_c.py
 - [[dot-test_prune_returns_zero_when_nothing_old()]] - code - tests/test_phase2_batch_c.py
 - [[P2-13 prune_api_requests must delete old rows and leave recent ones.]] - rationale - tests/test_phase2_batch_c.py
-- [[Path_26]] - code
+- [[Path_18]] - code
 - [[TestPruneApiRequests]] - code - tests/test_phase2_batch_c.py
 - [[prune_api_requests must be importable from tracker.]] - rationale - tests/test_phase2_batch_c.py
 
@@ -27,8 +27,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_Community 119]]
+- 1 edge to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 
 ## Top bridge nodes

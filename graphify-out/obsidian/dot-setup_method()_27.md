@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_mos_nbs.py"
+source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 114"
-location: "L30"
+community: "Community 400"
+location: "L21"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_114
+  - community/Community_400
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestFetchNbsDailyExtremes]] - `method` [EXTRACTED]
+- [[TestGetAccuracyHaltReason]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_114
+#graphify/code #graphify/EXTRACTED #community/Community_400

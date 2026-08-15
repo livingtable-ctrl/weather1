@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-test_save_propagates_atomic_write_failure()]] - `method` [EXTRACTED]
-- [[Regression coverage for the OTHER bare os.replace() CALL SITES backlog entry…]] - `rationale_for` [EXTRACTED]
+- [[Regression coverage for the OTHER bare os.replace() CALL SITES backlog entry…_2]] - `rationale_for` [EXTRACTED]
 - [[test_alerts.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_591

@@ -10,7 +10,7 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-setup_method()_10]] - code - tests/test_flash_crash_cb.py
+- [[dot-setup_method()_24]] - code - tests/test_flash_crash_cb.py
 - [[dot-test_cooldown_expires()]] - code - tests/test_flash_crash_cb.py
 - [[dot-test_cooldown_prevents_trading()]] - code - tests/test_flash_crash_cb.py
 - [[dot-test_crash_on_large_move()]] - code - tests/test_flash_crash_cb.py
@@ -33,5 +33,5 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[TestFlashCrashCB]] - degree 11, connects to 1 community
-- [[dot-setup_method()_10]] - degree 2, connects to 1 community
+- [[dot-setup_method()_24]] - degree 2, connects to 1 community
 - [[dot-test_cooldown_expires()]] - degree 2, connects to 1 community

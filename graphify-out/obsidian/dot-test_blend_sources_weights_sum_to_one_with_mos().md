@@ -12,7 +12,7 @@ tags:
 # .test_blend_sources_weights_sum_to_one_with_mos()
 
 ## Connections
-- [[dot-_make_enriched()_1]] - `calls` [EXTRACTED]
+- [[dot-_make_enriched()]] - `calls` [EXTRACTED]
 - [[L6-E after MOS injection blend_sources weights must still sum to 1.0 (within…]] - `rationale_for` [EXTRACTED]
 - [[TestBlendSourcesNormalisation]] - `method` [EXTRACTED]
 

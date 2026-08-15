@@ -12,7 +12,7 @@ tags:
 # .test_seven_of_ten_original_cities_are_entirely_default()
 
 ## Connections
-- [[dot-_adjustment()_2]] - `calls` [EXTRACTED]
+- [[dot-_adjustment()_1]] - `calls` [EXTRACTED]
 - [[NYCBostonChicagoLADallasPhoenixAtlanta nothing survived lag-1 + BH-FDR…]] - `rationale_for` [EXTRACTED]
 - [[TestRegressionFittedOriginalTen]] - `method` [EXTRACTED]
 

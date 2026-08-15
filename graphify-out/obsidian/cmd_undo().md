@@ -12,10 +12,10 @@ tags:
 # cmd_undo()
 
 ## Connections
-- [[Reverse the most recently placed (unsettled) paper trade if it was placed…]] - `rationale_for` [EXTRACTED]
+- [[Reverse the most recently placed (unsettled) paper trade if it was placed…_1]] - `rationale_for` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[undo_last_trade()]] - `calls` [EXTRACTED]
 

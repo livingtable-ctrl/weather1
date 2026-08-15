@@ -10,8 +10,8 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[dot-setUp()_32]] - code - tests/test_tracker.py
-- [[dot-tearDown()_32]] - code - tests/test_tracker.py
+- [[dot-setUp()_21]] - code - tests/test_tracker.py
+- [[dot-tearDown()_20]] - code - tests/test_tracker.py
 - [[dot-test_local_hour_column_exists_after_init()]] - code - tests/test_tracker.py
 - [[dot-test_log_prediction_succeeds_with_local_hour()]] - code - tests/test_tracker.py
 - [[dot-test_schema_version_equals_migration_count()_1]] - code - tests/test_tracker.py

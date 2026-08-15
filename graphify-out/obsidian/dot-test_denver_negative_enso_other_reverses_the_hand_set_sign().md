@@ -12,7 +12,7 @@ tags:
 # .test_denver_negative_enso_other_reverses_the_hand_set_sign()
 
 ## Connections
-- [[dot-_adjustment()_2]] - `calls` [EXTRACTED]
+- [[dot-_adjustment()_1]] - `calls` [EXTRACTED]
 - [[Denver's fitted ENSO-other (-1.0) is the OPPOSITE sign from its removed hand-…]] - `rationale_for` [EXTRACTED]
 - [[TestRegressionFittedOriginalTen]] - `method` [EXTRACTED]
 

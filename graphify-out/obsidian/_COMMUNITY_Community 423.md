@@ -27,8 +27,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
+- 1 edge to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 
 ## Top bridge nodes

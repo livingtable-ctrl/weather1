@@ -40,11 +40,11 @@ SORT file.name ASC
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_Community 99]]
 - 2 edges to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
-- 1 edge to [[_COMMUNITY_Community 454]]
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 281]]
 - 1 edge to [[_COMMUNITY_Community 480]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
+- 1 edge to [[_COMMUNITY_Community 454]]
 
 ## Top bridge nodes
 - [[Phase 2 Batch A Regression Tests]] - degree 11, connects to 5 communities

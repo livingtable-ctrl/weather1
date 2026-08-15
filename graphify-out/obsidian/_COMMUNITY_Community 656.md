@@ -10,7 +10,7 @@ members: 1
 **Members:** 1 nodes
 
 ## Members
-- [[kalshi_ws.py_1]] - code - kalshi_ws.py
+- [[kalshi_ws.py_2]] - code - kalshi_ws.py
 
 ## Live Query (requires Dataview plugin)
 

@@ -12,7 +12,7 @@ tags:
 # TestCheckLivePositionExits
 
 ## Connections
-- [[dot-_open_position_row()]] - `method` [EXTRACTED]
+- [[dot-_open_position_row()_1]] - `method` [EXTRACTED]
 - [[dot-test_healthy_position_is_left_alone()]] - `method` [EXTRACTED]
 - [[dot-test_no_open_positions_is_a_no_op()]] - `method` [EXTRACTED]
 - [[dot-test_stop_loss_and_breakeven_are_mutually_exclusive_same_cycle()]] - `method` [EXTRACTED]

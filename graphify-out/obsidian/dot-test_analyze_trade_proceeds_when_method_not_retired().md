@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[TestRetiredStrategyGate]] - `method` [EXTRACTED]
-- [[_make_enriched()_1]] - `calls` [EXTRACTED]
+- [[_make_enriched()]] - `calls` [EXTRACTED]
 - [[_stub_heavy_deps()]] - `calls` [EXTRACTED]
 - [[analyze_trade must not be blocked when the method is not retired.]] - `rationale_for` [EXTRACTED]
 

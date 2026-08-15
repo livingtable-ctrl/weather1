@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 287"
-location: "L2830"
+community: "Community 39"
+location: "L3586"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_287
+  - community/Community_39
 ---
 
 # .tearDown()
 
 ## Connections
-- [[TestIsProbationColumn]] - `method` [EXTRACTED]
+- [[TestTradeFlowSettlementCorrelation]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_287
+#graphify/code #graphify/EXTRACTED #community/Community_39

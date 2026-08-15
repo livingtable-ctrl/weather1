@@ -18,7 +18,7 @@ members: 12
 - [[At 0100 UTC, next cycle is 0200 UTC â†’ ~3600s.]] - rationale - tests/test_forecasting.py
 - [[TTL is at least 1800 seconds.]] - rationale - tests/test_forecasting.py
 - [[TestDynamicCacheTTL]] - code - tests/test_forecasting.py
-- [[fixture_7]] - code
+- [[fixture_6]] - code
 - [[get_ensemble_temps returns cached data without making API calls.]] - rationale - tests/test_forecasting.py
 - [[get_weather_forecast returns cached data without making API calls.]] - rationale - tests/test_forecasting.py
 - [[test_cache_hit_returns_forecast_without_fetch and…]] - rationale - tests/test_forecasting.py
@@ -32,8 +32,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
+- 1 edge to [[_COMMUNITY_Community 51]]
 
 ## Top bridge nodes
 - [[TestDynamicCacheTTL]] - degree 7, connects to 2 communities

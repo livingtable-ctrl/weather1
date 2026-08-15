@@ -10,7 +10,7 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-_call()_5]] - code - tests/test_weather_markets.py
+- [[dot-_call()_2]] - code - tests/test_weather_markets.py
 - [[dot-test_low_market_above_already_below_margin_is_locked()]] - code - tests/test_weather_markets.py
 - [[dot-test_low_market_above_still_above_margin_is_not_locked()]] - code - tests/test_weather_markets.py
 - [[dot-test_low_market_below_already_below_margin_is_locked()]] - code - tests/test_weather_markets.py
@@ -30,9 +30,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 64]]
 - 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 64]]
 
 ## Top bridge nodes
 - [[TestMetarLockInLowMarketAsymmetry]] - degree 7, connects to 1 community
-- [[dot-_call()_5]] - degree 6, connects to 1 community
+- [[dot-_call()_2]] - degree 6, connects to 1 community

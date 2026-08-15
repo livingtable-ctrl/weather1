@@ -20,7 +20,7 @@ tags:
 - [[export_tax_csv()]] - `calls` [EXTRACTED]
 - [[export_trades_csv()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

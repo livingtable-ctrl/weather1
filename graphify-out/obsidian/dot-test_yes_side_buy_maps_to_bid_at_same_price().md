@@ -12,7 +12,7 @@ tags:
 # .test_yes_side_buy_maps_to_bid_at_same_price()
 
 ## Connections
-- [[dot-_make_client()_8]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
 - [[TestPlaceOrderApiSemantics]] - `method` [EXTRACTED]
 - [[side='yes' action='buy' must send V2 side='bid' at the same price.]] - `rationale_for` [EXTRACTED]
 

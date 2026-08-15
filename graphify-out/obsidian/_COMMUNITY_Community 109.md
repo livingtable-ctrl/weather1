@@ -45,22 +45,22 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Community 32]]
+- 2 edges to [[_COMMUNITY_Community 103]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
-- 2 edges to [[_COMMUNITY_Community 103]]
 - 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Community 194]]
-- 1 edge to [[_COMMUNITY_Community 302]]
-- 1 edge to [[_COMMUNITY_Community 132]]
-- 1 edge to [[_COMMUNITY_Cron Integration Tests]]
-- 1 edge to [[_COMMUNITY_Community 121]]
-- 1 edge to [[_COMMUNITY_Community 253]]
 - 1 edge to [[_COMMUNITY_Community 40]]
+- 1 edge to [[_COMMUNITY_Community 121]]
+- 1 edge to [[_COMMUNITY_Community 132]]
+- 1 edge to [[_COMMUNITY_Community 194]]
+- 1 edge to [[_COMMUNITY_Cron Integration Tests]]
+- 1 edge to [[_COMMUNITY_Community 253]]
+- 1 edge to [[_COMMUNITY_Community 302]]
 - 1 edge to [[_COMMUNITY_Community 451]]
+- 1 edge to [[_COMMUNITY_Community 293]]
 - 1 edge to [[_COMMUNITY_Community 120]]
 - 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
 - 1 edge to [[_COMMUNITY_Community 26]]
-- 1 edge to [[_COMMUNITY_Community 293]]
 
 ## Top bridge nodes
 - [[Grade Audit Module Doc cron.py]] - degree 8, connects to 5 communities

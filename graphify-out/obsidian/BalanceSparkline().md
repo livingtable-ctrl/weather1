@@ -12,7 +12,6 @@ tags:
 # BalanceSparkline()
 
 ## Connections
-- [[OverviewTab.jsx]] - `imports` [EXTRACTED]
 - [[shared.jsx]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_193

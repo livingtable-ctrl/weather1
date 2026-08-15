@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 413"
-location: "L2369"
+community: "Community 318"
+location: "L5853"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_413
+  - community/Community_318
 ---
 
 # .tearDown()
 
 ## Connections
-- [[TestEnsembleMemberAccuracyStratified]] - `method` [EXTRACTED]
+- [[TestStopLossAccuracy]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_413
+#graphify/code #graphify/EXTRACTED #community/Community_318

@@ -15,6 +15,6 @@ tags:
 - [[dot-_drive_one_cycle()]] - `calls` [EXTRACTED]
 - [[TestCmdWatchDisplayScanUnification]] - `method` [EXTRACTED]
 - [[Violation]] - `calls` [EXTRACTED]
-- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…_1]] - `rationale_for` [EXTRACTED]
+- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…]] - `rationale_for` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_136

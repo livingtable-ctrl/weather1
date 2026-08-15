@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_candle()]] - `calls` [EXTRACTED]
-- [[dot-_trade()_4]] - `calls` [EXTRACTED]
+- [[dot-_trade()_2]] - `calls` [EXTRACTED]
 - [[A trailing candle with no trades in its period reports price_close=None (real…]] - `rationale_for` [EXTRACTED]
 - [[TestTradeFlowSettlementCorrelation]] - `method` [EXTRACTED]
 

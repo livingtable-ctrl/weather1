@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Check paper_trades.json for structural corruption. Returns a list of error…]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
 - [[web_app.py]] - `imports` [EXTRACTED]
 

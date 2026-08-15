@@ -12,7 +12,7 @@ tags:
 # .test_cursor_present_but_next_page_empty_stops_pagination()
 
 ## Connections
-- [[dot-_make_client()_8]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
 - [[Live-verified real Kalshi behavior (2026-07-19) a non-empty cursor can be…]] - `rationale_for` [EXTRACTED]
 - [[TestGetTrades]] - `method` [EXTRACTED]
 

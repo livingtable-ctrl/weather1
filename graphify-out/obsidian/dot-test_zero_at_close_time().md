@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[At or past close_time, edge should be 0.]] - `rationale_for` [EXTRACTED]
-- [[TestTimeDecayEdge_1]] - `method` [EXTRACTED]
+- [[TestTimeDecayEdge]] - `method` [EXTRACTED]
 - [[time_decay_edge()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_240

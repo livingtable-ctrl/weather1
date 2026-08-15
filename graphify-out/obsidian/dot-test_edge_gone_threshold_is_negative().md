@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[TestCheckModelExitsThresholds]] - `method` [EXTRACTED]
-- [[_make_trade()_1]] - `calls` [EXTRACTED]
+- [[_make_trade()_2]] - `calls` [EXTRACTED]
 - [[check_model_exits must NOT exit a trade whose edge merely dropped from 8% to…]] - `rationale_for` [EXTRACTED]
 - [[check_model_exits()]] - `calls` [EXTRACTED]
 

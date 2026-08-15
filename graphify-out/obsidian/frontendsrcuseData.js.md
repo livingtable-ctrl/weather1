@@ -1,33 +1,34 @@
 ---
 source_file: "frontend/src/useData.js"
 type: "code"
-community: "Community 213"
+community: "Community 692"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_213
+  - community/Community_692
 ---
 
 # frontend/src/useData.js
 
 ## Connections
 - [[CB_LABELS]] - `contains` [EXTRACTED]
-- [[MOCK Export Object]] - `imports` [EXTRACTED]
-- [[apiFetch Function]] - `contains` [EXTRACTED]
-- [[authHeader Function]] - `contains` [EXTRACTED]
-- [[frontendsrcApp.jsx]] - `imports_from` [EXTRACTED]
-- [[frontendsrcmockData.js]] - `imports_from` [EXTRACTED]
+- [[ENDPOINTS]] - `contains` [EXTRACTED]
+- [[apiFetch]] - `contains` [EXTRACTED]
+- [[authHeader]] - `contains` [EXTRACTED]
+- [[computeMark]] - `contains` [EXTRACTED]
+- [[fetchAllSafe]] - `contains` [EXTRACTED]
 - [[getStoredPwd()]] - `contains` [EXTRACTED]
-- [[mapAnalytics Function]] - `contains` [EXTRACTED]
-- [[mapCircuitBreakers Function]] - `contains` [EXTRACTED]
-- [[mapForecasts Function]] - `contains` [EXTRACTED]
-- [[mapPriceImprovement Function]] - `contains` [EXTRACTED]
-- [[mapRisk Function]] - `contains` [EXTRACTED]
-- [[mapSignals Function]] - `contains` [EXTRACTED]
-- [[mapStats Function]] - `contains` [EXTRACTED]
-- [[mapTrades Function]] - `contains` [EXTRACTED]
-- [[safe()]] - `contains` [EXTRACTED]
-- [[useData Hook]] - `contains` [EXTRACTED]
+- [[mapAnalytics]] - `contains` [EXTRACTED]
+- [[mapCircuitBreakers]] - `contains` [EXTRACTED]
+- [[mapForecasts]] - `contains` [EXTRACTED]
+- [[mapPriceImprovement]] - `contains` [EXTRACTED]
+- [[mapRisk]] - `contains` [EXTRACTED]
+- [[mapSignals]] - `contains` [EXTRACTED]
+- [[mapStats]] - `contains` [EXTRACTED]
+- [[mapTrades]] - `contains` [EXTRACTED]
+- [[safe]] - `contains` [EXTRACTED]
+- [[useData()]] - `contains` [EXTRACTED]
+- [[useData.test.js]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_213
+#graphify/code #graphify/EXTRACTED #community/Community_692

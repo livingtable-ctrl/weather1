@@ -61,20 +61,20 @@ SORT file.name ASC
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 3 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 2 edges to [[_COMMUNITY_Community 167]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Community 40]]
 - 2 edges to [[_COMMUNITY_Community 101]]
 - 2 edges to [[_COMMUNITY_Community 164]]
+- 2 edges to [[_COMMUNITY_Community 167]]
 - 2 edges to [[_COMMUNITY_Community 342]]
+- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 384]]
-- 1 edge to [[_COMMUNITY_Community 369]]
-- 1 edge to [[_COMMUNITY_Community 431]]
-- 1 edge to [[_COMMUNITY_Community 476]]
+- 2 edges to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 279]]
-- 1 edge to [[_COMMUNITY_Community 576]]
+- 1 edge to [[_COMMUNITY_Community 369]]
 - 1 edge to [[_COMMUNITY_Community 430]]
+- 1 edge to [[_COMMUNITY_Community 431]]
 - 1 edge to [[_COMMUNITY_Community 475]]
+- 1 edge to [[_COMMUNITY_Community 476]]
+- 1 edge to [[_COMMUNITY_Community 576]]
 
 ## Top bridge nodes
 - [[test_p9_p10.py]] - degree 46, connects to 16 communities

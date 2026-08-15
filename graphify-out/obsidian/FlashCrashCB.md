@@ -12,14 +12,14 @@ tags:
 # FlashCrashCB
 
 ## Connections
-- [[dot-__init__()_3]] - `method` [EXTRACTED]
+- [[dot-__init__()_12]] - `method` [EXTRACTED]
 - [[dot-_load_cooldowns()]] - `method` [EXTRACTED]
 - [[dot-_load_history()]] - `method` [EXTRACTED]
 - [[dot-_save_cooldowns()]] - `method` [EXTRACTED]
 - [[dot-_save_history()]] - `method` [EXTRACTED]
-- [[dot-check()]] - `method` [EXTRACTED]
+- [[dot-check()_1]] - `method` [EXTRACTED]
 - [[dot-is_in_cooldown()]] - `method` [EXTRACTED]
-- [[dot-setup_method()_10]] - `calls` [EXTRACTED]
+- [[dot-setup_method()_24]] - `calls` [EXTRACTED]
 - [[dot-test_cooldown_expires()]] - `calls` [EXTRACTED]
 - [[dot-test_rapid_successive_calls_skip_disk_save_but_still_detect_crash()]] - `calls` [EXTRACTED]
 - [[dot-test_save_resumes_once_interval_elapses()]] - `calls` [EXTRACTED]

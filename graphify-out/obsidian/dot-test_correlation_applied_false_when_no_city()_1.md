@@ -12,7 +12,7 @@ tags:
 # .test_correlation_applied_false_when_no_city()
 
 ## Connections
-- [[dot-_run_sim()]] - `calls` [EXTRACTED]
+- [[dot-_run_sim()_1]] - `calls` [EXTRACTED]
 - [[No city means correlation is a no-op — must be False even if Cholesky succeeds.]] - `rationale_for` [EXTRACTED]
 - [[TestMonteCarloCorrelationApplied]] - `method` [EXTRACTED]
 

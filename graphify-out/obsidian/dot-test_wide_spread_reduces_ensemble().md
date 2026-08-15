@@ -12,7 +12,7 @@ tags:
 # .test_wide_spread_reduces_ensemble()
 
 ## Connections
-- [[dot-_call()_1]] - `calls` [EXTRACTED]
+- [[dot-_call()]] - `calls` [EXTRACTED]
 - [[TestConfidenceScaledBlendWeightsNoNegative]] - `method` [EXTRACTED]
 - [[Wider-than-reference spread (std  4°F) must decrease w_ens.]] - `rationale_for` [EXTRACTED]
 

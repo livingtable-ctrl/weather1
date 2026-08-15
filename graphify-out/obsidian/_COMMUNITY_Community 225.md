@@ -34,19 +34,19 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 143]]
 - 2 edges to [[_COMMUNITY_Community 100]]
-- 1 edge to [[_COMMUNITY_Community 351]]
+- 2 edges to [[_COMMUNITY_Community 143]]
+- 1 edge to [[_COMMUNITY_Community 336]]
+- 1 edge to [[_COMMUNITY_Community 366]]
+- 1 edge to [[_COMMUNITY_Community 467]]
+- 1 edge to [[_COMMUNITY_Community 510]]
+- 1 edge to [[_COMMUNITY_Community 511]]
+- 1 edge to [[_COMMUNITY_Community 549]]
 - 1 edge to [[_COMMUNITY_Community 298]]
 - 1 edge to [[_COMMUNITY_Community 86]]
+- 1 edge to [[_COMMUNITY_Community 351]]
 - 1 edge to [[_COMMUNITY_Community 142]]
 - 1 edge to [[_COMMUNITY_Community 183]]
-- 1 edge to [[_COMMUNITY_Community 467]]
-- 1 edge to [[_COMMUNITY_Community 336]]
-- 1 edge to [[_COMMUNITY_Community 549]]
-- 1 edge to [[_COMMUNITY_Community 511]]
-- 1 edge to [[_COMMUNITY_Community 366]]
-- 1 edge to [[_COMMUNITY_Community 510]]
 - 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
 
 ## Top bridge nodes

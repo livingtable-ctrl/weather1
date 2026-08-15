@@ -1,17 +1,16 @@
 ---
-source_file: "updated frontend/screenshots/light.png"
-type: "image"
-community: "Community 192"
+source_file: "updated frontend/screenshots/dark-v2.png"
+type: "document"
+community: "Community 247"
 tags:
-  - graphify/image
+  - graphify/document
   - graphify/EXTRACTED
-  - community/Community_192
+  - community/Community_247
 ---
 
 # Kill Switch Button
 
 ## Connections
-- [[Kalshi Weather Dashboard - Overview Tab (Light Theme)]] - `references` [EXTRACTED]
-- [[Kill Switch  Trading Pause Mechanism]] - `shares_data_with` [INFERRED]
+- [[Overview Dashboard (Dark v2 Variant)]] - `references` [EXTRACTED]
 
-#graphify/image #graphify/EXTRACTED #community/Community_192
+#graphify/document #graphify/EXTRACTED #community/Community_247

@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[PositionsTab.jsx Component]] - `references` [EXTRACTED]
 - [[Reliability  Silent Failures Audit Scope]] - `semantically_similar_to` [AMBIGUOUS]
-- [[paper.py Module_1]] - `references` [EXTRACTED]
-- [[web_app.py Module_1]] - `references` [EXTRACTED]
+- [[paper.py Module]] - `references` [EXTRACTED]
+- [[web_app.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_156

@@ -28,8 +28,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_Community 73]]
+- 1 edge to [[_COMMUNITY_Community 51]]
 
 ## Top bridge nodes
 - [[TestCheckMetarLockout]] - degree 6, connects to 2 communities

@@ -10,10 +10,10 @@ members: 26
 **Members:** 26 nodes
 
 ## Members
+- [[dot-setup_method()]] - code - tests/test_calibration.py
 - [[dot-setup_method()_1]] - code - tests/test_calibration.py
-- [[dot-setup_method()_2]] - code - tests/test_calibration.py
+- [[dot-teardown_method()]] - code - tests/test_calibration.py
 - [[dot-teardown_method()_1]] - code - tests/test_calibration.py
-- [[dot-teardown_method()_2]] - code - tests/test_calibration.py
 - [[dot-test_load_city_missing_file_returns_empty()]] - code - tests/test_calibration.py
 - [[dot-test_load_city_valid_json_returns_dict()]] - code - tests/test_calibration.py
 - [[dot-test_load_condition_corrupt_json_returns_empty()]] - code - tests/test_calibration.py
@@ -25,7 +25,7 @@ members: 26
 - [[Load per-city weights from JSON. Returns {} if file missing.]] - rationale - calibration.py
 - [[Load per-condition-type weights from JSON. Returns {} if file missing.]] - rationale - calibration.py
 - [[Load seasonal weights from JSON. Returns {} if file missing.]] - rationale - calibration.py
-- [[Path_16]] - code
+- [[Path_1]] - code
 - [[TestCalibrateCityWeights]] - code - tests/test_calibration.py
 - [[TestLoadWeights]] - code - tests/test_calibration.py
 - [[Tests for calibration.py — seasonal and per-city blend weight calibration.]] - rationale - tests/test_calibration.py
@@ -45,8 +45,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 9 edges to [[_COMMUNITY_Community 118]]
 - 9 edges to [[_COMMUNITY_Community 69]]
+- 9 edges to [[_COMMUNITY_Community 118]]
 - 4 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 3 edges to [[_COMMUNITY_Community 119]]
 - 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
@@ -61,4 +61,4 @@ SORT file.name ASC
 - [[load_condition_weights()]] - degree 9, connects to 3 communities
 - [[load_seasonal_weights()]] - degree 9, connects to 3 communities
 - [[load_city_weights()]] - degree 8, connects to 3 communities
-- [[Path_16]] - degree 12, connects to 1 community
+- [[Path_1]] - degree 12, connects to 1 community

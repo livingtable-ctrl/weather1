@@ -12,8 +12,8 @@ tags:
 # TestCheckPositionLimitsRainConditional
 
 ## Connections
-- [[dot-test_does_not_block_when_gate_active()_4]] - `method` [EXTRACTED]
-- [[dot-test_still_blocks_when_gate_inactive()_4]] - `method` [EXTRACTED]
+- [[dot-test_does_not_block_when_gate_active()_1]] - `method` [EXTRACTED]
+- [[dot-test_still_blocks_when_gate_inactive()_1]] - `method` [EXTRACTED]
 - [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 the Step 1 unconditional…]] - `rationale_for` [EXTRACTED]
 - [[test_rain_markets.py]] - `contains` [EXTRACTED]
 

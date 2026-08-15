@@ -12,7 +12,6 @@ tags:
 # utils.py
 
 ## Connections
-- [[OverviewTab.jsx (V3)]] - `conceptually_related_to` [INFERRED]
 - [[RiskTab.jsx (V3)]] - `conceptually_related_to` [INFERRED]
 - [[Shared utilities used across the Kalshi weather trading modules.]] - `rationale_for` [EXTRACTED]
 - [[_hash_fingerprint()]] - `contains` [EXTRACTED]

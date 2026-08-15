@@ -10,7 +10,7 @@ members: 2
 **Members:** 2 nodes
 
 ## Members
-- [[dot-_seed_baseline()]] - code - tests/test_tracker.py
+- [[dot-_seed_baseline()_1]] - code - tests/test_tracker.py
 - [[Log n diverse trusted (non-disputed) settled predictions — enough to clear…]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
@@ -25,4 +25,4 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Tracker Settlement Sigma & Disputed Rows]]
 
 ## Top bridge nodes
-- [[dot-_seed_baseline()]] - degree 3, connects to 2 communities
+- [[dot-_seed_baseline()_1]] - degree 3, connects to 2 communities

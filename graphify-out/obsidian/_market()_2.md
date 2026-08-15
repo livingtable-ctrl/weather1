@@ -1,21 +1,22 @@
 ---
-source_file: "tests/test_retirement_probation.py"
+source_file: "tests/test_market_implied_distribution.py"
 type: "code"
-community: "Community 140"
-location: "L53"
+community: "Community 41"
+location: "L25"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_140
+  - community/Community_41
 ---
 
 # _market()
 
 ## Connections
-- [[test_gated_to_run_once_per_day()_1]] - `calls` [EXTRACTED]
-- [[test_logs_probation_prediction_for_retired_method()]] - `calls` [EXTRACTED]
-- [[test_noop_when_nothing_retired()]] - `calls` [EXTRACTED]
-- [[test_retirement_probation.py]] - `contains` [EXTRACTED]
-- [[test_skips_market_whose_method_is_not_retired()]] - `calls` [EXTRACTED]
+- [[dot-test_degenerate_fit_returns_none_not_garbage()]] - `calls` [EXTRACTED]
+- [[dot-test_mixed_temperature_and_precip_only_counts_temperature()]] - `calls` [EXTRACTED]
+- [[dot-test_non_temperature_siblings_excluded()]] - `calls` [EXTRACTED]
+- [[dot-test_thin_event_maps_to_none_not_omitted()]] - `calls` [EXTRACTED]
+- [[_normal_ladder()]] - `calls` [EXTRACTED]
+- [[test_market_implied_distribution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_140
+#graphify/code #graphify/EXTRACTED #community/Community_41

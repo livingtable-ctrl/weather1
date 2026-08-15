@@ -12,8 +12,6 @@ tags:
 # kalshiMarketUrl()
 
 ## Connections
-- [[PositionsTab()]] - `calls` [EXTRACTED]
-- [[PositionsTab.jsx]] - `imports` [EXTRACTED]
 - [[SignalsTab()]] - `calls` [EXTRACTED]
 - [[SignalsTab.jsx]] - `imports` [EXTRACTED]
 - [[shared.jsx]] - `contains` [EXTRACTED]

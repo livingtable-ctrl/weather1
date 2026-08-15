@@ -12,7 +12,7 @@ tags:
 # .test_grpb_calibration_buckets_equal_frequency()
 
 ## Connections
-- [[dot-_seed()_8]] - `calls` [EXTRACTED]
+- [[dot-_seed()_3]] - `calls` [EXTRACTED]
 - [[Buckets should be roughly equal in count (quantile, not equal-width).]] - `rationale_for` [EXTRACTED]
 - [[TestMarketCalibrationQuantile]] - `method` [EXTRACTED]
 

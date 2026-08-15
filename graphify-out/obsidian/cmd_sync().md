@@ -15,7 +15,7 @@ tags:
 - [[KalshiClient]] - `references` [EXTRACTED]
 - [[auto_settle_paper_trades()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[sync_outcomes()]] - `calls` [EXTRACTED]
 

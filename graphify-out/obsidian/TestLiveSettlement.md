@@ -12,8 +12,8 @@ tags:
 # TestLiveSettlement
 
 ## Connections
-- [[dot-setup_method()_7]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_7]] - `method` [EXTRACTED]
+- [[dot-setup_method()_9]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_4]] - `method` [EXTRACTED]
 - [[dot-test_exit_orders_own_filled_row_excluded_from_open_positions()]] - `method` [EXTRACTED]
 - [[dot-test_export_live_tax_csv_filters_by_year()]] - `method` [EXTRACTED]
 - [[dot-test_export_live_tax_csv_labels_early_exit_not_no()]] - `method` [EXTRACTED]

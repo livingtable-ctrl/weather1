@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[dot-_log()_1]] - `method` [EXTRACTED]
-- [[dot-setUp()_39]] - `method` [EXTRACTED]
-- [[dot-tearDown()_39]] - `method` [EXTRACTED]
+- [[dot-setUp()_6]] - `method` [EXTRACTED]
+- [[dot-tearDown()_6]] - `method` [EXTRACTED]
 - [[dot-test_sync_outcomes_does_not_raise_on_offset_close_time()]] - `method` [EXTRACTED]
 - [[dot-test_sync_outcomes_does_not_raise_on_z_suffix_close_time()]] - `method` [EXTRACTED]
 - [[dot-test_sync_outcomes_skips_market_closed_less_than_1h_ago()]] - `method` [EXTRACTED]

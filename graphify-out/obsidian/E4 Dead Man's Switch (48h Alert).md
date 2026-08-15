@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[LV8 Natural Language Daily Brief]] - `references` [EXTRACTED]
-- [[cron.py Module_1]] - `references` [EXTRACTED]
+- [[cron.py Module]] - `references` [EXTRACTED]
 - [[watchdog.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_199

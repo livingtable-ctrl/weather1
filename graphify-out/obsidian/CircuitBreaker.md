@@ -12,7 +12,7 @@ tags:
 # CircuitBreaker
 
 ## Connections
-- [[dot-__init__()_2]] - `method` [EXTRACTED]
+- [[dot-__init__()_7]] - `method` [EXTRACTED]
 - [[dot-_load_state()]] - `method` [EXTRACTED]
 - [[dot-_save_state()]] - `method` [EXTRACTED]
 - [[dot-execute()]] - `method` [EXTRACTED]

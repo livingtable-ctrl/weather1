@@ -16,7 +16,7 @@ tags:
 - [[Validate NWS API point forecast response.]] - `rationale_for` [EXTRACTED]
 - [[get_nws_daily_forecast()]] - `calls` [EXTRACTED]
 - [[nws.py]] - `imports` [EXTRACTED]
-- [[schema_validator.py_1]] - `implements` [EXTRACTED]
 - [[schema_validator.py]] - `contains` [EXTRACTED]
+- [[schema_validator.py_1]] - `implements` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation

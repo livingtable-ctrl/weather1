@@ -1,26 +1,22 @@
 ---
-source_file: "tests/test_alerts_side.py"
+source_file: "tests/test_phase2_batch_f.py"
 type: "code"
-community: "Community 208"
-location: "L8"
+community: "Community 134"
+location: "L22"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_208
+  - community/Community_134
 ---
 
 # _make_trade()
 
 ## Connections
-- [[dot-test_brier_check_failure_fails_closed()]] - `calls` [EXTRACTED]
-- [[dot-test_days_out_none_does_not_crash()]] - `calls` [EXTRACTED]
-- [[dot-test_mixed_sides_correct_win_count()]] - `calls` [EXTRACTED]
-- [[dot-test_no_side_consecutive_losses_trigger()]] - `calls` [EXTRACTED]
-- [[dot-test_no_side_consecutive_losses_trigger_black_swan()]] - `calls` [EXTRACTED]
-- [[dot-test_no_side_consecutive_wins_not_black_swan()]] - `calls` [EXTRACTED]
-- [[dot-test_no_side_losses_trigger_collapse()]] - `calls` [EXTRACTED]
-- [[dot-test_no_side_wins_not_counted_as_consec_losses()]] - `calls` [EXTRACTED]
-- [[dot-test_no_side_wins_not_counted_as_losses()]] - `calls` [EXTRACTED]
-- [[test_alerts_side.py]] - `contains` [EXTRACTED]
+- [[dot-test_cholesky_failure_logs_warning()]] - `calls` [EXTRACTED]
+- [[dot-test_correlation_applied_false_when_cholesky_fails()]] - `calls` [EXTRACTED]
+- [[dot-test_correlation_applied_false_when_no_city()]] - `calls` [EXTRACTED]
+- [[dot-test_correlation_applied_true_when_cholesky_succeeds()]] - `calls` [EXTRACTED]
+- [[dot-test_simulate_result_has_required_keys()]] - `calls` [EXTRACTED]
+- [[Phase 2 Batch F Regression Tests]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_208
+#graphify/code #graphify/EXTRACTED #community/Community_134

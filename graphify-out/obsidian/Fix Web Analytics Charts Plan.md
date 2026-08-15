@@ -4,7 +4,7 @@ type: "document"
 community: "Community 453"
 tags:
   - graphify/document
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_453
 ---
 
@@ -12,6 +12,6 @@ tags:
 
 ## Connections
 - [[Reliability Diagram Dashboard]] - `conceptually_related_to` [INFERRED]
-- [[web_app.py module]] - `references` [EXTRACTED]
+- [[web_app.py module_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/INFERRED #community/Community_453
+#graphify/document #graphify/EXTRACTED #community/Community_453

@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[G5 Config Consolidation (BotConfig)]] - `conceptually_related_to` [INFERRED]
 - [[config.py Module (BotConfig)]] - `references` [EXTRACTED]
-- [[paper.py Module_1]] - `references` [EXTRACTED]
+- [[paper.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_156

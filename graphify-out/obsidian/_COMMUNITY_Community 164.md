@@ -39,15 +39,15 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 2 edges to [[_COMMUNITY_Community 67]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 2 edges to [[_COMMUNITY_Community 50]]
+- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
+- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 2 edges to [[_COMMUNITY_Community 67]]
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_Community 144]]
 - 1 edge to [[_COMMUNITY_Community 458]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 96]]
 
 ## Top bridge nodes

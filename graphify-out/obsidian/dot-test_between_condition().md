@@ -1,18 +1,19 @@
 ---
-source_file: "tests/test_forecasting.py"
+source_file: "tests/test_weather.py"
 type: "code"
-community: "Forecasting Persistence Model Tests"
-location: "L73"
+community: "Weather Probability Math Tests"
+location: "L94"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Weather_Probability_Math_Tests
 ---
 
 # .test_between_condition()
 
 ## Connections
-- [[TestPersistenceProb]] - `method` [EXTRACTED]
-- [[persistence_prob()]] - `calls` [EXTRACTED]
+- [[A very wide range around the forecast should have high probability.]] - `rationale_for` [EXTRACTED]
+- [[TestForecastProbability]] - `method` [EXTRACTED]
+- [[_forecast_probability()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests

@@ -38,7 +38,7 @@ members: 56
 - [[cmd_cron must call paper.check_paper_position_exits() and actually close a…]] - rationale - tests/test_cron_integration.py
 - [[cmd_cron()'s settlement-lag-signal consumer (~cron.py1396) must pass a…]] - rationale - tests/test_cron_integration.py
 - [[cron_env()]] - code - tests/test_cron_integration.py
-- [[fixture_5]] - code
+- [[fixture_4]] - code
 - [[integration]] - code
 - [[report_anomalies prints ticker and drift for markets 12pp from model.]] - rationale - tests/test_cron_integration.py
 - [[test_accuracy_halt_still_runs_settlement()]] - code - tests/test_cron_integration.py

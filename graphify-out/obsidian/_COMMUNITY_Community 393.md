@@ -11,8 +11,8 @@ members: 9
 
 ## Members
 - [[dot-_insert()]] - code - tests/test_execution_log.py
-- [[dot-setup_method()_9]] - code - tests/test_execution_log.py
-- [[dot-teardown_method()_9]] - code - tests/test_execution_log.py
+- [[dot-setup_method()_26]] - code - tests/test_execution_log.py
+- [[dot-teardown_method()_18]] - code - tests/test_execution_log.py
 - [[dot-test_row_1_hour_past_the_7_day_cutoff_does_not_block_reentry()]] - code - tests/test_execution_log.py
 - [[dot-test_row_older_than_7_days_does_not_block_reentry()]] - code - tests/test_execution_log.py
 - [[dot-test_row_within_7_days_blocks_reentry()]] - code - tests/test_execution_log.py

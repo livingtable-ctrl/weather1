@@ -1,19 +1,19 @@
 ---
-source_file: "tests/test_weather.py"
+source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Weather Probability Math Tests"
-location: "L88"
+community: "Forecasting Persistence Model Tests"
+location: "L64"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Forecasting_Persistence_Model_Tests
 ---
 
 # .test_below_condition()
 
 ## Connections
-- [[If forecast is much higher than threshold, P(below) ~ 0.]] - `rationale_for` [EXTRACTED]
-- [[TestForecastProbability]] - `method` [EXTRACTED]
-- [[_forecast_probability()]] - `calls` [EXTRACTED]
+- [[TestPersistenceProb]] - `method` [EXTRACTED]
+- [[normal_cdf()]] - `calls` [EXTRACTED]
+- [[persistence_prob()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests

@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[TestDynamicCacheTTL]] - `method` [EXTRACTED]
-- [[fixture_7]] - `references` [EXTRACTED]
+- [[fixture_6]] - `references` [EXTRACTED]
 - [[test_cache_hit_returns_forecast_without_fetch and…]] - `rationale_for` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_303

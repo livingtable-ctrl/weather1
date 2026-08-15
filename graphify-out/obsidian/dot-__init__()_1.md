@@ -1,18 +1,17 @@
 ---
-source_file: "circuit_breaker.py"
+source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 95"
-location: "L35"
+community: "Community 138"
+location: "L2627"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_95
+  - community/Community_138
 ---
 
 # .__init__()
 
 ## Connections
-- [[dot-__init__()_3]] - `calls` [EXTRACTED]
-- [[CircuitOpenError]] - `method` [EXTRACTED]
+- [[_FakeMarketClient]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_95
+#graphify/code #graphify/EXTRACTED #community/Community_138

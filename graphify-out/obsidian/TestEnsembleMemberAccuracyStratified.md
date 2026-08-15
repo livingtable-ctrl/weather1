@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[18 - get_ensemble_member_accuracy() must stratify by city and season.]] - `rationale_for` [EXTRACTED]
-- [[dot-setUp()_22]] - `method` [EXTRACTED]
-- [[dot-tearDown()_22]] - `method` [EXTRACTED]
+- [[dot-setUp()_31]] - `method` [EXTRACTED]
+- [[dot-tearDown()_30]] - `method` [EXTRACTED]
 - [[dot-test_grpb_ensemble_city_filter()]] - `method` [EXTRACTED]
 - [[dot-test_grpb_ensemble_empty_returns_none()]] - `method` [EXTRACTED]
 - [[dot-test_grpb_ensemble_return_shape()]] - `method` [EXTRACTED]

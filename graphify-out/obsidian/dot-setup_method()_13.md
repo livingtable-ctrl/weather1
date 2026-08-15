@@ -1,17 +1,18 @@
 ---
-source_file: "tests/test_live_execution.py"
+source_file: "tests/test_phase2_batch_d.py"
 type: "code"
-community: "Community 157"
-location: "L657"
+community: "Community 172"
+location: "L638"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_157
+  - community/Community_172
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestFinalizeCancel]] - `method` [EXTRACTED]
+- [[TestGetLivePrecipObs]] - `method` [EXTRACTED]
+- [[_reset_nws_cb()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_157
+#graphify/code #graphify/EXTRACTED #community/Community_172

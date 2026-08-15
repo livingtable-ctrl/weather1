@@ -12,7 +12,7 @@ tags:
 # TestMonthlyRainCityDetection
 
 ## Connections
-- [[dot-_city()_2]] - `method` [EXTRACTED]
+- [[dot-_city()]] - `method` [EXTRACTED]
 - [[dot-test_austin_rain_ticker_detected()]] - `method` [EXTRACTED]
 - [[dot-test_chicago_rain_ticker_detected()]] - `method` [EXTRACTED]
 - [[dot-test_dallas_rain_ticker_detected()]] - `method` [EXTRACTED]

@@ -12,8 +12,8 @@ tags:
 # _cholesky()
 
 ## Connections
-- [[dot-test_cholesky_correlated()]] - `calls` [EXTRACTED]
-- [[dot-test_cholesky_identity()]] - `calls` [EXTRACTED]
+- [[dot-test_cholesky_correlated()_1]] - `calls` [EXTRACTED]
+- [[dot-test_cholesky_identity()_1]] - `calls` [EXTRACTED]
 - [[dot-test_cholesky_not_positive_definite_returns_none()]] - `calls` [EXTRACTED]
 - [[dot-test_repair_psd_identity_unchanged()]] - `calls` [EXTRACTED]
 - [[dot-test_repair_psd_makes_cholesky_succeed()]] - `calls` [EXTRACTED]

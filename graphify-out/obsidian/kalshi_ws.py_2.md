@@ -1,16 +1,13 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 59"
+community: "Community 656"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_59
+  - community/Community_656
 ---
 
 # kalshi_ws.py
 
-## Connections
-- [[Grade Audit Final Report]] - `references` [EXTRACTED]
-
-#graphify/code #graphify/EXTRACTED #community/Community_59
+#graphify/code #graphify/EXTRACTED #community/Community_656

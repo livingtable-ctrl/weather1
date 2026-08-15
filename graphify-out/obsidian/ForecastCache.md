@@ -12,7 +12,7 @@ tags:
 # ForecastCache
 
 ## Connections
-- [[dot-__init__()_4]] - `method` [EXTRACTED]
+- [[dot-__init__()_9]] - `method` [EXTRACTED]
 - [[dot-__len__()]] - `method` [EXTRACTED]
 - [[dot-_effective_ttl()]] - `method` [EXTRACTED]
 - [[dot-_evict_oldest()]] - `method` [EXTRACTED]
@@ -89,7 +89,7 @@ tags:
 - [[TestRegimeBlend]] - `uses` [INFERRED]
 - [[TestSignalGraduationRegistry]] - `uses` [INFERRED]
 - [[TestSnowLiquidRatio]] - `uses` [INFERRED]
-- [[TestTimeDecayEdge]] - `uses` [INFERRED]
+- [[TestTimeDecayEdge_1]] - `uses` [INFERRED]
 - [[TestValidateWeightFiles]] - `uses` [INFERRED]
 - [[TestWeightFilesExist]] - `uses` [INFERRED]
 - [[Thread-safe dict-based cache with per-entry TTL and LRU eviction. Keys are…]] - `rationale_for` [EXTRACTED]

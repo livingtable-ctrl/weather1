@@ -17,7 +17,7 @@ tags:
 - [[atomic_write_json()]] - `calls` [EXTRACTED]
 - [[backtest.py]] - `contains` [EXTRACTED]
 - [[climatological_prob()]] - `semantically_similar_to` [INFERRED]
-- [[date]] - `references` [EXTRACTED]
+- [[date_7]] - `references` [EXTRACTED]
 - [[run_backtest()]] - `calls` [EXTRACTED]
 - [[test_backtest_stratified.py]] - `imports` [EXTRACTED]
 

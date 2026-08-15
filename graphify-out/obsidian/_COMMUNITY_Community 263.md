@@ -11,12 +11,12 @@ members: 14
 
 ## Members
 - [[dot-test_bare_ticker_dict_hits_no_city_not_the_old_guard()_1]] - code - tests/test_snow_markets.py
-- [[dot-test_daily_high_ticker_unaffected()_2]] - code - tests/test_snow_markets.py
+- [[dot-test_daily_high_ticker_unaffected()_1]] - code - tests/test_snow_markets.py
 - [[dot-test_days_out_at_snow_max_boundary_passes_days_out_gate()]] - code - tests/test_snow_markets.py
 - [[dot-test_days_out_beyond_snow_max_gates_out()]] - code - tests/test_snow_markets.py
 - [[dot-test_no_forecast_no_date_past_date_gates_never_fire_for_snow()]] - code - tests/test_snow_markets.py
 - [[dot-test_past_close_time_gates_out()_1]] - code - tests/test_snow_markets.py
-- [[dot-test_rain_ticker_unaffected()_2]] - code - tests/test_snow_markets.py
+- [[dot-test_rain_ticker_unaffected()]] - code - tests/test_snow_markets.py
 - [[Confirms the Step 1 guard is actually gone, not just renamed -- a bare…]] - rationale - tests/test_snow_markets.py
 - [[Off-by-one check exactly SNOW_MAX_DAYS_OUT days out must NOT hit the days_out…]] - rationale - tests/test_snow_markets.py
 - [[Regression control an ordinary daily HIGH ticker with no forecast data must…_1]] - rationale - tests/test_snow_markets.py

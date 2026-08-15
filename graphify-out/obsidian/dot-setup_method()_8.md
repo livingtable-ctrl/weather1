@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_execution_log.py"
+source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 421"
-location: "L663"
+community: "Community 127"
+location: "L358"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_421
+  - community/Community_127
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestWasOrderedRecentlyCanceledSpelling]] - `method` [EXTRACTED]
+- [[TestGetModelWeights]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_421
+#graphify/code #graphify/EXTRACTED #community/Community_127

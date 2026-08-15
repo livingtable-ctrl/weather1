@@ -12,7 +12,7 @@ tags:
 # .test_one_thin_model_excluded_not_blocking_the_other()
 
 ## Connections
-- [[dot-_seed()_6]] - `calls` [EXTRACTED]
+- [[dot-_seed()_1]] - `calls` [EXTRACTED]
 - [[2026-07-23 (TRACK ECMWF FORECAST ACCURACY adjacency fix) a model below the…]] - `rationale_for` [EXTRACTED]
 - [[TestGetModelWeights]] - `method` [EXTRACTED]
 

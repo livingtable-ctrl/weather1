@@ -1,16 +1,17 @@
 ---
 source_file: ""
 type: "code"
-community: "Climatology & Climate Index Fetching"
+community: "Community 211"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_211
 ---
 
 # date
 
 ## Connections
-- [[temperature_adjustment()]] - `references` [EXTRACTED]
+- [[_fetch_daily_temps_f()]] - `references` [EXTRACTED]
+- [[fetch_metar_daily_extreme()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_211

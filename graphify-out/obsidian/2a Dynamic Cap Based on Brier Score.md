@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Kelly Cap Raise (25%→33%)]] - `conceptually_related_to` [INFERRED]
-- [[paper.py Module_1]] - `references` [EXTRACTED]
-- [[tracker.py Module_1]] - `references` [EXTRACTED]
+- [[paper.py Module]] - `references` [EXTRACTED]
+- [[tracker.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_156

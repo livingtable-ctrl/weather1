@@ -1,18 +1,19 @@
 ---
-source_file: "tests/test_trading.py"
+source_file: "tests/test_trade_improvements.py"
 type: "code"
-community: "Community 445"
-location: "L1413"
+community: "Community 346"
+location: "L138"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_445
+  - community/Community_346
 ---
 
 # ._make_enriched()
 
 ## Connections
-- [[dot-_run()_5]] - `calls` [EXTRACTED]
-- [[TestTimeDecayEdgeScope]] - `method` [EXTRACTED]
+- [[dot-test_low_prob_edge_signal_skipped()]] - `calls` [EXTRACTED]
+- [[dot-test_sufficient_prob_edge_signal_passes()]] - `calls` [EXTRACTED]
+- [[TestMinProbEdgeGate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_445
+#graphify/code #graphify/EXTRACTED #community/Community_346

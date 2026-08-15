@@ -26,7 +26,6 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 66]]
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 1 edge to [[_COMMUNITY_Kelly City Multiplier & Edge Realization]]
 - 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
@@ -36,6 +35,3 @@ SORT file.name ASC
 ## Top bridge nodes
 - [[Full System Audit Prompt]] - degree 7, connects to 4 communities
 - [[Full System Grade Prompt]] - degree 7, connects to 2 communities
-- [[apianomaly-status route]] - degree 2, connects to 1 community
-- [[apicalibration-status route]] - degree 2, connects to 1 community
-- [[apistatus route]] - degree 2, connects to 1 community

@@ -12,7 +12,7 @@ tags:
 # .test_philadelphia_renamed_high_ticker_without_t()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[KXHIGHPHIL (renamed from KXHIGHTPHIL, dropped the 'T') → Philadelphia.]] - `rationale_for` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 

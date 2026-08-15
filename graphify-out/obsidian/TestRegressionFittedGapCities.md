@@ -12,7 +12,7 @@ tags:
 # TestRegressionFittedGapCities
 
 ## Connections
-- [[dot-_adjustment()_1]] - `method` [EXTRACTED]
+- [[dot-_adjustment()]] - `method` [EXTRACTED]
 - [[dot-test_austin_winter_is_entirely_default_despite_being_a_covered_city()]] - `method` [EXTRACTED]
 - [[dot-test_gulf_coast_negative_enso_other_reduces_total_adjustment()]] - `method` [EXTRACTED]
 - [[dot-test_san_francisco_ao_nao_and_enso_winter_default_but_enso_other_fitted()]] - `method` [EXTRACTED]

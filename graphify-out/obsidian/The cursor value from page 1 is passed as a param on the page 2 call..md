@@ -12,6 +12,6 @@ tags:
 # The cursor value from page 1 is passed as a param on the page 2 call.
 
 ## Connections
-- [[dot-test_cursor_passed_on_second_call()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_cursor_passed_on_second_call()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_336

@@ -12,7 +12,7 @@ tags:
 # .test_grpb_calibration_bucket_fields()
 
 ## Connections
-- [[dot-_seed()_8]] - `calls` [EXTRACTED]
+- [[dot-_seed()_3]] - `calls` [EXTRACTED]
 - [[Each bucket must have the required keys.]] - `rationale_for` [EXTRACTED]
 - [[TestMarketCalibrationQuantile]] - `method` [EXTRACTED]
 

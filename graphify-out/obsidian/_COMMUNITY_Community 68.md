@@ -10,7 +10,7 @@ members: 34
 **Members:** 34 nodes
 
 ## Members
-- [[dot-setup_method()_29]] - code - tests/test_nws_afd.py
+- [[dot-setup_method()_38]] - code - tests/test_nws_afd.py
 - [[dot-test_caches_per_office_not_per_city()]] - code - tests/test_nws_afd.py
 - [[dot-test_empty_present_section_returns_none()]] - code - tests/test_nws_afd.py
 - [[dot-test_every_city_coords_city_has_an_entry()]] - code - tests/test_nws_afd.py
@@ -53,9 +53,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 182]]
 - 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Community 123]]
+- 1 edge to [[_COMMUNITY_Community 182]]
 
 ## Top bridge nodes
 - [[test_nws_afd.py]] - degree 9, connects to 3 communities

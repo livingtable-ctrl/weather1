@@ -12,8 +12,8 @@ tags:
 # TestCalibrateSeasonalWeights
 
 ## Connections
-- [[dot-setup_method()]] - `method` [EXTRACTED]
-- [[dot-teardown_method()]] - `method` [EXTRACTED]
+- [[dot-setup_method()_40]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_31]] - `method` [EXTRACTED]
 - [[dot-test_below_threshold_omits_season()]] - `method` [EXTRACTED]
 - [[dot-test_monthly_rain_rows_not_counted()]] - `method` [EXTRACTED]
 - [[dot-test_monthly_snow_rows_not_counted()]] - `method` [EXTRACTED]

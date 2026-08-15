@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[No .py file outside safe_io.py should call os.replace()_os.replace() directly…]] - `rationale_for` [EXTRACTED]
-- [[_all_source_files()]] - `calls` [EXTRACTED]
+- [[_all_source_files()_1]] - `calls` [EXTRACTED]
 - [[test_bare_os_replace_guard.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes

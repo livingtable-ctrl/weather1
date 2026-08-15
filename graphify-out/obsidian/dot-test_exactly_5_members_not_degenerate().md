@@ -12,7 +12,7 @@ tags:
 # .test_exactly_5_members_not_degenerate()
 
 ## Connections
-- [[dot-_call()_1]] - `calls` [EXTRACTED]
+- [[dot-_call()]] - `calls` [EXTRACTED]
 - [[Exactly 5 identical members degenerate threshold requires 5.]] - `rationale_for` [EXTRACTED]
 - [[TestEnsembleStatsDegenerate]] - `method` [EXTRACTED]
 

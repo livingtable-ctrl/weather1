@@ -23,7 +23,7 @@ members: 15
 - [[TestMutationEndpointsRequireAuth]] - code - tests/test_web_auth.py
 - [[When DASHBOARD_PASSWORD is empty, mutation endpoints are open (dev mode).]] - rationale - tests/test_web_auth.py
 - [[_basic_auth()]] - code - tests/test_web_auth.py
-- [[_make_app()_1]] - code - tests/test_web_auth.py
+- [[_make_app()]] - code - tests/test_web_auth.py
 - [[test_web_auth.py]] - code - tests/test_web_auth.py
 
 ## Live Query (requires Dataview plugin)
@@ -34,8 +34,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 228]]
 - 1 edge to [[_COMMUNITY_Community 176]]
+- 1 edge to [[_COMMUNITY_Community 228]]
 
 ## Top bridge nodes
 - [[test_web_auth.py]] - degree 6, connects to 2 communities

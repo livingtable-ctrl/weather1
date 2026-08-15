@@ -12,6 +12,6 @@ tags:
 # Redirect tracker to a fresh temp DB before each test.
 
 ## Connections
-- [[dot-setup_method()_36]] - `rationale_for` [EXTRACTED]
+- [[dot-setup_method()_18]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_284

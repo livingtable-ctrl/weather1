@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_calibration.py"
+source_file: "tests/test_mos_nbs.py"
 type: "code"
-community: "Community 103"
-location: "L220"
+community: "Community 114"
+location: "L140"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_103
+  - community/Community_114
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestLoadWeights]] - `method` [EXTRACTED]
+- [[TestFetchNbmIem]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_103
+#graphify/code #graphify/EXTRACTED #community/Community_114

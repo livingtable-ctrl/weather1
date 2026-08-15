@@ -18,7 +18,7 @@ members: 16
 - [[Minimal enriched dict that passes all analyze_trade gates.]] - rationale - tests/test_silent_failures.py
 - [[Return a stack of patches that let analyze_trade reach the risky sections.]] - rationale - tests/test_silent_failures.py
 - [[Tests for P0.4 — Silent failure elimination. Every failure in the trading path…]] - rationale - tests/test_silent_failures.py
-- [[_make_enriched()_2]] - code - tests/test_silent_failures.py
+- [[_make_enriched()_1]] - code - tests/test_silent_failures.py
 - [[_patch_analyze_prereqs()]] - code - tests/test_silent_failures.py
 - [[test_analyze_trade_logs_climatological_failure()]] - code - tests/test_silent_failures.py
 - [[test_analyze_trade_logs_consensus_failure()]] - code - tests/test_silent_failures.py

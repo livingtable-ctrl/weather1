@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[If get_retired_strategies raises, analyze_trade must not crash.]] - `rationale_for` [EXTRACTED]
 - [[TestRetiredStrategyGate]] - `method` [EXTRACTED]
-- [[_make_enriched()_1]] - `calls` [EXTRACTED]
+- [[_make_enriched()]] - `calls` [EXTRACTED]
 - [[_stub_heavy_deps()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_124

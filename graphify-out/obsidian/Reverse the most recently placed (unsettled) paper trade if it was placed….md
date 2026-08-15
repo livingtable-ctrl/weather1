@@ -1,17 +1,17 @@
 ---
-source_file: "main.py"
+source_file: "paper.py"
 type: "rationale"
-community: "Black Swan Halt State"
-location: "L8642"
+community: "Anomaly Detection & PDF Reporting"
+location: "L2917"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Reverse the most recently placed (unsettled) paper trade if it was placed…
 
 ## Connections
-- [[cmd_undo()]] - `rationale_for` [EXTRACTED]
+- [[undo_last_trade()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

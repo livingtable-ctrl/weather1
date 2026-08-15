@@ -12,8 +12,8 @@ tags:
 # TestPaperPreLog
 
 ## Connections
-- [[dot-setup_method()_30]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_22]] - `method` [EXTRACTED]
+- [[dot-setup_method()_22]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_15]] - `method` [EXTRACTED]
 - [[dot-test_failure_updates_entry_to_failed()]] - `method` [EXTRACTED]
 - [[dot-test_pending_entry_exists_before_place_paper_order()]] - `method` [EXTRACTED]
 - [[dot-test_success_updates_entry_to_filled()]] - `method` [EXTRACTED]

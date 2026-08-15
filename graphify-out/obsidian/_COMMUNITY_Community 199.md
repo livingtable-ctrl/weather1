@@ -24,7 +24,7 @@ members: 17
 - [[LV8 Natural Language Daily Brief]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
 - [[Signals Page Spec (signals)]] - document - docs/superpowers/specs/2026-04-10-dashboard-modernization-design.md
 - [[SignalsTab.jsx Component]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[cron.py Module_1]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[cron.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
 - [[paths.py Module]] - code - docs/superpowers/plans/2026-06-27-category-g-architecture.md
 - [[watchdog.py Module]] - code - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
 
@@ -37,8 +37,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_Community 249]]
-- 3 edges to [[_COMMUNITY_Community 156]]
 - 3 edges to [[_COMMUNITY_Community 141]]
+- 3 edges to [[_COMMUNITY_Community 156]]
 - 2 edges to [[_COMMUNITY_Community 179]]
 - 1 edge to [[_COMMUNITY_Community 104]]
 

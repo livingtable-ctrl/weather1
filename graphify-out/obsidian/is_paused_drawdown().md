@@ -12,7 +12,7 @@ tags:
 # is_paused_drawdown()
 
 ## Connections
-- [[dot-check()_1]] - `calls` [EXTRACTED]
+- [[dot-check()]] - `calls` [EXTRACTED]
 - [[Return True if balance has fallen more than MAX_DRAWDOWN_FRACTION from the peak…]] - `rationale_for` [EXTRACTED]
 - [[_auto_place_trades Function]] - `calls` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]

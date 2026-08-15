@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Isolate cmd_cron from real data, networks, and alerts.]] - `rationale_for` [EXTRACTED]
-- [[fixture_5]] - `references` [EXTRACTED]
+- [[fixture_4]] - `references` [EXTRACTED]
 - [[test_cron_integration.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Cron_Integration_Tests

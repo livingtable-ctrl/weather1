@@ -4,7 +4,7 @@ type: "document"
 community: "Community 295"
 tags:
   - graphify/document
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_295
 ---
 
@@ -14,4 +14,4 @@ tags:
 - [[Category A Prediction Pipeline Plan]] - `implements` [EXTRACTED]
 - [[Confidence-Tiered Edge Thresholds]] - `semantically_similar_to` [INFERRED]
 
-#graphify/document #graphify/INFERRED #community/Community_295
+#graphify/document #graphify/EXTRACTED #community/Community_295

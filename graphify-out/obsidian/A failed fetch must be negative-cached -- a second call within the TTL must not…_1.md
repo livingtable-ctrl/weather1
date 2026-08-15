@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_forecasting.py"
+source_file: "tests/test_ecmwf.py"
 type: "rationale"
-community: "Forecasting Persistence Model Tests"
-location: "L1347"
+community: "Community 255"
+location: "L87"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_255
 ---
 
 # A failed fetch must be negative-cached -- a second call within the TTL must not…
 
 ## Connections
-- [[dot-test_fetch_hrrr_temp_negative_caches_failure()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_fetch_temperature_ecmwf_negative_caches_failure()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_255

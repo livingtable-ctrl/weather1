@@ -12,7 +12,7 @@ tags:
 # .test_disputed_rows_are_included()
 
 ## Connections
-- [[dot-_settle()_1]] - `calls` [EXTRACTED]
+- [[dot-_settle()]] - `calls` [EXTRACTED]
 - [[Matches backfill_price_history's own reasoning (see…]] - `rationale_for` [EXTRACTED]
 - [[TestBackfillDailyTempSettlement]] - `method` [EXTRACTED]
 

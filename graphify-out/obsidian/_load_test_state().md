@@ -12,7 +12,7 @@ tags:
 # _load_test_state()
 
 ## Connections
-- [[dot-__init__()]] - `calls` [EXTRACTED]
+- [[dot-__init__()_4]] - `calls` [EXTRACTED]
 - [[ab_test.py]] - `contains` [EXTRACTED]
 - [[get_active_variant()]] - `calls` [EXTRACTED]
 - [[list_all_summaries()]] - `calls` [EXTRACTED]

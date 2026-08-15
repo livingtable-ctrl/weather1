@@ -13,11 +13,11 @@ tags:
 
 ## Connections
 - [[Copy files from sync_folderKalshiBotdata back into local data. Use this…]] - `rationale_for` [EXTRACTED]
-- [[Path_6]] - `references` [EXTRACTED]
+- [[Path_14]] - `references` [EXTRACTED]
 - [[ValueError]] - `calls` [INFERRED]
 - [[_find_sync_folder()]] - `calls` [EXTRACTED]
 - [[cloud_backup.py]] - `contains` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_326

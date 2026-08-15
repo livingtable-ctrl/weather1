@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Activate the kill switch — stops all automated trading immediately.]] - `rationale_for` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 

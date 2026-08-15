@@ -38,9 +38,9 @@ SORT file.name ASC
 - 2 edges to [[_COMMUNITY_Community 44]]
 - 2 edges to [[_COMMUNITY_Community 298]]
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 351]]
 - 1 edge to [[_COMMUNITY_Community 86]]
 - 1 edge to [[_COMMUNITY_Community 36]]
+- 1 edge to [[_COMMUNITY_Community 351]]
 
 ## Top bridge nodes
 - [[_request_with_retry()]] - degree 14, connects to 6 communities

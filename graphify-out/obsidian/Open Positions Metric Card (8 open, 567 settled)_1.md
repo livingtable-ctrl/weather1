@@ -1,16 +1,17 @@
 ---
-source_file: "updated frontend/screenshots/light.png"
+source_file: "updated frontend/screenshots/dark.png"
 type: "image"
-community: "Community 192"
+community: "Community 292"
 tags:
   - graphify/image
-  - graphify/EXTRACTED
-  - community/Community_192
+  - graphify/INFERRED
+  - community/Community_292
 ---
 
 # Open Positions Metric Card (8 open, 567 settled)
 
 ## Connections
-- [[Metric Cards Row (Paper balance, Open positions, Win rate, Brier score)_1]] - `references` [EXTRACTED]
+- [[Graduation Gate - Trades Progress Bar (56730, complete)]] - `shares_data_with` [INFERRED]
+- [[Metric Card Row (Paper Balance, Open Positions, Win Rate, Brier Score)]] - `references` [EXTRACTED]
 
-#graphify/image #graphify/EXTRACTED #community/Community_192
+#graphify/image #graphify/INFERRED #community/Community_292

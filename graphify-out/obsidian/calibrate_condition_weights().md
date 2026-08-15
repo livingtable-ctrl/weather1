@@ -17,7 +17,7 @@ tags:
 - [[dot-test_no_market_date_rows_handled_gracefully()]] - `calls` [EXTRACTED]
 - [[dot-test_weights_sum_to_one()_4]] - `calls` [EXTRACTED]
 - [[Grid-search optimal blend weights per condition type (abovebelowbetween).…]] - `rationale_for` [EXTRACTED]
-- [[Path_4]] - `references` [EXTRACTED]
+- [[Path_2]] - `references` [EXTRACTED]
 - [[Phase 3 Batch C Calibration Tests]] - `imports` [EXTRACTED]
 - [[_best_weights()]] - `calls` [EXTRACTED]
 - [[_compute_recency_weight()]] - `calls` [EXTRACTED]

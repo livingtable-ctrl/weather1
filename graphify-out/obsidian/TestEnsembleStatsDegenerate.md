@@ -12,11 +12,11 @@ tags:
 # TestEnsembleStatsDegenerate
 
 ## Connections
-- [[dot-_call()_1]] - `method` [EXTRACTED]
+- [[dot-_call()]] - `method` [EXTRACTED]
 - [[dot-test_all_identical_flagged_as_degenerate()]] - `method` [EXTRACTED]
 - [[dot-test_analyze_trade_skips_degenerate_ensemble()]] - `method` [EXTRACTED]
 - [[dot-test_degenerate_key_always_present_when_nonempty()]] - `method` [EXTRACTED]
-- [[dot-test_empty_returns_empty()_1]] - `method` [EXTRACTED]
+- [[dot-test_empty_returns_empty()]] - `method` [EXTRACTED]
 - [[dot-test_exactly_5_members_not_degenerate()]] - `method` [EXTRACTED]
 - [[dot-test_six_identical_members_is_degenerate()]] - `method` [EXTRACTED]
 - [[dot-test_varied_temps_not_degenerate()]] - `method` [EXTRACTED]

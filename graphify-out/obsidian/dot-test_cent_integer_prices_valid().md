@@ -12,7 +12,7 @@ tags:
 # .test_cent_integer_prices_valid()
 
 ## Connections
-- [[dot-_call()_2]] - `calls` [EXTRACTED]
+- [[dot-_call()_5]] - `calls` [EXTRACTED]
 - [[dot-_valid()]] - `calls` [EXTRACTED]
 - [[Integer cent prices (1–99) must pass after normalisation.]] - `rationale_for` [EXTRACTED]
 - [[TestValidateMarketPriceRange]] - `method` [EXTRACTED]

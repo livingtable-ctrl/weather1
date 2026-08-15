@@ -12,6 +12,6 @@ tags:
 # Mirrors rain's identical resolved decision: get_quintile_bias must be called…
 
 ## Connections
-- [[dot-test_bias_correction_keyed_on_close_dt_month_not_accrual_month()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-test_bias_correction_keyed_on_close_dt_month_not_accrual_month()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_115

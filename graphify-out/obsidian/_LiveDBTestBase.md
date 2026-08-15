@@ -12,8 +12,8 @@ tags:
 # _LiveDBTestBase
 
 ## Connections
-- [[dot-setup_method()_22]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_21]] - `method` [EXTRACTED]
+- [[dot-setup_method()_30]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_22]] - `method` [EXTRACTED]
 - [[LivePositionStore]] - `uses` [INFERRED]
 - [[Position]] - `uses` [INFERRED]
 - [[Shared execution_log DB isolation for the live-position-protection test classes…]] - `rationale_for` [EXTRACTED]

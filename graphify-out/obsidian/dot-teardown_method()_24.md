@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_p1_remaining.py"
+source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 204"
-location: "L187"
+community: "Community 468"
+location: "L1978"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_204
+  - community/Community_468
 ---
 
 # .teardown_method()
 
 ## Connections
-- [[TestCircuitBreakerPersistence]] - `method` [EXTRACTED]
+- [[TestGetTodayLiveSpendExcludesAmended]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_204
+#graphify/code #graphify/EXTRACTED #community/Community_468

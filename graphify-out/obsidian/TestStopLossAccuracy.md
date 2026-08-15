@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[dot-_sl_trade()]] - `method` [EXTRACTED]
-- [[dot-setUp()_38]] - `method` [EXTRACTED]
-- [[dot-tearDown()_38]] - `method` [EXTRACTED]
+- [[dot-setUp()_23]] - `method` [EXTRACTED]
+- [[dot-tearDown()_22]] - `method` [EXTRACTED]
 - [[dot-test_excludes_disputed_outcome()]] - `method` [EXTRACTED]
 - [[dot-test_multiple_trades_averaged()]] - `method` [EXTRACTED]
 - [[dot-test_no_side_settlement_priced_correctly()]] - `method` [EXTRACTED]

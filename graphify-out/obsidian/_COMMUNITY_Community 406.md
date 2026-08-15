@@ -16,7 +16,7 @@ members: 9
 - [[dot-test_no_market_date_rows_handled_gracefully()]] - code - tests/test_phase3_batch_c.py
 - [[dot-test_weights_sum_to_one()_4]] - code - tests/test_phase3_batch_c.py
 - [[P3-16 calibrate_condition_weights accepts cutoff_date; no look-ahead bias.]] - rationale - tests/test_phase3_batch_c.py
-- [[Path_28]] - code
+- [[Path_17]] - code
 - [[Rows with NULL market_date fall back to empty-string cutoff comparison.]] - rationale - tests/test_phase3_batch_c.py
 - [[TestTemporalIsolationCondition]] - code - tests/test_phase3_batch_c.py
 
@@ -28,8 +28,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 118]]
 - 4 edges to [[_COMMUNITY_Community 72]]
+- 4 edges to [[_COMMUNITY_Community 118]]
 
 ## Top bridge nodes
 - [[dot-test_no_market_date_rows_handled_gracefully()]] - degree 4, connects to 2 communities

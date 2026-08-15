@@ -1,17 +1,18 @@
 ---
-source_file: "tests/test_hurricane_markets.py"
+source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 398"
-location: "L400"
+community: "Community 312"
+location: "L342"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_398
+  - community/Community_312
 ---
 
 # .test_truthy_env_var_values_case_insensitive()
 
 ## Connections
-- [[TestHurricaneCountGatesActive]] - `method` [EXTRACTED]
+- [[Mirrors the falsy check above -- confirms the accepted truthy set really is…]] - `rationale_for` [EXTRACTED]
+- [[TestSnowGatesActive]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_398
+#graphify/code #graphify/EXTRACTED #community/Community_312

@@ -13,6 +13,6 @@ tags:
 ## Connections
 - [[Fix BacktestSimulateValidate Plan]] - `implements` [EXTRACTED]
 - [[Fix Simulate Pagination]] - `references` [EXTRACTED]
-- [[main.py module]] - `references` [EXTRACTED]
+- [[main.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_386

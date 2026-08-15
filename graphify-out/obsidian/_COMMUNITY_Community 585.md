@@ -22,8 +22,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Black Swan Halt State]]
+- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 
 ## Top bridge nodes
 - [[Graduation Toast Shows Stale Brier ≤0.20 (L2048)]] - degree 3, connects to 1 community

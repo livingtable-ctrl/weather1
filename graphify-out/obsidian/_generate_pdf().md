@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Generate PDF using fpdf2.]] - `rationale_for` [EXTRACTED]
-- [[Path_13]] - `references` [EXTRACTED]
+- [[Path]] - `references` [EXTRACTED]
 - [[_pdf()]] - `calls` [EXTRACTED]
 - [[generate_weekly_report()]] - `calls` [EXTRACTED]
 - [[pdf_report.py]] - `contains` [EXTRACTED]

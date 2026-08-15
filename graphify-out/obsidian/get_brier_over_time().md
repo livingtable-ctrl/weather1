@@ -21,8 +21,8 @@ tags:
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[detect_brier_drift()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[tracker.py_2]] - `implements` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
+- [[tracker.py_1]] - `implements` [EXTRACTED]
 - [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_36

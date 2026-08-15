@@ -12,6 +12,6 @@ tags:
 # Log n diverse trusted (non-disputed) settled predictions — enough to clear…
 
 ## Connections
-- [[dot-_seed_baseline()]] - `rationale_for` [EXTRACTED]
+- [[dot-_seed_baseline()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_614

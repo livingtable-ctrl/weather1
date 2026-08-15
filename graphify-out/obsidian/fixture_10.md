@@ -1,16 +1,16 @@
 ---
 source_file: ""
 type: "code"
-community: "Tracker P&L Attribution Tests"
+community: "Community 461"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_461
 ---
 
 # fixture
 
 ## Connections
-- [[tmp_tracker()_2]] - `references` [EXTRACTED]
+- [[isolate_alerts_data()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_461

@@ -12,7 +12,7 @@ tags:
 # .test_count_settled_signal_rows_multiday_excludes_sameday_rows()
 
 ## Connections
-- [[dot-_analysis()_4]] - `calls` [EXTRACTED]
+- [[dot-_analysis()_1]] - `calls` [EXTRACTED]
 - [[TestSignalGraduationCounters]] - `method` [EXTRACTED]
 - [[utc_today()]] - `calls` [EXTRACTED]
 

@@ -12,7 +12,6 @@ tags:
 # SettingsTab()
 
 ## Connections
-- [[authHeader Function]] - `calls` [EXTRACTED]
 - [[frontendsrcApp.jsx]] - `indirect_call` [INFERRED]
 
 #graphify/code #graphify/INFERRED #community/Community_327

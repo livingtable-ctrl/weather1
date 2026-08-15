@@ -12,7 +12,7 @@ tags:
 # get_open_trades()
 
 ## Connections
-- [[dot-get_open()_1]] - `calls` [EXTRACTED]
+- [[dot-get_open()]] - `calls` [EXTRACTED]
 - [[_analyze_once()]] - `calls` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
@@ -22,7 +22,7 @@ tags:
 - [[_cmd_settle_open()]] - `calls` [EXTRACTED]
 - [[_collect_data Function]] - `calls` [EXTRACTED]
 - [[_collect_data()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[_log_shadow_predictions()]] - `calls` [EXTRACTED]
 - [[auto_settle_paper_trades()]] - `calls` [EXTRACTED]
 - [[check_aged_positions()]] - `calls` [EXTRACTED]

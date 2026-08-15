@@ -15,7 +15,7 @@ tags:
 - [[One-off recovery for outcomes.settled_temp_f rows written before…]] - `rationale_for` [EXTRACTED]
 - [[backfill_daily_temp_settlement()]] - `calls` [EXTRACTED]
 - [[get_disputed_count()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 - [[test_p1_remaining.py]] - `calls` [EXTRACTED]

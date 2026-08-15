@@ -12,7 +12,7 @@ tags:
 # .test_returns_dict_with_expected_keys()
 
 ## Connections
-- [[TestForecastModelWeights_1]] - `method` [EXTRACTED]
+- [[TestForecastModelWeights]] - `method` [EXTRACTED]
 - [[_forecast_model_weights()]] - `calls` [EXTRACTED]
 - [[month=1 is winter, so _forecast_model_weights hits the same live-network…]] - `rationale_for` [EXTRACTED]
 

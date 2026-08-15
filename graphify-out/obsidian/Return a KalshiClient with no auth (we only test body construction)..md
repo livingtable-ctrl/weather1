@@ -12,6 +12,6 @@ tags:
 # Return a KalshiClient with no auth (we only test body construction).
 
 ## Connections
-- [[dot-_make_client()_2]] - `rationale_for` [EXTRACTED]
+- [[dot-_make_client()_6]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_366

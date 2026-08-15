@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[E4 Dead Man's Switch (48h Alert)]] - `references` [EXTRACTED]
-- [[cron.py Module_1]] - `references` [EXTRACTED]
+- [[cron.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_199

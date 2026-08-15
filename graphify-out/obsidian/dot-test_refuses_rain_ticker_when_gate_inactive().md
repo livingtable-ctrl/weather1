@@ -12,7 +12,7 @@ tags:
 # .test_refuses_rain_ticker_when_gate_inactive()
 
 ## Connections
-- [[dot-_analysis()_2]] - `calls` [EXTRACTED]
+- [[dot-_analysis()_4]] - `calls` [EXTRACTED]
 - [[dot-_market()_5]] - `calls` [EXTRACTED]
 - [[dot-_run_with_cpl_spy()]] - `calls` [EXTRACTED]
 - [[TestCmdTodayPlacementGates]] - `method` [EXTRACTED]

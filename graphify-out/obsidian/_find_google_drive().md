@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Find the Google Drive sync folder on Windows. Checks (in order) 1.…]] - `rationale_for` [EXTRACTED]
-- [[Path_6]] - `references` [EXTRACTED]
+- [[Path_14]] - `references` [EXTRACTED]
 - [[_find_sync_folder()]] - `calls` [EXTRACTED]
 - [[cloud_backup.py]] - `contains` [EXTRACTED]
 

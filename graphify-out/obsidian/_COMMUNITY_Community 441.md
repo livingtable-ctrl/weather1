@@ -10,8 +10,8 @@ members: 8
 **Members:** 8 nodes
 
 ## Members
-- [[dot-setUp()_28]] - code - tests/test_tracker.py
-- [[dot-tearDown()_28]] - code - tests/test_tracker.py
+- [[dot-setUp()_33]] - code - tests/test_tracker.py
+- [[dot-tearDown()_32]] - code - tests/test_tracker.py
 - [[dot-test_columns_exist_after_init()_1]] - code - tests/test_tracker.py
 - [[dot-test_round_trip_write_and_read()]] - code - tests/test_tracker.py
 - [[dot-test_settled_temp_f_write_path_unaffected()]] - code - tests/test_tracker.py

@@ -12,7 +12,7 @@ tags:
 # .test_returns_float()
 
 ## Connections
-- [[dot-_trade()_2]] - `calls` [EXTRACTED]
+- [[dot-_trade()_1]] - `calls` [EXTRACTED]
 - [[TestPortfolioVar]] - `method` [EXTRACTED]
 - [[portfolio_var()]] - `calls` [EXTRACTED]
 

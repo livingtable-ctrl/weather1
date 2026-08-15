@@ -12,7 +12,7 @@ tags:
 # .test_covered_city_other_season()
 
 ## Connections
-- [[dot-_adjustment()_2]] - `calls` [EXTRACTED]
+- [[dot-_adjustment()_1]] - `calls` [EXTRACTED]
 - [[TestTemperatureAdjustmentComputedValues]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_31

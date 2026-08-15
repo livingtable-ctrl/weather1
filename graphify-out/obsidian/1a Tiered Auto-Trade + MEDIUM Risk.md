@@ -12,8 +12,8 @@ tags:
 # 1a Tiered Auto-Trade + MEDIUM Risk
 
 ## Connections
-- [[main.py Module_1]] - `references` [EXTRACTED]
-- [[paper.py Module_1]] - `references` [EXTRACTED]
+- [[main.py Module]] - `references` [EXTRACTED]
+- [[paper.py Module]] - `references` [EXTRACTED]
 - [[utils.py Module (constants)]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_154

@@ -19,7 +19,7 @@ tags:
 - [[TestTradeWon]] - `contains` [EXTRACTED]
 - [[Tests for P1-14 — alerts winloss side confusion fix.]] - `rationale_for` [EXTRACTED]
 - [[_is_halt_level()]] - `imports` [EXTRACTED]
-- [[_make_trade()]] - `contains` [EXTRACTED]
+- [[_make_trade()_1]] - `contains` [EXTRACTED]
 - [[_trade_won()]] - `imports` [EXTRACTED]
 - [[alerts.py_1]] - `calls` [EXTRACTED]
 - [[check_anomalies()]] - `imports` [EXTRACTED]

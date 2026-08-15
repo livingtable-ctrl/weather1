@@ -21,7 +21,7 @@ tags:
 - [[TestPassesExitGates]] - `contains` [EXTRACTED]
 - [[Tests for early exit threshold and hold-time guards.]] - `rationale_for` [EXTRACTED]
 - [[_check_early_exits()]] - `calls` [EXTRACTED]
-- [[_make_trade()_1]] - `contains` [EXTRACTED]
+- [[_make_trade()_2]] - `contains` [EXTRACTED]
 - [[_trade_to_position()]] - `calls` [EXTRACTED]
 - [[check_model_exits()]] - `calls` [EXTRACTED]
 - [[liquidation_price()]] - `references` [EXTRACTED]

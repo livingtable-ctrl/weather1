@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[TestConsistency]] - `method` [EXTRACTED]
-- [[_rain_market()]] - `calls` [EXTRACTED]
-- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…]] - `rationale_for` [EXTRACTED]
+- [[_rain_market()_1]] - `calls` [EXTRACTED]
+- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…_2]] - `rationale_for` [EXTRACTED]
 - [[find_violations()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_35

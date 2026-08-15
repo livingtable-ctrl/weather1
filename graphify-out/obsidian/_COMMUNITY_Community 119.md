@@ -44,15 +44,15 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_Community 51]]
-- 3 edges to [[_COMMUNITY_Community 118]]
 - 3 edges to [[_COMMUNITY_Community 103]]
+- 3 edges to [[_COMMUNITY_Community 118]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_Community 344]]
 - 1 edge to [[_COMMUNITY_Community 432]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
+- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 
 ## Top bridge nodes
 - [[Phase 2 Batch C Regression Tests]] - degree 13, connects to 6 communities

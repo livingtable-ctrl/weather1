@@ -12,7 +12,7 @@ tags:
 # .test_load_seasonal_valid_json_returns_dict()
 
 ## Connections
-- [[Path_16]] - `calls` [EXTRACTED]
+- [[Path_1]] - `calls` [EXTRACTED]
 - [[TestLoadWeights]] - `method` [EXTRACTED]
 - [[load_seasonal_weights()]] - `calls` [EXTRACTED]
 

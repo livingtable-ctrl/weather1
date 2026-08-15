@@ -21,7 +21,7 @@ members: 15
 - [[When all sources fail, get_weather_forecast() returns None without raising.]] - rationale - tests/test_forecast_accuracy.py
 - [[_build_mock_forecast()]] - code - tests/test_forecast_accuracy.py
 - [[_open_meteo_response()]] - code - tests/test_forecast_accuracy.py
-- [[activate]] - code
+- [[activate_1]] - code
 - [[get_weather_forecast() always returns the expected schema keys.]] - rationale - tests/test_forecast_accuracy.py
 - [[parametrize_1]] - code
 - [[test_forecast_accuracy.py]] - code - tests/test_forecast_accuracy.py

@@ -12,7 +12,7 @@ tags:
 # .test_miami_rain_ticker_detected()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[Passes the existing substring chain by luck (MIA) -- tested so a future edit…]] - `rationale_for` [EXTRACTED]
 - [[TestMonthlyRainCityDetection]] - `method` [EXTRACTED]
 

@@ -1,12 +1,12 @@
 ---
-source_file: "tests/test_snow_markets.py"
+source_file: "tests/test_rain_markets.py"
 type: "rationale"
-community: "Community 377"
-location: "L167"
+community: "Community 409"
+location: "L430"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_377
+  - community/Community_409
 ---
 
 # Regression control: branch ordering must not swallow a normal temperature…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_ordinary_temperature_ticker_unaffected()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_377
+#graphify/rationale #graphify/EXTRACTED #community/Community_409

@@ -1,12 +1,12 @@
 ---
-source_file: "tests/test_execution_proof.py"
+source_file: "tests/test_alerts.py"
 type: "code"
-community: "Community 105"
-location: "L201"
+community: "Community 325"
+location: "L215"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_105
+  - community/Community_325
 ---
 
 # .get_market()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_FakeClient_1]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_105
+#graphify/code #graphify/EXTRACTED #community/Community_325

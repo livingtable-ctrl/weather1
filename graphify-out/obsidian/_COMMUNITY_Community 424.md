@@ -28,8 +28,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
+- 1 edge to [[_COMMUNITY_Community 51]]
 
 ## Top bridge nodes
 - [[TestForecastCycle]] - degree 6, connects to 2 communities

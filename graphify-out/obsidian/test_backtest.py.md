@@ -23,7 +23,7 @@ tags:
 - [[TestWeatherSeriesDerivation]] - `contains` [EXTRACTED]
 - [[Tests for cmd_simulate status parameter.]] - `rationale_for` [EXTRACTED]
 - [[atomic_write_json()_1]] - `calls` [EXTRACTED]
-- [[backtest.py_1]] - `calls` [EXTRACTED]
+- [[backtest.py_2]] - `calls` [EXTRACTED]
 - [[fetch_previous_run_ensemble()]] - `imports` [EXTRACTED]
 - [[main.py]] - `calls` [EXTRACTED]
 - [[run_backtest()]] - `imports` [EXTRACTED]

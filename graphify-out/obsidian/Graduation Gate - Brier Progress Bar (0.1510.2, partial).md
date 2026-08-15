@@ -12,6 +12,6 @@ tags:
 
 ## Connections
 - [[Brier Score Metric Card (0.151, target =0.20)]] - `shares_data_with` [INFERRED]
-- [[Graduation Progress Panel (TradesP&LBrier gates)]] - `references` [EXTRACTED]
+- [[Graduation Progress Panel (TradesP&LBrier gates)_1]] - `references` [EXTRACTED]
 
 #graphify/image #graphify/INFERRED #community/Community_292

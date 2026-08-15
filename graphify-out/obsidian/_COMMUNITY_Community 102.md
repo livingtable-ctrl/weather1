@@ -10,7 +10,7 @@ members: 27
 **Members:** 27 nodes
 
 ## Members
-- [[dot-_city()_2]] - code - tests/test_weather_markets.py
+- [[dot-_city()]] - code - tests/test_weather_markets.py
 - [[dot-test_atlanta_full_name_in_ticker_not_la()]] - code - tests/test_weather_markets.py
 - [[dot-test_austin_rain_ticker_detected()]] - code - tests/test_weather_markets.py
 - [[dot-test_chicago_rain_ticker_detected()]] - code - tests/test_weather_markets.py
@@ -50,14 +50,14 @@ SORT file.name ASC
 - 5 edges to [[_COMMUNITY_Community 321]]
 - 2 edges to [[_COMMUNITY_Community 578]]
 - 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 1 edge to [[_COMMUNITY_Community 632]]
-- 1 edge to [[_COMMUNITY_Community 633]]
 - 1 edge to [[_COMMUNITY_Community 634]]
+- 1 edge to [[_COMMUNITY_Community 633]]
+- 1 edge to [[_COMMUNITY_Community 632]]
 - 1 edge to [[_COMMUNITY_Community 635]]
 - 1 edge to [[_COMMUNITY_Community 636]]
 - 1 edge to [[_COMMUNITY_Community 637]]
 
 ## Top bridge nodes
-- [[dot-_city()_2]] - degree 37, connects to 9 communities
+- [[dot-_city()]] - degree 37, connects to 9 communities
 - [[TestMonthlyRainCityDetection]] - degree 14, connects to 1 community
 - [[dot-test_atlanta_full_name_in_ticker_not_la()]] - degree 3, connects to 1 community

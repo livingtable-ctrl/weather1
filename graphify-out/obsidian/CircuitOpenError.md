@@ -12,9 +12,9 @@ tags:
 # CircuitOpenError
 
 ## Connections
-- [[dot-__init__()_1]] - `method` [EXTRACTED]
+- [[dot-__init__()_11]] - `method` [EXTRACTED]
 - [[dot-execute()]] - `calls` [EXTRACTED]
-- [[Exception]] - `inherits` [EXTRACTED]
+- [[Exception_1]] - `inherits` [EXTRACTED]
 - [[KalshiClient]] - `uses` [INFERRED]
 - [[Phase 3 Batch B Circuit Breaker Tests]] - `imports` [EXTRACTED]
 - [[Raised when a circuit breaker is open (source is down).]] - `rationale_for` [EXTRACTED]

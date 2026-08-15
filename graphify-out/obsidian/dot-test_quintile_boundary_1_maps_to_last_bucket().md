@@ -12,7 +12,7 @@ tags:
 # .test_quintile_boundary_1_maps_to_last_bucket()
 
 ## Connections
-- [[dot-_seed()_8]] - `calls` [EXTRACTED]
+- [[dot-_seed()_3]] - `calls` [EXTRACTED]
 - [[TestGetQuintileBias]] - `method` [EXTRACTED]
 - [[forecast_prob=1.0 maps to quintile 4 (0.80–1.0).]] - `rationale_for` [EXTRACTED]
 

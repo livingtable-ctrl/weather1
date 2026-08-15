@@ -12,7 +12,7 @@ tags:
 # .test_repeated_cursor_stops_pagination()
 
 ## Connections
-- [[dot-_make_client()_8]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
 - [[A cursor identical to one already seen must stop the loop rather than spin…]] - `rationale_for` [EXTRACTED]
 - [[TestGetTrades]] - `method` [EXTRACTED]
 

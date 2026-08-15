@@ -12,7 +12,7 @@ tags:
 # .test_single_page_returns_all_trades_no_cursor()
 
 ## Connections
-- [[dot-_make_client()_8]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
 - [[No cursor in response - single call, all trades returned.]] - `rationale_for` [EXTRACTED]
 - [[TestGetTrades]] - `method` [EXTRACTED]
 

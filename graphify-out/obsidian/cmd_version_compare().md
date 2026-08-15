@@ -16,7 +16,7 @@ tags:
 - [[_header()]] - `calls` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
 - [[get_brier_by_version()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

@@ -29,8 +29,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_Community 32]]
+- 1 edge to [[_COMMUNITY_Community 51]]
 
 ## Top bridge nodes
 - [[TestMlRetrainMarkerFile]] - degree 7, connects to 2 communities

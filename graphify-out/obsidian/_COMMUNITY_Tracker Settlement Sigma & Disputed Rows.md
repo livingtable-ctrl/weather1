@@ -12,8 +12,8 @@ members: 53
 ## Members
 - [[dot-_log_settled()_1]] - code - tests/test_tracker.py
 - [[dot-_log_settled()_2]] - code - tests/test_tracker.py
-- [[dot-setUp()_37]] - code - tests/test_tracker.py
-- [[dot-tearDown()_37]] - code - tests/test_tracker.py
+- [[dot-setUp()_19]] - code - tests/test_tracker.py
+- [[dot-tearDown()_18]] - code - tests/test_tracker.py
 - [[dot-test_audit_settlement_clears_stale_dispute_on_clean_recheck()]] - code - tests/test_tracker.py
 - [[dot-test_audit_settlement_daily_fetch_exception_returns_false_not_raise()]] - code - tests/test_tracker.py
 - [[dot-test_audit_settlement_daily_missing_expiration_value_returns_false()]] - code - tests/test_tracker.py
@@ -76,21 +76,21 @@ SORT file.name ASC
 - 11 edges to [[_COMMUNITY_Community 128]]
 - 2 edges to [[_COMMUNITY_Community 442]]
 - 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 288]]
 - 1 edge to [[_COMMUNITY_Community 614]]
 - 1 edge to [[_COMMUNITY_Community 616]]
-- 1 edge to [[_COMMUNITY_Community 619]]
-- 1 edge to [[_COMMUNITY_Community 620]]
 - 1 edge to [[_COMMUNITY_Community 621]]
-- 1 edge to [[_COMMUNITY_Community 622]]
-- 1 edge to [[_COMMUNITY_Community 623]]
-- 1 edge to [[_COMMUNITY_Community 624]]
-- 1 edge to [[_COMMUNITY_Community 625]]
 - 1 edge to [[_COMMUNITY_Community 626]]
 - 1 edge to [[_COMMUNITY_Community 627]]
 - 1 edge to [[_COMMUNITY_Community 628]]
+- 1 edge to [[_COMMUNITY_Community 623]]
+- 1 edge to [[_COMMUNITY_Community 624]]
+- 1 edge to [[_COMMUNITY_Community 625]]
+- 1 edge to [[_COMMUNITY_Community 622]]
 - 1 edge to [[_COMMUNITY_Community 629]]
 - 1 edge to [[_COMMUNITY_Community 630]]
-- 1 edge to [[_COMMUNITY_Community 288]]
+- 1 edge to [[_COMMUNITY_Community 619]]
+- 1 edge to [[_COMMUNITY_Community 620]]
 
 ## Top bridge nodes
 - [[dot-_log_settled()_2]] - degree 66, connects to 18 communities

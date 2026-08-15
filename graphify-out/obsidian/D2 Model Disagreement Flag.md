@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[H8 Model Disagreement Indicator (Positions)]] - `references` [EXTRACTED]
 - [[SignalsTab.jsx Component]] - `references` [EXTRACTED]
-- [[cron.py Module_1]] - `references` [EXTRACTED]
+- [[cron.py Module]] - `references` [EXTRACTED]
 - [[weather_markets.py Module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_199

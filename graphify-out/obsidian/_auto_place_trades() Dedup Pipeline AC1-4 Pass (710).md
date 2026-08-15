@@ -5,7 +5,7 @@ community: "Anomaly Detection & PDF Reporting"
 location: "L:849-1619"
 tags:
   - graphify/document
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Anomaly_Detection__PDF_Reporting
 ---
 
@@ -15,4 +15,4 @@ tags:
 - [[Kill Switch Mid-Placement Gap]] - `conceptually_related_to` [INFERRED]
 - [[order_executor.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/INFERRED #community/Anomaly_Detection__PDF_Reporting
+#graphify/document #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

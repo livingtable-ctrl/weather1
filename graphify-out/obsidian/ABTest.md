@@ -12,7 +12,7 @@ tags:
 # ABTest
 
 ## Connections
-- [[dot-__init__()]] - `method` [EXTRACTED]
+- [[dot-__init__()_4]] - `method` [EXTRACTED]
 - [[dot-pick_variant()]] - `method` [EXTRACTED]
 - [[dot-record_outcome()]] - `method` [EXTRACTED]
 - [[dot-summary()]] - `method` [EXTRACTED]

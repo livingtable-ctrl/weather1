@@ -11,9 +11,9 @@ tags:
 # ZoneInfo
 
 ## Connections
-- [[dot-_call()_5]] - `calls` [INFERRED]
+- [[dot-_call()_2]] - `calls` [INFERRED]
 - [[dot-_call_metar_lock_in()]] - `calls` [INFERRED]
-- [[dot-_enriched()_1]] - `calls` [INFERRED]
+- [[dot-_enriched()]] - `calls` [INFERRED]
 - [[dot-test_analyze_trade_applies_time_decay()]] - `calls` [INFERRED]
 - [[dot-test_between_malformed_condition_missing_bounds_fails_closed()]] - `calls` [INFERRED]
 - [[dot-test_between_stale_prior_day_obs_not_locked()]] - `calls` [INFERRED]

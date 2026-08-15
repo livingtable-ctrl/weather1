@@ -12,6 +12,6 @@ tags:
 # Return a minimal valid opportunity dict accepted by _auto_place_trades.
 
 ## Connections
-- [[_make_opp()_2]] - `rationale_for` [EXTRACTED]
+- [[_make_opp()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_108

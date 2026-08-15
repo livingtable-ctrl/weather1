@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[TestCheckAlerts]] - `method` [EXTRACTED]
-- [[_FakeClient]] - `calls` [EXTRACTED]
+- [[_FakeClient_1]] - `calls` [EXTRACTED]
 - [[check_alerts()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_325

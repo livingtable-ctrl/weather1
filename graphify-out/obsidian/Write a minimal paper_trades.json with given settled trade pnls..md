@@ -12,6 +12,6 @@ tags:
 # Write a minimal paper_trades.json with given settled trade pnls.
 
 ## Connections
-- [[dot-_make_trades()]] - `rationale_for` [EXTRACTED]
+- [[dot-_make_trades()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_477

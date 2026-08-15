@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[datapaper_trades.json (Paper Ledger)]] - `references` [EXTRACTED]
 - [[execution_log.py Module]] - `semantically_similar_to` [INFERRED]
-- [[tracker.py Module_1]] - `references` [EXTRACTED]
+- [[tracker.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_154

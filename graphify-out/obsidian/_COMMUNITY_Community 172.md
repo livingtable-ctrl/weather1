@@ -10,7 +10,7 @@ members: 19
 **Members:** 19 nodes
 
 ## Members
-- [[dot-setup_method()_34]] - code - tests/test_phase2_batch_d.py
+- [[dot-setup_method()_13]] - code - tests/test_phase2_batch_d.py
 - [[dot-test_6h_fallback_converts_correctly()]] - code - tests/test_phase2_batch_d.py
 - [[dot-test_cache_expires_after_obs_ttl()]] - code - tests/test_phase2_batch_d.py
 - [[dot-test_circuit_breaker_open_returns_none()]] - code - tests/test_phase2_batch_d.py

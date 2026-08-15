@@ -10,8 +10,8 @@ members: 21
 **Members:** 21 nodes
 
 ## Members
-- [[dot-setUp()]] - code - tests/test_http.py
-- [[dot-tearDown()]] - code - tests/test_http.py
+- [[dot-setUp()_3]] - code - tests/test_http.py
+- [[dot-tearDown()_3]] - code - tests/test_http.py
 - [[dot-test_all_models_fail_returns_none()]] - code - tests/test_http.py
 - [[dot-test_dead_model_all_null_response_treated_as_failure()]] - code - tests/test_http.py
 - [[dot-test_partial_model_failure_still_returns()]] - code - tests/test_http.py
@@ -29,7 +29,7 @@ members: 21
 - [[TestGetWeatherForecastMocked]] - code - tests/test_http.py
 - [[Unknown city should return None without making any HTTP calls.]] - rationale - tests/test_http.py
 - [[_open_meteo_payload()]] - code - tests/test_http.py
-- [[activate_1]] - code
+- [[activate]] - code
 - [[test_http.py]] - code - tests/test_http.py
 
 ## Live Query (requires Dataview plugin)
@@ -41,11 +41,11 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 7 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 351]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
+- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 1 edge to [[_COMMUNITY_Community 143]]
 - 1 edge to [[_COMMUNITY_Community 225]]
+- 1 edge to [[_COMMUNITY_Community 351]]
 - 1 edge to [[_COMMUNITY_Community 180]]
 
 ## Top bridge nodes

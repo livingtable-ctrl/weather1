@@ -33,7 +33,7 @@ members: 26
 - [[TestPaperLiveSeparation]] - code - tests/test_risk_control.py
 - [[When KALSHI_ENV=demo the MARKET_BASE_URL must point to demo.kalshi.co.]] - rationale - tests/test_risk_control.py
 - [[_auto_place_trades(live=False) must never call _place_live_order.]] - rationale - tests/test_risk_control.py
-- [[_make_opp()_2]] - code - tests/test_risk_control.py
+- [[_make_opp()_1]] - code - tests/test_risk_control.py
 - [[_patch_paper_guards()]] - code - tests/test_risk_control.py
 - [[test_risk_control.py]] - code - tests/test_risk_control.py
 
@@ -45,14 +45,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 40]]
 - 2 edges to [[_COMMUNITY_Community 521]]
-- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 2 edges to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 410]]
 - 1 edge to [[_COMMUNITY_Community 435]]
-- 1 edge to [[_COMMUNITY_Community 380]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 - 1 edge to [[_COMMUNITY_Community 228]]
+- 1 edge to [[_COMMUNITY_Community 380]]
 
 ## Top bridge nodes
 - [[test_risk_control.py]] - degree 16, connects to 8 communities

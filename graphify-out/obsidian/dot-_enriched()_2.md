@@ -2,7 +2,7 @@
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
 community: "Hurricane Market Season Signals"
-location: "L733"
+location: "L1201"
 tags:
   - graphify/code
   - graphify/EXTRACTED
@@ -12,6 +12,6 @@ tags:
 # ._enriched()
 
 ## Connections
-- [[TestAnalyzeHurricaneCountTrade]] - `method` [EXTRACTED]
+- [[TestAnalyzeHurricaneNextEventTrade]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Hurricane_Market_Season_Signals

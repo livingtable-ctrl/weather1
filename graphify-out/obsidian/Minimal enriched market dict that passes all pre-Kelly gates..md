@@ -12,6 +12,6 @@ tags:
 # Minimal enriched market dict that passes all pre-Kelly gates.
 
 ## Connections
-- [[_make_enriched()_1]] - `rationale_for` [EXTRACTED]
+- [[_make_enriched()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_124

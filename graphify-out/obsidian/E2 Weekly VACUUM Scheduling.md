@@ -12,7 +12,7 @@ tags:
 # E2: Weekly VACUUM Scheduling
 
 ## Connections
-- [[cron.py Module_1]] - `references` [EXTRACTED]
-- [[tracker.py Module_1]] - `references` [EXTRACTED]
+- [[cron.py Module]] - `references` [EXTRACTED]
+- [[tracker.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_199

@@ -12,7 +12,7 @@ tags:
 # .test_empty()
 
 ## Connections
-- [[TestEnsembleStats]] - `method` [EXTRACTED]
+- [[TestEnsembleStats_1]] - `method` [EXTRACTED]
 - [[ensemble_stats()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_160

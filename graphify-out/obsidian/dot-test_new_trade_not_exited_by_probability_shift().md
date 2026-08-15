@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[TestCheckEarlyExitsHoldTime]] - `method` [EXTRACTED]
 - [[_check_early_exits must not exit a trade entered less than 12 hours ago.]] - `rationale_for` [EXTRACTED]
-- [[_make_trade()_1]] - `calls` [EXTRACTED]
+- [[_make_trade()_2]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_272

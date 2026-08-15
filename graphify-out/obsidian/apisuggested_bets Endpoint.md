@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[analyze Frontend Additions (Top Bets Card)]] - `references` [EXTRACTED]
-- [[web_app.py Module_1]] - `references` [EXTRACTED]
+- [[web_app.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_104

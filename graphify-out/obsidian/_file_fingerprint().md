@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[(mtime, size) for a file, or None if it doesn't exist. A single .stat() call —…]] - `rationale_for` [EXTRACTED]
-- [[Path_7]] - `references` [EXTRACTED]
+- [[Path_19]] - `references` [EXTRACTED]
 - [[_paper_min_edge_default()]] - `calls` [EXTRACTED]
 - [[config.py]] - `contains` [EXTRACTED]
 

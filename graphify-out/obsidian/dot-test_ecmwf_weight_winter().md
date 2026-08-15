@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[ECMWF should have weight 2.5 in winter months (Oct–Mar), ENSO-neutral.]] - `rationale_for` [EXTRACTED]
-- [[TestForecastModelWeights]] - `method` [EXTRACTED]
+- [[TestForecastModelWeights_1]] - `method` [EXTRACTED]
 - [[_forecast_model_weights()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests

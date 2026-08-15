@@ -10,8 +10,8 @@ members: 14
 **Members:** 14 nodes
 
 ## Members
-- [[dot-setUp()_8]] - code - tests/test_paper.py
-- [[dot-tearDown()_8]] - code - tests/test_paper.py
+- [[dot-setUp()_11]] - code - tests/test_paper.py
+- [[dot-tearDown()_11]] - code - tests/test_paper.py
 - [[dot-test_auto_settle_settles_matching_trade()]] - code - tests/test_paper.py
 - [[dot-test_auto_settle_skips_no_outcome()]] - code - tests/test_paper.py
 - [[dot-test_get_outcome_for_ticker_returns_correct_value()]] - code - tests/test_paper.py
@@ -33,8 +33,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 45]]
 - 1 edge to [[_COMMUNITY_Community 56]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
 - [[TestAutoSettlePaperTrades]] - degree 11, connects to 2 communities

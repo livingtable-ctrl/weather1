@@ -17,7 +17,7 @@ tags:
 - [[dot-test_fresh_ephemeral_file_is_kept()]] - `calls` [EXTRACTED]
 - [[dot-test_permanent_files_are_never_deleted()]] - `calls` [EXTRACTED]
 - [[dot-test_stale_ephemeral_file_is_deleted()]] - `calls` [EXTRACTED]
-- [[Path_17]] - `references` [EXTRACTED]
+- [[Path_22]] - `references` [EXTRACTED]
 - [[Same logic as main.cleanup_data_dir but using the supplied data_dir.]] - `rationale_for` [EXTRACTED]
 - [[data_dir()]] - `calls` [EXTRACTED]
 - [[test_cleanup_data_dir.py]] - `contains` [EXTRACTED]

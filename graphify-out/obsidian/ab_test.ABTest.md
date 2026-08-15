@@ -4,7 +4,7 @@ type: "code"
 community: "Community 33"
 tags:
   - graphify/code
-  - graphify/AMBIGUOUS
+  - graphify/EXTRACTED
   - community/Community_33
 ---
 
@@ -14,4 +14,4 @@ tags:
 - [[test_ab_test.py]] - `references` [EXTRACTED]
 - [[testsconftest.py Fixtures]] - `conceptually_related_to` [AMBIGUOUS]
 
-#graphify/code #graphify/AMBIGUOUS #community/Community_33
+#graphify/code #graphify/EXTRACTED #community/Community_33

@@ -12,7 +12,7 @@ tags:
 # .test_client_order_id_is_deterministic()
 
 ## Connections
-- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_3]] - `calls` [EXTRACTED]
 - [[Same inputs + same cycle → same client_order_id.]] - `rationale_for` [EXTRACTED]
 - [[TestClientOrderId]] - `method` [EXTRACTED]
 

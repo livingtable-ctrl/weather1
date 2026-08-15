@@ -1,18 +1,17 @@
 ---
-source_file: "tests/test_paper.py"
+source_file: "tests/test_phase2_batch_f.py"
 type: "code"
-community: "Community 87"
-location: "L1563"
+community: "Community 134"
+location: "L119"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_87
+  - community/Community_134
 ---
 
 # .test_cholesky_correlated()
 
 ## Connections
-- [[TestMonteCarloCholesky]] - `method` [EXTRACTED]
-- [[_cholesky()]] - `calls` [EXTRACTED]
+- [[TestCorrelationMatrixIntegrity]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_87
+#graphify/code #graphify/EXTRACTED #community/Community_134

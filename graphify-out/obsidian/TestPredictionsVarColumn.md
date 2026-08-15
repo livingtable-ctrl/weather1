@@ -12,9 +12,9 @@ tags:
 # TestPredictionsVarColumn
 
 ## Connections
-- [[dot-_analysis()_3]] - `method` [EXTRACTED]
-- [[dot-setUp()_29]] - `method` [EXTRACTED]
-- [[dot-tearDown()_29]] - `method` [EXTRACTED]
+- [[dot-_analysis()]] - `method` [EXTRACTED]
+- [[dot-setUp()_16]] - `method` [EXTRACTED]
+- [[dot-tearDown()_16]] - `method` [EXTRACTED]
 - [[dot-test_column_exists_after_init()_1]] - `method` [EXTRACTED]
 - [[dot-test_log_prediction_stores_var()]] - `method` [EXTRACTED]
 - [[dot-test_no_var_in_condition_stores_null()]] - `method` [EXTRACTED]

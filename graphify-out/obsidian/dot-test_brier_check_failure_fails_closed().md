@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[A Brier-check exception (e.g. a locked tracker.db) must be treated as…]] - `rationale_for` [EXTRACTED]
 - [[TestGroupCFixes]] - `method` [EXTRACTED]
-- [[_make_trade()]] - `calls` [EXTRACTED]
+- [[_make_trade()_1]] - `calls` [EXTRACTED]
 - [[check_black_swan_conditions()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_200

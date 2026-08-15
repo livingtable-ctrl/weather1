@@ -12,7 +12,7 @@ tags:
 # TestCityDetection
 
 ## Connections
-- [[dot-_city()]] - `method` [EXTRACTED]
+- [[dot-_city()_1]] - `method` [EXTRACTED]
 - [[dot-test_atlanta_full_name_in_ticker_not_la()]] - `method` [EXTRACTED]
 - [[dot-test_boston_renamed_high_ticker()]] - `method` [EXTRACTED]
 - [[dot-test_boston_renamed_low_ticker()]] - `method` [EXTRACTED]

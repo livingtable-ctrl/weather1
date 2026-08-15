@@ -12,6 +12,6 @@ tags:
 # Make a minimal trade record for backtesting.
 
 ## Connections
-- [[_make_trade()_6]] - `rationale_for` [EXTRACTED]
+- [[_make_trade()_4]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_37

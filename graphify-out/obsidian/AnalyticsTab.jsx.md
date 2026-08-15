@@ -1,19 +1,18 @@
 ---
 source_file: "weather app site V_3 (3)/src/tabs/AnalyticsTab.jsx"
 type: "code"
-community: "Community 270"
+community: "Community 692"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_270
+  - community/Community_692
 ---
 
 # AnalyticsTab.jsx
 
 ## Connections
 - [[AnalyticsTab()_1]] - `contains` [EXTRACTED]
-- [[BrierTrendChart()_1]] - `imports` [EXTRACTED]
 - [[CalendarPnLChart()]] - `contains` [EXTRACTED]
 - [[CityPnLChart()]] - `contains` [EXTRACTED]
 - [[EDGE_BUCKETS]] - `contains` [EXTRACTED]
@@ -28,9 +27,7 @@ tags:
 - [[RollingWinRateChart()]] - `contains` [EXTRACTED]
 - [[SameDayPerfCard()]] - `contains` [EXTRACTED]
 - [[SamedayCalibCard()]] - `contains` [EXTRACTED]
-- [[StatCard()]] - `imports` [EXTRACTED]
-- [[normCity()_1]] - `imports` [EXTRACTED]
-- [[shared.jsx]] - `imports_from` [EXTRACTED]
-- [[weather app site V_3 (3)srcApp.jsx]] - `imports_from` [EXTRACTED]
+- [[authHeader()]] - `imports` [EXTRACTED]
+- [[weather app site V_3 (3)srcuseData.js]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_270
+#graphify/code #graphify/EXTRACTED #community/Community_692

@@ -10,8 +10,8 @@ members: 19
 **Members:** 19 nodes
 
 ## Members
-- [[dot-setup_method()_14]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_13]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_12]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_7]] - code - tests/test_live_execution.py
 - [[dot-test_gtc_age_cancel_with_partial_fill_resolves_to_filled()]] - code - tests/test_live_execution.py
 - [[dot-test_gtc_cancel_fires_for_old_pending_order()]] - code - tests/test_live_execution.py
 - [[dot-test_gtc_cancel_skips_fresh_orders()]] - code - tests/test_live_execution.py

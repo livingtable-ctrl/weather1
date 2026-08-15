@@ -12,7 +12,7 @@ tags:
 # .test_tiny_nonzero_equal_bid_ask_still_rejected()
 
 ## Connections
-- [[dot-_call()_2]] - `calls` [EXTRACTED]
+- [[dot-_call()_5]] - `calls` [EXTRACTED]
 - [[dot-_valid()]] - `calls` [EXTRACTED]
 - [[Only the exact (0.0, 0.0) pair is exempt -- any other equal or crossed pair…]] - `rationale_for` [EXTRACTED]
 - [[TestValidateMarketPriceRange]] - `method` [EXTRACTED]

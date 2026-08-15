@@ -12,7 +12,7 @@ tags:
 # TestPlaceOrderSurvivesGetOrderFailure
 
 ## Connections
-- [[dot-_make_client()_4]] - `method` [EXTRACTED]
+- [[dot-_make_client()_8]] - `method` [EXTRACTED]
 - [[dot-test_raises_and_checks_recovery_only_when_post_itself_fails()]] - `method` [EXTRACTED]
 - [[dot-test_returns_raw_create_response_when_get_order_fails()]] - `method` [EXTRACTED]
 - [[A successful POST already confirms the order is live on the exchange -- if the…]] - `rationale_for` [EXTRACTED]

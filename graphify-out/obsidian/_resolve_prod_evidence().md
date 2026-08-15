@@ -16,7 +16,7 @@ tags:
 - [[dot-test_real_cross_file_alias_call_is_still_counted()]] - `calls` [EXTRACTED]
 - [[dot-test_real_cross_file_bare_call_with_no_collision_is_still_counted()]] - `calls` [EXTRACTED]
 - [[dot-test_same_name_collision_in_another_file_is_not_counted_as_a_call()]] - `calls` [EXTRACTED]
-- [[Path_19]] - `references` [EXTRACTED]
+- [[Path_13]] - `references` [EXTRACTED]
 - [[Return (has_real_call, has_string_reference) for `name` (a module-level…]] - `rationale_for` [EXTRACTED]
 - [[_alias_called_in()]] - `calls` [EXTRACTED]
 - [[_called_in()]] - `calls` [EXTRACTED]

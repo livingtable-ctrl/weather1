@@ -12,8 +12,8 @@ tags:
 # TestLoadWeights
 
 ## Connections
-- [[dot-setup_method()_2]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_2]] - `method` [EXTRACTED]
+- [[dot-setup_method()_1]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_1]] - `method` [EXTRACTED]
 - [[dot-test_load_city_missing_file_returns_empty()]] - `method` [EXTRACTED]
 - [[dot-test_load_city_valid_json_returns_dict()]] - `method` [EXTRACTED]
 - [[dot-test_load_condition_corrupt_json_returns_empty()]] - `method` [EXTRACTED]

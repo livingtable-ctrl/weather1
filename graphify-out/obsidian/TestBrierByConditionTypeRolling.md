@@ -12,9 +12,9 @@ tags:
 # TestBrierByConditionTypeRolling
 
 ## Connections
-- [[dot-_insert()_2]] - `method` [EXTRACTED]
-- [[dot-setUp()_13]] - `method` [EXTRACTED]
-- [[dot-tearDown()_13]] - `method` [EXTRACTED]
+- [[dot-_insert()_1]] - `method` [EXTRACTED]
+- [[dot-setUp()_34]] - `method` [EXTRACTED]
+- [[dot-tearDown()_33]] - `method` [EXTRACTED]
 - [[dot-test_below_min_samples_excluded()]] - `method` [EXTRACTED]
 - [[dot-test_computes_brier_and_directional_accuracy_per_condition_type()]] - `method` [EXTRACTED]
 - [[dot-test_condition_types_windowed_independently()]] - `method` [EXTRACTED]

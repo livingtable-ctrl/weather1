@@ -12,7 +12,7 @@ tags:
 # .test_client_order_id_differs_across_cycles()
 
 ## Connections
-- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_3]] - `calls` [EXTRACTED]
 - [[Different cycle → different client_order_id.]] - `rationale_for` [EXTRACTED]
 - [[TestClientOrderId]] - `method` [EXTRACTED]
 

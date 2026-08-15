@@ -17,7 +17,7 @@ members: 14
 - [[dot-test_save_rejects_float_city_values()]] - code - tests/test_weather_markets.py
 - [[dot-test_save_rejects_near_zero_weights()]] - code - tests/test_weather_markets.py
 - [[P1-9 save_learned_weights must reject corrupt data (win-rate floats), and…]] - rationale - tests/test_weather_markets.py
-- [[Regression coverage for the OTHER bare os.replace() CALL SITES backlog entry…_2]] - rationale - tests/test_weather_markets.py
+- [[Regression coverage for the OTHER bare os.replace() CALL SITES backlog entry…]] - rationale - tests/test_weather_markets.py
 - [[TestLearnedWeightsValidation]] - code - tests/test_weather_markets.py
 - [[load_learned_weights must return {} and delete corrupt file with float city…]] - rationale - tests/test_weather_markets.py
 - [[load_learned_weights must return {} when any weight is = 0.]] - rationale - tests/test_weather_markets.py

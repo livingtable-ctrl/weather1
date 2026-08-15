@@ -39,19 +39,19 @@ members: 127
 - [[dot-test_nws_weight_redistributed_when_unavailable()]] - code - tests/test_forecasting.py
 - [[dot-test_nws_weight_short_horizon()]] - code - tests/test_forecasting.py
 - [[dot-test_per_model_cache_raw_but_blend_corrected()]] - code - tests/test_weather_markets.py
-- [[dot-test_returns_none_when_fewer_than_five_members()_1]] - code - tests/test_weather_markets.py
+- [[dot-test_returns_none_when_fewer_than_five_members()]] - code - tests/test_weather_markets.py
 - [[dot-test_tier1_before_sleep_tier2_after()]] - code - tests/test_weather_markets.py
 - [[dot-test_tier2_skipped_when_circuit_trips_during_tier1()]] - code - tests/test_weather_markets.py
 - [[dot-test_uses_nbm_when_open_meteo_fails()]] - code - tests/test_weather_markets.py
-- [[dot-test_weights_sum_to_one()_1]] - code - tests/test_forecasting.py
-- [[dot-test_weights_sum_to_one()]] - code - tests/test_forecasting.py
+- [[dot-test_weights_sum_to_one()_2]] - code - tests/test_forecasting.py
+- [[dot-test_weights_sum_to_one()_3]] - code - tests/test_forecasting.py
 - [[dot-test_wet_bulb_temp_midpoint()]] - code - tests/test_forecasting.py
 - [[20Â°F  wet_bulb = 28Â°F â†’ SLR 15]] - rationale - tests/test_forecasting.py
 - [[28Â°F  wet_bulb = 32Â°F â†’ SLR 10]] - rationale - tests/test_forecasting.py
 - [[A forecast dict without a precip_in key (e.g. an older cache entry, or a…]] - rationale - tests/test_weather_markets.py
 - [[Decay NWS weight at longer horizons; preserve calibrated weights at days_out=1.…]] - rationale - weather_markets.py
 - [[Open-Meteo's free ensemble-api endpoint enforces an undocumented rolling-~60s…]] - rationale - tests/test_weather_markets.py
-- [[Opus review finding on the GENERALIZED PER-MODEL ACCURACY TRACKING Pass 2 diff…_1]] - rationale - tests/test_weather_markets.py
+- [[Opus review finding on the GENERALIZED PER-MODEL ACCURACY TRACKING Pass 2 diff…]] - rationale - tests/test_weather_markets.py
 - [[Phase 2 Batch K Regression Tests]] - code - tests/test_phase2_batch_k.py
 - [[Phase 2 Batch K regression tests P2-24P2-26P2-36P2-39P2-45 —…]] - rationale - tests/test_phase2_batch_k.py
 - [[Result dict must contain adjusted_edge and edge_confidence_factor.]] - rationale - tests/test_weather_markets.py
@@ -94,7 +94,7 @@ members: 127
 - [[backlog.txt '3-WAY MODEL_CONSENSUS CHECK' _get_ecmwf_aifs_prob must return…]] - rationale - tests/test_weather_markets.py
 - [[backlog.txt '3-WAY MODEL_CONSENSUS CHECK' analyze_trade must compute…]] - rationale - tests/test_weather_markets.py
 - [[backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' Pass 2 analyze_trade…]] - rationale - tests/test_weather_markets.py
-- [[backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' Pass 2…_1]] - rationale - tests/test_weather_markets.py
+- [[backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' Pass 2…]] - rationale - tests/test_weather_markets.py
 - [[backlog.txt 'TRACK ECMWF FORECAST ACCURACY' analyze_trade must surface BOTH…]] - rationale - tests/test_weather_markets.py
 - [[batch_prewarm_ensemble is the actual production path (the ENS batch lines…]] - rationale - tests/test_weather_markets.py
 - [[check_ensemble_circuit_health() warns when circuit has been open 24h.]] - rationale - tests/test_weather_markets.py
@@ -151,51 +151,51 @@ SORT file.name ASC
 - 7 edges to [[_COMMUNITY_Community 131]]
 - 5 edges to [[_COMMUNITY_Community 206]]
 - 4 edges to [[_COMMUNITY_Community 64]]
-- 3 edges to [[_COMMUNITY_Community 51]]
 - 3 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 3 edges to [[_COMMUNITY_Community 160]]
 - 3 edges to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
+- 3 edges to [[_COMMUNITY_Community 51]]
 - 3 edges to [[_COMMUNITY_Community 59]]
-- 2 edges to [[_COMMUNITY_Community 214]]
-- 2 edges to [[_COMMUNITY_Community 282]]
-- 2 edges to [[_COMMUNITY_Community 269]]
-- 2 edges to [[_COMMUNITY_Community 191]]
-- 2 edges to [[_COMMUNITY_Community 348]]
-- 2 edges to [[_COMMUNITY_Community 190]]
-- 2 edges to [[_COMMUNITY_Community 221]]
-- 2 edges to [[_COMMUNITY_Community 70]]
-- 2 edges to [[_COMMUNITY_Community 178]]
-- 2 edges to [[_COMMUNITY_Community 222]]
 - 2 edges to [[_COMMUNITY_Community 137]]
+- 2 edges to [[_COMMUNITY_Community 178]]
+- 2 edges to [[_COMMUNITY_Community 190]]
+- 2 edges to [[_COMMUNITY_Community 191]]
+- 2 edges to [[_COMMUNITY_Community 214]]
+- 2 edges to [[_COMMUNITY_Community 221]]
+- 2 edges to [[_COMMUNITY_Community 222]]
+- 2 edges to [[_COMMUNITY_Community 269]]
+- 2 edges to [[_COMMUNITY_Community 282]]
+- 2 edges to [[_COMMUNITY_Community 348]]
+- 2 edges to [[_COMMUNITY_Community 70]]
 - 2 edges to [[_COMMUNITY_Community 82]]
-- 1 edge to [[_COMMUNITY_Community 372]]
-- 1 edge to [[_COMMUNITY_Community 173]]
-- 1 edge to [[_COMMUNITY_Community 151]]
-- 1 edge to [[_COMMUNITY_Community 268]]
-- 1 edge to [[_COMMUNITY_Community 446]]
-- 1 edge to [[_COMMUNITY_Community 116]]
-- 1 edge to [[_COMMUNITY_Community 241]]
-- 1 edge to [[_COMMUNITY_Community 414]]
-- 1 edge to [[_COMMUNITY_Community 528]]
-- 1 edge to [[_COMMUNITY_Community 447]]
-- 1 edge to [[_COMMUNITY_Community 558]]
-- 1 edge to [[_COMMUNITY_Community 531]]
-- 1 edge to [[_COMMUNITY_Community 559]]
-- 1 edge to [[_COMMUNITY_Community 321]]
-- 1 edge to [[_COMMUNITY_Community 529]]
-- 1 edge to [[_COMMUNITY_Community 267]]
-- 1 edge to [[_COMMUNITY_Community 349]]
-- 1 edge to [[_COMMUNITY_Community 291]]
 - 1 edge to [[_COMMUNITY_Community 102]]
-- 1 edge to [[_COMMUNITY_Community 561]]
-- 1 edge to [[_COMMUNITY_Community 322]]
+- 1 edge to [[_COMMUNITY_Community 116]]
+- 1 edge to [[_COMMUNITY_Community 173]]
 - 1 edge to [[_COMMUNITY_Community 207]]
+- 1 edge to [[_COMMUNITY_Community 241]]
+- 1 edge to [[_COMMUNITY_Community 267]]
+- 1 edge to [[_COMMUNITY_Community 268]]
+- 1 edge to [[_COMMUNITY_Community 291]]
+- 1 edge to [[_COMMUNITY_Community 321]]
+- 1 edge to [[_COMMUNITY_Community 322]]
+- 1 edge to [[_COMMUNITY_Community 349]]
+- 1 edge to [[_COMMUNITY_Community 372]]
+- 1 edge to [[_COMMUNITY_Community 414]]
+- 1 edge to [[_COMMUNITY_Community 446]]
+- 1 edge to [[_COMMUNITY_Community 447]]
 - 1 edge to [[_COMMUNITY_Community 490]]
-- 1 edge to [[_COMMUNITY_Community 530]]
 - 1 edge to [[_COMMUNITY_Community 491]]
+- 1 edge to [[_COMMUNITY_Community 528]]
+- 1 edge to [[_COMMUNITY_Community 529]]
+- 1 edge to [[_COMMUNITY_Community 530]]
+- 1 edge to [[_COMMUNITY_Community 531]]
+- 1 edge to [[_COMMUNITY_Community 558]]
+- 1 edge to [[_COMMUNITY_Community 559]]
 - 1 edge to [[_COMMUNITY_Community 560]]
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 1 edge to [[_COMMUNITY_Community 561]]
+- 1 edge to [[_COMMUNITY_Community 151]]
 - 1 edge to [[_COMMUNITY_Community 119]]
+- 1 edge to [[_COMMUNITY_Community 40]]
 
 ## Top bridge nodes
 - [[test_weather_markets.py]] - degree 112, connects to 42 communities

@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_regression.py"
+source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 284"
-location: "L90"
+community: "Community 52"
+location: "L83"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_284
+  - community/Community_52
 ---
 
 # .teardown_method()
 
 ## Connections
-- [[TestBrierScoreComputation]] - `method` [EXTRACTED]
+- [[TestAnalyzeTradeConditionType]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_284
+#graphify/code #graphify/EXTRACTED #community/Community_52

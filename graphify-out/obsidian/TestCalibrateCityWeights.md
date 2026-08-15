@@ -12,8 +12,8 @@ tags:
 # TestCalibrateCityWeights
 
 ## Connections
-- [[dot-setup_method()_1]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_1]] - `method` [EXTRACTED]
+- [[dot-setup_method()]] - `method` [EXTRACTED]
+- [[dot-teardown_method()]] - `method` [EXTRACTED]
 - [[dot-test_below_threshold_omits_city()]] - `method` [EXTRACTED]
 - [[dot-test_returns_weights_for_qualifying_city()]] - `method` [EXTRACTED]
 - [[test_calibration.py]] - `contains` [EXTRACTED]

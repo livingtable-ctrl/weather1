@@ -16,7 +16,7 @@ tags:
 - [[fit_emos Function]] - `calls` [EXTRACTED]
 - [[fit_emos()]] - `calls` [EXTRACTED]
 - [[get_emos_training_data()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[save_emos_params Function]] - `calls` [EXTRACTED]
 - [[save_emos_params()]] - `calls` [EXTRACTED]

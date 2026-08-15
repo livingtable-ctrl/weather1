@@ -11,15 +11,15 @@ members: 47
 
 ## Members
 - [[(backlog.txt WATCH_analyze_once IS MISSING cron.py's…]] - rationale - tests/test_p1_remaining.py
-- [[dot-_analysis()]] - code - tests/test_p1_remaining.py
-- [[dot-_analysis()_1]] - code - tests/test_p1_remaining.py
 - [[dot-_analysis()_2]] - code - tests/test_p1_remaining.py
+- [[dot-_analysis()_3]] - code - tests/test_p1_remaining.py
+- [[dot-_analysis()_4]] - code - tests/test_p1_remaining.py
 - [[dot-_market()_3]] - code - tests/test_p1_remaining.py
 - [[dot-_market()_4]] - code - tests/test_p1_remaining.py
 - [[dot-_market()_5]] - code - tests/test_p1_remaining.py
-- [[dot-_run()_1]] - code - tests/test_p1_remaining.py
 - [[dot-_run()_2]] - code - tests/test_p1_remaining.py
 - [[dot-_run()_3]] - code - tests/test_p1_remaining.py
+- [[dot-_run()_4]] - code - tests/test_p1_remaining.py
 - [[dot-_run_with_cpl_spy()]] - code - tests/test_p1_remaining.py
 - [[dot-test_allows_market_within_both_thresholds()]] - code - tests/test_p1_remaining.py
 - [[dot-test_allows_market_within_both_thresholds()_1]] - code - tests/test_p1_remaining.py

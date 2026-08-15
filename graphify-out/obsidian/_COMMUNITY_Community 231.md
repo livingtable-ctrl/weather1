@@ -21,7 +21,7 @@ members: 15
 - [[Sanity companion to the above the same 0.23 shift must NOT exit under the real…]] - rationale - tests/test_early_exits.py
 - [[TestCheckModelExitsThresholds]] - code - tests/test_early_exits.py
 - [[TestModelExitShiftPpIsConfigurable]] - code - tests/test_early_exits.py
-- [[_make_trade()_1]] - code - tests/test_early_exits.py
+- [[_make_trade()_2]] - code - tests/test_early_exits.py
 - [[check_model_exits model_flipped must require net_edge  -0.10 (not -0.05).]] - rationale - tests/test_early_exits.py
 - [[check_model_exits must NOT exit a trade whose edge merely dropped from 8% to…]] - rationale - tests/test_early_exits.py
 - [[check_model_exits must not exit a trade entered less than 12 hours ago.]] - rationale - tests/test_early_exits.py
@@ -39,8 +39,8 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 333]]
 
 ## Top bridge nodes
-- [[_make_trade()_1]] - degree 9, connects to 2 communities
+- [[_make_trade()_2]] - degree 9, connects to 2 communities
 - [[TestCheckModelExitsThresholds]] - degree 4, connects to 1 community
+- [[TestModelExitShiftPpIsConfigurable]] - degree 4, connects to 1 community
 - [[dot-test_edge_gone_threshold_is_negative()]] - degree 4, connects to 1 community
 - [[dot-test_minimum_hold_time_prevents_early_exit()]] - degree 4, connects to 1 community
-- [[dot-test_model_flipped_requires_10pct_net_edge()]] - degree 4, connects to 1 community

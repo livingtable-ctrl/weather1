@@ -12,6 +12,6 @@ tags:
 # Mirrors the falsy check above -- confirms the accepted truthy set really is…
 
 ## Connections
-- [[dot-test_truthy_env_var_values_case_insensitive()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-test_truthy_env_var_values_case_insensitive()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_312

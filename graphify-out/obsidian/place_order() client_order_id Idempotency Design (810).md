@@ -5,7 +5,7 @@ community: "Community 351"
 location: "L:316-376"
 tags:
   - graphify/document
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_351
 ---
 
@@ -15,4 +15,4 @@ tags:
 - [[kalshi_client.py]] - `references` [EXTRACTED]
 - [[log_order() json.dumps Failure Returns id=0 (710)]] - `conceptually_related_to` [INFERRED]
 
-#graphify/document #graphify/INFERRED #community/Community_351
+#graphify/document #graphify/EXTRACTED #community/Community_351

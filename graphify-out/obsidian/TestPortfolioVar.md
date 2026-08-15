@@ -12,7 +12,7 @@ tags:
 # TestPortfolioVar
 
 ## Connections
-- [[dot-_trade()_2]] - `method` [EXTRACTED]
+- [[dot-_trade()_1]] - `method` [EXTRACTED]
 - [[dot-test_empty_portfolio_returns_zero()]] - `method` [EXTRACTED]
 - [[dot-test_max_var_dollars_in_utils()]] - `method` [EXTRACTED]
 - [[dot-test_returns_float()]] - `method` [EXTRACTED]

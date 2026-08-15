@@ -12,7 +12,7 @@ tags:
 # .test_candlestick_fetch_failure_for_one_ticker_does_not_abort_the_pass()
 
 ## Connections
-- [[dot-_settle()_1]] - `calls` [EXTRACTED]
+- [[dot-_settle()]] - `calls` [EXTRACTED]
 - [[TestBackfillPriceHistory]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_77

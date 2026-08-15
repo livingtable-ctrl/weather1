@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_tracker.py"
+source_file: "tests/test_paper.py"
 type: "code"
-community: "Tracker Settlement Sigma & Disputed Rows"
-location: "L5486"
+community: "Community 479"
+location: "L767"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Settlement_Sigma__Disputed_Rows
+  - community/Community_479
 ---
 
 # .tearDown()
 
 ## Connections
-- [[TestLiveTradingGateConditionTypeFilter]] - `method` [EXTRACTED]
+- [[TestExportTrades]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Settlement_Sigma__Disputed_Rows
+#graphify/code #graphify/EXTRACTED #community/Community_479

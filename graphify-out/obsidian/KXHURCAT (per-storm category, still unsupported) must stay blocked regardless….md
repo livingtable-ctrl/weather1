@@ -12,6 +12,6 @@ tags:
 # KXHURCAT (per-storm category, still unsupported) must stay blocked regardless…
 
 ## Connections
-- [[dot-test_other_hurricane_shapes_still_unconditionally_blocked()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_other_hurricane_shapes_still_unconditionally_blocked()_2]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_509

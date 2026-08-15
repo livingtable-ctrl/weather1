@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker Brier Score & Outcome Logging"
-location: "L37"
+community: "Community 239"
+location: "L2429"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Brier_Score__Outcome_Logging
+  - community/Community_239
 ---
 
 # .tearDown()
 
 ## Connections
-- [[TestTracker]] - `method` [EXTRACTED]
+- [[TestGetMemberBias]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Brier_Score__Outcome_Logging
+#graphify/code #graphify/EXTRACTED #community/Community_239

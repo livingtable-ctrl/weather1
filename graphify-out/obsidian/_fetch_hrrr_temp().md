@@ -17,7 +17,7 @@ tags:
 - [[dot-test_fetch_hrrr_temp_returns_max_of_hourly()]] - `calls` [EXTRACTED]
 - [[dot-test_fetch_hrrr_temp_returns_none_for_unknown_city()]] - `calls` [EXTRACTED]
 - [[Fetch HRRR-derived hourly temperature and return the daily max or min. Uses…]] - `rationale_for` [EXTRACTED]
-- [[date_11]] - `references` [EXTRACTED]
+- [[date_2]] - `references` [EXTRACTED]
 - [[test_dead_code_scan.py]] - `references` [EXTRACTED]
 - [[test_forecasting.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]

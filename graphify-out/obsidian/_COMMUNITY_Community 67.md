@@ -11,8 +11,8 @@ members: 34
 
 ## Members
 - [[dot-_seed_pending()]] - code - tests/test_live_execution.py
-- [[dot-setup_method()_21]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_20]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_37]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_29]] - code - tests/test_live_execution.py
 - [[dot-test_amend_exchange_success_survives_bookkeeping_failure()]] - code - tests/test_live_execution.py
 - [[dot-test_amend_failure_leaves_old_row_pending_not_amended()]] - code - tests/test_live_execution.py
 - [[dot-test_amend_success_logs_new_row_and_marks_old_row_amended()]] - code - tests/test_live_execution.py
@@ -54,19 +54,19 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 6 edges to [[_COMMUNITY_Community 111]]
-- 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 4 edges to [[_COMMUNITY_Community 45]]
+- 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 3 edges to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 2 edges to [[_COMMUNITY_Community 164]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 157]]
 - 1 edge to [[_COMMUNITY_Community 215]]
 - 1 edge to [[_COMMUNITY_Community 300]]
-- 1 edge to [[_COMMUNITY_Community 389]]
 - 1 edge to [[_COMMUNITY_Community 329]]
+- 1 edge to [[_COMMUNITY_Community 389]]
+- 1 edge to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 85]]
+- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 
 ## Top bridge nodes
 - [[_reprice_or_cancel_pending_orders()]] - degree 27, connects to 11 communities

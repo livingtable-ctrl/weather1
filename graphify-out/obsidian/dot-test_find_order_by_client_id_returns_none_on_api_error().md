@@ -12,7 +12,7 @@ tags:
 # .test_find_order_by_client_id_returns_none_on_api_error()
 
 ## Connections
-- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_3]] - `calls` [EXTRACTED]
 - [[TestPostFailureDedup]] - `method` [EXTRACTED]
 - [[_find_order_by_client_id must swallow exceptions and return None.]] - `rationale_for` [EXTRACTED]
 

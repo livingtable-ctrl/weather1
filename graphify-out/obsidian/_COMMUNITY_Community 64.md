@@ -42,7 +42,7 @@ members: 35
 - [[_run_cmd_schedule_and_capture()]] - code - tests/test_cmd_schedule_settlement_monitor.py
 - [[_settlement_call()]] - code - tests/test_cmd_schedule_settlement_monitor.py
 - [[cmd_schedule() must register a settlement-monitor task that spans every tracked…]] - rationale - tests/test_cmd_schedule_settlement_monitor.py
-- [[datetime_1]] - code
+- [[datetime_4]] - code
 - [[subprocess.run replacement that records the command and reports success -- a…]] - rationale - tests/test_cmd_schedule_settlement_monitor.py
 - [[test_cmd_schedule_settlement_monitor.py]] - code - tests/test_cmd_schedule_settlement_monitor.py
 
@@ -57,17 +57,17 @@ SORT file.name ASC
 - 9 edges to [[_COMMUNITY_Community 91]]
 - 6 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
 - 4 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 3 edges to [[_COMMUNITY_Community 99]]
-- 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 3 edges to [[_COMMUNITY_METAR Lock-In Confidence Tests]]
 - 3 edges to [[_COMMUNITY_Community 206]]
+- 3 edges to [[_COMMUNITY_METAR Lock-In Confidence Tests]]
+- 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 3 edges to [[_COMMUNITY_Community 99]]
 - 2 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Community 211]]
-- 1 edge to [[_COMMUNITY_Community 394]]
-- 1 edge to [[_COMMUNITY_Community 122]]
 - 1 edge to [[_COMMUNITY_Community 112]]
+- 1 edge to [[_COMMUNITY_Community 122]]
+- 1 edge to [[_COMMUNITY_Community 211]]
 - 1 edge to [[_COMMUNITY_Community 349]]
+- 1 edge to [[_COMMUNITY_Community 394]]
 
 ## Top bridge nodes
 - [[ZoneInfo]] - degree 46, connects to 14 communities

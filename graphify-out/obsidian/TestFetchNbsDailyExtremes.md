@@ -12,10 +12,10 @@ tags:
 # TestFetchNbsDailyExtremes
 
 ## Connections
-- [[dot-setup_method()_27]] - `method` [EXTRACTED]
+- [[dot-setup_method()_3]] - `method` [EXTRACTED]
 - [[dot-test_eastern_station_00z_is_max_12z_is_min()]] - `method` [EXTRACTED]
-- [[dot-test_max_min_assignment_is_not_arbitrary()_1]] - `method` [EXTRACTED]
-- [[dot-test_network_failure_returns_none_and_caches_the_miss()_1]] - `method` [EXTRACTED]
+- [[dot-test_max_min_assignment_is_not_arbitrary()]] - `method` [EXTRACTED]
+- [[dot-test_network_failure_returns_none_and_caches_the_miss()]] - `method` [EXTRACTED]
 - [[dot-test_off_cycle_txn_rows_are_skipped()]] - `method` [EXTRACTED]
 - [[dot-test_pacific_station_same_00z_max_12z_min_rule()]] - `method` [EXTRACTED]
 - [[dot-test_rows_without_txn_are_skipped()]] - `method` [EXTRACTED]

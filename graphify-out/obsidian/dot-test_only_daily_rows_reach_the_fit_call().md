@@ -12,7 +12,7 @@ tags:
 # .test_only_daily_rows_reach_the_fit_call()
 
 ## Connections
-- [[dot-_seed()_3]] - `calls` [EXTRACTED]
+- [[dot-_seed()_7]] - `calls` [EXTRACTED]
 - [[Directly inspects what train_bias_model() actually fits on -- decoupled from…]] - `rationale_for` [EXTRACTED]
 - [[TestTrainBiasModelRainExclusion]] - `method` [EXTRACTED]
 - [[utc_today()]] - `calls` [EXTRACTED]

@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[If the bypass-resolved method for a sampled market isn't in the retired set, it…]] - `rationale_for` [EXTRACTED]
-- [[_market()_2]] - `calls` [EXTRACTED]
-- [[_mock_client()_1]] - `calls` [EXTRACTED]
+- [[_market()]] - `calls` [EXTRACTED]
+- [[_mock_client()_2]] - `calls` [EXTRACTED]
 - [[test_retirement_probation.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_140

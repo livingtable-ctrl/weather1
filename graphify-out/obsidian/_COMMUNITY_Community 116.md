@@ -10,7 +10,7 @@ members: 25
 **Members:** 25 nodes
 
 ## Members
-- [[dot-_city()]] - code - tests/test_weather_markets.py
+- [[dot-_city()_1]] - code - tests/test_weather_markets.py
 - [[dot-test_boston_renamed_high_ticker()]] - code - tests/test_weather_markets.py
 - [[dot-test_dallas_full_name_in_ticker_not_la()]] - code - tests/test_weather_markets.py
 - [[dot-test_la_as_hyphen_segment_detected()]] - code - tests/test_weather_markets.py
@@ -47,9 +47,9 @@ SORT file.name ASC
 - 12 edges to [[_COMMUNITY_Community 102]]
 - 2 edges to [[_COMMUNITY_Community 578]]
 - 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 1 edge to [[_COMMUNITY_Community 634]]
-- 1 edge to [[_COMMUNITY_Community 633]]
 - 1 edge to [[_COMMUNITY_Community 632]]
+- 1 edge to [[_COMMUNITY_Community 633]]
+- 1 edge to [[_COMMUNITY_Community 634]]
 - 1 edge to [[_COMMUNITY_Community 635]]
 - 1 edge to [[_COMMUNITY_Community 636]]
 - 1 edge to [[_COMMUNITY_Community 637]]

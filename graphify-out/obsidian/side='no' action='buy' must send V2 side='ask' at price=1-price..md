@@ -12,6 +12,6 @@ tags:
 # side='no' action='buy' must send V2 side='ask' at price=1-price.
 
 ## Connections
-- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_366

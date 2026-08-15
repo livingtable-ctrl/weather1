@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_paper.py"
+source_file: "tests/test_param_sweep_load.py"
 type: "code"
-community: "Community 259"
-location: "L947"
+community: "Community 186"
+location: "L23"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_259
+  - community/Community_186
 ---
 
 # .tearDown()
 
 ## Connections
-- [[TestAutoSettlePaperTrades]] - `method` [EXTRACTED]
+- [[TestLoadSweptMinEdge]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_259
+#graphify/code #graphify/EXTRACTED #community/Community_186

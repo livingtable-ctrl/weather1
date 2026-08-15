@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[F1 RSA Private Key Permission Check]] - `conceptually_related_to` [EXTRACTED]
 - [[F2 .env World-Readable Warning]] - `conceptually_related_to` [EXTRACTED]
-- [[main.py Module_1]] - `references` [EXTRACTED]
+- [[main.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_179

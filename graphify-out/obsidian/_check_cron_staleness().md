@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Print a prominent warning if cron hasn't run in 48h.]] - `rationale_for` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 

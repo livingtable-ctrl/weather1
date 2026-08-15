@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[TestWalkForwardSplit]] - `method` [EXTRACTED]
 - [[With 12 months of data and window=6, test_size=1 → 6 folds.]] - `rationale_for` [EXTRACTED]
-- [[_make_trade()_6]] - `calls` [EXTRACTED]
+- [[_make_trade()_4]] - `calls` [EXTRACTED]
 - [[walk_forward_split()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_37

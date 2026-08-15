@@ -17,6 +17,6 @@ tags:
 - [[_auth_headers()]] - `contains` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[_is_cron_running()]] - `calls` [EXTRACTED]
-- [[_make_app()]] - `contains` [EXTRACTED]
+- [[_make_app()_1]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_566

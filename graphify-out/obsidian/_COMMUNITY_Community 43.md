@@ -65,17 +65,17 @@ SORT file.name ASC
 ## Connections to other communities
 - 5 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 579]]
-- 1 edge to [[_COMMUNITY_Community 639]]
-- 1 edge to [[_COMMUNITY_Community 641]]
-- 1 edge to [[_COMMUNITY_Community 638]]
-- 1 edge to [[_COMMUNITY_Community 640]]
-- 1 edge to [[_COMMUNITY_Community 562]]
-- 1 edge to [[_COMMUNITY_Community 493]]
 - 1 edge to [[_COMMUNITY_Community 416]]
+- 1 edge to [[_COMMUNITY_Community 493]]
 - 1 edge to [[_COMMUNITY_Community 532]]
+- 1 edge to [[_COMMUNITY_Community 562]]
+- 1 edge to [[_COMMUNITY_Community 638]]
+- 1 edge to [[_COMMUNITY_Community 639]]
+- 1 edge to [[_COMMUNITY_Community 640]]
+- 1 edge to [[_COMMUNITY_Community 641]]
 - 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Community 52]]
 - 1 edge to [[_COMMUNITY_Community 176]]
+- 1 edge to [[_COMMUNITY_Community 52]]
 
 ## Top bridge nodes
 - [[test_web_app.py]] - degree 38, connects to 13 communities

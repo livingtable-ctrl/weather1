@@ -12,7 +12,7 @@ tags:
 # .test_ensemble_prob_is_raw_member_fraction()
 
 ## Connections
-- [[dot-_make_enriched()_1]] - `calls` [EXTRACTED]
+- [[dot-_make_enriched()]] - `calls` [EXTRACTED]
 - [[Regression for L6-B result'ensemble_prob' must be the raw member-count…]] - `rationale_for` [EXTRACTED]
 - [[TestGaussianBlendSeparateSource]] - `method` [EXTRACTED]
 

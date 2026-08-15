@@ -13,6 +13,6 @@ tags:
 ## Connections
 - [[Code Review Remediation Plan]] - `implements` [EXTRACTED]
 - [[Drawdown-Tiered Kelly Step Reduction]] - `semantically_similar_to` [INFERRED]
-- [[paper.py module]] - `references` [EXTRACTED]
+- [[paper.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_224

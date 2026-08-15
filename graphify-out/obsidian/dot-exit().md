@@ -1,19 +1,19 @@
 ---
-source_file: "order_executor.py"
+source_file: "paper.py"
 type: "code"
-community: "Community 45"
-location: "L1161"
+community: "Community 145"
+location: "L1407"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Community_145
 ---
 
 # .exit()
 
 ## Connections
-- [[LivePositionStore]] - `method` [EXTRACTED]
+- [[PaperPositionStore]] - `method` [EXTRACTED]
 - [[Position]] - `references` [EXTRACTED]
-- [[_exit_live_position()]] - `calls` [EXTRACTED]
+- [[close_paper_early()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_45
+#graphify/code #graphify/EXTRACTED #community/Community_145

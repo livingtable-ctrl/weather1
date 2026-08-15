@@ -14,7 +14,7 @@ tags:
 - [[Integration tests for the analyze_trade pipeline (112). Tests verify that…]] - `rationale_for` [EXTRACTED]
 - [[TestAnalyzePipeline]] - `contains` [EXTRACTED]
 - [[TestAnalyzePipelineExtra]] - `contains` [EXTRACTED]
-- [[_make_enriched()]] - `contains` [EXTRACTED]
+- [[_make_enriched()_2]] - `contains` [EXTRACTED]
 - [[analyze_trade()]] - `references` [EXTRACTED]
 - [[test_integration_live.py]] - `semantically_similar_to` [INFERRED]
 

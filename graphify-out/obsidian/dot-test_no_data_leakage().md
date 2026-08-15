@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Test period never overlaps with train period in any fold.]] - `rationale_for` [EXTRACTED]
 - [[TestWalkForwardSplit]] - `method` [EXTRACTED]
-- [[_make_trade()_6]] - `calls` [EXTRACTED]
+- [[_make_trade()_4]] - `calls` [EXTRACTED]
 - [[walk_forward_split()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_37

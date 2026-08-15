@@ -12,6 +12,6 @@ tags:
 # Return (allowed, reason). Fail-closed: any exception → blocked. `client` should…
 
 ## Connections
-- [[dot-check()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-check()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

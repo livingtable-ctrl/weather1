@@ -11,7 +11,7 @@ members: 3
 
 ## Members
 - [[Prevent CPUmemory checks from interfering with trade-logic assertions.]] - rationale - tests/test_trade_validation.py
-- [[fixture_15]] - code
+- [[fixture_14]] - code
 - [[healthy_system()]] - code - tests/test_trade_validation.py
 
 ## Live Query (requires Dataview plugin)

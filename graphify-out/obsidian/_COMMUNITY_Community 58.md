@@ -59,11 +59,11 @@ SORT file.name ASC
 ## Connections to other communities
 - 15 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 3 edges to [[_COMMUNITY_Community 309]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
-- 1 edge to [[_COMMUNITY_Community 59]]
 - 1 edge to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
+- 1 edge to [[_COMMUNITY_Community 59]]
 - 1 edge to [[_COMMUNITY_Community 228]]
+- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 
 ## Top bridge nodes
 - [[_price_and_size()]] - degree 32, connects to 4 communities

@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()_2]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_4]] - `calls` [EXTRACTED]
+- [[dot-_enriched()_3]] - `calls` [EXTRACTED]
 - [[TestAnalyzeHurricaneNextEventTrade]] - `method` [EXTRACTED]
 - [[occurred_this_season=False (live cache confirms 0 so far) must pass a real…]] - `rationale_for` [EXTRACTED]
 

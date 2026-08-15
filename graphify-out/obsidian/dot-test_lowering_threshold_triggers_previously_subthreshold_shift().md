@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[TestModelExitShiftPpIsConfigurable]] - `method` [EXTRACTED]
-- [[_make_trade()_1]] - `calls` [EXTRACTED]
+- [[_make_trade()_2]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_231

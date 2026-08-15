@@ -10,8 +10,8 @@ members: 14
 **Members:** 14 nodes
 
 ## Members
-- [[dot-setup_method()_5]] - code - tests/test_execution_log.py
-- [[dot-teardown_method()_5]] - code - tests/test_execution_log.py
+- [[dot-setup_method()_16]] - code - tests/test_execution_log.py
+- [[dot-teardown_method()_9]] - code - tests/test_execution_log.py
 - [[dot-test_all_migrated_columns_present_on_fresh_db()]] - code - tests/test_execution_log.py
 - [[dot-test_genuine_operational_error_is_not_swallowed()]] - code - tests/test_execution_log.py
 - [[dot-test_legacy_db_with_all_columns_but_no_version_self_heals()]] - code - tests/test_execution_log.py

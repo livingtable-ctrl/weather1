@@ -12,7 +12,7 @@ tags:
 # .test_st_petersburg_rain_ticker_detected()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[Onboarded 2026-07-26. Would return None without the explicit fix --…]] - `rationale_for` [EXTRACTED]
 - [[TestMonthlyRainCityDetection]] - `method` [EXTRACTED]
 

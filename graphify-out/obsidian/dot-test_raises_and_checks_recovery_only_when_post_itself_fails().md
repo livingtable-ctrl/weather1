@@ -12,7 +12,7 @@ tags:
 # .test_raises_and_checks_recovery_only_when_post_itself_fails()
 
 ## Connections
-- [[dot-_make_client()_8]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
 - [[TestPlaceOrderSurvivesGetOrderFailure]] - `method` [EXTRACTED]
 - [[The get_order-failure fallback must not mask a genuine POST failure -- that…]] - `rationale_for` [EXTRACTED]
 

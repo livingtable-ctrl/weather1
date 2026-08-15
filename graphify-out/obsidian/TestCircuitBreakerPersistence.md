@@ -13,9 +13,9 @@ tags:
 
 ## Connections
 - [[dot-_make_cb()]] - `method` [EXTRACTED]
-- [[dot-setup_method()_32]] - `method` [EXTRACTED]
+- [[dot-setup_method()_15]] - `method` [EXTRACTED]
 - [[dot-teardown_cb()]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_24]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_8]] - `method` [EXTRACTED]
 - [[dot-test_expired_open_state_clears_on_reload()]] - `method` [EXTRACTED]
 - [[dot-test_failure_count_persists_across_instances()]] - `method` [EXTRACTED]
 - [[dot-test_load_state_blocks_on_save_lock()]] - `method` [EXTRACTED]

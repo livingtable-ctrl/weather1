@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Opus-review-caught (2026-08-07, MEDIUM) the test above is NOT actually…]] - `rationale_for` [EXTRACTED]
 - [[TestConsistency]] - `method` [EXTRACTED]
-- [[_market()]] - `calls` [EXTRACTED]
+- [[_market()_1]] - `calls` [EXTRACTED]
 - [[find_violations()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_35

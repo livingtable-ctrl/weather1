@@ -12,8 +12,8 @@ tags:
 # TestExecutionLogMigration
 
 ## Connections
-- [[dot-setup_method()_4]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_4]] - `method` [EXTRACTED]
+- [[dot-setup_method()_23]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_16]] - `method` [EXTRACTED]
 - [[dot-test_forecast_cycle_and_live_columns_exist()]] - `method` [EXTRACTED]
 - [[dot-test_log_order_stores_cycle_and_live_flag()]] - `method` [EXTRACTED]
 - [[dot-test_was_ordered_this_cycle_false_different_cycle()]] - `method` [EXTRACTED]

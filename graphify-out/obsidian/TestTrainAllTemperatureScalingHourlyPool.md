@@ -12,7 +12,7 @@ tags:
 # TestTrainAllTemperatureScalingHourlyPool
 
 ## Connections
-- [[dot-_seed()_2]] - `method` [EXTRACTED]
+- [[dot-_seed()_5]] - `method` [EXTRACTED]
 - [[dot-test_hourly_pool_below_min_samples_not_trained()]] - `method` [EXTRACTED]
 - [[dot-test_hourly_rows_excluded_from_sameday_pool()]] - `method` [EXTRACTED]
 - [[dot-test_sql_paren_regression_multiday_hourly_row_excluded_from_sameday()]] - `method` [EXTRACTED]

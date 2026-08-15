@@ -12,9 +12,9 @@ tags:
 # .test_trading_paused_takes_precedence_over_limit_check()
 
 ## Connections
-- [[dot-_analysis()_2]] - `calls` [EXTRACTED]
+- [[dot-_analysis()_4]] - `calls` [EXTRACTED]
 - [[dot-_market()_5]] - `calls` [EXTRACTED]
-- [[dot-_run()_3]] - `calls` [EXTRACTED]
+- [[dot-_run()_4]] - `calls` [EXTRACTED]
 - [[TRADING_PAUSED must block even when check_position_limits() would have said…]] - `rationale_for` [EXTRACTED]
 - [[TestCmdTodayPlacementGates]] - `method` [EXTRACTED]
 

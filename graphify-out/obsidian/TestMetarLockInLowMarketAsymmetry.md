@@ -12,7 +12,7 @@ tags:
 # TestMetarLockInLowMarketAsymmetry
 
 ## Connections
-- [[dot-_call()_5]] - `method` [EXTRACTED]
+- [[dot-_call()_2]] - `method` [EXTRACTED]
 - [[dot-test_low_market_above_already_below_margin_is_locked()]] - `method` [EXTRACTED]
 - [[dot-test_low_market_above_still_above_margin_is_not_locked()]] - `method` [EXTRACTED]
 - [[dot-test_low_market_below_already_below_margin_is_locked()]] - `method` [EXTRACTED]

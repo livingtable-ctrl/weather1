@@ -12,7 +12,7 @@ tags:
 # .test_la_renamed_low_ticker()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[KXLOWLAX (renamed from KXLOWLA, itself later retired for KXLOWTLAX — still…]] - `rationale_for` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 

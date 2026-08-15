@@ -5,7 +5,7 @@ community: "Community 249"
 location: "line 16"
 tags:
   - graphify/code
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_249
 ---
 
@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[requirements.txt (Python Dependencies)]] - `references` [EXTRACTED]
-- [[tracker.py Module_1]] - `conceptually_related_to` [INFERRED]
+- [[tracker.py Module]] - `conceptually_related_to` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_249
+#graphify/code #graphify/EXTRACTED #community/Community_249

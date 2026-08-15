@@ -12,8 +12,8 @@ tags:
 # TestExportTrades
 
 ## Connections
-- [[dot-setUp()_6]] - `method` [EXTRACTED]
-- [[dot-tearDown()_6]] - `method` [EXTRACTED]
+- [[dot-setUp()_38]] - `method` [EXTRACTED]
+- [[dot-tearDown()_37]] - `method` [EXTRACTED]
 - [[dot-test_export_trades_csv()]] - `method` [EXTRACTED]
 - [[dot-test_export_trades_csv_empty()]] - `method` [EXTRACTED]
 - [[dot-test_export_trades_csv_handles_heterogeneous_schema()]] - `method` [EXTRACTED]

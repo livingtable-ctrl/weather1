@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[AtomicWriteError]] - `references` [EXTRACTED]
-- [[Path_14]] - `references` [EXTRACTED]
+- [[Path_21]] - `references` [EXTRACTED]
 - [[Shared write-tempfsyncrenameretryemergency-copy core for atomic_write_json…]] - `rationale_for` [EXTRACTED]
 - [[_replace_with_retry()]] - `calls` [EXTRACTED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]

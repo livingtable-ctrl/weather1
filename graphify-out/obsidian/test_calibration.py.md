@@ -20,7 +20,7 @@ tags:
 - [[Tests for calibration.py — seasonal and per-city blend weight calibration.]] - `rationale_for` [EXTRACTED]
 - [[_make_winter_rows()]] - `contains` [EXTRACTED]
 - [[_seed_db()]] - `contains` [EXTRACTED]
-- [[backtest.py_1]] - `calls` [EXTRACTED]
+- [[backtest.py_2]] - `calls` [EXTRACTED]
 - [[calibrate_city_weights()]] - `imports` [EXTRACTED]
 - [[calibrate_condition_weights()]] - `imports` [EXTRACTED]
 - [[calibrate_seasonal_weights()]] - `imports` [EXTRACTED]

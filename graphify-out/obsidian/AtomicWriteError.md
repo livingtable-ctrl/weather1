@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[CorruptionError]] - `uses` [INFERRED]
-- [[Exception_1]] - `inherits` [EXTRACTED]
+- [[Exception]] - `inherits` [EXTRACTED]
 - [[PaperPositionStore]] - `uses` [INFERRED]
 - [[_CrossProcessDataLock]] - `uses` [INFERRED]
 - [[_atomic_write_payload()]] - `references` [EXTRACTED]

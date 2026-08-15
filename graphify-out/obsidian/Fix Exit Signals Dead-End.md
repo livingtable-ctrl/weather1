@@ -12,6 +12,6 @@ tags:
 
 ## Connections
 - [[Bug Fixes April 30 2026 Plan]] - `implements` [EXTRACTED]
-- [[paper.py module]] - `references` [EXTRACTED]
+- [[paper.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_224

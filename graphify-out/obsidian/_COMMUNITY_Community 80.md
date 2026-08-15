@@ -10,7 +10,7 @@ members: 31
 **Members:** 31 nodes
 
 ## Members
-- [[dot-_call()_2]] - code - tests/test_phase2_batch_l.py
+- [[dot-_call()_5]] - code - tests/test_phase2_batch_l.py
 - [[dot-_valid()]] - code - tests/test_phase2_batch_l.py
 - [[dot-test_alias_field_names_validated()]] - code - tests/test_phase2_batch_l.py
 - [[dot-test_ask_100_cents_accepted()]] - code - tests/test_phase2_batch_l.py
@@ -52,9 +52,9 @@ SORT file.name ASC
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_Community 458]]
 - 1 edge to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_Community 86]]
 - 1 edge to [[_COMMUNITY_Community 417]]
+- 1 edge to [[_COMMUNITY_Community 86]]
 
 ## Top bridge nodes
 - [[TestValidateMarketPriceRange]] - degree 22, connects to 3 communities
-- [[dot-_call()_2]] - degree 17, connects to 1 community
+- [[dot-_call()_5]] - degree 17, connects to 1 community

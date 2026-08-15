@@ -14,8 +14,8 @@ tags:
 ## Connections
 - [[14 - get_edge_decay_curve() must segment by condition_type when provided.]] - `rationale_for` [EXTRACTED]
 - [[dot-_log_with_days_out()]] - `method` [EXTRACTED]
-- [[dot-setUp()_21]] - `method` [EXTRACTED]
-- [[dot-tearDown()_21]] - `method` [EXTRACTED]
+- [[dot-setUp()_14]] - `method` [EXTRACTED]
+- [[dot-tearDown()_14]] - `method` [EXTRACTED]
 - [[dot-test_grpb_edge_decay_condition_type_filters()]] - `method` [EXTRACTED]
 - [[dot-test_grpb_edge_decay_no_filter_returns_all()]] - `method` [EXTRACTED]
 - [[dot-test_grpb_edge_decay_returns_list()]] - `method` [EXTRACTED]

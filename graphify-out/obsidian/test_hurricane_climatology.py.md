@@ -11,7 +11,7 @@ tags:
 # test_hurricane_climatology.py
 
 ## Connections
-- [[TestBootstrapCi]] - `contains` [EXTRACTED]
+- [[TestBootstrapCi_1]] - `contains` [EXTRACTED]
 - [[TestBootstrapCiNextEvent]] - `contains` [EXTRACTED]
 - [[TestCountAsOfDay]] - `contains` [EXTRACTED]
 - [[TestExceedanceProbability]] - `contains` [EXTRACTED]
@@ -28,7 +28,7 @@ tags:
 - [[_fixture_storms()]] - `contains` [EXTRACTED]
 - [[_next_event_fixture_storms()]] - `contains` [EXTRACTED]
 - [[_storm_order_fixture_storms()]] - `contains` [EXTRACTED]
-- [[backtest.py_2]] - `cites` [EXTRACTED]
+- [[backtest.py_1]] - `cites` [EXTRACTED]
 - [[fetch_hurdat2_raw()]] - `references` [EXTRACTED]
 - [[first_hurricane_position()]] - `references` [EXTRACTED]
 - [[hurricane_climatology.py]] - `imports` [EXTRACTED]

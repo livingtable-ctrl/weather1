@@ -41,12 +41,12 @@ SORT file.name ASC
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_Community 45]]
 - 3 edges to [[_COMMUNITY_Community 145]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 56]]
+- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 144]]
 - 1 edge to [[_COMMUNITY_Community 158]]
-- 1 edge to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 370]]
+- 1 edge to [[_COMMUNITY_Community 40]]
 
 ## Top bridge nodes
 - [[check_stop_losses()]] - degree 18, connects to 7 communities

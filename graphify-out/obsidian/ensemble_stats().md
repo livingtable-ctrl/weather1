@@ -12,7 +12,7 @@ tags:
 # ensemble_stats()
 
 ## Connections
-- [[dot-_call()_1]] - `calls` [EXTRACTED]
+- [[dot-_call()]] - `calls` [EXTRACTED]
 - [[dot-test_basic()]] - `calls` [EXTRACTED]
 - [[dot-test_empty()]] - `calls` [EXTRACTED]
 - [[dot-test_empty_list_returns_empty_dict()]] - `calls` [EXTRACTED]
@@ -34,7 +34,7 @@ tags:
 - [[test_weather.py]] - `imports` [EXTRACTED]
 - [[test_weather_markets.py]] - `imports` [EXTRACTED]
 - [[testsconftest.py Fixtures]] - `conceptually_related_to` [AMBIGUOUS]
-- [[weather_markets.py_2]] - `implements` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
+- [[weather_markets.py_2]] - `implements` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_160

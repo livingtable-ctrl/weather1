@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[All winter months (Oct-Mar) should use the elevated ECMWF weight.…]] - `rationale_for` [EXTRACTED]
-- [[TestForecastModelWeights_1]] - `method` [EXTRACTED]
+- [[TestForecastModelWeights]] - `method` [EXTRACTED]
 - [[_forecast_model_weights()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests

@@ -12,6 +12,6 @@ tags:
 # Record price and return True if this observation triggered a crash. Called from…
 
 ## Connections
-- [[dot-check()]] - `rationale_for` [EXTRACTED]
+- [[dot-check()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_95

@@ -12,6 +12,6 @@ tags:
 # 1b NWP Cycle-Aligned Scanning
 
 ## Connections
-- [[main.py Module_1]] - `references` [EXTRACTED]
+- [[main.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_179

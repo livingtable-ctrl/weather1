@@ -12,7 +12,7 @@ tags:
 # is_daily_loss_halted()
 
 ## Connections
-- [[dot-check()_1]] - `calls` [EXTRACTED]
+- [[dot-check()]] - `calls` [EXTRACTED]
 - [[Return True if today's P&L is worse than -MAX_DAILY_LOSS_PCT  current balance.…]] - `rationale_for` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[_quick_paper_buy()]] - `calls` [EXTRACTED]

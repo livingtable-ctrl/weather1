@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_candle()]] - `calls` [EXTRACTED]
-- [[dot-_trade()_4]] - `calls` [EXTRACTED]
+- [[dot-_trade()_2]] - `calls` [EXTRACTED]
 - [[TestTradeFlowSettlementCorrelation]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_39

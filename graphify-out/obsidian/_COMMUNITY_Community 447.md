@@ -11,11 +11,11 @@ members: 8
 
 ## Members
 - [[dot-test_circuit_breaker_skips_when_open()]] - code - tests/test_weather_markets.py
-- [[dot-test_negative_caches_failure()_2]] - code - tests/test_weather_markets.py
+- [[dot-test_negative_caches_failure()_1]] - code - tests/test_weather_markets.py
 - [[dot-test_parses_response_correctly()]] - code - tests/test_weather_markets.py
 - [[dot-test_returns_none_on_request_failure()]] - code - tests/test_weather_markets.py
 - [[dot-test_returns_none_when_key_missing()]] - code - tests/test_weather_markets.py
-- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_4]] - rationale - tests/test_weather_markets.py
+- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_2]] - rationale - tests/test_weather_markets.py
 - [[TestFetchTemperatureWeatherapi]] - code - tests/test_weather_markets.py
 - [[fetch_temperature_weatherapi() requires WEATHERAPI_KEY to be set.]] - rationale - tests/test_weather_markets.py
 

@@ -10,8 +10,8 @@ members: 26
 **Members:** 26 nodes
 
 ## Members
-- [[dot-setUp()_2]] - code - tests/test_paper.py
-- [[dot-tearDown()_2]] - code - tests/test_paper.py
+- [[dot-setUp()]] - code - tests/test_paper.py
+- [[dot-tearDown()]] - code - tests/test_paper.py
 - [[dot-test_boundary_exactly_800_not_paused()]] - code - tests/test_paper.py
 - [[dot-test_effective_balance_adds_back_same_day_cost()]] - code - tests/test_paper.py
 - [[dot-test_effective_balance_ignores_multiday_cost()]] - code - tests/test_paper.py
@@ -45,8 +45,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 45]]
 - 1 edge to [[_COMMUNITY_Community 56]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
 - [[TestMaxDrawdown]] - degree 16, connects to 2 communities

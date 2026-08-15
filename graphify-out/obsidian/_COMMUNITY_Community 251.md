@@ -21,7 +21,7 @@ members: 14
 - [[Once a city is already in the fresh cache, a later preload_all() call for that…]] - rationale - tests/test_climatology.py
 - [[TestPreloadAllSigmaGate]] - code - tests/test_climatology.py
 - [[The exact backlog scenario main.py's wizard calls preload_all({city…]] - rationale - tests/test_climatology.py
-- [[backlog.txt PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE…_1]] - rationale - tests/test_climatology.py
+- [[backlog.txt PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE…]] - rationale - tests/test_climatology.py
 - [[opus-review-caught 2026-08-07 a city KEY present in the file with no real…]] - rationale - tests/test_climatology.py
 - [[opus-review-caught 2026-08-07 valid JSON that isn't an object (null, a list,…]] - rationale - tests/test_climatology.py
 

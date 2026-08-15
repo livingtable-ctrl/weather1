@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_log_settled()_2]] - `calls` [EXTRACTED]
-- [[dot-_seed_baseline()_1]] - `calls` [EXTRACTED]
+- [[dot-_seed_baseline()]] - `calls` [EXTRACTED]
 - [[TestLiveTradingGateConditionTypeFilter]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Tracker_Settlement_Sigma__Disputed_Rows

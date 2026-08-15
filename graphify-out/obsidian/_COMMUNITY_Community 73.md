@@ -14,7 +14,7 @@ members: 32
 - [[dot-test_dew_point_f_parsed_from_real_dewp_celsius_field()]] - code - tests/test_metar.py
 - [[dot-test_max_min_temp_f_parsed_from_real_api_field_names()]] - code - tests/test_metar.py
 - [[dot-test_max_min_temp_f_prefers_fahrenheit_field_if_ever_present()]] - code - tests/test_metar.py
-- [[dot-test_negative_caches_failure()]] - code - tests/test_metar.py
+- [[dot-test_negative_caches_failure()_2]] - code - tests/test_metar.py
 - [[dot-test_returns_current_temp_f()]] - code - tests/test_metar.py
 - [[dot-test_returns_none_for_implausible_high_temp()]] - code - tests/test_metar.py
 - [[dot-test_returns_none_for_implausible_low_temp()]] - code - tests/test_metar.py
@@ -24,7 +24,7 @@ members: 32
 - [[dot-test_returns_none_when_obstime_missing()]] - code - tests/test_metar.py
 - [[dot-test_returns_none_when_obstime_unparseable()]] - code - tests/test_metar.py
 - [[dot-test_returns_result_when_observation_fresh()]] - code - tests/test_metar.py
-- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_2]] - rationale - tests/test_metar.py
+- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_4]] - rationale - tests/test_metar.py
 - [[Defensive if the API ever adds a Fahrenheit extreme field, prefer it over…]] - rationale - tests/test_metar.py
 - [[Grade Audit Module Doc metar.py]] - document - docs/grade_audit/modules/metar.md
 - [[If only Celsius provided, convert to Fahrenheit.]] - rationale - tests/test_metar.py
@@ -53,15 +53,15 @@ SORT file.name ASC
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
 - 2 edges to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Community 182]]
-- 1 edge to [[_COMMUNITY_Community 211]]
-- 1 edge to [[_COMMUNITY_Forecast Persistent Cache]]
-- 1 edge to [[_COMMUNITY_Community 399]]
 - 1 edge to [[_COMMUNITY_Community 339]]
 - 1 edge to [[_COMMUNITY_Community 367]]
+- 1 edge to [[_COMMUNITY_Community 399]]
 - 1 edge to [[_COMMUNITY_Community 91]]
-- 1 edge to [[_COMMUNITY_Community 457]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 1 edge to [[_COMMUNITY_Community 457]]
+- 1 edge to [[_COMMUNITY_Community 182]]
+- 1 edge to [[_COMMUNITY_Forecast Persistent Cache]]
+- 1 edge to [[_COMMUNITY_Community 211]]
 
 ## Top bridge nodes
 - [[test_metar.py]] - degree 16, connects to 10 communities

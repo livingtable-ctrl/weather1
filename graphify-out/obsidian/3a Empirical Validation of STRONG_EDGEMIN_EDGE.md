@@ -12,6 +12,6 @@ tags:
 # 3a: Empirical Validation of STRONG_EDGE/MIN_EDGE
 
 ## Connections
-- [[tracker.py Module_1]] - `references` [EXTRACTED]
+- [[tracker.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_249

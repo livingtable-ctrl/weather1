@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Redirect main.DATA_DIR (via __file__ resolution) to a temp directory.]] - `rationale_for` [EXTRACTED]
 - [[_patched_cleanup()]] - `calls` [EXTRACTED]
-- [[fixture_4]] - `references` [EXTRACTED]
+- [[fixture_11]] - `references` [EXTRACTED]
 - [[test_cleanup_data_dir.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_47

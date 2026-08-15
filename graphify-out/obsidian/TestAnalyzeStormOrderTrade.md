@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()_2]] - `method` [EXTRACTED]
-- [[dot-_enriched()_4]] - `method` [EXTRACTED]
+- [[dot-_enriched()_3]] - `method` [EXTRACTED]
 - [[dot-test_condition_fields_passed_through_to_diagnostics()]] - `method` [EXTRACTED]
 - [[dot-test_conditional_mode_falls_back_to_unconditional_below_sample_floor()_1]] - `method` [EXTRACTED]
 - [[dot-test_conditional_mode_kept_when_sample_floor_met()_1]] - `method` [EXTRACTED]

@@ -12,7 +12,7 @@ tags:
 # test_hurricane_next_event_series_present_does_not_warn()
 
 ## Connections
-- [[_mock_client()_2]] - `calls` [EXTRACTED]
+- [[_mock_client()_1]] - `calls` [EXTRACTED]
 - [[backlog.txt HURRICANE MARKETS -- time-to-next-event model (2026-08-07) the 2…]] - `rationale_for` [EXTRACTED]
 - [[test_series_drift.py]] - `contains` [EXTRACTED]
 

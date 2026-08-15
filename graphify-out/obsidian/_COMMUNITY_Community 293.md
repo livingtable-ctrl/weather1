@@ -13,7 +13,7 @@ members: 12
 - [[dot-test_parallel_failures_count_as_one_event()]] - code - tests/test_circuit_breaker.py
 - [[dot-test_sequential_failures_outside_window_each_count()]] - code - tests/test_circuit_breaker.py
 - [[3 simultaneous failures within burst_window must not count as 3 events.…]] - rationale - tests/test_circuit_breaker.py
-- [[CircuitBreaker class]] - code - circuit_breaker.py
+- [[CircuitBreaker class_1]] - code - circuit_breaker.py
 - [[Failures spaced further apart than burst_window each increment the counter.]] - rationale - tests/test_circuit_breaker.py
 - [[Grade Audit Module Doc circuit_breaker.py]] - document - docs/grade_audit/modules/circuit_breaker.md
 - [[Grade Audit Output circuit_breaker.py]] - document - docs/grade_audit/outputs/circuit_breaker.py.md
@@ -40,6 +40,6 @@ SORT file.name ASC
 ## Top bridge nodes
 - [[test_circuit_breaker.py]] - degree 9, connects to 2 communities
 - [[circuit_breaker.py_1]] - degree 5, connects to 1 community
-- [[Grade Audit Module Doc circuit_breaker.py]] - degree 4, connects to 1 community
 - [[TestCircuitBreakerBurstWindow]] - degree 4, connects to 1 community
-- [[Grade Audit Output circuit_breaker.py]] - degree 3, connects to 1 community
+- [[Grade Audit Module Doc circuit_breaker.py]] - degree 4, connects to 1 community
+- [[dot-test_parallel_failures_count_as_one_event()]] - degree 3, connects to 1 community

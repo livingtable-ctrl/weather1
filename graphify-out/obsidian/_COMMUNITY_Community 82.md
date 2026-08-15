@@ -54,12 +54,12 @@ SORT file.name ASC
 - 4 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 3 edges to [[_COMMUNITY_Weather Probability Math Tests]]
 - 2 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 1 edge to [[_COMMUNITY_Community 26]]
+- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 
 ## Top bridge nodes
 - [[normal_cdf()]] - degree 24, connects to 7 communities
 - [[TestNormalCdf_1]] - degree 7, connects to 1 community
-- [[test_nws.py]] - degree 5, connects to 1 community
 - [[TestTtlUntilNextCycle]] - degree 5, connects to 1 community
+- [[test_nws.py]] - degree 5, connects to 1 community
 - [[dot-test_05_utc_ttl_is_approx_3600()]] - degree 3, connects to 1 community

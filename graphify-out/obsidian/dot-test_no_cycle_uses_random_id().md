@@ -12,7 +12,7 @@ tags:
 # .test_no_cycle_uses_random_id()
 
 ## Connections
-- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_3]] - `calls` [EXTRACTED]
 - [[Omitting cycle produces a random (non-deterministic) client_order_id.]] - `rationale_for` [EXTRACTED]
 - [[TestClientOrderId]] - `method` [EXTRACTED]
 

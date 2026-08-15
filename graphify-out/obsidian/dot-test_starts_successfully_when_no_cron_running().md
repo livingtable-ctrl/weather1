@@ -15,6 +15,6 @@ tags:
 - [[If _is_cron_running() returns False and no rate limit, cron spawns.]] - `rationale_for` [EXTRACTED]
 - [[TestRunCronConcurrentGuard]] - `method` [EXTRACTED]
 - [[_auth_headers()]] - `calls` [EXTRACTED]
-- [[_make_app()]] - `calls` [EXTRACTED]
+- [[_make_app()_1]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_341

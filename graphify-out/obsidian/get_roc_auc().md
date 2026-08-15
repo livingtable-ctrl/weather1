@@ -21,6 +21,6 @@ tags:
 - [[test_roc_auc_not_degraded()]] - `calls` [EXTRACTED]
 - [[test_web_analytics.py]] - `references` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
-- [[tracker.py_1]] - `implements` [EXTRACTED]
+- [[tracker.py_2]] - `implements` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_71

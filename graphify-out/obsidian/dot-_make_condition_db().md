@@ -15,7 +15,7 @@ tags:
 - [[dot-test_accepts_cutoff_date_kwarg()]] - `calls` [EXTRACTED]
 - [[dot-test_cutoff_date_with_min_samples()]] - `calls` [EXTRACTED]
 - [[dot-test_weights_sum_to_one()_4]] - `calls` [EXTRACTED]
-- [[Path_28]] - `references` [EXTRACTED]
+- [[Path_17]] - `references` [EXTRACTED]
 - [[TestTemporalIsolationCondition]] - `method` [EXTRACTED]
 - [[_make_db()_1]] - `calls` [EXTRACTED]
 

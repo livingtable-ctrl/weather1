@@ -12,7 +12,7 @@ tags:
 # TestPnlDistributionGated
 
 ## Connections
-- [[dot-_run_sim()_1]] - `method` [EXTRACTED]
+- [[dot-_run_sim()]] - `method` [EXTRACTED]
 - [[dot-test_core_keys_always_present()]] - `method` [EXTRACTED]
 - [[dot-test_distribution_absent_by_default()]] - `method` [EXTRACTED]
 - [[dot-test_distribution_present_when_requested()]] - `method` [EXTRACTED]

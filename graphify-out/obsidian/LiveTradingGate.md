@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_gate()]] - `calls` [EXTRACTED]
-- [[dot-check()_1]] - `method` [EXTRACTED]
+- [[dot-check()]] - `method` [EXTRACTED]
 - [[dot-check_or_raise()]] - `method` [EXTRACTED]
 - [[Aggregates all pre-trade checks. Call check() before every live order.]] - `rationale_for` [EXTRACTED]
 - [[Live Trading Runbook]] - `references` [EXTRACTED]

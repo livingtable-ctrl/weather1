@@ -1,18 +1,18 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 62"
+community: "Anomaly Detection & PDF Reporting"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_62
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Path
 
 ## Connections
-- [[_cache_is_stale()]] - `references` [EXTRACTED]
-- [[_cache_path()]] - `references` [EXTRACTED]
-- [[_load_stale_cache_or_none()]] - `references` [EXTRACTED]
+- [[_generate_html()]] - `references` [EXTRACTED]
+- [[_generate_pdf()]] - `references` [EXTRACTED]
+- [[generate_weekly_report()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_62
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

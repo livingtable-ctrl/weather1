@@ -12,7 +12,7 @@ tags:
 # .test_trade_missing_trade_id_is_skipped()
 
 ## Connections
-- [[dot-_trade()_4]] - `calls` [EXTRACTED]
+- [[dot-_trade()_2]] - `calls` [EXTRACTED]
 - [[TestTradeHistory]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_39

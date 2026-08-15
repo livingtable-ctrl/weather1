@@ -1,26 +1,26 @@
 ---
-source_file: "tests/test_walk_forward.py"
+source_file: "tests/test_phase2_batch_o.py"
 type: "code"
-community: "Community 37"
-location: "L12"
+community: "Community 63"
+location: "L17"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_37
+  - community/Community_63
 ---
 
 # _make_trade()
 
 ## Connections
-- [[dot-test_brier_scores_in_valid_range()]] - `calls` [EXTRACTED]
-- [[dot-test_creates_correct_number_of_folds()]] - `calls` [EXTRACTED]
-- [[dot-test_each_fold_has_brier_score()]] - `calls` [EXTRACTED]
-- [[dot-test_insufficient_data_returns_empty()]] - `calls` [EXTRACTED]
-- [[dot-test_no_data_leakage()]] - `calls` [EXTRACTED]
-- [[dot-test_result_includes_summary()]] - `calls` [EXTRACTED]
-- [[dot-test_returns_results_dict()]] - `calls` [EXTRACTED]
-- [[dot-test_test_period_advances_each_fold()]] - `calls` [EXTRACTED]
-- [[Make a minimal trade record for backtesting.]] - `rationale_for` [EXTRACTED]
-- [[test_walk_forward.py]] - `contains` [EXTRACTED]
+- [[dot-test_combined_totals_add_up()]] - `calls` [EXTRACTED]
+- [[dot-test_legacy_none_excluded()]] - `calls` [EXTRACTED]
+- [[dot-test_mixed_only_sameday_summed()]] - `calls` [EXTRACTED]
+- [[dot-test_multiday_trade_excluded()]] - `calls` [EXTRACTED]
+- [[dot-test_multiday_trade_not_counted_in_sameday()]] - `calls` [EXTRACTED]
+- [[dot-test_multiple_sameday_summed()]] - `calls` [EXTRACTED]
+- [[dot-test_same_trade_not_counted_in_both()]] - `calls` [EXTRACTED]
+- [[dot-test_sameday_trade_counted()]] - `calls` [EXTRACTED]
+- [[dot-test_yesterday_sameday_not_counted()]] - `calls` [EXTRACTED]
+- [[Phase 2 Batch O Same-Day Spend Tests]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_37
+#graphify/code #graphify/EXTRACTED #community/Community_63

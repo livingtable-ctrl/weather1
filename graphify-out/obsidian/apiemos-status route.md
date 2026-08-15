@@ -11,7 +11,4 @@ tags:
 
 # /api/emos-status route
 
-## Connections
-- [[weather app site V_3 (3)srcuseData.js]] - `calls` [EXTRACTED]
-
 #graphify/code #graphify/EXTRACTED #community/Community_66

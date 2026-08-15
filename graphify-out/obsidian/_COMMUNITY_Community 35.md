@@ -50,15 +50,15 @@ members: 50
 - [[Thresholds T60, T65, T70 should be monotone (higher temp = lower prob of…]] - rationale - tests/test_consistency.py
 - [[Two different rain cities in the same month must never be pooled into one group…]] - rationale - tests/test_consistency.py
 - [[Unit tests for consistency.py — monotonicity  arbitrage detection.]] - rationale - tests/test_consistency.py
-- [[_market()]] - code - tests/test_consistency.py
+- [[_market()_1]] - code - tests/test_consistency.py
 - [[_parse_threshold()]] - code - consistency.py
 - [[_parse_threshold() with market.get(series_ticker) absent -- the real Kalshi…]] - rationale - tests/test_consistency.py
-- [[_rain_market()]] - code - tests/test_consistency.py
+- [[_rain_market()_1]] - code - tests/test_consistency.py
 - [[backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 1 KXTEMPxxxH…]] - rationale - tests/test_consistency.py
 - [[backlog.txt HURRICANE MARKETS -- season-count model (2026-08-03, opus-review-…]] - rationale - tests/test_consistency.py
 - [[backlog.txt HURRICANE MARKETS -- storm-order model (2026-08-07)…]] - rationale - tests/test_consistency.py
 - [[backlog.txt HURRICANE MARKETS -- time-to-next-event model (2026-08-07)…]] - rationale - tests/test_consistency.py
-- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…]] - rationale - tests/test_consistency.py
+- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…_2]] - rationale - tests/test_consistency.py
 - [[test_consistency.py]] - code - tests/test_consistency.py
 
 ## Live Query (requires Dataview plugin)

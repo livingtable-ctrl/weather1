@@ -1,16 +1,16 @@
 ---
-source_file: "updated frontend/screenshots/dark.png"
+source_file: "updated frontend/screenshots/light.png"
 type: "image"
-community: "Community 292"
+community: "Community 192"
 tags:
   - graphify/image
   - graphify/EXTRACTED
-  - community/Community_292
+  - community/Community_192
 ---
 
 # Win Rate Metric Card (61.2%, +2.3 pts)
 
 ## Connections
-- [[Metric Card Row (Paper Balance, Open Positions, Win Rate, Brier Score)]] - `references` [EXTRACTED]
+- [[Metric Cards Row (Paper balance, Open positions, Win rate, Brier score)]] - `references` [EXTRACTED]
 
-#graphify/image #graphify/EXTRACTED #community/Community_292
+#graphify/image #graphify/EXTRACTED #community/Community_192

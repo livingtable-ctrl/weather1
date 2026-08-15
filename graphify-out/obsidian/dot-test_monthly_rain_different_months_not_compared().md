@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Same city, different accrual months must never be pooled -- rain-specific case…]] - `rationale_for` [EXTRACTED]
 - [[TestConsistency]] - `method` [EXTRACTED]
-- [[_rain_market()]] - `calls` [EXTRACTED]
+- [[_rain_market()_1]] - `calls` [EXTRACTED]
 - [[find_violations()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_35

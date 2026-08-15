@@ -21,7 +21,7 @@ members: 12
 - [[_analyze_precip_trade calls _blend_weights(days_out, has_nws=False,…]] - rationale - tests/test_price_and_size.py
 - [[_analyze_precip_trade computes days_out from datetime.now(ZoneInfo(tz)).date()…]] - rationale - tests/test_price_and_size.py
 - [[_ny_tomorrow()]] - code - tests/test_price_and_size.py
-- [[date_8]] - code
+- [[date_3]] - code
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,6 +34,6 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_Community 58]]
 
 ## Top bridge nodes
-- [[_ny_tomorrow()]] - degree 5, connects to 1 community
 - [[TestSnowTradeWiring]] - degree 5, connects to 1 community
+- [[_ny_tomorrow()]] - degree 5, connects to 1 community
 - [[TestPrecipTradeWiring]] - degree 4, connects to 1 community

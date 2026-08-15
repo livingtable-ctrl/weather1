@@ -21,18 +21,18 @@ members: 28
 - [[Second call the same day must be a no-op -- proven by checking the state file's…]] - rationale - tests/test_city_registry_report_logging.py
 - [[Tests for log_city_registry_report() — once-per-day logging wrapper around…]] - rationale - tests/test_city_registry_report_logging.py
 - [[The inverse check if a _KNOWN_GAPS entry no longer reflects a real gap…]] - rationale - tests/test_city_registry_manifest.py
-- [[_today()]] - code - tests/test_city_registry_report_logging.py
+- [[_today()_3]] - code - tests/test_city_registry_report_logging.py
 - [[city_registry_report()]] - code - weather_markets.py
 - [[test_city_registry_manifest.py]] - code - tests/test_city_registry_manifest.py
 - [[test_city_registry_report_logging.py]] - code - tests/test_city_registry_report_logging.py
-- [[test_first_run_creates_state_file()]] - code - tests/test_city_registry_report_logging.py
-- [[test_gated_to_run_once_per_day()]] - code - tests/test_city_registry_report_logging.py
+- [[test_first_run_creates_state_file()_1]] - code - tests/test_city_registry_report_logging.py
+- [[test_gated_to_run_once_per_day()_2]] - code - tests/test_city_registry_report_logging.py
 - [[test_known_gaps_are_still_actually_gaps()]] - code - tests/test_city_registry_manifest.py
 - [[test_metar_station_fully_covered()]] - code - tests/test_city_registry_manifest.py
 - [[test_never_raises_on_a_broken_state_file()]] - code - tests/test_city_registry_report_logging.py
 - [[test_no_new_unexplained_registry_gaps()]] - code - tests/test_city_registry_manifest.py
 - [[test_report_covers_all_city_coords_cities()]] - code - tests/test_city_registry_manifest.py
-- [[test_runs_again_on_a_new_day()]] - code - tests/test_city_registry_report_logging.py
+- [[test_runs_again_on_a_new_day()_1]] - code - tests/test_city_registry_report_logging.py
 - [[test_series_ticker_fully_covered()]] - code - tests/test_city_registry_manifest.py
 - [[test_st_petersburg_series_ticker_comes_from_rain_not_high()]] - code - tests/test_city_registry_manifest.py
 - [[test_station_bias_fully_covered()]] - code - tests/test_city_registry_manifest.py
@@ -49,8 +49,8 @@ SORT file.name ASC
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
-- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
 - 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
 
 ## Top bridge nodes
 - [[test_city_registry_manifest.py]] - degree 16, connects to 3 communities

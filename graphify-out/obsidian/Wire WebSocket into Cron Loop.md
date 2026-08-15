@@ -13,6 +13,6 @@ tags:
 ## Connections
 - [[KalshiWebSocket Client (kalshi_ws.py)]] - `references` [EXTRACTED]
 - [[Phase F Kalshi WebSocket Plan]] - `implements` [EXTRACTED]
-- [[main.py module]] - `references` [EXTRACTED]
+- [[main.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_536

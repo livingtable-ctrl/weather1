@@ -34,12 +34,12 @@ members: 31
 - [[_env_float()_1]] - code - paper.py
 - [[_env_int()_1]] - code - paper.py
 - [[entry_prob=0.0 on an open trade must not be replaced by 0.5 in covariance math.]] - rationale - tests/test_debug_fixes.py
-- [[fixture_6]] - code
+- [[fixture_17]] - code
 - [[get_attribution must not substitute 0.5 when entry_prob is 0.0.]] - rationale - tests/test_debug_fixes.py
 - [[sync_outcomes logs a warning when client.get_market raises.]] - rationale - tests/test_debug_fixes.py
 - [[test_debug_fixes.py]] - code - tests/test_debug_fixes.py
 - [[tmp_paper()]] - code - tests/test_debug_fixes.py
-- [[tmp_tracker()]] - code - tests/test_debug_fixes.py
+- [[tmp_tracker()_2]] - code - tests/test_debug_fixes.py
 - [[was_traded can go from 0 → 1 via log_analysis_attempt after batch insert.]] - rationale - tests/test_debug_fixes.py
 
 ## Live Query (requires Dataview plugin)
@@ -53,8 +53,8 @@ SORT file.name ASC
 - 5 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_Community 361]]
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
 - 1 edge to [[_COMMUNITY_Community 184]]
+- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
 
 ## Top bridge nodes
 - [[test_debug_fixes.py]] - degree 18, connects to 5 communities

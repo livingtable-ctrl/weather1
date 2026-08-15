@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Guard test for the per-city registry completeness manifest (backlog.txt PER-…]] - `rationale_for` [EXTRACTED]
-- [[backtest.py_1]] - `references` [EXTRACTED]
+- [[backtest.py_2]] - `references` [EXTRACTED]
 - [[city_registry_report()]] - `calls` [EXTRACTED]
 - [[settlement_monitor.py]] - `references` [EXTRACTED]
 - [[test_bare_os_replace_guard.py]] - `semantically_similar_to` [INFERRED]

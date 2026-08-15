@@ -16,7 +16,7 @@ tags:
 - [[TestDailySamedaySpend]] - `contains` [EXTRACTED]
 - [[_daily_paper_spend()]] - `imports` [EXTRACTED]
 - [[_daily_sameday_spend()]] - `imports` [EXTRACTED]
-- [[_make_trade()_5]] - `contains` [EXTRACTED]
+- [[_make_trade()_6]] - `contains` [EXTRACTED]
 - [[test_phase2_batch_o.py — Tests for same-day spend cap (MAX_SAME_DAY_SPEND).…]] - `rationale_for` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_63

@@ -75,13 +75,13 @@ SORT file.name ASC
 - 6 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 4 edges to [[_COMMUNITY_Community 59]]
 - 3 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 2 edges to [[_COMMUNITY_Community 168]]
 - 2 edges to [[_COMMUNITY_Weather Probability Math Tests]]
+- 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
-- 1 edge to [[_COMMUNITY_Community 36]]
 - 1 edge to [[_COMMUNITY_Community 58]]
+- 1 edge to [[_COMMUNITY_Community 36]]
+- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 
 ## Top bridge nodes
 - [[kelly_fraction()]] - degree 39, connects to 9 communities

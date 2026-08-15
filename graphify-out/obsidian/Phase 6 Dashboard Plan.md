@@ -4,7 +4,7 @@ type: "document"
 community: "Community 36"
 tags:
   - graphify/document
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_36
 ---
 
@@ -16,8 +16,8 @@ tags:
 - [[Phase 5 Trading Portfolio Plan]] - `conceptually_related_to` [INFERRED]
 - [[Phase 7 Data Safety Plan]] - `conceptually_related_to` [INFERRED]
 - [[get_component_attribution()]] - `implements` [EXTRACTED]
-- [[tracker.py_2]] - `references` [EXTRACTED]
+- [[tracker.py_1]] - `references` [EXTRACTED]
 - [[weather_markets.py_2]] - `references` [EXTRACTED]
 - [[web_app.py_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/INFERRED #community/Community_36
+#graphify/document #graphify/EXTRACTED #community/Community_36

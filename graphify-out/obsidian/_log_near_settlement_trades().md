@@ -17,7 +17,7 @@ tags:
 - [[dot-test_missing_side_and_entry_prob_reproduces_the_original_silent_failure()]] - `calls` [EXTRACTED]
 - [[dot-test_multiple_trades_all_written()]] - `calls` [EXTRACTED]
 - [[dot-test_writes_row_with_real_trade_field_names()]] - `calls` [EXTRACTED]
-- [[Path_8]] - `references` [EXTRACTED]
+- [[Path_9]] - `references` [EXTRACTED]
 - [[Write near-settlement snapshot rows for future calibration analysis. `near` is…]] - `rationale_for` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `contains` [EXTRACTED]

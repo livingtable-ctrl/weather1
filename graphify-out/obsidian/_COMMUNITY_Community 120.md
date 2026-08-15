@@ -24,7 +24,7 @@ members: 24
 - [[HMAC signed with different secret → mismatch → return {}.]] - rationale - tests/test_hmac_bias.py
 - [[MODEL_HMAC_SECRET not set → skip loading entirely (RCE risk).]] - rationale - tests/test_hmac_bias.py
 - [[P0-9 bias_models.pkl must be HMAC-verified before deserialization.]] - rationale - tests/test_hmac_bias.py
-- [[Path_21]] - code
+- [[Path_3]] - code
 - [[TestHmacVerification]] - code - tests/test_hmac_bias.py
 - [[Valid pkl + matching HMAC sidecar → models loaded successfully.]] - rationale - tests/test_hmac_bias.py
 - [[Write a valid pkl + sidecar and return the raw bytes.]] - rationale - tests/test_hmac_bias.py

@@ -12,7 +12,7 @@ tags:
 # .test_validate_market_survives_unparseable_price_without_crashing()
 
 ## Connections
-- [[dot-_call()_2]] - `calls` [EXTRACTED]
+- [[dot-_call()_5]] - `calls` [EXTRACTED]
 - [[A genuinely malformed price string must be caught and rejected (ok=False), not…]] - `rationale_for` [EXTRACTED]
 - [[TestValidateMarketPriceRange]] - `method` [EXTRACTED]
 

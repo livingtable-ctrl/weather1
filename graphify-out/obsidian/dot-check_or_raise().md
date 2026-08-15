@@ -12,7 +12,7 @@ tags:
 # .check_or_raise()
 
 ## Connections
-- [[dot-check()_1]] - `calls` [EXTRACTED]
+- [[dot-check()]] - `calls` [EXTRACTED]
 - [[LiveTradingGate]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Trade_Cycle_Engine__Arbitrage_Gates

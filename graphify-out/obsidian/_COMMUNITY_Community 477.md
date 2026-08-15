@@ -10,7 +10,7 @@ members: 7
 **Members:** 7 nodes
 
 ## Members
-- [[dot-_make_trades()]] - code - tests/test_paper_metrics.py
+- [[dot-_make_trades()_1]] - code - tests/test_paper_metrics.py
 - [[dot-test_basic_ratio()]] - code - tests/test_paper_metrics.py
 - [[dot-test_get_performance_includes_profit_factor()]] - code - tests/test_paper_metrics.py
 - [[dot-test_no_losses_returns_none()]] - code - tests/test_paper_metrics.py

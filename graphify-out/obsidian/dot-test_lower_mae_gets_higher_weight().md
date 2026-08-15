@@ -12,7 +12,7 @@ tags:
 # .test_lower_mae_gets_higher_weight()
 
 ## Connections
-- [[dot-_seed()_6]] - `calls` [EXTRACTED]
+- [[dot-_seed()_1]] - `calls` [EXTRACTED]
 - [[TestGetModelWeights]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_127

@@ -12,6 +12,6 @@ tags:
 # Same V2 side/price mapping as place_order -- a NO buy amend must be expressed…
 
 ## Connections
-- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_100

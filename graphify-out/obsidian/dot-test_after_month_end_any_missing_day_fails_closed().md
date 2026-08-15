@@ -12,7 +12,7 @@ tags:
 # .test_after_month_end_any_missing_day_fails_closed()
 
 ## Connections
-- [[dot-_history_all_years_value()_1]] - `calls` [EXTRACTED]
+- [[dot-_history_all_years_value()_2]] - `calls` [EXTRACTED]
 - [[Opus-review-caught test gap (round 2) the already past month-end branch…]] - `rationale_for` [EXTRACTED]
 - [[TestRainForecastBlendSignal]] - `method` [EXTRACTED]
 

@@ -12,6 +12,6 @@ tags:
 # Call enrich_with_forecast with a mocked forecast and return _city.
 
 ## Connections
-- [[dot-_city()]] - `rationale_for` [EXTRACTED]
+- [[dot-_city()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_116

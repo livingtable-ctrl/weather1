@@ -20,7 +20,7 @@ tags:
 - [[dot-test_returns_none_for_empty_results()]] - `calls` [EXTRACTED]
 - [[dot-test_returns_none_when_file_missing()]] - `calls` [EXTRACTED]
 - [[dot-test_returns_none_when_no_results_qualify()]] - `calls` [EXTRACTED]
-- [[Path_24]] - `calls` [EXTRACTED]
+- [[Path_7]] - `calls` [EXTRACTED]
 - [[TestLoadSweptMinEdge]] - `method` [EXTRACTED]
 - [[load_swept_min_edge()]] - `calls` [EXTRACTED]
 

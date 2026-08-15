@@ -10,23 +10,23 @@ members: 25
 **Members:** 25 nodes
 
 ## Members
-- [[dot-setup_method()_28]] - code - tests/test_mos_nbs.py
-- [[dot-setup_method()_27]] - code - tests/test_mos_nbs.py
+- [[dot-setup_method()_2]] - code - tests/test_mos_nbs.py
+- [[dot-setup_method()_3]] - code - tests/test_mos_nbs.py
 - [[dot-test_eastern_station_00z_is_max_12z_is_min()]] - code - tests/test_mos_nbs.py
-- [[dot-test_max_min_assignment_is_not_arbitrary()_1]] - code - tests/test_mos_nbs.py
+- [[dot-test_max_min_assignment_is_not_arbitrary()]] - code - tests/test_mos_nbs.py
 - [[dot-test_min_var_does_not_return_the_max_value()]] - code - tests/test_mos_nbs.py
-- [[dot-test_network_failure_returns_none_and_caches_the_miss()_1]] - code - tests/test_mos_nbs.py
+- [[dot-test_network_failure_returns_none_and_caches_the_miss()]] - code - tests/test_mos_nbs.py
 - [[dot-test_off_cycle_txn_rows_are_skipped()]] - code - tests/test_mos_nbs.py
 - [[dot-test_pacific_station_same_00z_max_12z_min_rule()]] - code - tests/test_mos_nbs.py
 - [[dot-test_returns_max_for_covered_date()]] - code - tests/test_mos_nbs.py
-- [[dot-test_returns_none_for_uncovered_date()_1]] - code - tests/test_mos_nbs.py
+- [[dot-test_returns_none_for_uncovered_date()]] - code - tests/test_mos_nbs.py
 - [[dot-test_rows_without_txn_are_skipped()]] - code - tests/test_mos_nbs.py
 - [[dot-test_single_fetch_serves_both_station_and_tz_repeat_calls()]] - code - tests/test_mos_nbs.py
 - [[A txn value on a row that isn't exactly 00Z12Z-ending is dropped defensively…]] - rationale - tests/test_mos_nbs.py
 - [[Build a fake mos.json payload shaped like the real IEM API.]] - rationale - tests/test_mos_nbs.py
 - [[Live-verified pattern (KNYC, 2026-07-17) 00Z-ending row is the higher value…]] - rationale - tests/test_mos_nbs.py
 - [[Mutation-proof if the 00Z12Z - maxmin assignment were flipped, this test…]] - rationale - tests/test_mos_nbs.py
-- [[Mutation-proof requesting var='min' on a date that only has a max entry must…_1]] - rationale - tests/test_mos_nbs.py
+- [[Mutation-proof requesting var='min' on a date that only has a max entry must…]] - rationale - tests/test_mos_nbs.py
 - [[One station covers a fixed timezone in practice; repeat calls for the same…]] - rationale - tests/test_mos_nbs.py
 - [[TestFetchNbmIem]] - code - tests/test_mos_nbs.py
 - [[TestFetchNbsDailyExtremes]] - code - tests/test_mos_nbs.py

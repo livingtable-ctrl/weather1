@@ -27,9 +27,9 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_Community 99]]
-- 1 edge to [[_COMMUNITY_Community 73]]
 - 1 edge to [[_COMMUNITY_Community 187]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 1 edge to [[_COMMUNITY_Community 73]]
 
 ## Top bridge nodes
 - [[test_mos.py]] - degree 7, connects to 4 communities

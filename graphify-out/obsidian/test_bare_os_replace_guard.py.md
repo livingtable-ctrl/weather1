@@ -12,13 +12,13 @@ tags:
 # test_bare_os_replace_guard.py
 
 ## Connections
-- [[_all_source_files()]] - `contains` [EXTRACTED]
+- [[_all_source_files()_1]] - `contains` [EXTRACTED]
 - [[alerts.py_1]] - `references` [EXTRACTED]
 - [[atomic_write_json()_1]] - `references` [EXTRACTED]
 - [[circuit_breaker.py_1]] - `references` [EXTRACTED]
 - [[rAutomated guard against the bare-os.replace() anti-pattern reappearing…]] - `rationale_for` [EXTRACTED]
 - [[safe_io.py]] - `references` [EXTRACTED]
-- [[test_allowlist_entries_still_exist_and_are_justified()]] - `contains` [EXTRACTED]
+- [[test_allowlist_entries_still_exist_and_are_justified()_1]] - `contains` [EXTRACTED]
 - [[test_city_registry_manifest.py]] - `semantically_similar_to` [INFERRED]
 - [[test_config_divergence_guard.py]] - `semantically_similar_to` [INFERRED]
 - [[test_no_new_bare_os_replace_sites()]] - `contains` [EXTRACTED]

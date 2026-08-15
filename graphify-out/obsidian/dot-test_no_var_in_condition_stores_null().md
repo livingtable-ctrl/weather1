@@ -12,7 +12,7 @@ tags:
 # .test_no_var_in_condition_stores_null()
 
 ## Connections
-- [[dot-_analysis()_4]] - `calls` [EXTRACTED]
+- [[dot-_analysis()_1]] - `calls` [EXTRACTED]
 - [[A daily HIGHLOW market's condition dict may not carry a var key (var lives on…]] - `rationale_for` [EXTRACTED]
 - [[TestPredictionsVarColumn]] - `method` [EXTRACTED]
 

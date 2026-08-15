@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[A non-positive-definite matrix must log a WARNING, not fail silently.]] - `rationale_for` [EXTRACTED]
 - [[TestCorrelationAppliedFlag]] - `method` [EXTRACTED]
-- [[_make_trade()_3]] - `calls` [EXTRACTED]
+- [[_make_trade()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_134

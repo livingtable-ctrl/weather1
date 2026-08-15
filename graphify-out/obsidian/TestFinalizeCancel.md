@@ -12,8 +12,8 @@ tags:
 # TestFinalizeCancel
 
 ## Connections
-- [[dot-setup_method()_13]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_12]] - `method` [EXTRACTED]
+- [[dot-setup_method()_10]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_5]] - `method` [EXTRACTED]
 - [[dot-test_get_order_failure_falls_back_to_plain_canceled()]] - `method` [EXTRACTED]
 - [[dot-test_partial_fill_cancel_promotes_to_filled()]] - `method` [EXTRACTED]
 - [[dot-test_zero_fill_cancel_stays_canceled()]] - `method` [EXTRACTED]

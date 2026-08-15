@@ -12,6 +12,6 @@ tags:
 # Cursor on first page → second call made, both pages combined.
 
 ## Connections
-- [[dot-test_two_page_pagination_combines_results()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_two_page_pagination_combines_results()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_336

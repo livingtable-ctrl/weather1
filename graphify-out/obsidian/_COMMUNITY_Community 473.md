@@ -10,8 +10,8 @@ members: 7
 **Members:** 7 nodes
 
 ## Members
-- [[dot-setup_method()_33]] - code - tests/test_p1_remaining.py
-- [[dot-teardown_method()_25]] - code - tests/test_p1_remaining.py
+- [[dot-setup_method()_34]] - code - tests/test_p1_remaining.py
+- [[dot-teardown_method()_26]] - code - tests/test_p1_remaining.py
 - [[dot-test_settlement_pnl_consistent_with_entry_deduction()]] - code - tests/test_p1_remaining.py
 - [[dot-test_settlement_uses_entry_price_not_actual_fill()]] - code - tests/test_p1_remaining.py
 - [[P&L on a won YES trade reflects only the cost paid at entry_price.]] - rationale - tests/test_p1_remaining.py

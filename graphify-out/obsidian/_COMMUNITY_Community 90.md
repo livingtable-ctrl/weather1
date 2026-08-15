@@ -12,9 +12,9 @@ members: 28
 ## Members
 - [[dot-test_cmd_paper_does_not_refuse_when_gate_active()_2]] - code - tests/test_hurricane_markets.py
 - [[dot-test_cmd_paper_refuses_when_gate_inactive()_2]] - code - tests/test_hurricane_markets.py
-- [[dot-test_does_not_refuse_when_gate_active()]] - code - tests/test_hurricane_markets.py
 - [[dot-test_does_not_refuse_when_gate_active()_1]] - code - tests/test_hurricane_markets.py
 - [[dot-test_does_not_refuse_when_gate_active()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_does_not_refuse_when_gate_active()_3]] - code - tests/test_hurricane_markets.py
 - [[dot-test_has_its_own_entry_not_the_max_default()]] - code - tests/test_hurricane_markets.py
 - [[dot-test_has_its_own_entry_not_the_max_default()_1]] - code - tests/test_hurricane_markets.py
 - [[dot-test_other_hurricane_shapes_still_unconditionally_refused()]] - code - tests/test_hurricane_markets.py
@@ -22,9 +22,9 @@ members: 28
 - [[dot-test_other_hurricane_shapes_still_unconditionally_refused()_2]] - code - tests/test_hurricane_markets.py
 - [[dot-test_quick_paper_buy_does_not_refuse_when_gate_active()_1]] - code - tests/test_hurricane_markets.py
 - [[dot-test_quick_paper_buy_refuses_when_gate_inactive()_2]] - code - tests/test_hurricane_markets.py
-- [[dot-test_refuses_when_gate_inactive()]] - code - tests/test_hurricane_markets.py
 - [[dot-test_refuses_when_gate_inactive()_1]] - code - tests/test_hurricane_markets.py
 - [[dot-test_refuses_when_gate_inactive()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_refuses_when_gate_inactive()_3]] - code - tests/test_hurricane_markets.py
 - [[Mirrors TestQuickPaperBuyAndCmdPaperHurricaneNextEventGuards exactly.]] - rationale - tests/test_hurricane_markets.py
 - [[Opus-review-caught `_analyze_hurricane_next_event_trade` does a bare…]] - rationale - tests/test_hurricane_markets.py
 - [[Opus-review-caught this key was originally missing from _CONDITION_CONFIDENCE…]] - rationale - tests/test_hurricane_markets.py
@@ -47,22 +47,22 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 55]]
 - 3 edges to [[_COMMUNITY_Hurricane Market Season Signals]]
 - 3 edges to [[_COMMUNITY_Community 218]]
 - 3 edges to [[_COMMUNITY_Community 34]]
-- 1 edge to [[_COMMUNITY_Community 98]]
-- 1 edge to [[_COMMUNITY_Community 61]]
-- 1 edge to [[_COMMUNITY_Community 509]]
-- 1 edge to [[_COMMUNITY_Community 506]]
-- 1 edge to [[_COMMUNITY_Community 508]]
-- 1 edge to [[_COMMUNITY_Community 398]]
-- 1 edge to [[_COMMUNITY_Community 335]]
+- 3 edges to [[_COMMUNITY_Community 55]]
 - 1 edge to [[_COMMUNITY_Community 203]]
+- 1 edge to [[_COMMUNITY_Community 335]]
+- 1 edge to [[_COMMUNITY_Community 398]]
 - 1 edge to [[_COMMUNITY_Community 426]]
-- 1 edge to [[_COMMUNITY_Community 507]]
 - 1 edge to [[_COMMUNITY_Community 427]]
 - 1 edge to [[_COMMUNITY_Community 428]]
+- 1 edge to [[_COMMUNITY_Community 506]]
+- 1 edge to [[_COMMUNITY_Community 507]]
+- 1 edge to [[_COMMUNITY_Community 508]]
+- 1 edge to [[_COMMUNITY_Community 509]]
+- 1 edge to [[_COMMUNITY_Community 61]]
+- 1 edge to [[_COMMUNITY_Community 98]]
 - 1 edge to [[_COMMUNITY_Community 233]]
 
 ## Top bridge nodes

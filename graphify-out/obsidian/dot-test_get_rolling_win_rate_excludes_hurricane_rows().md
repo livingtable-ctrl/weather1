@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_log_settled()_2]] - `calls` [EXTRACTED]
-- [[dot-_seed_baseline()_1]] - `calls` [EXTRACTED]
+- [[dot-_seed_baseline()]] - `calls` [EXTRACTED]
 - [[Opus-review-caught (2026-08-07) this feeds paper.is_accuracy_halted(), the…]] - `rationale_for` [EXTRACTED]
 - [[TestLiveTradingGateConditionTypeFilter]] - `method` [EXTRACTED]
 

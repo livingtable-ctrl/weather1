@@ -12,7 +12,7 @@ tags:
 # .test_degenerate_key_always_present_when_nonempty()
 
 ## Connections
-- [[dot-_call()_1]] - `calls` [EXTRACTED]
+- [[dot-_call()]] - `calls` [EXTRACTED]
 - [[TestEnsembleStatsDegenerate]] - `method` [EXTRACTED]
 - [[degenerate key must be present for any non-empty input.]] - `rationale_for` [EXTRACTED]
 

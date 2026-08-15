@@ -13,6 +13,6 @@ tags:
 ## Connections
 - [[Gate Kelly Scaling Behind MIN_BRIER_SAMPLES]] - `semantically_similar_to` [INFERRED]
 - [[Phase B Risk Engine Plan]] - `implements` [EXTRACTED]
-- [[paper.py module]] - `references` [EXTRACTED]
+- [[paper.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_224

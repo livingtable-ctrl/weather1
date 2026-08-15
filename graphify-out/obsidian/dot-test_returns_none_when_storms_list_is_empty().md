@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()_2]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_4]] - `calls` [EXTRACTED]
+- [[dot-_enriched()_3]] - `calls` [EXTRACTED]
 - [[Opus-review-caught (2026-08-03) season_end_total_distribution always returns…]] - `rationale_for` [EXTRACTED]
 - [[TestAnalyzeHurricaneCountTrade]] - `method` [EXTRACTED]
 

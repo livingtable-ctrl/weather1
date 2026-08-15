@@ -1,18 +1,21 @@
 ---
-source_file: "order_executor.py"
+source_file: "paper.py"
 type: "code"
-community: "Community 45"
-location: "L1158"
+community: "Anomaly Detection & PDF Reporting"
+location: "L1370"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # .save_peak()
 
 ## Connections
-- [[LivePositionStore]] - `method` [EXTRACTED]
+- [[PaperPositionStore]] - `method` [EXTRACTED]
+- [[Persist one position's new peak. Writes one trade at a time (one _save() per…]] - `rationale_for` [EXTRACTED]
 - [[Position]] - `references` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
+- [[_save()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_45
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

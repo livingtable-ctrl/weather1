@@ -27,7 +27,7 @@ members: 24
 - [[TestRetiredStrategyGate]] - code - tests/test_p0_11_retired_strategy.py
 - [[TestRetirementProbationBypass]] - code - tests/test_p0_11_retired_strategy.py
 - [[With bypass_retirement_check=True, a retired method must not be blocked — the…]] - rationale - tests/test_p0_11_retired_strategy.py
-- [[_make_enriched()_1]] - code - tests/test_p0_11_retired_strategy.py
+- [[_make_enriched()]] - code - tests/test_p0_11_retired_strategy.py
 - [[_stub_heavy_deps()]] - code - tests/test_p0_11_retired_strategy.py
 - [[analyze_trade must not be blocked when the method is not retired.]] - rationale - tests/test_p0_11_retired_strategy.py
 - [[analyze_trade must return None when the method is in retired_strategies.]] - rationale - tests/test_p0_11_retired_strategy.py
@@ -43,8 +43,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 384]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 1 edge to [[_COMMUNITY_Community 384]]
 
 ## Top bridge nodes
 - [[test_p0_11_retired_strategy.py]] - degree 8, connects to 2 communities

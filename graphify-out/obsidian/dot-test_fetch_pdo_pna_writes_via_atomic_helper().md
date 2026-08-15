@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[TestPDOPNA]] - `method` [EXTRACTED]
-- [[backlog.txt climate_indices.py's PDOPNA CACHE AND backtest.py's OWN CACHE…_1]] - `rationale_for` [EXTRACTED]
+- [[backlog.txt climate_indices.py's PDOPNA CACHE AND backtest.py's OWN CACHE…]] - `rationale_for` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_169

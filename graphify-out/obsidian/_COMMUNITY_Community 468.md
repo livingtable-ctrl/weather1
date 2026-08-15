@@ -10,8 +10,8 @@ members: 7
 **Members:** 7 nodes
 
 ## Members
-- [[dot-setup_method()_19]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_18]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_32]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_24]] - code - tests/test_live_execution.py
 - [[dot-test_amended_row_excluded_new_row_counted_once()]] - code - tests/test_live_execution.py
 - [[dot-test_mutation_amended_included_would_double_count()]] - code - tests/test_live_execution.py
 - [[AMEND ORDER (V2) get_today_live_spend() must exclude 'amended' rows the same…]] - rationale - tests/test_live_execution.py

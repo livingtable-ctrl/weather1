@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_rain_markets.py"
+source_file: "tests/test_snow_markets.py"
 type: "rationale"
-community: "Community 311"
-location: "L332"
+community: "Community 238"
+location: "L716"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_311
+  - community/Community_238
 ---
 
 # The real regression this fix targets: parse_city_date() returns (city, None)…
 
 ## Connections
-- [[dot-test_rain_branch_reached_before_parse_city_date_early_return()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_snow_branch_reached_before_parse_city_date_early_return()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_311
+#graphify/rationale #graphify/EXTRACTED #community/Community_238

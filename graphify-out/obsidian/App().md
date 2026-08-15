@@ -13,9 +13,7 @@ tags:
 
 ## Connections
 - [[applyTheme()]] - `calls` [EXTRACTED]
-- [[authHeader Function]] - `calls` [EXTRACTED]
 - [[frontendsrcApp.jsx]] - `contains` [EXTRACTED]
 - [[main.jsx]] - `imports` [EXTRACTED]
-- [[useData Hook]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_155

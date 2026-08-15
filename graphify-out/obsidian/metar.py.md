@@ -24,7 +24,7 @@ tags:
 - [[_fetch_daily_temps_f()]] - `contains` [EXTRACTED]
 - [[check_metar_lockout()]] - `contains` [EXTRACTED]
 - [[check_metar_lockout() Silent ZoneInfo Fallback (810)]] - `references` [EXTRACTED]
-- [[datetime]] - `imports_from` [EXTRACTED]
+- [[datetime_1]] - `imports_from` [EXTRACTED]
 - [[fetch_metar()]] - `contains` [EXTRACTED]
 - [[fetch_metar_daily_extreme()]] - `contains` [EXTRACTED]
 - [[forecast_cache.py]] - `imports_from` [EXTRACTED]

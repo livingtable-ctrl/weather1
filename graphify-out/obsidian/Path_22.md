@@ -1,17 +1,17 @@
 ---
 source_file: ""
 type: "code"
-community: "Circuit Breaker & Session Retry Infrastructure"
+community: "Community 47"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Circuit_Breaker__Session_Retry_Infrastructure
+  - community/Community_47
 ---
 
 # Path
 
 ## Connections
-- [[test_atomic_write_creates_file()]] - `references` [EXTRACTED]
-- [[test_atomic_write_is_atomic()]] - `references` [EXTRACTED]
+- [[_patched_cleanup()]] - `references` [EXTRACTED]
+- [[_write_stale()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Circuit_Breaker__Session_Retry_Infrastructure
+#graphify/code #graphify/EXTRACTED #community/Community_47

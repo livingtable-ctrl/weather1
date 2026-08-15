@@ -15,7 +15,7 @@ tags:
 - [[Phase 2 Batch O Same-Day Spend Tests]] - `semantically_similar_to` [INFERRED]
 - [[TestDailyPaperSpend]] - `contains` [EXTRACTED]
 - [[_daily_paper_spend()]] - `imports` [EXTRACTED]
-- [[_make_trade()_4]] - `contains` [EXTRACTED]
+- [[_make_trade()_5]] - `contains` [EXTRACTED]
 - [[test_phase2_batch_n.py — Tests for order_executor daily spend cap separation.…]] - `rationale_for` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_63

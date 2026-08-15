@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_cache_target_hour()]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_1]] - `calls` [EXTRACTED]
+- [[dot-_enriched()]] - `calls` [EXTRACTED]
 - [[dot-_pin_sources()]] - `calls` [EXTRACTED]
 - [[TestAnalyzeTradeHourlyModel]] - `method` [EXTRACTED]
 - [[order_executor._prediction_kwargs_from_analysis  log_prediction read these…]] - `rationale_for` [EXTRACTED]

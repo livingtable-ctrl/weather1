@@ -12,8 +12,8 @@ tags:
 # TestFillInstrumentation
 
 ## Connections
-- [[dot-setup_method()_18]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_17]] - `method` [EXTRACTED]
+- [[dot-setup_method()_29]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_21]] - `method` [EXTRACTED]
 - [[dot-test_fill_captures_latency_and_mid_price()]] - `method` [EXTRACTED]
 - [[dot-test_log_order_result_coalesce_never_nulls_out_prior_fill_data()]] - `method` [EXTRACTED]
 - [[dot-test_non_fill_status_leaves_instrumentation_null()]] - `method` [EXTRACTED]

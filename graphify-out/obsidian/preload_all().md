@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[Fetch and cache historical data for all cities. Refreshes stale caches.]] - `rationale_for` [EXTRACTED]
-- [[_cache_is_stale()_2]] - `calls` [EXTRACTED]
-- [[_cache_path()_2]] - `calls` [EXTRACTED]
+- [[_cache_is_stale()_3]] - `calls` [EXTRACTED]
+- [[_cache_path()_3]] - `calls` [EXTRACTED]
 - [[_sigma_cache_missing_cities()]] - `calls` [EXTRACTED]
 - [[climatology.py]] - `contains` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]

@@ -12,9 +12,9 @@ tags:
 # .test_check_position_limits_called_with_real_city_and_date()
 
 ## Connections
-- [[dot-_analysis()_2]] - `calls` [EXTRACTED]
+- [[dot-_analysis()_4]] - `calls` [EXTRACTED]
 - [[dot-_market()_5]] - `calls` [EXTRACTED]
-- [[dot-_run()_3]] - `calls` [EXTRACTED]
+- [[dot-_run()_4]] - `calls` [EXTRACTED]
 - [[TestCmdTodayPlacementGates]] - `method` [EXTRACTED]
 - [[The citytarget_date_str passed to check_position_limits must be the REAL…]] - `rationale_for` [EXTRACTED]
 

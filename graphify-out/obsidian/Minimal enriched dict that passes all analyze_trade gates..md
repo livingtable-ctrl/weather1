@@ -12,6 +12,6 @@ tags:
 # Minimal enriched dict that passes all analyze_trade gates.
 
 ## Connections
-- [[_make_enriched()_2]] - `rationale_for` [EXTRACTED]
+- [[_make_enriched()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_220

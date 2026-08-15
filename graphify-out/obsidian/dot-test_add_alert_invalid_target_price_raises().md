@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[TestAddAlert]] - `method` [EXTRACTED]
 - [[add_alert()]] - `calls` [EXTRACTED]
-- [[parametrize]] - `references` [EXTRACTED]
+- [[parametrize_3]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_94

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 338"
-location: "L448"
+community: "Community 171"
+location: "L820"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_338
+  - community/Community_171
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestRecoverPendingOrders]] - `method` [EXTRACTED]
+- [[TestPollPendingOrdersExtended]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_338
+#graphify/code #graphify/EXTRACTED #community/Community_171

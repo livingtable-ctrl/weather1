@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Compute full SHA-256 checksum (64 hex chars) of payload excluding '_checksum'…]] - `rationale_for` [EXTRACTED]
-- [[_save()_1]] - `calls` [EXTRACTED]
+- [[_save()]] - `calls` [EXTRACTED]
 - [[_validate_checksum()]] - `calls` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
 

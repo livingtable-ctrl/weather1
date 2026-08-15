@@ -12,7 +12,7 @@ tags:
 # ._run()
 
 ## Connections
-- [[dot-_make_enriched()_3]] - `calls` [EXTRACTED]
+- [[dot-_make_enriched()_4]] - `calls` [EXTRACTED]
 - [[dot-test_adjusted_edge_zero_at_close()]] - `calls` [EXTRACTED]
 - [[dot-test_net_edge_reduced_near_close_vs_far()]] - `calls` [EXTRACTED]
 - [[TestTimeDecayEdgeScope]] - `method` [EXTRACTED]

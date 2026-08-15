@@ -11,9 +11,9 @@ members: 17
 
 ## Members
 - [[dot-_make_cb()]] - code - tests/test_p1_remaining.py
-- [[dot-setup_method()_32]] - code - tests/test_p1_remaining.py
+- [[dot-setup_method()_15]] - code - tests/test_p1_remaining.py
 - [[dot-teardown_cb()]] - code - tests/test_p1_remaining.py
-- [[dot-teardown_method()_24]] - code - tests/test_p1_remaining.py
+- [[dot-teardown_method()_8]] - code - tests/test_p1_remaining.py
 - [[dot-test_expired_open_state_clears_on_reload()]] - code - tests/test_p1_remaining.py
 - [[dot-test_failure_count_persists_across_instances()]] - code - tests/test_p1_remaining.py
 - [[dot-test_load_state_blocks_on_save_lock()]] - code - tests/test_p1_remaining.py

@@ -12,7 +12,7 @@ tags:
 # is_accuracy_halted()
 
 ## Connections
-- [[dot-check()_1]] - `calls` [EXTRACTED]
+- [[dot-check()]] - `calls` [EXTRACTED]
 - [[Paper Trading Ledger Module]] - `implements` [EXTRACTED]
 - [[Return True if rolling win rate over last ACCURACY_WINDOW_TRADES is below…]] - `rationale_for` [EXTRACTED]
 - [[_check_accuracy_halt()]] - `calls` [EXTRACTED]
@@ -23,7 +23,7 @@ tags:
 - [[sprt_model_health()]] - `calls` [EXTRACTED]
 - [[test_risk_control.py]] - `calls` [EXTRACTED]
 - [[test_sprt.py]] - `calls` [EXTRACTED]
-- [[tracker.py_1]] - `calls` [EXTRACTED]
+- [[tracker.py_2]] - `calls` [EXTRACTED]
 - [[trading_gates.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_40

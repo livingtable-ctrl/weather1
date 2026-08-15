@@ -1,20 +1,20 @@
 ---
-source_file: "kalshi_ws.py"
+source_file: "tests/test_phase2_batch_f.py"
 type: "code"
-community: "Community 245"
-location: "L444"
+community: "Community 134"
+location: "L31"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_245
+  - community/Community_134
 ---
 
 # ._run()
 
 ## Connections
-- [[KalshiWebSocket]] - `method` [EXTRACTED]
-- [[_ws_listener()]] - `calls` [EXTRACTED]
-- [[auto_backtest()]] - `indirect_call` [INFERRED]
-- [[auto_settle()]] - `indirect_call` [INFERRED]
+- [[dot-test_correlation_applied_false_when_cholesky_fails()]] - `calls` [EXTRACTED]
+- [[dot-test_correlation_applied_false_when_no_city()]] - `calls` [EXTRACTED]
+- [[dot-test_correlation_applied_true_when_cholesky_succeeds()]] - `calls` [EXTRACTED]
+- [[TestCorrelationAppliedFlag]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_245
+#graphify/code #graphify/EXTRACTED #community/Community_134

@@ -40,7 +40,7 @@ members: 75
 - [[dot-test_var_defaults_to_max_when_condition_missing_var()]] - code - tests/test_tracker.py
 - [[Bug C fix (backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2)…]] - rationale - tests/test_tracker.py
 - [[Grade Audit Module Doc tracker.py]] - document - docs/grade_audit/modules/tracker.md
-- [[Opus review finding on the GENERALIZED PER-MODEL ACCURACY TRACKING Pass 2 diff…]] - rationale - tests/test_tracker.py
+- [[Opus review finding on the GENERALIZED PER-MODEL ACCURACY TRACKING Pass 2 diff…_1]] - rationale - tests/test_tracker.py
 - [[Redirect tracker DB to a temp file for pytest-style tests.]] - rationale - tests/test_tracker.py
 - [[SQL = NULL never matches, even a NULL column -- settle_analysis_ attempt must…]] - rationale - tests/test_tracker.py
 - [[TestGetForecastRunTrendFromAnalysis]] - code - tests/test_tracker.py
@@ -57,7 +57,7 @@ members: 75
 - [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 (review-caught) KXRAINM…]] - rationale - tests/test_tracker.py
 - [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 (review-caught) the…]] - rationale - tests/test_tracker.py
 - [[backlog.txt Snow Step 2 (review-caught, the identical gap rain's own Step 2…]] - rationale - tests/test_tracker.py
-- [[fixture_13]] - code
+- [[fixture_15]] - code
 - [[get_forecast_run_trend_from_analysis() extracts citytarget_date days_outvar…]] - rationale - tests/test_tracker.py
 - [[get_unselected_bias()]] - code - tracker.py
 - [[log_analysis_attempt()]] - code - tracker.py
@@ -99,50 +99,50 @@ SORT file.name ASC
 - 8 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 4 edges to [[_COMMUNITY_Community 46]]
 - 3 edges to [[_COMMUNITY_Community 65]]
-- 2 edges to [[_COMMUNITY_Community 313]]
-- 2 edges to [[_COMMUNITY_Community 77]]
-- 2 edges to [[_COMMUNITY_Community 153]]
 - 2 edges to [[_COMMUNITY_Community 135]]
-- 2 edges to [[_COMMUNITY_Community 76]]
+- 2 edges to [[_COMMUNITY_Community 153]]
+- 2 edges to [[_COMMUNITY_Community 313]]
 - 2 edges to [[_COMMUNITY_Community 39]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 1 edge to [[_COMMUNITY_Community 78]]
+- 2 edges to [[_COMMUNITY_Community 76]]
+- 2 edges to [[_COMMUNITY_Community 77]]
+- 1 edge to [[_COMMUNITY_Community 128]]
 - 1 edge to [[_COMMUNITY_Community 177]]
-- 1 edge to [[_COMMUNITY_Community 314]]
-- 1 edge to [[_COMMUNITY_Community 265]]
-- 1 edge to [[_COMMUNITY_Community 436]]
-- 1 edge to [[_COMMUNITY_Community 438]]
-- 1 edge to [[_COMMUNITY_Community 412]]
-- 1 edge to [[_COMMUNITY_Community 523]]
-- 1 edge to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
-- 1 edge to [[_COMMUNITY_Community 315]]
-- 1 edge to [[_COMMUNITY_Community 286]]
-- 1 edge to [[_COMMUNITY_Community 264]]
-- 1 edge to [[_COMMUNITY_Community 413]]
-- 1 edge to [[_COMMUNITY_Community 524]]
-- 1 edge to [[_COMMUNITY_Community 381]]
-- 1 edge to [[_COMMUNITY_Community 319]]
-- 1 edge to [[_COMMUNITY_Community 411]]
-- 1 edge to [[_COMMUNITY_Community 289]]
 - 1 edge to [[_COMMUNITY_Community 239]]
-- 1 edge to [[_COMMUNITY_Community 487]]
+- 1 edge to [[_COMMUNITY_Community 264]]
+- 1 edge to [[_COMMUNITY_Community 265]]
+- 1 edge to [[_COMMUNITY_Tracker Brier Score & Outcome Logging]]
+- 1 edge to [[_COMMUNITY_Community 286]]
 - 1 edge to [[_COMMUNITY_Community 287]]
+- 1 edge to [[_COMMUNITY_Community 288]]
+- 1 edge to [[_COMMUNITY_Community 289]]
+- 1 edge to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
 - 1 edge to [[_COMMUNITY_Tracker Settlement Sigma & Disputed Rows]]
-- 1 edge to [[_COMMUNITY_Community 525]]
+- 1 edge to [[_COMMUNITY_Community 314]]
+- 1 edge to [[_COMMUNITY_Community 315]]
+- 1 edge to [[_COMMUNITY_Community 316]]
+- 1 edge to [[_COMMUNITY_Community 317]]
+- 1 edge to [[_COMMUNITY_Community 318]]
+- 1 edge to [[_COMMUNITY_Community 319]]
+- 1 edge to [[_COMMUNITY_Community 381]]
+- 1 edge to [[_COMMUNITY_Community 411]]
+- 1 edge to [[_COMMUNITY_Community 412]]
+- 1 edge to [[_COMMUNITY_Community 413]]
+- 1 edge to [[_COMMUNITY_Community 436]]
 - 1 edge to [[_COMMUNITY_Community 437]]
+- 1 edge to [[_COMMUNITY_Community 438]]
 - 1 edge to [[_COMMUNITY_Community 439]]
 - 1 edge to [[_COMMUNITY_Community 440]]
-- 1 edge to [[_COMMUNITY_Community 288]]
-- 1 edge to [[_COMMUNITY_Community 317]]
-- 1 edge to [[_COMMUNITY_Community 316]]
 - 1 edge to [[_COMMUNITY_Community 441]]
-- 1 edge to [[_COMMUNITY_Community 128]]
+- 1 edge to [[_COMMUNITY_Community 487]]
 - 1 edge to [[_COMMUNITY_Community 522]]
-- 1 edge to [[_COMMUNITY_Community 318]]
-- 1 edge to [[_COMMUNITY_Tracker Brier Score & Outcome Logging]]
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
+- 1 edge to [[_COMMUNITY_Community 523]]
+- 1 edge to [[_COMMUNITY_Community 524]]
+- 1 edge to [[_COMMUNITY_Community 525]]
+- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 - 1 edge to [[_COMMUNITY_Community 184]]
+- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
+- 1 edge to [[_COMMUNITY_Community 78]]
+- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 1 edge to [[_COMMUNITY_Community 109]]
 
 ## Top bridge nodes

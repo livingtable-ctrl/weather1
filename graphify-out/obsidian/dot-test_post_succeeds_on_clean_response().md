@@ -12,7 +12,7 @@ tags:
 # .test_post_succeeds_on_clean_response()
 
 ## Connections
-- [[dot-_make_client()_9]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_4]] - `calls` [EXTRACTED]
 - [[TestKalshiClientErrorBody]] - `method` [EXTRACTED]
 - [[_post must return data normally when no error field.]] - `rationale_for` [EXTRACTED]
 

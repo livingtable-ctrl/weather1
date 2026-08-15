@@ -27,8 +27,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 6 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 3 edges to [[_COMMUNITY_Community 146]]
 - 3 edges to [[_COMMUNITY_Community 36]]
+- 3 edges to [[_COMMUNITY_Community 146]]
 
 ## Top bridge nodes
 - [[get_price_history()]] - degree 7, connects to 3 communities

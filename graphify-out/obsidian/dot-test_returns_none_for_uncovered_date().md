@@ -1,18 +1,19 @@
 ---
-source_file: "tests/test_mos_nbp.py"
+source_file: "tests/test_mos_nbs.py"
 type: "code"
-community: "Community 123"
-location: "L316"
+community: "Community 114"
+location: "L153"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_123
+  - community/Community_114
 ---
 
 # .test_returns_none_for_uncovered_date()
 
 ## Connections
-- [[TestFetchNbmQuantiles]] - `method` [EXTRACTED]
-- [[_wrap_html()]] - `calls` [EXTRACTED]
+- [[TestFetchNbmIem]] - `method` [EXTRACTED]
+- [[_mock_nbs_response()]] - `calls` [EXTRACTED]
+- [[_row()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_123
+#graphify/code #graphify/EXTRACTED #community/Community_114

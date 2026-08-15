@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Fetch daily high (var='max') or low (var='min') from IEM ASOS archive. Uses…]] - `rationale_for` [EXTRACTED]
 - [[_fetch_asos_observations()]] - `calls` [EXTRACTED]
-- [[date_9]] - `references` [EXTRACTED]
+- [[date_5]] - `references` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

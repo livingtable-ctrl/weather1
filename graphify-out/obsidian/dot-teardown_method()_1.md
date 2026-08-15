@@ -2,7 +2,7 @@
 source_file: "tests/test_calibration.py"
 type: "code"
 community: "Community 103"
-location: "L193"
+location: "L223"
 tags:
   - graphify/code
   - graphify/EXTRACTED
@@ -12,6 +12,6 @@ tags:
 # .teardown_method()
 
 ## Connections
-- [[TestCalibrateCityWeights]] - `method` [EXTRACTED]
+- [[TestLoadWeights]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_103

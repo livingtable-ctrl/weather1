@@ -12,6 +12,6 @@ tags:
 # Point execution_log at a fresh temp DB for each test.
 
 ## Connections
-- [[dot-setup_method()_4]] - `rationale_for` [EXTRACTED]
+- [[dot-setup_method()_23]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_363

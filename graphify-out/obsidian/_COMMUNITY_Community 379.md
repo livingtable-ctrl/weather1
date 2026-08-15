@@ -17,7 +17,7 @@ members: 10
 - [[dot-test_quick_paper_buy_refuses_hurricane_unconditionally()]] - code - tests/test_snow_markets.py
 - [[dot-test_quick_paper_buy_refuses_snow_when_gate_inactive()]] - code - tests/test_snow_markets.py
 - [[Mutation-test proof proceeds past THIS guard once the gate is active (may…]] - rationale - tests/test_snow_markets.py
-- [[Mutation-test proof proceeds past THIS guard once the gate is active._1]] - rationale - tests/test_snow_markets.py
+- [[Mutation-test proof proceeds past THIS guard once the gate is active.]] - rationale - tests/test_snow_markets.py
 - [[Opus-review-caught gap (round 2) _quick_paper_buy() and cmd_paper() got the…]] - rationale - tests/test_snow_markets.py
 - [[TestQuickPaperBuyAndCmdPaperSnowGuards]] - code - tests/test_snow_markets.py
 

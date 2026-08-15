@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[dot-_call()_4]] - `calls` [EXTRACTED]
 - [[TestDailySamedaySpend]] - `method` [EXTRACTED]
-- [[_make_trade()_5]] - `calls` [EXTRACTED]
+- [[_make_trade()_6]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_63

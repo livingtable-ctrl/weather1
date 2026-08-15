@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[GFS and ICON weights should be 1.0 year-round.]] - `rationale_for` [EXTRACTED]
-- [[TestForecastModelWeights]] - `method` [EXTRACTED]
+- [[TestForecastModelWeights_1]] - `method` [EXTRACTED]
 - [[_forecast_model_weights()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests

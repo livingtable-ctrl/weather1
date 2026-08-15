@@ -4,7 +4,7 @@ type: "image"
 community: "Community 192"
 tags:
   - graphify/image
-  - graphify/EXTRACTED
+  - graphify/AMBIGUOUS
   - community/Community_192
 ---
 
@@ -14,4 +14,4 @@ tags:
 - [[Kalshi Weather Dashboard - Overview Tab (Light Theme)]] - `references` [EXTRACTED]
 - [[Kill Switch  Trading Pause Mechanism]] - `conceptually_related_to` [AMBIGUOUS]
 
-#graphify/image #graphify/EXTRACTED #community/Community_192
+#graphify/image #graphify/AMBIGUOUS #community/Community_192

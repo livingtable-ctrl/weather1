@@ -12,6 +12,6 @@ tags:
 # If forecast is much higher than threshold, P(below) ~ 0.
 
 ## Connections
-- [[dot-test_below_condition()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-test_below_condition()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Weather_Probability_Math_Tests

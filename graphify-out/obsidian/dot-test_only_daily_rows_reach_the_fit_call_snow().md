@@ -12,7 +12,7 @@ tags:
 # .test_only_daily_rows_reach_the_fit_call_snow()
 
 ## Connections
-- [[dot-_seed()_3]] - `calls` [EXTRACTED]
+- [[dot-_seed()_7]] - `calls` [EXTRACTED]
 - [[TestTrainBiasModelRainExclusion]] - `method` [EXTRACTED]
 - [[backlog.txt Snow Step 2 mirrors the rain test above exactly for…]] - `rationale_for` [EXTRACTED]
 - [[utc_today()]] - `calls` [EXTRACTED]

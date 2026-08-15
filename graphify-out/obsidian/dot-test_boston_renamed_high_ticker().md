@@ -12,7 +12,7 @@ tags:
 # .test_boston_renamed_high_ticker()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[KXHIGHTBOS (renamed from KXHIGHBOS) → Boston.]] - `rationale_for` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 

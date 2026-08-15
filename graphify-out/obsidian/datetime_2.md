@@ -1,21 +1,26 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 206"
+community: "ML Bias Correction & Audit Plans"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_206
+  - community/ML_Bias_Correction__Audit_Plans
 ---
 
 # datetime
 
 ## Connections
-- [[dot-test_days_out_ceiling_uses_city_local_today_not_utc()]] - `calls` [EXTRACTED]
-- [[dot-test_genuinely_past_market_still_gated_during_utc_rollover_window()]] - `calls` [EXTRACTED]
-- [[dot-test_same_day_market_still_open_during_utc_rollover_window()]] - `calls` [EXTRACTED]
-- [[dot-test_still_open_local_market_hits_forecast_not_timemachine()]] - `calls` [EXTRACTED]
-- [[_FrozenDatetime]] - `inherits` [EXTRACTED]
-- [[test_weather_markets.py]] - `imports_from` [EXTRACTED]
+- [[_analyze_hurricane_count_trade()]] - `references` [EXTRACTED]
+- [[_analyze_hurricane_next_event_trade()]] - `references` [EXTRACTED]
+- [[_analyze_monthly_rain_trade()]] - `references` [EXTRACTED]
+- [[_analyze_monthly_snow_trade()]] - `references` [EXTRACTED]
+- [[_analyze_storm_order_trade()]] - `references` [EXTRACTED]
+- [[_days_out_from_close_time()]] - `references` [EXTRACTED]
+- [[_safe_parse_close_time()]] - `references` [EXTRACTED]
+- [[_ttl_until_next_cycle()]] - `references` [EXTRACTED]
+- [[fetch_temperature_pirate_weather()]] - `calls` [EXTRACTED]
+- [[time_decay_edge()]] - `references` [EXTRACTED]
+- [[weather_markets.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_206
+#graphify/code #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans

@@ -12,11 +12,11 @@ tags:
 # .test_days_out_ceiling_uses_city_local_today_not_utc()
 
 ## Connections
-- [[dot-_enriched()_7]] - `calls` [EXTRACTED]
+- [[dot-_enriched()_4]] - `calls` [EXTRACTED]
 - [[TestPastDateGateCityLocal]] - `method` [EXTRACTED]
 - [[The generic days_out ceiling gate (MAX_DAYS_OUT) must also key off city-local…]] - `rationale_for` [EXTRACTED]
 - [[ZoneInfo]] - `calls` [INFERRED]
 - [[_frozen_datetime_at()]] - `calls` [EXTRACTED]
-- [[datetime_2]] - `calls` [EXTRACTED]
+- [[datetime]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_206

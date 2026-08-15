@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[At = reference_hours before close, return full raw_edge.]] - `rationale_for` [EXTRACTED]
-- [[TestTimeDecayEdge]] - `method` [EXTRACTED]
+- [[TestTimeDecayEdge_1]] - `method` [EXTRACTED]
 - [[time_decay_edge()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_394

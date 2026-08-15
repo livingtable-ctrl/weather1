@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[E6 Config Validation on Startup]] - `conceptually_related_to` [EXTRACTED]
 - [[Security Audit Scope]] - `conceptually_related_to` [INFERRED]
-- [[main.py Module_1]] - `references` [EXTRACTED]
+- [[main.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_179

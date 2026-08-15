@@ -86,23 +86,23 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 13 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 4 edges to [[_COMMUNITY_Community 79]]
 - 4 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 4 edges to [[_COMMUNITY_Community 353]]
-- 4 edges to [[_COMMUNITY_Community 79]]
 - 3 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 3 edges to [[_COMMUNITY_Community 120]]
 - 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 3 edges to [[_COMMUNITY_Community 120]]
 - 3 edges to [[_COMMUNITY_Community 32]]
 - 3 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 2 edges to [[_COMMUNITY_Community 214]]
 - 2 edges to [[_COMMUNITY_Community 47]]
 - 2 edges to [[_COMMUNITY_Community 195]]
-- 1 edge to [[_COMMUNITY_Community 103]]
-- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 - 1 edge to [[_COMMUNITY_Community 113]]
 - 1 edge to [[_COMMUNITY_Community 471]]
+- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 - 1 edge to [[_COMMUNITY_Community 184]]
 - 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
+- 1 edge to [[_COMMUNITY_Community 103]]
 
 ## Top bridge nodes
 - [[test_ml_bias.py]] - degree 28, connects to 11 communities

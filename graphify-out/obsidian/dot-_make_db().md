@@ -12,7 +12,7 @@ tags:
 # ._make_db()
 
 ## Connections
-- [[Path_26]] - `references` [EXTRACTED]
+- [[Path_18]] - `references` [EXTRACTED]
 - [[TestPruneApiRequests]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_432

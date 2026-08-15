@@ -12,7 +12,7 @@ tags:
 # TestTrainAllTemperatureScalingSkipLogging
 
 ## Connections
-- [[dot-_seed()_3]] - `method` [EXTRACTED]
+- [[dot-_seed()_7]] - `method` [EXTRACTED]
 - [[dot-test_directional_bias_warning_labels_global_and_condition()]] - `method` [EXTRACTED]
 - [[dot-test_directional_bias_warning_labels_sameday_and_hourly()]] - `method` [EXTRACTED]
 - [[Regression test _fit_T's callers used to log a generic T fit no better than…]] - `rationale_for` [EXTRACTED]

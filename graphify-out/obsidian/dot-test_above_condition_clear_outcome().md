@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[N = 30, all temps above threshold → CI near (1.0, 1.0).]] - `rationale_for` [EXTRACTED]
-- [[TestBootstrapCI_1]] - `method` [EXTRACTED]
+- [[TestBootstrapCI]] - `method` [EXTRACTED]
 - [[_bootstrap_ci()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_269

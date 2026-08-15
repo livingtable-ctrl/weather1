@@ -10,11 +10,11 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-_make_client()_6]] - code - tests/test_kalshi_client.py
-- [[dot-test_cursor_passed_on_second_call()]] - code - tests/test_kalshi_client.py
+- [[dot-_make_client()_5]] - code - tests/test_kalshi_client.py
+- [[dot-test_cursor_passed_on_second_call()_1]] - code - tests/test_kalshi_client.py
 - [[dot-test_single_page_returns_all_markets()]] - code - tests/test_kalshi_client.py
 - [[dot-test_three_pages_returns_all()]] - code - tests/test_kalshi_client.py
-- [[dot-test_two_page_pagination_combines_results()]] - code - tests/test_kalshi_client.py
+- [[dot-test_two_page_pagination_combines_results()_1]] - code - tests/test_kalshi_client.py
 - [[Cursor on first page → second call made, both pages combined.]] - rationale - tests/test_kalshi_client.py
 - [[No cursor in response → single call, all markets returned.]] - rationale - tests/test_kalshi_client.py
 - [[P1-19 get_markets must follow cursor pagination until exhausted.]] - rationale - tests/test_kalshi_client.py
@@ -35,7 +35,7 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[TestGetMarketsPagination]] - degree 7, connects to 1 community
-- [[dot-test_cursor_passed_on_second_call()]] - degree 3, connects to 1 community
+- [[dot-test_cursor_passed_on_second_call()_1]] - degree 3, connects to 1 community
 - [[dot-test_single_page_returns_all_markets()]] - degree 3, connects to 1 community
 - [[dot-test_three_pages_returns_all()]] - degree 3, connects to 1 community
-- [[dot-test_two_page_pagination_combines_results()]] - degree 3, connects to 1 community
+- [[dot-test_two_page_pagination_combines_results()_1]] - degree 3, connects to 1 community

@@ -23,8 +23,8 @@ tags:
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[get_bias()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[tracker.py_2]] - `implements` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
+- [[tracker.py_1]] - `implements` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_36

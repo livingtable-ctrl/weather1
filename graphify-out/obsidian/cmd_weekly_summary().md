@@ -20,7 +20,7 @@ tags:
 - [[get_calibration_trend()]] - `calls` [EXTRACTED]
 - [[get_source_reliability()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[yellow()]] - `calls` [EXTRACTED]
 

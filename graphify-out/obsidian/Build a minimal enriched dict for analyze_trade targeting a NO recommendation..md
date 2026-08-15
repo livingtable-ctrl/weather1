@@ -12,6 +12,6 @@ tags:
 # Build a minimal enriched dict for analyze_trade targeting a NO recommendation.
 
 ## Connections
-- [[dot-_make_enriched()_4]] - `rationale_for` [EXTRACTED]
+- [[dot-_make_enriched()_2]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_322

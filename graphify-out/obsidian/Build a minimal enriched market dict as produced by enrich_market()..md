@@ -12,6 +12,6 @@ tags:
 # Build a minimal enriched market dict as produced by enrich_market().
 
 ## Connections
-- [[_make_enriched()]] - `rationale_for` [EXTRACTED]
+- [[_make_enriched()_2]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_53

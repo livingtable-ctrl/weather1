@@ -12,7 +12,7 @@ tags:
 # .test_same_name_collision_in_another_file_is_not_counted_as_a_call()
 
 ## Connections
-- [[Path_19]] - `calls` [EXTRACTED]
+- [[Path_13]] - `calls` [EXTRACTED]
 - [[TestSameNameCollisionResolution]] - `method` [EXTRACTED]
 - [[_resolve_prod_evidence()]] - `calls` [EXTRACTED]
 

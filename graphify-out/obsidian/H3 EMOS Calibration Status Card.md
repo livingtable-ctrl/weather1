@@ -15,6 +15,6 @@ tags:
 - [[AnalyticsTab.jsx Component]] - `references` [EXTRACTED]
 - [[H4 EMOS Status in Header]] - `references` [EXTRACTED]
 - [[paths.py Module]] - `references` [EXTRACTED]
-- [[web_app.py Module_1]] - `references` [EXTRACTED]
+- [[web_app.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_104

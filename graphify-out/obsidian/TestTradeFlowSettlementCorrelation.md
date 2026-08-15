@@ -14,9 +14,9 @@ tags:
 ## Connections
 - [[dot-_candle()]] - `method` [EXTRACTED]
 - [[dot-_seed_market()]] - `method` [EXTRACTED]
-- [[dot-_trade()_4]] - `method` [EXTRACTED]
-- [[dot-setUp()_35]] - `method` [EXTRACTED]
-- [[dot-tearDown()_35]] - `method` [EXTRACTED]
+- [[dot-_trade()_2]] - `method` [EXTRACTED]
+- [[dot-setUp()_28]] - `method` [EXTRACTED]
+- [[dot-tearDown()_27]] - `method` [EXTRACTED]
 - [[dot-test_below_min_markets_reports_n_but_r_is_none()]] - `method` [EXTRACTED]
 - [[dot-test_early_trade_count_floor_is_enforced()]] - `method` [EXTRACTED]
 - [[dot-test_last_candle_null_close_walks_back_to_prior_real_close()]] - `method` [EXTRACTED]

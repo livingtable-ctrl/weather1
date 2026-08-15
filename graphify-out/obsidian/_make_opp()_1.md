@@ -1,20 +1,24 @@
 ---
-source_file: "tests/test_p0_10_paper_prelog.py"
+source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 340"
-location: "L16"
+community: "Community 108"
+location: "L33"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_340
+  - community/Community_108
 ---
 
 # _make_opp()
 
 ## Connections
-- [[dot-test_failure_updates_entry_to_failed()]] - `calls` [EXTRACTED]
-- [[dot-test_pending_entry_exists_before_place_paper_order()]] - `calls` [EXTRACTED]
-- [[dot-test_success_updates_entry_to_filled()]] - `calls` [EXTRACTED]
-- [[test_p0_10_paper_prelog.py]] - `contains` [EXTRACTED]
+- [[dot-test_concurrent_position_cap_returns_zero()]] - `calls` [EXTRACTED]
+- [[dot-test_daily_loss_halted_returns_zero()]] - `calls` [EXTRACTED]
+- [[dot-test_daily_spend_cap_reached_returns_zero()]] - `calls` [EXTRACTED]
+- [[dot-test_paper_mode_never_calls_place_live_order()]] - `calls` [EXTRACTED]
+- [[dot-test_paused_drawdown_returns_zero()]] - `calls` [EXTRACTED]
+- [[dot-test_per_trade_overage_skips_trade()]] - `calls` [EXTRACTED]
+- [[Return a minimal valid opportunity dict accepted by _auto_place_trades.]] - `rationale_for` [EXTRACTED]
+- [[test_risk_control.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_340
+#graphify/code #graphify/EXTRACTED #community/Community_108

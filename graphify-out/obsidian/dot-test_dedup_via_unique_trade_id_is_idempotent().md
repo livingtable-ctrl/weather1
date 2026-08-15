@@ -12,7 +12,7 @@ tags:
 # .test_dedup_via_unique_trade_id_is_idempotent()
 
 ## Connections
-- [[dot-_trade()_4]] - `calls` [EXTRACTED]
+- [[dot-_trade()_2]] - `calls` [EXTRACTED]
 - [[Re-inserting the same trade_id is a no-op -- Kalshi's trade_id is globally…]] - `rationale_for` [EXTRACTED]
 - [[TestTradeHistory]] - `method` [EXTRACTED]
 

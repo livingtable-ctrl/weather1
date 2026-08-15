@@ -12,7 +12,7 @@ tags:
 # atomic_write_text()
 
 ## Connections
-- [[Path_14]] - `references` [EXTRACTED]
+- [[Path_21]] - `references` [EXTRACTED]
 - [[Write raw text to path atomically -- same write-tempfsyncrename, retry, and…]] - `rationale_for` [EXTRACTED]
 - [[_atomic_write_payload()]] - `calls` [EXTRACTED]
 - [[atomic_write_json()]] - `shares_data_with` [EXTRACTED]

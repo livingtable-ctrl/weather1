@@ -12,7 +12,7 @@ tags:
 # .test_returns_raw_create_response_when_get_order_fails()
 
 ## Connections
-- [[dot-_make_client()_8]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
 - [[TestPlaceOrderSurvivesGetOrderFailure]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_510

@@ -1,18 +1,18 @@
 ---
-source_file: "tests/test_hurricane_markets.py"
+source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 509"
-location: "L906"
+community: "Community 237"
+location: "L202"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_509
+  - community/Community_237
 ---
 
 # .test_does_not_block_when_gate_active()
 
 ## Connections
-- [[Mutation-test proof flipping _hurricane_count_gates_active() to True makes the…]] - `rationale_for` [EXTRACTED]
-- [[TestCheckPositionLimitsHurricaneCountConditional]] - `method` [EXTRACTED]
+- [[Mutation-test proof flipping _rain_gates_active() to True makes the block…]] - `rationale_for` [EXTRACTED]
+- [[TestCheckPositionLimitsRainConditional]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_509
+#graphify/code #graphify/EXTRACTED #community/Community_237

@@ -12,6 +12,6 @@ tags:
 # Review-caught gap: only unset/"1" were ever exercised -- must confirm explicit…
 
 ## Connections
-- [[dot-test_falsy_env_var_values_stay_false()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-test_falsy_env_var_values_stay_false()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_312

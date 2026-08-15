@@ -13,15 +13,15 @@ members: 62
 - [[LOWER contains LOW -- confirms the substring check (not an exact-…]] - rationale - tests/test_weather.py
 - [[LOWER contains LOW -- same substring-check behavior as…]] - rationale - tests/test_weather.py
 - [[dot-_cond()]] - code - tests/test_weather.py
-- [[dot-test_above_condition()_1]] - code - tests/test_weather.py
+- [[dot-test_above_condition()]] - code - tests/test_weather.py
 - [[dot-test_above_near_threshold_not_near_zero()]] - code - tests/test_weather.py
 - [[dot-test_above_uses_prob_threshold()]] - code - tests/test_weather.py
 - [[dot-test_above_uses_prob_threshold_not_raw_threshold()]] - code - tests/test_weather.py
-- [[dot-test_below_condition()_1]] - code - tests/test_weather.py
+- [[dot-test_below_condition()]] - code - tests/test_weather.py
 - [[dot-test_below_near_threshold_not_near_one()]] - code - tests/test_weather.py
 - [[dot-test_below_uses_prob_threshold()]] - code - tests/test_weather.py
 - [[dot-test_below_uses_prob_threshold_not_raw_threshold()]] - code - tests/test_weather.py
-- [[dot-test_between_condition()_1]] - code - tests/test_weather.py
+- [[dot-test_between_condition()]] - code - tests/test_weather.py
 - [[dot-test_centered_temp_gives_low_probability()]] - code - tests/test_weather.py
 - [[dot-test_centered_temp_not_near_one()]] - code - tests/test_weather.py
 - [[dot-test_falls_back_to_default_for_between_and_precip()]] - code - tests/test_weather.py
@@ -86,20 +86,20 @@ SORT file.name ASC
 - 5 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 3 edges to [[_COMMUNITY_Community 82]]
 - 3 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
+- 2 edges to [[_COMMUNITY_Community 160]]
+- 2 edges to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
+- 2 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 - 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Community 160]]
-- 2 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
-- 2 edges to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
+- 1 edge to [[_COMMUNITY_Community 323]]
+- 1 edge to [[_COMMUNITY_Community 350]]
+- 1 edge to [[_COMMUNITY_Community 415]]
+- 1 edge to [[_COMMUNITY_Community 492]]
+- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
+- 1 edge to [[_COMMUNITY_Community 269]]
+- 1 edge to [[_COMMUNITY_Community 331]]
 - 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 - 1 edge to [[_COMMUNITY_Community 570]]
-- 1 edge to [[_COMMUNITY_Community 331]]
-- 1 edge to [[_COMMUNITY_Community 415]]
-- 1 edge to [[_COMMUNITY_Community 323]]
-- 1 edge to [[_COMMUNITY_Community 492]]
-- 1 edge to [[_COMMUNITY_Community 350]]
-- 1 edge to [[_COMMUNITY_Community 269]]
-- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
 
 ## Top bridge nodes
 - [[test_weather.py]] - degree 32, connects to 11 communities

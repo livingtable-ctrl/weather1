@@ -12,7 +12,7 @@ tags:
 # .test_equal_bid_ask_rejected()
 
 ## Connections
-- [[dot-_call()_2]] - `calls` [EXTRACTED]
+- [[dot-_call()_5]] - `calls` [EXTRACTED]
 - [[dot-_valid()]] - `calls` [EXTRACTED]
 - [[TestValidateMarketPriceRange]] - `method` [EXTRACTED]
 - [[bid == ask is an inverted spread.]] - `rationale_for` [EXTRACTED]

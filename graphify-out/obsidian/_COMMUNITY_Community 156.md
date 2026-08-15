@@ -28,7 +28,7 @@ members: 20
 - [[PositionsTab.jsx Component]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
 - [[Trades Page Spec (trades)]] - document - docs/superpowers/specs/2026-04-10-dashboard-modernization-design.md
 - [[config.py Module (BotConfig)]] - code - docs/superpowers/plans/2026-06-27-category-g-architecture.md
-- [[paper.py Module_1]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[paper.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
 - [[shared.jsx Helpers]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
 
 ## Live Query (requires Dataview plugin)
@@ -40,14 +40,14 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Community 104]]
-- 3 edges to [[_COMMUNITY_Community 199]]
-- 3 edges to [[_COMMUNITY_Community 249]]
 - 3 edges to [[_COMMUNITY_Community 154]]
+- 3 edges to [[_COMMUNITY_Community 249]]
+- 3 edges to [[_COMMUNITY_Community 199]]
 - 2 edges to [[_COMMUNITY_Community 179]]
 - 1 edge to [[_COMMUNITY_Community 141]]
 
 ## Top bridge nodes
-- [[paper.py Module_1]] - degree 17, connects to 4 communities
+- [[paper.py Module]] - degree 17, connects to 4 communities
 - [[H11 Weather Alert Display]] - degree 4, connects to 2 communities
 - [[PositionsTab.jsx Component]] - degree 5, connects to 1 community
 - [[G5 Config Consolidation (BotConfig)]] - degree 4, connects to 1 community

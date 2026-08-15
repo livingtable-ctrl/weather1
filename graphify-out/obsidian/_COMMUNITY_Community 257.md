@@ -10,8 +10,8 @@ members: 14
 **Members:** 14 nodes
 
 ## Members
-- [[dot-_make_enriched()_1]] - code - tests/test_gaussian_prob.py
 - [[dot-_make_enriched()]] - code - tests/test_gaussian_prob.py
+- [[dot-_make_enriched()_1]] - code - tests/test_gaussian_prob.py
 - [[dot-test_blend_sources_reports_gaussian_separately()]] - code - tests/test_gaussian_prob.py
 - [[dot-test_blend_sources_weights_sum_to_one_with_mos()]] - code - tests/test_gaussian_prob.py
 - [[dot-test_blend_sources_weights_sum_to_one_without_mos()]] - code - tests/test_gaussian_prob.py

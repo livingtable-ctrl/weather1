@@ -20,7 +20,7 @@ tags:
 - [[dot-test_rows_without_source_probs_not_counted()]] - `calls` [EXTRACTED]
 - [[dot-test_seasonal_accepts_cutoff_date_kwarg()]] - `calls` [EXTRACTED]
 - [[Grid-search optimal blend weights per season. Returns {season {ensemble,…]] - `rationale_for` [EXTRACTED]
-- [[Path_4]] - `references` [EXTRACTED]
+- [[Path_2]] - `references` [EXTRACTED]
 - [[Phase 3 Batch C Calibration Tests]] - `imports` [EXTRACTED]
 - [[_best_weights()]] - `calls` [EXTRACTED]
 - [[_compute_recency_weight()]] - `calls` [EXTRACTED]

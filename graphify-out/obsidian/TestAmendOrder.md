@@ -12,10 +12,10 @@ tags:
 # TestAmendOrder
 
 ## Connections
-- [[dot-_make_client()_3]] - `method` [EXTRACTED]
+- [[dot-_make_client()]] - `method` [EXTRACTED]
 - [[dot-test_client_order_id_included_when_provided()]] - `method` [EXTRACTED]
 - [[dot-test_client_order_id_omitted_when_not_provided()]] - `method` [EXTRACTED]
-- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()_1]] - `method` [EXTRACTED]
+- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()]] - `method` [EXTRACTED]
 - [[dot-test_posts_to_amend_path_with_order_id()]] - `method` [EXTRACTED]
 - [[dot-test_returns_raw_post_response_unchanged()]] - `method` [EXTRACTED]
 - [[dot-test_updated_client_order_id_always_present_and_deterministic()]] - `method` [EXTRACTED]

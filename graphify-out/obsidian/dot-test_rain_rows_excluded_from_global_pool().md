@@ -12,7 +12,7 @@ tags:
 # .test_rain_rows_excluded_from_global_pool()
 
 ## Connections
-- [[dot-_seed()_3]] - `calls` [EXTRACTED]
+- [[dot-_seed()_7]] - `calls` [EXTRACTED]
 - [[TestTrainAllTemperatureScalingRainExclusion]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_79

@@ -12,7 +12,7 @@ tags:
 # .test_fetch_hrrr_temp_negative_caches_failure()
 
 ## Connections
-- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_1]] - `rationale_for` [EXTRACTED]
+- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_3]] - `rationale_for` [EXTRACTED]
 - [[TestHRRR]] - `method` [EXTRACTED]
 - [[_fetch_hrrr_temp()]] - `calls` [EXTRACTED]
 

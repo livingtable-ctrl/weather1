@@ -12,7 +12,7 @@ tags:
 # .test_philadelphia_full_name_in_ticker_not_la()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[KXRAIN-PHILADELPHIA ticker 'PHILA' contains 'LA' — must be Philadelphia.]] - `rationale_for` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 

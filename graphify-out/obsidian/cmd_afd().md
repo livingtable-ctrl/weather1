@@ -17,7 +17,7 @@ tags:
 - [[bold()]] - `calls` [EXTRACTED]
 - [[fetch_afd_discussion Function]] - `calls` [EXTRACTED]
 - [[fetch_afd_discussion()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 - [[yellow()]] - `calls` [EXTRACTED]

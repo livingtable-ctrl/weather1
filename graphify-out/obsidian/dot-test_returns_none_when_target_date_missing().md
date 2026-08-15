@@ -15,7 +15,7 @@ tags:
 - [[If the API doesn't include our target date, return None.]] - `rationale_for` [EXTRACTED]
 - [[TestGetWeatherForecastMocked]] - `method` [EXTRACTED]
 - [[_open_meteo_payload()]] - `calls` [EXTRACTED]
-- [[activate_1]] - `references` [EXTRACTED]
+- [[activate]] - `references` [EXTRACTED]
 - [[get_weather_forecast()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_142

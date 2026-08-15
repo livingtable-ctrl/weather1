@@ -12,14 +12,11 @@ tags:
 # shared.jsx
 
 ## Connections
-- [[AnalyticsTab.jsx]] - `imports_from` [EXTRACTED]
 - [[BalanceSparkline()]] - `contains` [EXTRACTED]
 - [[BrierTrendChart()_1]] - `contains` [EXTRACTED]
 - [[CITY_NAMES_1]] - `contains` [EXTRACTED]
 - [[ForecastTab.jsx]] - `imports_from` [EXTRACTED]
 - [[InfoIcon()_1]] - `contains` [EXTRACTED]
-- [[OverviewTab.jsx]] - `imports_from` [EXTRACTED]
-- [[PositionsTab.jsx]] - `imports_from` [EXTRACTED]
 - [[RiskTab.jsx]] - `imports_from` [EXTRACTED]
 - [[SignalsTab.jsx]] - `imports_from` [EXTRACTED]
 - [[StatCard()]] - `contains` [EXTRACTED]

@@ -19,8 +19,8 @@ members: 11
 - [[Fills older than the window should be excluded.]] - rationale - tests/test_p9_p10.py
 - [[TestLiveFillSlippage]] - code - tests/test_p9_p10.py
 - [[Tracker backed by a temp DB.]] - rationale - tests/test_p9_p10.py
-- [[fixture_9]] - code
-- [[tmp_tracker()_1]] - code - tests/test_p9_p10.py
+- [[fixture_8]] - code
+- [[tmp_tracker()]] - code - tests/test_p9_p10.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,4 +34,4 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[TestLiveFillSlippage]] - degree 7, connects to 1 community
-- [[tmp_tracker()_1]] - degree 3, connects to 1 community
+- [[tmp_tracker()]] - degree 3, connects to 1 community

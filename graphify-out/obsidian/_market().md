@@ -1,27 +1,21 @@
 ---
-source_file: "tests/test_consistency.py"
+source_file: "tests/test_retirement_probation.py"
 type: "code"
-community: "Community 35"
-location: "L10"
+community: "Community 140"
+location: "L53"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_35
+  - community/Community_140
 ---
 
 # _market()
 
 ## Connections
-- [[dot-test_different_series_not_compared()]] - `calls` [EXTRACTED]
-- [[dot-test_hourly_directional_markets_excluded()]] - `calls` [EXTRACTED]
-- [[dot-test_hurricane_count_markets_excluded()]] - `calls` [EXTRACTED]
-- [[dot-test_hurricane_next_event_exclusion_is_mutation_proof()]] - `calls` [EXTRACTED]
-- [[dot-test_hurricane_next_event_markets_excluded()]] - `calls` [EXTRACTED]
-- [[dot-test_no_violation_when_monotone()]] - `calls` [EXTRACTED]
-- [[dot-test_single_market_no_violation()]] - `calls` [EXTRACTED]
-- [[dot-test_storm_order_exclusion_is_mutation_proof()]] - `calls` [EXTRACTED]
-- [[dot-test_storm_order_markets_excluded()]] - `calls` [EXTRACTED]
-- [[dot-test_violation_detected()]] - `calls` [EXTRACTED]
-- [[test_consistency.py]] - `contains` [EXTRACTED]
+- [[test_gated_to_run_once_per_day()_1]] - `calls` [EXTRACTED]
+- [[test_logs_probation_prediction_for_retired_method()]] - `calls` [EXTRACTED]
+- [[test_noop_when_nothing_retired()]] - `calls` [EXTRACTED]
+- [[test_retirement_probation.py]] - `contains` [EXTRACTED]
+- [[test_skips_market_whose_method_is_not_retired()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_35
+#graphify/code #graphify/EXTRACTED #community/Community_140

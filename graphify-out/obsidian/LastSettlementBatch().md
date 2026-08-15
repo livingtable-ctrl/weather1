@@ -1,12 +1,12 @@
 ---
 source_file: "weather app site V_3 (3)/src/tabs/OverviewTab.jsx"
 type: "code"
-community: "Community 193"
-location: "L10"
+community: "Community 692"
+location: "L11"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_193
+  - community/Community_692
 ---
 
 # LastSettlementBatch()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[OverviewTab.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_193
+#graphify/code #graphify/EXTRACTED #community/Community_692

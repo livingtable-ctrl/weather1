@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()]] - `method` [EXTRACTED]
-- [[dot-_enriched()_2]] - `method` [EXTRACTED]
+- [[dot-_enriched()_1]] - `method` [EXTRACTED]
 - [[dot-test_full_analysis_with_mocked_climatology()]] - `method` [EXTRACTED]
 - [[dot-test_recommended_side_follows_edge_direction()]] - `method` [EXTRACTED]
 - [[dot-test_returns_none_when_hurdat2_unavailable()]] - `method` [EXTRACTED]

@@ -1,21 +1,18 @@
 ---
-source_file: "tests/test_weather_markets.py"
+source_file: "tests/test_trading.py"
 type: "code"
-community: "Community 322"
-location: "L3461"
+community: "Community 445"
+location: "L1413"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_322
+  - community/Community_445
 ---
 
 # ._make_enriched()
 
 ## Connections
-- [[dot-test_ensemble_excluded_from_blend_when_circuit_open()]] - `calls` [EXTRACTED]
-- [[dot-test_no_trade_entry_side_edge_is_positive()]] - `calls` [EXTRACTED]
-- [[dot-test_yes_trade_entry_side_edge_positive()]] - `calls` [EXTRACTED]
-- [[Build a minimal enriched dict for analyze_trade targeting a NO recommendation.]] - `rationale_for` [EXTRACTED]
-- [[TestNoSideEntryEdgeSign]] - `method` [EXTRACTED]
+- [[dot-_run()_5]] - `calls` [EXTRACTED]
+- [[TestTimeDecayEdgeScope]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_322
+#graphify/code #graphify/EXTRACTED #community/Community_445

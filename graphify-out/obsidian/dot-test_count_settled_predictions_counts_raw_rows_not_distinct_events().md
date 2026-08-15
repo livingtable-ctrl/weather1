@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_log_settled()_2]] - `calls` [EXTRACTED]
-- [[dot-_seed_baseline()_1]] - `calls` [EXTRACTED]
+- [[dot-_seed_baseline()]] - `calls` [EXTRACTED]
 - [[TestLiveTradingGateConditionTypeFilter]] - `method` [EXTRACTED]
 - [[backlog.txt COUNT_SETTLED_PREDICTIONS() COUNTS RAW ROWS, NOT DISTINCT…]] - `rationale_for` [EXTRACTED]
 

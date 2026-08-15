@@ -12,7 +12,7 @@ tags:
 # .load_from_disk()
 
 ## Connections
-- [[Any_2]] - `references` [EXTRACTED]
+- [[Any]] - `references` [EXTRACTED]
 - [[Load a previously dumped cache from `path` into this instance, if the file…]] - `rationale_for` [EXTRACTED]
 - [[Path_10]] - `references` [EXTRACTED]
 - [[PersistentForecastCache]] - `method` [EXTRACTED]

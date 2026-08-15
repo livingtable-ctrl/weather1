@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[If place_paper_order raises, the pre-logged row must be updated to 'failed'.]] - `rationale_for` [EXTRACTED]
 - [[TestPaperPreLog]] - `method` [EXTRACTED]
-- [[_make_opp()_1]] - `calls` [EXTRACTED]
+- [[_make_opp()_2]] - `calls` [EXTRACTED]
 - [[_stub_prereqs()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_340

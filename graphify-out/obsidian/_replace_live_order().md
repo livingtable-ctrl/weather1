@@ -12,7 +12,7 @@ tags:
 # _replace_live_order()
 
 ## Connections
-- [[dot-test_gate_blocked_returns_false_and_places_nothing()]] - `calls` [EXTRACTED]
+- [[dot-test_gate_blocked_returns_false_and_places_nothing()_1]] - `calls` [EXTRACTED]
 - [[dot-test_place_order_failure_logs_failed_status()]] - `calls` [EXTRACTED]
 - [[dot-test_success_logs_replaces_order_id()]] - `calls` [EXTRACTED]
 - [[dot-test_taker_cross_logged_as_market_order_type()]] - `calls` [EXTRACTED]

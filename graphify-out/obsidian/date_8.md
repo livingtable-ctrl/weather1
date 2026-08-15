@@ -1,19 +1,16 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 309"
+community: "Climatology & Climate Index Fetching"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_309
+  - community/Climatology__Climate_Index_Fetching
 ---
 
 # date
 
 ## Connections
-- [[dot-test_consensus_bonus_actually_raises_ci_adjusted_kelly()]] - `calls` [EXTRACTED]
-- [[dot-test_no_side_empty_bid_book()_1]] - `calls` [EXTRACTED]
-- [[dot-test_yes_side_normal_book()_1]] - `calls` [EXTRACTED]
-- [[_ny_tomorrow()]] - `references` [EXTRACTED]
+- [[temperature_adjustment()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_309
+#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching

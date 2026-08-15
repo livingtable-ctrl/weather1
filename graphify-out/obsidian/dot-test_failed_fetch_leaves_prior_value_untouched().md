@@ -12,7 +12,7 @@ tags:
 # .test_failed_fetch_leaves_prior_value_untouched()
 
 ## Connections
-- [[dot-_settle()_1]] - `calls` [EXTRACTED]
+- [[dot-_settle()]] - `calls` [EXTRACTED]
 - [[TestBackfillDailyTempSettlement]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_77

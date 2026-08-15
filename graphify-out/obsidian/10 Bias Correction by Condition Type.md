@@ -12,7 +12,7 @@ tags:
 # #10 Bias Correction by Condition Type
 
 ## Connections
-- [[tracker.py Module_1]] - `references` [EXTRACTED]
+- [[tracker.py Module]] - `references` [EXTRACTED]
 - [[weather_markets.py Module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_249

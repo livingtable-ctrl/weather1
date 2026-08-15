@@ -15,9 +15,9 @@ members: 14
 - [[DemoPaper vs Live Mode Indicator]] - document - updated frontend/screenshots/dark-v2.png
 - [[Graduation Progress Panel (TradesP&LBrier gates to go live)]] - document - updated frontend/screenshots/dark-v2.png
 - [[Kalshi Weather Bot Dashboard (General Concept)]] - document - updated frontend/screenshots/dark-v2.png
-- [[Kill Switch Button]] - document - updated frontend/screenshots/dark-v2.png
+- [[Kill Switch Button_1]] - document - updated frontend/screenshots/dark-v2.png
 - [[LightDark Theme Toggle Icon]] - document - updated frontend/screenshots/dark-v2.png
-- [[Metric Cards Row (Paper balance, Open positions, Win rate, Brier score)]] - document - updated frontend/screenshots/dark-v2.png
+- [[Metric Cards Row (Paper balance, Open positions, Win rate, Brier score)_1]] - document - updated frontend/screenshots/dark-v2.png
 - [[Overview Dashboard (Dark Variant, base)]] - image - updated frontend/screenshots/dark.png
 - [[Overview Dashboard (Dark v2 Variant)]] - image - updated frontend/screenshots/dark-v2.png
 - [[Overview Dashboard (Light Variant)]] - image - updated frontend/screenshots/light.png

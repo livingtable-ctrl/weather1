@@ -10,8 +10,8 @@ members: 21
 **Members:** 21 nodes
 
 ## Members
-- [[dot-_make_client()]] - code - tests/test_idempotency.py
-- [[dot-_make_client()_1]] - code - tests/test_idempotency.py
+- [[dot-_make_client()_2]] - code - tests/test_idempotency.py
+- [[dot-_make_client()_3]] - code - tests/test_idempotency.py
 - [[dot-test_client_order_id_differs_across_cycles()]] - code - tests/test_idempotency.py
 - [[dot-test_client_order_id_in_request_body()]] - code - tests/test_idempotency.py
 - [[dot-test_client_order_id_is_deterministic()]] - code - tests/test_idempotency.py
@@ -42,10 +42,10 @@ SORT file.name ASC
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_Community 225]]
+- 1 edge to [[_COMMUNITY_Community 548]]
 - 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
 - 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
 - 1 edge to [[_COMMUNITY_Community 142]]
-- 1 edge to [[_COMMUNITY_Community 548]]
 
 ## Top bridge nodes
 - [[test_idempotency.py]] - degree 8, connects to 4 communities

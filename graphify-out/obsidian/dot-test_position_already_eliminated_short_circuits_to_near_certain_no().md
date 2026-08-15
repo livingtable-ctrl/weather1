@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()_2]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_4]] - `calls` [EXTRACTED]
+- [[dot-_enriched()_3]] - `calls` [EXTRACTED]
 - [[Opus-review-caught (2026-08-07, HIGH), 2nd round when position =…]] - `rationale_for` [EXTRACTED]
 - [[TestAnalyzeStormOrderTrade]] - `method` [EXTRACTED]
 

@@ -12,7 +12,7 @@ tags:
 # .test_chicago_hourly_ticker_detected()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[TestHourlyDirectionalCityDetection]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_321

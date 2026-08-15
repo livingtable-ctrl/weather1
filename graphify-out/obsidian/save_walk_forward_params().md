@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[D4 Persist walk-forward results so config.py can use optimal_min_edge as a…]] - `rationale_for` [EXTRACTED]
-- [[Path_3]] - `references` [EXTRACTED]
+- [[Path_16]] - `references` [EXTRACTED]
 - [[_paper_min_edge_default()]] - `shares_data_with` [EXTRACTED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]
 - [[backtest.py]] - `contains` [EXTRACTED]

@@ -12,7 +12,7 @@ tags:
 # .test_blend_sources_reports_gaussian_separately()
 
 ## Connections
-- [[dot-_make_enriched()_1]] - `calls` [EXTRACTED]
+- [[dot-_make_enriched()]] - `calls` [EXTRACTED]
 - [[Regression for L6-B blend_sources must contain 'gaussian' as its own key when…]] - `rationale_for` [EXTRACTED]
 - [[TestGaussianBlendSeparateSource]] - `method` [EXTRACTED]
 

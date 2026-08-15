@@ -11,7 +11,7 @@ tags:
 # test_p1_remaining.py
 
 ## Connections
-- [[CircuitBreaker class_1]] - `calls` [EXTRACTED]
+- [[CircuitBreaker class]] - `calls` [EXTRACTED]
 - [[LiveTradingGate]] - `imports` [EXTRACTED]
 - [[LiveTradingGate.check()pre_live_trade_check()]] - `calls` [EXTRACTED]
 - [[TestAnalyzeOnceDedupAndStaleParity]] - `contains` [EXTRACTED]
@@ -31,7 +31,7 @@ tags:
 - [[Tests for P1-3, P1-4, P1-7, P1-8, P1-10, P1-18 fixes.]] - `rationale_for` [EXTRACTED]
 - [[Violation]] - `imports` [EXTRACTED]
 - [[_analyze_once()]] - `calls` [EXTRACTED]
-- [[_make_trade()_2]] - `contains` [EXTRACTED]
+- [[_make_trade()_3]] - `contains` [EXTRACTED]
 - [[backfill_daily_temp_settlement()]] - `references` [EXTRACTED]
 - [[backfill_price_history()]] - `references` [EXTRACTED]
 - [[check_position_limits()]] - `calls` [EXTRACTED]

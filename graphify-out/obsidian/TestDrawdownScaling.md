@@ -12,8 +12,8 @@ tags:
 # TestDrawdownScaling
 
 ## Connections
-- [[dot-setUp()_7]] - `method` [EXTRACTED]
-- [[dot-tearDown()_7]] - `method` [EXTRACTED]
+- [[dot-setUp()_9]] - `method` [EXTRACTED]
+- [[dot-tearDown()_9]] - `method` [EXTRACTED]
 - [[dot-test_full_scaling_at_peak()]] - `method` [EXTRACTED]
 - [[dot-test_kelly_scaled_at_partial_recovery()]] - `method` [EXTRACTED]
 - [[dot-test_kelly_zero_below_20_pct()]] - `method` [EXTRACTED]

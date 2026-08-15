@@ -10,7 +10,7 @@ members: 7
 **Members:** 7 nodes
 
 ## Members
-- [[dot-_enriched()]] - code - tests/test_forecasting.py
+- [[dot-_enriched()_5]] - code - tests/test_forecasting.py
 - [[dot-test_gaussian_lifts_zero_ensemble_when_forecast_is_high()]] - code - tests/test_forecasting.py
 - [[dot-test_gaussian_pulls_down_ceiling_ensemble()]] - code - tests/test_forecasting.py
 - [[E2 Gaussian probability is blended into ensemble fraction, not only used as…]] - rationale - tests/test_forecasting.py
@@ -26,8 +26,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
+- 1 edge to [[_COMMUNITY_Community 51]]
 
 ## Top bridge nodes
 - [[TestGaussianEnsembleBlend]] - degree 6, connects to 2 communities

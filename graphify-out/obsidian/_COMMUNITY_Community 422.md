@@ -28,9 +28,9 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 5 edges to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 1 edge to [[_COMMUNITY_Community 75]]
 - 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
+- 1 edge to [[_COMMUNITY_Community 75]]
 
 ## Top bridge nodes
 - [[sql_normalize_iso_column()]] - degree 11, connects to 4 communities

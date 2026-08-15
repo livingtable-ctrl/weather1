@@ -15,7 +15,7 @@ tags:
 - [[Sum of P&L from trades settled today (UTC). 46 If a live client is provided,…]] - `rationale_for` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[_quick_paper_buy()]] - `calls` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
 - [[get_unrealized_pnl_paper()]] - `calls` [EXTRACTED]

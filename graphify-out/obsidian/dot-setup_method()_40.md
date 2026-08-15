@@ -1,17 +1,18 @@
 ---
-source_file: "tests/test_signal_quality.py"
+source_file: "tests/test_calibration.py"
 type: "code"
-community: "Community 127"
-location: "L358"
+community: "Community 69"
+location: "L93"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_127
+  - community/Community_69
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestGetModelWeights]] - `method` [EXTRACTED]
+- [[Path_1]] - `calls` [EXTRACTED]
+- [[TestCalibrateSeasonalWeights]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_127
+#graphify/code #graphify/EXTRACTED #community/Community_69

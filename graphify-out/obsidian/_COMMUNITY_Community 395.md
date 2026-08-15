@@ -11,12 +11,12 @@ members: 9
 
 ## Members
 - [[dot-test_accepts_true_yes_case_insensitive()]] - code - tests/test_hourly_markets.py
-- [[dot-test_false_when_env_var_set_but_below_sample_floor()]] - code - tests/test_hourly_markets.py
-- [[dot-test_false_when_env_var_unset()]] - code - tests/test_hourly_markets.py
-- [[dot-test_false_when_sample_floor_met_but_env_var_unset()]] - code - tests/test_hourly_markets.py
-- [[dot-test_never_raises_on_count_failure()]] - code - tests/test_hourly_markets.py
-- [[dot-test_true_when_env_var_set_and_sample_floor_met()]] - code - tests/test_hourly_markets.py
-- [[Both conditions are required -- neither alone suffices.]] - rationale - tests/test_hourly_markets.py
+- [[dot-test_false_when_env_var_set_but_below_sample_floor()_1]] - code - tests/test_hourly_markets.py
+- [[dot-test_false_when_env_var_unset()_1]] - code - tests/test_hourly_markets.py
+- [[dot-test_false_when_sample_floor_met_but_env_var_unset()_1]] - code - tests/test_hourly_markets.py
+- [[dot-test_never_raises_on_count_failure()_1]] - code - tests/test_hourly_markets.py
+- [[dot-test_true_when_env_var_set_and_sample_floor_met()_1]] - code - tests/test_hourly_markets.py
+- [[Both conditions are required -- neither alone suffices._1]] - rationale - tests/test_hourly_markets.py
 - [[TestHourlyGatesActive]] - code - tests/test_hourly_markets.py
 - [[backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 2 handoff item 5…]] - rationale - tests/test_hourly_markets.py
 

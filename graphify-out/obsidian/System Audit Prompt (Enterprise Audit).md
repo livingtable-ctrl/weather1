@@ -20,7 +20,7 @@ tags:
 - [[Security Audit Scope]] - `references` [EXTRACTED]
 - [[feature_importance.py Module]] - `references` [EXTRACTED]
 - [[kalshi_ws.py Module]] - `references` [EXTRACTED]
-- [[main.py Module_1]] - `references` [EXTRACTED]
+- [[main.py Module]] - `references` [EXTRACTED]
 - [[param_sweep.py Module]] - `references` [EXTRACTED]
 - [[regime.py Module (detect_regime)]] - `references` [EXTRACTED]
 

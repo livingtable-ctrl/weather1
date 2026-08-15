@@ -12,7 +12,7 @@ tags:
 # TestHourlyDirectionalCityDetection
 
 ## Connections
-- [[dot-_city()_1]] - `method` [EXTRACTED]
+- [[dot-_city()_2]] - `method` [EXTRACTED]
 - [[dot-test_austin_hourly_ticker_detected()]] - `method` [EXTRACTED]
 - [[dot-test_chicago_hourly_ticker_detected()]] - `method` [EXTRACTED]
 - [[dot-test_la_hourly_ticker_detected()]] - `method` [EXTRACTED]

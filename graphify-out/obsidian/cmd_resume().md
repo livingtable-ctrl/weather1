@@ -17,7 +17,7 @@ tags:
 - [[dim()]] - `calls` [EXTRACTED]
 - [[get_black_swan_status()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[yellow()]] - `calls` [EXTRACTED]
 

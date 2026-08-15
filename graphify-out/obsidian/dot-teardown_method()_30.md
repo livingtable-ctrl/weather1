@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_signal_quality.py"
+source_file: "tests/test_calibration.py"
 type: "code"
-community: "Community 127"
-location: "L302"
+community: "Community 69"
+location: "L312"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_127
+  - community/Community_69
 ---
 
 # .teardown_method()
 
 ## Connections
-- [[TestGetBrierByTier]] - `method` [EXTRACTED]
+- [[TestCalibrateCLI]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_127
+#graphify/code #graphify/EXTRACTED #community/Community_69

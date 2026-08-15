@@ -22,7 +22,7 @@ members: 33
 - [[TestAnalyticsApiShape]] - code - tests/test_web_analytics.py
 - [[Tests for web analytics API shape contracts.]] - rationale - tests/test_web_analytics.py
 - [[When MC clamps a probability, the UI should explain this is expecteddefensive.]] - rationale - tests/test_regression.py
-- [[_force_demo_env()_1]] - code - tests/test_web_analytics.py
+- [[_force_demo_env()_2]] - code - tests/test_web_analytics.py
 - [[_no_dashboard_password()_1]] - code - tests/test_web_analytics.py
 - [[analytics_client()]] - code - tests/test_web_analytics.py
 - [[api_analytics component_attribution must use 'brier' key, not 'brier_score'.]] - rationale - tests/test_web_analytics.py
@@ -56,16 +56,16 @@ SORT file.name ASC
 - 9 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 5 edges to [[_COMMUNITY_Community 36]]
 - 3 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 2 edges to [[_COMMUNITY_Community 40]]
 - 2 edges to [[_COMMUNITY_Community 52]]
-- 1 edge to [[_COMMUNITY_Community 94]]
-- 1 edge to [[_COMMUNITY_Community 167]]
-- 1 edge to [[_COMMUNITY_Community 245]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 2 edges to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 284]]
+- 1 edge to [[_COMMUNITY_Community 167]]
+- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 1 edge to [[_COMMUNITY_Community 245]]
+- 1 edge to [[_COMMUNITY_Community 94]]
+- 1 edge to [[_COMMUNITY_Community 59]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 1 edge to [[_COMMUNITY_Community 176]]
-- 1 edge to [[_COMMUNITY_Community 59]]
 
 ## Top bridge nodes
 - [[brier_score()]] - degree 22, connects to 10 communities

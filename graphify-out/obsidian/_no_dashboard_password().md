@@ -12,7 +12,7 @@ tags:
 # _no_dashboard_password()
 
 ## Connections
-- [[fixture_12]] - `references` [EXTRACTED]
+- [[fixture_3]] - `references` [EXTRACTED]
 - [[test_suggested_bets.py]] - `contains` [EXTRACTED]
 - [[utils.DASHBOARD_PASSWORD is cached at import time (conftest.py imports main,…]] - `rationale_for` [EXTRACTED]
 

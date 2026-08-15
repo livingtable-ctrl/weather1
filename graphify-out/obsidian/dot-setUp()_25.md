@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_tracker.py"
+source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 153"
-location: "L2688"
+community: "Community 343"
+location: "L680"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_153
+  - community/Community_343
 ---
 
 # .setUp()
 
 ## Connections
-- [[TestCalibrationByCityConditionTypeGrpB]] - `method` [EXTRACTED]
+- [[TestDirectionalExposure]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_153
+#graphify/code #graphify/EXTRACTED #community/Community_343

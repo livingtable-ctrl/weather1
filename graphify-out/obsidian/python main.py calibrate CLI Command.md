@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[calibrate_seasonal_weights() (118)]] - `references` [EXTRACTED]
-- [[main.py Module_1]] - `references` [EXTRACTED]
+- [[main.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_209

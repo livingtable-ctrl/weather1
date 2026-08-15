@@ -11,12 +11,12 @@ members: 32
 
 ## Members
 - [[13 - get_market_calibration() must use equal-frequency buckets and accept…]] - rationale - tests/test_tracker.py
-- [[dot-_seed()_8]] - code - tests/test_tracker.py
-- [[dot-_seed()_7]] - code - tests/test_tracker.py
-- [[dot-setUp()_31]] - code - tests/test_tracker.py
-- [[dot-setUp()_20]] - code - tests/test_tracker.py
-- [[dot-tearDown()_31]] - code - tests/test_tracker.py
-- [[dot-tearDown()_20]] - code - tests/test_tracker.py
+- [[dot-_seed()_3]] - code - tests/test_tracker.py
+- [[dot-_seed()_4]] - code - tests/test_tracker.py
+- [[dot-setUp()_40]] - code - tests/test_tracker.py
+- [[dot-setUp()_41]] - code - tests/test_tracker.py
+- [[dot-tearDown()_39]] - code - tests/test_tracker.py
+- [[dot-tearDown()_40]] - code - tests/test_tracker.py
 - [[dot-test_city_isolation()_1]] - code - tests/test_tracker.py
 - [[dot-test_falls_back_to_global_when_quintile_empty()]] - code - tests/test_tracker.py
 - [[dot-test_grpb_calibration_bucket_fields()]] - code - tests/test_tracker.py

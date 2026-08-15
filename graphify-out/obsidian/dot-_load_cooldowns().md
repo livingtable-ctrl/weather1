@@ -12,7 +12,7 @@ tags:
 # ._load_cooldowns()
 
 ## Connections
-- [[dot-__init__()_3]] - `calls` [EXTRACTED]
+- [[dot-__init__()_12]] - `calls` [EXTRACTED]
 - [[FlashCrashCB]] - `method` [EXTRACTED]
 - [[Load persisted cooldowns from disk, discarding any that have already expired.]] - `rationale_for` [EXTRACTED]
 

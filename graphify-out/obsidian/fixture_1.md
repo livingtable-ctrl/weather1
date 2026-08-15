@@ -1,16 +1,17 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 33"
+community: "Trade Cycle Engine & Arbitrage Gates"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_33
+  - community/Trade_Cycle_Engine__Arbitrage_Gates
 ---
 
 # fixture
 
 ## Connections
-- [[_patch_ab_dir()]] - `references` [EXTRACTED]
+- [[dot-_healthy_system()]] - `references` [EXTRACTED]
+- [[engine_env()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_33
+#graphify/code #graphify/EXTRACTED #community/Trade_Cycle_Engine__Arbitrage_Gates

@@ -23,7 +23,7 @@ members: 15
 - [[At exactly half of reference_hours remaining, edge should be halved.]] - rationale - tests/test_trading.py
 - [[At or past close_time, edge should be 0.]] - rationale - tests/test_trading.py
 - [[Edge at 6h remaining  edge at 3h remaining (within 8h reference window).]] - rationale - tests/test_trading.py
-- [[TestTimeDecayEdge_1]] - code - tests/test_trading.py
+- [[TestTimeDecayEdge]] - code - tests/test_trading.py
 - [[Well before close (= reference_hours), edge should be unchanged.]] - rationale - tests/test_trading.py
 
 ## Live Query (requires Dataview plugin)
@@ -38,7 +38,7 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 92]]
 
 ## Top bridge nodes
-- [[TestTimeDecayEdge_1]] - degree 8, connects to 1 community
+- [[TestTimeDecayEdge]] - degree 8, connects to 1 community
 - [[dot-test_edge_decays_as_close_approaches()]] - degree 3, connects to 1 community
 - [[dot-test_full_edge_beyond_reference_hours()]] - degree 3, connects to 1 community
 - [[dot-test_full_edge_far_from_close()]] - degree 3, connects to 1 community

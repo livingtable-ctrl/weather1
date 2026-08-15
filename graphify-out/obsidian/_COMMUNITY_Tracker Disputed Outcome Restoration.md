@@ -13,9 +13,9 @@ members: 53
 - [[dot-_add_disputed_emos_outlier()]] - code - tests/test_tracker.py
 - [[dot-_add_disputed_outlier()]] - code - tests/test_tracker.py
 - [[dot-_log_settled()]] - code - tests/test_tracker.py
-- [[dot-_seed_baseline()_1]] - code - tests/test_tracker.py
-- [[dot-setUp()_36]] - code - tests/test_tracker.py
-- [[dot-tearDown()_36]] - code - tests/test_tracker.py
+- [[dot-_seed_baseline()]] - code - tests/test_tracker.py
+- [[dot-setUp()_18]] - code - tests/test_tracker.py
+- [[dot-tearDown()_17]] - code - tests/test_tracker.py
 - [[dot-test_audit_settlement_hourly_no_fetch_result_leaves_row_untouched()]] - code - tests/test_tracker.py
 - [[dot-test_brier_by_condition_type_rolling_excludes_disputed()]] - code - tests/test_tracker.py
 - [[dot-test_brier_score_by_method_excludes_disputed()]] - code - tests/test_tracker.py
@@ -78,23 +78,23 @@ SORT file.name ASC
 - 2 edges to [[_COMMUNITY_Community 620]]
 - 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
 - 1 edge to [[_COMMUNITY_Community 614]]
-- 1 edge to [[_COMMUNITY_Community 616]]
 - 1 edge to [[_COMMUNITY_Community 615]]
-- 1 edge to [[_COMMUNITY_Community 618]]
+- 1 edge to [[_COMMUNITY_Community 616]]
 - 1 edge to [[_COMMUNITY_Community 617]]
+- 1 edge to [[_COMMUNITY_Community 618]]
 - 1 edge to [[_COMMUNITY_Community 621]]
-- 1 edge to [[_COMMUNITY_Community 626]]
-- 1 edge to [[_COMMUNITY_Community 627]]
-- 1 edge to [[_COMMUNITY_Community 628]]
+- 1 edge to [[_COMMUNITY_Community 622]]
 - 1 edge to [[_COMMUNITY_Community 623]]
 - 1 edge to [[_COMMUNITY_Community 624]]
 - 1 edge to [[_COMMUNITY_Community 625]]
-- 1 edge to [[_COMMUNITY_Community 622]]
+- 1 edge to [[_COMMUNITY_Community 626]]
+- 1 edge to [[_COMMUNITY_Community 627]]
+- 1 edge to [[_COMMUNITY_Community 628]]
 - 1 edge to [[_COMMUNITY_Community 629]]
 - 1 edge to [[_COMMUNITY_Community 630]]
 
 ## Top bridge nodes
 - [[TestDisputedOutcomeTracking]] - degree 92, connects to 20 communities
-- [[dot-_seed_baseline()_1]] - degree 57, connects to 3 communities
+- [[dot-_seed_baseline()]] - degree 57, connects to 3 communities
 - [[dot-_add_disputed_outlier()]] - degree 37, connects to 1 community
 - [[dot-test_get_multiday_calibration_cli_excludes_snow()]] - degree 4, connects to 1 community

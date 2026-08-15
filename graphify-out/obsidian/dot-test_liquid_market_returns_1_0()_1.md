@@ -1,18 +1,18 @@
 ---
-source_file: "tests/test_weather_markets.py"
+source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 222"
-location: "L291"
+community: "Community 250"
+location: "L1459"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_222
+  - community/Community_250
 ---
 
 # .test_liquid_market_returns_1_0()
 
 ## Connections
-- [[TestLiquidityEdgeScale]] - `method` [EXTRACTED]
-- [[_liquidity_edge_scale()]] - `calls` [EXTRACTED]
+- [[TestLiquidityKellyScale]] - `method` [EXTRACTED]
+- [[liquidity_kelly_scale()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_222
+#graphify/code #graphify/EXTRACTED #community/Community_250

@@ -10,10 +10,10 @@ members: 23
 **Members:** 23 nodes
 
 ## Members
-- [[dot-_run()_4]] - code - tests/test_phase2_batch_f.py
-- [[dot-test_cholesky_correlated()_1]] - code - tests/test_phase2_batch_f.py
+- [[dot-_run()]] - code - tests/test_phase2_batch_f.py
+- [[dot-test_cholesky_correlated()]] - code - tests/test_phase2_batch_f.py
 - [[dot-test_cholesky_failure_logs_warning()]] - code - tests/test_phase2_batch_f.py
-- [[dot-test_cholesky_identity()_1]] - code - tests/test_phase2_batch_f.py
+- [[dot-test_cholesky_identity()]] - code - tests/test_phase2_batch_f.py
 - [[dot-test_cholesky_returns_none_for_non_pd()]] - code - tests/test_phase2_batch_f.py
 - [[dot-test_correlation_applied_false_when_cholesky_fails()]] - code - tests/test_phase2_batch_f.py
 - [[dot-test_correlation_applied_false_when_no_city()]] - code - tests/test_phase2_batch_f.py
@@ -31,7 +31,7 @@ members: 23
 - [[Trades with no city correlation_applied must be False even if Cholesky would…]] - rationale - tests/test_phase2_batch_f.py
 - [[When Cholesky returns None (not positive-definite), correlation_applied must be…]] - rationale - tests/test_phase2_batch_f.py
 - [[When Cholesky succeeds and trades have cities, correlation_applied must be True.]] - rationale - tests/test_phase2_batch_f.py
-- [[_make_trade()_3]] - code - tests/test_phase2_batch_f.py
+- [[_make_trade()]] - code - tests/test_phase2_batch_f.py
 - [[simulate_portfolio must always return correlation_applied in the result.]] - rationale - tests/test_phase2_batch_f.py
 
 ## Live Query (requires Dataview plugin)

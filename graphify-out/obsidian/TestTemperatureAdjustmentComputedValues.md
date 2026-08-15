@@ -12,7 +12,7 @@ tags:
 # TestTemperatureAdjustmentComputedValues
 
 ## Connections
-- [[dot-_adjustment()]] - `method` [EXTRACTED]
+- [[dot-_adjustment()_2]] - `method` [EXTRACTED]
 - [[dot-test_covered_city_other_season()]] - `method` [EXTRACTED]
 - [[dot-test_covered_city_spring()]] - `method` [EXTRACTED]
 - [[dot-test_covered_city_spring_isolates_ao_and_nao_separately()]] - `method` [EXTRACTED]

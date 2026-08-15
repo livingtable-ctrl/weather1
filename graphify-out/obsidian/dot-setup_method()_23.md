@@ -1,18 +1,18 @@
 ---
-source_file: "tests/test_mos.py"
+source_file: "tests/test_execution_log.py"
 type: "code"
-community: "Community 187"
-location: "L31"
+community: "Community 363"
+location: "L14"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_187
+  - community/Community_363
 ---
 
 # .setup_method()
 
 ## Connections
-- [[Clear the MOS in-process cache before each test.]] - `rationale_for` [EXTRACTED]
-- [[TestFetchMos]] - `method` [EXTRACTED]
+- [[Point execution_log at a fresh temp DB for each test.]] - `rationale_for` [EXTRACTED]
+- [[TestExecutionLogMigration]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_187
+#graphify/code #graphify/EXTRACTED #community/Community_363

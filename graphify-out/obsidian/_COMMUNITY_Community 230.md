@@ -34,8 +34,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 567]]
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 2 edges to [[_COMMUNITY_Community 567]]
 - 1 edge to [[_COMMUNITY_Community 160]]
 
 ## Top bridge nodes

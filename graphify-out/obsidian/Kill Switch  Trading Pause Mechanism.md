@@ -12,6 +12,6 @@ tags:
 
 ## Connections
 - [[DemoPaper and Live Status Badges]] - `conceptually_related_to` [AMBIGUOUS]
-- [[Kill Switch Button_1]] - `shares_data_with` [INFERRED]
+- [[Kill Switch Button]] - `shares_data_with` [INFERRED]
 
 #graphify/code #graphify/AMBIGUOUS #community/Community_192

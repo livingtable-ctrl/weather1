@@ -41,12 +41,12 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_Community 195]]
 - 2 edges to [[_COMMUNITY_Community 87]]
 - 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
+- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 328]]
 - 1 edge to [[_COMMUNITY_Community 330]]
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 
 ## Top bridge nodes
 - [[monte_carlo.py]] - degree 26, connects to 9 communities

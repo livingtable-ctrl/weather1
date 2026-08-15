@@ -10,8 +10,8 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[dot-setUp()_33]] - code - tests/test_tracker.py
-- [[dot-tearDown()_33]] - code - tests/test_tracker.py
+- [[dot-setUp()_22]] - code - tests/test_tracker.py
+- [[dot-tearDown()_21]] - code - tests/test_tracker.py
 - [[dot-test_candle_missing_end_period_ts_is_skipped()]] - code - tests/test_tracker.py
 - [[dot-test_dedup_via_unique_index_is_idempotent()]] - code - tests/test_tracker.py
 - [[dot-test_empty_candlesticks_list_is_noop()]] - code - tests/test_tracker.py

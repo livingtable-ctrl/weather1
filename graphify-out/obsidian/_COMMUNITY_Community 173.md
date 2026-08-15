@@ -10,11 +10,11 @@ members: 19
 **Members:** 19 nodes
 
 ## Members
-- [[dot-_call()_1]] - code - tests/test_phase2_batch_k.py
+- [[dot-_call()]] - code - tests/test_phase2_batch_k.py
 - [[dot-test_all_identical_flagged_as_degenerate()]] - code - tests/test_phase2_batch_k.py
 - [[dot-test_analyze_trade_skips_degenerate_ensemble()]] - code - tests/test_phase2_batch_k.py
 - [[dot-test_degenerate_key_always_present_when_nonempty()]] - code - tests/test_phase2_batch_k.py
-- [[dot-test_empty_returns_empty()_1]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_empty_returns_empty()]] - code - tests/test_phase2_batch_k.py
 - [[dot-test_exactly_5_members_not_degenerate()]] - code - tests/test_phase2_batch_k.py
 - [[dot-test_no_negative_weights_no_clim()]] - code - tests/test_phase2_batch_k.py
 - [[dot-test_six_identical_members_is_degenerate()]] - code - tests/test_phase2_batch_k.py
@@ -43,6 +43,6 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 160]]
 
 ## Top bridge nodes
-- [[dot-_call()_1]] - degree 14, connects to 2 communities
+- [[dot-_call()]] - degree 14, connects to 2 communities
 - [[TestEnsembleStatsDegenerate]] - degree 10, connects to 1 community
 - [[dot-test_no_negative_weights_no_clim()]] - degree 3, connects to 1 community

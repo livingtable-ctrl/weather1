@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_tracker.py"
+source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 318"
-location: "L5847"
+community: "Community 479"
+location: "L762"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_318
+  - community/Community_479
 ---
 
 # .setUp()
 
 ## Connections
-- [[TestStopLossAccuracy]] - `method` [EXTRACTED]
+- [[TestExportTrades]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_318
+#graphify/code #graphify/EXTRACTED #community/Community_479

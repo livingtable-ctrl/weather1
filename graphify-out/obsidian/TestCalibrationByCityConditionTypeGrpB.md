@@ -14,8 +14,8 @@ tags:
 ## Connections
 - [[56 - get_calibration_by_city() must accept condition_type filter.]] - `rationale_for` [EXTRACTED]
 - [[dot-_log()]] - `method` [EXTRACTED]
-- [[dot-setUp()_25]] - `method` [EXTRACTED]
-- [[dot-tearDown()_25]] - `method` [EXTRACTED]
+- [[dot-setUp()_5]] - `method` [EXTRACTED]
+- [[dot-tearDown()_5]] - `method` [EXTRACTED]
 - [[dot-test_grpb_calib_city_empty_returns_empty_dict()]] - `method` [EXTRACTED]
 - [[dot-test_grpb_calib_city_filter_above_only()]] - `method` [EXTRACTED]
 - [[dot-test_grpb_calib_city_filter_changes_brier()]] - `method` [EXTRACTED]

@@ -12,7 +12,7 @@ tags:
 # .test_rows_with_null_settled_temp_f_are_not_selected()
 
 ## Connections
-- [[dot-_settle()_1]] - `calls` [EXTRACTED]
+- [[dot-_settle()]] - `calls` [EXTRACTED]
 - [[Rows that never got a settled_temp_f (e.g. hourlymonthly-precip tickers, or a…]] - `rationale_for` [EXTRACTED]
 - [[TestBackfillDailyTempSettlement]] - `method` [EXTRACTED]
 

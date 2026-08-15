@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 412"
-location: "L1922"
+community: "Tracker Disputed Outcome Restoration"
+location: "L3987"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_412
+  - community/Tracker_Disputed_Outcome_Restoration
 ---
 
 # .setUp()
 
 ## Connections
-- [[TestCalibrationTrendUsesMarketDate]] - `method` [EXTRACTED]
+- [[TestDisputedOutcomeTracking]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_412
+#graphify/code #graphify/EXTRACTED #community/Tracker_Disputed_Outcome_Restoration

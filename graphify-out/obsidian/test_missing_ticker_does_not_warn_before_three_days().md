@@ -12,7 +12,7 @@ tags:
 # test_missing_ticker_does_not_warn_before_three_days()
 
 ## Connections
-- [[_mock_client()_2]] - `calls` [EXTRACTED]
+- [[_mock_client()_1]] - `calls` [EXTRACTED]
 - [[test_series_drift.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_126

@@ -1,19 +1,19 @@
 ---
-source_file: "tests/test_paths_bypass_guard.py"
+source_file: "tests/test_bare_os_replace_guard.py"
 type: "code"
-community: "Community 355"
-location: "L73"
+community: "Backtest Engine & Atomic Writes"
+location: "L96"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_355
+  - community/Backtest_Engine__Atomic_Writes
 ---
 
 # _all_source_files()
 
 ## Connections
-- [[Path_25]] - `references` [EXTRACTED]
-- [[test_no_new_paths_py_bypass_sites()]] - `calls` [EXTRACTED]
-- [[test_paths_bypass_guard.py]] - `contains` [EXTRACTED]
+- [[Path_27]] - `references` [EXTRACTED]
+- [[test_bare_os_replace_guard.py]] - `contains` [EXTRACTED]
+- [[test_no_new_bare_os_replace_sites()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_355
+#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes

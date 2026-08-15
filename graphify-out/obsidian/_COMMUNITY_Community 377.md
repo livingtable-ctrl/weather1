@@ -10,13 +10,13 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-test_floor_strike_happy_path()_1]] - code - tests/test_snow_markets.py
-- [[dot-test_missing_floor_strike_returns_none()_2]] - code - tests/test_snow_markets.py
-- [[dot-test_non_numeric_floor_strike_returns_none()_2]] - code - tests/test_snow_markets.py
-- [[dot-test_ordinary_temperature_ticker_unaffected()_1]] - code - tests/test_snow_markets.py
+- [[dot-test_floor_strike_happy_path()]] - code - tests/test_snow_markets.py
+- [[dot-test_missing_floor_strike_returns_none()_1]] - code - tests/test_snow_markets.py
+- [[dot-test_non_numeric_floor_strike_returns_none()_1]] - code - tests/test_snow_markets.py
+- [[dot-test_ordinary_temperature_ticker_unaffected()]] - code - tests/test_snow_markets.py
 - [[dot-test_rain_ticker_unaffected()_1]] - code - tests/test_snow_markets.py
-- [[dot-test_unexpected_strike_type_returns_none()_1]] - code - tests/test_snow_markets.py
-- [[Regression control branch ordering must not swallow a normal temperature…_1]] - rationale - tests/test_snow_markets.py
+- [[dot-test_unexpected_strike_type_returns_none()]] - code - tests/test_snow_markets.py
+- [[Regression control branch ordering must not swallow a normal temperature…]] - rationale - tests/test_snow_markets.py
 - [[Regression control the snow branch must not swallow a rain ticker (both are…]] - rationale - tests/test_snow_markets.py
 - [[TestParseMarketConditionMonthlySnow]] - code - tests/test_snow_markets.py
 - [[backlog.txt Snow Step 2 the real per-bracket threshold, read from…]] - rationale - tests/test_snow_markets.py

@@ -10,8 +10,8 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-setUp()_5]] - code - tests/test_paper.py
-- [[dot-tearDown()_5]] - code - tests/test_paper.py
+- [[dot-setUp()_25]] - code - tests/test_paper.py
+- [[dot-tearDown()_24]] - code - tests/test_paper.py
 - [[dot-test_directional_exposure_other_side()]] - code - tests/test_paper.py
 - [[dot-test_directional_exposure_same_side()]] - code - tests/test_paper.py
 - [[dot-test_directional_penalty_applies_before_city_cap()]] - code - tests/test_paper.py
@@ -30,8 +30,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 45]]
 - 1 edge to [[_COMMUNITY_Community 56]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
 - [[TestDirectionalExposure]] - degree 8, connects to 2 communities

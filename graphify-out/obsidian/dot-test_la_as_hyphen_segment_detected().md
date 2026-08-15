@@ -12,7 +12,7 @@ tags:
 # .test_la_as_hyphen_segment_detected()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[Rain market with '-LA-' segment (KXRAIN-LA-...) → city == 'LA'.]] - `rationale_for` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 

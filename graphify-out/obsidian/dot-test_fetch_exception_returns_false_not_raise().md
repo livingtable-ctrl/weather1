@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_rain_markets.py"
+source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 311"
-location: "L302"
+community: "Community 238"
+location: "L681"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_311
+  - community/Community_238
 ---
 
 # .test_fetch_exception_returns_false_not_raise()
 
 ## Connections
-- [[TestAuditSettlementMonthlyRain]] - `method` [EXTRACTED]
+- [[TestAuditSettlementMonthlySnow]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_311
+#graphify/code #graphify/EXTRACTED #community/Community_238

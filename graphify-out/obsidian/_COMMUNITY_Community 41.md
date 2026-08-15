@@ -47,12 +47,12 @@ members: 44
 - [[TestFitMarketImpliedDistributionPrecipMonthTotal]] - code - tests/test_market_implied_distribution.py
 - [[TestResolveMarketImpliedForAnalysis]] - code - tests/test_market_implied_distribution.py
 - [[Tests for weather_markets.fit_market_implied_distribution and…]] - rationale - tests/test_market_implied_distribution.py
-- [[_market()_1]] - code - tests/test_market_implied_distribution.py
+- [[_market()_2]] - code - tests/test_market_implied_distribution.py
 - [[_normal_ladder()]] - code - tests/test_market_implied_distribution.py
 - [[_rain_ladder()]] - code - tests/test_market_implied_distribution.py
-- [[_rain_market()_1]] - code - tests/test_market_implied_distribution.py
-- [[backlog.txt RAIN MARKETS -- LADDERSIBLING GROUPING FOR MARKET- IMPLIED…]] - rationale - tests/test_market_implied_distribution.py
+- [[_rain_market()_2]] - code - tests/test_market_implied_distribution.py
 - [[backlog.txt RAIN MARKETS -- LADDERSIBLING GROUPING FOR MARKET- IMPLIED…_1]] - rationale - tests/test_market_implied_distribution.py
+- [[backlog.txt RAIN MARKETS -- LADDERSIBLING GROUPING FOR MARKET- IMPLIED…_2]] - rationale - tests/test_market_implied_distribution.py
 - [[test_market_implied_distribution.py]] - code - tests/test_market_implied_distribution.py
 
 ## Live Query (requires Dataview plugin)

@@ -27,7 +27,7 @@ members: 19
 - [[The user-visible behavior test_fetch_pdo_pna_write_failure_still_…]] - rationale - tests/test_forecasting.py
 - [[_pdopna_blend_active returns False when pdo_pna.json is absent.]] - rationale - tests/test_forecasting.py
 - [[_pdopna_blend_active returns False when west-coast count  20.]] - rationale - tests/test_forecasting.py
-- [[backlog.txt climate_indices.py's PDOPNA CACHE AND backtest.py's OWN CACHE…_1]] - rationale - tests/test_forecasting.py
+- [[backlog.txt climate_indices.py's PDOPNA CACHE AND backtest.py's OWN CACHE…]] - rationale - tests/test_forecasting.py
 - [[fetch_pdo_pna correctly parses NOAA CSV and writes pdo_pna.json.]] - rationale - tests/test_forecasting.py
 
 ## Live Query (requires Dataview plugin)
@@ -39,8 +39,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
+- 1 edge to [[_COMMUNITY_Community 51]]
 
 ## Top bridge nodes
 - [[TestPDOPNA]] - degree 11, connects to 2 communities

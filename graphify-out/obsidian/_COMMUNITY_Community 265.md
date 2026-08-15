@@ -11,8 +11,8 @@ members: 14
 
 ## Members
 - [[dot-_insert_prediction_and_outcome()]] - code - tests/test_tracker.py
-- [[dot-setUp()_11]] - code - tests/test_tracker.py
-- [[dot-tearDown()_11]] - code - tests/test_tracker.py
+- [[dot-setUp()_12]] - code - tests/test_tracker.py
+- [[dot-tearDown()_12]] - code - tests/test_tracker.py
 - [[dot-test_midpoint_prediction()]] - code - tests/test_tracker.py
 - [[dot-test_no_data_returns_none()]] - code - tests/test_tracker.py
 - [[dot-test_perfect_prediction_brier_zero()]] - code - tests/test_tracker.py

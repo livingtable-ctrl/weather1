@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[dot-__enter__()]] - `references` [EXTRACTED]
 - [[dot-__exit__()]] - `method` [EXTRACTED]
-- [[dot-__init__()_8]] - `method` [EXTRACTED]
+- [[dot-__init__()_6]] - `method` [EXTRACTED]
 - [[dot-_acquire_file_lock()]] - `method` [EXTRACTED]
 - [[dot-_release_file_lock()]] - `method` [EXTRACTED]
 - [[dot-acquire()]] - `method` [EXTRACTED]

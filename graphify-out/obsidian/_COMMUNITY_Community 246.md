@@ -10,7 +10,7 @@ members: 14
 **Members:** 14 nodes
 
 ## Members
-- [[dot-_run_sim()_1]] - code - tests/test_phase3_batch_d.py
+- [[dot-_run_sim()]] - code - tests/test_phase3_batch_d.py
 - [[dot-test_backtest_still_importable()]] - code - tests/test_phase3_batch_d.py
 - [[dot-test_core_keys_always_present()]] - code - tests/test_phase3_batch_d.py
 - [[dot-test_distribution_absent_by_default()]] - code - tests/test_phase3_batch_d.py
@@ -35,12 +35,12 @@ SORT file.name ASC
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Community 87]]
 - 3 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 1 edge to [[_COMMUNITY_Community 433]]
 - 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 328]]
 - 1 edge to [[_COMMUNITY_Community 134]]
-- 1 edge to [[_COMMUNITY_Community 433]]
 
 ## Top bridge nodes
 - [[Phase 3 Batch D Monte CarloBacktest Tests]] - degree 12, connects to 6 communities
-- [[dot-_run_sim()_1]] - degree 5, connects to 1 community
+- [[dot-_run_sim()]] - degree 5, connects to 1 community
 - [[dot-test_simulate_portfolio_signature_has_include_distribution()]] - degree 2, connects to 1 community

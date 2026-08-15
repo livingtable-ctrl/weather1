@@ -12,7 +12,7 @@ tags:
 # TestTrainAllTemperatureScalingRainExclusion
 
 ## Connections
-- [[dot-_seed()]] - `method` [EXTRACTED]
+- [[dot-_seed()_6]] - `method` [EXTRACTED]
 - [[dot-test_hurricane_rows_excluded_from_global_pool()]] - `method` [EXTRACTED]
 - [[dot-test_rain_rows_excluded_from_global_pool()]] - `method` [EXTRACTED]
 - [[dot-test_snow_rows_excluded_from_global_pool()]] - `method` [EXTRACTED]

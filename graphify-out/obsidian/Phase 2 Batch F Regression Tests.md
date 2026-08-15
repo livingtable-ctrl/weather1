@@ -16,7 +16,7 @@ tags:
 - [[Phase 3 Batch D Monte CarloBacktest Tests]] - `shares_data_with` [INFERRED]
 - [[TestCorrelationAppliedFlag]] - `contains` [EXTRACTED]
 - [[TestCorrelationMatrixIntegrity]] - `contains` [EXTRACTED]
-- [[_make_trade()_3]] - `contains` [EXTRACTED]
+- [[_make_trade()]] - `contains` [EXTRACTED]
 - [[get_balance_history()]] - `calls` [AMBIGUOUS]
 - [[simulate_portfolio()]] - `calls` [EXTRACTED]
 

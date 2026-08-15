@@ -1,17 +1,17 @@
 ---
-source_file: "weather app site V_3 (3)/src/mockData.js"
+source_file: "frontend/src/mockData.js"
 type: "code"
-community: "Community 81"
+community: "Community 88"
 location: "L146"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_81
+  - community/Community_88
 ---
 
 # stats
 
 ## Connections
-- [[weather app site V_3 (3)srcmockData.js]] - `contains` [EXTRACTED]
+- [[frontendsrcmockData.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_81
+#graphify/code #graphify/EXTRACTED #community/Community_88

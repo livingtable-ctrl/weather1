@@ -15,7 +15,7 @@ tags:
 - [[Convert NWS forecast temperature to a probability using a narrow normal…]] - `rationale_for` [EXTRACTED]
 - [[Phase 2 Batch H Regression Tests]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[date_5]] - `references` [EXTRACTED]
+- [[date]] - `references` [EXTRACTED]
 - [[fetch_mos()]] - `semantically_similar_to` [INFERRED]
 - [[get_nws_daily_forecast()]] - `calls` [EXTRACTED]
 - [[normal_cdf()]] - `calls` [EXTRACTED]

@@ -21,8 +21,8 @@ tags:
 - [[test_get_component_attribution_returns_per_source_brier()]] - `calls` [EXTRACTED]
 - [[test_get_component_attribution_works()]] - `calls` [EXTRACTED]
 - [[test_web_analytics.py]] - `references` [EXTRACTED]
-- [[tracker.py_2]] - `implements` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
+- [[tracker.py_1]] - `implements` [EXTRACTED]
 - [[web_app.py]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_36

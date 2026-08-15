@@ -11,9 +11,9 @@ members: 6
 
 ## Members
 - [[dot-test_count_model_gate_state_does_not_affect_this_one()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_does_not_block_when_gate_active()_2]] - code - tests/test_hurricane_markets.py
-- [[dot-test_other_hurricane_shapes_still_unconditionally_blocked()_1]] - code - tests/test_hurricane_markets.py
-- [[dot-test_still_blocks_when_gate_inactive()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_does_not_block_when_gate_active()_3]] - code - tests/test_hurricane_markets.py
+- [[dot-test_other_hurricane_shapes_still_unconditionally_blocked()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_still_blocks_when_gate_inactive()_3]] - code - tests/test_hurricane_markets.py
 - [[TestCheckPositionLimitsHurricaneNextEventConditional]] - code - tests/test_hurricane_markets.py
 - [[The two hurricane sub-models' gates must not cross-activate each other.]] - rationale - tests/test_hurricane_markets.py
 

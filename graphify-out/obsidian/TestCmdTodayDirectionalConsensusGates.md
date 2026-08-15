@@ -12,9 +12,9 @@ tags:
 # TestCmdTodayDirectionalConsensusGates
 
 ## Connections
-- [[dot-_analysis()_1]] - `method` [EXTRACTED]
+- [[dot-_analysis()_3]] - `method` [EXTRACTED]
 - [[dot-_market()_4]] - `method` [EXTRACTED]
-- [[dot-_run()_2]] - `method` [EXTRACTED]
+- [[dot-_run()_3]] - `method` [EXTRACTED]
 - [[dot-test_allows_market_within_both_thresholds()_1]] - `method` [EXTRACTED]
 - [[dot-test_skips_when_divergence_ratio_exceeded()_1]] - `method` [EXTRACTED]
 - [[dot-test_skips_when_market_gives_our_side_below_min_prob()_1]] - `method` [EXTRACTED]

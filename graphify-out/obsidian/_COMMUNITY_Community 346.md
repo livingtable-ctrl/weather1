@@ -10,7 +10,7 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-_make_enriched()_2]] - code - tests/test_trade_improvements.py
+- [[dot-_make_enriched()_3]] - code - tests/test_trade_improvements.py
 - [[dot-test_cron_imports_min_prob_edge()]] - code - tests/test_trade_improvements.py
 - [[dot-test_low_prob_edge_signal_skipped()]] - code - tests/test_trade_improvements.py
 - [[dot-test_min_prob_edge_constant_exists()]] - code - tests/test_trade_improvements.py

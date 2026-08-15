@@ -12,9 +12,9 @@ tags:
 # .test_correlation_applied_true_when_cholesky_succeeds()
 
 ## Connections
-- [[dot-_run()_4]] - `calls` [EXTRACTED]
+- [[dot-_run()]] - `calls` [EXTRACTED]
 - [[TestCorrelationAppliedFlag]] - `method` [EXTRACTED]
 - [[When Cholesky succeeds and trades have cities, correlation_applied must be True.]] - `rationale_for` [EXTRACTED]
-- [[_make_trade()_3]] - `calls` [EXTRACTED]
+- [[_make_trade()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_134

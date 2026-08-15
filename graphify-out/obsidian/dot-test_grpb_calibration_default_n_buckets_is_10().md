@@ -12,7 +12,7 @@ tags:
 # .test_grpb_calibration_default_n_buckets_is_10()
 
 ## Connections
-- [[dot-_seed()_8]] - `calls` [EXTRACTED]
+- [[dot-_seed()_3]] - `calls` [EXTRACTED]
 - [[Default call (no args) should use 10 buckets.]] - `rationale_for` [EXTRACTED]
 - [[TestMarketCalibrationQuantile]] - `method` [EXTRACTED]
 

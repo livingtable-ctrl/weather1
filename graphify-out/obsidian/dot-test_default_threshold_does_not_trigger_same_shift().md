@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[Sanity companion to the above the same 0.23 shift must NOT exit under the real…]] - `rationale_for` [EXTRACTED]
 - [[TestModelExitShiftPpIsConfigurable]] - `method` [EXTRACTED]
-- [[_make_trade()_1]] - `calls` [EXTRACTED]
+- [[_make_trade()_2]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_231

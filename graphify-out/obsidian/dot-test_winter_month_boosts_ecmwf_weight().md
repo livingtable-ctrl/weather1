@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[ECMWF weight should be higher in winter than summer. month=1 is winter, so…]] - `rationale_for` [EXTRACTED]
-- [[TestForecastModelWeights_1]] - `method` [EXTRACTED]
+- [[TestForecastModelWeights]] - `method` [EXTRACTED]
 - [[_forecast_model_weights()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests

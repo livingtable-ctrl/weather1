@@ -12,7 +12,7 @@ tags:
 # .test_defaults_period_interval_to_one_minute()
 
 ## Connections
-- [[dot-_make_client()_8]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
 - [[TestGetCandlesticks]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_467

@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Per-UTC-time-band win rates for settled same-day abovebelow trades. Returns…]] - `rationale_for` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[_sameday_effective_cap()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]

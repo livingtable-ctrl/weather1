@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()_2]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_4]] - `calls` [EXTRACTED]
+- [[dot-_enriched()_3]] - `calls` [EXTRACTED]
 - [[A missingstale storms-named-to-date cache (None) must never trigger the short-…]] - `rationale_for` [EXTRACTED]
 - [[TestAnalyzeStormOrderTrade]] - `method` [EXTRACTED]
 

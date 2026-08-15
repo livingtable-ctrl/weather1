@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_live_execution.py"
+source_file: "tests/test_p0_10_paper_prelog.py"
 type: "code"
-community: "Community 45"
-location: "L2693"
+community: "Community 340"
+location: "L51"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Community_340
 ---
 
 # .setup_method()
 
 ## Connections
-- [[_LiveDBTestBase]] - `method` [EXTRACTED]
+- [[TestPaperPreLog]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_45
+#graphify/code #graphify/EXTRACTED #community/Community_340

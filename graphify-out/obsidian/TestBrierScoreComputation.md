@@ -12,9 +12,9 @@ tags:
 # TestBrierScoreComputation
 
 ## Connections
-- [[dot-_seed()_4]] - `method` [EXTRACTED]
-- [[dot-setup_method()_36]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_27]] - `method` [EXTRACTED]
+- [[dot-_seed()_2]] - `method` [EXTRACTED]
+- [[dot-setup_method()_18]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_11]] - `method` [EXTRACTED]
 - [[dot-test_brier_score_known_value()]] - `method` [EXTRACTED]
 - [[dot-test_brier_score_no_data_returns_none()]] - `method` [EXTRACTED]
 - [[dot-test_roc_auc_perfect_classifier()]] - `method` [EXTRACTED]

@@ -25,7 +25,7 @@ members: 18
 - [[cli.py Module (extracted CLI dispatch)]] - code - docs/superpowers/plans/2026-06-27-category-g-architecture.md
 - [[databias_models.pkl]] - code - system_audit_prompt.txt
 - [[live_config.json Hard Stops]] - document - docs/superpowers/specs/2026-04-10-execution-pipeline-design.md
-- [[main.py Module_1]] - code - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
+- [[main.py Module]] - code - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
 - [[ml_bias.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
 - [[scikit-learn]] - code - requirements.txt
 
@@ -39,14 +39,14 @@ SORT file.name ASC
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_Community 209]]
 - 3 edges to [[_COMMUNITY_Community 141]]
-- 2 edges to [[_COMMUNITY_Community 199]]
 - 2 edges to [[_COMMUNITY_Community 156]]
+- 2 edges to [[_COMMUNITY_Community 199]]
+- 1 edge to [[_COMMUNITY_Community 104]]
 - 1 edge to [[_COMMUNITY_Community 154]]
 - 1 edge to [[_COMMUNITY_Community 197]]
-- 1 edge to [[_COMMUNITY_Community 104]]
 
 ## Top bridge nodes
-- [[main.py Module_1]] - degree 17, connects to 5 communities
+- [[main.py Module]] - degree 17, connects to 5 communities
 - [[ml_bias.py Module]] - degree 6, connects to 2 communities
 - [[Security Audit Scope]] - degree 5, connects to 2 communities
 - [[databias_models.pkl]] - degree 2, connects to 1 community

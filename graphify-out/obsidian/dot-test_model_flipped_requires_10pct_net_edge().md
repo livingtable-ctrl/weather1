@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[TestCheckModelExitsThresholds]] - `method` [EXTRACTED]
-- [[_make_trade()_1]] - `calls` [EXTRACTED]
+- [[_make_trade()_2]] - `calls` [EXTRACTED]
 - [[check_model_exits model_flipped must require net_edge  -0.10 (not -0.05).]] - `rationale_for` [EXTRACTED]
 - [[check_model_exits()]] - `calls` [EXTRACTED]
 

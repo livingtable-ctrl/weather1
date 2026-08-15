@@ -12,9 +12,9 @@ tags:
 # TestBackfillDailyTempSettlement
 
 ## Connections
-- [[dot-_settle()_1]] - `method` [EXTRACTED]
-- [[dot-setUp()_43]] - `method` [EXTRACTED]
-- [[dot-tearDown()_42]] - `method` [EXTRACTED]
+- [[dot-_settle()]] - `method` [EXTRACTED]
+- [[dot-setUp()_42]] - `method` [EXTRACTED]
+- [[dot-tearDown()_41]] - `method` [EXTRACTED]
 - [[dot-test_corrects_stale_proxy_value_from_expiration_value()]] - `method` [EXTRACTED]
 - [[dot-test_disputed_rows_are_included()]] - `method` [EXTRACTED]
 - [[dot-test_failed_fetch_leaves_prior_value_untouched()]] - `method` [EXTRACTED]

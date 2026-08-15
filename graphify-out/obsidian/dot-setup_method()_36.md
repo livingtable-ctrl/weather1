@@ -1,18 +1,17 @@
 ---
-source_file: "tests/test_regression.py"
+source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 284"
-location: "L83"
+community: "Community 52"
+location: "L13"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_284
+  - community/Community_52
 ---
 
 # .setup_method()
 
 ## Connections
-- [[Redirect tracker to a fresh temp DB before each test.]] - `rationale_for` [EXTRACTED]
-- [[TestBrierScoreComputation]] - `method` [EXTRACTED]
+- [[TestGetMemberAccuracyDaysBack]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_284
+#graphify/code #graphify/EXTRACTED #community/Community_52

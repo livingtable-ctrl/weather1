@@ -12,6 +12,6 @@ tags:
 # Not called by check_paper_position_exits itself (below) -- that function needs…
 
 ## Connections
-- [[dot-get_open()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-get_open()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_145

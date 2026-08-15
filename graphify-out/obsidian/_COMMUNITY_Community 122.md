@@ -11,7 +11,7 @@ members: 24
 
 ## Members
 - [[dot-_cache_target_hour()]] - code - tests/test_hourly_markets.py
-- [[dot-_enriched()_1]] - code - tests/test_hourly_markets.py
+- [[dot-_enriched()]] - code - tests/test_hourly_markets.py
 - [[dot-_pin_sources()]] - code - tests/test_hourly_markets.py
 - [[dot-test_consensus_hardcoded_false_no_kelly_bonus()]] - code - tests/test_hourly_markets.py
 - [[dot-test_degenerate_ensemble_gates_out()]] - code - tests/test_hourly_markets.py
@@ -43,10 +43,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 64]]
 - 1 edge to [[_COMMUNITY_Community 233]]
 - 1 edge to [[_COMMUNITY_Community 609]]
+- 1 edge to [[_COMMUNITY_Community 64]]
 
 ## Top bridge nodes
 - [[TestAnalyzeTradeHourlyModel]] - degree 18, connects to 2 communities
-- [[dot-_enriched()_1]] - degree 14, connects to 1 community
+- [[dot-_enriched()]] - degree 14, connects to 1 community

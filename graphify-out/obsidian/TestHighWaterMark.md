@@ -12,8 +12,8 @@ tags:
 # TestHighWaterMark
 
 ## Connections
-- [[dot-setUp()_4]] - `method` [EXTRACTED]
-- [[dot-tearDown()_4]] - `method` [EXTRACTED]
+- [[dot-setUp()_26]] - `method` [EXTRACTED]
+- [[dot-tearDown()_25]] - `method` [EXTRACTED]
 - [[dot-test_drawdown_zero_at_start()]] - `method` [EXTRACTED]
 - [[dot-test_max_drawdown_pct_correct()]] - `method` [EXTRACTED]
 - [[dot-test_paused_from_peak_not_start()]] - `method` [EXTRACTED]

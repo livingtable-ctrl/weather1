@@ -12,7 +12,7 @@ tags:
 # TestMinSignalVolume
 
 ## Connections
-- [[dot-_enriched()_5]] - `method` [EXTRACTED]
+- [[dot-_enriched()_7]] - `method` [EXTRACTED]
 - [[dot-test_passes_sufficient_volume()]] - `method` [EXTRACTED]
 - [[dot-test_skips_low_volume_market()]] - `method` [EXTRACTED]
 - [[analyze_trade() skips markets below MIN_SIGNAL_VOLUME.]] - `rationale_for` [EXTRACTED]

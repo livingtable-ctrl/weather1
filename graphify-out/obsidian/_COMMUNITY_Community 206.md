@@ -11,7 +11,7 @@ members: 17
 
 ## Members
 - [[(city, _CITY_TZ value) pairs for the 4 representative US timezones this bot…]] - rationale - tests/test_weather_markets.py
-- [[dot-_enriched()_7]] - code - tests/test_weather_markets.py
+- [[dot-_enriched()_4]] - code - tests/test_weather_markets.py
 - [[dot-now()]] - code - tests/test_weather_markets.py
 - [[dot-test_days_out_ceiling_uses_city_local_today_not_utc()]] - code - tests/test_weather_markets.py
 - [[dot-test_genuinely_past_market_still_gated_during_utc_rollover_window()]] - code - tests/test_weather_markets.py
@@ -24,7 +24,7 @@ members: 17
 - [[The generic days_out ceiling gate (MAX_DAYS_OUT) must also key off city-local…]] - rationale - tests/test_weather_markets.py
 - [[_FrozenDatetime]] - code - tests/test_weather_markets.py
 - [[_frozen_datetime_at()]] - code - tests/test_weather_markets.py
-- [[datetime_2]] - code
+- [[datetime]] - code
 - [[datetime.now(tz) returns _FROZEN_INSTANT converted to tz (or naive…]] - rationale - tests/test_weather_markets.py
 - [[fetch_temperature_pirate_weather must route to the FORECAST endpoint (not the…]] - rationale - tests/test_weather_markets.py
 
@@ -40,8 +40,8 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_Community 64]]
 
 ## Top bridge nodes
-- [[datetime_2]] - degree 6, connects to 1 community
 - [[TestPastDateGateCityLocal]] - degree 6, connects to 1 community
 - [[dot-test_days_out_ceiling_uses_city_local_today_not_utc()]] - degree 6, connects to 1 community
 - [[dot-test_genuinely_past_market_still_gated_during_utc_rollover_window()]] - degree 6, connects to 1 community
 - [[dot-test_same_day_market_still_open_during_utc_rollover_window()]] - degree 6, connects to 1 community
+- [[datetime]] - degree 6, connects to 1 community

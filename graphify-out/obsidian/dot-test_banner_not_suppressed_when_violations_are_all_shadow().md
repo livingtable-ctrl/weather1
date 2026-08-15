@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[TestPlacementAttemptedBannerAllConditions]] - `method` [EXTRACTED]
 - [[_strong_market_analysis()]] - `calls` [EXTRACTED]
-- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…_2]] - `rationale_for` [EXTRACTED]
+- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_290

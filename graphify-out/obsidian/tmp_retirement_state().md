@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Isolate the probation state file and the retired-strategiespins files this…]] - `rationale_for` [EXTRACTED]
-- [[fixture_11]] - `references` [EXTRACTED]
+- [[fixture_2]] - `references` [EXTRACTED]
 - [[test_retirement_probation.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_140

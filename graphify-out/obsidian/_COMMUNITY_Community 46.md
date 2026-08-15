@@ -10,18 +10,18 @@ members: 43
 **Members:** 43 nodes
 
 ## Members
-- [[dot-_insert()_2]] - code - tests/test_tracker.py
 - [[dot-_insert()_1]] - code - tests/test_tracker.py
+- [[dot-_insert()_2]] - code - tests/test_tracker.py
 - [[dot-_insert()_3]] - code - tests/test_tracker.py
 - [[dot-_insert()_4]] - code - tests/test_tracker.py
-- [[dot-setUp()_13]] - code - tests/test_tracker.py
-- [[dot-setUp()_12]] - code - tests/test_tracker.py
-- [[dot-setUp()_14]] - code - tests/test_tracker.py
-- [[dot-setUp()_16]] - code - tests/test_tracker.py
-- [[dot-tearDown()_13]] - code - tests/test_tracker.py
-- [[dot-tearDown()_12]] - code - tests/test_tracker.py
-- [[dot-tearDown()_14]] - code - tests/test_tracker.py
-- [[dot-tearDown()_16]] - code - tests/test_tracker.py
+- [[dot-setUp()_34]] - code - tests/test_tracker.py
+- [[dot-setUp()_35]] - code - tests/test_tracker.py
+- [[dot-setUp()_36]] - code - tests/test_tracker.py
+- [[dot-setUp()_37]] - code - tests/test_tracker.py
+- [[dot-tearDown()_33]] - code - tests/test_tracker.py
+- [[dot-tearDown()_34]] - code - tests/test_tracker.py
+- [[dot-tearDown()_35]] - code - tests/test_tracker.py
+- [[dot-tearDown()_36]] - code - tests/test_tracker.py
 - [[dot-test_below_min_samples_excluded()]] - code - tests/test_tracker.py
 - [[dot-test_brier_values_in_valid_range()]] - code - tests/test_tracker.py
 - [[dot-test_checks_each_method_independently()]] - code - tests/test_tracker.py

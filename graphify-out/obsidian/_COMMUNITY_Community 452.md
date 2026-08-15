@@ -16,7 +16,7 @@ members: 7
 - [[Phase G Long-Term Features Plan]] - document - docs/superpowers/plans/2026-04-16-phase-g-long-term.md
 - [[Strategy P&amp;L Attribution]] - document - docs/superpowers/plans/2026-04-16-phase-g-long-term.md
 - [[Tracker DB Retention Policy (purge_old_predictions)]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[tracker.py module]] - code - docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md
+- [[tracker.py module_1]] - code - docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,7 +31,7 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Community 224]]
 
 ## Top bridge nodes
-- [[tracker.py module]] - degree 6, connects to 1 community
+- [[tracker.py module_1]] - degree 6, connects to 1 community
 - [[Brier Alert Actionable Guidance]] - degree 3, connects to 1 community
 - [[Per-City Per-Season Brier Segmentation]] - degree 3, connects to 1 community
 - [[Phase G Long-Term Features Plan]] - degree 3, connects to 1 community

@@ -12,7 +12,7 @@ tags:
 # .test_no_negative_weights_tight_spread()
 
 ## Connections
-- [[dot-_call()_1]] - `calls` [EXTRACTED]
+- [[dot-_call()]] - `calls` [EXTRACTED]
 - [[TestConfidenceScaledBlendWeightsNoNegative]] - `method` [EXTRACTED]
 - [[With ens_std=0.5 (scale=40.5=8, clamped to 1.5), w_climw_nws stay = 0.]] - `rationale_for` [EXTRACTED]
 

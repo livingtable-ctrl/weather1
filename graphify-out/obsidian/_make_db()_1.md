@@ -22,9 +22,9 @@ tags:
 - [[dot-test_cutoff_excludes_future_rows_from_training()]] - `calls` [EXTRACTED]
 - [[dot-test_no_market_date_rows_handled_gracefully()]] - `calls` [EXTRACTED]
 - [[dot-test_seasonal_accepts_cutoff_date_kwarg()]] - `calls` [EXTRACTED]
-- [[dot-test_weights_sum_to_one()_3]] - `calls` [EXTRACTED]
+- [[dot-test_weights_sum_to_one()_5]] - `calls` [EXTRACTED]
 - [[dot-test_weights_with_explicit_cutoff_sum_to_one()]] - `calls` [EXTRACTED]
-- [[Path_28]] - `references` [EXTRACTED]
+- [[Path_17]] - `references` [EXTRACTED]
 - [[Phase 3 Batch C Calibration Tests]] - `contains` [EXTRACTED]
 - [[Seed a predictions+outcomes DB for calibration tests.]] - `rationale_for` [EXTRACTED]
 

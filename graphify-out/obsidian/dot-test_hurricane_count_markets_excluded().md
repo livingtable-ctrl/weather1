@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[TestConsistency]] - `method` [EXTRACTED]
-- [[_market()]] - `calls` [EXTRACTED]
+- [[_market()_1]] - `calls` [EXTRACTED]
 - [[backlog.txt HURRICANE MARKETS -- season-count model (2026-08-03, opus-review-…]] - `rationale_for` [EXTRACTED]
 - [[find_violations()]] - `calls` [EXTRACTED]
 

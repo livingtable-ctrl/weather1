@@ -12,7 +12,7 @@ tags:
 # .test_updated_client_order_id_always_present_and_deterministic()
 
 ## Connections
-- [[dot-_make_client()_8]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
 - [[Same (order_id, side, count, price, cycle) - same updated_client_order_id, so…]] - `rationale_for` [EXTRACTED]
 - [[TestAmendOrder]] - `method` [EXTRACTED]
 

@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[C Automated GTC Cancellation]] - `references` [EXTRACTED]
-- [[main.py Module_1]] - `references` [EXTRACTED]
+- [[main.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_179

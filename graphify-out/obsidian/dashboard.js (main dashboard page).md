@@ -11,7 +11,6 @@ tags:
 # dashboard.js (main dashboard page)
 
 ## Connections
-- [[OverviewTab.jsx (V3)]] - `semantically_similar_to` [INFERRED]
 - [[trades.js (trades page)]] - `shares_data_with` [INFERRED]
 - [[watchdog.py (dead man's switch)]] - `semantically_similar_to` [INFERRED]
 

@@ -13,9 +13,9 @@ tags:
 
 ## Connections
 - [[TestAnalyzePipelineExtra]] - `method` [EXTRACTED]
-- [[_make_enriched()]] - `calls` [EXTRACTED]
+- [[_make_enriched()_2]] - `calls` [EXTRACTED]
 - [[analyze_trade handles a LOW market (below condition) correctly.]] - `rationale_for` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[patch]] - `references` [EXTRACTED]
+- [[patch_1]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_53

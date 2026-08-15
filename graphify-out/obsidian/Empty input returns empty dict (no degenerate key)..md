@@ -12,6 +12,6 @@ tags:
 # Empty input returns empty dict (no degenerate key).
 
 ## Connections
-- [[dot-test_empty_returns_empty()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-test_empty_returns_empty()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_173

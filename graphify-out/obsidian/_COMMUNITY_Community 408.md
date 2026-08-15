@@ -11,9 +11,9 @@ members: 9
 
 ## Members
 - [[dot-test_blocks_even_for_tiny_order()]] - code - tests/test_rain_markets.py
-- [[dot-test_blocks_even_when_city_and_date_are_present()_1]] - code - tests/test_rain_markets.py
-- [[dot-test_blocks_regardless_of_qty_and_price()_1]] - code - tests/test_rain_markets.py
-- [[dot-test_daily_ticker_unaffected()_2]] - code - tests/test_rain_markets.py
+- [[dot-test_blocks_even_when_city_and_date_are_present()]] - code - tests/test_rain_markets.py
+- [[dot-test_blocks_regardless_of_qty_and_price()]] - code - tests/test_rain_markets.py
+- [[dot-test_daily_ticker_unaffected()_1]] - code - tests/test_rain_markets.py
 - [[A single $0.01 contract must still be blocked -- this is a no-model gate, not a…]] - rationale - tests/test_rain_markets.py
 - [[Regression control an ordinary ticker must reach the real exposure-cap logic…]] - rationale - tests/test_rain_markets.py
 - [[TestCheckPositionLimitsBlocksMonthlyRain]] - code - tests/test_rain_markets.py

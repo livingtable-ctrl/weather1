@@ -12,7 +12,7 @@ tags:
 # .test_sufficient_prob_edge_signal_passes()
 
 ## Connections
-- [[dot-_make_enriched()_2]] - `calls` [EXTRACTED]
+- [[dot-_make_enriched()_3]] - `calls` [EXTRACTED]
 - [[Signal with 12pp probability edge must NOT be skipped by the gate.]] - `rationale_for` [EXTRACTED]
 - [[TestMinProbEdgeGate]] - `method` [EXTRACTED]
 

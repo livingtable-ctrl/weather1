@@ -12,7 +12,7 @@ tags:
 # ._save_cooldowns()
 
 ## Connections
-- [[dot-check()]] - `calls` [EXTRACTED]
+- [[dot-check()_1]] - `calls` [EXTRACTED]
 - [[FlashCrashCB]] - `method` [EXTRACTED]
 - [[Persist current (non-expired) cooldowns to disk atomically.]] - `rationale_for` [EXTRACTED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]

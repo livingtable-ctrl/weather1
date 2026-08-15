@@ -30,13 +30,13 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_Community 223]]
 - 2 edges to [[_COMMUNITY_Community 356]]
+- 1 edge to [[_COMMUNITY_Community 283]]
+- 1 edge to [[_COMMUNITY_Community 373]]
+- 1 edge to [[_COMMUNITY_Community 80]]
 - 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 458]]
 - 1 edge to [[_COMMUNITY_Community 86]]
-- 1 edge to [[_COMMUNITY_Community 283]]
-- 1 edge to [[_COMMUNITY_Community 373]]
-- 1 edge to [[_COMMUNITY_Community 80]]
 
 ## Top bridge nodes
 - [[Phase 2 Batch L Regression Tests]] - degree 16, connects to 10 communities

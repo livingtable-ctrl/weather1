@@ -12,7 +12,7 @@ tags:
 # .test_within_settlement_gate_skips_exit()
 
 ## Connections
-- [[dot-_open_position_row()_1]] - `calls` [EXTRACTED]
+- [[dot-_open_position_row()]] - `calls` [EXTRACTED]
 - [[TestCheckLiveModelExits]] - `method` [EXTRACTED]
 - [[_check_live_model_exits()]] - `calls` [EXTRACTED]
 

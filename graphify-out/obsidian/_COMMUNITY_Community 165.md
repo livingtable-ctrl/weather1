@@ -10,19 +10,19 @@ members: 20
 **Members:** 20 nodes
 
 ## Members
-- [[dot-_history_all_years_value()]] - code - tests/test_rain_markets.py
 - [[dot-_history_all_years_value()_1]] - code - tests/test_rain_markets.py
+- [[dot-_history_all_years_value()_2]] - code - tests/test_rain_markets.py
 - [[dot-test_after_month_end_any_missing_day_fails_closed()]] - code - tests/test_rain_markets.py
-- [[dot-test_bias_correction_keyed_on_close_dt_month_not_accrual_month()]] - code - tests/test_rain_markets.py
-- [[dot-test_full_pipeline_produces_real_result()]] - code - tests/test_rain_markets.py
-- [[dot-test_month_to_date_any_missing_day_fails_closed()]] - code - tests/test_rain_markets.py
-- [[dot-test_month_to_date_fetch_failure_fails_closed_not_zero()]] - code - tests/test_rain_markets.py
-- [[dot-test_month_to_date_zero_missing_still_trades()]] - code - tests/test_rain_markets.py
-- [[dot-test_no_historical_data_returns_none()]] - code - tests/test_rain_markets.py
+- [[dot-test_bias_correction_keyed_on_close_dt_month_not_accrual_month()_1]] - code - tests/test_rain_markets.py
+- [[dot-test_full_pipeline_produces_real_result()_1]] - code - tests/test_rain_markets.py
+- [[dot-test_month_to_date_any_missing_day_fails_closed()_1]] - code - tests/test_rain_markets.py
+- [[dot-test_month_to_date_fetch_failure_fails_closed_not_zero()_1]] - code - tests/test_rain_markets.py
+- [[dot-test_month_to_date_zero_missing_still_trades()_1]] - code - tests/test_rain_markets.py
+- [[dot-test_no_historical_data_returns_none()_1]] - code - tests/test_rain_markets.py
 - [[dot-test_seasonal_tilt_applied_reaches_full_pipeline()]] - code - tests/test_rain_markets.py
-- [[dot-test_too_few_historical_years_returns_none()]] - code - tests/test_rain_markets.py
-- [[dot-test_unmapped_city_station_returns_none()]] - code - tests/test_rain_markets.py
-- [[Control for the guard above zero missing days must NOT be refused -- confirms…]] - rationale - tests/test_rain_markets.py
+- [[dot-test_too_few_historical_years_returns_none()_1]] - code - tests/test_rain_markets.py
+- [[dot-test_unmapped_city_station_returns_none()_1]] - code - tests/test_rain_markets.py
+- [[Control for the guard above zero missing days must NOT be refused -- confirms…_1]] - rationale - tests/test_rain_markets.py
 - [[Opus-review-caught HIGH finding (Snow Step 2 review, identical gap in this…]] - rationale - tests/test_rain_markets.py
 - [[Opus-review-caught test gap (round 2) the already past month-end branch…]] - rationale - tests/test_rain_markets.py
 - [[Resolved-decision 3 (backlog.txt Step 2 plan) get_quintile_bias must be…]] - rationale - tests/test_rain_markets.py
@@ -45,7 +45,7 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[TestAnalyzeMonthlyRainTradeEndToEnd]] - degree 12, connects to 1 community
-- [[dot-_history_all_years_value()_1]] - degree 9, connects to 1 community
-- [[dot-test_month_to_date_any_missing_day_fails_closed()]] - degree 4, connects to 1 community
-- [[dot-test_month_to_date_fetch_failure_fails_closed_not_zero()]] - degree 4, connects to 1 community
-- [[dot-test_month_to_date_zero_missing_still_trades()]] - degree 4, connects to 1 community
+- [[dot-_history_all_years_value()_2]] - degree 9, connects to 1 community
+- [[dot-test_month_to_date_any_missing_day_fails_closed()_1]] - degree 4, connects to 1 community
+- [[dot-test_month_to_date_fetch_failure_fails_closed_not_zero()_1]] - degree 4, connects to 1 community
+- [[dot-test_month_to_date_zero_missing_still_trades()_1]] - degree 4, connects to 1 community

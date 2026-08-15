@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Return (effective_balance, peak_balance) as a single atomic read. Acquires…]] - `rationale_for` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[drawdown_scaling_factor()]] - `calls` [EXTRACTED]
 - [[get_effective_balance()]] - `calls` [EXTRACTED]
 - [[is_paused_drawdown()]] - `calls` [EXTRACTED]

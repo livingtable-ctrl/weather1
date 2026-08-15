@@ -10,8 +10,8 @@ members: 21
 **Members:** 21 nodes
 
 ## Members
-- [[dot-_open_position_row()_1]] - code - tests/test_live_execution.py
 - [[dot-_open_position_row()]] - code - tests/test_live_execution.py
+- [[dot-_open_position_row()_1]] - code - tests/test_live_execution.py
 - [[dot-test_healthy_position_is_left_alone()]] - code - tests/test_live_execution.py
 - [[dot-test_missing_entry_prob_is_skipped()]] - code - tests/test_live_execution.py
 - [[dot-test_model_flip_beyond_threshold_triggers_exit()]] - code - tests/test_live_execution.py
@@ -44,11 +44,11 @@ SORT file.name ASC
 - 7 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 4 edges to [[_COMMUNITY_Community 111]]
 - 2 edges to [[_COMMUNITY_Community 145]]
+- 1 edge to [[_COMMUNITY_Community 40]]
+- 1 edge to [[_COMMUNITY_Community 164]]
+- 1 edge to [[_COMMUNITY_Community 159]]
 - 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Community 159]]
-- 1 edge to [[_COMMUNITY_Community 164]]
 
 ## Top bridge nodes
 - [[_check_live_position_exits()]] - degree 22, connects to 9 communities

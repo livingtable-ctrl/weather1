@@ -12,8 +12,8 @@ tags:
 # TestGetTodayLiveSpendExcludesAmended
 
 ## Connections
-- [[dot-setup_method()_19]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_18]] - `method` [EXTRACTED]
+- [[dot-setup_method()_32]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_24]] - `method` [EXTRACTED]
 - [[dot-test_amended_row_excluded_new_row_counted_once()]] - `method` [EXTRACTED]
 - [[dot-test_mutation_amended_included_would_double_count()]] - `method` [EXTRACTED]
 - [[AMEND ORDER (V2) get_today_live_spend() must exclude 'amended' rows the same…]] - `rationale_for` [EXTRACTED]

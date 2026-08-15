@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_hurricane_markets.py"
+source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 398"
-location: "L365"
+community: "Community 395"
+location: "L451"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_398
+  - community/Community_395
 ---
 
 # .test_true_when_env_var_set_and_sample_floor_met()
 
 ## Connections
-- [[TestHurricaneCountGatesActive]] - `method` [EXTRACTED]
+- [[TestHourlyGatesActive]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_398
+#graphify/code #graphify/EXTRACTED #community/Community_395

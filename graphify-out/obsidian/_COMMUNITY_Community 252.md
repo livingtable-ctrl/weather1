@@ -35,11 +35,11 @@ SORT file.name ASC
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 215]]
 - 1 edge to [[_COMMUNITY_Community 85]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 
 ## Top bridge nodes
 - [[get_min_edge_for_confidence()]] - degree 15, connects to 5 communities
-- [[test_confidence_tiers.py]] - degree 5, connects to 1 community
 - [[classify_confidence_tier()]] - degree 5, connects to 1 community
+- [[test_confidence_tiers.py]] - degree 5, connects to 1 community

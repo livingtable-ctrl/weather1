@@ -1,12 +1,12 @@
 ---
-source_file: "tests/test_paths_bypass_guard.py"
+source_file: "tests/test_bare_os_replace_guard.py"
 type: "rationale"
-community: "Community 355"
-location: "L126"
+community: "Backtest Engine & Atomic Writes"
+location: "L140"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_355
+  - community/Backtest_Engine__Atomic_Writes
 ---
 
 # Every _ALLOWLIST entry must name a real file, a positive expected count, and a…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_allowlist_entries_still_exist_and_are_justified()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_355
+#graphify/rationale #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes

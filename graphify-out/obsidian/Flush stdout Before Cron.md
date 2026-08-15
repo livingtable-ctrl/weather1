@@ -12,6 +12,6 @@ tags:
 
 ## Connections
 - [[Menu UX Fixes Plan]] - `implements` [EXTRACTED]
-- [[main.py module]] - `references` [EXTRACTED]
+- [[main.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_295

@@ -12,7 +12,7 @@ tags:
 # .test_blend_sources_weights_sum_to_one_without_mos()
 
 ## Connections
-- [[dot-_make_enriched()_1]] - `calls` [EXTRACTED]
+- [[dot-_make_enriched()]] - `calls` [EXTRACTED]
 - [[L6-E without MOS the normalisation guard must not break the normal blend path…]] - `rationale_for` [EXTRACTED]
 - [[TestBlendSourcesNormalisation]] - `method` [EXTRACTED]
 

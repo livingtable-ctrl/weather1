@@ -17,7 +17,7 @@ tags:
 - [[dot-test_nws_weight_medium_horizon()]] - `calls` [EXTRACTED]
 - [[dot-test_nws_weight_redistributed_when_unavailable()]] - `calls` [EXTRACTED]
 - [[dot-test_nws_weight_short_horizon()]] - `calls` [EXTRACTED]
-- [[dot-test_weights_sum_to_one()_1]] - `calls` [EXTRACTED]
+- [[dot-test_weights_sum_to_one()_2]] - `calls` [EXTRACTED]
 - [[Phase 2 Batch K Regression Tests]] - `calls` [EXTRACTED]
 - [[Phase 2 Batch P Below-Condition Weight Tests]] - `calls` [EXTRACTED]
 - [[Return (w_ensemble, w_climatology, w_nws). Priority regime override (highest,…]] - `rationale_for` [EXTRACTED]

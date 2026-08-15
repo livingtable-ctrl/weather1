@@ -12,7 +12,7 @@ tags:
 # TestFlashCrashCB
 
 ## Connections
-- [[dot-setup_method()_10]] - `method` [EXTRACTED]
+- [[dot-setup_method()_24]] - `method` [EXTRACTED]
 - [[dot-test_cooldown_expires()]] - `method` [EXTRACTED]
 - [[dot-test_cooldown_prevents_trading()]] - `method` [EXTRACTED]
 - [[dot-test_crash_on_large_move()]] - `method` [EXTRACTED]

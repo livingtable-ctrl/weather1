@@ -12,7 +12,7 @@ tags:
 # .test_hourly_pool_below_min_samples_not_trained()
 
 ## Connections
-- [[dot-_seed()_3]] - `calls` [EXTRACTED]
+- [[dot-_seed()_7]] - `calls` [EXTRACTED]
 - [[TestTrainAllTemperatureScalingHourlyPool]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_79

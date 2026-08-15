@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Baseline sanity check the normal (no collision) alias-import cross-file call…]] - `rationale_for` [EXTRACTED]
-- [[Path_19]] - `calls` [EXTRACTED]
+- [[Path_13]] - `calls` [EXTRACTED]
 - [[TestSameNameCollisionResolution]] - `method` [EXTRACTED]
 - [[_resolve_prod_evidence()]] - `calls` [EXTRACTED]
 

@@ -12,7 +12,7 @@ tags:
 # .test_city_isolation()
 
 ## Connections
-- [[dot-_seed()_8]] - `calls` [EXTRACTED]
+- [[dot-_seed()_3]] - `calls` [EXTRACTED]
 - [[Quintile bias for NYC does not bleed into CHI.]] - `rationale_for` [EXTRACTED]
 - [[TestGetQuintileBias]] - `method` [EXTRACTED]
 

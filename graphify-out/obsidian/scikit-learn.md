@@ -5,7 +5,7 @@ community: "Community 179"
 location: "line 17"
 tags:
   - graphify/code
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_179
 ---
 
@@ -15,4 +15,4 @@ tags:
 - [[ml_bias.py Module]] - `conceptually_related_to` [INFERRED]
 - [[requirements.txt (Python Dependencies)]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Community_179
+#graphify/code #graphify/EXTRACTED #community/Community_179

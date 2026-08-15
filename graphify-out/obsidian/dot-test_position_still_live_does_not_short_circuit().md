@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()_2]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_4]] - `calls` [EXTRACTED]
+- [[dot-_enriched()_3]] - `calls` [EXTRACTED]
 - [[TestAnalyzeStormOrderTrade]] - `method` [EXTRACTED]
 - [[The converse boundary position  storms_named_so_far must reach the normal…]] - `rationale_for` [EXTRACTED]
 

@@ -10,10 +10,10 @@ members: 13
 **Members:** 13 nodes
 
 ## Members
-- [[dot-_analysis()_3]] - code - tests/test_tracker.py
-- [[dot-_analysis()_4]] - code - tests/test_tracker.py
-- [[dot-setUp()_29]] - code - tests/test_tracker.py
-- [[dot-tearDown()_29]] - code - tests/test_tracker.py
+- [[dot-_analysis()]] - code - tests/test_tracker.py
+- [[dot-_analysis()_1]] - code - tests/test_tracker.py
+- [[dot-setUp()_16]] - code - tests/test_tracker.py
+- [[dot-tearDown()_16]] - code - tests/test_tracker.py
 - [[dot-test_column_exists_after_init()_1]] - code - tests/test_tracker.py
 - [[dot-test_count_settled_signal_rows_multiday_excludes_sameday_rows()]] - code - tests/test_tracker.py
 - [[dot-test_log_prediction_stores_var()]] - code - tests/test_tracker.py
@@ -38,6 +38,6 @@ SORT file.name ASC
 - 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 
 ## Top bridge nodes
-- [[dot-_analysis()_4]] - degree 6, connects to 2 communities
+- [[dot-_analysis()_1]] - degree 6, connects to 2 communities
 - [[dot-test_count_settled_signal_rows_multiday_excludes_sameday_rows()]] - degree 3, connects to 2 communities
 - [[TestPredictionsVarColumn]] - degree 9, connects to 1 community

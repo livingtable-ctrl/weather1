@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[dot-_make_attempt()]] - `method` [EXTRACTED]
-- [[dot-setUp()_19]] - `method` [EXTRACTED]
-- [[dot-tearDown()_19]] - `method` [EXTRACTED]
+- [[dot-setUp()_27]] - `method` [EXTRACTED]
+- [[dot-tearDown()_26]] - `method` [EXTRACTED]
 - [[dot-test_batch_log_empty_list_is_noop()]] - `method` [EXTRACTED]
 - [[dot-test_batch_log_logs_all_items()]] - `method` [EXTRACTED]
 - [[dot-test_batch_log_stores_correct_probs()]] - `method` [EXTRACTED]

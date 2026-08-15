@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[_build_app()]] - `calls` [EXTRACTED]
-- [[fixture_17]] - `references` [EXTRACTED]
+- [[fixture_13]] - `references` [EXTRACTED]
 - [[test_web_app.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_579

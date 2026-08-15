@@ -11,7 +11,7 @@ members: 11
 
 ## Members
 - [[dot-test_diagonal_is_one()]] - code - tests/test_paper.py
-- [[dot-test_empty_returns_empty()]] - code - tests/test_paper.py
+- [[dot-test_empty_returns_empty()_1]] - code - tests/test_paper.py
 - [[dot-test_known_city_pair_uses_lookup()]] - code - tests/test_paper.py
 - [[dot-test_matrix_is_symmetric()]] - code - tests/test_paper.py
 - [[dot-test_same_city_adjacent_date_is_0_50()]] - code - tests/test_paper.py
@@ -30,12 +30,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 56]]
+- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 1 edge to [[_COMMUNITY_Community 45]]
+- 1 edge to [[_COMMUNITY_Community 459]]
 - 1 edge to [[_COMMUNITY_Community 181]]
 - 1 edge to [[_COMMUNITY_Community 568]]
-- 1 edge to [[_COMMUNITY_Community 459]]
-- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
 - [[position_correlation_matrix()]] - degree 15, connects to 5 communities

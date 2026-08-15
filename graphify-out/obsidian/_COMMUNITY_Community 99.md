@@ -27,7 +27,7 @@ members: 27
 - [[_local_or_utc_today()]] - code - mos.py
 - [[_parse_nbp_bulletin()]] - code - mos.py
 - [[_split_nbp_row()]] - code - mos.py
-- [[date_4]] - code
+- [[date_11]] - code
 - [[fetch_hurdat2_raw Function]] - code - hurricane_climatology.py
 - [[fetch_mos()]] - code - mos.py
 - [[fetch_mos_best()]] - code - mos.py
@@ -47,16 +47,16 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_Community 168]]
+- 3 edges to [[_COMMUNITY_Community 114]]
 - 3 edges to [[_COMMUNITY_Community 182]]
 - 3 edges to [[_COMMUNITY_Community 123]]
-- 3 edges to [[_COMMUNITY_Community 114]]
 - 3 edges to [[_COMMUNITY_Community 64]]
-- 2 edges to [[_COMMUNITY_Community 457]]
 - 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
+- 2 edges to [[_COMMUNITY_Community 457]]
 - 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 1 edge to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Community 211]]
 - 1 edge to [[_COMMUNITY_Community 131]]
+- 1 edge to [[_COMMUNITY_Community 211]]
 
 ## Top bridge nodes
 - [[mos.py]] - degree 20, connects to 9 communities

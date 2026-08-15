@@ -29,8 +29,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 198]]
 - 2 edges to [[_COMMUNITY_Community 130]]
+- 2 edges to [[_COMMUNITY_Community 198]]
 
 ## Top bridge nodes
 - [[parse_message()]] - degree 8, connects to 2 communities

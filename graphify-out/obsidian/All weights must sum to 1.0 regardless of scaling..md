@@ -12,6 +12,6 @@ tags:
 # All weights must sum to 1.0 regardless of scaling.
 
 ## Connections
-- [[dot-test_weights_sum_to_one()_2]] - `rationale_for` [EXTRACTED]
+- [[dot-test_weights_sum_to_one()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_282

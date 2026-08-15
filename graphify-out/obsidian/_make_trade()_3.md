@@ -1,22 +1,20 @@
 ---
-source_file: "tests/test_phase2_batch_f.py"
+source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 134"
-location: "L22"
+community: "Community 37"
+location: "L80"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_134
+  - community/Community_37
 ---
 
 # _make_trade()
 
 ## Connections
-- [[dot-test_cholesky_failure_logs_warning()]] - `calls` [EXTRACTED]
-- [[dot-test_correlation_applied_false_when_cholesky_fails()]] - `calls` [EXTRACTED]
-- [[dot-test_correlation_applied_false_when_no_city()]] - `calls` [EXTRACTED]
-- [[dot-test_correlation_applied_true_when_cholesky_succeeds()]] - `calls` [EXTRACTED]
-- [[dot-test_simulate_result_has_required_keys()]] - `calls` [EXTRACTED]
-- [[Phase 2 Batch F Regression Tests]] - `contains` [EXTRACTED]
+- [[dot-test_find_optimal_min_edge_called_with_training_data_only()]] - `calls` [EXTRACTED]
+- [[dot-test_fold_results_include_optimal_min_edge()]] - `calls` [EXTRACTED]
+- [[dot-test_optimal_edge_is_median_of_training_folds()]] - `calls` [EXTRACTED]
+- [[test_p1_remaining.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_134
+#graphify/code #graphify/EXTRACTED #community/Community_37

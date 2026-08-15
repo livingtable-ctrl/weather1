@@ -12,7 +12,7 @@ tags:
 # .test_insufficient_observations_for_all_returns_empty_dict()
 
 ## Connections
-- [[dot-_seed()_6]] - `calls` [EXTRACTED]
+- [[dot-_seed()_1]] - `calls` [EXTRACTED]
 - [[2026-07-23 (TRACK ECMWF FORECAST ACCURACY adjacency fix) when every tracked…]] - `rationale_for` [EXTRACTED]
 - [[TestGetModelWeights]] - `method` [EXTRACTED]
 

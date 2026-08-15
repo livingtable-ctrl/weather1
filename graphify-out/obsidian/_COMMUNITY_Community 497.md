@@ -25,18 +25,18 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_Community 604]]
+- 1 edge to [[_COMMUNITY_Community 364]]
 - 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 202]]
+- 1 edge to [[_COMMUNITY_Community 604]]
+- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
+- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Community 146]]
 - 1 edge to [[_COMMUNITY_Community 162]]
 - 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 1 edge to [[_COMMUNITY_Community 364]]
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Community 327]]
+- 1 edge to [[_COMMUNITY_Community 202]]
 - 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 26]]
+- 1 edge to [[_COMMUNITY_Community 327]]
 
 ## Top bridge nodes
 - [[backlog.txt]] - degree 8, connects to 6 communities

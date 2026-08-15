@@ -14,7 +14,7 @@ tags:
 - [[P0-11 retired strategy gate in analyze_trade. Verifies that analyze_trade…]] - `rationale_for` [EXTRACTED]
 - [[TestRetiredStrategyGate]] - `contains` [EXTRACTED]
 - [[TestRetirementProbationBypass]] - `contains` [EXTRACTED]
-- [[_make_enriched()_1]] - `contains` [EXTRACTED]
+- [[_make_enriched()]] - `contains` [EXTRACTED]
 - [[_stub_heavy_deps()]] - `contains` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[get_retired_strategies()]] - `calls` [EXTRACTED]

@@ -12,7 +12,7 @@ tags:
 # .test_stop_loss_and_breakeven_are_mutually_exclusive_same_cycle()
 
 ## Connections
-- [[dot-_open_position_row()_1]] - `calls` [EXTRACTED]
+- [[dot-_open_position_row()]] - `calls` [EXTRACTED]
 - [[A ticker that stop-loss-exits must not also be evaluated for a breakeven exit…]] - `rationale_for` [EXTRACTED]
 - [[TestCheckLivePositionExits]] - `method` [EXTRACTED]
 - [[_check_live_position_exits()]] - `calls` [EXTRACTED]

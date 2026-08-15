@@ -12,8 +12,8 @@ tags:
 # _FakeMarketClient
 
 ## Connections
-- [[dot-__init__()_12]] - `method` [EXTRACTED]
-- [[dot-get_market()_3]] - `method` [EXTRACTED]
+- [[dot-__init__()_1]] - `method` [EXTRACTED]
+- [[dot-get_market()_1]] - `method` [EXTRACTED]
 - [[dot-test_mixed_yes_and_no_sides_sum_correctly()]] - `calls` [EXTRACTED]
 - [[dot-test_no_open_trades_returns_zero()]] - `calls` [EXTRACTED]
 - [[dot-test_no_side_marks_at_one_minus_ask()]] - `calls` [EXTRACTED]

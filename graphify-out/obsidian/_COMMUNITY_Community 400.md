@@ -10,8 +10,8 @@ members: 9
 **Members:** 9 nodes
 
 ## Members
-- [[dot-setup_method()_31]] - code - tests/test_p1_remaining.py
-- [[dot-teardown_method()_23]] - code - tests/test_p1_remaining.py
+- [[dot-setup_method()_27]] - code - tests/test_p1_remaining.py
+- [[dot-teardown_method()_19]] - code - tests/test_p1_remaining.py
 - [[dot-test_returns_empty_string_when_not_halted()]] - code - tests/test_p1_remaining.py
 - [[dot-test_returns_sprt_reason_when_degraded()]] - code - tests/test_p1_remaining.py
 - [[dot-test_returns_string_when_win_rate_low()]] - code - tests/test_p1_remaining.py

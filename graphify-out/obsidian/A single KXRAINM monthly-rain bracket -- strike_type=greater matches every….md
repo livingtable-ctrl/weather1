@@ -12,6 +12,6 @@ tags:
 # A single KXRAIN*M monthly-rain bracket -- strike_type="greater" matches every…
 
 ## Connections
-- [[_rain_market()_1]] - `rationale_for` [EXTRACTED]
+- [[_rain_market()_2]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_41

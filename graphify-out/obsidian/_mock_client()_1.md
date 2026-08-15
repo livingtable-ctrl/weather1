@@ -1,26 +1,29 @@
 ---
-source_file: "tests/test_retirement_probation.py"
+source_file: "tests/test_series_drift.py"
 type: "code"
-community: "Community 140"
-location: "L48"
+community: "Community 126"
+location: "L24"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_140
+  - community/Community_126
 ---
 
 # _mock_client()
 
 ## Connections
-- [[test_auto_unretires_when_probation_brier_clears_threshold()]] - `calls` [EXTRACTED]
-- [[test_does_not_unretire_when_insufficient_probation_samples()]] - `calls` [EXTRACTED]
-- [[test_does_not_unretire_when_probation_brier_still_bad()]] - `calls` [EXTRACTED]
-- [[test_gated_to_run_once_per_day()_1]] - `calls` [EXTRACTED]
-- [[test_logs_probation_prediction_for_retired_method()]] - `calls` [EXTRACTED]
-- [[test_never_raises_on_broken_state_file()]] - `calls` [EXTRACTED]
-- [[test_noop_when_nothing_retired()]] - `calls` [EXTRACTED]
-- [[test_retirement_probation.py]] - `contains` [EXTRACTED]
-- [[test_runs_again_on_a_new_day()_1]] - `calls` [EXTRACTED]
-- [[test_skips_market_whose_method_is_not_retired()]] - `calls` [EXTRACTED]
+- [[test_first_run_creates_state_file()]] - `calls` [EXTRACTED]
+- [[test_gated_to_run_once_per_day()]] - `calls` [EXTRACTED]
+- [[test_hurricane_next_event_series_present_does_not_warn()]] - `calls` [EXTRACTED]
+- [[test_known_dead_series_suppressed()]] - `calls` [EXTRACTED]
+- [[test_known_untracked_rain_series_suppressed()]] - `calls` [EXTRACTED]
+- [[test_missing_ticker_counter_increments_and_warns_at_three()]] - `calls` [EXTRACTED]
+- [[test_missing_ticker_does_not_warn_before_three_days()]] - `calls` [EXTRACTED]
+- [[test_recovered_ticker_resets_counter()]] - `calls` [EXTRACTED]
+- [[test_series_drift.py]] - `contains` [EXTRACTED]
+- [[test_storm_order_series_present_does_not_warn()]] - `calls` [EXTRACTED]
+- [[test_unknown_live_ticker_warns_immediately()]] - `calls` [EXTRACTED]
+- [[test_unknown_rain_ticker_warns_immediately()]] - `calls` [EXTRACTED]
+- [[test_unrecognized_hurricane_series_deliberately_not_flagged()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_140
+#graphify/code #graphify/EXTRACTED #community/Community_126

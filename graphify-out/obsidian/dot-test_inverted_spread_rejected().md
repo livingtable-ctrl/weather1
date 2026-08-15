@@ -12,7 +12,7 @@ tags:
 # .test_inverted_spread_rejected()
 
 ## Connections
-- [[dot-_call()_2]] - `calls` [EXTRACTED]
+- [[dot-_call()_5]] - `calls` [EXTRACTED]
 - [[dot-_valid()]] - `calls` [EXTRACTED]
 - [[TestValidateMarketPriceRange]] - `method` [EXTRACTED]
 - [[bid = ask must be rejected.]] - `rationale_for` [EXTRACTED]

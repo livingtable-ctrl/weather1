@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[If every model call fails, return None.]] - `rationale_for` [EXTRACTED]
 - [[TestGetWeatherForecastMocked]] - `method` [EXTRACTED]
-- [[activate_1]] - `references` [EXTRACTED]
+- [[activate]] - `references` [EXTRACTED]
 - [[get_weather_forecast()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_142

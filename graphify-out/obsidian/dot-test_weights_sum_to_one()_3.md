@@ -1,20 +1,18 @@
 ---
-source_file: "tests/test_phase3_batch_c.py"
+source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 72"
-location: "L160"
+community: "Ensemble Weight Blending Tests"
+location: "L283"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_72
+  - community/Ensemble_Weight_Blending_Tests
 ---
 
 # .test_weights_sum_to_one()
 
 ## Connections
-- [[TestRandomSearchAndGate]] - `method` [EXTRACTED]
-- [[_make_db()_1]] - `calls` [EXTRACTED]
-- [[_rows()]] - `calls` [EXTRACTED]
-- [[calibrate_city_weights()]] - `calls` [EXTRACTED]
+- [[TestConfidenceScaledBlendWeights]] - `method` [EXTRACTED]
+- [[_confidence_scaled_blend_weights()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_72
+#graphify/code #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests

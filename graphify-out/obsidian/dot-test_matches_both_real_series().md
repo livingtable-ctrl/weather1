@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[TestIsHurricaneNextEventTicker]] - `method` [EXTRACTED]
-- [[parametrize_2]] - `references` [EXTRACTED]
+- [[parametrize]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_218

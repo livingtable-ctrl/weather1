@@ -32,8 +32,8 @@ SORT file.name ASC
 - 7 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 4 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
 - 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Community 52]]
 - 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 2 edges to [[_COMMUNITY_Community 52]]
 - 1 edge to [[_COMMUNITY_Community 118]]
 - 1 edge to [[_COMMUNITY_Community 32]]
 

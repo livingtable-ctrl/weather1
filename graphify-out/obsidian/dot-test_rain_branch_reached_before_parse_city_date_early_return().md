@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[TestAuditSettlementMonthlyRain]] - `method` [EXTRACTED]
-- [[The real regression this fix targets parse_city_date() returns (city, None)…]] - `rationale_for` [EXTRACTED]
+- [[The real regression this fix targets parse_city_date() returns (city, None)…_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_311

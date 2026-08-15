@@ -1,20 +1,20 @@
 ---
-source_file: "tests/test_snow_markets.py"
+source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 115"
-location: "L1133"
+community: "Community 165"
+location: "L708"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_115
+  - community/Community_165
 ---
 
 # .test_month_to_date_zero_missing_still_trades()
 
 ## Connections
 - [[dot-_history_all_years_value()_2]] - `calls` [EXTRACTED]
+- [[dot-_rain_market()]] - `calls` [EXTRACTED]
 - [[Control for the guard above zero missing days must NOT be refused -- confirms…_1]] - `rationale_for` [EXTRACTED]
-- [[TestAnalyzeMonthlySnowTradeEndToEnd]] - `method` [EXTRACTED]
-- [[_snow_market()]] - `calls` [EXTRACTED]
+- [[TestAnalyzeMonthlyRainTradeEndToEnd]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_115
+#graphify/code #graphify/EXTRACTED #community/Community_165

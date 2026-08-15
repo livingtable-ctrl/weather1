@@ -12,7 +12,7 @@ tags:
 # _module_level_funcs()
 
 ## Connections
-- [[Path_19]] - `references` [EXTRACTED]
+- [[Path_13]] - `references` [EXTRACTED]
 - [[_scan()]] - `calls` [EXTRACTED]
 - [[test_dead_code_allowlist_has_no_stale_entries()]] - `calls` [EXTRACTED]
 - [[test_dead_code_scan.py]] - `contains` [EXTRACTED]

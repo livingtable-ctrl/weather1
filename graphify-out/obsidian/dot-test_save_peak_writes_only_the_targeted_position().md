@@ -12,7 +12,7 @@ tags:
 # .test_save_peak_writes_only_the_targeted_position()
 
 ## Connections
-- [[dot-_trade()_1]] - `calls` [EXTRACTED]
+- [[dot-_trade()_4]] - `calls` [EXTRACTED]
 - [[dot-_write_ledger()]] - `calls` [EXTRACTED]
 - [[Position]] - `calls` [EXTRACTED]
 - [[TestPaperPositionStore]] - `method` [EXTRACTED]

@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_ecmwf.py"
+source_file: "tests/test_mos.py"
 type: "rationale"
-community: "Community 255"
-location: "L87"
+community: "Community 187"
+location: "L72"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_255
+  - community/Community_187
 ---
 
 # A failed fetch must be negative-cached -- a second call within the TTL must not…
 
 ## Connections
-- [[dot-test_fetch_temperature_ecmwf_negative_caches_failure()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_negative_caches_failure()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_255
+#graphify/rationale #graphify/EXTRACTED #community/Community_187

@@ -13,6 +13,6 @@ tags:
 ## Connections
 - [[Fix Web Analytics Charts Plan]] - `conceptually_related_to` [INFERRED]
 - [[Phase D Monitoring &amp; Settlement Plan]] - `implements` [EXTRACTED]
-- [[web_app.py module]] - `references` [EXTRACTED]
+- [[web_app.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_453

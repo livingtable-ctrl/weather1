@@ -12,7 +12,7 @@ tags:
 # TestFetchHistoricalDailyEmptyResponse
 
 ## Connections
-- [[dot-test_empty_data_falls_back_to_stale_cache_not_written_as_empty()]] - `method` [EXTRACTED]
+- [[dot-test_empty_data_falls_back_to_stale_cache_not_written_as_empty()_1]] - `method` [EXTRACTED]
 - [[Opus-review-caught gap (round 2) ACIS can return HTTP 200 with an empty data…]] - `rationale_for` [EXTRACTED]
 - [[test_acis_precip.py]] - `contains` [EXTRACTED]
 

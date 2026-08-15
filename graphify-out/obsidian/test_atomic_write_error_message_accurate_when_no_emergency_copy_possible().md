@@ -12,7 +12,7 @@ tags:
 # test_atomic_write_error_message_accurate_when_no_emergency_copy_possible()
 
 ## Connections
-- [[Path_29]] - `calls` [EXTRACTED]
+- [[Path_12]] - `calls` [EXTRACTED]
 - [[When every candidate (primary write AND every emergency candidate) fails, the…]] - `rationale_for` [EXTRACTED]
 - [[test_safe_io.py]] - `contains` [EXTRACTED]
 

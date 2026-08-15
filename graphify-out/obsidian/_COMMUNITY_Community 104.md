@@ -35,7 +35,7 @@ members: 26
 - [[srcmain.jsx Entry Point]] - code - frontend/index.html
 - [[staticdashboard.js_1]] - code - templates/dashboard.html
 - [[useData.js Data Fetching Hook]] - code - docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md
-- [[web_app.py Module_1]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[web_app.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -46,14 +46,14 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Community 156]]
+- 1 edge to [[_COMMUNITY_Community 197]]
+- 1 edge to [[_COMMUNITY_Community 179]]
 - 1 edge to [[_COMMUNITY_Community 147]]
 - 1 edge to [[_COMMUNITY_Community 249]]
 - 1 edge to [[_COMMUNITY_Community 199]]
-- 1 edge to [[_COMMUNITY_Community 197]]
-- 1 edge to [[_COMMUNITY_Community 179]]
 
 ## Top bridge nodes
-- [[web_app.py Module_1]] - degree 13, connects to 2 communities
+- [[web_app.py Module]] - degree 13, connects to 2 communities
 - [[D4 Per-City Reliability Diagram]] - degree 6, connects to 1 community
 - [[H3 EMOS Calibration Status Card]] - degree 4, connects to 1 community
 - [[D6 Profit Factor Metric]] - degree 3, connects to 1 community

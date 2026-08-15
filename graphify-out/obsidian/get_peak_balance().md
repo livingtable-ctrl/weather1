@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Return the highest balance ever reached (high-water mark).]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[cmd_admin()]] - `calls` [EXTRACTED]
 - [[cmd_dashboard()]] - `calls` [EXTRACTED]
 - [[cmd_paper()]] - `calls` [EXTRACTED]

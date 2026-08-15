@@ -13,6 +13,5 @@ tags:
 
 ## Connections
 - [[weather app site V_3 (3)srcmockData.js]] - `contains` [EXTRACTED]
-- [[weather app site V_3 (3)srcuseData.js]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_81

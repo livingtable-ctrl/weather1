@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Rain markets take a dedicated early branch in _group_markets (see the KXRAINM…]] - `rationale_for` [EXTRACTED]
 - [[TestConsistency]] - `method` [EXTRACTED]
-- [[_rain_market()]] - `calls` [EXTRACTED]
+- [[_rain_market()_1]] - `calls` [EXTRACTED]
 - [[find_violations()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_35

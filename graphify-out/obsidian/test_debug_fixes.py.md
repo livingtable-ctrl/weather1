@@ -29,6 +29,6 @@ tags:
 - [[place_paper_order()_1]] - `calls` [EXTRACTED]
 - [[sync_outcomes()]] - `calls` [EXTRACTED]
 - [[tmp_paper()]] - `contains` [EXTRACTED]
-- [[tmp_tracker()]] - `contains` [EXTRACTED]
+- [[tmp_tracker()_2]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_78

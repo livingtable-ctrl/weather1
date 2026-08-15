@@ -12,7 +12,7 @@ tags:
 # .test_san_francisco_ao_nao_and_enso_winter_default_but_enso_other_fitted()
 
 ## Connections
-- [[dot-_adjustment()_2]] - `calls` [EXTRACTED]
+- [[dot-_adjustment()_1]] - `calls` [EXTRACTED]
 - [[TestRegressionFittedGapCities]] - `method` [EXTRACTED]
 - [[West Coast city no AONAO cell survives BH-FDR at any season (AO-other is raw-…]] - `rationale_for` [EXTRACTED]
 

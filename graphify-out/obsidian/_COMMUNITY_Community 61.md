@@ -11,7 +11,7 @@ members: 36
 
 ## Members
 - [[dot-test_confirms_old_parsers_still_falsely_resolve()]] - code - tests/test_hurricane_gating.py
-- [[dot-test_daily_high_ticker_unaffected()]] - code - tests/test_hurricane_gating.py
+- [[dot-test_daily_high_ticker_unaffected()_2]] - code - tests/test_hurricane_gating.py
 - [[dot-test_hurricane_category_ticker_gates_out_explicitly()]] - code - tests/test_hurricane_gating.py
 - [[dot-test_hurricane_count_ticker_no_longer_blanket_gated()]] - code - tests/test_hurricane_gating.py
 - [[dot-test_hurricane_landfall_ticker_gates_out_explicitly()]] - code - tests/test_hurricane_gating.py
@@ -24,7 +24,7 @@ members: 36
 - [[dot-test_kxnexthurdate_past_close_time_gates_out_via_own_check()]] - code - tests/test_hurricane_gating.py
 - [[dot-test_kxtropstorm_no_longer_blanket_gated()]] - code - tests/test_hurricane_gating.py
 - [[dot-test_legacy_unprefixed_hur_ticker_gates_out()]] - code - tests/test_hurricane_gating.py
-- [[dot-test_rain_ticker_unaffected()]] - code - tests/test_hurricane_gating.py
+- [[dot-test_rain_ticker_unaffected()_2]] - code - tests/test_hurricane_gating.py
 - [[dot-test_snow_storm_ticker_unaffected()]] - code - tests/test_hurricane_gating.py
 - [[A next-event ticker whose close_time has already passed must be caught by its…]] - rationale - tests/test_hurricane_gating.py
 - [[Ground the whole test class the parsers this guard replaces as the safety…]] - rationale - tests/test_hurricane_gating.py
@@ -57,8 +57,8 @@ SORT file.name ASC
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 55]]
-- 1 edge to [[_COMMUNITY_Community 425]]
 - 1 edge to [[_COMMUNITY_Community 397]]
+- 1 edge to [[_COMMUNITY_Community 425]]
 - 1 edge to [[_COMMUNITY_Community 90]]
 
 ## Top bridge nodes

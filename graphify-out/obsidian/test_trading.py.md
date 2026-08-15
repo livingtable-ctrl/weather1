@@ -18,7 +18,7 @@ tags:
 - [[TestDynamicCorrelationMatrix]] - `contains` [EXTRACTED]
 - [[TestPriceImprovementTracking]] - `contains` [EXTRACTED]
 - [[TestSlippageAdjustedPrice]] - `contains` [EXTRACTED]
-- [[TestTimeDecayEdge_1]] - `contains` [EXTRACTED]
+- [[TestTimeDecayEdge]] - `contains` [EXTRACTED]
 - [[TestTimeDecayEdgeScope]] - `contains` [EXTRACTED]
 - [[Tests for Phase 5 trading improvements 49 dynamic correlation matrix 50…]] - `rationale_for` [EXTRACTED]
 - [[_l7b_common_patches()]] - `contains` [EXTRACTED]
@@ -50,7 +50,7 @@ tags:
 - [[test_was_traded_today_blocks_reentry_after_settlement()]] - `contains` [EXTRACTED]
 - [[test_zero_edge_group_splits_equally()]] - `contains` [EXTRACTED]
 - [[time_decay_edge()]] - `imports` [EXTRACTED]
-- [[tracker.py_1]] - `references` [EXTRACTED]
+- [[tracker.py_2]] - `references` [EXTRACTED]
 - [[trade_cycle.py (headless trade-cycle engine)]] - `conceptually_related_to` [AMBIGUOUS]
 
 #graphify/code #graphify/EXTRACTED #community/Community_92

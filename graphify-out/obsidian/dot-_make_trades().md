@@ -1,21 +1,18 @@
 ---
-source_file: "tests/test_paper_metrics.py"
+source_file: "tests/test_phase2_batch_m.py"
 type: "code"
-community: "Community 477"
-location: "L13"
+community: "Community 32"
+location: "L77"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_477
+  - community/Community_32
 ---
 
 # ._make_trades()
 
 ## Connections
-- [[dot-test_basic_ratio()]] - `calls` [EXTRACTED]
-- [[dot-test_get_performance_includes_profit_factor()]] - `calls` [EXTRACTED]
-- [[dot-test_no_losses_returns_none()]] - `calls` [EXTRACTED]
-- [[TestProfitFactor]] - `method` [EXTRACTED]
-- [[Write a minimal paper_trades.json with given settled trade pnls.]] - `rationale_for` [EXTRACTED]
+- [[dot-test_fewer_than_20_returns_error()]] - `calls` [EXTRACTED]
+- [[TestParamSweepTemporalSplit]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_477
+#graphify/code #graphify/EXTRACTED #community/Community_32

@@ -12,7 +12,7 @@ tags:
 # _reset_nws_cb()
 
 ## Connections
-- [[dot-setup_method()_34]] - `calls` [EXTRACTED]
+- [[dot-setup_method()_13]] - `calls` [EXTRACTED]
 - [[Phase 2 Batch D Regression Tests]] - `contains` [EXTRACTED]
 - [[Reset nws circuit breaker and precip cache to clean state.]] - `rationale_for` [EXTRACTED]
 

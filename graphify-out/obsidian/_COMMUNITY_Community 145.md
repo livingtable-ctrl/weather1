@@ -10,11 +10,11 @@ members: 21
 **Members:** 21 nodes
 
 ## Members
-- [[dot-exit()_1]] - code - paper.py
-- [[dot-get_open()_1]] - code - paper.py
+- [[dot-exit()]] - code - paper.py
+- [[dot-get_open()]] - code - paper.py
 - [[Adapt one paper_trades.json trade dict into the shared Position shape…]] - rationale - paper.py
 - [[AtomicWriteError]] - code - safe_io.py
-- [[Exception_1]] - code
+- [[Exception]] - code
 - [[Not called by check_paper_position_exits itself (below) -- that function needs…]] - rationale - paper.py
 - [[PaperPositionStore]] - code - paper.py
 - [[PositionStore]] - code - positions.py
@@ -42,21 +42,21 @@ SORT file.name ASC
 ## Connections to other communities
 - 19 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 15 edges to [[_COMMUNITY_Community 45]]
-- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 3 edges to [[_COMMUNITY_Community 159]]
-- 2 edges to [[_COMMUNITY_Community 144]]
+- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 2 edges to [[_COMMUNITY_Community 354]]
+- 2 edges to [[_COMMUNITY_Community 144]]
 - 2 edges to [[_COMMUNITY_Community 272]]
 - 2 edges to [[_COMMUNITY_Community 158]]
 - 1 edge to [[_COMMUNITY_Community 33]]
 - 1 edge to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 370]]
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 1 edge to [[_COMMUNITY_Community 47]]
-- 1 edge to [[_COMMUNITY_Community 94]]
 - 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
 - 1 edge to [[_COMMUNITY_Safe IO CRC Validation Tests]]
+- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
+- 1 edge to [[_COMMUNITY_Community 94]]
+- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 1 edge to [[_COMMUNITY_Community 370]]
 
 ## Top bridge nodes
 - [[AtomicWriteError]] - degree 10, connects to 7 communities

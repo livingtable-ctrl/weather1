@@ -12,7 +12,7 @@ tags:
 # _write_with_crc()
 
 ## Connections
-- [[Path_29]] - `references` [EXTRACTED]
+- [[Path_12]] - `references` [EXTRACTED]
 - [[test_load_validates_crc_on_good_file()]] - `calls` [EXTRACTED]
 - [[test_safe_io.py]] - `contains` [EXTRACTED]
 

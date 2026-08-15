@@ -10,7 +10,7 @@ members: 43
 **Members:** 43 nodes
 
 ## Members
-- [[dot-__init__()_2]] - code - circuit_breaker.py
+- [[dot-__init__()_7]] - code - circuit_breaker.py
 - [[dot-_load_state()]] - code - circuit_breaker.py
 - [[dot-_save_state()]] - code - circuit_breaker.py
 - [[dot-execute()]] - code - circuit_breaker.py
@@ -37,7 +37,7 @@ members: 43
 - [[dot-test_success_resets_to_closed()]] - code - tests/test_circuit_breaker.py
 - [[dot-test_third_trip_quadruples_timeout()]] - code - tests/test_circuit_breaker.py
 - [[A network error inside get_live_observation increments the CB failure count.]] - rationale - tests/test_infrastructure.py
-- [[Any_1]] - code
+- [[Any_2]] - code
 - [[Backoff accumulates across openclose cycles — success does not reset it.]] - rationale - tests/test_circuit_breaker.py
 - [[Call fn(args, kwargs) with automatic circuit protection. Raises…]] - rationale - circuit_breaker.py
 - [[CircuitBreaker]] - code - circuit_breaker.py
@@ -63,17 +63,17 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 8 edges to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
-- 6 edges to [[_COMMUNITY_Community 84]]
 - 6 edges to [[_COMMUNITY_Community 293]]
-- 2 edges to [[_COMMUNITY_Community 62]]
-- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 2 edges to [[_COMMUNITY_Community 51]]
+- 6 edges to [[_COMMUNITY_Community 84]]
 - 2 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_Community 226]]
+- 2 edges to [[_COMMUNITY_Community 62]]
+- 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
+- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 167]]
+- 2 edges to [[_COMMUNITY_Community 51]]
 - 1 edge to [[_COMMUNITY_Community 351]]
+- 1 edge to [[_COMMUNITY_Community 167]]
 
 ## Top bridge nodes
 - [[CircuitBreaker]] - degree 59, connects to 12 communities

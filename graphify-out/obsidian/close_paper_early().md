@@ -12,15 +12,15 @@ tags:
 # close_paper_early()
 
 ## Connections
-- [[dot-exit()_1]] - `calls` [EXTRACTED]
+- [[dot-exit()]] - `calls` [EXTRACTED]
 - [[Backlog L12939 — Position read-model divergence]] - `references` [INFERRED]
 - [[Close an open paper trade at current market price instead of waiting for…]] - `rationale_for` [EXTRACTED]
 - [[Trading Logic Audit 2026-04-23]] - `references` [EXTRACTED]
 - [[ValueError]] - `calls` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
-- [[_save()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
+- [[_save()]] - `calls` [EXTRACTED]
 - [[cmd_menu()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]

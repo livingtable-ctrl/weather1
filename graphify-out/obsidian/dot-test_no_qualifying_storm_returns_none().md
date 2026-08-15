@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 98"
-location: "L391"
+community: "Community 83"
+location: "L613"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_98
+  - community/Community_83
 ---
 
 # .test_no_qualifying_storm_returns_none()
 
 ## Connections
-- [[TestFirstOccurrenceDay]] - `method` [EXTRACTED]
-- [[_next_event_fixture_storms()]] - `calls` [EXTRACTED]
+- [[TestFirstHurricanePosition]] - `method` [EXTRACTED]
+- [[_storm_order_fixture_storms()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_98
+#graphify/code #graphify/EXTRACTED #community/Community_83

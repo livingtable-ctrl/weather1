@@ -12,6 +12,6 @@ tags:
 # Regression control: the new snow gating must not collide with the existing…
 
 ## Connections
-- [[dot-test_rain_ticker_unaffected()_2]] - `rationale_for` [EXTRACTED]
+- [[dot-test_rain_ticker_unaffected()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_263

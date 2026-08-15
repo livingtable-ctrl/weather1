@@ -1,20 +1,17 @@
 ---
-source_file: "circuit_breaker.py"
+source_file: "tests/test_alerts.py"
 type: "code"
-community: "Community 95"
-location: "L321"
+community: "Community 325"
+location: "L212"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_95
+  - community/Community_325
 ---
 
 # .__init__()
 
 ## Connections
-- [[dot-__init__()_1]] - `calls` [EXTRACTED]
-- [[dot-_load_cooldowns()]] - `calls` [EXTRACTED]
-- [[dot-_load_history()]] - `calls` [EXTRACTED]
-- [[FlashCrashCB]] - `method` [EXTRACTED]
+- [[_FakeClient_1]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_95
+#graphify/code #graphify/EXTRACTED #community/Community_325

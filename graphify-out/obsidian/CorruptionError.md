@@ -18,7 +18,7 @@ tags:
 - [[PositionStore]] - `uses` [INFERRED]
 - [[Raised when a file's CRC32 checksum does not match its content.]] - `rationale_for` [EXTRACTED]
 - [[ValueError]] - `inherits` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[_validate_checksum()]] - `calls` [EXTRACTED]
 - [[_validate_crc()]] - `calls` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]

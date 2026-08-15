@@ -15,7 +15,7 @@ tags:
 - [[Copy predictions.db and paper_trades.json to databackups on startup. 103…]] - `rationale_for` [EXTRACTED]
 - [[cleanup_temp_files()]] - `calls` [EXTRACTED]
 - [[cloud_backup()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[utc_today()]] - `calls` [EXTRACTED]
 - [[verify_backup()]] - `calls` [EXTRACTED]

@@ -1,16 +1,16 @@
 ---
 source_file: ""
 type: "code"
-community: "Cron Integration Tests"
+community: "Community 271"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Cron_Integration_Tests
+  - community/Community_271
 ---
 
 # fixture
 
 ## Connections
-- [[cron_env()]] - `references` [EXTRACTED]
+- [[_clear_seasonal_cache()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Cron_Integration_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_271

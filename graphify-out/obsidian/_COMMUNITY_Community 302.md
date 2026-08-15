@@ -32,14 +32,14 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Community 31]]
-- 1 edge to [[_COMMUNITY_Community 542]]
 - 1 edge to [[_COMMUNITY_Community 216]]
-- 1 edge to [[_COMMUNITY_Community 332]]
-- 1 edge to [[_COMMUNITY_Community 392]]
 - 1 edge to [[_COMMUNITY_Community 251]]
+- 1 edge to [[_COMMUNITY_Community 332]]
 - 1 edge to [[_COMMUNITY_Community 360]]
+- 1 edge to [[_COMMUNITY_Community 392]]
+- 1 edge to [[_COMMUNITY_Community 542]]
 - 1 edge to [[_COMMUNITY_Community 109]]
+- 1 edge to [[_COMMUNITY_Community 31]]
 
 ## Top bridge nodes
 - [[test_climatology.py]] - degree 14, connects to 9 communities

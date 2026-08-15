@@ -13,7 +13,7 @@ tags:
 ## Connections
 - [[DateGreeting Header with Daily P&L Summary Sentence]] - `references` [EXTRACTED]
 - [[DemoPaper Badge, Live Indicator, Theme Toggle, Kill Switch Button]] - `conceptually_related_to` [INFERRED]
-- [[Graduation Progress Panel (TradesP&LBrier gates)]] - `references` [EXTRACTED]
+- [[Graduation Progress Panel (TradesP&LBrier gates)_1]] - `references` [EXTRACTED]
 - [[Metric Card Row (Paper Balance, Open Positions, Win Rate, Brier Score)]] - `references` [EXTRACTED]
 - [[Top Navigation Bar (OverviewPositionsSignalsForecastAnalyticsRiskTrades)_1]] - `references` [EXTRACTED]
 

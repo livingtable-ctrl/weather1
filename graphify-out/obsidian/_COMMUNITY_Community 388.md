@@ -10,7 +10,7 @@ members: 9
 **Members:** 9 nodes
 
 ## Members
-- [[dot-test_stale_known_weather_series_raises_at_import()_1]] - code - tests/test_settlement_monitor.py
+- [[dot-test_stale_known_weather_series_raises_at_import()]] - code - tests/test_settlement_monitor.py
 - [[TestCitySeriesTickerDerivation]] - code - tests/test_settlement_monitor.py
 - [[_CITY_SERIES_TICKER is derived from KNOWN_WEATHER_SERIES at import time…]] - rationale - tests/test_settlement_monitor.py
 - [[_MONITOR_CITIES map]] - code - settlement_monitor.py
@@ -29,9 +29,9 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
-- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 1 edge to [[_COMMUNITY_Community 160]]
+- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
+- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
 
 ## Top bridge nodes
 - [[_MONITOR_CITIES map]] - degree 4, connects to 3 communities

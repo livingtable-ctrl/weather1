@@ -12,6 +12,6 @@ tags:
 # LV3: HRRR Intraday Update
 
 ## Connections
-- [[cron.py Module_1]] - `references` [INFERRED]
+- [[cron.py Module]] - `references` [INFERRED]
 
 #graphify/document #graphify/INFERRED #community/Community_199

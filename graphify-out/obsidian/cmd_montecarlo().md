@@ -20,7 +20,7 @@ tags:
 - [[dim()]] - `calls` [EXTRACTED]
 - [[get_open_trades()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 - [[simulate_portfolio Function]] - `calls` [EXTRACTED]

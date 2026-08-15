@@ -12,6 +12,6 @@ tags:
 # Second call the same day must be a no-op -- proven by checking the state file's…
 
 ## Connections
-- [[test_gated_to_run_once_per_day()]] - `rationale_for` [EXTRACTED]
+- [[test_gated_to_run_once_per_day()_2]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_89

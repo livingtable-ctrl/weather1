@@ -12,7 +12,7 @@ tags:
 # .test_corrects_stale_proxy_value_from_expiration_value()
 
 ## Connections
-- [[dot-_settle()_1]] - `calls` [EXTRACTED]
+- [[dot-_settle()]] - `calls` [EXTRACTED]
 - [[TestBackfillDailyTempSettlement]] - `method` [EXTRACTED]
 - [[The row already has an (old, ASOS-proxy-derived) settled_temp_f; re-running…]] - `rationale_for` [EXTRACTED]
 

@@ -12,7 +12,7 @@ tags:
 # .test_washington_dc_hourly_ticker_detected()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[TestHourlyDirectionalCityDetection]] - `method` [EXTRACTED]
 - [[Would return None without the explicit _KXTEMP_HOURLY_CITY fix -- KXTEMPDCH…]] - `rationale_for` [EXTRACTED]
 

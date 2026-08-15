@@ -12,7 +12,7 @@ tags:
 # .test_seattle_positive_enso_other_fitted_spring_and_other_share_it()
 
 ## Connections
-- [[dot-_adjustment()_2]] - `calls` [EXTRACTED]
+- [[dot-_adjustment()_1]] - `calls` [EXTRACTED]
 - [[Seattle's only real cell (ENSO-other, fitted positive) -- winter stays default,…]] - `rationale_for` [EXTRACTED]
 - [[TestRegressionFittedOriginalTen]] - `method` [EXTRACTED]
 

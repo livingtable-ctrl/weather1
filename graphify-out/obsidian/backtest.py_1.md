@@ -1,19 +1,18 @@
 ---
 source_file: "backtest.py"
 type: "code"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 40"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_40
 ---
 
 # backtest.py
 
 ## Connections
-- [[test_backtest.py]] - `calls` [EXTRACTED]
-- [[test_backtest_stratified.py]] - `calls` [EXTRACTED]
-- [[test_calibration.py]] - `calls` [EXTRACTED]
-- [[test_city_registry_manifest.py]] - `references` [EXTRACTED]
+- [[main.py CLI Entrypoint]] - `calls` [EXTRACTED]
+- [[test_hurricane_climatology.py]] - `cites` [EXTRACTED]
+- [[test_isoformat_cutoff_guard.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/code #graphify/EXTRACTED #community/Community_40

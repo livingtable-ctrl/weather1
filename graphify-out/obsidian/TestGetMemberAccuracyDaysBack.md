@@ -12,7 +12,7 @@ tags:
 # TestGetMemberAccuracyDaysBack
 
 ## Connections
-- [[dot-setup_method()_37]] - `method` [EXTRACTED]
+- [[dot-setup_method()_36]] - `method` [EXTRACTED]
 - [[dot-teardown_method()_28]] - `method` [EXTRACTED]
 - [[dot-test_get_member_accuracy_respects_days_back()]] - `method` [EXTRACTED]
 - [[test_signal_quality.py]] - `contains` [EXTRACTED]

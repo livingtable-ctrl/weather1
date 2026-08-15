@@ -36,11 +36,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 209]]
 - 1 edge to [[_COMMUNITY_Community 104]]
-- 1 edge to [[_COMMUNITY_Community 249]]
-- 1 edge to [[_COMMUNITY_Community 179]]
 - 1 edge to [[_COMMUNITY_Community 141]]
+- 1 edge to [[_COMMUNITY_Community 179]]
+- 1 edge to [[_COMMUNITY_Community 249]]
+- 1 edge to [[_COMMUNITY_Community 209]]
 
 ## Top bridge nodes
 - [[requirements.txt (Python Dependencies)]] - degree 21, connects to 5 communities

@@ -12,7 +12,7 @@ tags:
 # .test_empty_list_returns_empty_dict()
 
 ## Connections
-- [[TestEnsembleStats_1]] - `method` [EXTRACTED]
+- [[TestEnsembleStats]] - `method` [EXTRACTED]
 - [[ensemble_stats()]] - `calls` [EXTRACTED]
 - [[ensemble_stats() must return {} not raise.]] - `rationale_for` [EXTRACTED]
 

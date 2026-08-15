@@ -21,7 +21,7 @@ tags:
 - [[get_quintile_bias()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
 - [[test_signal_quality.py]] - `imports` [EXTRACTED]
-- [[tracker.py_2]] - `implements` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
+- [[tracker.py_1]] - `implements` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_36

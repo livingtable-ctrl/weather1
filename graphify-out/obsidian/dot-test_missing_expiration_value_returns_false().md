@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_rain_markets.py"
+source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 311"
-location: "L278"
+community: "Community 238"
+location: "L642"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_311
+  - community/Community_238
 ---
 
 # .test_missing_expiration_value_returns_false()
 
 ## Connections
-- [[TestAuditSettlementMonthlyRain]] - `method` [EXTRACTED]
+- [[TestAuditSettlementMonthlySnow]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_311
+#graphify/code #graphify/EXTRACTED #community/Community_238

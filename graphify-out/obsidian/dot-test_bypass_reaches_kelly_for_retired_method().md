@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Mirrors test_retired_gate_fires_before_kelly's spy, but inverted with…]] - `rationale_for` [EXTRACTED]
 - [[TestRetirementProbationBypass]] - `method` [EXTRACTED]
-- [[_make_enriched()_1]] - `calls` [EXTRACTED]
+- [[_make_enriched()]] - `calls` [EXTRACTED]
 - [[_stub_heavy_deps()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_124

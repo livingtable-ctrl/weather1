@@ -11,7 +11,7 @@ members: 7
 
 ## Members
 - [[dot-_make_client()_7]] - code - tests/test_kalshi_client.py
-- [[dot-test_calls_correct_path_and_params()]] - code - tests/test_kalshi_client.py
+- [[dot-test_calls_correct_path_and_params()_1]] - code - tests/test_kalshi_client.py
 - [[dot-test_defaults_period_interval_to_one_minute()]] - code - tests/test_kalshi_client.py
 - [[dot-test_missing_candlesticks_key_returns_empty_list()]] - code - tests/test_kalshi_client.py
 - [[dot-test_returns_candlesticks_list()]] - code - tests/test_kalshi_client.py
@@ -31,7 +31,7 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[TestGetCandlesticks]] - degree 7, connects to 1 community
-- [[dot-test_calls_correct_path_and_params()]] - degree 2, connects to 1 community
+- [[dot-test_calls_correct_path_and_params()_1]] - degree 2, connects to 1 community
 - [[dot-test_defaults_period_interval_to_one_minute()]] - degree 2, connects to 1 community
 - [[dot-test_missing_candlesticks_key_returns_empty_list()]] - degree 2, connects to 1 community
 - [[dot-test_returns_candlesticks_list()]] - degree 2, connects to 1 community

@@ -11,7 +11,7 @@ members: 38
 
 ## Members
 - [[dot-_fake_summary()]] - code - tests/test_phase3_batch_a.py
-- [[dot-_run_sim()]] - code - tests/test_phase3_batch_a.py
+- [[dot-_run_sim()_1]] - code - tests/test_phase3_batch_a.py
 - [[dot-test_correlation_applied_false_when_cholesky_fails()_1]] - code - tests/test_phase3_batch_a.py
 - [[dot-test_correlation_applied_false_when_no_city()_1]] - code - tests/test_phase3_batch_a.py
 - [[dot-test_correlation_applied_true_when_cholesky_succeeds_with_city()]] - code - tests/test_phase3_batch_a.py
@@ -58,13 +58,13 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 7 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 1 edge to [[_COMMUNITY_Community 86]]
 
 ## Top bridge nodes
 - [[test_phase3_batch_a.py]] - degree 11, connects to 4 communities
 - [[TestBacktestBrierKeyNaming]] - degree 9, connects to 1 community
-- [[dot-_fake_summary()]] - degree 7, connects to 1 community
 - [[TestMonteCarloCorrelationApplied]] - degree 7, connects to 1 community
+- [[dot-_fake_summary()]] - degree 7, connects to 1 community
 - [[TestFetchArchiveTempsDeterministicSeed]] - degree 6, connects to 1 community

@@ -57,7 +57,7 @@ members: 49
 - [[log_price_improvement()]] - code - tracker.py
 - [[test_get_component_attribution_returns_per_source_brier()]] - code - tests/test_tracker.py
 - [[test_get_component_attribution_works()]] - code - tests/test_tracker.py
-- [[tracker.py_2]] - code - tracker.py
+- [[tracker.py_1]] - code - tracker.py
 - [[web_app.py_1]] - code - web_app.py
 
 ## Live Query (requires Dataview plugin)
@@ -81,21 +81,21 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_Community 385]]
 - 3 edges to [[_COMMUNITY_Community 494]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Community 570]]
 - 2 edges to [[_COMMUNITY_Community 296]]
 - 2 edges to [[_COMMUNITY_Community 582]]
-- 1 edge to [[_COMMUNITY_Community 351]]
+- 2 edges to [[_COMMUNITY_Community 570]]
 - 1 edge to [[_COMMUNITY_Community 226]]
 - 1 edge to [[_COMMUNITY_Kelly City Multiplier & Edge Realization]]
-- 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
-- 1 edge to [[_COMMUNITY_Community 575]]
+- 1 edge to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
+- 1 edge to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 384]]
 - 1 edge to [[_COMMUNITY_Community 580]]
 - 1 edge to [[_COMMUNITY_Community 581]]
 - 1 edge to [[_COMMUNITY_Community 533]]
 - 1 edge to [[_COMMUNITY_Community 500]]
-- 1 edge to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
+- 1 edge to [[_COMMUNITY_Community 575]]
+- 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
+- 1 edge to [[_COMMUNITY_Community 351]]
 - 1 edge to [[_COMMUNITY_Community 160]]
 
 ## Top bridge nodes

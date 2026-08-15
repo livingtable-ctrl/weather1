@@ -1,19 +1,19 @@
 ---
-source_file: "tests/test_rain_markets.py"
+source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 165"
-location: "L530"
+community: "Community 115"
+location: "L865"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_165
+  - community/Community_115
 ---
 
 # .test_bias_correction_keyed_on_close_dt_month_not_accrual_month()
 
 ## Connections
-- [[dot-_history_all_years_value()_1]] - `calls` [EXTRACTED]
-- [[Resolved-decision 3 (backlog.txt Step 2 plan) get_quintile_bias must be…]] - `rationale_for` [EXTRACTED]
-- [[TestAnalyzeMonthlyRainTradeEndToEnd]] - `method` [EXTRACTED]
+- [[dot-_history_all_years_value()]] - `calls` [EXTRACTED]
+- [[Mirrors rain's identical resolved decision get_quintile_bias must be called…]] - `rationale_for` [EXTRACTED]
+- [[TestAnalyzeMonthlySnowTradeEndToEnd]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_165
+#graphify/code #graphify/EXTRACTED #community/Community_115

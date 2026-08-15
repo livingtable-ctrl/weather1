@@ -12,7 +12,7 @@ tags:
 # .test_full_edge_far_from_close()
 
 ## Connections
-- [[TestTimeDecayEdge_1]] - `method` [EXTRACTED]
+- [[TestTimeDecayEdge]] - `method` [EXTRACTED]
 - [[Well before close (= reference_hours), edge should be unchanged.]] - `rationale_for` [EXTRACTED]
 - [[time_decay_edge()]] - `calls` [EXTRACTED]
 

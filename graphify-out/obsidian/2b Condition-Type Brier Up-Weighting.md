@@ -12,7 +12,7 @@ tags:
 # 2b Condition-Type Brier Up-Weighting
 
 ## Connections
-- [[paper.py Module_1]] - `references` [EXTRACTED]
-- [[tracker.py Module_1]] - `references` [EXTRACTED]
+- [[paper.py Module]] - `references` [EXTRACTED]
+- [[tracker.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_156

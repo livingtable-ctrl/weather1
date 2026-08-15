@@ -10,12 +10,12 @@ members: 24
 **Members:** 24 nodes
 
 ## Members
-- [[dot-_seed()_5]] - code - tests/test_signal_quality.py
-- [[dot-_seed()_6]] - code - tests/test_signal_quality.py
-- [[dot-setup_method()_39]] - code - tests/test_signal_quality.py
-- [[dot-setup_method()_40]] - code - tests/test_signal_quality.py
-- [[dot-teardown_method()_30]] - code - tests/test_signal_quality.py
-- [[dot-teardown_method()_31]] - code - tests/test_signal_quality.py
+- [[dot-_seed()]] - code - tests/test_signal_quality.py
+- [[dot-_seed()_1]] - code - tests/test_signal_quality.py
+- [[dot-setup_method()_7]] - code - tests/test_signal_quality.py
+- [[dot-setup_method()_8]] - code - tests/test_signal_quality.py
+- [[dot-teardown_method()_2]] - code - tests/test_signal_quality.py
+- [[dot-teardown_method()_3]] - code - tests/test_signal_quality.py
 - [[dot-test_city_isolation()]] - code - tests/test_signal_quality.py
 - [[dot-test_empty_returns_empty_dict()]] - code - tests/test_signal_quality.py
 - [[dot-test_empty_tier_returns_none_brier()]] - code - tests/test_signal_quality.py
@@ -26,7 +26,7 @@ members: 24
 - [[dot-test_one_thin_model_excluded_not_blocking_the_other()]] - code - tests/test_signal_quality.py
 - [[dot-test_strong_tier_computed()]] - code - tests/test_signal_quality.py
 - [[dot-test_weak_tier_computed()]] - code - tests/test_signal_quality.py
-- [[dot-test_weights_sum_to_one()_5]] - code - tests/test_signal_quality.py
+- [[dot-test_weights_sum_to_one()]] - code - tests/test_signal_quality.py
 - [[dot-test_window_days_excludes_old_data()]] - code - tests/test_signal_quality.py
 - [[2026-07-23 (TRACK ECMWF FORECAST ACCURACY adjacency fix) a model below the…]] - rationale - tests/test_signal_quality.py
 - [[2026-07-23 (TRACK ECMWF FORECAST ACCURACY adjacency fix) when every tracked…]] - rationale - tests/test_signal_quality.py

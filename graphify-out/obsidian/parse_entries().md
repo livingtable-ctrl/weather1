@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[Split backlog.txt into entries anchored on '' at column 0, and return one dict…]] - `rationale_for` [EXTRACTED]
 - [[backlog_index.py]] - `contains` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_496

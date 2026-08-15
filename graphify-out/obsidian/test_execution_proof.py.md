@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Grade Audit Module Doc order_executor.py]] - `references` [EXTRACTED]
 - [[Tests for P0.1 — Trade execution proof. _auto_place_trades must return the…]] - `rationale_for` [EXTRACTED]
-- [[_FakeClient_1]] - `contains` [EXTRACTED]
+- [[_FakeClient]] - `contains` [EXTRACTED]
 - [[_make_opp()]] - `contains` [EXTRACTED]
 - [[_stub_auto_prereqs()]] - `contains` [EXTRACTED]
 - [[test_auto_place_trades_logs_analysis_attempt_failure()]] - `contains` [EXTRACTED]

@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[TestComputeMarketImpliedDistributions]] - `method` [EXTRACTED]
-- [[_market()_1]] - `calls` [EXTRACTED]
+- [[_market()_2]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_41

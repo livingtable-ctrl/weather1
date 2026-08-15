@@ -23,7 +23,7 @@ tags:
 - [[dot-test_returns_weights_for_qualifying_city()]] - `calls` [EXTRACTED]
 - [[dot-test_returns_weights_summing_to_one()]] - `calls` [EXTRACTED]
 - [[dot-test_rows_without_source_probs_not_counted()]] - `calls` [EXTRACTED]
-- [[Path_16]] - `references` [EXTRACTED]
+- [[Path_1]] - `references` [EXTRACTED]
 - [[Seed a minimal predictions + outcomes DB for calibration tests.]] - `rationale_for` [EXTRACTED]
 - [[test_calibration.py]] - `contains` [EXTRACTED]
 

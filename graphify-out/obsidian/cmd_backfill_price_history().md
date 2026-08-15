@@ -15,7 +15,7 @@ tags:
 - [[KalshiClient]] - `references` [EXTRACTED]
 - [[One-off recovery for price_history rows lost to a real bug sync_outcomes'…]] - `rationale_for` [EXTRACTED]
 - [[backfill_price_history()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 - [[test_p1_remaining.py]] - `calls` [EXTRACTED]

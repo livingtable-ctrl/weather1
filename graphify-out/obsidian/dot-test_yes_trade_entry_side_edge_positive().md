@@ -12,7 +12,7 @@ tags:
 # .test_yes_trade_entry_side_edge_positive()
 
 ## Connections
-- [[dot-_make_enriched()_4]] - `calls` [EXTRACTED]
+- [[dot-_make_enriched()_2]] - `calls` [EXTRACTED]
 - [[TestNoSideEntryEdgeSign]] - `method` [EXTRACTED]
 - [[YES trade entry_side_edge is still positive after the fix (no regression).]] - `rationale_for` [EXTRACTED]
 

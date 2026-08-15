@@ -12,7 +12,7 @@ tags:
 # .test_snow_rows_excluded_from_global_pool()
 
 ## Connections
-- [[dot-_seed()_3]] - `calls` [EXTRACTED]
+- [[dot-_seed()_7]] - `calls` [EXTRACTED]
 - [[TestTrainAllTemperatureScalingRainExclusion]] - `method` [EXTRACTED]
 - [[backlog.txt Snow Step 2 the identical leak-prevention check, mirrored for…]] - `rationale_for` [EXTRACTED]
 

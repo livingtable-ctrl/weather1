@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[TestMutationEndpointsRequireAuth]] - `method` [EXTRACTED]
-- [[_make_app()_1]] - `calls` [EXTRACTED]
+- [[_make_app()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_242

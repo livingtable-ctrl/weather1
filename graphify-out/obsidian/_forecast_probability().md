@@ -12,11 +12,11 @@ tags:
 # _forecast_probability()
 
 ## Connections
-- [[dot-test_above_condition()_1]] - `calls` [EXTRACTED]
+- [[dot-test_above_condition()]] - `calls` [EXTRACTED]
 - [[dot-test_above_uses_prob_threshold_not_raw_threshold()]] - `calls` [EXTRACTED]
-- [[dot-test_below_condition()_1]] - `calls` [EXTRACTED]
+- [[dot-test_below_condition()]] - `calls` [EXTRACTED]
 - [[dot-test_below_uses_prob_threshold_not_raw_threshold()]] - `calls` [EXTRACTED]
-- [[dot-test_between_condition()_1]] - `calls` [EXTRACTED]
+- [[dot-test_between_condition()]] - `calls` [EXTRACTED]
 - [[Estimate probability of the market condition given a forecast temperature.]] - `rationale_for` [EXTRACTED]
 - [[_compute_ensemble_prob()]] - `calls` [EXTRACTED]
 - [[_forecast_prob()]] - `implements` [EXTRACTED]

@@ -12,7 +12,7 @@ tags:
 # .test_gaussian_lifts_zero_ensemble_when_forecast_is_high()
 
 ## Connections
-- [[dot-_enriched()]] - `calls` [EXTRACTED]
+- [[dot-_enriched()_5]] - `calls` [EXTRACTED]
 - [[E2 when all ensemble members are below threshold but forecast is well above,…]] - `rationale_for` [EXTRACTED]
 - [[TestGaussianEnsembleBlend]] - `method` [EXTRACTED]
 

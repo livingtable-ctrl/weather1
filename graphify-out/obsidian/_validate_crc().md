@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[CorruptionError]] - `calls` [EXTRACTED]
 - [[Validate CRC32 checksum embedded in data dict. No-op if field absent.]] - `rationale_for` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
 - [[test_load_raises_on_tampered_file()]] - `calls` [EXTRACTED]
 - [[test_load_skips_crc_check_when_field_absent()]] - `calls` [EXTRACTED]

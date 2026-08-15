@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 469"
-location: "L2065"
+community: "Community 337"
+location: "L40"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_469
+  - community/Community_337
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestGetTodayLiveSpendExcludesExitOrders]] - `method` [EXTRACTED]
+- [[TestPlaceLiveOrder]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_469
+#graphify/code #graphify/EXTRACTED #community/Community_337

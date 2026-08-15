@@ -4,7 +4,7 @@ type: "code"
 community: "Community 141"
 tags:
   - graphify/code
-  - graphify/EXTRACTED
+  - graphify/INFERRED
   - community/Community_141
 ---
 
@@ -14,4 +14,4 @@ tags:
 - [[System Audit Prompt (Enterprise Audit)]] - `references` [EXTRACTED]
 - [[websockets]] - `conceptually_related_to` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_141
+#graphify/code #graphify/INFERRED #community/Community_141

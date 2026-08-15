@@ -39,12 +39,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 11 edges to [[_COMMUNITY_Community 327]]
-- 3 edges to [[_COMMUNITY_Community 213]]
+- 9 edges to [[_COMMUNITY_Community 327]]
 - 1 edge to [[_COMMUNITY_Community 499]]
 
 ## Top bridge nodes
-- [[frontendsrcApp.jsx]] - degree 29, connects to 3 communities
-- [[App()]] - degree 5, connects to 2 communities
+- [[frontendsrcApp.jsx]] - degree 26, connects to 2 communities
 - [[normCity()]] - degree 6, connects to 1 community
 - [[OverviewTab]] - degree 5, connects to 1 community

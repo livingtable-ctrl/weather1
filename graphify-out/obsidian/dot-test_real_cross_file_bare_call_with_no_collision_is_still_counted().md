@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[No collision (module_c doesn't define its own `helper`) -- a plain, unaliased…]] - `rationale_for` [EXTRACTED]
-- [[Path_19]] - `calls` [EXTRACTED]
+- [[Path_13]] - `calls` [EXTRACTED]
 - [[TestSameNameCollisionResolution]] - `method` [EXTRACTED]
 - [[_resolve_prod_evidence()]] - `calls` [EXTRACTED]
 

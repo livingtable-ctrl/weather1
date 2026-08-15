@@ -19,7 +19,7 @@ tags:
 - [[bold()]] - `calls` [EXTRACTED]
 - [[cmd_menu()]] - `calls` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[test_menu_ux.py]] - `references` [EXTRACTED]
 

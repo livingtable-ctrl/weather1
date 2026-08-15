@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_http.py"
+source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 142"
-location: "L31"
+community: "Community 106"
+location: "L289"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_142
+  - community/Community_106
 ---
 
 # .setUp()
 
 ## Connections
-- [[TestGetWeatherForecastMocked]] - `method` [EXTRACTED]
+- [[TestMaxDrawdown]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_142
+#graphify/code #graphify/EXTRACTED #community/Community_106

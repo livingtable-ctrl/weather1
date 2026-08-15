@@ -12,7 +12,7 @@ tags:
 # .test_no_losses_returns_none()
 
 ## Connections
-- [[dot-_make_trades()]] - `calls` [EXTRACTED]
+- [[dot-_make_trades()_1]] - `calls` [EXTRACTED]
 - [[TestProfitFactor]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_477

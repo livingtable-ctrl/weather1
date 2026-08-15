@@ -13,7 +13,7 @@ tags:
 ## Connections
 - [[AtomicWriteError]] - `imports` [EXTRACTED]
 - [[CircuitBreaker]] - `imports` [EXTRACTED]
-- [[CircuitBreaker class_1]] - `references` [EXTRACTED]
+- [[CircuitBreaker class]] - `references` [EXTRACTED]
 - [[Grade Audit Module Doc main.py]] - `references` [EXTRACTED]
 - [[_build_session()]] - `references` [EXTRACTED]
 - [[_get_obs_station()]] - `references` [EXTRACTED]

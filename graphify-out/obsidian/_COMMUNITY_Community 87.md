@@ -10,8 +10,8 @@ members: 29
 **Members:** 29 nodes
 
 ## Members
-- [[dot-test_cholesky_correlated()]] - code - tests/test_paper.py
-- [[dot-test_cholesky_identity()]] - code - tests/test_paper.py
+- [[dot-test_cholesky_correlated()_1]] - code - tests/test_paper.py
+- [[dot-test_cholesky_identity()_1]] - code - tests/test_paper.py
 - [[dot-test_cholesky_not_positive_definite_returns_none()]] - code - tests/test_paper.py
 - [[dot-test_past_date_only_portfolio_returns_empty_result()]] - code - tests/test_paper.py
 - [[dot-test_past_date_trade_excluded_from_simulation()]] - code - tests/test_paper.py
@@ -50,11 +50,11 @@ SORT file.name ASC
 ## Connections to other communities
 - 8 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 3 edges to [[_COMMUNITY_Community 246]]
-- 2 edges to [[_COMMUNITY_Community 181]]
 - 2 edges to [[_COMMUNITY_Community 56]]
+- 2 edges to [[_COMMUNITY_Community 181]]
 - 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Community 328]]
 - 1 edge to [[_COMMUNITY_Community 45]]
+- 1 edge to [[_COMMUNITY_Community 328]]
 
 ## Top bridge nodes
 - [[_cholesky()]] - degree 12, connects to 4 communities

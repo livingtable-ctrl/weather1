@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Train ML bias correction models from tracker DB data.]] - `rationale_for` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[train_all_temperature_scaling Function]] - `calls` [EXTRACTED]
 - [[train_all_temperature_scaling()]] - `calls` [EXTRACTED]

@@ -12,7 +12,7 @@ tags:
 # TestKalshiClientErrorBody
 
 ## Connections
-- [[dot-_make_client()_9]] - `method` [EXTRACTED]
+- [[dot-_make_client()_4]] - `method` [EXTRACTED]
 - [[dot-test_check_error_body_passes_on_clean_response()]] - `method` [EXTRACTED]
 - [[dot-test_check_error_body_passes_on_non_dict()]] - `method` [EXTRACTED]
 - [[dot-test_check_error_body_raises_on_error_field()]] - `method` [EXTRACTED]

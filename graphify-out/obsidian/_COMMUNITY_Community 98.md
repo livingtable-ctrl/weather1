@@ -13,15 +13,15 @@ members: 27
 - [[dot-test_cat5_kt_later_target_date_flips_2001_to_true()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_cat5_kt_unconditional_hand_computed()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_cat5_threshold_matches_the_cat5_storm_only()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_ci_brackets_point_estimate()]] - code - tests/test_hurricane_climatology.py
+- [[dot-test_ci_brackets_point_estimate()_1]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_conditional_mode_boundary_is_strict_not_inclusive()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_conditional_mode_excludes_years_already_resolved_by_as_of()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_earliest_storm_wins_even_when_listed_second()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_earliest_storm_wins_within_a_season()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_no_qualifying_storm_returns_none()]] - code - tests/test_hurricane_climatology.py
+- [[dot-test_no_qualifying_storm_returns_none()_1]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_too_few_years_returns_degenerate_ci()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_unconditional_mode_hand_computed()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_zero_storm_season_contributes_a_real_false_not_dropped()]] - code - tests/test_hurricane_climatology.py
+- [[dot-test_unconditional_mode_hand_computed()_1]] - code - tests/test_hurricane_climatology.py
+- [[dot-test_zero_storm_season_contributes_a_real_false_not_dropped()_1]] - code - tests/test_hurricane_climatology.py
 - [[2001 has two storms reaching hurricane strength -- Sep 1 (first) and Oct 1…]] - rationale - tests/test_hurricane_climatology.py
 - [[2004 lists the Cat5 storm (Sep 10) BEFORE the earlier HU-only storm (Aug 20) --…]] - rationale - tests/test_hurricane_climatology.py
 - [[A year whose first occurrence is EXACTLY as_of_month_day is treated as already-…]] - rationale - tests/test_hurricane_climatology.py
@@ -29,7 +29,7 @@ members: 27
 - [[No as_of_month_day -- every window year contributes, True iff that year's first…]] - rationale - tests/test_hurricane_climatology.py
 - [[Parse HURDAT2 fixed-format text into one compact summary dict per storm {id,…]] - rationale - hurricane_climatology.py
 - [[Same explicit-calendar-range discipline season_end_total_ distribution already…]] - rationale - tests/test_hurricane_climatology.py
-- [[TestBootstrapCi]] - code - tests/test_hurricane_climatology.py
+- [[TestBootstrapCi_1]] - code - tests/test_hurricane_climatology.py
 - [[TestFirstOccurrenceDay]] - code - tests/test_hurricane_climatology.py
 - [[TestNextEventOutcomes]] - code - tests/test_hurricane_climatology.py
 - [[Tests for hurricane_climatology.py -- HURDAT2 parsing, season-count…]] - rationale - tests/test_hurricane_climatology.py
@@ -49,12 +49,12 @@ SORT file.name ASC
 - 7 edges to [[_COMMUNITY_Community 55]]
 - 6 edges to [[_COMMUNITY_Community 60]]
 - 4 edges to [[_COMMUNITY_Community 83]]
-- 1 edge to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Community 546]]
-- 1 edge to [[_COMMUNITY_Community 505]]
 - 1 edge to [[_COMMUNITY_Community 466]]
+- 1 edge to [[_COMMUNITY_Community 505]]
+- 1 edge to [[_COMMUNITY_Community 546]]
 - 1 edge to [[_COMMUNITY_Community 547]]
 - 1 edge to [[_COMMUNITY_Community 90]]
+- 1 edge to [[_COMMUNITY_Community 40]]
 
 ## Top bridge nodes
 - [[test_hurricane_climatology.py]] - degree 25, connects to 9 communities

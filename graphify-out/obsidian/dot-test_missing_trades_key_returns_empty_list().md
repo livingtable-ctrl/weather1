@@ -12,7 +12,7 @@ tags:
 # .test_missing_trades_key_returns_empty_list()
 
 ## Connections
-- [[dot-_make_client()_8]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
 - [[TestGetTrades]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_100

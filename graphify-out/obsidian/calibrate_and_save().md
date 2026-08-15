@@ -12,7 +12,7 @@ tags:
 # calibrate_and_save()
 
 ## Connections
-- [[Path_4]] - `references` [EXTRACTED]
+- [[Path_2]] - `references` [EXTRACTED]
 - [[Phase 2 Batch P Below-Condition Weight Tests]] - `calls` [EXTRACTED]
 - [[Run all three blend-weight calibrations and write results atomically to disk.…]] - `rationale_for` [EXTRACTED]
 - [[_CONDITION_WEIGHTS cache]] - `conceptually_related_to` [EXTRACTED]

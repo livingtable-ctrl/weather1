@@ -41,13 +41,13 @@ SORT file.name ASC
 - 11 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 6 edges to [[_COMMUNITY_Community 36]]
 - 1 edge to [[_COMMUNITY_Community 32]]
+- 1 edge to [[_COMMUNITY_Community 96]]
+- 1 edge to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
+- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
 - 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 78]]
 - 1 edge to [[_COMMUNITY_Community 162]]
-- 1 edge to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
-- 1 edge to [[_COMMUNITY_Community 96]]
 - 1 edge to [[_COMMUNITY_Community 52]]
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
 
 ## Top bridge nodes
 - [[sync_outcomes()]] - degree 24, connects to 8 communities

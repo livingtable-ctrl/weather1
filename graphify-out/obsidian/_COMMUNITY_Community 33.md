@@ -10,7 +10,7 @@ members: 51
 **Members:** 51 nodes
 
 ## Members
-- [[dot-__init__()]] - code - ab_test.py
+- [[dot-__init__()_4]] - code - ab_test.py
 - [[dot-pick_variant()]] - code - ab_test.py
 - [[dot-record_outcome()]] - code - ab_test.py
 - [[dot-summary()]] - code - ab_test.py
@@ -26,7 +26,7 @@ members: 51
 - [[dot-test_record_outcome_unknown_variant_is_noop()]] - code - tests/test_ab_test.py
 - [[dot-test_summary_has_required_keys()]] - code - tests/test_ab_test.py
 - [[ABTest]] - code - ab_test.py
-- [[Any]] - code
+- [[Any_1]] - code
 - [[Convenience load a named test from disk and pick the active variant. Returns…]] - rationale - ab_test.py
 - [[L4-A get_active_variant must return the variant value, not None. Previously…]] - rationale - tests/test_ab_test.py
 - [[L4-A variant value must round-trip through disk (JSON serializedeserialize).…]] - rationale - tests/test_ab_test.py
@@ -46,7 +46,7 @@ members: 51
 - [[ab_test.ABTest]] - code - ab_test.py
 - [[ab_test.py]] - code - ab_test.py
 - [[ab_test.py — Simple AB testing framework for strategy parameter variants.…]] - rationale - ab_test.py
-- [[fixture_1]] - code
+- [[fixture_7]] - code
 - [[get_active_variant picks the least-traded active variant from disk state.]] - rationale - tests/test_ab_test.py
 - [[get_active_variant returns ('control', None) for unknown test name.]] - rationale - tests/test_ab_test.py
 - [[get_active_variant()]] - code - ab_test.py
@@ -74,12 +74,12 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_Community 59]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 2 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
+- 1 edge to [[_COMMUNITY_Community 145]]
 - 1 edge to [[_COMMUNITY_Community 45]]
 - 1 edge to [[_COMMUNITY_Community 354]]
-- 1 edge to [[_COMMUNITY_Community 145]]
 - 1 edge to [[_COMMUNITY_Community 32]]
 - 1 edge to [[_COMMUNITY_Community 454]]
+- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_Legacy Static Dashboard JS Pages]]
 
 ## Top bridge nodes

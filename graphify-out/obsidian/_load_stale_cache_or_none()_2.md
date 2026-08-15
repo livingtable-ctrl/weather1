@@ -1,19 +1,19 @@
 ---
-source_file: "hurricane_climatology.py"
+source_file: "acis_snow.py"
 type: "code"
-community: "Community 55"
-location: "L163"
+community: "Community 62"
+location: "L288"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_55
+  - community/Community_62
 ---
 
 # _load_stale_cache_or_none()
 
 ## Connections
-- [[Path_11]] - `references` [EXTRACTED]
-- [[fetch_hurdat2_raw()]] - `calls` [EXTRACTED]
-- [[hurricane_climatology.py]] - `contains` [EXTRACTED]
+- [[Path_25]] - `references` [EXTRACTED]
+- [[acis_snow.py]] - `contains` [EXTRACTED]
+- [[fetch_historical_daily_snow()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_55
+#graphify/code #graphify/EXTRACTED #community/Community_62

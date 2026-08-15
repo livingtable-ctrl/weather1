@@ -12,6 +12,6 @@ tags:
 # Own copy, not imported from acis_precip: that module's version reads…
 
 ## Connections
-- [[_cache_is_stale()_1]] - `rationale_for` [EXTRACTED]
+- [[_cache_is_stale()_2]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_62

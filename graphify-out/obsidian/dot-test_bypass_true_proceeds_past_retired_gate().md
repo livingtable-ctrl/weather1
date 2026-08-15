@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[TestRetirementProbationBypass]] - `method` [EXTRACTED]
 - [[With bypass_retirement_check=True, a retired method must not be blocked — the…]] - `rationale_for` [EXTRACTED]
-- [[_make_enriched()_1]] - `calls` [EXTRACTED]
+- [[_make_enriched()]] - `calls` [EXTRACTED]
 - [[_stub_heavy_deps()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_124

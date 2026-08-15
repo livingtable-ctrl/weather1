@@ -12,6 +12,6 @@ tags:
 # Convert month (1-12) to season index (1=Winter, 2=Spring, 3=Summer, 4=Fall).
 
 ## Connections
-- [[_month_to_season()_1]] - `rationale_for` [EXTRACTED]
+- [[_month_to_season()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_26

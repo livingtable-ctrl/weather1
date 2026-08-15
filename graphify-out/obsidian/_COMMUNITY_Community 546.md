@@ -10,7 +10,7 @@ members: 5
 **Members:** 5 nodes
 
 ## Members
-- [[dot-test_ci_brackets_point_estimate()_1]] - code - tests/test_hurricane_climatology.py
+- [[dot-test_ci_brackets_point_estimate()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_too_few_outcomes_returns_degenerate_ci()]] - code - tests/test_hurricane_climatology.py
 - [[dot-test_unanimous_outcomes_clamped_not_degenerate()]] - code - tests/test_hurricane_climatology.py
 - [[Opus-review-caught (2026-08-07, HIGH) a unanimous outcome set -- the common…]] - rationale - tests/test_hurricane_climatology.py

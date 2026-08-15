@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_alerts.py"
+source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 591"
-location: "L176"
+community: "Community 267"
+location: "L2995"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_591
+  - community/Community_267
 ---
 
 # Regression coverage for the OTHER bare os.replace() CALL SITES backlog entry…
 
 ## Connections
-- [[TestSaveRoutesThroughSafeIO]] - `rationale_for` [EXTRACTED]
+- [[dot-test_save_fails_open_when_atomic_write_raises()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_591
+#graphify/rationale #graphify/EXTRACTED #community/Community_267

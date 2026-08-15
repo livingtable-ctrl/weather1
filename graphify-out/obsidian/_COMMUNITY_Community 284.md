@@ -10,9 +10,9 @@ members: 13
 **Members:** 13 nodes
 
 ## Members
-- [[dot-_seed()_4]] - code - tests/test_regression.py
-- [[dot-setup_method()_36]] - code - tests/test_regression.py
-- [[dot-teardown_method()_27]] - code - tests/test_regression.py
+- [[dot-_seed()_2]] - code - tests/test_regression.py
+- [[dot-setup_method()_18]] - code - tests/test_regression.py
+- [[dot-teardown_method()_11]] - code - tests/test_regression.py
 - [[dot-test_brier_score_known_value()]] - code - tests/test_regression.py
 - [[dot-test_brier_score_no_data_returns_none()]] - code - tests/test_regression.py
 - [[dot-test_roc_auc_perfect_classifier()]] - code - tests/test_regression.py

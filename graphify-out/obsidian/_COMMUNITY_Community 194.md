@@ -37,16 +37,16 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 7 edges to [[_COMMUNITY_Community 208]]
-- 4 edges to [[_COMMUNITY_Community 94]]
 - 4 edges to [[_COMMUNITY_Community 167]]
+- 4 edges to [[_COMMUNITY_Community 94]]
 - 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 1 edge to [[_COMMUNITY_Community 200]]
 - 1 edge to [[_COMMUNITY_Community 223]]
 - 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Community 200]]
 - 1 edge to [[_COMMUNITY_Community 109]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
+- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 
 ## Top bridge nodes
 - [[test_alerts_side.py]] - degree 15, connects to 8 communities

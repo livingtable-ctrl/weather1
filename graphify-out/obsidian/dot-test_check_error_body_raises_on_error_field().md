@@ -12,7 +12,7 @@ tags:
 # .test_check_error_body_raises_on_error_field()
 
 ## Connections
-- [[dot-_make_client()_9]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_4]] - `calls` [EXTRACTED]
 - [[TestKalshiClientErrorBody]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_283

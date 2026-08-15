@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[L1-B if the fresh market price eliminates our edge, trade must be skipped.…]] - `rationale_for` [EXTRACTED]
-- [[_FakeClient_1]] - `calls` [EXTRACTED]
+- [[_FakeClient]] - `calls` [EXTRACTED]
 - [[_make_opp()]] - `calls` [EXTRACTED]
 - [[_stub_auto_prereqs()]] - `calls` [EXTRACTED]
 - [[test_execution_proof.py]] - `contains` [EXTRACTED]

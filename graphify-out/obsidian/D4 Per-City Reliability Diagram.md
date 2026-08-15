@@ -17,6 +17,6 @@ tags:
 - [[D5 Edge Realization by City]] - `references` [EXTRACTED]
 - [[H9 Reliability Diagram Chart (reuses D4)]] - `implements` [EXTRACTED]
 - [[useData.js Data Fetching Hook]] - `references` [EXTRACTED]
-- [[web_app.py Module_1]] - `references` [EXTRACTED]
+- [[web_app.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_104

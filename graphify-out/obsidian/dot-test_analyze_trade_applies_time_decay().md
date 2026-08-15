@@ -12,7 +12,7 @@ tags:
 # .test_analyze_trade_applies_time_decay()
 
 ## Connections
-- [[TestTimeDecayEdge]] - `method` [EXTRACTED]
+- [[TestTimeDecayEdge_1]] - `method` [EXTRACTED]
 - [[ZoneInfo]] - `calls` [INFERRED]
 - [[analyze_trade edge is time-decay scaled (not raw blended - market).]] - `rationale_for` [EXTRACTED]
 

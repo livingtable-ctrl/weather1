@@ -12,7 +12,7 @@ tags:
 # .test_varied_temps_not_degenerate()
 
 ## Connections
-- [[dot-_call()_1]] - `calls` [EXTRACTED]
+- [[dot-_call()]] - `calls` [EXTRACTED]
 - [[Normal spread must not be flagged as degenerate.]] - `rationale_for` [EXTRACTED]
 - [[TestEnsembleStatsDegenerate]] - `method` [EXTRACTED]
 

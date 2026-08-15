@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_tracker.py"
+source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 265"
-location: "L561"
+community: "Community 259"
+location: "L947"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_265
+  - community/Community_259
 ---
 
 # .tearDown()
 
 ## Connections
-- [[TestBrierScore]] - `method` [EXTRACTED]
+- [[TestAutoSettlePaperTrades]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_265
+#graphify/code #graphify/EXTRACTED #community/Community_259

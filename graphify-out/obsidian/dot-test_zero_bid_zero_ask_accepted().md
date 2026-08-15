@@ -12,7 +12,7 @@ tags:
 # .test_zero_bid_zero_ask_accepted()
 
 ## Connections
-- [[dot-_call()_2]] - `calls` [EXTRACTED]
+- [[dot-_call()_5]] - `calls` [EXTRACTED]
 - [[dot-_valid()]] - `calls` [EXTRACTED]
 - [[TestValidateMarketPriceRange]] - `method` [EXTRACTED]
 - [[bid=0.00 AND ask=0.00 together means no resting quote at all (an…]] - `rationale_for` [EXTRACTED]

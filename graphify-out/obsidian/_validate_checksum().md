@@ -15,7 +15,7 @@ tags:
 - [[CorruptionError]] - `calls` [EXTRACTED]
 - [[Validate SHA-256 checksum in data dict. Raises CorruptionError on mismatch.…]] - `rationale_for` [EXTRACTED]
 - [[_compute_checksum()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
 - [[test_safe_io.py]] - `imports` [EXTRACTED]
 - [[test_validate_checksum_accepts_legacy_16char()]] - `calls` [EXTRACTED]

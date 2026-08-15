@@ -12,7 +12,7 @@ tags:
 # TestNoSideEntryEdgeSign
 
 ## Connections
-- [[dot-_make_enriched()_4]] - `method` [EXTRACTED]
+- [[dot-_make_enriched()_2]] - `method` [EXTRACTED]
 - [[dot-test_ensemble_excluded_from_blend_when_circuit_open()]] - `method` [EXTRACTED]
 - [[dot-test_entry_side_edge_formula_arithmetic()]] - `method` [EXTRACTED]
 - [[dot-test_no_trade_entry_side_edge_is_positive()]] - `method` [EXTRACTED]

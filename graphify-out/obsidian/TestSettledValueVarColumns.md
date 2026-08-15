@@ -12,8 +12,8 @@ tags:
 # TestSettledValueVarColumns
 
 ## Connections
-- [[dot-setUp()_28]] - `method` [EXTRACTED]
-- [[dot-tearDown()_28]] - `method` [EXTRACTED]
+- [[dot-setUp()_33]] - `method` [EXTRACTED]
+- [[dot-tearDown()_32]] - `method` [EXTRACTED]
 - [[dot-test_columns_exist_after_init()_1]] - `method` [EXTRACTED]
 - [[dot-test_round_trip_write_and_read()]] - `method` [EXTRACTED]
 - [[dot-test_settled_temp_f_write_path_unaffected()]] - `method` [EXTRACTED]

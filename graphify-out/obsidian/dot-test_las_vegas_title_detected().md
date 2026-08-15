@@ -12,7 +12,7 @@ tags:
 # .test_las_vegas_title_detected()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 - [[las vegas' in title → LasVegas even with a generic ticker.]] - `rationale_for` [EXTRACTED]
 

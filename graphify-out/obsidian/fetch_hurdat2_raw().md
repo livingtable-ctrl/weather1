@@ -12,9 +12,9 @@ tags:
 # fetch_hurdat2_raw()
 
 ## Connections
-- [[_cache_is_stale()_3]] - `calls` [EXTRACTED]
-- [[_cache_path()_3]] - `calls` [EXTRACTED]
-- [[_load_stale_cache_or_none()_2]] - `calls` [EXTRACTED]
+- [[_cache_is_stale()]] - `calls` [EXTRACTED]
+- [[_cache_path()]] - `calls` [EXTRACTED]
+- [[_load_stale_cache_or_none()]] - `calls` [EXTRACTED]
 - [[atomic_write_text()]] - `calls` [EXTRACTED]
 - [[file_key is ATL or PAC (see HURDAT2_URLSBASIN_FILE_AND_PREFIX). Disk-…]] - `rationale_for` [EXTRACTED]
 - [[hurricane_climatology.py]] - `contains` [EXTRACTED]

@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_p1_remaining.py"
+source_file: "tests/test_positions.py"
 type: "code"
-community: "Community 400"
-location: "L29"
+community: "Community 45"
+location: "L168"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_400
+  - community/Community_45
 ---
 
 # .teardown_method()
 
 ## Connections
-- [[TestGetAccuracyHaltReason]] - `method` [EXTRACTED]
+- [[TestLivePositionStore]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_400
+#graphify/code #graphify/EXTRACTED #community/Community_45

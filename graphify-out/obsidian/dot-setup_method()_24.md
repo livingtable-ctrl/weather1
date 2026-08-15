@@ -1,17 +1,18 @@
 ---
-source_file: "tests/test_mos_nbp.py"
+source_file: "tests/test_flash_crash_cb.py"
 type: "code"
-community: "Community 123"
-location: "L238"
+community: "Community 365"
+location: "L13"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_123
+  - community/Community_365
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestFetchNbpPercentiles]] - `method` [EXTRACTED]
+- [[FlashCrashCB]] - `calls` [EXTRACTED]
+- [[TestFlashCrashCB]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_123
+#graphify/code #graphify/EXTRACTED #community/Community_365

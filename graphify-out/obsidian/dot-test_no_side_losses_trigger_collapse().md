@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[P1-14 8 losing NO-side trades (outcome='yes') must trigger collapse.]] - `rationale_for` [EXTRACTED]
 - [[TestCheckAnomaliesNoSideWinRate]] - `method` [EXTRACTED]
-- [[_make_trade()]] - `calls` [EXTRACTED]
+- [[_make_trade()_1]] - `calls` [EXTRACTED]
 - [[check_anomalies()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_208

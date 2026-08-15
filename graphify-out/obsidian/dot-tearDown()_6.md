@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_paper.py"
+source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 479"
-location: "L767"
+community: "Community 153"
+location: "L5943"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_479
+  - community/Community_153
 ---
 
 # .tearDown()
 
 ## Connections
-- [[TestExportTrades]] - `method` [EXTRACTED]
+- [[TestSyncOutcomesDatetimeFix]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_479
+#graphify/code #graphify/EXTRACTED #community/Community_153

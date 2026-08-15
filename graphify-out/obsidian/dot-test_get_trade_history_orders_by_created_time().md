@@ -12,7 +12,7 @@ tags:
 # .test_get_trade_history_orders_by_created_time()
 
 ## Connections
-- [[dot-_trade()_4]] - `calls` [EXTRACTED]
+- [[dot-_trade()_2]] - `calls` [EXTRACTED]
 - [[TestTradeHistory]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_39

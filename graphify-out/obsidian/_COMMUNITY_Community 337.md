@@ -10,8 +10,8 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-setup_method()_11]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_10]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_20]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_13]] - code - tests/test_live_execution.py
 - [[dot-test_daily_live_spend_cap_blocks_across_cycles()]] - code - tests/test_live_execution.py
 - [[dot-test_daily_loss_limit_blocks_after_db_loss()]] - code - tests/test_live_execution.py
 - [[dot-test_daily_loss_limit_blocks_without_keyerror_when_key_missing()]] - code - tests/test_live_execution.py

@@ -12,7 +12,7 @@ tags:
 # ._run_with_cpl_spy()
 
 ## Connections
-- [[dot-_run()_3]] - `calls` [EXTRACTED]
+- [[dot-_run()_4]] - `calls` [EXTRACTED]
 - [[dot-test_other_hurricane_shapes_always_refused_regardless_of_gate()]] - `calls` [EXTRACTED]
 - [[dot-test_refuses_hurricane_count_ticker_when_gate_inactive()]] - `calls` [EXTRACTED]
 - [[dot-test_refuses_rain_ticker_when_gate_inactive()]] - `calls` [EXTRACTED]

@@ -12,7 +12,7 @@ tags:
 # .test_nyc_hourly_ticker_detected()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[Real ticker pulled live 2026-07-20.]] - `rationale_for` [EXTRACTED]
 - [[TestHourlyDirectionalCityDetection]] - `method` [EXTRACTED]
 

@@ -12,8 +12,8 @@ tags:
 # TestPerSourceProbColumns
 
 ## Connections
-- [[dot-setUp()_26]] - `method` [EXTRACTED]
-- [[dot-tearDown()_26]] - `method` [EXTRACTED]
+- [[dot-setUp()_32]] - `method` [EXTRACTED]
+- [[dot-tearDown()_31]] - `method` [EXTRACTED]
 - [[dot-test_columns_exist_after_init()]] - `method` [EXTRACTED]
 - [[dot-test_log_prediction_stores_source_probs()]] - `method` [EXTRACTED]
 - [[Schema v9 must add ensemble_prob, nws_prob, clim_prob to predictions.]] - `rationale_for` [EXTRACTED]

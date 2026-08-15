@@ -1,18 +1,18 @@
 ---
-source_file: "tests/test_rain_markets.py"
+source_file: "tests/test_hurricane_gating.py"
 type: "code"
-community: "Community 408"
-location: "L1615"
+community: "Community 425"
+location: "L373"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_408
+  - community/Community_425
 ---
 
 # .test_blocks_even_when_city_and_date_are_present()
 
 ## Connections
-- [[TestCheckPositionLimitsBlocksMonthlyRain]] - `method` [EXTRACTED]
-- [[The guard must fire before the `if city and target_date_str` exposure-cap…]] - `rationale_for` [EXTRACTED]
+- [[Guard must fire before the `if city and target_date_str` exposure-cap block,…]] - `rationale_for` [EXTRACTED]
+- [[TestCheckPositionLimitsBlocksHurricane]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_408
+#graphify/code #graphify/EXTRACTED #community/Community_425

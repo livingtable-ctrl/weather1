@@ -12,8 +12,8 @@ tags:
 # TestDailyLiveLoss
 
 ## Connections
-- [[dot-setup_method()_6]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_6]] - `method` [EXTRACTED]
+- [[dot-setup_method()_17]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_10]] - `method` [EXTRACTED]
 - [[dot-test_add_live_loss_write_failure_fails_closed()]] - `method` [EXTRACTED]
 - [[dot-test_daily_live_loss_accumulates()]] - `method` [EXTRACTED]
 - [[dot-test_daily_live_loss_add_returns_new_total()]] - `method` [EXTRACTED]

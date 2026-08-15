@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Community 426"
-location: "L1145"
+community: "Community 398"
+location: "L351"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_426
+  - community/Community_398
 ---
 
 # .test_false_when_env_var_unset()
 
 ## Connections
-- [[TestHurricaneNextEventGatesActive]] - `method` [EXTRACTED]
+- [[TestHurricaneCountGatesActive]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_426
+#graphify/code #graphify/EXTRACTED #community/Community_398

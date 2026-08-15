@@ -25,10 +25,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 93]]
-- 2 edges to [[_COMMUNITY_Community 66]]
+- 2 edges to [[_COMMUNITY_Community 93]]
 
 ## Top bridge nodes
-- [[SettingsTab.jsx]] - degree 8, connects to 2 communities
-- [[SettingsTab()_1]] - degree 3, connects to 1 community
-- [[apioverride route]] - degree 2, connects to 1 community
+- [[SettingsTab.jsx]] - degree 6, connects to 1 community
+- [[SettingsTab()_1]] - degree 2, connects to 1 community

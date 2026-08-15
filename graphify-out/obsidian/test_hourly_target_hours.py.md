@@ -15,7 +15,7 @@ tags:
 - [[_finalized_market()]] - `contains` [EXTRACTED]
 - [[_ladder_at_local_hour()]] - `contains` [EXTRACTED]
 - [[_mock_client()]] - `contains` [EXTRACTED]
-- [[_today()_1]] - `contains` [EXTRACTED]
+- [[_today()]] - `contains` [EXTRACTED]
 - [[hourly KXTEMPxxxH model  _hourly_gates_active()  refresh_hourly_target_hours()]] - `references` [EXTRACTED]
 - [[test_first_run_creates_cache_for_all_cities()]] - `contains` [EXTRACTED]
 - [[test_gated_to_run_once_per_city_per_day()]] - `contains` [EXTRACTED]

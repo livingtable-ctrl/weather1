@@ -12,7 +12,7 @@ tags:
 # .test_empty_candle_list_does_not_count_as_filled()
 
 ## Connections
-- [[dot-_settle()_1]] - `calls` [EXTRACTED]
+- [[dot-_settle()]] - `calls` [EXTRACTED]
 - [[A ticker whose candles are genuinely unavailable (e.g. past the endpoint's…]] - `rationale_for` [EXTRACTED]
 - [[TestBackfillPriceHistory]] - `method` [EXTRACTED]
 

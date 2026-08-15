@@ -15,7 +15,7 @@ tags:
 - [[Mocked forecast returns a high_f within ±5°F of the archived observation.]] - `rationale_for` [EXTRACTED]
 - [[TestForecastAccuracyFixtures]] - `method` [EXTRACTED]
 - [[_open_meteo_response()]] - `calls` [EXTRACTED]
-- [[activate]] - `references` [EXTRACTED]
+- [[activate_1]] - `references` [EXTRACTED]
 - [[parametrize_1]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_232

@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Prevent CPUmemory checks from interfering with trade-logic assertions.]] - `rationale_for` [EXTRACTED]
-- [[fixture_15]] - `references` [EXTRACTED]
+- [[fixture_14]] - `references` [EXTRACTED]
 - [[test_trade_validation.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_596

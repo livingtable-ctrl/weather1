@@ -4,7 +4,7 @@ type: "document"
 community: "Community 117"
 tags:
   - graphify/document
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_117
 ---
 
@@ -14,4 +14,4 @@ tags:
 - [[Gaussian Probability Distribution Method]] - `semantically_similar_to` [INFERRED]
 - [[New Computer Setup Plan]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/INFERRED #community/Community_117
+#graphify/document #graphify/EXTRACTED #community/Community_117

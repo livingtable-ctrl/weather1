@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[TestAnalyzePipeline]] - `method` [EXTRACTED]
-- [[_make_enriched()]] - `calls` [EXTRACTED]
+- [[_make_enriched()_2]] - `calls` [EXTRACTED]
 - [[analyze_trade returns None when _city is missing.]] - `rationale_for` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 

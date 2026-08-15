@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[TestWalkForwardNoLookAhead]] - `method` [EXTRACTED]
 - [[_find_optimal_min_edge must be called with per-fold training data, not full…]] - `rationale_for` [EXTRACTED]
-- [[_make_trade()_2]] - `calls` [EXTRACTED]
+- [[_make_trade()_3]] - `calls` [EXTRACTED]
 - [[walk_forward_backtest()]] - `calls` [EXTRACTED]
 - [[walk_forward_split()]] - `calls` [EXTRACTED]
 

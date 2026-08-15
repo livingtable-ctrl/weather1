@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Parse a raw METAR obs dict's obsTime (Unix epoch intfloat, or an ISO-8601…]] - `rationale_for` [EXTRACTED]
 - [[_fetch_daily_temps_f()]] - `calls` [EXTRACTED]
-- [[datetime]] - `references` [EXTRACTED]
+- [[datetime_1]] - `references` [EXTRACTED]
 - [[metar.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_211

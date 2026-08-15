@@ -10,7 +10,7 @@ members: 7
 **Members:** 7 nodes
 
 ## Members
-- [[dot-_trade()_1]] - code - tests/test_positions.py
+- [[dot-_trade()_4]] - code - tests/test_positions.py
 - [[dot-_write_ledger()]] - code - tests/test_positions.py
 - [[dot-test_exit_wraps_close_paper_early()]] - code - tests/test_positions.py
 - [[dot-test_get_open_converts_every_open_trade_to_a_position()]] - code - tests/test_positions.py

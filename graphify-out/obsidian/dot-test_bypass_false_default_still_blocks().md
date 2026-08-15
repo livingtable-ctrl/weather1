@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Confirms the keyword-only default is False -- every real (positional) call site…]] - `rationale_for` [EXTRACTED]
 - [[TestRetirementProbationBypass]] - `method` [EXTRACTED]
-- [[_make_enriched()_1]] - `calls` [EXTRACTED]
+- [[_make_enriched()]] - `calls` [EXTRACTED]
 - [[_stub_heavy_deps()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_124

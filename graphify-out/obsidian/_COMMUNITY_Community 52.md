@@ -11,10 +11,10 @@ members: 39
 
 ## Members
 - [[dot-_enriched()_6]] - code - tests/test_signal_quality.py
-- [[dot-_enriched()_5]] - code - tests/test_signal_quality.py
-- [[dot-setup_method()_38]] - code - tests/test_signal_quality.py
-- [[dot-setup_method()_37]] - code - tests/test_signal_quality.py
-- [[dot-teardown_method()_29]] - code - tests/test_signal_quality.py
+- [[dot-_enriched()_7]] - code - tests/test_signal_quality.py
+- [[dot-setup_method()_35]] - code - tests/test_signal_quality.py
+- [[dot-setup_method()_36]] - code - tests/test_signal_quality.py
+- [[dot-teardown_method()_27]] - code - tests/test_signal_quality.py
 - [[dot-teardown_method()_28]] - code - tests/test_signal_quality.py
 - [[dot-test_bias_correction_condition_type_param_accepted()]] - code - tests/test_signal_quality.py
 - [[dot-test_condition_type_scale_in_kelly()]] - code - tests/test_signal_quality.py
@@ -47,7 +47,7 @@ members: 39
 - [[kalshi_client.py_1]] - code - kalshi_client.py
 - [[sprt_model_health()]] - code - tracker.py
 - [[test_signal_quality.py]] - code - tests/test_signal_quality.py
-- [[tracker.py_1]] - code - tracker.py
+- [[tracker.py_2]] - code - tracker.py
 - [[train_bias_model Function]] - code - ml_bias.py
 
 ## Live Query (requires Dataview plugin)
@@ -62,27 +62,27 @@ SORT file.name ASC
 - 5 edges to [[_COMMUNITY_Community 40]]
 - 4 edges to [[_COMMUNITY_Community 36]]
 - 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 2 edges to [[_COMMUNITY_Community 127]]
+- 2 edges to [[_COMMUNITY_Community 190]]
+- 2 edges to [[_COMMUNITY_Community 328]]
+- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 2 edges to [[_COMMUNITY_Community 353]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Community 328]]
-- 2 edges to [[_COMMUNITY_Community 74]]
 - 2 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
-- 2 edges to [[_COMMUNITY_Community 190]]
-- 2 edges to [[_COMMUNITY_Community 127]]
 - 2 edges to [[_COMMUNITY_Community 71]]
+- 2 edges to [[_COMMUNITY_Community 74]]
 - 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 1 edge to [[_COMMUNITY_Community 53]]
-- 1 edge to [[_COMMUNITY_Community 228]]
-- 1 edge to [[_COMMUNITY_Community 220]]
-- 1 edge to [[_COMMUNITY_Community 380]]
-- 1 edge to [[_COMMUNITY_Community 92]]
-- 1 edge to [[_COMMUNITY_Community 43]]
 - 1 edge to [[_COMMUNITY_Community 184]]
 - 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 1 edge to [[_COMMUNITY_Community 380]]
+- 1 edge to [[_COMMUNITY_Community 53]]
+- 1 edge to [[_COMMUNITY_Community 220]]
+- 1 edge to [[_COMMUNITY_Community 43]]
+- 1 edge to [[_COMMUNITY_Community 228]]
+- 1 edge to [[_COMMUNITY_Community 92]]
 
 ## Top bridge nodes
-- [[tracker.py_1]] - degree 20, connects to 11 communities
+- [[tracker.py_2]] - degree 20, connects to 11 communities
 - [[test_signal_quality.py]] - degree 20, connects to 9 communities
 - [[get_model_weights()]] - degree 11, connects to 5 communities
 - [[kalshi_client.py_1]] - degree 5, connects to 4 communities

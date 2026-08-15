@@ -12,7 +12,7 @@ tags:
 # ._save_history()
 
 ## Connections
-- [[dot-check()]] - `calls` [EXTRACTED]
+- [[dot-check()_1]] - `calls` [EXTRACTED]
 - [[FlashCrashCB]] - `method` [EXTRACTED]
 - [[Persist current (non-expired) price history to disk atomically.]] - `rationale_for` [EXTRACTED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]

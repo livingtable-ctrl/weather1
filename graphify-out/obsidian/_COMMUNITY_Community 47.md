@@ -23,8 +23,8 @@ members: 41
 - [[Files starting with '.' must survive cleanup.]] - rationale - tests/test_cleanup_data_dir.py
 - [[Files starting with climate_ must survive cleanup.]] - rationale - tests/test_cleanup_data_dir.py
 - [[P0-15 cleanup_data_dir must not delete permanent calibration files.]] - rationale - tests/test_cleanup_data_dir.py
-- [[Path_14]] - code
-- [[Path_17]] - code
+- [[Path_21]] - code
+- [[Path_22]] - code
 - [[Redirect main.DATA_DIR (via __file__ resolution) to a temp directory.]] - rationale - tests/test_cleanup_data_dir.py
 - [[Return info about any real recovery copies sitting in the emergency- copy…]] - rationale - safe_io.py
 - [[Return the main project root directory, resolving git worktrees correctly. When…]] - rationale - safe_io.py
@@ -43,7 +43,7 @@ members: 41
 - [[check_emergency_copies()]] - code - safe_io.py
 - [[cron.py emergency-copy monitor call site]] - code - cron.py
 - [[data_dir()]] - code - tests/test_cleanup_data_dir.py
-- [[fixture_4]] - code
+- [[fixture_11]] - code
 - [[os.replace(src, dst), retrying briefly on PermissionError. Self-caught…]] - rationale - safe_io.py
 - [[paper._acquire_file_lock()  msvcrt retry loop]] - code - paper.py
 - [[project_root()]] - code - safe_io.py
@@ -63,18 +63,18 @@ SORT file.name ASC
 - 7 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 5 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 4 edges to [[_COMMUNITY_Community 59]]
-- 2 edges to [[_COMMUNITY_Community 118]]
 - 2 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
+- 2 edges to [[_COMMUNITY_Community 118]]
 - 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
+- 1 edge to [[_COMMUNITY_Community 145]]
+- 1 edge to [[_COMMUNITY_Community 385]]
 - 1 edge to [[_COMMUNITY_Community 55]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Community 145]]
-- 1 edge to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Safe IO CRC Validation Tests]]
 - 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
-- 1 edge to [[_COMMUNITY_Community 385]]
+- 1 edge to [[_COMMUNITY_Safe IO CRC Validation Tests]]
+- 1 edge to [[_COMMUNITY_Community 40]]
+- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 
 ## Top bridge nodes
 - [[project_root()]] - degree 12, connects to 7 communities

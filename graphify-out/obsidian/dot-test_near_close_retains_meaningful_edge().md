@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[At 2h before close with 8h reference 5% edge retained (was 4% with 48h).]] - `rationale_for` [EXTRACTED]
-- [[TestTimeDecayEdge_1]] - `method` [EXTRACTED]
+- [[TestTimeDecayEdge]] - `method` [EXTRACTED]
 - [[time_decay_edge()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_240

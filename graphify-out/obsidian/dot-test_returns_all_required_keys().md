@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Result must contain n, mean, std, min, max, p10, p90.]] - `rationale_for` [EXTRACTED]
-- [[TestEnsembleStats_1]] - `method` [EXTRACTED]
+- [[TestEnsembleStats]] - `method` [EXTRACTED]
 - [[ensemble_stats()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_160

@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_hourly_markets.py"
+source_file: "tests/test_snow_markets.py"
 type: "rationale"
-community: "Community 396"
-location: "L795"
+community: "Community 379"
+location: "L566"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_396
+  - community/Community_379
 ---
 
 # Mutation-test proof: proceeds past THIS guard once the gate is active.
 
 ## Connections
-- [[dot-test_cmd_paper_does_not_refuse_when_gate_active()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_cmd_paper_does_not_refuse_snow_when_gate_active()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_396
+#graphify/rationale #graphify/EXTRACTED #community/Community_379

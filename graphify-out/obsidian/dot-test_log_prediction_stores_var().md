@@ -12,7 +12,7 @@ tags:
 # .test_log_prediction_stores_var()
 
 ## Connections
-- [[dot-_analysis()_4]] - `calls` [EXTRACTED]
+- [[dot-_analysis()_1]] - `calls` [EXTRACTED]
 - [[TestPredictionsVarColumn]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_288

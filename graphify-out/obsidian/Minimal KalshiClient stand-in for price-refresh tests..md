@@ -12,6 +12,6 @@ tags:
 # Minimal KalshiClient stand-in for price-refresh tests.
 
 ## Connections
-- [[_FakeClient_1]] - `rationale_for` [EXTRACTED]
+- [[_FakeClient]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_105

@@ -16,7 +16,7 @@ tags:
 - [[dot-test_apply_pdo_pna_correction_la_winter()]] - `calls` [EXTRACTED]
 - [[dot-test_apply_pdo_pna_correction_unknown_city_zero()]] - `calls` [EXTRACTED]
 - [[Return temperature bias correction (degrees F) based on PDOPNA for city and…]] - `rationale_for` [EXTRACTED]
-- [[_month_to_season()]] - `calls` [EXTRACTED]
+- [[_month_to_season()_1]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[climate_indices.py]] - `contains` [EXTRACTED]
 - [[get_pdo_pna()]] - `calls` [EXTRACTED]

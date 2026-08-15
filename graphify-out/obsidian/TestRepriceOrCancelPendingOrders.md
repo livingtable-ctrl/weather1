@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[dot-_seed_pending()]] - `method` [EXTRACTED]
-- [[dot-setup_method()_21]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_20]] - `method` [EXTRACTED]
+- [[dot-setup_method()_37]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_29]] - `method` [EXTRACTED]
 - [[dot-test_amend_exchange_success_survives_bookkeeping_failure()]] - `method` [EXTRACTED]
 - [[dot-test_amend_failure_leaves_old_row_pending_not_amended()]] - `method` [EXTRACTED]
 - [[dot-test_amend_success_logs_new_row_and_marks_old_row_amended()]] - `method` [EXTRACTED]

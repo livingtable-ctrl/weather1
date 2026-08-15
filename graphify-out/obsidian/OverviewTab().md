@@ -1,18 +1,18 @@
 ---
 source_file: "weather app site V_3 (3)/src/tabs/OverviewTab.jsx"
 type: "code"
-community: "Community 193"
-location: "L53"
+community: "Community 692"
+location: "L54"
 tags:
   - graphify/code
-  - graphify/INFERRED
-  - community/Community_193
+  - graphify/EXTRACTED
+  - community/Community_692
 ---
 
 # OverviewTab()
 
 ## Connections
 - [[OverviewTab.jsx]] - `contains` [EXTRACTED]
-- [[weather app site V_3 (3)srcApp.jsx]] - `indirect_call` [INFERRED]
+- [[authHeader()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Community_193
+#graphify/code #graphify/EXTRACTED #community/Community_692

@@ -12,7 +12,7 @@ tags:
 # .test_load_seasonal_missing_file_returns_empty()
 
 ## Connections
-- [[Path_16]] - `calls` [EXTRACTED]
+- [[Path_1]] - `calls` [EXTRACTED]
 - [[TestLoadWeights]] - `method` [EXTRACTED]
 - [[load_seasonal_weights()]] - `calls` [EXTRACTED]
 

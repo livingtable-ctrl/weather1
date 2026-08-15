@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_hurricane_markets.py"
+source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 398"
-location: "L379"
+community: "Community 395"
+location: "L474"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_398
+  - community/Community_395
 ---
 
 # .test_never_raises_on_count_failure()
 
 ## Connections
-- [[TestHurricaneCountGatesActive]] - `method` [EXTRACTED]
+- [[TestHourlyGatesActive]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_398
+#graphify/code #graphify/EXTRACTED #community/Community_395

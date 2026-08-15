@@ -1,17 +1,20 @@
 ---
-source_file: "forecast_cache.py"
+source_file: "ab_test.py"
 type: "code"
-community: "Community 51"
-location: "L22"
+community: "Community 33"
+location: "L63"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_51
+  - community/Community_33
 ---
 
 # .__init__()
 
 ## Connections
-- [[ForecastCache]] - `method` [EXTRACTED]
+- [[ABTest]] - `method` [EXTRACTED]
+- [[Any_1]] - `references` [EXTRACTED]
+- [[_load_test_state()]] - `calls` [EXTRACTED]
+- [[_save_test_state()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_51
+#graphify/code #graphify/EXTRACTED #community/Community_33

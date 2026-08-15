@@ -15,13 +15,13 @@ members: 24
 - [[Matches check_series_drift's own datetime.now(UTC).date() — using local…]] - rationale - tests/test_series_drift.py
 - [[Tests for check_series_drift() — once-per-day detection of Kalshi ticker drift…]] - rationale - tests/test_series_drift.py
 - [[The real subtlety found on plan review client.get_series_list() returns ALL…]] - rationale - tests/test_series_drift.py
-- [[_mock_client()_2]] - code - tests/test_series_drift.py
-- [[_today()_3]] - code - tests/test_series_drift.py
+- [[_mock_client()_1]] - code - tests/test_series_drift.py
+- [[_today()_1]] - code - tests/test_series_drift.py
 - [[backlog.txt HURRICANE MARKETS -- storm-order model (2026-08-07) the 1 new…]] - rationale - tests/test_series_drift.py
 - [[backlog.txt HURRICANE MARKETS -- time-to-next-event model (2026-08-07) the 2…]] - rationale - tests/test_series_drift.py
 - [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 1 a genuinely novelunknown…]] - rationale - tests/test_series_drift.py
-- [[test_first_run_creates_state_file()_1]] - code - tests/test_series_drift.py
-- [[test_gated_to_run_once_per_day()_2]] - code - tests/test_series_drift.py
+- [[test_first_run_creates_state_file()]] - code - tests/test_series_drift.py
+- [[test_gated_to_run_once_per_day()]] - code - tests/test_series_drift.py
 - [[test_hurricane_next_event_series_present_does_not_warn()]] - code - tests/test_series_drift.py
 - [[test_known_dead_series_suppressed()]] - code - tests/test_series_drift.py
 - [[test_known_untracked_rain_series_suppressed()]] - code - tests/test_series_drift.py

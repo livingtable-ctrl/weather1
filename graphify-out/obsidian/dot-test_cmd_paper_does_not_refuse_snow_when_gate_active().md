@@ -12,7 +12,7 @@ tags:
 # .test_cmd_paper_does_not_refuse_snow_when_gate_active()
 
 ## Connections
-- [[Mutation-test proof proceeds past THIS guard once the gate is active._1]] - `rationale_for` [EXTRACTED]
+- [[Mutation-test proof proceeds past THIS guard once the gate is active.]] - `rationale_for` [EXTRACTED]
 - [[TestQuickPaperBuyAndCmdPaperSnowGuards]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_379

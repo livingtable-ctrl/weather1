@@ -14,8 +14,8 @@ tags:
 ## Connections
 - [[Fetch weather data from Pirate Weather (HRRRGFSGEFS blend). Used as fallback…]] - `rationale_for` [EXTRACTED]
 - [[_request_with_retry()]] - `calls` [EXTRACTED]
-- [[date_11]] - `references` [EXTRACTED]
-- [[datetime_4]] - `calls` [EXTRACTED]
+- [[date_2]] - `references` [EXTRACTED]
+- [[datetime_2]] - `calls` [EXTRACTED]
 - [[get_weather_forecast()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 

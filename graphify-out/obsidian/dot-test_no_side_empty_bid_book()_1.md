@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[TestSnowTradeWiring]] - `method` [EXTRACTED]
-- [[date_8]] - `calls` [EXTRACTED]
+- [[date_3]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_309

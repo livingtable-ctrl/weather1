@@ -11,7 +11,7 @@ members: 13
 
 ## Members
 - [[dot-_model_response()]] - code - tests/test_tracker.py
-- [[dot-setUp()_40]] - code - tests/test_tracker.py
+- [[dot-setUp()_17]] - code - tests/test_tracker.py
 - [[dot-test_computes_weighted_delta_and_jumpiness_exactly()]] - code - tests/test_tracker.py
 - [[dot-test_days_out_seven_has_only_one_valid_lead_returns_none()]] - code - tests/test_tracker.py
 - [[dot-test_days_out_zero_returns_none_without_network_call()]] - code - tests/test_tracker.py

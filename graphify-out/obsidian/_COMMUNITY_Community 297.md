@@ -33,10 +33,10 @@ SORT file.name ASC
 ## Connections to other communities
 - 5 edges to [[_COMMUNITY_Community 212]]
 - 3 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Community 129]]
 - 2 edges to [[_COMMUNITY_Community 243]]
-- 1 edge to [[_COMMUNITY_Community 454]]
+- 2 edges to [[_COMMUNITY_Community 129]]
 - 1 edge to [[_COMMUNITY_Community 51]]
+- 1 edge to [[_COMMUNITY_Community 454]]
 
 ## Top bridge nodes
 - [[BotConfig]] - degree 20, connects to 6 communities

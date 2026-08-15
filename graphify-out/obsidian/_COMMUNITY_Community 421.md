@@ -10,8 +10,8 @@ members: 8
 **Members:** 8 nodes
 
 ## Members
-- [[dot-setup_method()_8]] - code - tests/test_execution_log.py
-- [[dot-teardown_method()_8]] - code - tests/test_execution_log.py
+- [[dot-setup_method()_28]] - code - tests/test_execution_log.py
+- [[dot-teardown_method()_20]] - code - tests/test_execution_log.py
 - [[dot-test_api_canceled_order_does_not_block_reentry()]] - code - tests/test_execution_log.py
 - [[dot-test_filled_order_still_blocks_reentry()]] - code - tests/test_execution_log.py
 - [[dot-test_legacy_british_cancelled_spelling_does_not_block_reentry()]] - code - tests/test_execution_log.py

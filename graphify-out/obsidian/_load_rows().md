@@ -12,7 +12,7 @@ tags:
 # _load_rows()
 
 ## Connections
-- [[Path_4]] - `references` [EXTRACTED]
+- [[Path_2]] - `references` [EXTRACTED]
 - [[Row]] - `references` [EXTRACTED]
 - [[calibrate_city_weights()]] - `calls` [EXTRACTED]
 - [[calibrate_seasonal_weights()]] - `calls` [EXTRACTED]

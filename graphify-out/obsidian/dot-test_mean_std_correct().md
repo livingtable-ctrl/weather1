@@ -12,7 +12,7 @@ tags:
 # .test_mean_std_correct()
 
 ## Connections
-- [[TestEnsembleStats_1]] - `method` [EXTRACTED]
+- [[TestEnsembleStats]] - `method` [EXTRACTED]
 - [[Verify mean and std match statistics module on known data.]] - `rationale_for` [EXTRACTED]
 - [[ensemble_stats()]] - `calls` [EXTRACTED]
 

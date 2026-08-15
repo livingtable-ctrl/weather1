@@ -30,7 +30,7 @@ members: 47
 - [[Each fold's test period is one month later than the previous.]] - rationale - tests/test_walk_forward.py
 - [[Less than train_months + test_months of data → empty list.]] - rationale - tests/test_walk_forward.py
 - [[Make a minimal trade record for backtesting.]] - rationale - tests/test_walk_forward.py
-- [[Path_3]] - code
+- [[Path_16]] - code
 - [[Result includes overall mean_brier and std_brier across folds.]] - rationale - tests/test_walk_forward.py
 - [[Run a walk-forward (rolling out-of-sample) backtest on historical trade data.…]] - rationale - backtest.py
 - [[Split trades into walk-forward traintest folds. Each fold trains on start,…]] - rationale - backtest.py
@@ -46,8 +46,8 @@ members: 47
 - [[_fetch_settled_markets must query by series_ticker, not dump all global…]] - rationale - tests/test_walk_forward.py
 - [[_find_optimal_min_edge must be called with per-fold training data, not full…]] - rationale - tests/test_p1_remaining.py
 - [[_find_optimal_min_edge()]] - code - backtest.py
-- [[_make_trade()_2]] - code - tests/test_p1_remaining.py
-- [[_make_trade()_6]] - code - tests/test_walk_forward.py
+- [[_make_trade()_3]] - code - tests/test_p1_remaining.py
+- [[_make_trade()_4]] - code - tests/test_walk_forward.py
 - [[run_walk_forward reads settled predictions from the tracker DB directly; it…]] - rationale - tests/test_walk_forward.py
 - [[save_walk_forward_params()]] - code - backtest.py
 - [[test_fetch_settled_markets_queries_by_weather_series()]] - code - tests/test_walk_forward.py
@@ -68,14 +68,14 @@ SORT file.name ASC
 ## Connections to other communities
 - 5 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 4 edges to [[_COMMUNITY_Community 96]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 2 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 1 edge to [[_COMMUNITY_Community 454]]
+- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 118]]
+- 1 edge to [[_COMMUNITY_Community 454]]
 
 ## Top bridge nodes
 - [[walk_forward_backtest()]] - degree 17, connects to 4 communities
 - [[save_walk_forward_params()]] - degree 6, connects to 3 communities
 - [[walk_forward_split()]] - degree 10, connects to 2 communities
 - [[TestWalkForwardNoLookAhead]] - degree 6, connects to 2 communities
-- [[_make_trade()_2]] - degree 4, connects to 1 community
+- [[_make_trade()_3]] - degree 4, connects to 1 community

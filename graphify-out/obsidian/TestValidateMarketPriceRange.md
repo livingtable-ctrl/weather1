@@ -12,7 +12,7 @@ tags:
 # TestValidateMarketPriceRange
 
 ## Connections
-- [[dot-_call()_2]] - `method` [EXTRACTED]
+- [[dot-_call()_5]] - `method` [EXTRACTED]
 - [[dot-_valid()]] - `method` [EXTRACTED]
 - [[dot-test_alias_field_names_validated()]] - `method` [EXTRACTED]
 - [[dot-test_ask_100_cents_accepted()]] - `method` [EXTRACTED]

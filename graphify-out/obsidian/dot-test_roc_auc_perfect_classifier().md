@@ -12,7 +12,7 @@ tags:
 # .test_roc_auc_perfect_classifier()
 
 ## Connections
-- [[dot-_seed()_4]] - `calls` [EXTRACTED]
+- [[dot-_seed()_2]] - `calls` [EXTRACTED]
 - [[AUC=1.0 when high probs always - YES and low probs always - NO.]] - `rationale_for` [EXTRACTED]
 - [[TestBrierScoreComputation]] - `method` [EXTRACTED]
 

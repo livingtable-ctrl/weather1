@@ -11,8 +11,8 @@ members: 18
 
 ## Members
 - [[dot-_load()]] - code - tests/test_param_sweep_load.py
-- [[dot-setUp()_9]] - code - tests/test_param_sweep_load.py
-- [[dot-tearDown()_9]] - code - tests/test_param_sweep_load.py
+- [[dot-setUp()_8]] - code - tests/test_param_sweep_load.py
+- [[dot-tearDown()_8]] - code - tests/test_param_sweep_load.py
 - [[dot-test_custom_min_trades_respected()]] - code - tests/test_param_sweep_load.py
 - [[dot-test_min_trades_floor_filters_low_sample_entries()]] - code - tests/test_param_sweep_load.py
 - [[dot-test_none_win_rate_entries_skipped()]] - code - tests/test_param_sweep_load.py
@@ -21,7 +21,7 @@ members: 18
 - [[dot-test_returns_none_for_empty_results()]] - code - tests/test_param_sweep_load.py
 - [[dot-test_returns_none_when_file_missing()]] - code - tests/test_param_sweep_load.py
 - [[dot-test_returns_none_when_no_results_qualify()]] - code - tests/test_param_sweep_load.py
-- [[Path_24]] - code
+- [[Path_7]] - code
 - [[Read dataparam_sweep_results.json and return the PAPER_MIN_EDGE value with the…]] - rationale - param_sweep.py
 - [[TestLoadSweptMinEdge]] - code - tests/test_param_sweep_load.py
 - [[Tests for param_sweep.load_swept_min_edge() — A5 implementation.]] - rationale - tests/test_param_sweep_load.py
@@ -37,8 +37,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 129]]
 - 1 edge to [[_COMMUNITY_Community 454]]
+- 1 edge to [[_COMMUNITY_Community 129]]
 - 1 edge to [[_COMMUNITY_Community 32]]
 
 ## Top bridge nodes

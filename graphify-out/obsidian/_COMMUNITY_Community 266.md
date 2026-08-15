@@ -35,8 +35,8 @@ SORT file.name ASC
 ## Connections to other communities
 - 9 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
 - 5 edges to [[_COMMUNITY_Community 42]]
-- 1 edge to [[_COMMUNITY_Community 382]]
 - 1 edge to [[_COMMUNITY_Community 290]]
+- 1 edge to [[_COMMUNITY_Community 382]]
 
 ## Top bridge nodes
 - [[_med_market_analysis()]] - degree 8, connects to 3 communities

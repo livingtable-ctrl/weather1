@@ -10,10 +10,10 @@ members: 22
 **Members:** 22 nodes
 
 ## Members
-- [[dot-__init__()_12]] - code - tests/test_paper.py
+- [[dot-__init__()_1]] - code - tests/test_paper.py
 - [[dot-_write_open_trades()]] - code - tests/test_paper.py
 - [[dot-_write_open_trades()_1]] - code - tests/test_paper.py
-- [[dot-get_market()_3]] - code - tests/test_paper.py
+- [[dot-get_market()_1]] - code - tests/test_paper.py
 - [[dot-test_client_none_returns_zero_even_with_open_trades()]] - code - tests/test_paper.py
 - [[dot-test_exact_040_boundary_is_balanced()]] - code - tests/test_paper.py
 - [[dot-test_exact_060_boundary_is_balanced()]] - code - tests/test_paper.py
@@ -41,8 +41,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 45]]
 - 3 edges to [[_COMMUNITY_Community 56]]
+- 3 edges to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
 - [[_FakeMarketClient]] - degree 9, connects to 2 communities

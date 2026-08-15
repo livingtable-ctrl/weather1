@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Extract (ticker, city, target_date, analysis_dict, market_dict) from an opp…]] - `rationale_for` [EXTRACTED]
 - [[_log_shadow_predictions()]] - `calls` [EXTRACTED]
-- [[date_6]] - `references` [EXTRACTED]
+- [[date_4]] - `references` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_40

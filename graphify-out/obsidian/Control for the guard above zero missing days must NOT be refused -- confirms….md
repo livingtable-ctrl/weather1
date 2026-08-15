@@ -1,12 +1,12 @@
 ---
-source_file: "tests/test_rain_markets.py"
+source_file: "tests/test_snow_markets.py"
 type: "rationale"
-community: "Community 165"
-location: "L709"
+community: "Community 115"
+location: "L1134"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_165
+  - community/Community_115
 ---
 
 # Control for the guard above: zero missing days must NOT be refused -- confirms…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_month_to_date_zero_missing_still_trades()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_165
+#graphify/rationale #graphify/EXTRACTED #community/Community_115

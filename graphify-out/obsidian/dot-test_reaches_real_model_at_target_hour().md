@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_cache_target_hour()]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_1]] - `calls` [EXTRACTED]
+- [[dot-_enriched()]] - `calls` [EXTRACTED]
 - [[dot-_pin_sources()]] - `calls` [EXTRACTED]
 - [[A KXTEMPH ticker at the cached max_hour must reach the real model (non-None…]] - `rationale_for` [EXTRACTED]
 - [[TestAnalyzeTradeHourlyModel]] - `method` [EXTRACTED]

@@ -15,6 +15,6 @@ tags:
 - [[Category C Position Management Plan]] - `implements` [EXTRACTED]
 - [[Fix High Early Exit Rate Plan]] - `semantically_similar_to` [INFERRED]
 - [[order_executor.py module]] - `references` [EXTRACTED]
-- [[paper.py module]] - `references` [EXTRACTED]
+- [[paper.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_210

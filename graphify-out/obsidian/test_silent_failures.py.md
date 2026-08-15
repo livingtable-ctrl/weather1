@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Paper Trading Ledger Module]] - `calls` [EXTRACTED]
 - [[Tests for P0.4 — Silent failure elimination. Every failure in the trading path…]] - `rationale_for` [EXTRACTED]
-- [[_make_enriched()_2]] - `contains` [EXTRACTED]
+- [[_make_enriched()_1]] - `contains` [EXTRACTED]
 - [[_patch_analyze_prereqs()]] - `contains` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[kalshi_client.py_1]] - `calls` [EXTRACTED]

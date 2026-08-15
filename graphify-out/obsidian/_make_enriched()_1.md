@@ -1,25 +1,21 @@
 ---
-source_file: "tests/test_p0_11_retired_strategy.py"
+source_file: "tests/test_silent_failures.py"
 type: "code"
-community: "Community 124"
-location: "L12"
+community: "Community 220"
+location: "L11"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_124
+  - community/Community_220
 ---
 
 # _make_enriched()
 
 ## Connections
-- [[dot-test_analyze_trade_proceeds_when_method_not_retired()]] - `calls` [EXTRACTED]
-- [[dot-test_analyze_trade_proceeds_when_retired_file_missing()]] - `calls` [EXTRACTED]
-- [[dot-test_analyze_trade_returns_none_for_retired_method()]] - `calls` [EXTRACTED]
-- [[dot-test_bypass_false_default_still_blocks()]] - `calls` [EXTRACTED]
-- [[dot-test_bypass_reaches_kelly_for_retired_method()]] - `calls` [EXTRACTED]
-- [[dot-test_bypass_true_proceeds_past_retired_gate()]] - `calls` [EXTRACTED]
-- [[dot-test_retired_gate_fires_before_kelly()]] - `calls` [EXTRACTED]
-- [[Minimal enriched market dict that passes all pre-Kelly gates.]] - `rationale_for` [EXTRACTED]
-- [[test_p0_11_retired_strategy.py]] - `contains` [EXTRACTED]
+- [[Minimal enriched dict that passes all analyze_trade gates.]] - `rationale_for` [EXTRACTED]
+- [[test_analyze_trade_logs_climatological_failure()]] - `calls` [EXTRACTED]
+- [[test_analyze_trade_logs_consensus_failure()]] - `calls` [EXTRACTED]
+- [[test_analyze_trade_logs_nws_prob_failure()]] - `calls` [EXTRACTED]
+- [[test_silent_failures.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_124
+#graphify/code #graphify/EXTRACTED #community/Community_220

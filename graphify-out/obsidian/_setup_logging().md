@@ -12,7 +12,7 @@ tags:
 # _setup_logging()
 
 ## Connections
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[test_log_rotation.py]] - `references` [EXTRACTED]
 

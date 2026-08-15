@@ -12,7 +12,7 @@ tags:
 # TestRainForecastBlendSignal
 
 ## Connections
-- [[dot-_history_all_years_value()_1]] - `method` [EXTRACTED]
+- [[dot-_history_all_years_value()_2]] - `method` [EXTRACTED]
 - [[dot-_mock_acis()]] - `method` [EXTRACTED]
 - [[dot-_pin_today()]] - `method` [EXTRACTED]
 - [[dot-test_after_month_end_any_missing_day_fails_closed()]] - `method` [EXTRACTED]

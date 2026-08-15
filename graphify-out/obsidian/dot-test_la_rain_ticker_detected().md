@@ -12,7 +12,7 @@ tags:
 # .test_la_rain_ticker_detected()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[TestMonthlyRainCityDetection]] - `method` [EXTRACTED]
 - [[Would return None without the explicit fix -- KXRAINLAXM has no…]] - `rationale_for` [EXTRACTED]
 

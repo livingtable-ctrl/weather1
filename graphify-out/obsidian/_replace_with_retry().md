@@ -12,7 +12,7 @@ tags:
 # _replace_with_retry()
 
 ## Connections
-- [[Path_14]] - `references` [EXTRACTED]
+- [[Path_21]] - `references` [EXTRACTED]
 - [[_atomic_write_payload()]] - `calls` [EXTRACTED]
 - [[os.replace(src, dst), retrying briefly on PermissionError. Self-caught…]] - `rationale_for` [EXTRACTED]
 - [[paper._acquire_file_lock()  msvcrt retry loop]] - `semantically_similar_to` [INFERRED]

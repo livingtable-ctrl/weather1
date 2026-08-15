@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 150"
-location: "L22"
+community: "Community 107"
+location: "L423"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_150
+  - community/Community_107
 ---
 
 # .tearDown()
 
 ## Connections
-- [[TestKellyCompounding]] - `method` [EXTRACTED]
+- [[TestPortfolioKelly]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_150
+#graphify/code #graphify/EXTRACTED #community/Community_107

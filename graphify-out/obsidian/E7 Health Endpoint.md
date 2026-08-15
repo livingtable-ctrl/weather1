@@ -12,7 +12,7 @@ tags:
 # E7: Health Endpoint
 
 ## Connections
-- [[paper.py Module_1]] - `references` [EXTRACTED]
-- [[web_app.py Module_1]] - `references` [EXTRACTED]
+- [[paper.py Module]] - `references` [EXTRACTED]
+- [[web_app.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_104

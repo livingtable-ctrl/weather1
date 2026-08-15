@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Edge at 6h remaining  edge at 3h remaining (within 8h reference window).]] - `rationale_for` [EXTRACTED]
-- [[TestTimeDecayEdge_1]] - `method` [EXTRACTED]
+- [[TestTimeDecayEdge]] - `method` [EXTRACTED]
 - [[time_decay_edge()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_240

@@ -15,7 +15,7 @@ tags:
 - [[dot-test_load_city_missing_file_returns_empty()]] - `calls` [EXTRACTED]
 - [[dot-test_load_city_valid_json_returns_dict()]] - `calls` [EXTRACTED]
 - [[Load per-city weights from JSON. Returns {} if file missing.]] - `rationale_for` [EXTRACTED]
-- [[Path_4]] - `references` [EXTRACTED]
+- [[Path_2]] - `references` [EXTRACTED]
 - [[calibration.py]] - `contains` [EXTRACTED]
 - [[test_calibration.py]] - `imports` [EXTRACTED]
 - [[validate_weight_files()]] - `calls` [EXTRACTED]

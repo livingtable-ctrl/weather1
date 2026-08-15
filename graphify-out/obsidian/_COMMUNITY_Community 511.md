@@ -10,7 +10,7 @@ members: 6
 **Members:** 6 nodes
 
 ## Members
-- [[dot-_make_client()_5]] - code - tests/test_kalshi_client.py
+- [[dot-_make_client()_9]] - code - tests/test_kalshi_client.py
 - [[dot-test_same_cycle_produces_the_same_idempotency_key()]] - code - tests/test_kalshi_client.py
 - [[dot-test_without_cycle_each_call_gets_a_different_key()]] - code - tests/test_kalshi_client.py
 - [[2026-07-09 place_maker_order never forwarded a cycle to place_order, so every…]] - rationale - tests/test_kalshi_client.py

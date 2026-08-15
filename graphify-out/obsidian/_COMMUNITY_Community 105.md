@@ -10,8 +10,8 @@ members: 26
 **Members:** 26 nodes
 
 ## Members
-- [[dot-__init__()_11]] - code - tests/test_execution_proof.py
-- [[dot-get_market()_2]] - code - tests/test_execution_proof.py
+- [[dot-__init__()]] - code - tests/test_execution_proof.py
+- [[dot-get_market()]] - code - tests/test_execution_proof.py
 - [[If log_analysis_attempt fails after a successful trade, it must be logged.]] - rationale - tests/test_execution_proof.py
 - [[If place_paper_order raises a non-ValueError, it must be logged.]] - rationale - tests/test_execution_proof.py
 - [[L1-B if the fresh market price eliminates our edge, trade must be skipped.…]] - rationale - tests/test_execution_proof.py
@@ -23,7 +23,7 @@ members: 26
 - [[Returns 0 immediately when drawdown guard is active.]] - rationale - tests/test_execution_proof.py
 - [[Stub out all guards so _auto_place_trades reaches the trade loop.]] - rationale - tests/test_execution_proof.py
 - [[Tests for P0.1 — Trade execution proof. _auto_place_trades must return the…]] - rationale - tests/test_execution_proof.py
-- [[_FakeClient_1]] - code - tests/test_execution_proof.py
+- [[_FakeClient]] - code - tests/test_execution_proof.py
 - [[_auto_place_trades must return the count of actually placed trades.]] - rationale - tests/test_execution_proof.py
 - [[_make_opp()]] - code - tests/test_execution_proof.py
 - [[_stub_auto_prereqs()]] - code - tests/test_execution_proof.py

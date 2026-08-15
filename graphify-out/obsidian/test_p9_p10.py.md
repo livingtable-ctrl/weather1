@@ -56,6 +56,6 @@ tags:
 - [[test_run_stress_test_heat_wave_filters_southern_cities()]] - `contains` [EXTRACTED]
 - [[test_run_stress_test_total_model_failure_includes_all_cities()]] - `contains` [EXTRACTED]
 - [[test_run_stress_test_unknown_scenario_returns_error()]] - `contains` [EXTRACTED]
-- [[tmp_tracker()_1]] - `contains` [EXTRACTED]
+- [[tmp_tracker()]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_50

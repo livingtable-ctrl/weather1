@@ -12,7 +12,7 @@ tags:
 # .test_six_of_ten_researched_cities_are_entirely_default()
 
 ## Connections
-- [[dot-_adjustment()_2]] - `calls` [EXTRACTED]
+- [[dot-_adjustment()_1]] - `calls` [EXTRACTED]
 - [[TestRegressionFittedGapCities]] - `method` [EXTRACTED]
 - [[WashingtonPhiladelphiaMinneapolisHoustonLasVegasNewOrleans nothing…]] - `rationale_for` [EXTRACTED]
 

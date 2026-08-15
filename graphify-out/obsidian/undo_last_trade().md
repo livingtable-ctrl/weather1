@@ -12,9 +12,9 @@ tags:
 # undo_last_trade()
 
 ## Connections
-- [[Reverse the most recently placed (unsettled) paper trade if it was placed…_1]] - `rationale_for` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
-- [[_save()_1]] - `calls` [EXTRACTED]
+- [[Reverse the most recently placed (unsettled) paper trade if it was placed…]] - `rationale_for` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
+- [[_save()]] - `calls` [EXTRACTED]
 - [[cmd_undo()]] - `calls` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]

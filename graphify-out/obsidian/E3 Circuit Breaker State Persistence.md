@@ -5,7 +5,7 @@ community: "Community 154"
 location: "E3"
 tags:
   - graphify/document
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_154
 ---
 
@@ -15,4 +15,4 @@ tags:
 - [[Data Integrity Audit Scope (safe_io, checksums)]] - `conceptually_related_to` [INFERRED]
 - [[circuit_breaker.py Module_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/INFERRED #community/Community_154
+#graphify/document #graphify/EXTRACTED #community/Community_154

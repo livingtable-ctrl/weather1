@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[If climatological_prob raises, the failure must be logged.]] - `rationale_for` [EXTRACTED]
-- [[_make_enriched()_2]] - `calls` [EXTRACTED]
+- [[_make_enriched()_1]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[test_silent_failures.py]] - `contains` [EXTRACTED]
 

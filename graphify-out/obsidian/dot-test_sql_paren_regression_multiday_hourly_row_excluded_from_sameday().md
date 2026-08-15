@@ -12,7 +12,7 @@ tags:
 # .test_sql_paren_regression_multiday_hourly_row_excluded_from_sameday()
 
 ## Connections
-- [[dot-_seed()_3]] - `calls` [EXTRACTED]
+- [[dot-_seed()_7]] - `calls` [EXTRACTED]
 - [[Targets the exact SQL operator-precedence risk directly SQL's AND binds…]] - `rationale_for` [EXTRACTED]
 - [[TestTrainAllTemperatureScalingHourlyPool]] - `method` [EXTRACTED]
 

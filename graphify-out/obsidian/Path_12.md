@@ -1,18 +1,17 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 460"
+community: "Safe I/O CRC Validation Tests"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_460
+  - community/Safe_I/O_CRC_Validation_Tests
 ---
 
 # Path
 
 ## Connections
-- [[_existed_marker_path()]] - `references` [EXTRACTED]
-- [[cloud_backup()]] - `calls` [EXTRACTED]
-- [[verify_backup()]] - `calls` [EXTRACTED]
+- [[_write_with_crc()]] - `references` [EXTRACTED]
+- [[test_atomic_write_error_message_accurate_when_no_emergency_copy_possible()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_460
+#graphify/code #graphify/EXTRACTED #community/Safe_I/O_CRC_Validation_Tests

@@ -12,7 +12,7 @@ tags:
 # TestTimeDecayEdgeScope
 
 ## Connections
-- [[dot-_make_enriched()_3]] - `method` [EXTRACTED]
+- [[dot-_make_enriched()_4]] - `method` [EXTRACTED]
 - [[dot-_run()_5]] - `method` [EXTRACTED]
 - [[dot-test_adjusted_edge_zero_at_close()]] - `method` [EXTRACTED]
 - [[dot-test_net_edge_reduced_near_close_vs_far()]] - `method` [EXTRACTED]

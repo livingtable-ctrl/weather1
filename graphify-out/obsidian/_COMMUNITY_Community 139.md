@@ -10,10 +10,10 @@ members: 22
 **Members:** 22 nodes
 
 ## Members
-- [[dot-_daily_market()_1]] - code - tests/test_rain_markets.py
+- [[dot-_daily_market()]] - code - tests/test_rain_markets.py
 - [[dot-_rain_market()]] - code - tests/test_rain_markets.py
 - [[dot-test_bare_ticker_dict_hits_no_city_not_the_old_guard()]] - code - tests/test_rain_markets.py
-- [[dot-test_daily_high_ticker_unaffected()_1]] - code - tests/test_rain_markets.py
+- [[dot-test_daily_high_ticker_unaffected()]] - code - tests/test_rain_markets.py
 - [[dot-test_days_out_at_rain_max_boundary_passes_days_out_gate()]] - code - tests/test_rain_markets.py
 - [[dot-test_days_out_beyond_rain_max_gates_out()]] - code - tests/test_rain_markets.py
 - [[dot-test_mixed_list_daily_fit_unaffected_by_rain_siblings()]] - code - tests/test_rain_markets.py
@@ -31,7 +31,7 @@ members: 22
 - [[TestComputeMarketImpliedGroupsMonthlyRain]] - code - tests/test_rain_markets.py
 - [[The actual regression this backlog entry fixes a rain-only ladder must now be…]] - rationale - tests/test_rain_markets.py
 - [[The daily-specific gates this ticker family is exempted from must genuinely…]] - rationale - tests/test_rain_markets.py
-- [[backlog.txt RAIN MARKETS -- LADDERSIBLING GROUPING FOR MARKET- IMPLIED…_2]] - rationale - tests/test_rain_markets.py
+- [[backlog.txt RAIN MARKETS -- LADDERSIBLING GROUPING FOR MARKET- IMPLIED…]] - rationale - tests/test_rain_markets.py
 
 ## Live Query (requires Dataview plugin)
 

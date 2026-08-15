@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_log_settled()_2]] - `calls` [EXTRACTED]
-- [[dot-_seed_baseline()_1]] - `calls` [EXTRACTED]
+- [[dot-_seed_baseline()]] - `calls` [EXTRACTED]
 - [[TestDisputedOutcomeTracking]] - `method` [EXTRACTED]
 - [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 (review- caught gap) must…]] - `rationale_for` [EXTRACTED]
 

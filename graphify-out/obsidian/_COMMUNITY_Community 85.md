@@ -24,7 +24,7 @@ members: 29
 - [[ensemble_spread=0.20 (LOW tier) requires edge = 0.10; edge=0.08 should be…]] - rationale - tests/test_trade_validation.py
 - [[oppedge present but None (as opposed to simply absent) must not raise…]] - rationale - tests/test_trade_validation.py
 - [[oppnet_edge present but None must not raise TypeError from `edge = 0` —…]] - rationale - tests/test_trade_validation.py
-- [[system_health.py_1]] - code - system_health.py
+- [[system_health.py_2]] - code - system_health.py
 - [[test_trade_validation.py]] - code - tests/test_trade_validation.py
 - [[test_validate_accepts_good_opportunity()]] - code - tests/test_trade_validation.py
 - [[test_validate_low_spread_tier_rejects_edge_below_threshold()]] - code - tests/test_trade_validation.py
@@ -50,21 +50,21 @@ SORT file.name ASC
 ## Connections to other communities
 - 7 edges to [[_COMMUNITY_Community 488]]
 - 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 - 1 edge to [[_COMMUNITY_Community 95]]
+- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
 - 1 edge to [[_COMMUNITY_Community 198]]
+- 1 edge to [[_COMMUNITY_Community 252]]
+- 1 edge to [[_COMMUNITY_Community 296]]
+- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 1 edge to [[_COMMUNITY_Community 347]]
+- 1 edge to [[_COMMUNITY_Community 40]]
+- 1 edge to [[_COMMUNITY_Community 42]]
+- 1 edge to [[_COMMUNITY_Community 596]]
+- 1 edge to [[_COMMUNITY_Community 67]]
 - 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 67]]
-- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 1 edge to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Community 296]]
-- 1 edge to [[_COMMUNITY_Community 252]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 1 edge to [[_COMMUNITY_Community 248]]
-- 1 edge to [[_COMMUNITY_Community 42]]
-- 1 edge to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 596]]
-- 1 edge to [[_COMMUNITY_Community 347]]
 
 ## Top bridge nodes
 - [[_validate_trade_opportunity()]] - degree 32, connects to 14 communities

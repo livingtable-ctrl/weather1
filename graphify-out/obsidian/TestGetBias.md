@@ -12,8 +12,8 @@ tags:
 # TestGetBias
 
 ## Connections
-- [[dot-setUp()_15]] - `method` [EXTRACTED]
-- [[dot-tearDown()_15]] - `method` [EXTRACTED]
+- [[dot-setUp()_24]] - `method` [EXTRACTED]
+- [[dot-tearDown()_23]] - `method` [EXTRACTED]
 - [[dot-test_returns_float_or_zero_with_no_data_for_none_city()]] - `method` [EXTRACTED]
 - [[dot-test_returns_float_type()]] - `method` [EXTRACTED]
 - [[dot-test_returns_zero_below_min_samples()]] - `method` [EXTRACTED]

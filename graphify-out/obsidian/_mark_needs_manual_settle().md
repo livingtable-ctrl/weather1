@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[Set needs_manual_settle=True on a trade so the dashboard can flag it.]] - `rationale_for` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
-- [[_save()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
+- [[_save()]] - `calls` [EXTRACTED]
 - [[auto_settle_paper_trades()]] - `calls` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
 

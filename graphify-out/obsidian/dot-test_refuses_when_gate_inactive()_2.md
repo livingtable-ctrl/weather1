@@ -2,7 +2,7 @@
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
 community: "Community 90"
-location: "L2572"
+location: "L1686"
 tags:
   - graphify/code
   - graphify/EXTRACTED
@@ -12,6 +12,6 @@ tags:
 # .test_refuses_when_gate_inactive()
 
 ## Connections
-- [[TestCmdOrderStormOrderGuard]] - `method` [EXTRACTED]
+- [[TestCmdOrderHurricaneNextEventGuard]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_90

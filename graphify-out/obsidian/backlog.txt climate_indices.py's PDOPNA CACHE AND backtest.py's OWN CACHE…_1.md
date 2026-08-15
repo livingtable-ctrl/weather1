@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_forecasting.py"
+source_file: "tests/test_safe_io.py"
 type: "rationale"
-community: "Community 169"
-location: "L1589"
+community: "Safe I/O CRC Validation Tests"
+location: "L371"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_169
+  - community/Safe_I/O_CRC_Validation_Tests
 ---
 
 # backlog.txt "climate_indices.py's PDO/PNA CACHE AND backtest.py's OWN CACHE…
 
 ## Connections
-- [[dot-test_fetch_pdo_pna_writes_via_atomic_helper()]] - `rationale_for` [EXTRACTED]
+- [[test_atomic_write_text_emergency_copy_opt_out_skips_recovery_copy()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_169
+#graphify/rationale #graphify/EXTRACTED #community/Safe_I/O_CRC_Validation_Tests

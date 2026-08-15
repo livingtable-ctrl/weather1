@@ -10,7 +10,7 @@ members: 15
 **Members:** 15 nodes
 
 ## Members
-- [[dot-_daily_market()]] - code - tests/test_hourly_markets.py
+- [[dot-_daily_market()_1]] - code - tests/test_hourly_markets.py
 - [[dot-_hourly_market()]] - code - tests/test_hourly_markets.py
 - [[dot-test_daily_ticker_unaffected()]] - code - tests/test_hourly_markets.py
 - [[dot-test_does_not_block_when_gate_active()]] - code - tests/test_hourly_markets.py
@@ -35,12 +35,12 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Community 304]]
 - 1 edge to [[_COMMUNITY_Community 122]]
-- 1 edge to [[_COMMUNITY_Community 395]]
 - 1 edge to [[_COMMUNITY_Community 278]]
+- 1 edge to [[_COMMUNITY_Community 304]]
+- 1 edge to [[_COMMUNITY_Community 395]]
 - 1 edge to [[_COMMUNITY_Community 396]]
+- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 1 edge to [[_COMMUNITY_Community 112]]
 - 1 edge to [[_COMMUNITY_Community 90]]

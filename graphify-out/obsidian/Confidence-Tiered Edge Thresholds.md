@@ -14,7 +14,7 @@ tags:
 - [[A3 Bimodal Ensemble Detection]] - `semantically_similar_to` [INFERRED]
 - [[ECMWF AIFS Ensemble]] - `references` [EXTRACTED]
 - [[Phase B Risk Engine Plan]] - `implements` [EXTRACTED]
-- [[main.py module]] - `references` [EXTRACTED]
+- [[main.py module_1]] - `references` [EXTRACTED]
 - [[utils.py module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_295

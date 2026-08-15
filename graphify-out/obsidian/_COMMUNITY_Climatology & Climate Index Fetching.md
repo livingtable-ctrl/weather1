@@ -33,7 +33,7 @@ members: 67
 - [[Parse a NOAA teleconnections CSV (Date=YYYYMM, Value columns). Returns {YYYYMM…]] - rationale - climate_indices.py
 - [[Parse the ONI (Oceanic Niño Index) from NOAA CPC. Returns dict keyed by (year,…]] - rationale - climate_indices.py
 - [[Patching _utc_today in mos changes sigma lookup.]] - rationale - tests/test_phase2_batch_h.py
-- [[Path_5]] - code
+- [[Path_28]] - code
 - [[Phase 2 Batch H Regression Tests]] - code - tests/test_phase2_batch_h.py
 - [[Phase 2 Batch H regression tests P2-18 + P2-25 — UTC date consistency.]] - rationale - tests/test_phase2_batch_h.py
 - [[Probability of the market condition based purely on historical observations.…]] - rationale - climatology.py
@@ -47,14 +47,14 @@ members: 67
 - [[TestMosUtcDate]] - code - tests/test_phase2_batch_h.py
 - [[TestUtcToday]] - code - tests/test_phase2_batch_h.py
 - [[True if a per-city sigma cache entry has at least one real computed month…]] - rationale - climatology.py
-- [[_cache_is_stale()_2]] - code - climatology.py
-- [[_cache_path()_2]] - code - climatology.py
+- [[_cache_is_stale()_3]] - code - climatology.py
+- [[_cache_path()_3]] - code - climatology.py
 - [[_climatological_prob_inner()]] - code - climatology.py
 - [[_fetch_enso()]] - code - climate_indices.py
 - [[_fetch_monthly_index()]] - code - climate_indices.py
 - [[_fetch_noaa_csv_index()]] - code - climate_indices.py
 - [[_load_sigma_cache_file()]] - code - climatology.py
-- [[_month_to_season()]] - code - climate_indices.py
+- [[_month_to_season()_1]] - code - climate_indices.py
 - [[_season_bucket()]] - code - climate_indices.py
 - [[_sigma_cache_missing_cities()]] - code - climatology.py
 - [[_sigma_entry_has_data()]] - code - climatology.py
@@ -63,8 +63,8 @@ members: 67
 - [[climatological_prob()]] - code - climatology.py
 - [[climatology.py]] - code - climatology.py
 - [[compute_sigma_from_climate()]] - code - climatology.py
-- [[date_1]] - code
-- [[date_2]] - code
+- [[date_8]] - code
+- [[date_9]] - code
 - [[date_10]] - code
 - [[fetch_historical()]] - code - climatology.py
 - [[fetch_seasonal_precip_mean_mm()]] - code - acis_precip.py
@@ -87,9 +87,9 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 12 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 8 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 8 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 8 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 8 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 7 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 6 edges to [[_COMMUNITY_Community 62]]
 - 5 edges to [[_COMMUNITY_Community 51]]
@@ -100,33 +100,33 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_Community 26]]
 - 3 edges to [[_COMMUNITY_Community 79]]
 - 2 edges to [[_COMMUNITY_Community 44]]
-- 2 edges to [[_COMMUNITY_Community 182]]
-- 2 edges to [[_COMMUNITY_Community 119]]
 - 2 edges to [[_COMMUNITY_Weather Probability Math Tests]]
-- 2 edges to [[_COMMUNITY_Community 59]]
+- 2 edges to [[_COMMUNITY_Community 344]]
+- 2 edges to [[_COMMUNITY_Community 87]]
+- 2 edges to [[_COMMUNITY_Community 119]]
 - 2 edges to [[_COMMUNITY_Community 302]]
 - 2 edges to [[_COMMUNITY_Community 99]]
-- 2 edges to [[_COMMUNITY_Community 87]]
-- 2 edges to [[_COMMUNITY_Community 344]]
-- 1 edge to [[_COMMUNITY_Community 31]]
+- 2 edges to [[_COMMUNITY_Community 182]]
+- 2 edges to [[_COMMUNITY_Community 59]]
+- 1 edge to [[_COMMUNITY_Community 517]]
+- 1 edge to [[_COMMUNITY_Community 518]]
+- 1 edge to [[_COMMUNITY_Community 519]]
+- 1 edge to [[_COMMUNITY_Community 554]]
+- 1 edge to [[_COMMUNITY_Community 168]]
+- 1 edge to [[_COMMUNITY_Community 288]]
+- 1 edge to [[_COMMUNITY_Community 501]]
+- 1 edge to [[_COMMUNITY_Community 604]]
 - 1 edge to [[_COMMUNITY_Community 82]]
 - 1 edge to [[_COMMUNITY_Community 32]]
 - 1 edge to [[_COMMUNITY_Community 194]]
 - 1 edge to [[_COMMUNITY_Community 109]]
-- 1 edge to [[_COMMUNITY_Community 501]]
-- 1 edge to [[_COMMUNITY_Community 604]]
 - 1 edge to [[_COMMUNITY_Community 181]]
-- 1 edge to [[_COMMUNITY_Community 168]]
-- 1 edge to [[_COMMUNITY_Community 202]]
-- 1 edge to [[_COMMUNITY_Community 497]]
 - 1 edge to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
 - 1 edge to [[_COMMUNITY_Community 56]]
-- 1 edge to [[_COMMUNITY_Community 518]]
-- 1 edge to [[_COMMUNITY_Community 517]]
-- 1 edge to [[_COMMUNITY_Community 519]]
-- 1 edge to [[_COMMUNITY_Community 554]]
 - 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
-- 1 edge to [[_COMMUNITY_Community 288]]
+- 1 edge to [[_COMMUNITY_Community 497]]
+- 1 edge to [[_COMMUNITY_Community 202]]
+- 1 edge to [[_COMMUNITY_Community 31]]
 
 ## Top bridge nodes
 - [[utc_today()]] - degree 51, connects to 21 communities

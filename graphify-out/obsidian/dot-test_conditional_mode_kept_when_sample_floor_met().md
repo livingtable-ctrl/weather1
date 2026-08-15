@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()_2]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_4]] - `calls` [EXTRACTED]
+- [[dot-_enriched()_3]] - `calls` [EXTRACTED]
 - [[TestAnalyzeHurricaneNextEventTrade]] - `method` [EXTRACTED]
 - [[The fallback in the test above must not fire when the eligible set is actually…]] - `rationale_for` [EXTRACTED]
 

@@ -12,6 +12,6 @@ tags:
 # Log predictions+outcomes into the temp DB.
 
 ## Connections
-- [[dot-_seed()_4]] - `rationale_for` [EXTRACTED]
+- [[dot-_seed()_2]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_284

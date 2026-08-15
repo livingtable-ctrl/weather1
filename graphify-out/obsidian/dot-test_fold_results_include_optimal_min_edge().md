@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Each fold result includes 'optimal_min_edge' derived from training data.]] - `rationale_for` [EXTRACTED]
 - [[TestWalkForwardNoLookAhead]] - `method` [EXTRACTED]
-- [[_make_trade()_2]] - `calls` [EXTRACTED]
+- [[_make_trade()_3]] - `calls` [EXTRACTED]
 - [[walk_forward_backtest()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_37

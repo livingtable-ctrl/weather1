@@ -1,16 +1,16 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 140"
+community: "Community 47"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_140
+  - community/Community_47
 ---
 
 # fixture
 
 ## Connections
-- [[tmp_retirement_state()]] - `references` [EXTRACTED]
+- [[data_dir()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_140
+#graphify/code #graphify/EXTRACTED #community/Community_47

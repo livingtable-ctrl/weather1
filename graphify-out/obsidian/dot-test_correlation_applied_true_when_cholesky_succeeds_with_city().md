@@ -12,7 +12,7 @@ tags:
 # .test_correlation_applied_true_when_cholesky_succeeds_with_city()
 
 ## Connections
-- [[dot-_run_sim()]] - `calls` [EXTRACTED]
+- [[dot-_run_sim()_1]] - `calls` [EXTRACTED]
 - [[TestMonteCarloCorrelationApplied]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_57

@@ -13,7 +13,6 @@ tags:
 
 ## Connections
 - [[SignalsTab.jsx]] - `contains` [EXTRACTED]
-- [[authHeader()]] - `calls` [EXTRACTED]
 - [[kalshiMarketUrl()]] - `calls` [EXTRACTED]
 - [[normCity()_1]] - `calls` [EXTRACTED]
 - [[weather app site V_3 (3)srcApp.jsx]] - `indirect_call` [INFERRED]

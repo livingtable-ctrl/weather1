@@ -12,8 +12,8 @@ tags:
 # TestMaxDrawdown
 
 ## Connections
-- [[dot-setUp()_2]] - `method` [EXTRACTED]
-- [[dot-tearDown()_2]] - `method` [EXTRACTED]
+- [[dot-setUp()]] - `method` [EXTRACTED]
+- [[dot-tearDown()]] - `method` [EXTRACTED]
 - [[dot-test_boundary_exactly_800_not_paused()]] - `method` [EXTRACTED]
 - [[dot-test_effective_balance_adds_back_same_day_cost()]] - `method` [EXTRACTED]
 - [[dot-test_effective_balance_ignores_multiday_cost()]] - `method` [EXTRACTED]

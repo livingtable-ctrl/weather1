@@ -12,6 +12,6 @@ tags:
 # Tests for _bootstrap_ci — bootstrap 90% CI on ensemble probability.
 
 ## Connections
-- [[TestBootstrapCI_1]] - `rationale_for` [EXTRACTED]
+- [[TestBootstrapCI]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_269

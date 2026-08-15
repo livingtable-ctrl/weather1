@@ -18,7 +18,7 @@ members: 10
 - [[A cache file written by the real (non-mocked) safe_io.atomic_write_json must be…]] - rationale - tests/test_backtest.py
 - [[A failed cache write (e.g. AtomicWriteError) must not crash the fetch or lose…]] - rationale - tests/test_backtest.py
 - [[TestFetchArchiveTempsCacheWrite]] - code - tests/test_backtest.py
-- [[backlog.txt climate_indices.py's PDOPNA CACHE AND backtest.py's OWN CACHE…]] - rationale - tests/test_backtest.py
+- [[backlog.txt climate_indices.py's PDOPNA CACHE AND backtest.py's OWN CACHE…_3]] - rationale - tests/test_backtest.py
 - [[fetch_archive_temps must use safe_io.atomic_write_json, not a plain write_text…]] - rationale - tests/test_backtest.py
 
 ## Live Query (requires Dataview plugin)

@@ -10,10 +10,10 @@ members: 20
 **Members:** 20 nodes
 
 ## Members
-- [[dot-setup_method()_13]] - code - tests/test_live_execution.py
-- [[dot-setup_method()_15]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_12]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_14]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_10]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_11]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_5]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_6]] - code - tests/test_live_execution.py
 - [[dot-test_get_order_failure_falls_back_to_plain_canceled()]] - code - tests/test_live_execution.py
 - [[dot-test_partial_fill_cancel_promotes_to_filled()]] - code - tests/test_live_execution.py
 - [[dot-test_raw_api_status_preserved_when_still_resting()]] - code - tests/test_live_execution.py
@@ -40,12 +40,12 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_Community 45]]
-- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 3 edges to [[_COMMUNITY_Community 111]]
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 1 edge to [[_COMMUNITY_Community 300]]
+- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
 - 1 edge to [[_COMMUNITY_Community 67]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 
 ## Top bridge nodes
 - [[_finalize_cancel()]] - degree 16, connects to 6 communities

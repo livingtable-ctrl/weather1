@@ -16,7 +16,7 @@ tags:
 - [[dot-test_tampered_pkl_returns_empty()]] - `calls` [EXTRACTED]
 - [[dot-test_valid_hmac_loads_models()]] - `calls` [EXTRACTED]
 - [[dot-test_wrong_secret_returns_empty()]] - `calls` [EXTRACTED]
-- [[Path_21]] - `references` [EXTRACTED]
+- [[Path_3]] - `references` [EXTRACTED]
 - [[Write a valid pkl + sidecar and return the raw bytes.]] - `rationale_for` [EXTRACTED]
 - [[test_hmac_bias.py]] - `contains` [EXTRACTED]
 

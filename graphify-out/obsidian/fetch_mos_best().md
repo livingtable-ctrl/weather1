@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[B2 Fetch MOS using the best available model for the given days_out. For…]] - `rationale_for` [EXTRACTED]
 - [[_local_or_utc_today()]] - `calls` [EXTRACTED]
-- [[date_4]] - `references` [EXTRACTED]
+- [[date_11]] - `references` [EXTRACTED]
 - [[fetch_mos()]] - `calls` [EXTRACTED]
 - [[mos.py]] - `contains` [EXTRACTED]
 

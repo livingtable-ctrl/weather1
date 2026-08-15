@@ -12,8 +12,8 @@ tags:
 # TestMonteCarloCholesky
 
 ## Connections
-- [[dot-test_cholesky_correlated()]] - `method` [EXTRACTED]
-- [[dot-test_cholesky_identity()]] - `method` [EXTRACTED]
+- [[dot-test_cholesky_correlated()_1]] - `method` [EXTRACTED]
+- [[dot-test_cholesky_identity()_1]] - `method` [EXTRACTED]
 - [[dot-test_cholesky_not_positive_definite_returns_none()]] - `method` [EXTRACTED]
 - [[dot-test_past_date_only_portfolio_returns_empty_result()]] - `method` [EXTRACTED]
 - [[dot-test_past_date_trade_excluded_from_simulation()]] - `method` [EXTRACTED]

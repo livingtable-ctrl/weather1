@@ -1,41 +1,35 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Community 36"
+community: "Community 52"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_36
+  - community/Community_52
 ---
 
 # tracker.py
 
 ## Connections
-- [[Accuracy Improvement Plan]] - `references` [EXTRACTED]
-- [[Dashboard Modernization Plan]] - `references` [EXTRACTED]
-- [[Group B Data Integrity Plan]] - `references` [EXTRACTED]
-- [[Phase 1 Testing Foundation Plan]] - `references` [EXTRACTED]
-- [[Phase 3 Tracker Analytics Plan]] - `references` [EXTRACTED]
-- [[Phase 6 Dashboard Plan]] - `references` [EXTRACTED]
-- [[Phase 7 Data Safety Plan]] - `references` [EXTRACTED]
-- [[Score Improvement Plan]] - `references` [EXTRACTED]
-- [[Tracker Grade Audit]] - `references` [EXTRACTED]
-- [[_run_migrations()_1]] - `implements` [EXTRACTED]
-- [[bayesian_confidence_interval()]] - `implements` [EXTRACTED]
+- [[Paper Trading Ledger Module]] - `shares_data_with` [INFERRED]
+- [[_analyze_monthly_rain_trade()]] - `calls` [EXTRACTED]
+- [[_auto_place_trades()]] - `calls` [EXTRACTED]
+- [[_prediction_kwargs_from_analysis()]] - `calls` [INFERRED]
+- [[_rain_gates_active()]] - `calls` [EXTRACTED]
+- [[_sameday_effective_cap()]] - `calls` [EXTRACTED]
+- [[audit_settlement()]] - `implements` [EXTRACTED]
 - [[brier_score()]] - `implements` [EXTRACTED]
-- [[brier_skill_score()]] - `implements` [EXTRACTED]
-- [[get_bias()]] - `implements` [EXTRACTED]
-- [[get_brier_over_time()]] - `implements` [EXTRACTED]
-- [[get_calibration_by_city()]] - `implements` [EXTRACTED]
-- [[get_component_attribution()]] - `implements` [EXTRACTED]
-- [[get_confusion_matrix()]] - `implements` [EXTRACTED]
-- [[get_edge_decay_curve()]] - `implements` [EXTRACTED]
-- [[get_ensemble_member_accuracy()]] - `implements` [EXTRACTED]
-- [[get_market_calibration()]] - `implements` [EXTRACTED]
-- [[get_optimal_threshold()]] - `implements` [EXTRACTED]
-- [[get_price_improvement_stats()]] - `implements` [EXTRACTED]
-- [[get_quintile_bias()]] - `implements` [EXTRACTED]
-- [[log_api_request()]] - `implements` [EXTRACTED]
-- [[log_price_improvement()]] - `implements` [EXTRACTED]
+- [[check_retirement_probation()]] - `calls` [EXTRACTED]
+- [[get_model_weights()]] - `implements` [EXTRACTED]
+- [[get_roc_auc()]] - `implements` [EXTRACTED]
+- [[is_accuracy_halted()]] - `calls` [EXTRACTED]
+- [[kalshi_client.py_1]] - `calls` [EXTRACTED]
+- [[sprt_model_health()]] - `implements` [EXTRACTED]
+- [[test_signal_quality.py]] - `calls` [EXTRACTED]
+- [[test_tracker.py_1]] - `references` [EXTRACTED]
+- [[test_trading.py]] - `references` [EXTRACTED]
+- [[test_web_app.py]] - `shares_data_with` [INFERRED]
+- [[train_all_temperature_scaling Function]] - `calls` [EXTRACTED]
+- [[train_bias_model Function]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_36
+#graphify/code #graphify/EXTRACTED #community/Community_52

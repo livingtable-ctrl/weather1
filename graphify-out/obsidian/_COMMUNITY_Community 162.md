@@ -15,7 +15,7 @@ members: 20
 - [[Innermost (smallest-span) function containing lineno, or None if the line isn't…]] - rationale - tests/test_disputed_row_guard.py
 - [[Inverse check every allowlisted (file, qualname) must still actually join the…]] - rationale - tests/test_disputed_row_guard.py
 - [[Module]] - code
-- [[Path_20]] - code
+- [[Path_5]] - code
 - [[Return (relative_file, line_number, enclosing_qualified_function_name) for…]] - rationale - tests/test_disputed_row_guard.py
 - [[Return (start_line, end_line, qualified_name) for every…]] - rationale - tests/test_disputed_row_guard.py
 - [[Sanity check the view definition itself hasn't been renamedremoved out from…]] - rationale - tests/test_disputed_row_guard.py
@@ -39,11 +39,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 202]]
-- 1 edge to [[_COMMUNITY_Community 146]]
-- 1 edge to [[_COMMUNITY_Community 497]]
 - 1 edge to [[_COMMUNITY_Community 184]]
 - 1 edge to [[_COMMUNITY_Community 355]]
+- 1 edge to [[_COMMUNITY_Community 146]]
+- 1 edge to [[_COMMUNITY_Community 497]]
+- 1 edge to [[_COMMUNITY_Community 202]]
 
 ## Top bridge nodes
 - [[test_disputed_row_guard.py]] - degree 13, connects to 3 communities

@@ -12,7 +12,7 @@ tags:
 # .test_all_identical_flagged_as_degenerate()
 
 ## Connections
-- [[dot-_call()_1]] - `calls` [EXTRACTED]
+- [[dot-_call()]] - `calls` [EXTRACTED]
 - [[10 identical values (std=0) with n5 must be degenerate=True.]] - `rationale_for` [EXTRACTED]
 - [[TestEnsembleStatsDegenerate]] - `method` [EXTRACTED]
 

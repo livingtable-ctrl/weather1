@@ -15,7 +15,7 @@ tags:
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[_collect_data Function]] - `calls` [EXTRACTED]
 - [[_collect_data()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[_needs_onboarding()]] - `calls` [EXTRACTED]
 - [[brier_score()]] - `calls` [EXTRACTED]
 - [[cmd_admin()]] - `calls` [EXTRACTED]

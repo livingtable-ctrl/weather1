@@ -1,16 +1,16 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 84"
+community: "Community 145"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_84
+  - community/Community_145
 ---
 
 # Exception
 
 ## Connections
-- [[CircuitOpenError]] - `inherits` [EXTRACTED]
+- [[AtomicWriteError]] - `inherits` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_84
+#graphify/code #graphify/EXTRACTED #community/Community_145

@@ -10,8 +10,8 @@ members: 7
 **Members:** 7 nodes
 
 ## Members
-- [[dot-setup_method()_20]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_19]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_33]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_25]] - code - tests/test_live_execution.py
 - [[dot-test_exit_order_row_excluded_entry_row_counted()]] - code - tests/test_live_execution.py
 - [[dot-test_repeated_partial_exit_retries_do_not_compound_spend()]] - code - tests/test_live_execution.py
 - [[A position whose IOC exit partial-fills every cycle logs a fresh exit-order row…]] - rationale - tests/test_live_execution.py

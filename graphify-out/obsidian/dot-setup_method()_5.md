@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_execution_log.py"
+source_file: "tests/test_mos_nbp.py"
 type: "code"
-community: "Community 256"
-location: "L103"
+community: "Community 123"
+location: "L238"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_256
+  - community/Community_123
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestSchemaVersionMatchesMigrations]] - `method` [EXTRACTED]
+- [[TestFetchNbpPercentiles]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_256
+#graphify/code #graphify/EXTRACTED #community/Community_123

@@ -16,7 +16,7 @@ tags:
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[_collect_data Function]] - `calls` [EXTRACTED]
 - [[_collect_data()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
 - [[cmd_dashboard()]] - `calls` [EXTRACTED]
 - [[cmd_paper()]] - `calls` [EXTRACTED]

@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Decompose P&L into model-edge contribution vs luck (residual). Expected P&L =…]] - `rationale_for` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
 - [[test_debug_fixes.py]] - `calls` [EXTRACTED]
 

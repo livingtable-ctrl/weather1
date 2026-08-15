@@ -33,11 +33,11 @@ SORT file.name ASC
 - 8 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 5 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Community 50]]
-- 2 edges to [[_COMMUNITY_Community 583]]
 - 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 124]]
+- 2 edges to [[_COMMUNITY_Community 583]]
+- 2 edges to [[_COMMUNITY_Community 50]]
 - 1 edge to [[_COMMUNITY_Community 36]]
+- 1 edge to [[_COMMUNITY_Community 124]]
 
 ## Top bridge nodes
 - [[get_retired_strategies()]] - degree 12, connects to 6 communities

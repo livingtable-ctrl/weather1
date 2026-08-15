@@ -41,8 +41,8 @@ members: 35
 - [[_daily_paper_spend() must only sum multi-day trade costs.]] - rationale - tests/test_phase2_batch_n.py
 - [[_daily_sameday_spend()]] - code - order_executor.py
 - [[_daily_sameday_spend() must only sum days_out==0 trade costs.]] - rationale - tests/test_phase2_batch_o.py
-- [[_make_trade()_4]] - code - tests/test_phase2_batch_n.py
-- [[_make_trade()_5]] - code - tests/test_phase2_batch_o.py
+- [[_make_trade()_5]] - code - tests/test_phase2_batch_n.py
+- [[_make_trade()_6]] - code - tests/test_phase2_batch_o.py
 - [[test_phase2_batch_n.py — Tests for order_executor daily spend cap separation.…]] - rationale - tests/test_phase2_batch_n.py
 - [[test_phase2_batch_o.py — Tests for same-day spend cap (MAX_SAME_DAY_SPEND).…]] - rationale - tests/test_phase2_batch_o.py
 

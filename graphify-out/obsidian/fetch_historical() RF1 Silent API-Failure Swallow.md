@@ -4,7 +4,7 @@ type: "document"
 community: "Community 109"
 tags:
   - graphify/document
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_109
 ---
 
@@ -16,4 +16,4 @@ tags:
 - [[calibrate_and_save() RF1 Silent Preservation Failure]] - `semantically_similar_to` [INFERRED]
 - [[climatology.py_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/INFERRED #community/Community_109
+#graphify/document #graphify/EXTRACTED #community/Community_109

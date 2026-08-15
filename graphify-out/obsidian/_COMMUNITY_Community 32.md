@@ -10,7 +10,7 @@ members: 52
 **Members:** 52 nodes
 
 ## Members
-- [[dot-_make_trades()_1]] - code - tests/test_phase2_batch_m.py
+- [[dot-_make_trades()]] - code - tests/test_phase2_batch_m.py
 - [[dot-test_fewer_than_20_returns_error()]] - code - tests/test_phase2_batch_m.py
 - [[dot-test_reduced_hyperparams()]] - code - tests/test_phase2_batch_m.py
 - [[dot-test_results_not_saved_when_holdout_fails()]] - code - tests/test_phase2_batch_m.py
@@ -75,29 +75,29 @@ SORT file.name ASC
 - 13 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 10 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 6 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 4 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 4 edges to [[_COMMUNITY_Community 51]]
-- 3 edges to [[_COMMUNITY_Community 35]]
+- 4 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 3 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
+- 3 edges to [[_COMMUNITY_Community 35]]
 - 3 edges to [[_COMMUNITY_Community 109]]
 - 2 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
 - 2 edges to [[_COMMUNITY_Community 96]]
 - 1 edge to [[_COMMUNITY_Community 33]]
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Community 129]]
-- 1 edge to [[_COMMUNITY_Community 454]]
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
+- 1 edge to [[_COMMUNITY_Community 345]]
+- 1 edge to [[_COMMUNITY_Community 374]]
+- 1 edge to [[_COMMUNITY_Community 555]]
 - 1 edge to [[_COMMUNITY_Community 184]]
-- 1 edge to [[_COMMUNITY_Community 198]]
+- 1 edge to [[_COMMUNITY_Community 186]]
 - 1 edge to [[_COMMUNITY_Community 353]]
 - 1 edge to [[_COMMUNITY_Community 151]]
-- 1 edge to [[_COMMUNITY_Community 195]]
-- 1 edge to [[_COMMUNITY_Community 186]]
-- 1 edge to [[_COMMUNITY_Community 567]]
+- 1 edge to [[_COMMUNITY_Community 454]]
+- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
+- 1 edge to [[_COMMUNITY_Community 129]]
+- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
+- 1 edge to [[_COMMUNITY_Community 198]]
 - 1 edge to [[_COMMUNITY_Community 296]]
-- 1 edge to [[_COMMUNITY_Community 345]]
-- 1 edge to [[_COMMUNITY_Community 555]]
-- 1 edge to [[_COMMUNITY_Community 374]]
+- 1 edge to [[_COMMUNITY_Community 195]]
+- 1 edge to [[_COMMUNITY_Community 567]]
 
 ## Top bridge nodes
 - [[Grade Audit Module Doc TIER 2 Files]] - degree 22, connects to 12 communities

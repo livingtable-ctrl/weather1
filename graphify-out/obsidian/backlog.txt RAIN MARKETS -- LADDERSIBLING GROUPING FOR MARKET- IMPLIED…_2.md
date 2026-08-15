@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_rain_markets.py"
+source_file: "tests/test_market_implied_distribution.py"
 type: "rationale"
-community: "Community 139"
-location: "L1448"
+community: "Community 41"
+location: "L341"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_139
+  - community/Community_41
 ---
 
 # backlog.txt "RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET- IMPLIED…
 
 ## Connections
-- [[TestComputeMarketImpliedGroupsMonthlyRain]] - `rationale_for` [EXTRACTED]
+- [[TestResolveMarketImpliedForAnalysis]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_139
+#graphify/rationale #graphify/EXTRACTED #community/Community_41

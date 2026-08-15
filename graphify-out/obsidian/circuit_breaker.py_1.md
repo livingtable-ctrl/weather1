@@ -11,7 +11,7 @@ tags:
 # circuit_breaker.py
 
 ## Connections
-- [[CircuitBreaker class]] - `implements` [EXTRACTED]
+- [[CircuitBreaker class_1]] - `implements` [EXTRACTED]
 - [[Grade Audit Module Doc circuit_breaker.py]] - `references` [EXTRACTED]
 - [[Grade Audit Output circuit_breaker.py]] - `references` [EXTRACTED]
 - [[test_bare_os_replace_guard.py]] - `references` [EXTRACTED]

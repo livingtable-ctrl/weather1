@@ -43,8 +43,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Community 227]]
-- 2 edges to [[_COMMUNITY_Community 198]]
 - 2 edges to [[_COMMUNITY_Community 352]]
+- 2 edges to [[_COMMUNITY_Community 198]]
 - 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
 
 ## Top bridge nodes

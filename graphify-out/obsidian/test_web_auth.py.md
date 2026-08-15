@@ -15,7 +15,7 @@ tags:
 - [[P0-8 mutation endpoints must require authentication.]] - `rationale_for` [EXTRACTED]
 - [[TestMutationEndpointsRequireAuth]] - `contains` [EXTRACTED]
 - [[_basic_auth()]] - `contains` [EXTRACTED]
-- [[_make_app()_1]] - `contains` [EXTRACTED]
+- [[_make_app()]] - `contains` [EXTRACTED]
 - [[utils.py_1]] - `references` [EXTRACTED]
 - [[web_app.py (Flask dashboardAPI)]] - `references` [EXTRACTED]
 

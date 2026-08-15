@@ -32,8 +32,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 180]]
 - 1 edge to [[_COMMUNITY_Community 362]]
+- 1 edge to [[_COMMUNITY_Community 180]]
 
 ## Top bridge nodes
 - [[test_drawdown_tiers.py]] - degree 5, connects to 2 communities

@@ -12,8 +12,8 @@ tags:
 # TestSourceProbsPassthrough
 
 ## Connections
-- [[dot-setUp()_30]] - `method` [EXTRACTED]
-- [[dot-tearDown()_30]] - `method` [EXTRACTED]
+- [[dot-setUp()_39]] - `method` [EXTRACTED]
+- [[dot-tearDown()_38]] - `method` [EXTRACTED]
 - [[dot-test_missing_source_probs_stored_as_null()]] - `method` [EXTRACTED]
 - [[log_prediction called without source probs must store NULLs (backward compat).]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]

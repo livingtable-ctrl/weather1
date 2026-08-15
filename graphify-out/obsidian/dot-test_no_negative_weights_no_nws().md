@@ -12,7 +12,7 @@ tags:
 # .test_no_negative_weights_no_nws()
 
 ## Connections
-- [[dot-_call()_1]] - `calls` [EXTRACTED]
+- [[dot-_call()]] - `calls` [EXTRACTED]
 - [[No negative weights when NWS is unavailable and spread is tight.]] - `rationale_for` [EXTRACTED]
 - [[TestConfidenceScaledBlendWeightsNoNegative]] - `method` [EXTRACTED]
 

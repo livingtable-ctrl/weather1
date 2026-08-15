@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[TestConsistency]] - `method` [EXTRACTED]
 - [[Thresholds T60, T65, T70 should be monotone (higher temp = lower prob of…]] - `rationale_for` [EXTRACTED]
-- [[_market()]] - `calls` [EXTRACTED]
+- [[_market()_1]] - `calls` [EXTRACTED]
 - [[find_violations()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_35

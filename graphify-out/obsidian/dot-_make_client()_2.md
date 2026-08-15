@@ -1,18 +1,17 @@
 ---
-source_file: "tests/test_kalshi_client.py"
+source_file: "tests/test_idempotency.py"
 type: "code"
-community: "Community 366"
-location: "L58"
+community: "Community 143"
+location: "L29"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_366
+  - community/Community_143
 ---
 
 # ._make_client()
 
 ## Connections
-- [[Return a KalshiClient with no auth (we only test body construction).]] - `rationale_for` [EXTRACTED]
-- [[TestPlaceOrderApiSemantics]] - `method` [EXTRACTED]
+- [[TestClientOrderId]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_366
+#graphify/code #graphify/EXTRACTED #community/Community_143

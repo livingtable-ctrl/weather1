@@ -18,7 +18,7 @@ tags:
 - [[_collect_data Function]] - `calls` [EXTRACTED]
 - [[_collect_data()]] - `calls` [EXTRACTED]
 - [[_exposure_denom()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[_quick_paper_buy()]] - `calls` [EXTRACTED]
 - [[cmd_admin()]] - `calls` [EXTRACTED]
 - [[cmd_balance Function]] - `calls` [EXTRACTED]

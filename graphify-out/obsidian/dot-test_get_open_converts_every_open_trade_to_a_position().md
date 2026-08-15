@@ -12,7 +12,7 @@ tags:
 # .test_get_open_converts_every_open_trade_to_a_position()
 
 ## Connections
-- [[dot-_trade()_1]] - `calls` [EXTRACTED]
+- [[dot-_trade()_4]] - `calls` [EXTRACTED]
 - [[dot-_write_ledger()]] - `calls` [EXTRACTED]
 - [[TestPaperPositionStore]] - `method` [EXTRACTED]
 

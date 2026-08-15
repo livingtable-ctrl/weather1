@@ -1,19 +1,18 @@
 ---
-source_file: "tests/test_retirement_probation.py"
+source_file: "tests/test_city_registry_report_logging.py"
 type: "code"
-community: "Community 140"
-location: "L90"
+community: "Community 89"
+location: "L67"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_140
+  - community/Community_89
 ---
 
 # test_runs_again_on_a_new_day()
 
 ## Connections
-- [[_mock_client()_1]] - `calls` [EXTRACTED]
-- [[_today()_2]] - `calls` [EXTRACTED]
-- [[test_retirement_probation.py]] - `contains` [EXTRACTED]
+- [[_today()_3]] - `calls` [EXTRACTED]
+- [[test_city_registry_report_logging.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_140
+#graphify/code #graphify/EXTRACTED #community/Community_89

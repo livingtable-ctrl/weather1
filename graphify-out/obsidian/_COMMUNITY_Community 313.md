@@ -10,8 +10,8 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[dot-setUp()_17]] - code - tests/test_tracker.py
-- [[dot-tearDown()_17]] - code - tests/test_tracker.py
+- [[dot-setUp()_20]] - code - tests/test_tracker.py
+- [[dot-tearDown()_19]] - code - tests/test_tracker.py
 - [[dot-test_empty_has_threshold()]] - code - tests/test_tracker.py
 - [[dot-test_threshold_60_vs_80()]] - code - tests/test_tracker.py
 - [[dot-test_threshold_in_return_dict()]] - code - tests/test_tracker.py
@@ -33,10 +33,10 @@ SORT file.name ASC
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_Community 135]]
 - 2 edges to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 264]]
 - 1 edge to [[_COMMUNITY_Community 436]]
 - 1 edge to [[_COMMUNITY_Community 438]]
 - 1 edge to [[_COMMUNITY_Community 315]]
-- 1 edge to [[_COMMUNITY_Community 264]]
 - 1 edge to [[_COMMUNITY_Community 411]]
 - 1 edge to [[_COMMUNITY_Community 487]]
 - 1 edge to [[_COMMUNITY_Community 437]]

@@ -16,7 +16,7 @@ members: 29
 - [[dot-get_balance()]] - code - kalshi_client.py
 - [[dot-get_candlesticks()]] - code - kalshi_client.py
 - [[dot-get_events()]] - code - kalshi_client.py
-- [[dot-get_market()]] - code - kalshi_client.py
+- [[dot-get_market()_3]] - code - kalshi_client.py
 - [[dot-get_markets()]] - code - kalshi_client.py
 - [[dot-get_open_orders()]] - code - kalshi_client.py
 - [[dot-get_order()]] - code - kalshi_client.py
@@ -51,16 +51,16 @@ SORT file.name ASC
 - 17 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 4 edges to [[_COMMUNITY_Community 298]]
 - 2 edges to [[_COMMUNITY_Community 59]]
-- 1 edge to [[_COMMUNITY_Community 351]]
-- 1 edge to [[_COMMUNITY_Community 226]]
-- 1 edge to [[_COMMUNITY_Community 225]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Community 458]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 417]]
-- 1 edge to [[_COMMUNITY_Community 80]]
 - 1 edge to [[_COMMUNITY_Community 57]]
+- 1 edge to [[_COMMUNITY_Community 225]]
+- 1 edge to [[_COMMUNITY_Community 226]]
+- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 1 edge to [[_COMMUNITY_Community 458]]
+- 1 edge to [[_COMMUNITY_Community 80]]
+- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 1 edge to [[_COMMUNITY_Community 351]]
+- 1 edge to [[_COMMUNITY_Community 417]]
+- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 
 ## Top bridge nodes
 - [[validate_market()]] - degree 11, connects to 7 communities

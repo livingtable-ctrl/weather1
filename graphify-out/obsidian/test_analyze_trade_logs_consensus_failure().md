@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[If _get_consensus_probs raises, it must be logged — not silently defaulted.]] - `rationale_for` [EXTRACTED]
-- [[_make_enriched()_2]] - `calls` [EXTRACTED]
+- [[_make_enriched()_1]] - `calls` [EXTRACTED]
 - [[_patch_analyze_prereqs()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[test_silent_failures.py]] - `contains` [EXTRACTED]

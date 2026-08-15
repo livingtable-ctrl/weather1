@@ -4,14 +4,14 @@ type: "document"
 community: "Community 294"
 tags:
   - graphify/document
-  - graphify/EXTRACTED
+  - graphify/INFERRED
   - community/Community_294
 ---
 
 # Fix Signals Page Plan
 
 ## Connections
-- [[cron.py module]] - `references` [INFERRED]
-- [[web_app.py module]] - `references` [EXTRACTED]
+- [[cron.py module_1]] - `references` [INFERRED]
+- [[web_app.py module_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_294
+#graphify/document #graphify/INFERRED #community/Community_294

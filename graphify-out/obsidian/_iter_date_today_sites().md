@@ -12,7 +12,7 @@ tags:
 # _iter_date_today_sites()
 
 ## Connections
-- [[Path_18]] - `references` [EXTRACTED]
+- [[Path_11]] - `references` [EXTRACTED]
 - [[Return (file, line_number, enclosing_function_name) for every date.today() call…]] - `rationale_for` [EXTRACTED]
 - [[_code_only_lines()]] - `calls` [EXTRACTED]
 - [[test_date_today_allowlist_has_no_stale_entries()]] - `calls` [EXTRACTED]

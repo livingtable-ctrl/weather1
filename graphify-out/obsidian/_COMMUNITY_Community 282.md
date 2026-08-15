@@ -10,11 +10,11 @@ members: 13
 **Members:** 13 nodes
 
 ## Members
-- [[dot-_call()]] - code - tests/test_phase2_batch_k.py
+- [[dot-_call()_1]] - code - tests/test_phase2_batch_k.py
 - [[dot-test_no_negative_weights_no_nws()]] - code - tests/test_phase2_batch_k.py
 - [[dot-test_no_negative_weights_tight_spread()]] - code - tests/test_phase2_batch_k.py
 - [[dot-test_tight_spread_boosts_ensemble()]] - code - tests/test_phase2_batch_k.py
-- [[dot-test_weights_sum_to_one()_2]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_weights_sum_to_one()_1]] - code - tests/test_phase2_batch_k.py
 - [[dot-test_wide_spread_reduces_ensemble()]] - code - tests/test_phase2_batch_k.py
 - [[All weights must sum to 1.0 regardless of scaling.]] - rationale - tests/test_phase2_batch_k.py
 - [[No negative weights when NWS is unavailable and spread is tight.]] - rationale - tests/test_phase2_batch_k.py
@@ -40,4 +40,4 @@ SORT file.name ASC
 - [[dot-test_no_negative_weights_no_nws()]] - degree 3, connects to 1 community
 - [[dot-test_no_negative_weights_tight_spread()]] - degree 3, connects to 1 community
 - [[dot-test_tight_spread_boosts_ensemble()]] - degree 3, connects to 1 community
-- [[dot-test_weights_sum_to_one()_2]] - degree 3, connects to 1 community
+- [[dot-test_weights_sum_to_one()_1]] - degree 3, connects to 1 community

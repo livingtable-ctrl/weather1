@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_snow_markets.py"
+source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 312"
-location: "L320"
+community: "Community 434"
+location: "L176"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_312
+  - community/Community_434
 ---
 
 # .test_never_raises_on_count_failure()
 
 ## Connections
-- [[TestSnowGatesActive]] - `method` [EXTRACTED]
+- [[TestRainGatesActive]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_312
+#graphify/code #graphify/EXTRACTED #community/Community_434

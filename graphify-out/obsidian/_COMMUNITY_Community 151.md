@@ -11,7 +11,7 @@ members: 21
 
 ## Members
 - [[Create a minimal predictions+outcomes DB with the given row counts.]] - rationale - tests/test_phase2_batch_p.py
-- [[Path_27]] - code
+- [[Path_4]] - code
 - [[Phase 2 Batch P Below-Condition Weight Tests]] - code - tests/test_phase2_batch_p.py
 - [[Preservation only activates for uncalibrated entries; between (calibrated)…]] - rationale - tests/test_phase2_batch_p.py
 - [[Tests for below-market condition weight fix. Covers - calibrate_and_save…]] - rationale - tests/test_phase2_batch_p.py

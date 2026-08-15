@@ -13,8 +13,6 @@ tags:
 
 ## Connections
 - [[applyTheme()_1]] - `calls` [EXTRACTED]
-- [[authHeader()]] - `calls` [EXTRACTED]
-- [[useData()]] - `calls` [EXTRACTED]
 - [[weather app site V_3 (3)srcApp.jsx]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_93

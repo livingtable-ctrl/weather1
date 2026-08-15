@@ -1,18 +1,21 @@
 ---
 source_file: ""
 type: "code"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 254"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_254
 ---
 
 # Path
 
 ## Connections
-- [[_generate_html()]] - `references` [EXTRACTED]
-- [[_generate_pdf()]] - `references` [EXTRACTED]
-- [[generate_weekly_report()]] - `calls` [EXTRACTED]
+- [[dot-test_collision_with_explicit_alias_import_still_counts()]] - `calls` [EXTRACTED]
+- [[dot-test_real_cross_file_alias_call_is_still_counted()]] - `calls` [EXTRACTED]
+- [[dot-test_real_cross_file_bare_call_with_no_collision_is_still_counted()]] - `calls` [EXTRACTED]
+- [[dot-test_same_name_collision_in_another_file_is_not_counted_as_a_call()]] - `calls` [EXTRACTED]
+- [[_module_level_funcs()]] - `references` [EXTRACTED]
+- [[_resolve_prod_evidence()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/code #graphify/EXTRACTED #community/Community_254

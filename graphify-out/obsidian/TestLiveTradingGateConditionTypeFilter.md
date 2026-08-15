@@ -13,9 +13,9 @@ tags:
 
 ## Connections
 - [[dot-_log_settled()_1]] - `method` [EXTRACTED]
-- [[dot-_seed_baseline()_1]] - `method` [EXTRACTED]
-- [[dot-setUp()_37]] - `method` [EXTRACTED]
-- [[dot-tearDown()_37]] - `method` [EXTRACTED]
+- [[dot-_seed_baseline()]] - `method` [EXTRACTED]
+- [[dot-setUp()_19]] - `method` [EXTRACTED]
+- [[dot-tearDown()_18]] - `method` [EXTRACTED]
 - [[dot-test_count_settled_predictions_counts_raw_rows_not_distinct_events()]] - `method` [EXTRACTED]
 - [[dot-test_count_settled_predictions_excludes_between()]] - `method` [EXTRACTED]
 - [[dot-test_count_settled_predictions_excludes_hurricane_count()]] - `method` [EXTRACTED]

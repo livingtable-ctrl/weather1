@@ -12,8 +12,8 @@ tags:
 # TestGetMemberBias
 
 ## Connections
-- [[dot-setUp()_23]] - `method` [EXTRACTED]
-- [[dot-tearDown()_23]] - `method` [EXTRACTED]
+- [[dot-setUp()_10]] - `method` [EXTRACTED]
+- [[dot-tearDown()_10]] - `method` [EXTRACTED]
 - [[dot-test_city_breakdown()]] - `method` [EXTRACTED]
 - [[dot-test_days_back_filters_old_rows()]] - `method` [EXTRACTED]
 - [[dot-test_max_and_min_never_pooled()]] - `method` [EXTRACTED]

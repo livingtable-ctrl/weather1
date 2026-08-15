@@ -12,8 +12,8 @@ tags:
 # TestGetTodayLiveSpendExcludesExitOrders
 
 ## Connections
-- [[dot-setup_method()_20]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_19]] - `method` [EXTRACTED]
+- [[dot-setup_method()_33]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_25]] - `method` [EXTRACTED]
 - [[dot-test_exit_order_row_excluded_entry_row_counted()]] - `method` [EXTRACTED]
 - [[dot-test_repeated_partial_exit_retries_do_not_compound_spend()]] - `method` [EXTRACTED]
 - [[A protective exit (SELL) order reduces existing exposure, it isn't new capital…]] - `rationale_for` [EXTRACTED]

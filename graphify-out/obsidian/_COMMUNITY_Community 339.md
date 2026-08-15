@@ -32,8 +32,8 @@ SORT file.name ASC
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 2 edges to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
 - 1 edge to [[_COMMUNITY_Community 73]]
+- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
 
 ## Top bridge nodes
 - [[TestDewPointCorrection]] - degree 7, connects to 2 communities

@@ -12,6 +12,6 @@ tags:
 # Map calendar month (1-12) to meteorological season abbreviation.
 
 ## Connections
-- [[_month_to_season()]] - `rationale_for` [EXTRACTED]
+- [[_month_to_season()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching

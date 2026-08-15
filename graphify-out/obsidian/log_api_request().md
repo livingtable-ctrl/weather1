@@ -20,7 +20,7 @@ tags:
 - [[_request_with_retry()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
 - [[kalshi_client.py]] - `imports` [EXTRACTED]
-- [[tracker.py_2]] - `implements` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
+- [[tracker.py_1]] - `implements` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_36

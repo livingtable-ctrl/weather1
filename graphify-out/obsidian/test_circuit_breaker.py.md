@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[CircuitBreaker]] - `imports` [EXTRACTED]
-- [[CircuitBreaker class]] - `calls` [EXTRACTED]
+- [[CircuitBreaker class_1]] - `calls` [EXTRACTED]
 - [[Grade Audit Module Doc circuit_breaker.py]] - `references` [EXTRACTED]
 - [[TestCircuitBreakerBackoff]] - `contains` [EXTRACTED]
 - [[TestCircuitBreakerBasic]] - `contains` [EXTRACTED]

@@ -45,8 +45,8 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_Community 199]]
 - 3 edges to [[_COMMUNITY_Community 179]]
 - 2 edges to [[_COMMUNITY_Community 154]]
-- 1 edge to [[_COMMUNITY_Community 156]]
 - 1 edge to [[_COMMUNITY_Community 197]]
+- 1 edge to [[_COMMUNITY_Community 156]]
 
 ## Top bridge nodes
 - [[weather_markets.py Module_1]] - degree 22, connects to 5 communities

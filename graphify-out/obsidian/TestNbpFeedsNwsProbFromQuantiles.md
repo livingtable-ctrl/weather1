@@ -12,7 +12,7 @@ tags:
 # TestNbpFeedsNwsProbFromQuantiles
 
 ## Connections
-- [[dot-setup_method()_26]] - `method` [EXTRACTED]
+- [[dot-setup_method()_6]] - `method` [EXTRACTED]
 - [[dot-test_quantiles_produce_a_sane_probability()]] - `method` [EXTRACTED]
 - [[End-to-end the fetcher's output shape must be directly consumable by…]] - `rationale_for` [EXTRACTED]
 - [[test_mos_nbp.py]] - `contains` [EXTRACTED]

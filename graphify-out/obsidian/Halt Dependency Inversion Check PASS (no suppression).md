@@ -4,7 +4,7 @@ type: "document"
 community: "Community 96"
 tags:
   - graphify/document
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_96
 ---
 
@@ -14,4 +14,4 @@ tags:
 - [[consistency.py Detect-Only, No Enforcement Path (INFO)]] - `semantically_similar_to` [INFERRED]
 - [[notify.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/INFERRED #community/Community_96
+#graphify/document #graphify/EXTRACTED #community/Community_96

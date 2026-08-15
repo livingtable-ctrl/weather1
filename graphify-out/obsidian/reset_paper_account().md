@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Wipe all paper trades and reset balance.]] - `rationale_for` [EXTRACTED]
-- [[_save()_1]] - `calls` [EXTRACTED]
+- [[_save()]] - `calls` [EXTRACTED]
 - [[cmd_paper()]] - `calls` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]

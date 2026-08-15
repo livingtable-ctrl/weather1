@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_tracker.py"
+source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 288"
-location: "L3040"
+community: "Community 38"
+location: "L900"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_288
+  - community/Community_38
 ---
 
 # ._analysis()
 
 ## Connections
-- [[TestPredictionsVarColumn]] - `method` [EXTRACTED]
+- [[TestCmdTodayDirectionalConsensusGates]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_288
+#graphify/code #graphify/EXTRACTED #community/Community_38

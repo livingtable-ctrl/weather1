@@ -12,8 +12,8 @@ tags:
 # TestCorrelationMatrixIntegrity
 
 ## Connections
-- [[dot-test_cholesky_correlated()_1]] - `method` [EXTRACTED]
-- [[dot-test_cholesky_identity()_1]] - `method` [EXTRACTED]
+- [[dot-test_cholesky_correlated()]] - `method` [EXTRACTED]
+- [[dot-test_cholesky_identity()]] - `method` [EXTRACTED]
 - [[dot-test_cholesky_returns_none_for_non_pd()]] - `method` [EXTRACTED]
 - [[dot-test_simulate_result_has_required_keys()]] - `method` [EXTRACTED]
 - [[P2-1 Cholesky decomposition produces correct L @ L.T == mat.]] - `rationale_for` [EXTRACTED]

@@ -12,7 +12,7 @@ tags:
 # .test_quintile_specific_bias_returned()
 
 ## Connections
-- [[dot-_seed()_8]] - `calls` [EXTRACTED]
+- [[dot-_seed()_3]] - `calls` [EXTRACTED]
 - [[Bias for a well-populated quintile differs from the global bias.]] - `rationale_for` [EXTRACTED]
 - [[TestGetQuintileBias]] - `method` [EXTRACTED]
 

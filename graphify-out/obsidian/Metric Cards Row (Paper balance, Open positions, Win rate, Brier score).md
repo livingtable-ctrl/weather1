@@ -1,18 +1,20 @@
 ---
-source_file: "updated frontend/screenshots/dark-v2.png"
-type: "document"
-community: "Community 247"
+source_file: "updated frontend/screenshots/light.png"
+type: "image"
+community: "Community 192"
 tags:
-  - graphify/document
+  - graphify/image
   - graphify/EXTRACTED
-  - community/Community_247
+  - community/Community_192
 ---
 
 # Metric Cards Row (Paper balance, Open positions, Win rate, Brier score)
 
 ## Connections
-- [[Brier Score Metric (0.151, target =0.20)]] - `references` [EXTRACTED]
-- [[Overview Dashboard (Dark v2 Variant)]] - `references` [EXTRACTED]
-- [[Win Rate Metric (61.2%)]] - `references` [EXTRACTED]
+- [[Brier Score Metric Card (0.151, -0.012, target =0.20)]] - `references` [EXTRACTED]
+- [[Kalshi Weather Dashboard - Overview Tab (Light Theme)]] - `references` [EXTRACTED]
+- [[Open Positions Metric Card (8 open, 567 settled)]] - `references` [EXTRACTED]
+- [[Paper Balance Metric Card ($1247.83, +24.8%)]] - `references` [EXTRACTED]
+- [[Win Rate Metric Card (61.2%, +2.3 pts)]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_247
+#graphify/image #graphify/EXTRACTED #community/Community_192

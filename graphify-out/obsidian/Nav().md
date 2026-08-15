@@ -12,7 +12,6 @@ tags:
 # Nav()
 
 ## Connections
-- [[authHeader()]] - `calls` [EXTRACTED]
 - [[weather app site V_3 (3)srcApp.jsx]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_93

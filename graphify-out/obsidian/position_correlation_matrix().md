@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-test_diagonal_is_one()]] - `calls` [EXTRACTED]
-- [[dot-test_empty_returns_empty()]] - `calls` [EXTRACTED]
+- [[dot-test_empty_returns_empty()_1]] - `calls` [EXTRACTED]
 - [[dot-test_known_city_pair_uses_lookup()]] - `calls` [EXTRACTED]
 - [[dot-test_matrix_is_symmetric()]] - `calls` [EXTRACTED]
 - [[dot-test_same_city_adjacent_date_is_0_50()]] - `calls` [EXTRACTED]

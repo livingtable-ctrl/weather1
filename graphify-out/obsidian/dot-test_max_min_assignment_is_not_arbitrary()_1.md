@@ -1,20 +1,18 @@
 ---
-source_file: "tests/test_mos_nbs.py"
+source_file: "tests/test_mos_nbp.py"
 type: "code"
-community: "Community 114"
-location: "L74"
+community: "Community 148"
+location: "L121"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_114
+  - community/Community_148
 ---
 
 # .test_max_min_assignment_is_not_arbitrary()
 
 ## Connections
-- [[Mutation-proof if the 00Z12Z - maxmin assignment were flipped, this test…]] - `rationale_for` [EXTRACTED]
-- [[TestFetchNbsDailyExtremes]] - `method` [EXTRACTED]
-- [[_mock_nbs_response()]] - `calls` [EXTRACTED]
-- [[_row()]] - `calls` [EXTRACTED]
+- [[Mutation-proof if the evenodd-index - maxmin assignment were flipped, this…]] - `rationale_for` [EXTRACTED]
+- [[TestParseNbpBulletin]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_114
+#graphify/code #graphify/EXTRACTED #community/Community_148

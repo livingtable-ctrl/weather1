@@ -12,7 +12,7 @@ tags:
 # .test_ask_100_cents_accepted()
 
 ## Connections
-- [[dot-_call()_2]] - `calls` [EXTRACTED]
+- [[dot-_call()_5]] - `calls` [EXTRACTED]
 - [[dot-_valid()]] - `calls` [EXTRACTED]
 - [[TestValidateMarketPriceRange]] - `method` [EXTRACTED]
 - [[yes_ask=100 (= 1.0) means no resting sell order below par — normal.]] - `rationale_for` [EXTRACTED]

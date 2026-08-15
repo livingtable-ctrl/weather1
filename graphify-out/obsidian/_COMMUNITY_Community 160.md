@@ -23,8 +23,8 @@ members: 20
 - [[Result must contain n, mean, std, min, max, p10, p90.]] - rationale - tests/test_weather_markets.py
 - [[Single-element ensemble std=0, min=max=mean=the value.]] - rationale - tests/test_weather_markets.py
 - [[Summary statistics for a list of ensemble member temperatures.]] - rationale - weather_markets.py
-- [[TestEnsembleStats_1]] - code - tests/test_weather_markets.py
-- [[TestEnsembleStats]] - code - tests/test_weather.py
+- [[TestEnsembleStats]] - code - tests/test_weather_markets.py
+- [[TestEnsembleStats_1]] - code - tests/test_weather.py
 - [[Verify mean and std match statistics module on known data.]] - rationale - tests/test_weather_markets.py
 - [[ensemble_stats()]] - code - weather_markets.py
 - [[ensemble_stats() must return {} not raise.]] - rationale - tests/test_weather_markets.py
@@ -43,15 +43,15 @@ SORT file.name ASC
 - 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 3 edges to [[_COMMUNITY_Community 59]]
 - 2 edges to [[_COMMUNITY_Weather Probability Math Tests]]
-- 1 edge to [[_COMMUNITY_Community 230]]
-- 1 edge to [[_COMMUNITY_Community 271]]
 - 1 edge to [[_COMMUNITY_Community 173]]
+- 1 edge to [[_COMMUNITY_Community 271]]
 - 1 edge to [[_COMMUNITY_Community 388]]
 - 1 edge to [[_COMMUNITY_Legacy Static Dashboard JS Pages]]
+- 1 edge to [[_COMMUNITY_Community 230]]
 - 1 edge to [[_COMMUNITY_Community 36]]
 
 ## Top bridge nodes
 - [[ensemble_stats()]] - degree 24, connects to 9 communities
 - [[Group A Testing Plan]] - degree 3, connects to 2 communities
-- [[TestEnsembleStats_1]] - degree 7, connects to 1 community
-- [[TestEnsembleStats]] - degree 4, connects to 1 community
+- [[TestEnsembleStats]] - degree 7, connects to 1 community
+- [[TestEnsembleStats_1]] - degree 4, connects to 1 community

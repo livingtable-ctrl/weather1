@@ -12,6 +12,6 @@ tags:
 # Regression control: an ordinary daily HIGH ticker must still reach its normal…
 
 ## Connections
-- [[dot-test_daily_high_ticker_unaffected()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_daily_high_ticker_unaffected()_2]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_61

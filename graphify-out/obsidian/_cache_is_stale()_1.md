@@ -1,8 +1,8 @@
 ---
-source_file: "acis_snow.py"
+source_file: "acis_precip.py"
 type: "code"
 community: "Community 62"
-location: "L181"
+location: "L173"
 tags:
   - graphify/code
   - graphify/EXTRACTED
@@ -12,9 +12,8 @@ tags:
 # _cache_is_stale()
 
 ## Connections
-- [[Own copy, not imported from acis_precip that module's version reads…]] - `rationale_for` [EXTRACTED]
-- [[Path_1]] - `references` [EXTRACTED]
-- [[acis_snow.py]] - `contains` [EXTRACTED]
-- [[fetch_historical_daily_snow()]] - `calls` [EXTRACTED]
+- [[Path_24]] - `references` [EXTRACTED]
+- [[acis_precip.py]] - `contains` [EXTRACTED]
+- [[fetch_historical_daily()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_62

@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-test_fetches_member_vote_fraction_probability()]] - `method` [EXTRACTED]
-- [[dot-test_returns_none_when_fewer_than_five_members()_1]] - `method` [EXTRACTED]
+- [[dot-test_returns_none_when_fewer_than_five_members()]] - `method` [EXTRACTED]
 - [[backlog.txt '3-WAY MODEL_CONSENSUS CHECK' _get_ecmwf_aifs_prob must return…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 

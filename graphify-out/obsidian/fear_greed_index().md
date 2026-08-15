@@ -16,7 +16,7 @@ tags:
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[_collect_data Function]] - `calls` [EXTRACTED]
 - [[_collect_data()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[cmd_menu()]] - `calls` [EXTRACTED]
 - [[get_balance()]] - `calls` [EXTRACTED]
 - [[get_current_streak()]] - `calls` [EXTRACTED]

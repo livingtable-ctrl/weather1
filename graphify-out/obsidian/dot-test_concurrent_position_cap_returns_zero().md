@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[P2-B when open trade count = MAX_CONCURRENT_POSITIONS, no new trades.]] - `rationale_for` [EXTRACTED]
 - [[TestAutoPlaceTradeGuards]] - `method` [EXTRACTED]
-- [[_make_opp()_2]] - `calls` [EXTRACTED]
+- [[_make_opp()_1]] - `calls` [EXTRACTED]
 - [[_patch_paper_guards()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_108

@@ -10,8 +10,8 @@ members: 14
 **Members:** 14 nodes
 
 ## Members
-- [[dot-__init__()_6]] - code - kalshi_ws.py
-- [[dot-_run()]] - code - kalshi_ws.py
+- [[dot-__init__()_2]] - code - kalshi_ws.py
+- [[dot-_run()_1]] - code - kalshi_ws.py
 - [[dot-start()]] - code - kalshi_ws.py
 - [[dot-stop()]] - code - kalshi_ws.py
 - [[dot-subscribe()]] - code - kalshi_ws.py
@@ -35,8 +35,8 @@ SORT file.name ASC
 ## Connections to other communities
 - 5 edges to [[_COMMUNITY_Black Swan Halt State]]
 - 4 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 2 edges to [[_COMMUNITY_Community 198]]
+- 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 1 edge to [[_COMMUNITY_Community 261]]
 - 1 edge to [[_COMMUNITY_Community 71]]
 
@@ -44,4 +44,4 @@ SORT file.name ASC
 - [[KalshiWebSocket]] - degree 12, connects to 3 communities
 - [[auto_backtest()]] - degree 8, connects to 3 communities
 - [[check_overfitting()]] - degree 4, connects to 2 communities
-- [[dot-_run()]] - degree 4, connects to 2 communities
+- [[dot-_run()_1]] - degree 4, connects to 2 communities

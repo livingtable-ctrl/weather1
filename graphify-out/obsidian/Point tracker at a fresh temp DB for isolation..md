@@ -12,6 +12,6 @@ tags:
 # Point tracker at a fresh temp DB for isolation.
 
 ## Connections
-- [[dot-setup_method()_39]] - `rationale_for` [EXTRACTED]
+- [[dot-setup_method()_7]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_127

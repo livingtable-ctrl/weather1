@@ -1,17 +1,17 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 47"
+community: "Community 406"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_47
+  - community/Community_406
 ---
 
 # Path
 
 ## Connections
-- [[_patched_cleanup()]] - `references` [EXTRACTED]
-- [[_write_stale()]] - `references` [EXTRACTED]
+- [[dot-_make_condition_db()]] - `references` [EXTRACTED]
+- [[_make_db()_1]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_47
+#graphify/code #graphify/EXTRACTED #community/Community_406

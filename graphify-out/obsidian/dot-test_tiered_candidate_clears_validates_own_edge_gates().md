@@ -15,6 +15,6 @@ tags:
 - [[TestPlacementGateMirrorsValidateOpportunity]] - `method` [EXTRACTED]
 - [[_strong_market_analysis()]] - `calls` [EXTRACTED]
 - [[_validate_trade_opportunity()]] - `calls` [INFERRED]
-- [[parametrize_3]] - `references` [EXTRACTED]
+- [[parametrize_2]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_42

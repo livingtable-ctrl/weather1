@@ -21,7 +21,7 @@ tags:
 - [[dot-test_miami_returns_calibrated_not_default()]] - `calls` [EXTRACTED]
 - [[Return forecast RMSE sigma (°F) for a citymonth. Prefers dynamic values…]] - `rationale_for` [EXTRACTED]
 - [[_load_dynamic_sigma()]] - `calls` [EXTRACTED]
-- [[_month_to_season()_1]] - `calls` [EXTRACTED]
+- [[_month_to_season()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[load_all_sigmas()]] - `calls` [EXTRACTED]
 - [[test_forecasting.py]] - `references` [EXTRACTED]

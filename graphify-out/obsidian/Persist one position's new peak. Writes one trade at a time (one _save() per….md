@@ -12,6 +12,6 @@ tags:
 # Persist one position's new peak. Writes one trade at a time (one _save() per…
 
 ## Connections
-- [[dot-save_peak()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-save_peak()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

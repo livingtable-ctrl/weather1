@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[TestFitMarketImpliedDistribution]] - `method` [EXTRACTED]
-- [[_market()_1]] - `calls` [EXTRACTED]
+- [[_market()_2]] - `calls` [EXTRACTED]
 - [[_normal_ladder()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_41

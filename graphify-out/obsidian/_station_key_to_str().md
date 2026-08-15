@@ -5,7 +5,7 @@ community: "NWS/Circuit-Breaker Data Validation"
 location: "L88"
 tags:
   - graphify/code
-  - graphify/EXTRACTED
+  - graphify/INFERRED
   - community/NWS/Circuit-Breaker_Data_Validation
 ---
 
@@ -15,4 +15,4 @@ tags:
 - [[_save_station_cache()]] - `indirect_call` [INFERRED]
 - [[nws.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/code #graphify/INFERRED #community/NWS/Circuit-Breaker_Data_Validation

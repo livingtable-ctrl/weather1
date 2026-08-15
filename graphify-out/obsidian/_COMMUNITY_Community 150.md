@@ -11,8 +11,8 @@ members: 21
 
 ## Members
 - [[dot-_reload()]] - code - tests/test_paper.py
-- [[dot-setUp()_1]] - code - tests/test_paper.py
-- [[dot-tearDown()_1]] - code - tests/test_paper.py
+- [[dot-setUp()_4]] - code - tests/test_paper.py
+- [[dot-tearDown()_4]] - code - tests/test_paper.py
 - [[dot-test_balance_decreases_after_loss()]] - code - tests/test_paper.py
 - [[dot-test_balance_decreases_after_order()]] - code - tests/test_paper.py
 - [[dot-test_get_performance_empty()]] - code - tests/test_paper.py
@@ -40,8 +40,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 45]]
 - 1 edge to [[_COMMUNITY_Community 56]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
 - [[TestKellyCompounding]] - degree 21, connects to 2 communities

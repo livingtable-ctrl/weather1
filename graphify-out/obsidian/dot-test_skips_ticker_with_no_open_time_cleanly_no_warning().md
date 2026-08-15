@@ -12,7 +12,7 @@ tags:
 # .test_skips_ticker_with_no_open_time_cleanly_no_warning()
 
 ## Connections
-- [[dot-_settle()_1]] - `calls` [EXTRACTED]
+- [[dot-_settle()]] - `calls` [EXTRACTED]
 - [[Missing open_time is a genuine, expected skip condition (not an error) -- must…]] - `rationale_for` [EXTRACTED]
 - [[TestBackfillPriceHistory]] - `method` [EXTRACTED]
 

@@ -12,9 +12,9 @@ tags:
 # .test_correlation_applied_false_when_no_city()
 
 ## Connections
-- [[dot-_run()_4]] - `calls` [EXTRACTED]
+- [[dot-_run()]] - `calls` [EXTRACTED]
 - [[TestCorrelationAppliedFlag]] - `method` [EXTRACTED]
 - [[Trades with no city correlation_applied must be False even if Cholesky would…]] - `rationale_for` [EXTRACTED]
-- [[_make_trade()_3]] - `calls` [EXTRACTED]
+- [[_make_trade()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_134

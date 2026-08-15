@@ -13,9 +13,9 @@ tags:
 
 ## Connections
 - [[One POST call covering the full `years`-year daily history, disk- cached so one…]] - `rationale_for` [EXTRACTED]
-- [[_cache_is_stale()]] - `calls` [EXTRACTED]
-- [[_cache_path()]] - `calls` [EXTRACTED]
-- [[_load_stale_cache_or_none()]] - `calls` [EXTRACTED]
+- [[_cache_is_stale()_1]] - `calls` [EXTRACTED]
+- [[_cache_path()_1]] - `calls` [EXTRACTED]
+- [[_load_stale_cache_or_none()_1]] - `calls` [EXTRACTED]
 - [[_parse_pcpn_value()]] - `calls` [EXTRACTED]
 - [[acis_precip.py]] - `contains` [EXTRACTED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]

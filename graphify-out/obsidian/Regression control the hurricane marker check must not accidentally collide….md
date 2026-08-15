@@ -12,6 +12,6 @@ tags:
 # Regression control: the hurricane marker check must not accidentally collide…
 
 ## Connections
-- [[dot-test_rain_ticker_unaffected()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_rain_ticker_unaffected()_2]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_61

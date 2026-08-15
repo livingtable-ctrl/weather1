@@ -12,7 +12,7 @@ tags:
 # verify_backup()
 
 ## Connections
-- [[Path_12]] - `calls` [EXTRACTED]
+- [[Path_20]] - `calls` [EXTRACTED]
 - [[Verify a backup file's CRC32 (legacy) and SHA-256 checksums. Returns True on…]] - `rationale_for` [EXTRACTED]
 - [[_validate_checksum()]] - `calls` [EXTRACTED]
 - [[_validate_crc()]] - `calls` [EXTRACTED]

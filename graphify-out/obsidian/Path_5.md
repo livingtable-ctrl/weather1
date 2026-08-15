@@ -1,17 +1,16 @@
 ---
 source_file: ""
 type: "code"
-community: "Climatology & Climate Index Fetching"
+community: "Community 162"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_162
 ---
 
 # Path
 
 ## Connections
-- [[_cache_is_stale()_2]] - `references` [EXTRACTED]
-- [[_cache_path()_2]] - `references` [EXTRACTED]
+- [[_production_py_files()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_162

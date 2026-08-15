@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[P1-20 get_weather_markets must be called once regardless of N open trades.]] - `rationale_for` [EXTRACTED]
 - [[TestCheckEarlyExitsApiCallCount]] - `method` [EXTRACTED]
-- [[_make_trade()_1]] - `calls` [EXTRACTED]
+- [[_make_trade()_2]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_231

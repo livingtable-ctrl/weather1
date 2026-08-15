@@ -12,7 +12,7 @@ tags:
 # .test_get_performance_includes_profit_factor()
 
 ## Connections
-- [[dot-_make_trades()]] - `calls` [EXTRACTED]
+- [[dot-_make_trades()_1]] - `calls` [EXTRACTED]
 - [[TestProfitFactor]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_477

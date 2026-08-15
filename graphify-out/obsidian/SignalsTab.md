@@ -13,7 +13,6 @@ tags:
 ## Connections
 - [[apipaper-order endpoint]] - `calls` [EXTRACTED]
 - [[DataContext]] - `shares_data_with` [EXTRACTED]
-- [[authHeader Function]] - `calls` [EXTRACTED]
 - [[frontendsrcApp.jsx]] - `indirect_call` [INFERRED]
 - [[normCity()]] - `calls` [EXTRACTED]
 

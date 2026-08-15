@@ -12,7 +12,7 @@ tags:
 # auto_settle()
 
 ## Connections
-- [[dot-_run()]] - `indirect_call` [INFERRED]
+- [[dot-_run()_1]] - `indirect_call` [INFERRED]
 - [[KalshiClient]] - `references` [EXTRACTED]
 - [[Silently sync settled market outcomes in a background thread. Runs on every…]] - `rationale_for` [EXTRACTED]
 - [[auto_settle_paper_trades()]] - `calls` [EXTRACTED]

@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_snow_markets.py"
+source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Community 174"
-location: "L444"
+community: "Community 90"
+location: "L2572"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_174
+  - community/Community_90
 ---
 
 # .test_refuses_when_gate_inactive()
 
 ## Connections
-- [[TestCmdOrderSnowGuard]] - `method` [EXTRACTED]
+- [[TestCmdOrderStormOrderGuard]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_174
+#graphify/code #graphify/EXTRACTED #community/Community_90

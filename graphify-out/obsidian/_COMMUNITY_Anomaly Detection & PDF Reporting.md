@@ -17,8 +17,8 @@ members: 232
 - [[45 Return True if on a 3+ consecutive loss streak AND total streak losses…]] - rationale - paper.py
 - [[50 Compute a slippage-adjusted fill price for a market order. Uses the…]] - rationale - paper.py
 - [[51 Portfolio Kelly covariance adjustment. Computes the marginal increase in…]] - rationale - paper.py
-- [[dot-check()_1]] - code - trading_gates.py
-- [[dot-save_peak()_1]] - code - paper.py
+- [[dot-check()]] - code - trading_gates.py
+- [[dot-save_peak()]] - code - paper.py
 - [[apipaper-order endpoint]] - code - web_app.py
 - [[Alias for get_all_trades — returns all paper trades (open and settled).]] - rationale - paper.py
 - [[Annualised Sharpe ratio over the last window_days calendar days. Uses daily P&L…]] - rationale - paper.py
@@ -60,7 +60,7 @@ members: 232
 - [[P0-4 exposure denominator scales with balance so caps stay proportional. 4…]] - rationale - paper.py
 - [[Paper trading commands paper buy ticker yesno qty price paper results…]] - rationale - main.py
 - [[Paper trading ledger — simulates trades without using real money. Stored in…]] - rationale - paper.py
-- [[Path_13]] - code
+- [[Path]] - code
 - [[Persist one position's new peak. Writes one trade at a time (one _save() per…]] - rationale - paper.py
 - [[Phase 2 Batch I Regression Tests]] - code - tests/test_phase2_batch_i.py
 - [[Phase 2 Batch I regression tests P2-28P2-29P2-32P2-33 — paper.py financial…]] - rationale - tests/test_phase2_batch_i.py
@@ -97,7 +97,7 @@ members: 232
 - [[Return the total fraction of STARTING_BALANCE committed to open trades in…]] - rationale - paper.py
 - [[Return the total fraction of current balance committed across all open trades.]] - rationale - paper.py
 - [[Returns (win, N) or (loss, N) or (none, 0) based on the last N…]] - rationale - paper.py
-- [[Reverse the most recently placed (unsettled) paper trade if it was placed…_1]] - rationale - paper.py
+- [[Reverse the most recently placed (unsettled) paper trade if it was placed…]] - rationale - paper.py
 - [[Scale Kelly by per-method Brier. Poor method (Brier  0.20) → 0.75×. Uses a…]] - rationale - paper.py
 - [[Scale Kelly down when the bid-ask spread eats a significant fraction of edge.…]] - rationale - paper.py
 - [[Scale down base_fraction based on existing open exposure to this citydate.…]] - rationale - paper.py
@@ -134,7 +134,7 @@ members: 232
 - [[_hourly_gates_active()]] - code - weather_markets.py
 - [[_hurricane_count_gates_active()]] - code - weather_markets.py
 - [[_hurricane_next_event_gates_active()]] - code - weather_markets.py
-- [[_load()_1]] - code - paper.py
+- [[_load()]] - code - paper.py
 - [[_mark_needs_manual_settle()]] - code - paper.py
 - [[_method_kelly_multiplier()]] - code - paper.py
 - [[_now_utc()]] - code - web_app.py
@@ -143,7 +143,7 @@ members: 232
 - [[_quick_paper_buy()]] - code - main.py
 - [[_rain_gates_active()]] - code - weather_markets.py
 - [[_require_auth()]] - code - web_app.py
-- [[_save()_1]] - code - paper.py
+- [[_save()]] - code - paper.py
 - [[_snow_gates_active()]] - code - weather_markets.py
 - [[_storm_order_gates_active()]] - code - weather_markets.py
 - [[check_aged_positions()]] - code - paper.py
@@ -261,12 +261,12 @@ SORT file.name ASC
 - 18 edges to [[_COMMUNITY_Community 36]]
 - 14 edges to [[_COMMUNITY_Community 32]]
 - 9 edges to [[_COMMUNITY_Community 56]]
-- 9 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 9 edges to [[_COMMUNITY_Community 71]]
+- 9 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
+- 8 edges to [[_COMMUNITY_Community 45]]
 - 8 edges to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
 - 8 edges to [[_COMMUNITY_Tracker SQLite Storage Tests]]
 - 8 edges to [[_COMMUNITY_Community 87]]
-- 8 edges to [[_COMMUNITY_Community 45]]
 - 8 edges to [[_COMMUNITY_Kelly City Multiplier & Edge Realization]]
 - 7 edges to [[_COMMUNITY_Community 33]]
 - 7 edges to [[_COMMUNITY_Community 63]]
@@ -277,101 +277,101 @@ SORT file.name ASC
 - 5 edges to [[_COMMUNITY_Community 248]]
 - 5 edges to [[_COMMUNITY_Community 78]]
 - 5 edges to [[_COMMUNITY_Community 43]]
-- 4 edges to [[_COMMUNITY_Community 223]]
-- 4 edges to [[_COMMUNITY_Community 96]]
-- 4 edges to [[_COMMUNITY_Community 67]]
-- 4 edges to [[_COMMUNITY_Community 459]]
 - 4 edges to [[_COMMUNITY_Community 301]]
 - 4 edges to [[_COMMUNITY_Safe IO CRC Validation Tests]]
+- 4 edges to [[_COMMUNITY_Community 223]]
+- 4 edges to [[_COMMUNITY_Community 96]]
 - 4 edges to [[_COMMUNITY_Community 320]]
+- 4 edges to [[_COMMUNITY_Community 67]]
 - 4 edges to [[_COMMUNITY_Community 176]]
+- 4 edges to [[_COMMUNITY_Community 459]]
 - 4 edges to [[_COMMUNITY_Community 385]]
+- 3 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
+- 3 edges to [[_COMMUNITY_Community 189]]
 - 3 edges to [[_COMMUNITY_Community 297]]
-- 3 edges to [[_COMMUNITY_Community 566]]
-- 3 edges to [[_COMMUNITY_Community 55]]
-- 3 edges to [[_COMMUNITY_Community 198]]
-- 3 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
+- 3 edges to [[_COMMUNITY_Community 246]]
 - 3 edges to [[_COMMUNITY_Community 328]]
 - 3 edges to [[_COMMUNITY_Community 134]]
-- 3 edges to [[_COMMUNITY_Community 246]]
-- 3 edges to [[_COMMUNITY_Community 110]]
-- 3 edges to [[_COMMUNITY_Community 183]]
-- 3 edges to [[_COMMUNITY_Community 570]]
-- 3 edges to [[_COMMUNITY_Community 235]]
 - 3 edges to [[_COMMUNITY_Community 92]]
-- 3 edges to [[_COMMUNITY_Community 189]]
-- 3 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 2 edges to [[_COMMUNITY_Community 194]]
+- 3 edges to [[_COMMUNITY_Community 235]]
+- 3 edges to [[_COMMUNITY_Community 570]]
+- 3 edges to [[_COMMUNITY_Community 110]]
+- 3 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
+- 3 edges to [[_COMMUNITY_Community 566]]
+- 3 edges to [[_COMMUNITY_Community 183]]
+- 3 edges to [[_COMMUNITY_Community 198]]
+- 3 edges to [[_COMMUNITY_Community 55]]
+- 2 edges to [[_COMMUNITY_Community 481]]
 - 2 edges to [[_COMMUNITY_Community 208]]
-- 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
-- 2 edges to [[_COMMUNITY_Community 129]]
-- 2 edges to [[_COMMUNITY_Community 298]]
 - 2 edges to [[_COMMUNITY_Community 233]]
 - 2 edges to [[_COMMUNITY_Community 61]]
-- 2 edges to [[_COMMUNITY_Community 353]]
-- 2 edges to [[_COMMUNITY_Community 214]]
+- 2 edges to [[_COMMUNITY_Community 50]]
 - 2 edges to [[_COMMUNITY_Community 330]]
 - 2 edges to [[_COMMUNITY_Community 57]]
 - 2 edges to [[_COMMUNITY_Community 52]]
-- 2 edges to [[_COMMUNITY_Community 50]]
-- 2 edges to [[_COMMUNITY_Community 180]]
-- 2 edges to [[_COMMUNITY_Community 215]]
-- 2 edges to [[_COMMUNITY_Community 389]]
-- 2 edges to [[_COMMUNITY_Community 74]]
-- 2 edges to [[_COMMUNITY_Community 250]]
-- 2 edges to [[_COMMUNITY_Community 159]]
-- 2 edges to [[_COMMUNITY_Community 158]]
-- 2 edges to [[_COMMUNITY_Community 500]]
-- 2 edges to [[_COMMUNITY_Weather Probability Math Tests]]
-- 2 edges to [[_COMMUNITY_Community 195]]
-- 2 edges to [[_COMMUNITY_Community 132]]
 - 2 edges to [[_COMMUNITY_Community 460]]
+- 2 edges to [[_COMMUNITY_Community 500]]
+- 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 2 edges to [[_COMMUNITY_Community 384]]
-- 2 edges to [[_COMMUNITY_Community 481]]
+- 2 edges to [[_COMMUNITY_Community 353]]
+- 2 edges to [[_COMMUNITY_Community 389]]
+- 2 edges to [[_COMMUNITY_Community 194]]
+- 2 edges to [[_COMMUNITY_Community 214]]
 - 2 edges to [[_COMMUNITY_Community 348]]
-- 1 edge to [[_COMMUNITY_Community 565]]
-- 1 edge to [[_COMMUNITY_Community 417]]
-- 1 edge to [[_COMMUNITY_Community 167]]
-- 1 edge to [[_COMMUNITY_Community 326]]
-- 1 edge to [[_COMMUNITY_Forecast Persistent Cache]]
-- 1 edge to [[_COMMUNITY_Community 327]]
-- 1 edge to [[_COMMUNITY_Community 351]]
-- 1 edge to [[_COMMUNITY_Community 86]]
-- 1 edge to [[_COMMUNITY_Community 604]]
-- 1 edge to [[_COMMUNITY_Community 178]]
-- 1 edge to [[_COMMUNITY_Community 300]]
-- 1 edge to [[_COMMUNITY_Community 144]]
-- 1 edge to [[_COMMUNITY_Community 157]]
-- 1 edge to [[_COMMUNITY_Community 111]]
-- 1 edge to [[_COMMUNITY_Community 329]]
-- 1 edge to [[_COMMUNITY_Community 85]]
-- 1 edge to [[_COMMUNITY_Community 296]]
-- 1 edge to [[_COMMUNITY_Community 164]]
-- 1 edge to [[_COMMUNITY_Community 252]]
-- 1 edge to [[_COMMUNITY_Community 359]]
-- 1 edge to [[_COMMUNITY_Community 125]]
-- 1 edge to [[_COMMUNITY_Community 501]]
+- 2 edges to [[_COMMUNITY_Community 129]]
+- 2 edges to [[_COMMUNITY_Community 132]]
+- 2 edges to [[_COMMUNITY_Weather Probability Math Tests]]
+- 2 edges to [[_COMMUNITY_Community 158]]
+- 2 edges to [[_COMMUNITY_Community 159]]
+- 2 edges to [[_COMMUNITY_Community 215]]
+- 2 edges to [[_COMMUNITY_Community 250]]
+- 2 edges to [[_COMMUNITY_Community 298]]
+- 2 edges to [[_COMMUNITY_Community 74]]
+- 2 edges to [[_COMMUNITY_Community 180]]
+- 2 edges to [[_COMMUNITY_Community 195]]
 - 1 edge to [[_COMMUNITY_Community 354]]
-- 1 edge to [[_COMMUNITY_Community 47]]
-- 1 edge to [[_COMMUNITY_Community 582]]
-- 1 edge to [[_COMMUNITY_Community 65]]
-- 1 edge to [[_COMMUNITY_Community 533]]
-- 1 edge to [[_COMMUNITY_Community 580]]
-- 1 edge to [[_COMMUNITY_Community 26]]
+- 1 edge to [[_COMMUNITY_Community 405]]
+- 1 edge to [[_COMMUNITY_Community 482]]
+- 1 edge to [[_COMMUNITY_Community 520]]
+- 1 edge to [[_COMMUNITY_Community 594]]
+- 1 edge to [[_COMMUNITY_Community 327]]
+- 1 edge to [[_COMMUNITY_Community 417]]
+- 1 edge to [[_COMMUNITY_Community 565]]
+- 1 edge to [[_COMMUNITY_Community 178]]
+- 1 edge to [[_COMMUNITY_Community 604]]
+- 1 edge to [[_COMMUNITY_Community 497]]
 - 1 edge to [[_COMMUNITY_Community 568]]
+- 1 edge to [[_COMMUNITY_Community 168]]
 - 1 edge to [[_COMMUNITY_Community 108]]
 - 1 edge to [[_COMMUNITY_Community 196]]
-- 1 edge to [[_COMMUNITY_Community 497]]
-- 1 edge to [[_COMMUNITY_Community 168]]
-- 1 edge to [[_COMMUNITY_Community 482]]
-- 1 edge to [[_COMMUNITY_Community 405]]
-- 1 edge to [[_COMMUNITY_Community 594]]
-- 1 edge to [[_COMMUNITY_Community 520]]
+- 1 edge to [[_COMMUNITY_Community 167]]
 - 1 edge to [[_COMMUNITY_Community 237]]
 - 1 edge to [[_COMMUNITY_Community 174]]
 - 1 edge to [[_COMMUNITY_Community 579]]
-- 1 edge to [[_COMMUNITY_Community 93]]
+- 1 edge to [[_COMMUNITY_Community 111]]
+- 1 edge to [[_COMMUNITY_Community 144]]
+- 1 edge to [[_COMMUNITY_Community 157]]
+- 1 edge to [[_COMMUNITY_Community 164]]
+- 1 edge to [[_COMMUNITY_Forecast Persistent Cache]]
+- 1 edge to [[_COMMUNITY_Community 252]]
+- 1 edge to [[_COMMUNITY_Community 26]]
+- 1 edge to [[_COMMUNITY_Community 296]]
+- 1 edge to [[_COMMUNITY_Community 300]]
+- 1 edge to [[_COMMUNITY_Community 326]]
+- 1 edge to [[_COMMUNITY_Community 329]]
+- 1 edge to [[_COMMUNITY_Community 47]]
+- 1 edge to [[_COMMUNITY_Community 501]]
+- 1 edge to [[_COMMUNITY_Community 533]]
+- 1 edge to [[_COMMUNITY_Community 580]]
+- 1 edge to [[_COMMUNITY_Community 582]]
+- 1 edge to [[_COMMUNITY_Community 65]]
+- 1 edge to [[_COMMUNITY_Community 85]]
+- 1 edge to [[_COMMUNITY_Community 86]]
+- 1 edge to [[_COMMUNITY_Community 359]]
+- 1 edge to [[_COMMUNITY_Community 125]]
+- 1 edge to [[_COMMUNITY_Community 351]]
 - 1 edge to [[_COMMUNITY_Community 451]]
+- 1 edge to [[_COMMUNITY_Community 93]]
 - 1 edge to [[_COMMUNITY_Community 590]]
 
 ## Top bridge nodes

@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[All fold Brier scores are between 0.0 and 1.0.]] - `rationale_for` [EXTRACTED]
 - [[TestWalkForwardBacktest]] - `method` [EXTRACTED]
-- [[_make_trade()_6]] - `calls` [EXTRACTED]
+- [[_make_trade()_4]] - `calls` [EXTRACTED]
 - [[walk_forward_backtest()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_37

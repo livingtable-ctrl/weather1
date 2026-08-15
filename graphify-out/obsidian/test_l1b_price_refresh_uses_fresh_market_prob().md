@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[L1-B when a client is supplied, entry_price must reflect the re-fetched market…]] - `rationale_for` [EXTRACTED]
-- [[_FakeClient_1]] - `calls` [EXTRACTED]
+- [[_FakeClient]] - `calls` [EXTRACTED]
 - [[_make_opp()]] - `calls` [EXTRACTED]
 - [[_stub_auto_prereqs()]] - `calls` [EXTRACTED]
 - [[test_execution_proof.py]] - `contains` [EXTRACTED]

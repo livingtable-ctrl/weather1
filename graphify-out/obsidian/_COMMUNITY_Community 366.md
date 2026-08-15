@@ -10,8 +10,8 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-_make_client()_2]] - code - tests/test_kalshi_client.py
-- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()]] - code - tests/test_kalshi_client.py
+- [[dot-_make_client()_6]] - code - tests/test_kalshi_client.py
+- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()_1]] - code - tests/test_kalshi_client.py
 - [[dot-test_no_side_place_live_order_calls_buy_not_sell_yes()]] - code - tests/test_kalshi_client.py
 - [[dot-test_yes_side_buy_maps_to_bid_at_same_price()]] - code - tests/test_kalshi_client.py
 - [[L1-A Verify side='no' action='buy' API semantics are correct via the full…]] - rationale - tests/test_kalshi_client.py
@@ -34,5 +34,5 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[TestPlaceOrderApiSemantics]] - degree 6, connects to 1 community
-- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()]] - degree 3, connects to 1 community
+- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()_1]] - degree 3, connects to 1 community
 - [[dot-test_yes_side_buy_maps_to_bid_at_same_price()]] - degree 3, connects to 1 community

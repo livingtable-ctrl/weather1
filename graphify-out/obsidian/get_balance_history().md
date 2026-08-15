@@ -16,7 +16,7 @@ tags:
 - [[Phase 2 Batch I Regression Tests]] - `calls` [EXTRACTED]
 - [[Return a time-ordered list of balance snapshots derived from the trade ledger.…]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
 - [[cmd_paper()]] - `calls` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]

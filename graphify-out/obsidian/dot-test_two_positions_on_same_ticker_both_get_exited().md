@@ -12,7 +12,7 @@ tags:
 # .test_two_positions_on_same_ticker_both_get_exited()
 
 ## Connections
-- [[dot-_open_position_row()_1]] - `calls` [EXTRACTED]
+- [[dot-_open_position_row()]] - `calls` [EXTRACTED]
 - [[Regression two separate open live positions sharing a ticker (two distinct…]] - `rationale_for` [EXTRACTED]
 - [[TestCheckLivePositionExits]] - `method` [EXTRACTED]
 - [[_check_live_position_exits()]] - `calls` [EXTRACTED]

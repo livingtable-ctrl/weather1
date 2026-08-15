@@ -12,7 +12,7 @@ tags:
 # .test_low_prob_edge_signal_skipped()
 
 ## Connections
-- [[dot-_make_enriched()_2]] - `calls` [EXTRACTED]
+- [[dot-_make_enriched()_3]] - `calls` [EXTRACTED]
 - [[Signal with only 5pp probability edge must be skipped by the gate.]] - `rationale_for` [EXTRACTED]
 - [[TestMinProbEdgeGate]] - `method` [EXTRACTED]
 

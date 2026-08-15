@@ -1,19 +1,20 @@
 ---
-source_file: "hurricane_climatology.py"
+source_file: "climatology.py"
 type: "code"
-community: "Community 55"
-location: "L98"
+community: "Climatology & Climate Index Fetching"
+location: "L40"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_55
+  - community/Climatology__Climate_Index_Fetching
 ---
 
 # _cache_path()
 
 ## Connections
-- [[Path_11]] - `references` [EXTRACTED]
-- [[fetch_hurdat2_raw()]] - `calls` [EXTRACTED]
-- [[hurricane_climatology.py]] - `contains` [EXTRACTED]
+- [[Path_28]] - `references` [EXTRACTED]
+- [[climatology.py]] - `contains` [EXTRACTED]
+- [[fetch_historical()]] - `calls` [EXTRACTED]
+- [[preload_all()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_55
+#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching

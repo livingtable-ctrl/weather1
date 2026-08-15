@@ -10,11 +10,11 @@ members: 8
 **Members:** 8 nodes
 
 ## Members
-- [[dot-test_false_when_env_var_set_but_below_sample_floor()_3]] - code - tests/test_hurricane_markets.py
-- [[dot-test_false_when_env_var_unset()_3]] - code - tests/test_hurricane_markets.py
+- [[dot-test_false_when_env_var_set_but_below_sample_floor()_4]] - code - tests/test_hurricane_markets.py
+- [[dot-test_false_when_env_var_unset()_4]] - code - tests/test_hurricane_markets.py
 - [[dot-test_independent_of_sibling_hurricane_gates()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_never_raises_on_count_failure()_3]] - code - tests/test_hurricane_markets.py
-- [[dot-test_true_when_env_var_set_and_sample_floor_met()_3]] - code - tests/test_hurricane_markets.py
+- [[dot-test_never_raises_on_count_failure()_4]] - code - tests/test_hurricane_markets.py
+- [[dot-test_true_when_env_var_set_and_sample_floor_met()_4]] - code - tests/test_hurricane_markets.py
 - [[Mirrors TestHurricaneNextEventGatesActive's exact test shape -- own env var,…]] - rationale - tests/test_hurricane_markets.py
 - [[TestStormOrderGatesActive]] - code - tests/test_hurricane_markets.py
 - [[This gate must not share state with either sibling model's -- flipping the…]] - rationale - tests/test_hurricane_markets.py

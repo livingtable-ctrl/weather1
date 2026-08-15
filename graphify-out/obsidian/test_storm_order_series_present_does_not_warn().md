@@ -12,7 +12,7 @@ tags:
 # test_storm_order_series_present_does_not_warn()
 
 ## Connections
-- [[_mock_client()_2]] - `calls` [EXTRACTED]
+- [[_mock_client()_1]] - `calls` [EXTRACTED]
 - [[backlog.txt HURRICANE MARKETS -- storm-order model (2026-08-07) the 1 new…]] - `rationale_for` [EXTRACTED]
 - [[test_series_drift.py]] - `contains` [EXTRACTED]
 

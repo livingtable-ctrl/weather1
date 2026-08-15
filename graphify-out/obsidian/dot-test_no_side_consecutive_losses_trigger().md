@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[P1-14 6 consecutive NO-side losses (outcome='yes') must trigger alert.]] - `rationale_for` [EXTRACTED]
 - [[TestCheckAnomaliesNoSideConsecutiveLoss]] - `method` [EXTRACTED]
-- [[_make_trade()]] - `calls` [EXTRACTED]
+- [[_make_trade()_1]] - `calls` [EXTRACTED]
 - [[check_anomalies()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_208

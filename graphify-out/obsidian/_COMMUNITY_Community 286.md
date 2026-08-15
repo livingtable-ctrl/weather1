@@ -12,8 +12,8 @@ members: 13
 ## Members
 - [[14 - get_edge_decay_curve() must segment by condition_type when provided.]] - rationale - tests/test_tracker.py
 - [[dot-_log_with_days_out()]] - code - tests/test_tracker.py
-- [[dot-setUp()_21]] - code - tests/test_tracker.py
-- [[dot-tearDown()_21]] - code - tests/test_tracker.py
+- [[dot-setUp()_14]] - code - tests/test_tracker.py
+- [[dot-tearDown()_14]] - code - tests/test_tracker.py
 - [[dot-test_grpb_edge_decay_condition_type_filters()]] - code - tests/test_tracker.py
 - [[dot-test_grpb_edge_decay_no_filter_returns_all()]] - code - tests/test_tracker.py
 - [[dot-test_grpb_edge_decay_returns_list()]] - code - tests/test_tracker.py

@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Redirect tracker DB to a temp file for pytest-style tests.]] - `rationale_for` [EXTRACTED]
-- [[fixture_13]] - `references` [EXTRACTED]
+- [[fixture_15]] - `references` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Tracker_SQLite_Storage_Tests

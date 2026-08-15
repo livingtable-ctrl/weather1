@@ -12,7 +12,7 @@ tags:
 # .test_tight_spread_boosts_ensemble()
 
 ## Connections
-- [[dot-_call()_1]] - `calls` [EXTRACTED]
+- [[dot-_call()]] - `calls` [EXTRACTED]
 - [[TestConfidenceScaledBlendWeightsNoNegative]] - `method` [EXTRACTED]
 - [[Tighter-than-reference spread (std  4°F) must increase w_ens.]] - `rationale_for` [EXTRACTED]
 

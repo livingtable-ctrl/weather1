@@ -44,12 +44,12 @@ SORT file.name ASC
 ## Connections to other communities
 - 7 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
 - 6 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_Community 123]]
 - 2 edges to [[_COMMUNITY_Community 182]]
+- 2 edges to [[_COMMUNITY_Community 123]]
 - 1 edge to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Community 99]]
 - 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_Community 331]]
+- 1 edge to [[_COMMUNITY_Community 99]]
 
 ## Top bridge nodes
 - [[nws_prob_from_quantiles()]] - degree 15, connects to 7 communities

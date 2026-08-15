@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()_2]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_4]] - `calls` [EXTRACTED]
+- [[dot-_enriched()_3]] - `calls` [EXTRACTED]
 - [[TestAnalyzeHurricaneCountTrade]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Hurricane_Market_Season_Signals

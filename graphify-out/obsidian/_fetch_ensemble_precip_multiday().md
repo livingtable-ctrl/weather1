@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Fetch ensemble precipitation member TOTALS (inches) summed across every date in…]] - `rationale_for` [EXTRACTED]
 - [[_analyze_monthly_rain_trade()]] - `calls` [EXTRACTED]
-- [[date_11]] - `references` [EXTRACTED]
+- [[date_2]] - `references` [EXTRACTED]
 - [[is_all_null()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 

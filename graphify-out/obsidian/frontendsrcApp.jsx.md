@@ -24,7 +24,7 @@ tags:
 - [[Nav]] - `contains` [EXTRACTED]
 - [[OverviewTab]] - `indirect_call` [INFERRED]
 - [[PositionsTab]] - `indirect_call` [INFERRED]
-- [[RiskTab()]] - `indirect_call` [INFERRED]
+- [[RiskTab()_1]] - `indirect_call` [INFERRED]
 - [[SettingsTab()]] - `indirect_call` [INFERRED]
 - [[SignalsTab]] - `indirect_call` [INFERRED]
 - [[StatCard]] - `contains` [EXTRACTED]
@@ -34,12 +34,9 @@ tags:
 - [[ToastContainer()]] - `contains` [EXTRACTED]
 - [[TradesTab()]] - `indirect_call` [INFERRED]
 - [[applyTheme()]] - `contains` [EXTRACTED]
-- [[authHeader Function]] - `imports` [EXTRACTED]
 - [[fmtEdge()]] - `contains` [EXTRACTED]
-- [[frontendsrcuseData.js]] - `imports_from` [EXTRACTED]
 - [[main.jsx]] - `imports_from` [EXTRACTED]
 - [[normCity()]] - `contains` [EXTRACTED]
 - [[outcomeBadge()]] - `contains` [EXTRACTED]
-- [[useData Hook]] - `imports` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_155

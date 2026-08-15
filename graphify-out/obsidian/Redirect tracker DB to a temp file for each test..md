@@ -12,6 +12,6 @@ tags:
 # Redirect tracker DB to a temp file for each test.
 
 ## Connections
-- [[dot-setUp()_10]] - `rationale_for` [EXTRACTED]
+- [[dot-setUp()_13]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Tracker_Brier_Score__Outcome_Logging

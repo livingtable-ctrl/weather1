@@ -16,7 +16,7 @@ tags:
 - [[dot-test_dot_files_are_never_deleted()]] - `calls` [EXTRACTED]
 - [[dot-test_permanent_files_are_never_deleted()]] - `calls` [EXTRACTED]
 - [[dot-test_stale_ephemeral_file_is_deleted()]] - `calls` [EXTRACTED]
-- [[Path_17]] - `references` [EXTRACTED]
+- [[Path_22]] - `references` [EXTRACTED]
 - [[Write a JSON file and backdate its mtime by 3 days.]] - `rationale_for` [EXTRACTED]
 - [[test_cleanup_data_dir.py]] - `contains` [EXTRACTED]
 

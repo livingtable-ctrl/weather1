@@ -15,6 +15,6 @@ tags:
 - [[dot-_paper_spend()]] - `calls` [EXTRACTED]
 - [[dot-_sameday_spend()]] - `calls` [EXTRACTED]
 - [[TestCapIndependence]] - `method` [EXTRACTED]
-- [[_make_trade()_5]] - `calls` [EXTRACTED]
+- [[_make_trade()_6]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_63

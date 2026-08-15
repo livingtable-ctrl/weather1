@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_cache_target_hour()]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_1]] - `calls` [EXTRACTED]
+- [[dot-_enriched()]] - `calls` [EXTRACTED]
 - [[dot-_pin_sources()]] - `calls` [EXTRACTED]
 - [[All-identical members (=10, so ensemble_stats runs) must be rejected as…]] - `rationale_for` [EXTRACTED]
 - [[TestAnalyzeTradeHourlyModel]] - `method` [EXTRACTED]

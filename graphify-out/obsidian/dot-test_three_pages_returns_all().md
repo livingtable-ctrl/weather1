@@ -12,7 +12,7 @@ tags:
 # .test_three_pages_returns_all()
 
 ## Connections
-- [[dot-_make_client()_8]] - `calls` [EXTRACTED]
+- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
 - [[TestGetMarketsPagination]] - `method` [EXTRACTED]
 - [[Three pages with cursors → all 3 pages combined.]] - `rationale_for` [EXTRACTED]
 

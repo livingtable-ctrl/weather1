@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Fetch several lead offsets for one model in a single Previous Runs API call.…]] - `rationale_for` [EXTRACTED]
-- [[date_9]] - `references` [EXTRACTED]
+- [[date_5]] - `references` [EXTRACTED]
 - [[get_forecast_run_trend()]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 - [[utc_today()]] - `calls` [EXTRACTED]

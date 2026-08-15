@@ -12,6 +12,6 @@ tags:
 # Trades Page Spec (/trades)
 
 ## Connections
-- [[paper.py Module_1]] - `references` [EXTRACTED]
+- [[paper.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_156

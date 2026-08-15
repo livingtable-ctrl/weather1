@@ -1,17 +1,18 @@
 ---
-source_file: "tests/test_live_execution.py"
+source_file: "tests/test_mos.py"
 type: "code"
-community: "Community 171"
-location: "L820"
+community: "Community 187"
+location: "L31"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_171
+  - community/Community_187
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestPollPendingOrdersExtended]] - `method` [EXTRACTED]
+- [[Clear the MOS in-process cache before each test.]] - `rationale_for` [EXTRACTED]
+- [[TestFetchMos]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_171
+#graphify/code #graphify/EXTRACTED #community/Community_187

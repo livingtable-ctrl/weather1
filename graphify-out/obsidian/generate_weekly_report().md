@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Generate a weekly trading summary report. Creates a PDF if fpdf2 is installed,…]] - `rationale_for` [EXTRACTED]
-- [[Path_13]] - `calls` [EXTRACTED]
+- [[Path]] - `calls` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[_collect_data()]] - `calls` [EXTRACTED]
 - [[_generate_html()]] - `calls` [EXTRACTED]

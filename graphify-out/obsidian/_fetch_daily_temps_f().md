@@ -16,7 +16,7 @@ tags:
 - [[ZoneInfo]] - `calls` [INFERRED]
 - [[_extract_obs_time()]] - `calls` [EXTRACTED]
 - [[_extract_temp_f()]] - `calls` [EXTRACTED]
-- [[date_3]] - `references` [EXTRACTED]
+- [[date_1]] - `references` [EXTRACTED]
 - [[fetch_metar_daily_extreme()]] - `calls` [EXTRACTED]
 - [[metar.py]] - `contains` [EXTRACTED]
 

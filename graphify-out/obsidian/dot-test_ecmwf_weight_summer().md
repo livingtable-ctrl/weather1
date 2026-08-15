@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[ECMWF should have weight 1.5 in summer months (Apr–Sep).]] - `rationale_for` [EXTRACTED]
-- [[TestForecastModelWeights]] - `method` [EXTRACTED]
+- [[TestForecastModelWeights_1]] - `method` [EXTRACTED]
 - [[_forecast_model_weights()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests

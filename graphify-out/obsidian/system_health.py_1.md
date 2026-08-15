@@ -1,16 +1,18 @@
 ---
 source_file: "system_health.py"
 type: "code"
-community: "Community 85"
+community: "Community 296"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_85
+  - community/Community_296
 ---
 
 # system_health.py
 
 ## Connections
-- [[test_trade_validation.py]] - `references` [EXTRACTED]
+- [[System Health Grade Audit]] - `references` [EXTRACTED]
+- [[_check_api_failure_rate()]] - `implements` [EXTRACTED]
+- [[_check_platt_sanity()]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_85
+#graphify/code #graphify/EXTRACTED #community/Community_296

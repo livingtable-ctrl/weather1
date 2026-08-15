@@ -12,8 +12,8 @@ tags:
 # TestSettlementCostBasis
 
 ## Connections
-- [[dot-setup_method()_33]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_25]] - `method` [EXTRACTED]
+- [[dot-setup_method()_34]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_26]] - `method` [EXTRACTED]
 - [[dot-test_settlement_pnl_consistent_with_entry_deduction()]] - `method` [EXTRACTED]
 - [[dot-test_settlement_uses_entry_price_not_actual_fill()]] - `method` [EXTRACTED]
 - [[LiveTradingGate]] - `uses` [INFERRED]

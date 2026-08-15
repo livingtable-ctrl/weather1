@@ -16,7 +16,7 @@ members: 9
 - [[dot-test_cmd_paper_refuses_when_gate_inactive()]] - code - tests/test_hourly_markets.py
 - [[dot-test_quick_paper_buy_refuses_when_gate_inactive()]] - code - tests/test_hourly_markets.py
 - [[Mutation-test proof the conditional is real -- once active, this guard no…]] - rationale - tests/test_hourly_markets.py
-- [[Mutation-test proof proceeds past THIS guard once the gate is active.]] - rationale - tests/test_hourly_markets.py
+- [[Mutation-test proof proceeds past THIS guard once the gate is active._1]] - rationale - tests/test_hourly_markets.py
 - [[Same gap as above, at the explicit refuse-outright guards in main.py's…]] - rationale - tests/test_hourly_markets.py
 - [[TestManualPlacementPathsHourlyGuard]] - code - tests/test_hourly_markets.py
 

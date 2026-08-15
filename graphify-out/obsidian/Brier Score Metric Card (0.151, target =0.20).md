@@ -4,7 +4,7 @@ type: "image"
 community: "Community 292"
 tags:
   - graphify/image
-  - graphify/INFERRED
+  - graphify/EXTRACTED
   - community/Community_292
 ---
 
@@ -14,4 +14,4 @@ tags:
 - [[Graduation Gate - Brier Progress Bar (0.1510.2, partial)]] - `shares_data_with` [INFERRED]
 - [[Metric Card Row (Paper Balance, Open Positions, Win Rate, Brier Score)]] - `references` [EXTRACTED]
 
-#graphify/image #graphify/INFERRED #community/Community_292
+#graphify/image #graphify/EXTRACTED #community/Community_292

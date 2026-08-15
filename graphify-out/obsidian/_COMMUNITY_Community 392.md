@@ -18,7 +18,7 @@ members: 9
 - [[A city passed again in a later call gets its own entry refreshed (not stuck at…]] - rationale - tests/test_climatology.py
 - [[Simulates main.py's setup wizard calling load_all_sigmas() (via preload_all(),…]] - rationale - tests/test_climatology.py
 - [[TestLoadAllSigmasMerge]] - code - tests/test_climatology.py
-- [[backlog.txt PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE…]] - rationale - tests/test_climatology.py
+- [[backlog.txt PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE…_1]] - rationale - tests/test_climatology.py
 
 ## Live Query (requires Dataview plugin)
 

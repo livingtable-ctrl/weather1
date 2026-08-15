@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()_2]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_4]] - `calls` [EXTRACTED]
+- [[dot-_enriched()_3]] - `calls` [EXTRACTED]
 - [[Same clamp-verification-at-the-analyzer-level next_event's own test documents…]] - `rationale_for` [EXTRACTED]
 - [[TestAnalyzeStormOrderTrade]] - `method` [EXTRACTED]
 

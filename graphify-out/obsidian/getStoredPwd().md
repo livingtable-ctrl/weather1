@@ -1,18 +1,18 @@
 ---
 source_file: "frontend/src/useData.js"
 type: "code"
-community: "Community 327"
+community: "Community 692"
 location: "L25"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_327
+  - community/Community_692
 ---
 
 # getStoredPwd()
 
 ## Connections
-- [[authHeader Function]] - `calls` [EXTRACTED]
+- [[authHeader]] - `calls` [EXTRACTED]
 - [[frontendsrcuseData.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_327
+#graphify/code #graphify/EXTRACTED #community/Community_692

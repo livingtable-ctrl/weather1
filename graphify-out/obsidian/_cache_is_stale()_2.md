@@ -1,21 +1,20 @@
 ---
-source_file: "climatology.py"
+source_file: "acis_snow.py"
 type: "code"
-community: "Climatology & Climate Index Fetching"
-location: "L44"
+community: "Community 62"
+location: "L181"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_62
 ---
 
 # _cache_is_stale()
 
 ## Connections
-- [[Path_5]] - `references` [EXTRACTED]
-- [[Return True if the cache file is missing or older than CACHE_MAX_AGE seconds.]] - `rationale_for` [EXTRACTED]
-- [[climatology.py]] - `contains` [EXTRACTED]
-- [[fetch_historical()]] - `calls` [EXTRACTED]
-- [[preload_all()]] - `calls` [EXTRACTED]
+- [[Own copy, not imported from acis_precip that module's version reads…]] - `rationale_for` [EXTRACTED]
+- [[Path_25]] - `references` [EXTRACTED]
+- [[acis_snow.py]] - `contains` [EXTRACTED]
+- [[fetch_historical_daily_snow()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_62

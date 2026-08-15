@@ -12,7 +12,7 @@ tags:
 # graduation_check()
 
 ## Connections
-- [[dot-check()_1]] - `calls` [EXTRACTED]
+- [[dot-check()]] - `calls` [EXTRACTED]
 - [[Check if paper trading performance warrants going live. Returns a summary dict…]] - `rationale_for` [EXTRACTED]
 - [[Kalshi Weather Trading Bot README]] - `references` [EXTRACTED]
 - [[Live Trading Runbook]] - `references` [EXTRACTED]

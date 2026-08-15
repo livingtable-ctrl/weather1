@@ -1,22 +1,27 @@
 ---
-source_file: "tests/test_market_implied_distribution.py"
+source_file: "tests/test_consistency.py"
 type: "code"
-community: "Community 41"
-location: "L25"
+community: "Community 35"
+location: "L10"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_41
+  - community/Community_35
 ---
 
 # _market()
 
 ## Connections
-- [[dot-test_degenerate_fit_returns_none_not_garbage()]] - `calls` [EXTRACTED]
-- [[dot-test_mixed_temperature_and_precip_only_counts_temperature()]] - `calls` [EXTRACTED]
-- [[dot-test_non_temperature_siblings_excluded()]] - `calls` [EXTRACTED]
-- [[dot-test_thin_event_maps_to_none_not_omitted()]] - `calls` [EXTRACTED]
-- [[_normal_ladder()]] - `calls` [EXTRACTED]
-- [[test_market_implied_distribution.py]] - `contains` [EXTRACTED]
+- [[dot-test_different_series_not_compared()]] - `calls` [EXTRACTED]
+- [[dot-test_hourly_directional_markets_excluded()]] - `calls` [EXTRACTED]
+- [[dot-test_hurricane_count_markets_excluded()]] - `calls` [EXTRACTED]
+- [[dot-test_hurricane_next_event_exclusion_is_mutation_proof()]] - `calls` [EXTRACTED]
+- [[dot-test_hurricane_next_event_markets_excluded()]] - `calls` [EXTRACTED]
+- [[dot-test_no_violation_when_monotone()]] - `calls` [EXTRACTED]
+- [[dot-test_single_market_no_violation()]] - `calls` [EXTRACTED]
+- [[dot-test_storm_order_exclusion_is_mutation_proof()]] - `calls` [EXTRACTED]
+- [[dot-test_storm_order_markets_excluded()]] - `calls` [EXTRACTED]
+- [[dot-test_violation_detected()]] - `calls` [EXTRACTED]
+- [[test_consistency.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_41
+#graphify/code #graphify/EXTRACTED #community/Community_35

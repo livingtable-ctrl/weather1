@@ -1,16 +1,16 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 37"
+community: "Community 120"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_37
+  - community/Community_120
 ---
 
 # Path
 
 ## Connections
-- [[save_walk_forward_params()]] - `references` [EXTRACTED]
+- [[_write_valid_pkl()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_37
+#graphify/code #graphify/EXTRACTED #community/Community_120

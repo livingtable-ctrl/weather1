@@ -12,7 +12,7 @@ tags:
 # .test_window_days_excludes_old_data()
 
 ## Connections
-- [[dot-_seed()_6]] - `calls` [EXTRACTED]
+- [[dot-_seed()_1]] - `calls` [EXTRACTED]
 - [[TestGetModelWeights]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_127

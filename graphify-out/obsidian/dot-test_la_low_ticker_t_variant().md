@@ -12,7 +12,7 @@ tags:
 # .test_la_low_ticker_t_variant()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[KXLOWTLAX (current live ticker as of 2026-07-05, renamed again from KXLOWLAX) →…]] - `rationale_for` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 

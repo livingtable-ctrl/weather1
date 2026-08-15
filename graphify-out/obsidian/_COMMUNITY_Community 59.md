@@ -32,7 +32,7 @@ members: 36
 - [[execution_log.py_2]] - code - execution_log.py
 - [[feature_importance.py_1]] - code - feature_importance.py
 - [[kalshi_client.py_2]] - code - kalshi_client.py
-- [[kalshi_ws.py_2]] - code - kalshi_ws.py
+- [[kalshi_ws.py_1]] - code - kalshi_ws.py
 - [[main.py_1]] - code - main.py
 - [[metar.py_1]] - code - metar.py
 - [[ml_bias.py_2]] - code - ml_bias.py
@@ -57,23 +57,23 @@ SORT file.name ASC
 ## Connections to other communities
 - 20 edges to [[_COMMUNITY_Community 36]]
 - 5 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 4 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
-- 4 edges to [[_COMMUNITY_Community 47]]
-- 4 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
 - 4 edges to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
-- 3 edges to [[_COMMUNITY_Community 33]]
-- 3 edges to [[_COMMUNITY_Community 118]]
-- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 4 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 4 edges to [[_COMMUNITY_Community 47]]
+- 4 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 - 3 edges to [[_COMMUNITY_Community 160]]
+- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
 - 3 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 2 edges to [[_COMMUNITY_Community 326]]
-- 2 edges to [[_COMMUNITY_Community 86]]
-- 2 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
+- 3 edges to [[_COMMUNITY_Community 118]]
+- 3 edges to [[_COMMUNITY_Community 33]]
 - 2 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
-- 1 edge to [[_COMMUNITY_Community 94]]
-- 1 edge to [[_COMMUNITY_Community 71]]
+- 2 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
+- 2 edges to [[_COMMUNITY_Community 86]]
+- 2 edges to [[_COMMUNITY_Community 326]]
+- 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 1 edge to [[_COMMUNITY_Community 58]]
+- 1 edge to [[_COMMUNITY_Community 71]]
+- 1 edge to [[_COMMUNITY_Community 94]]
 - 1 edge to [[_COMMUNITY_Community 296]]
 
 ## Top bridge nodes

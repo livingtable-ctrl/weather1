@@ -12,9 +12,9 @@ tags:
 # PaperPositionStore
 
 ## Connections
-- [[dot-exit()_1]] - `method` [EXTRACTED]
-- [[dot-get_open()_1]] - `method` [EXTRACTED]
-- [[dot-save_peak()_1]] - `method` [EXTRACTED]
+- [[dot-exit()]] - `method` [EXTRACTED]
+- [[dot-get_open()]] - `method` [EXTRACTED]
+- [[dot-save_peak()]] - `method` [EXTRACTED]
 - [[ABTest]] - `uses` [INFERRED]
 - [[AtomicWriteError]] - `uses` [INFERRED]
 - [[Paper Trading Ledger Module]] - `implements` [EXTRACTED]

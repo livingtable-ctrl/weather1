@@ -12,7 +12,7 @@ tags:
 # .test_nyc_rain_ticker_detected()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[Passes the existing substring chain by luck (NY). Real NYC ladder only has 4…]] - `rationale_for` [EXTRACTED]
 - [[TestMonthlyRainCityDetection]] - `method` [EXTRACTED]
 

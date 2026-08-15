@@ -10,7 +10,7 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-_trade()_2]] - code - tests/test_signal_quality.py
+- [[dot-_trade()_1]] - code - tests/test_signal_quality.py
 - [[dot-test_empty_portfolio_returns_zero()]] - code - tests/test_signal_quality.py
 - [[dot-test_max_var_dollars_in_utils()]] - code - tests/test_signal_quality.py
 - [[dot-test_returns_float()]] - code - tests/test_signal_quality.py
@@ -32,11 +32,11 @@ SORT file.name ASC
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 52]]
-- 1 edge to [[_COMMUNITY_Community 181]]
 - 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 1 edge to [[_COMMUNITY_Community 111]]
 - 1 edge to [[_COMMUNITY_Community 246]]
+- 1 edge to [[_COMMUNITY_Community 181]]
 - 1 edge to [[_COMMUNITY_Community 87]]
+- 1 edge to [[_COMMUNITY_Community 111]]
 
 ## Top bridge nodes
 - [[portfolio_var()]] - degree 14, connects to 7 communities

@@ -12,7 +12,7 @@ tags:
 # .test_fewer_than_20_returns_error()
 
 ## Connections
-- [[dot-_make_trades()_1]] - `calls` [EXTRACTED]
+- [[dot-_make_trades()]] - `calls` [EXTRACTED]
 - [[TestParamSweepTemporalSplit]] - `method` [EXTRACTED]
 - [[run_sweep()]] - `calls` [EXTRACTED]
 

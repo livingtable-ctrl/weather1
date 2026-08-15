@@ -13,10 +13,10 @@ members: 21
 - [[56 - get_calibration_by_city() must accept condition_type filter.]] - rationale - tests/test_tracker.py
 - [[dot-_log()]] - code - tests/test_tracker.py
 - [[dot-_log()_1]] - code - tests/test_tracker.py
-- [[dot-setUp()_25]] - code - tests/test_tracker.py
-- [[dot-setUp()_39]] - code - tests/test_tracker.py
-- [[dot-tearDown()_25]] - code - tests/test_tracker.py
-- [[dot-tearDown()_39]] - code - tests/test_tracker.py
+- [[dot-setUp()_5]] - code - tests/test_tracker.py
+- [[dot-setUp()_6]] - code - tests/test_tracker.py
+- [[dot-tearDown()_5]] - code - tests/test_tracker.py
+- [[dot-tearDown()_6]] - code - tests/test_tracker.py
 - [[dot-test_grpb_calib_city_empty_returns_empty_dict()]] - code - tests/test_tracker.py
 - [[dot-test_grpb_calib_city_filter_above_only()]] - code - tests/test_tracker.py
 - [[dot-test_grpb_calib_city_filter_changes_brier()]] - code - tests/test_tracker.py

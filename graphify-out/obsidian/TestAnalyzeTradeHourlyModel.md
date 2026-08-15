@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_cache_target_hour()]] - `method` [EXTRACTED]
-- [[dot-_enriched()_1]] - `method` [EXTRACTED]
+- [[dot-_enriched()]] - `method` [EXTRACTED]
 - [[dot-_pin_sources()]] - `method` [EXTRACTED]
 - [[dot-test_consensus_hardcoded_false_no_kelly_bonus()]] - `method` [EXTRACTED]
 - [[dot-test_daily_path_still_calls_metar_lock_in()]] - `method` [EXTRACTED]

@@ -17,8 +17,8 @@ tags:
 - [[_conn()_1]] - `calls` [EXTRACTED]
 - [[check_system_health()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[system_health.py_2]] - `implements` [EXTRACTED]
 - [[system_health.py]] - `contains` [EXTRACTED]
+- [[system_health.py_1]] - `implements` [EXTRACTED]
 - [[tracker._conn()  init_db()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_296

@@ -12,7 +12,7 @@ tags:
 # TestFetchAfdDiscussion
 
 ## Connections
-- [[dot-setup_method()_29]] - `method` [EXTRACTED]
+- [[dot-setup_method()_38]] - `method` [EXTRACTED]
 - [[dot-test_caches_per_office_not_per_city()]] - `method` [EXTRACTED]
 - [[dot-test_empty_present_section_returns_none()]] - `method` [EXTRACTED]
 - [[dot-test_extracts_bare_discussion_section()]] - `method` [EXTRACTED]

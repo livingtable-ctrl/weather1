@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[At exactly half of reference_hours remaining, edge should be halved.]] - `rationale_for` [EXTRACTED]
-- [[TestTimeDecayEdge_1]] - `method` [EXTRACTED]
+- [[TestTimeDecayEdge]] - `method` [EXTRACTED]
 - [[time_decay_edge()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_240

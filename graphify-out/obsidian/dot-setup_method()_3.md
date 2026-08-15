@@ -1,18 +1,17 @@
 ---
-source_file: "tests/test_calibration.py"
+source_file: "tests/test_mos_nbs.py"
 type: "code"
-community: "Community 69"
-location: "L306"
+community: "Community 114"
+location: "L30"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_69
+  - community/Community_114
 ---
 
 # .setup_method()
 
 ## Connections
-- [[Path_16]] - `calls` [EXTRACTED]
-- [[TestCalibrateCLI]] - `method` [EXTRACTED]
+- [[TestFetchNbsDailyExtremes]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_69
+#graphify/code #graphify/EXTRACTED #community/Community_114

@@ -4,7 +4,7 @@ type: "document"
 community: "NWS/Circuit-Breaker Data Validation"
 tags:
   - graphify/document
-  - graphify/AMBIGUOUS
+  - graphify/EXTRACTED
   - community/NWS/Circuit-Breaker_Data_Validation
 ---
 
@@ -14,4 +14,4 @@ tags:
 - [[execution_log.py]] - `conceptually_related_to` [AMBIGUOUS]
 - [[paths.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/AMBIGUOUS #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/document #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation

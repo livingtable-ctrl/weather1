@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_signal_quality.py"
+source_file: "tests/test_ml_bias.py"
 type: "code"
-community: "Community 127"
-location: "L309"
+community: "Community 79"
+location: "L788"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_127
+  - community/Community_79
 ---
 
 # ._seed()
 
 ## Connections
-- [[TestGetBrierByTier]] - `method` [EXTRACTED]
+- [[TestTrainAllTemperatureScalingHourlyPool]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_127
+#graphify/code #graphify/EXTRACTED #community/Community_79

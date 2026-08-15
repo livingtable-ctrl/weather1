@@ -15,7 +15,7 @@ tags:
 - [[TestAnalyticsApiShape]] - `contains` [EXTRACTED]
 - [[Tests for web analytics API shape contracts.]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `imports` [EXTRACTED]
-- [[_force_demo_env()_1]] - `contains` [EXTRACTED]
+- [[_force_demo_env()_2]] - `contains` [EXTRACTED]
 - [[_no_dashboard_password()_1]] - `contains` [EXTRACTED]
 - [[analytics_client()]] - `contains` [EXTRACTED]
 - [[brier_score()]] - `references` [EXTRACTED]

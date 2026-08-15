@@ -12,8 +12,8 @@ tags:
 # TestPollPendingOrdersExtended
 
 ## Connections
-- [[dot-setup_method()_14]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_13]] - `method` [EXTRACTED]
+- [[dot-setup_method()_12]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_7]] - `method` [EXTRACTED]
 - [[dot-test_gtc_age_cancel_with_partial_fill_resolves_to_filled()]] - `method` [EXTRACTED]
 - [[dot-test_gtc_cancel_fires_for_old_pending_order()]] - `method` [EXTRACTED]
 - [[dot-test_gtc_cancel_skips_fresh_orders()]] - `method` [EXTRACTED]

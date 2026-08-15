@@ -12,7 +12,7 @@ tags:
 # .test_boston_renamed_low_ticker()
 
 ## Connections
-- [[dot-_city()_2]] - `calls` [EXTRACTED]
+- [[dot-_city()]] - `calls` [EXTRACTED]
 - [[KXLOWTBOS (renamed from KXLOWBOS) → Boston.]] - `rationale_for` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 

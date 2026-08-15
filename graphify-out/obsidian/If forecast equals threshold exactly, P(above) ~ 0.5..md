@@ -12,6 +12,6 @@ tags:
 # If forecast equals threshold exactly, P(above) ~ 0.5.
 
 ## Connections
-- [[dot-test_above_condition()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-test_above_condition()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Weather_Probability_Math_Tests

@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Redirect alerts._DATA_PATH to a per-test temp file so tests never touch the…]] - `rationale_for` [EXTRACTED]
-- [[fixture_3]] - `references` [EXTRACTED]
+- [[fixture_10]] - `references` [EXTRACTED]
 - [[test_alerts.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_461

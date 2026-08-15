@@ -19,7 +19,7 @@ tags:
 - [[generate_weekly_report Function]] - `calls` [EXTRACTED]
 - [[generate_weekly_report()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 

@@ -12,11 +12,11 @@ tags:
 # TestFetchMos
 
 ## Connections
-- [[dot-setup_method()_23]] - `method` [EXTRACTED]
+- [[dot-setup_method()_14]] - `method` [EXTRACTED]
 - [[dot-test_days_out_uses_city_local_today_not_utc()]] - `method` [EXTRACTED]
 - [[dot-test_fetch_mos_best_routing_uses_city_local_today_not_utc()]] - `method` [EXTRACTED]
 - [[dot-test_max_temp_is_highest_in_day()]] - `method` [EXTRACTED]
-- [[dot-test_negative_caches_failure()_1]] - `method` [EXTRACTED]
+- [[dot-test_negative_caches_failure()]] - `method` [EXTRACTED]
 - [[dot-test_returns_dict_on_success()]] - `method` [EXTRACTED]
 - [[dot-test_returns_none_on_empty_data()]] - `method` [EXTRACTED]
 - [[dot-test_returns_none_on_request_exception()]] - `method` [EXTRACTED]

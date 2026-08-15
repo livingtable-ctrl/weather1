@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[N  30 but = 5 → also returns (0.0, 1.0) per 114.]] - `rationale_for` [EXTRACTED]
-- [[TestBootstrapCI_1]] - `method` [EXTRACTED]
+- [[TestBootstrapCI]] - `method` [EXTRACTED]
 - [[_bootstrap_ci()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_269

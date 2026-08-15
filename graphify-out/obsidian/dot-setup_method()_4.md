@@ -1,18 +1,17 @@
 ---
-source_file: "tests/test_execution_log.py"
+source_file: "tests/test_mos_nbp.py"
 type: "code"
-community: "Community 363"
-location: "L14"
+community: "Community 123"
+location: "L293"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_363
+  - community/Community_123
 ---
 
 # .setup_method()
 
 ## Connections
-- [[Point execution_log at a fresh temp DB for each test.]] - `rationale_for` [EXTRACTED]
-- [[TestExecutionLogMigration]] - `method` [EXTRACTED]
+- [[TestFetchNbmQuantiles]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_363
+#graphify/code #graphify/EXTRACTED #community/Community_123

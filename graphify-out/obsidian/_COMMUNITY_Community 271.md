@@ -12,7 +12,7 @@ members: 13
 ## Members
 - [[dot-test_ci_contains_point_estimate()]] - code - tests/test_acis_precip.py
 - [[dot-test_deterministic_point_estimate_hand_check()]] - code - tests/test_acis_precip.py
-- [[dot-test_empty_data_falls_back_to_stale_cache_not_written_as_empty()]] - code - tests/test_acis_precip.py
+- [[dot-test_empty_data_falls_back_to_stale_cache_not_written_as_empty()_1]] - code - tests/test_acis_precip.py
 - [[dot-test_too_few_years_returns_wide_ci()]] - code - tests/test_acis_precip.py
 - [[Opus-review-caught gap (round 2) ACIS can return HTTP 200 with an empty data…]] - rationale - tests/test_acis_precip.py
 - [[TestBootstrapCiMonthTotal]] - code - tests/test_acis_precip.py
@@ -21,7 +21,7 @@ members: 13
 - [[_clear_seasonal_cache()]] - code - tests/test_acis_precip.py
 - [[acis_precip.py seasonalbootstrap functions]] - code - acis_precip.py
 - [[fetch_seasonal_precip_mean_mm now caches both successful AND None results…]] - rationale - tests/test_acis_precip.py
-- [[fixture_2]] - code
+- [[fixture_5]] - code
 - [[test_acis_precip.py]] - code - tests/test_acis_precip.py
 
 ## Live Query (requires Dataview plugin)
@@ -32,14 +32,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 62]]
-- 1 edge to [[_COMMUNITY_Community 418]]
-- 1 edge to [[_COMMUNITY_Community 571]]
 - 1 edge to [[_COMMUNITY_Community 161]]
-- 1 edge to [[_COMMUNITY_Community 390]]
 - 1 edge to [[_COMMUNITY_Community 357]]
+- 1 edge to [[_COMMUNITY_Community 390]]
+- 1 edge to [[_COMMUNITY_Community 418]]
 - 1 edge to [[_COMMUNITY_Community 539]]
+- 1 edge to [[_COMMUNITY_Community 571]]
 - 1 edge to [[_COMMUNITY_Community 160]]
+- 1 edge to [[_COMMUNITY_Community 62]]
 
 ## Top bridge nodes
 - [[test_acis_precip.py]] - degree 13, connects to 8 communities

@@ -20,7 +20,7 @@ members: 12
 - [[Flush stdout Before Cron]] - document - docs/superpowers/plans/2026-04-25-fix-menu-ux.md
 - [[Menu UX Fixes Plan]] - document - docs/superpowers/plans/2026-04-25-fix-menu-ux.md
 - [[Phase B Risk Engine Plan]] - document - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
-- [[main.py module]] - code - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
+- [[main.py module_1]] - code - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
 - [[utils.py module]] - code - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
 
 ## Live Query (requires Dataview plugin)
@@ -34,12 +34,12 @@ SORT file.name ASC
 - 4 edges to [[_COMMUNITY_Community 117]]
 - 3 edges to [[_COMMUNITY_Community 224]]
 - 2 edges to [[_COMMUNITY_Community 210]]
+- 1 edge to [[_COMMUNITY_Community 294]]
 - 1 edge to [[_COMMUNITY_Community 386]]
 - 1 edge to [[_COMMUNITY_Community 536]]
-- 1 edge to [[_COMMUNITY_Community 294]]
 
 ## Top bridge nodes
-- [[main.py module]] - degree 8, connects to 3 communities
+- [[main.py module_1]] - degree 8, connects to 3 communities
 - [[FlashCrashCB Circuit Breaker]] - degree 4, connects to 2 communities
 - [[Phase B Risk Engine Plan]] - degree 4, connects to 2 communities
 - [[Extract Cron Runner to cron.py]] - degree 3, connects to 2 communities

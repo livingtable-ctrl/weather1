@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[cli.py Module (extracted CLI dispatch)]] - `references` [EXTRACTED]
-- [[main.py Module_1]] - `references` [EXTRACTED]
+- [[main.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_179

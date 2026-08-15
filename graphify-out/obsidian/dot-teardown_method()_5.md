@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_execution_log.py"
+source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 256"
-location: "L108"
+community: "Community 157"
+location: "L667"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_256
+  - community/Community_157
 ---
 
 # .teardown_method()
 
 ## Connections
-- [[TestSchemaVersionMatchesMigrations]] - `method` [EXTRACTED]
+- [[TestFinalizeCancel]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_256
+#graphify/code #graphify/EXTRACTED #community/Community_157

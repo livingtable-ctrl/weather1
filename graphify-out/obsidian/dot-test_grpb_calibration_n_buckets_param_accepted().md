@@ -12,7 +12,7 @@ tags:
 # .test_grpb_calibration_n_buckets_param_accepted()
 
 ## Connections
-- [[dot-_seed()_8]] - `calls` [EXTRACTED]
+- [[dot-_seed()_3]] - `calls` [EXTRACTED]
 - [[TestMarketCalibrationQuantile]] - `method` [EXTRACTED]
 - [[n_buckets parameter should control number of output buckets.]] - `rationale_for` [EXTRACTED]
 

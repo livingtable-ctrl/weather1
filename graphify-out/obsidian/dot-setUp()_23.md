@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 239"
-location: "L2422"
+community: "Community 318"
+location: "L5847"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_239
+  - community/Community_318
 ---
 
 # .setUp()
 
 ## Connections
-- [[TestGetMemberBias]] - `method` [EXTRACTED]
+- [[TestStopLossAccuracy]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_239
+#graphify/code #graphify/EXTRACTED #community/Community_318

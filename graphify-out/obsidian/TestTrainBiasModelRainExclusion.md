@@ -12,7 +12,7 @@ tags:
 # TestTrainBiasModelRainExclusion
 
 ## Connections
-- [[dot-_seed()_1]] - `method` [EXTRACTED]
+- [[dot-_seed()_8]] - `method` [EXTRACTED]
 - [[dot-test_only_daily_rows_reach_the_fit_call()]] - `method` [EXTRACTED]
 - [[dot-test_only_daily_rows_reach_the_fit_call_snow()]] - `method` [EXTRACTED]
 - [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 (review-caught gap)…]] - `rationale_for` [EXTRACTED]

@@ -1,20 +1,21 @@
 ---
-source_file: "tests/test_hourly_target_hours.py"
+source_file: "tests/test_series_drift.py"
 type: "code"
-community: "Community 112"
+community: "Community 126"
 location: "L18"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_112
+  - community/Community_126
 ---
 
 # _today()
 
 ## Connections
-- [[test_first_run_creates_cache_for_all_cities()]] - `calls` [EXTRACTED]
-- [[test_gated_to_run_once_per_city_per_day()]] - `calls` [EXTRACTED]
-- [[test_hourly_target_hours.py]] - `contains` [EXTRACTED]
-- [[test_stale_city_refreshed_others_untouched()]] - `calls` [EXTRACTED]
+- [[Matches check_series_drift's own datetime.now(UTC).date() — using local…]] - `rationale_for` [EXTRACTED]
+- [[test_gated_to_run_once_per_day()]] - `calls` [EXTRACTED]
+- [[test_missing_ticker_counter_increments_and_warns_at_three()]] - `calls` [EXTRACTED]
+- [[test_recovered_ticker_resets_counter()]] - `calls` [EXTRACTED]
+- [[test_series_drift.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_112
+#graphify/code #graphify/EXTRACTED #community/Community_126

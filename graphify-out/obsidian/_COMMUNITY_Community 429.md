@@ -10,8 +10,8 @@ members: 8
 **Members:** 8 nodes
 
 ## Members
-- [[dot-setup_method()_18]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_17]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_29]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_21]] - code - tests/test_live_execution.py
 - [[dot-test_fill_captures_latency_and_mid_price()]] - code - tests/test_live_execution.py
 - [[dot-test_log_order_result_coalesce_never_nulls_out_prior_fill_data()]] - code - tests/test_live_execution.py
 - [[dot-test_non_fill_status_leaves_instrumentation_null()]] - code - tests/test_live_execution.py

@@ -19,7 +19,7 @@ members: 14
 - [[N  30 but = 5 → also returns (0.0, 1.0) per 114.]] - rationale - tests/test_weather_markets.py
 - [[N  5 → maximally uncertain (0.0, 1.0).]] - rationale - tests/test_weather_markets.py
 - [[N = 30, all temps above threshold → CI near (1.0, 1.0).]] - rationale - tests/test_weather_markets.py
-- [[TestBootstrapCI_1]] - code - tests/test_weather_markets.py
+- [[TestBootstrapCI]] - code - tests/test_weather_markets.py
 - [[Tests for _bootstrap_ci — bootstrap 90% CI on ensemble probability.]] - rationale - tests/test_weather_markets.py
 - [[_bootstrap_ci()]] - code - weather_markets.py
 - [[below' condition returns (lo, hi) with 0 = lo = hi = 1.]] - rationale - tests/test_weather_markets.py
@@ -39,4 +39,4 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[_bootstrap_ci()]] - degree 11, connects to 3 communities
-- [[TestBootstrapCI_1]] - degree 7, connects to 1 community
+- [[TestBootstrapCI]] - degree 7, connects to 1 community

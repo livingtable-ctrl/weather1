@@ -12,7 +12,7 @@ tags:
 # TestComputeMarketImpliedExcludesHourly
 
 ## Connections
-- [[dot-_daily_market()]] - `method` [EXTRACTED]
+- [[dot-_daily_market()_1]] - `method` [EXTRACTED]
 - [[dot-_hourly_market()]] - `method` [EXTRACTED]
 - [[dot-test_mixed_list_fit_matches_daily_only_fit()]] - `method` [EXTRACTED]
 - [[compute_market_implied_distributions() groups by (city, target_date)…]] - `rationale_for` [EXTRACTED]

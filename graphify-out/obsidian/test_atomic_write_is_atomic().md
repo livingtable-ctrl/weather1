@@ -12,7 +12,7 @@ tags:
 # test_atomic_write_is_atomic()
 
 ## Connections
-- [[Path_22]] - `references` [EXTRACTED]
+- [[Path_6]] - `references` [EXTRACTED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]
 - [[test_infrastructure.py]] - `contains` [EXTRACTED]
 

@@ -13,6 +13,5 @@ tags:
 
 ## Connections
 - [[SettingsTab.jsx]] - `calls` [EXTRACTED]
-- [[weather app site V_3 (3)srcuseData.js]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_534

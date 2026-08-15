@@ -12,10 +12,10 @@ tags:
 # TestSignalGraduationCounters
 
 ## Connections
-- [[dot-_analysis()_4]] - `method` [EXTRACTED]
+- [[dot-_analysis()_1]] - `method` [EXTRACTED]
 - [[dot-_log_settled()_2]] - `method` [EXTRACTED]
-- [[dot-setUp()_41]] - `method` [EXTRACTED]
-- [[dot-tearDown()_40]] - `method` [EXTRACTED]
+- [[dot-setUp()_2]] - `method` [EXTRACTED]
+- [[dot-tearDown()_2]] - `method` [EXTRACTED]
 - [[dot-test_count_model_observations_counts_settled_rows_for_model_only()]] - `method` [EXTRACTED]
 - [[dot-test_count_model_observations_excludes_unsettled_rows()]] - `method` [EXTRACTED]
 - [[dot-test_count_model_observations_zero_for_unknown_model()]] - `method` [EXTRACTED]

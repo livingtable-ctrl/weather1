@@ -12,6 +12,6 @@ tags:
 # Tracker backed by a temp DB.
 
 ## Connections
-- [[tmp_tracker()_1]] - `rationale_for` [EXTRACTED]
+- [[tmp_tracker()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_342

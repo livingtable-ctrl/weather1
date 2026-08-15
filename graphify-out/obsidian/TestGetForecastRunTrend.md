@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_model_response()]] - `method` [EXTRACTED]
-- [[dot-setUp()_40]] - `method` [EXTRACTED]
+- [[dot-setUp()_17]] - `method` [EXTRACTED]
 - [[dot-test_computes_weighted_delta_and_jumpiness_exactly()]] - `method` [EXTRACTED]
 - [[dot-test_days_out_seven_has_only_one_valid_lead_returns_none()]] - `method` [EXTRACTED]
 - [[dot-test_days_out_zero_returns_none_without_network_call()]] - `method` [EXTRACTED]

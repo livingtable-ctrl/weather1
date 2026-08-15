@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_live_execution.py"
+source_file: "tests/test_execution_log.py"
 type: "code"
-community: "Community 468"
-location: "L1978"
+community: "Community 393"
+location: "L728"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_468
+  - community/Community_393
 ---
 
 # .teardown_method()
 
 ## Connections
-- [[TestGetTodayLiveSpendExcludesAmended]] - `method` [EXTRACTED]
+- [[TestWasOrderedRecentlyTimestampBoundary]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_468
+#graphify/code #graphify/EXTRACTED #community/Community_393

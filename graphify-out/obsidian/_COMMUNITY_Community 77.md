@@ -11,12 +11,12 @@ members: 32
 
 ## Members
 - [[dot-_candles()]] - code - tests/test_tracker.py
-- [[dot-_settle()_1]] - code - tests/test_tracker.py
 - [[dot-_settle()]] - code - tests/test_tracker.py
-- [[dot-setUp()_43]] - code - tests/test_tracker.py
+- [[dot-_settle()_1]] - code - tests/test_tracker.py
 - [[dot-setUp()_42]] - code - tests/test_tracker.py
-- [[dot-tearDown()_42]] - code - tests/test_tracker.py
+- [[dot-setUp()_43]] - code - tests/test_tracker.py
 - [[dot-tearDown()_41]] - code - tests/test_tracker.py
+- [[dot-tearDown()_42]] - code - tests/test_tracker.py
 - [[dot-test_backfills_settled_tickers_missing_price_history()]] - code - tests/test_tracker.py
 - [[dot-test_candlestick_fetch_failure_for_one_ticker_does_not_abort_the_pass()]] - code - tests/test_tracker.py
 - [[dot-test_corrects_stale_proxy_value_from_expiration_value()]] - code - tests/test_tracker.py

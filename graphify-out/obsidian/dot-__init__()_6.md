@@ -1,17 +1,17 @@
 ---
-source_file: "kalshi_ws.py"
+source_file: "paper.py"
 type: "code"
-community: "Community 245"
-location: "L397"
+community: "Community 354"
+location: "L142"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_245
+  - community/Community_354
 ---
 
 # .__init__()
 
 ## Connections
-- [[KalshiWebSocket]] - `method` [EXTRACTED]
+- [[_CrossProcessDataLock]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_245
+#graphify/code #graphify/EXTRACTED #community/Community_354

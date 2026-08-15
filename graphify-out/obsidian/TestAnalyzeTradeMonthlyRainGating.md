@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-test_bare_ticker_dict_hits_no_city_not_the_old_guard()]] - `method` [EXTRACTED]
-- [[dot-test_daily_high_ticker_unaffected()_1]] - `method` [EXTRACTED]
+- [[dot-test_daily_high_ticker_unaffected()]] - `method` [EXTRACTED]
 - [[dot-test_days_out_at_rain_max_boundary_passes_days_out_gate()]] - `method` [EXTRACTED]
 - [[dot-test_days_out_beyond_rain_max_gates_out()]] - `method` [EXTRACTED]
 - [[dot-test_no_forecast_no_date_past_date_gates_never_fire_for_rain()]] - `method` [EXTRACTED]

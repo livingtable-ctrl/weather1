@@ -12,7 +12,7 @@ tags:
 # .test_hurricane_rows_excluded_from_global_pool()
 
 ## Connections
-- [[dot-_seed()_3]] - `calls` [EXTRACTED]
+- [[dot-_seed()_7]] - `calls` [EXTRACTED]
 - [[Opus-review-caught (2026-08-07) this exclusion list was never extended for…]] - `rationale_for` [EXTRACTED]
 - [[TestTrainAllTemperatureScalingRainExclusion]] - `method` [EXTRACTED]
 

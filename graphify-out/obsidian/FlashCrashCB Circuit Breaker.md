@@ -14,6 +14,6 @@ tags:
 - [[Phase B Risk Engine Plan]] - `implements` [EXTRACTED]
 - [[Rolling Win-Rate Accuracy Circuit Breaker]] - `semantically_similar_to` [INFERRED]
 - [[circuit_breaker.py module]] - `references` [EXTRACTED]
-- [[main.py module]] - `references` [EXTRACTED]
+- [[main.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_295

@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[G4 Split paper.py]] - `references` [EXTRACTED]
-- [[paper.py Module_1]] - `references` [EXTRACTED]
+- [[paper.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_156

@@ -2,7 +2,7 @@
 source_file: "tests/test_p1_remaining.py"
 type: "code"
 community: "Community 38"
-location: "L925"
+location: "L812"
 tags:
   - graphify/code
   - graphify/EXTRACTED
@@ -12,6 +12,6 @@ tags:
 # ._run()
 
 ## Connections
-- [[TestCmdTodayDirectionalConsensusGates]] - `method` [EXTRACTED]
+- [[TestAnalyzeOnceDirectionalConsensusGates]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_38

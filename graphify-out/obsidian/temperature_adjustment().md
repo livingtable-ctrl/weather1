@@ -16,7 +16,7 @@ tags:
 - [[_season_bucket()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[climate_indices.py]] - `contains` [EXTRACTED]
-- [[date_1]] - `references` [EXTRACTED]
+- [[date_8]] - `references` [EXTRACTED]
 - [[get_indices()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 

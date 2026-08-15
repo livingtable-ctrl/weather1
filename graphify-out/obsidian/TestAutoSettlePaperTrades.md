@@ -12,8 +12,8 @@ tags:
 # TestAutoSettlePaperTrades
 
 ## Connections
-- [[dot-setUp()_8]] - `method` [EXTRACTED]
-- [[dot-tearDown()_8]] - `method` [EXTRACTED]
+- [[dot-setUp()_11]] - `method` [EXTRACTED]
+- [[dot-tearDown()_11]] - `method` [EXTRACTED]
 - [[dot-test_auto_settle_settles_matching_trade()]] - `method` [EXTRACTED]
 - [[dot-test_auto_settle_skips_no_outcome()]] - `method` [EXTRACTED]
 - [[dot-test_get_outcome_for_ticker_returns_correct_value()]] - `method` [EXTRACTED]

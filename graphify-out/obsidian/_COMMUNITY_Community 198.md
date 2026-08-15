@@ -37,16 +37,16 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_Community 227]]
-- 3 edges to [[_COMMUNITY_Community 195]]
 - 3 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Community 130]]
+- 3 edges to [[_COMMUNITY_Community 195]]
 - 2 edges to [[_COMMUNITY_Community 245]]
+- 2 edges to [[_COMMUNITY_Community 130]]
 - 2 edges to [[_COMMUNITY_Community 352]]
-- 1 edge to [[_COMMUNITY_Community 32]]
-- 1 edge to [[_COMMUNITY_Community 85]]
+- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
 - 1 edge to [[_COMMUNITY_Community 111]]
+- 1 edge to [[_COMMUNITY_Community 85]]
+- 1 edge to [[_COMMUNITY_Community 32]]
 
 ## Top bridge nodes
 - [[kalshi_ws.py]] - degree 23, connects to 8 communities

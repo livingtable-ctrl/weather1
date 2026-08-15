@@ -13,6 +13,6 @@ tags:
 ## Connections
 - [[C3 Re-entry After Early Exit (deferred)]] - `semantically_similar_to` [INFERRED]
 - [[Fix High Early Exit Rate Plan]] - `implements` [EXTRACTED]
-- [[paper.py module]] - `references` [EXTRACTED]
+- [[paper.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_210

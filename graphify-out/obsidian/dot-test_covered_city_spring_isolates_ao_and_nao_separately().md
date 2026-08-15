@@ -12,7 +12,7 @@ tags:
 # .test_covered_city_spring_isolates_ao_and_nao_separately()
 
 ## Connections
-- [[dot-_adjustment()_2]] - `calls` [EXTRACTED]
+- [[dot-_adjustment()_1]] - `calls` [EXTRACTED]
 - [[Miami spring is the only cityseason with TWO fitted cells (AO=0.6, NAO=0.6) --…]] - `rationale_for` [EXTRACTED]
 - [[TestTemperatureAdjustmentComputedValues]] - `method` [EXTRACTED]
 

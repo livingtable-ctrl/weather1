@@ -12,7 +12,7 @@ tags:
 
 ## Connections
 - [[Code Review Remediation Plan]] - `implements` [EXTRACTED]
-- [[cron.py module]] - `implements` [EXTRACTED]
-- [[main.py module]] - `references` [EXTRACTED]
+- [[cron.py module_1]] - `implements` [EXTRACTED]
+- [[main.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_295

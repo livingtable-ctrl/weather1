@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_make_client()_7]] - `method` [EXTRACTED]
-- [[dot-test_calls_correct_path_and_params()]] - `method` [EXTRACTED]
+- [[dot-test_calls_correct_path_and_params()_1]] - `method` [EXTRACTED]
 - [[dot-test_defaults_period_interval_to_one_minute()]] - `method` [EXTRACTED]
 - [[dot-test_missing_candlesticks_key_returns_empty_list()]] - `method` [EXTRACTED]
 - [[dot-test_returns_candlesticks_list()]] - `method` [EXTRACTED]

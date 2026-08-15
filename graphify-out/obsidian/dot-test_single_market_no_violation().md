@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[A single market in a series can't violate monotonicity.]] - `rationale_for` [EXTRACTED]
 - [[TestConsistency]] - `method` [EXTRACTED]
-- [[_market()]] - `calls` [EXTRACTED]
+- [[_market()_1]] - `calls` [EXTRACTED]
 - [[find_violations()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_35

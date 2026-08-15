@@ -12,7 +12,7 @@ tags:
 # TestGaussianEnsembleBlend
 
 ## Connections
-- [[dot-_enriched()]] - `method` [EXTRACTED]
+- [[dot-_enriched()_5]] - `method` [EXTRACTED]
 - [[dot-test_gaussian_lifts_zero_ensemble_when_forecast_is_high()]] - `method` [EXTRACTED]
 - [[dot-test_gaussian_pulls_down_ceiling_ensemble()]] - `method` [EXTRACTED]
 - [[E2 Gaussian probability is blended into ensemble fraction, not only used as…]] - `rationale_for` [EXTRACTED]

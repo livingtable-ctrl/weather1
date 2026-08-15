@@ -12,7 +12,7 @@ tags:
 # TestFetchHistoricalDailySnowEmptyResponse
 
 ## Connections
-- [[dot-test_empty_data_falls_back_to_stale_cache_not_written_as_empty()_1]] - `method` [EXTRACTED]
+- [[dot-test_empty_data_falls_back_to_stale_cache_not_written_as_empty()]] - `method` [EXTRACTED]
 - [[Opus-review-caught gap (round 2, identical to acis_precip.py's cloned bug)…]] - `rationale_for` [EXTRACTED]
 - [[test_snow_markets.py]] - `contains` [EXTRACTED]
 

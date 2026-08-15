@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[fetch_seasonal_precip_mean_mm now caches both successful AND None results…]] - `rationale_for` [EXTRACTED]
-- [[fixture_2]] - `references` [EXTRACTED]
+- [[fixture_5]] - `references` [EXTRACTED]
 - [[test_acis_precip.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_271

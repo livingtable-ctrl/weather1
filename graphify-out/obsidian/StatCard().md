@@ -12,8 +12,6 @@ tags:
 # StatCard()
 
 ## Connections
-- [[AnalyticsTab.jsx]] - `imports` [EXTRACTED]
-- [[OverviewTab.jsx]] - `imports` [EXTRACTED]
 - [[RiskTab.jsx]] - `imports` [EXTRACTED]
 - [[shared.jsx]] - `contains` [EXTRACTED]
 

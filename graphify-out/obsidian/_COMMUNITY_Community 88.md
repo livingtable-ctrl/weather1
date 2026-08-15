@@ -10,34 +10,34 @@ members: 28
 **Members:** 28 nodes
 
 ## Members
-- [[_brng()]] - code - frontend/src/mockData.js
-- [[agedPositions]] - code - frontend/src/mockData.js
-- [[alerts]] - code - frontend/src/mockData.js
-- [[balanceHist]] - code - frontend/src/mockData.js
-- [[brierByDays]] - code - frontend/src/mockData.js
-- [[brierHist]] - code - frontend/src/mockData.js
-- [[calibration]] - code - frontend/src/mockData.js
-- [[circuitBreakers]] - code - frontend/src/mockData.js
-- [[cities]] - code - frontend/src/mockData.js
-- [[cityBrier]] - code - frontend/src/mockData.js
-- [[cityCalibration]] - code - frontend/src/mockData.js
-- [[closedTrades]] - code - frontend/src/mockData.js
-- [[correlatedEvents]] - code - frontend/src/mockData.js
-- [[directionalBias]] - code - frontend/src/mockData.js
-- [[expiryCluster]] - code - frontend/src/mockData.js
-- [[forecastDetail]] - code - frontend/src/mockData.js
+- [[_brng()_1]] - code - frontend/src/mockData.js
+- [[agedPositions_1]] - code - frontend/src/mockData.js
+- [[alerts_1]] - code - frontend/src/mockData.js
+- [[balanceHist_1]] - code - frontend/src/mockData.js
+- [[brierByDays_1]] - code - frontend/src/mockData.js
+- [[brierHist_1]] - code - frontend/src/mockData.js
+- [[calibration_1]] - code - frontend/src/mockData.js
+- [[circuitBreakers_1]] - code - frontend/src/mockData.js
+- [[cities_1]] - code - frontend/src/mockData.js
+- [[cityBrier_1]] - code - frontend/src/mockData.js
+- [[cityCalibration_1]] - code - frontend/src/mockData.js
+- [[closedTrades_1]] - code - frontend/src/mockData.js
+- [[correlatedEvents_1]] - code - frontend/src/mockData.js
+- [[directionalBias_1]] - code - frontend/src/mockData.js
+- [[expiryCluster_1]] - code - frontend/src/mockData.js
+- [[forecastDetail_1]] - code - frontend/src/mockData.js
 - [[frontendsrcmockData.js]] - code - frontend/src/mockData.js
-- [[mlModels]] - code - frontend/src/mockData.js
-- [[modelAccuracy]] - code - frontend/src/mockData.js
-- [[opportunities]] - code - frontend/src/mockData.js
-- [[pnlAttribution]] - code - frontend/src/mockData.js
-- [[positions]] - code - frontend/src/mockData.js
-- [[priceImprovement]] - code - frontend/src/mockData.js
-- [[recentTrades]] - code - frontend/src/mockData.js
-- [[rocCurve]] - code - frontend/src/mockData.js
-- [[stats]] - code - frontend/src/mockData.js
-- [[todayForecasts]] - code - frontend/src/mockData.js
-- [[tomorrowForecasts]] - code - frontend/src/mockData.js
+- [[mlModels_1]] - code - frontend/src/mockData.js
+- [[modelAccuracy_1]] - code - frontend/src/mockData.js
+- [[opportunities_1]] - code - frontend/src/mockData.js
+- [[pnlAttribution_1]] - code - frontend/src/mockData.js
+- [[positions_1]] - code - frontend/src/mockData.js
+- [[priceImprovement_1]] - code - frontend/src/mockData.js
+- [[recentTrades_1]] - code - frontend/src/mockData.js
+- [[rocCurve_1]] - code - frontend/src/mockData.js
+- [[stats_1]] - code - frontend/src/mockData.js
+- [[todayForecasts_1]] - code - frontend/src/mockData.js
+- [[tomorrowForecasts_1]] - code - frontend/src/mockData.js
 
 ## Live Query (requires Dataview plugin)
 
@@ -47,7 +47,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 213]]
+- 2 edges to [[_COMMUNITY_Community 213]]
 
 ## Top bridge nodes
-- [[frontendsrcmockData.js]] - degree 30, connects to 1 community
+- [[frontendsrcmockData.js]] - degree 29, connects to 1 community

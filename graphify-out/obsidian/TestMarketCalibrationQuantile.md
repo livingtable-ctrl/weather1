@@ -13,9 +13,9 @@ tags:
 
 ## Connections
 - [[13 - get_market_calibration() must use equal-frequency buckets and accept…]] - `rationale_for` [EXTRACTED]
-- [[dot-_seed()_7]] - `method` [EXTRACTED]
-- [[dot-setUp()_20]] - `method` [EXTRACTED]
-- [[dot-tearDown()_20]] - `method` [EXTRACTED]
+- [[dot-_seed()_4]] - `method` [EXTRACTED]
+- [[dot-setUp()_41]] - `method` [EXTRACTED]
+- [[dot-tearDown()_40]] - `method` [EXTRACTED]
 - [[dot-test_grpb_calibration_bucket_fields()]] - `method` [EXTRACTED]
 - [[dot-test_grpb_calibration_buckets_equal_frequency()]] - `method` [EXTRACTED]
 - [[dot-test_grpb_calibration_default_n_buckets_is_10()]] - `method` [EXTRACTED]

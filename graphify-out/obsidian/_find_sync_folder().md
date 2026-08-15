@@ -12,7 +12,7 @@ tags:
 # _find_sync_folder()
 
 ## Connections
-- [[Path_6]] - `references` [EXTRACTED]
+- [[Path_14]] - `references` [EXTRACTED]
 - [[Return the best available cloud sync folder, in priority order 1.…]] - `rationale_for` [EXTRACTED]
 - [[_find_google_drive()]] - `calls` [EXTRACTED]
 - [[backup_data()]] - `calls` [EXTRACTED]

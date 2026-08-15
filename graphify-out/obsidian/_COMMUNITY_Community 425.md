@@ -10,10 +10,10 @@ members: 8
 **Members:** 8 nodes
 
 ## Members
-- [[dot-test_blocks_even_when_city_and_date_are_present()]] - code - tests/test_hurricane_gating.py
+- [[dot-test_blocks_even_when_city_and_date_are_present()_1]] - code - tests/test_hurricane_gating.py
 - [[dot-test_blocks_kxtropstorm()]] - code - tests/test_hurricane_gating.py
-- [[dot-test_blocks_regardless_of_qty_and_price()]] - code - tests/test_hurricane_gating.py
-- [[dot-test_daily_ticker_unaffected()_1]] - code - tests/test_hurricane_gating.py
+- [[dot-test_blocks_regardless_of_qty_and_price()_1]] - code - tests/test_hurricane_gating.py
+- [[dot-test_daily_ticker_unaffected()_2]] - code - tests/test_hurricane_gating.py
 - [[Guard must fire before the `if city and target_date_str` exposure-cap block,…]] - rationale - tests/test_hurricane_gating.py
 - [[TestCheckPositionLimitsBlocksHurricane]] - code - tests/test_hurricane_gating.py
 - [[The same broadened-marker-set finding as the analyze_trade tests above applies…]] - rationale - tests/test_hurricane_gating.py

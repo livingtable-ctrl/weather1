@@ -12,7 +12,7 @@ tags:
 
 ## Connections
 - [[Category B Risk Management Plan]] - `implements` [EXTRACTED]
-- [[cron.py module]] - `references` [EXTRACTED]
-- [[paper.py module]] - `references` [EXTRACTED]
+- [[cron.py module_1]] - `references` [EXTRACTED]
+- [[paper.py module_1]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_294

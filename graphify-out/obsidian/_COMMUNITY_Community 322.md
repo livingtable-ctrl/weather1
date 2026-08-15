@@ -10,7 +10,7 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[dot-_make_enriched()_4]] - code - tests/test_weather_markets.py
+- [[dot-_make_enriched()_2]] - code - tests/test_weather_markets.py
 - [[dot-test_ensemble_excluded_from_blend_when_circuit_open()]] - code - tests/test_weather_markets.py
 - [[dot-test_entry_side_edge_formula_arithmetic()]] - code - tests/test_weather_markets.py
 - [[dot-test_no_trade_entry_side_edge_is_positive()]] - code - tests/test_weather_markets.py

@@ -13,11 +13,11 @@ tags:
 
 ## Connections
 - [[Tests for check_series_drift() — once-per-day detection of Kalshi ticker drift…]] - `rationale_for` [EXTRACTED]
-- [[_mock_client()_2]] - `contains` [EXTRACTED]
-- [[_today()_3]] - `contains` [EXTRACTED]
+- [[_mock_client()_1]] - `contains` [EXTRACTED]
+- [[_today()_1]] - `contains` [EXTRACTED]
 - [[check_series_drift()]] - `calls` [EXTRACTED]
-- [[test_first_run_creates_state_file()_1]] - `contains` [EXTRACTED]
-- [[test_gated_to_run_once_per_day()_2]] - `contains` [EXTRACTED]
+- [[test_first_run_creates_state_file()]] - `contains` [EXTRACTED]
+- [[test_gated_to_run_once_per_day()]] - `contains` [EXTRACTED]
 - [[test_hurricane_next_event_series_present_does_not_warn()]] - `contains` [EXTRACTED]
 - [[test_known_dead_series_suppressed()]] - `contains` [EXTRACTED]
 - [[test_known_untracked_rain_series_suppressed()]] - `contains` [EXTRACTED]

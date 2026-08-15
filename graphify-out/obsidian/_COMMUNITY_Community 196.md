@@ -17,7 +17,7 @@ members: 17
 - [[dot-test_writes_row_with_real_trade_field_names()]] - code - tests/test_near_settlement_log.py
 - [[Mutation-style regression a trade record shaped like the analysis dict the old…]] - rationale - tests/test_near_settlement_log.py
 - [[Older trade records (pre-days_out field) must still satisfy the NOT NULL…]] - rationale - tests/test_near_settlement_log.py
-- [[Path_8]] - code
+- [[Path_9]] - code
 - [[Regression tests for cron._log_near_settlement_trades. Backstory (backlog.txt…]] - rationale - tests/test_near_settlement_log.py
 - [[Shape of a stored paper-trade record, per paper.place_paper_order.]] - rationale - tests/test_near_settlement_log.py
 - [[Shape of one check_expiring_trades() entry.]] - rationale - tests/test_near_settlement_log.py

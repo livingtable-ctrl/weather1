@@ -13,13 +13,13 @@ tags:
 
 ## Connections
 - [[dot-_trade()]] - `calls` [EXTRACTED]
-- [[dot-exit()]] - `references` [EXTRACTED]
 - [[dot-exit()_1]] - `references` [EXTRACTED]
-- [[dot-get_open()]] - `references` [EXTRACTED]
+- [[dot-exit()]] - `references` [EXTRACTED]
 - [[dot-get_open()_1]] - `references` [EXTRACTED]
+- [[dot-get_open()]] - `references` [EXTRACTED]
 - [[dot-get_open()_2]] - `references` [EXTRACTED]
-- [[dot-save_peak()]] - `references` [EXTRACTED]
 - [[dot-save_peak()_1]] - `references` [EXTRACTED]
+- [[dot-save_peak()]] - `references` [EXTRACTED]
 - [[dot-save_peak()_2]] - `references` [EXTRACTED]
 - [[dot-test_does_not_overwrite_a_higher_stored_peak()]] - `calls` [EXTRACTED]
 - [[dot-test_exit_wraps_exit_live_position()]] - `calls` [EXTRACTED]

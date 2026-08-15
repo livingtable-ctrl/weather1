@@ -15,7 +15,7 @@ tags:
 - [[Backfill EMOS training columns for historical settled predictions. Part 1 —…]] - `rationale_for` [EXTRACTED]
 - [[backfill_emos_data()]] - `calls` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 

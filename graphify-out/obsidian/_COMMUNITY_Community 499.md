@@ -26,7 +26,6 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 1 edge to [[_COMMUNITY_Community 155]]
-- 1 edge to [[_COMMUNITY_Community 327]]
 
 ## Top bridge nodes
-- [[ErrorBoundary]] - degree 6, connects to 2 communities
+- [[ErrorBoundary]] - degree 5, connects to 1 community

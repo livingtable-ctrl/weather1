@@ -12,9 +12,9 @@ tags:
 # TestGetQuintileBias
 
 ## Connections
-- [[dot-_seed()_8]] - `method` [EXTRACTED]
-- [[dot-setUp()_31]] - `method` [EXTRACTED]
-- [[dot-tearDown()_31]] - `method` [EXTRACTED]
+- [[dot-_seed()_3]] - `method` [EXTRACTED]
+- [[dot-setUp()_40]] - `method` [EXTRACTED]
+- [[dot-tearDown()_39]] - `method` [EXTRACTED]
 - [[dot-test_city_isolation()_1]] - `method` [EXTRACTED]
 - [[dot-test_falls_back_to_global_when_quintile_empty()]] - `method` [EXTRACTED]
 - [[dot-test_quintile_boundary_0_maps_to_first_bucket()]] - `method` [EXTRACTED]

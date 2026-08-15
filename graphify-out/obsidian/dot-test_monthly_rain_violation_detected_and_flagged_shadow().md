@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Inverted rain ladder (floor_strike=7 priced HIGHER than floor_strike=1) is a…]] - `rationale_for` [EXTRACTED]
 - [[TestConsistency]] - `method` [EXTRACTED]
-- [[_rain_market()]] - `calls` [EXTRACTED]
+- [[_rain_market()_1]] - `calls` [EXTRACTED]
 - [[find_violations()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_35

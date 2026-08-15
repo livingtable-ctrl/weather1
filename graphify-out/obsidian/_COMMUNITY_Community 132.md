@@ -42,11 +42,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 2 edges to [[_COMMUNITY_Community 248]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
+- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
 - 1 edge to [[_COMMUNITY_Community 501]]
 - 1 edge to [[_COMMUNITY_Community 460]]
+- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
 - 1 edge to [[_COMMUNITY_Community 109]]
 
 ## Top bridge nodes

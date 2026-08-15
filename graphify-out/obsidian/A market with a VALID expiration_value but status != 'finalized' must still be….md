@@ -12,6 +12,6 @@ tags:
 # A market with a VALID expiration_value but status != 'finalized' must still be…
 
 ## Connections
-- [[dot-test_not_finalized_returns_false_no_write()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_not_finalized_returns_false_no_write()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_311

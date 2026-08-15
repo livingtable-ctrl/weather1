@@ -10,8 +10,8 @@ members: 8
 **Members:** 8 nodes
 
 ## Members
-- [[dot-setUp()_26]] - code - tests/test_tracker.py
-- [[dot-tearDown()_26]] - code - tests/test_tracker.py
+- [[dot-setUp()_32]] - code - tests/test_tracker.py
+- [[dot-tearDown()_31]] - code - tests/test_tracker.py
 - [[dot-test_columns_exist_after_init()]] - code - tests/test_tracker.py
 - [[dot-test_log_prediction_stores_source_probs()]] - code - tests/test_tracker.py
 - [[After init_db(), predictions table must have ensemble_prob, nws_prob, clim_prob.]] - rationale - tests/test_tracker.py

@@ -24,7 +24,7 @@ members: 16
 - [[P1-14 8 winning NO-side trades must not trigger win-rate collapse.]] - rationale - tests/test_alerts_side.py
 - [[TestCheckAnomaliesNoSideConsecutiveLoss]] - code - tests/test_alerts_side.py
 - [[TestCheckAnomaliesNoSideWinRate]] - code - tests/test_alerts_side.py
-- [[_make_trade()]] - code - tests/test_alerts_side.py
+- [[_make_trade()_1]] - code - tests/test_alerts_side.py
 - [[check_anomalies()]] - code - alerts.py
 
 ## Live Query (requires Dataview plugin)
@@ -44,6 +44,6 @@ SORT file.name ASC
 
 ## Top bridge nodes
 - [[check_anomalies()]] - degree 16, connects to 5 communities
-- [[_make_trade()]] - degree 10, connects to 3 communities
+- [[_make_trade()_1]] - degree 10, connects to 3 communities
 - [[TestCheckAnomaliesNoSideWinRate]] - degree 4, connects to 1 community
 - [[TestCheckAnomaliesNoSideConsecutiveLoss]] - degree 3, connects to 1 community

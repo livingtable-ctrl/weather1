@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_candles()]] - `calls` [EXTRACTED]
-- [[dot-_settle()_1]] - `calls` [EXTRACTED]
+- [[dot-_settle()]] - `calls` [EXTRACTED]
 - [[Deliberately the OPPOSITE of a first-draft version of this test (which asserted…]] - `rationale_for` [EXTRACTED]
 - [[TestBackfillPriceHistory]] - `method` [EXTRACTED]
 

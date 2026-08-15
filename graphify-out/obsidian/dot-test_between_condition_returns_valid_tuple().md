@@ -12,7 +12,7 @@ tags:
 # .test_between_condition_returns_valid_tuple()
 
 ## Connections
-- [[TestBootstrapCI_1]] - `method` [EXTRACTED]
+- [[TestBootstrapCI]] - `method` [EXTRACTED]
 - [[_bootstrap_ci()]] - `calls` [EXTRACTED]
 - [[between' condition returns (lo, hi) with 0 = lo = hi = 1.]] - `rationale_for` [EXTRACTED]
 

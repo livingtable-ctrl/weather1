@@ -1,18 +1,17 @@
 ---
-source_file: "circuit_breaker.py"
+source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 44"
-location: "L43"
+community: "Community 245"
+location: "L397"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_44
+  - community/Community_245
 ---
 
 # .__init__()
 
 ## Connections
-- [[dot-_load_state()]] - `calls` [EXTRACTED]
-- [[CircuitBreaker]] - `method` [EXTRACTED]
+- [[KalshiWebSocket]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_44
+#graphify/code #graphify/EXTRACTED #community/Community_245

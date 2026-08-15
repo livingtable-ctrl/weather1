@@ -12,7 +12,7 @@ tags:
 # get_live_observation()
 
 ## Connections
-- [[CircuitBreaker class_1]] - `shares_data_with` [EXTRACTED]
+- [[CircuitBreaker class]] - `shares_data_with` [EXTRACTED]
 - [[Fetch the latest hourly observation for a city. Returns dict with temp_f,…]] - `rationale_for` [EXTRACTED]
 - [[_compute_persistence_prob()]] - `calls` [EXTRACTED]
 - [[_get_obs()]] - `calls` [EXTRACTED]

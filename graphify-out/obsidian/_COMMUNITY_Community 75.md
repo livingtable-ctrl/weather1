@@ -16,7 +16,7 @@ members: 32
 - [[Innermost (smallest-span) function containing lineno, or None if the line isn't…_1]] - rationale - tests/test_isoformat_cutoff_guard.py
 - [[Inverse check every allowlisted (file, qualname) must still actually build…]] - rationale - tests/test_isoformat_cutoff_guard.py
 - [[Module_1]] - code
-- [[Path_23]] - code
+- [[Path_26]] - code
 - [[Positive-case regression the exact bug shape must still be caught, including…]] - rationale - tests/test_isoformat_cutoff_guard.py
 - [[Regression for an opus-review finding on this guard's first version black…]] - rationale - tests/test_isoformat_cutoff_guard.py
 - [[Regression for an opus-review finding a call argument with nested calls (e.g.…]] - rationale - tests/test_isoformat_cutoff_guard.py
@@ -51,8 +51,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Community 422]]
+- 1 edge to [[_COMMUNITY_Community 40]]
 
 ## Top bridge nodes
 - [[test_isoformat_cutoff_guard.py]] - degree 18, connects to 2 communities

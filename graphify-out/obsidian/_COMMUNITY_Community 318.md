@@ -11,8 +11,8 @@ members: 12
 
 ## Members
 - [[dot-_sl_trade()]] - code - tests/test_tracker.py
-- [[dot-setUp()_38]] - code - tests/test_tracker.py
-- [[dot-tearDown()_38]] - code - tests/test_tracker.py
+- [[dot-setUp()_23]] - code - tests/test_tracker.py
+- [[dot-tearDown()_22]] - code - tests/test_tracker.py
 - [[dot-test_excludes_disputed_outcome()]] - code - tests/test_tracker.py
 - [[dot-test_multiple_trades_averaged()]] - code - tests/test_tracker.py
 - [[dot-test_no_side_settlement_priced_correctly()]] - code - tests/test_tracker.py

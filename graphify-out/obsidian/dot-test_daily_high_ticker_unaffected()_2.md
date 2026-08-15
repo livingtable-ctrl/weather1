@@ -1,18 +1,18 @@
 ---
-source_file: "tests/test_snow_markets.py"
+source_file: "tests/test_hurricane_gating.py"
 type: "code"
-community: "Community 263"
-location: "L265"
+community: "Community 61"
+location: "L99"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_263
+  - community/Community_61
 ---
 
 # .test_daily_high_ticker_unaffected()
 
 ## Connections
-- [[Regression control an ordinary daily HIGH ticker with no forecast data must…_1]] - `rationale_for` [EXTRACTED]
-- [[TestAnalyzeTradeMonthlySnowGating]] - `method` [EXTRACTED]
+- [[Regression control an ordinary daily HIGH ticker must still reach its normal…]] - `rationale_for` [EXTRACTED]
+- [[TestAnalyzeTradeHurricaneGating]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_263
+#graphify/code #graphify/EXTRACTED #community/Community_61

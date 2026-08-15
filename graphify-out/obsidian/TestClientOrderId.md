@@ -12,7 +12,7 @@ tags:
 # TestClientOrderId
 
 ## Connections
-- [[dot-_make_client()]] - `method` [EXTRACTED]
+- [[dot-_make_client()_2]] - `method` [EXTRACTED]
 - [[dot-test_client_order_id_differs_across_cycles()]] - `method` [EXTRACTED]
 - [[dot-test_client_order_id_in_request_body()]] - `method` [EXTRACTED]
 - [[dot-test_client_order_id_is_deterministic()]] - `method` [EXTRACTED]

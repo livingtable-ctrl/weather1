@@ -10,9 +10,9 @@ members: 52
 **Members:** 52 nodes
 
 ## Members
+- [[dot-_adjustment()]] - code - tests/test_climate_indices.py
 - [[dot-_adjustment()_1]] - code - tests/test_climate_indices.py
 - [[dot-_adjustment()_2]] - code - tests/test_climate_indices.py
-- [[dot-_adjustment()]] - code - tests/test_climate_indices.py
 - [[dot-test_all_three_tables_cover_the_same_city_set()]] - code - tests/test_climate_indices.py
 - [[dot-test_ao_and_nao_entries_have_all_three_seasons()]] - code - tests/test_climate_indices.py
 - [[dot-test_ao_sens_covers_exactly_twenty_cities()]] - code - tests/test_climate_indices.py
@@ -71,8 +71,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 1 edge to [[_COMMUNITY_Community 302]]
+- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 
 ## Top bridge nodes
 - [[test_climate_indices.py]] - degree 9, connects to 2 communities

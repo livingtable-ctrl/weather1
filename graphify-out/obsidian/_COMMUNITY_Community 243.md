@@ -33,10 +33,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 129]]
 - 2 edges to [[_COMMUNITY_Community 297]]
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
+- 2 edges to [[_COMMUNITY_Community 129]]
 - 1 edge to [[_COMMUNITY_Community 212]]
+- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
 
 ## Top bridge nodes
 - [[test_config_divergence_guard.py]] - degree 13, connects to 4 communities

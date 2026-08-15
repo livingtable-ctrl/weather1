@@ -12,9 +12,9 @@ tags:
 # TestGetBrierByTier
 
 ## Connections
-- [[dot-_seed()_5]] - `method` [EXTRACTED]
-- [[dot-setup_method()_39]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_30]] - `method` [EXTRACTED]
+- [[dot-_seed()]] - `method` [EXTRACTED]
+- [[dot-setup_method()_7]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_2]] - `method` [EXTRACTED]
 - [[dot-test_empty_tier_returns_none_brier()]] - `method` [EXTRACTED]
 - [[dot-test_med_tier_computed()]] - `method` [EXTRACTED]
 - [[dot-test_multiple_predictions_averaged()]] - `method` [EXTRACTED]

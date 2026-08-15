@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "rationale"
-community: "Community 136"
-location: "L903"
+community: "Community 290"
+location: "L1984"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_136
+  - community/Community_290
 ---
 
 # backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…
 
 ## Connections
-- [[dot-test_auto_watch_shadow_violation_never_placed()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_banner_not_suppressed_when_violations_are_all_shadow()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_136
+#graphify/rationale #graphify/EXTRACTED #community/Community_290

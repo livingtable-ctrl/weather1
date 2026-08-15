@@ -12,7 +12,7 @@ tags:
 # tmp_paper()
 
 ## Connections
-- [[fixture_6]] - `references` [EXTRACTED]
+- [[fixture_17]] - `references` [EXTRACTED]
 - [[test_debug_fixes.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_78

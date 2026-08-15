@@ -11,7 +11,6 @@ tags:
 # analytics.js (dashboard analytics page)
 
 ## Connections
-- [[AnalyticsTab.jsx (V3)]] - `semantically_similar_to` [INFERRED]
 - [[forecast.js (forecast page)]] - `shares_data_with` [AMBIGUOUS]
 
 #graphify/code #graphify/AMBIGUOUS #community/Community_229

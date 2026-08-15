@@ -12,7 +12,7 @@ tags:
 # TestProfitFactor
 
 ## Connections
-- [[dot-_make_trades()]] - `method` [EXTRACTED]
+- [[dot-_make_trades()_1]] - `method` [EXTRACTED]
 - [[dot-test_basic_ratio()]] - `method` [EXTRACTED]
 - [[dot-test_get_performance_includes_profit_factor()]] - `method` [EXTRACTED]
 - [[dot-test_no_losses_returns_none()]] - `method` [EXTRACTED]

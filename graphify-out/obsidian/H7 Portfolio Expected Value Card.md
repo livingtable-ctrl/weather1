@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[LV7 Cross-Market Signals]] - `references` [EXTRACTED]
 - [[PositionsTab.jsx Component]] - `references` [EXTRACTED]
-- [[paper.py Module_1]] - `references` [EXTRACTED]
+- [[paper.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_156

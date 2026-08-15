@@ -12,6 +12,6 @@ tags:
 # Mutation-proof: if the even/odd-index -> max/min assignment were flipped, this…
 
 ## Connections
-- [[dot-test_max_min_assignment_is_not_arbitrary()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_max_min_assignment_is_not_arbitrary()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_148

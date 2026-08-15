@@ -12,7 +12,7 @@ members: 10
 ## Members
 - [[dot-__enter__()]] - code - paper.py
 - [[dot-__exit__()]] - code - paper.py
-- [[dot-__init__()_8]] - code - paper.py
+- [[dot-__init__()_6]] - code - paper.py
 - [[dot-_acquire_file_lock()]] - code - paper.py
 - [[dot-_release_file_lock()]] - code - paper.py
 - [[dot-acquire()]] - code - paper.py

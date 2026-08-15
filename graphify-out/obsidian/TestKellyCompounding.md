@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[dot-_reload()]] - `method` [EXTRACTED]
-- [[dot-setUp()_1]] - `method` [EXTRACTED]
-- [[dot-tearDown()_1]] - `method` [EXTRACTED]
+- [[dot-setUp()_4]] - `method` [EXTRACTED]
+- [[dot-tearDown()_4]] - `method` [EXTRACTED]
 - [[dot-test_balance_decreases_after_loss()]] - `method` [EXTRACTED]
 - [[dot-test_balance_decreases_after_order()]] - `method` [EXTRACTED]
 - [[dot-test_get_performance_empty()]] - `method` [EXTRACTED]

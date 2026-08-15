@@ -27,7 +27,7 @@ tags:
 - [[Tests for backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 1 (schema + safe…]] - `rationale_for` [EXTRACTED]
 - [[_analyze_monthly_rain_trade()]] - `calls` [EXTRACTED]
 - [[_rain_gates_active()]] - `calls` [EXTRACTED]
-- [[_rain_market()_2]] - `contains` [EXTRACTED]
+- [[_rain_market()]] - `contains` [EXTRACTED]
 - [[acis_precip.py]] - `calls` [EXTRACTED]
 - [[audit_settlement()]] - `calls` [EXTRACTED]
 - [[test_snow_markets.py]] - `semantically_similar_to` [INFERRED]

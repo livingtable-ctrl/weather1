@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[P1-14 12 consecutive NO-side wins must not trigger black swan.]] - `rationale_for` [EXTRACTED]
 - [[TestCheckBlackSwanNoSide]] - `method` [EXTRACTED]
-- [[_make_trade()]] - `calls` [EXTRACTED]
+- [[_make_trade()_1]] - `calls` [EXTRACTED]
 - [[check_black_swan_conditions()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_167

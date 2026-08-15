@@ -11,7 +11,7 @@ tags:
 # flash_crash_cb (FlashCrashCB instance)
 
 ## Connections
-- [[CircuitBreaker class_1]] - `implements` [EXTRACTED]
+- [[CircuitBreaker class]] - `implements` [EXTRACTED]
 - [[test_kalshi_ws.py]] - `references` [EXTRACTED]
 - [[update_orderbook_cache()]] - `calls` [EXTRACTED]
 

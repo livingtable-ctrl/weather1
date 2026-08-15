@@ -266,7 +266,7 @@ tags:
 - [[log_order()]] - `imports` [EXTRACTED]
 - [[log_order_result()]] - `imports` [EXTRACTED]
 - [[log_prediction()]] - `imports` [EXTRACTED]
-- [[main()_1]] - `contains` [EXTRACTED]
+- [[main()]] - `contains` [EXTRACTED]
 - [[main.py File Grade median T1 710]] - `references` [EXTRACTED]
 - [[main.py Grade Audit]] - `references` [EXTRACTED]
 - [[mark_triggered()]] - `imports` [EXTRACTED]

@@ -12,8 +12,8 @@ tags:
 # TestPriceHistory
 
 ## Connections
-- [[dot-setUp()_33]] - `method` [EXTRACTED]
-- [[dot-tearDown()_33]] - `method` [EXTRACTED]
+- [[dot-setUp()_22]] - `method` [EXTRACTED]
+- [[dot-tearDown()_21]] - `method` [EXTRACTED]
 - [[dot-test_candle_missing_end_period_ts_is_skipped()]] - `method` [EXTRACTED]
 - [[dot-test_dedup_via_unique_index_is_idempotent()]] - `method` [EXTRACTED]
 - [[dot-test_empty_candlesticks_list_is_noop()]] - `method` [EXTRACTED]

@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[dot-_insert()_3]] - `method` [EXTRACTED]
-- [[dot-setUp()_14]] - `method` [EXTRACTED]
-- [[dot-tearDown()_14]] - `method` [EXTRACTED]
+- [[dot-setUp()_36]] - `method` [EXTRACTED]
+- [[dot-tearDown()_35]] - `method` [EXTRACTED]
 - [[dot-test_checks_each_method_independently()]] - `method` [EXTRACTED]
 - [[dot-test_no_alert_below_min_samples()]] - `method` [EXTRACTED]
 - [[dot-test_no_alert_when_healthy()]] - `method` [EXTRACTED]

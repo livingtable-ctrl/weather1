@@ -1,19 +1,18 @@
 ---
-source_file: "tests/test_phase2_batch_k.py"
+source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 282"
-location: "L38"
+community: "Ensemble Weight Blending Tests"
+location: "L326"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_282
+  - community/Ensemble_Weight_Blending_Tests
 ---
 
 # .test_weights_sum_to_one()
 
 ## Connections
-- [[dot-_call()_1]] - `calls` [EXTRACTED]
-- [[All weights must sum to 1.0 regardless of scaling.]] - `rationale_for` [EXTRACTED]
-- [[TestConfidenceScaledBlendWeightsNoNegative]] - `method` [EXTRACTED]
+- [[TestBlendWeights]] - `method` [EXTRACTED]
+- [[_blend_weights()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_282
+#graphify/code #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests

@@ -13,8 +13,8 @@ tags:
 
 ## Connections
 - [[dot-_insert_prediction_and_outcome()]] - `method` [EXTRACTED]
-- [[dot-setUp()_11]] - `method` [EXTRACTED]
-- [[dot-tearDown()_11]] - `method` [EXTRACTED]
+- [[dot-setUp()_12]] - `method` [EXTRACTED]
+- [[dot-tearDown()_12]] - `method` [EXTRACTED]
 - [[dot-test_midpoint_prediction()]] - `method` [EXTRACTED]
 - [[dot-test_no_data_returns_none()]] - `method` [EXTRACTED]
 - [[dot-test_perfect_prediction_brier_zero()]] - `method` [EXTRACTED]

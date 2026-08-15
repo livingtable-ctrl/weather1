@@ -30,9 +30,9 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 3 edges to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 159]]
-- 1 edge to [[_COMMUNITY_Community 145]]
 - 1 edge to [[_COMMUNITY_Community 56]]
+- 1 edge to [[_COMMUNITY_Community 145]]
+- 1 edge to [[_COMMUNITY_Community 159]]
 
 ## Top bridge nodes
 - [[TestLiquidationPriceZeroSide]] - degree 9, connects to 2 communities

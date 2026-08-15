@@ -11,6 +11,6 @@ tags:
 # Trades Graduation Gate Progress Bar (567/30, complete)
 
 ## Connections
-- [[Graduation Progress Panel (TradesP&LBrier gates)_1]] - `references` [EXTRACTED]
+- [[Graduation Progress Panel (TradesP&LBrier gates)]] - `references` [EXTRACTED]
 
 #graphify/image #graphify/EXTRACTED #community/Community_192

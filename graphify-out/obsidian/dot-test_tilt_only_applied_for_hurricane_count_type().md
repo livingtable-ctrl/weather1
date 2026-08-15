@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_condition()_2]] - `calls` [EXTRACTED]
-- [[dot-_enriched()_4]] - `calls` [EXTRACTED]
+- [[dot-_enriched()_3]] - `calls` [EXTRACTED]
 - [[TestAnalyzeHurricaneCountTrade]] - `method` [EXTRACTED]
 - [[major_hurricanetropical_storm must never call the current-count cache --…]] - `rationale_for` [EXTRACTED]
 

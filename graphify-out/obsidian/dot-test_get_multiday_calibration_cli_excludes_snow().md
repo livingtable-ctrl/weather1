@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_log_settled()_2]] - `calls` [EXTRACTED]
-- [[dot-_seed_baseline()_1]] - `calls` [EXTRACTED]
+- [[dot-_seed_baseline()]] - `calls` [EXTRACTED]
 - [[TestDisputedOutcomeTracking]] - `method` [EXTRACTED]
 - [[backlog.txt Snow Step 2 the identical landmine rain's own Step 2 closed here,…]] - `rationale_for` [EXTRACTED]
 

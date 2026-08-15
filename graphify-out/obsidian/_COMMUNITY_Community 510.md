@@ -10,7 +10,7 @@ members: 6
 **Members:** 6 nodes
 
 ## Members
-- [[dot-_make_client()_4]] - code - tests/test_kalshi_client.py
+- [[dot-_make_client()_8]] - code - tests/test_kalshi_client.py
 - [[dot-test_raises_and_checks_recovery_only_when_post_itself_fails()]] - code - tests/test_kalshi_client.py
 - [[dot-test_returns_raw_create_response_when_get_order_fails()]] - code - tests/test_kalshi_client.py
 - [[A successful POST already confirms the order is live on the exchange -- if the…]] - rationale - tests/test_kalshi_client.py

@@ -12,6 +12,6 @@ tags:
 # Review-caught gap: fetch_month_to_date_actual() returns (None, 0) both when…
 
 ## Connections
-- [[dot-test_month_to_date_fetch_failure_fails_closed_not_zero()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_month_to_date_fetch_failure_fails_closed_not_zero()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_165

@@ -1,17 +1,18 @@
 ---
-source_file: "order_executor.py"
+source_file: "circuit_breaker.py"
 type: "code"
-community: "Community 45"
-location: "L1151"
+community: "Community 44"
+location: "L43"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Community_44
 ---
 
 # .__init__()
 
 ## Connections
-- [[LivePositionStore]] - `method` [EXTRACTED]
+- [[dot-_load_state()]] - `calls` [EXTRACTED]
+- [[CircuitBreaker]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_45
+#graphify/code #graphify/EXTRACTED #community/Community_44

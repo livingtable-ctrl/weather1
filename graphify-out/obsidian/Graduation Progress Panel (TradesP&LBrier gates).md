@@ -1,19 +1,20 @@
 ---
-source_file: "updated frontend/screenshots/dark.png"
+source_file: "updated frontend/screenshots/light.png"
 type: "image"
-community: "Community 292"
+community: "Community 192"
 tags:
   - graphify/image
   - graphify/EXTRACTED
-  - community/Community_292
+  - community/Community_192
 ---
 
 # Graduation Progress Panel (Trades/P&L/Brier gates)
 
 ## Connections
-- [[Graduation Gate - Brier Progress Bar (0.1510.2, partial)]] - `references` [EXTRACTED]
-- [[Graduation Gate - P&L Progress Bar ($247.83$50, complete)]] - `references` [EXTRACTED]
-- [[Graduation Gate - Trades Progress Bar (56730, complete)]] - `references` [EXTRACTED]
-- [[Kalshi Weather Dashboard - Dark Theme]] - `references` [EXTRACTED]
+- [[Brier Graduation Gate Progress Bar (0.1510.2, complete)]] - `references` [EXTRACTED]
+- [[Kalshi Weather Dashboard - Overview Tab (Light Theme)]] - `references` [EXTRACTED]
+- [[Live-Trading Graduation Gates (30+ trades, $50+ P&L, Brier =0.20)]] - `shares_data_with` [INFERRED]
+- [[P&L Graduation Gate Progress Bar ($247.83$50, complete)]] - `references` [EXTRACTED]
+- [[Trades Graduation Gate Progress Bar (56730, complete)]] - `references` [EXTRACTED]
 
-#graphify/image #graphify/EXTRACTED #community/Community_292
+#graphify/image #graphify/EXTRACTED #community/Community_192

@@ -12,6 +12,6 @@ tags:
 # .test_too_few_years_returns_degenerate_ci()
 
 ## Connections
-- [[TestBootstrapCi]] - `method` [EXTRACTED]
+- [[TestBootstrapCi_1]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_98

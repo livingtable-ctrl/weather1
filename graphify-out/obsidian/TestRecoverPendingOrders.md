@@ -12,8 +12,8 @@ tags:
 # TestRecoverPendingOrders
 
 ## Connections
-- [[dot-setup_method()_12]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_11]] - `method` [EXTRACTED]
+- [[dot-setup_method()_21]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_14]] - `method` [EXTRACTED]
 - [[dot-test_canceled_order_resolves_to_canceled()]] - `method` [EXTRACTED]
 - [[dot-test_executed_order_resolves_to_internal_filled_status()]] - `method` [EXTRACTED]
 - [[dot-test_partial_fill_then_cancel_resolves_to_filled()]] - `method` [EXTRACTED]

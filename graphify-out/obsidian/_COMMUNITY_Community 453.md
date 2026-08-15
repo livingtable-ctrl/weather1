@@ -16,7 +16,7 @@ members: 7
 - [[Reliability Diagram Dashboard]] - document - docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md
 - [[Top 5 Trades of the Day Plan]] - document - docs/superpowers/plans/2026-04-25-top-5-trades.md
 - [[web_app.py XSS Escaping Fix]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[web_app.py module]] - code - docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md
+- [[web_app.py module_1]] - code - docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,12 +27,12 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 1 edge to [[_COMMUNITY_Community 117]]
-- 1 edge to [[_COMMUNITY_Community 294]]
-- 1 edge to [[_COMMUNITY_Community 224]]
 - 1 edge to [[_COMMUNITY_Community 210]]
+- 1 edge to [[_COMMUNITY_Community 224]]
+- 1 edge to [[_COMMUNITY_Community 294]]
 
 ## Top bridge nodes
-- [[web_app.py module]] - degree 7, connects to 1 community
+- [[web_app.py module_1]] - degree 7, connects to 1 community
 - [[Reliability Diagram Dashboard]] - degree 3, connects to 1 community
 - [[B3 Portfolio Expected Value Card]] - degree 2, connects to 1 community
 - [[web_app.py XSS Escaping Fix]] - degree 2, connects to 1 community

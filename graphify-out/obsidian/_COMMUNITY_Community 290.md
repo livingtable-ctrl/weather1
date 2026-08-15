@@ -20,7 +20,7 @@ members: 13
 - [[Boundary case for the pre-existing (not newly introduced) ` 5` threshold…]] - rationale - tests/test_trade_cycle_engine.py
 - [[Mirror of the above enough REAL violations to trip the breaker must still trip…]] - rationale - tests/test_trade_cycle_engine.py
 - [[TestPlacementAttemptedBannerAllConditions]] - code - tests/test_trade_cycle_engine.py
-- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…_2]] - rationale - tests/test_trade_cycle_engine.py
+- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…_1]] - rationale - tests/test_trade_cycle_engine.py
 - [[cron.py's _placement_was_attempted gate has three independent conditions…]] - rationale - tests/test_trade_cycle_engine.py
 - [[opus-review-caught only the all-shadow (0 real) and all-real (6 real) shapes…]] - rationale - tests/test_trade_cycle_engine.py
 

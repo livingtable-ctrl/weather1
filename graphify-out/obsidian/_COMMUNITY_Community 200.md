@@ -38,8 +38,8 @@ SORT file.name ASC
 ## Connections to other communities
 - 5 edges to [[_COMMUNITY_Community 167]]
 - 3 edges to [[_COMMUNITY_Community 208]]
-- 1 edge to [[_COMMUNITY_Community 223]]
 - 1 edge to [[_COMMUNITY_Community 194]]
+- 1 edge to [[_COMMUNITY_Community 223]]
 
 ## Top bridge nodes
 - [[dot-test_brier_check_failure_fails_closed()]] - degree 4, connects to 2 communities

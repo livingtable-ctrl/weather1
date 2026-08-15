@@ -12,8 +12,8 @@ tags:
 # TestPortfolioKelly
 
 ## Connections
-- [[dot-setUp()_3]] - `method` [EXTRACTED]
-- [[dot-tearDown()_3]] - `method` [EXTRACTED]
+- [[dot-setUp()_1]] - `method` [EXTRACTED]
+- [[dot-tearDown()_1]] - `method` [EXTRACTED]
 - [[dot-test_exposure_ignores_other_city()]] - `method` [EXTRACTED]
 - [[dot-test_exposure_ignores_settled_trade()]] - `method` [EXTRACTED]
 - [[dot-test_exposure_with_matching_trade()]] - `method` [EXTRACTED]

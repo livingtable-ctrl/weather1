@@ -12,8 +12,8 @@ tags:
 # simulate_portfolio()
 
 ## Connections
-- [[dot-_run_sim()]] - `calls` [EXTRACTED]
 - [[dot-_run_sim()_1]] - `calls` [EXTRACTED]
+- [[dot-_run_sim()]] - `calls` [EXTRACTED]
 - [[dot-test_past_date_only_portfolio_returns_empty_result()]] - `calls` [EXTRACTED]
 - [[dot-test_past_date_trade_excluded_from_simulation()]] - `calls` [EXTRACTED]
 - [[dot-test_repair_psd_called_in_simulate_portfolio_source()]] - `indirect_call` [INFERRED]

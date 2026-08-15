@@ -11,6 +11,6 @@ tags:
 # P&L Graduation Gate Progress Bar ($247.83/$50, complete)
 
 ## Connections
-- [[Graduation Progress Panel (TradesP&LBrier gates)_1]] - `references` [EXTRACTED]
+- [[Graduation Progress Panel (TradesP&LBrier gates)]] - `references` [EXTRACTED]
 
 #graphify/image #graphify/EXTRACTED #community/Community_192

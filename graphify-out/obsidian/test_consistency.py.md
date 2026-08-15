@@ -15,9 +15,9 @@ tags:
 - [[TestConsistency]] - `contains` [EXTRACTED]
 - [[TestParseThresholdRealApiShape]] - `contains` [EXTRACTED]
 - [[Unit tests for consistency.py — monotonicity  arbitrage detection.]] - `rationale_for` [EXTRACTED]
-- [[_market()]] - `contains` [EXTRACTED]
+- [[_market()_1]] - `contains` [EXTRACTED]
 - [[_parse_threshold()]] - `imports` [EXTRACTED]
-- [[_rain_market()]] - `contains` [EXTRACTED]
+- [[_rain_market()_1]] - `contains` [EXTRACTED]
 - [[consistency.py]] - `calls` [EXTRACTED]
 - [[find_violations()]] - `imports` [EXTRACTED]
 

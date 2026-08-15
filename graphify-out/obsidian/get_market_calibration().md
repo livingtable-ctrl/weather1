@@ -20,7 +20,7 @@ tags:
 - [[cmd_history()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
 - [[output_formatters.py]] - `imports` [EXTRACTED]
-- [[tracker.py_2]] - `implements` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
+- [[tracker.py_1]] - `implements` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_36

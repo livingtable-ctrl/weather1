@@ -12,10 +12,10 @@ tags:
 # TestPersistenceProb
 
 ## Connections
-- [[dot-test_above_condition()]] - `method` [EXTRACTED]
+- [[dot-test_above_condition()_1]] - `method` [EXTRACTED]
 - [[dot-test_analyze_trade_blends_persistence_for_short_horizon()]] - `method` [EXTRACTED]
-- [[dot-test_below_condition()]] - `method` [EXTRACTED]
-- [[dot-test_between_condition()]] - `method` [EXTRACTED]
+- [[dot-test_below_condition()_1]] - `method` [EXTRACTED]
+- [[dot-test_between_condition()_1]] - `method` [EXTRACTED]
 - [[dot-test_returns_none_for_zero_std()]] - `method` [EXTRACTED]
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[test_forecasting.py]] - `contains` [EXTRACTED]

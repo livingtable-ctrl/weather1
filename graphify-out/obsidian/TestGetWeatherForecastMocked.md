@@ -12,8 +12,8 @@ tags:
 # TestGetWeatherForecastMocked
 
 ## Connections
-- [[dot-setUp()]] - `method` [EXTRACTED]
-- [[dot-tearDown()]] - `method` [EXTRACTED]
+- [[dot-setUp()_3]] - `method` [EXTRACTED]
+- [[dot-tearDown()_3]] - `method` [EXTRACTED]
 - [[dot-test_all_models_fail_returns_none()]] - `method` [EXTRACTED]
 - [[dot-test_dead_model_all_null_response_treated_as_failure()]] - `method` [EXTRACTED]
 - [[dot-test_partial_model_failure_still_returns()]] - `method` [EXTRACTED]

@@ -12,8 +12,8 @@ tags:
 # test_gated_to_run_once_per_day()
 
 ## Connections
-- [[_market()_2]] - `calls` [EXTRACTED]
-- [[_mock_client()_1]] - `calls` [EXTRACTED]
+- [[_market()]] - `calls` [EXTRACTED]
+- [[_mock_client()_2]] - `calls` [EXTRACTED]
 - [[_today()_2]] - `calls` [EXTRACTED]
 - [[test_retirement_probation.py]] - `contains` [EXTRACTED]
 

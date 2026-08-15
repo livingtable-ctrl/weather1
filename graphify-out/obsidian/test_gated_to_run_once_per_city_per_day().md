@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[_mock_client()]] - `calls` [EXTRACTED]
-- [[_today()_1]] - `calls` [EXTRACTED]
+- [[_today()]] - `calls` [EXTRACTED]
 - [[test_hourly_target_hours.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_112

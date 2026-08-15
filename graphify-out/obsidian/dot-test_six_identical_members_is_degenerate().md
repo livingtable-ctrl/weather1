@@ -12,7 +12,7 @@ tags:
 # .test_six_identical_members_is_degenerate()
 
 ## Connections
-- [[dot-_call()_1]] - `calls` [EXTRACTED]
+- [[dot-_call()]] - `calls` [EXTRACTED]
 - [[6 identical members triggers degenerate=True.]] - `rationale_for` [EXTRACTED]
 - [[TestEnsembleStatsDegenerate]] - `method` [EXTRACTED]
 

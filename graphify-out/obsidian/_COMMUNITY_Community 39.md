@@ -12,12 +12,12 @@ members: 45
 ## Members
 - [[dot-_candle()]] - code - tests/test_tracker.py
 - [[dot-_seed_market()]] - code - tests/test_tracker.py
-- [[dot-_trade()_4]] - code - tests/test_tracker.py
+- [[dot-_trade()_2]] - code - tests/test_tracker.py
 - [[dot-_trade()_3]] - code - tests/test_tracker.py
-- [[dot-setUp()_35]] - code - tests/test_tracker.py
-- [[dot-setUp()_34]] - code - tests/test_tracker.py
-- [[dot-tearDown()_35]] - code - tests/test_tracker.py
-- [[dot-tearDown()_34]] - code - tests/test_tracker.py
+- [[dot-setUp()_28]] - code - tests/test_tracker.py
+- [[dot-setUp()_29]] - code - tests/test_tracker.py
+- [[dot-tearDown()_27]] - code - tests/test_tracker.py
+- [[dot-tearDown()_28]] - code - tests/test_tracker.py
 - [[dot-test_below_min_markets_reports_n_but_r_is_none()]] - code - tests/test_tracker.py
 - [[dot-test_block_trade_flag_stored_as_one()]] - code - tests/test_tracker.py
 - [[dot-test_dedup_via_unique_trade_id_is_idempotent()]] - code - tests/test_tracker.py

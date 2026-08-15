@@ -13,9 +13,9 @@ tags:
 
 ## Connections
 - [[TestAnalyzePipelineExtra]] - `method` [EXTRACTED]
-- [[_make_enriched()]] - `calls` [EXTRACTED]
+- [[_make_enriched()_2]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[patch]] - `references` [EXTRACTED]
+- [[patch_1]] - `references` [EXTRACTED]
 - [[signal field must be a non-empty string with a recognised prefix (BUY, SELL,…]] - `rationale_for` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_53

@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Gross profit  gross loss from settled trades. Profit factor  1.0 means gross…]] - `rationale_for` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
 - [[cmd_history Function]] - `calls` [EXTRACTED]
 - [[cmd_history()]] - `calls` [EXTRACTED]
 - [[get_performance()]] - `calls` [EXTRACTED]

@@ -31,6 +31,6 @@ tags:
 - [[test_spend_validation.py]] - `calls` [EXTRACTED]
 - [[test_suggested_bets.py]] - `references` [EXTRACTED]
 - [[test_trading.py]] - `references` [EXTRACTED]
-- [[tracker.py_1]] - `shares_data_with` [INFERRED]
+- [[tracker.py_2]] - `shares_data_with` [INFERRED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_40

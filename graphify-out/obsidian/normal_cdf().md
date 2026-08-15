@@ -12,8 +12,8 @@ tags:
 # normal_cdf()
 
 ## Connections
-- [[dot-test_above_condition()]] - `calls` [EXTRACTED]
-- [[dot-test_below_condition()]] - `calls` [EXTRACTED]
+- [[dot-test_above_condition()_1]] - `calls` [EXTRACTED]
+- [[dot-test_below_condition()_1]] - `calls` [EXTRACTED]
 - [[dot-test_days_out_uses_city_local_today_not_utc()_1]] - `calls` [EXTRACTED]
 - [[dot-test_mean_returns_half()]] - `calls` [EXTRACTED]
 - [[dot-test_one_sigma_above_mean()]] - `calls` [EXTRACTED]

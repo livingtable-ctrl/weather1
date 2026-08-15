@@ -17,7 +17,7 @@ tags:
 - [[dot-test_returns_list_of_floats()]] - `calls` [EXTRACTED]
 - [[Fetch actual model output at forecast time using the Previous Runs API. Returns…]] - `rationale_for` [EXTRACTED]
 - [[backtest.py]] - `contains` [EXTRACTED]
-- [[date]] - `references` [EXTRACTED]
+- [[date_7]] - `references` [EXTRACTED]
 - [[run_backtest()]] - `calls` [EXTRACTED]
 - [[test_backtest.py]] - `imports` [EXTRACTED]
 

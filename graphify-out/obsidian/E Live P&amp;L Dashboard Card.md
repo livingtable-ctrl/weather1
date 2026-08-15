@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[Dashboard Template Page]] - `implements` [INFERRED]
 - [[staticdashboard.js_1]] - `references` [EXTRACTED]
-- [[web_app.py Module_1]] - `references` [EXTRACTED]
+- [[web_app.py Module]] - `references` [EXTRACTED]
 
 #graphify/document #graphify/EXTRACTED #community/Community_104

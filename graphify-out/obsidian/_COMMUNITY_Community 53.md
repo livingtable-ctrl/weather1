@@ -30,7 +30,7 @@ members: 39
 - [[TestAnalyzePipeline]] - code - tests/test_integration.py
 - [[TestAnalyzePipelineExtra]] - code - tests/test_integration.py
 - [[_demo_client()]] - code - tests/test_integration_live.py
-- [[_make_enriched()]] - code - tests/test_integration.py
+- [[_make_enriched()_2]] - code - tests/test_integration.py
 - [[analyze_trade handles a LOW market (below condition) correctly.]] - rationale - tests/test_integration.py
 - [[analyze_trade raises ValueError for non-dict input.]] - rationale - tests/test_integration.py
 - [[analyze_trade returns None when _city is missing.]] - rationale - tests/test_integration.py
@@ -40,9 +40,9 @@ members: 39
 - [[analyze_trade routes precip_any markets through _analyze_precip_trade.]] - rationale - tests/test_integration.py
 - [[analyze_trade succeeds even when NWS and climatology return None.]] - rationale - tests/test_integration.py
 - [[analyze_trade() returns a non-None result for at least one live market.]] - rationale - tests/test_integration_live.py
-- [[date_7]] - code
+- [[date_6]] - code
 - [[integration_1]] - code
-- [[patch]] - code
+- [[patch_1]] - code
 - [[signal field must be a non-empty string with a recognised prefix (BUY, SELL,…]] - rationale - tests/test_integration.py
 - [[test_analyze_trade_returns_dict_for_live_market()]] - code - tests/test_integration_live.py
 - [[test_fetch_markets_returns_list()]] - code - tests/test_integration_live.py
@@ -66,6 +66,6 @@ SORT file.name ASC
 ## Top bridge nodes
 - [[test_integration_live.py]] - degree 9, connects to 3 communities
 - [[test_analyze_trade_returns_dict_for_live_market()]] - degree 6, connects to 2 communities
-- [[test_integration.py]] - degree 6, connects to 1 community
 - [[_demo_client()]] - degree 6, connects to 1 community
+- [[test_integration.py]] - degree 6, connects to 1 community
 - [[test_fetch_markets_returns_list()]] - degree 5, connects to 1 community

@@ -12,7 +12,7 @@ tags:
 # TestCitySeriesTickerDerivation
 
 ## Connections
-- [[dot-test_stale_known_weather_series_raises_at_import()_1]] - `method` [EXTRACTED]
+- [[dot-test_stale_known_weather_series_raises_at_import()]] - `method` [EXTRACTED]
 - [[test_settlement_monitor.py]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_388

@@ -10,8 +10,8 @@ members: 23
 **Members:** 23 nodes
 
 ## Members
-- [[dot-setup_method()_7]] - code - tests/test_execution_log.py
-- [[dot-teardown_method()_7]] - code - tests/test_execution_log.py
+- [[dot-setup_method()_9]] - code - tests/test_execution_log.py
+- [[dot-teardown_method()_4]] - code - tests/test_execution_log.py
 - [[dot-test_exit_orders_own_filled_row_excluded_from_open_positions()]] - code - tests/test_execution_log.py
 - [[dot-test_export_live_tax_csv_filters_by_year()]] - code - tests/test_execution_log.py
 - [[dot-test_export_live_tax_csv_labels_early_exit_not_no()]] - code - tests/test_execution_log.py

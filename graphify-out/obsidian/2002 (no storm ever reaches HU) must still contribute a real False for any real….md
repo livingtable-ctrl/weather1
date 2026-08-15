@@ -12,6 +12,6 @@ tags:
 # 2002 (no storm ever reaches HU) must still contribute a real False for any real…
 
 ## Connections
-- [[dot-test_zero_storm_season_contributes_a_real_false_not_dropped()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-test_zero_storm_season_contributes_a_real_false_not_dropped()]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_83

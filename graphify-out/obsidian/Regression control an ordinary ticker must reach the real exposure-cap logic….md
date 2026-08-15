@@ -12,6 +12,6 @@ tags:
 # Regression control: an ordinary ticker must reach the real exposure-cap logic…
 
 ## Connections
-- [[dot-test_daily_ticker_unaffected()_2]] - `rationale_for` [EXTRACTED]
+- [[dot-test_daily_ticker_unaffected()_1]] - `rationale_for` [EXTRACTED]
 
 #graphify/rationale #graphify/EXTRACTED #community/Community_408

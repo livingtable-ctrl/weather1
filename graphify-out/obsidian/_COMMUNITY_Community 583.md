@@ -23,8 +23,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 - 2 edges to [[_COMMUNITY_Community 384]]
+- 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
 
 ## Top bridge nodes
 - [[_get_strategy_pins()]] - degree 4, connects to 2 communities

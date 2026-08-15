@@ -17,7 +17,7 @@ tags:
 - [[Weather Markets Grade Audit]] - `references` [EXTRACTED]
 - [[_price_and_size()]] - `calls` [EXTRACTED]
 - [[kelly_fraction()]] - `calls` [EXTRACTED]
-- [[weather_markets.py_2]] - `implements` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
+- [[weather_markets.py_2]] - `implements` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_59

@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_execution_log.py"
+source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 274"
-location: "L210"
+community: "Community 157"
+location: "L1256"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_274
+  - community/Community_157
 ---
 
 # .teardown_method()
 
 ## Connections
-- [[TestDailyLiveLoss]] - `method` [EXTRACTED]
+- [[TestFinalizeCancelReturnValue]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_274
+#graphify/code #graphify/EXTRACTED #community/Community_157

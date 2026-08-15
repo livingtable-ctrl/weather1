@@ -24,7 +24,7 @@ members: 15
 - [[Type Hints + mypy CI Enforcement]] - document - docs/superpowers/plans/2026-04-18-remediation.md
 - [[Wire drawdown_scaling_factor to Configurable Thresholds]] - document - docs/superpowers/plans/2026-04-18-remediation.md
 - [[main.py Coverage + cmd_cron Smoke Tests]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[paper.py module]] - code - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
+- [[paper.py module_1]] - code - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -35,16 +35,16 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 4 edges to [[_COMMUNITY_Community 210]]
-- 3 edges to [[_COMMUNITY_Community 295]]
 - 3 edges to [[_COMMUNITY_Community 294]]
+- 3 edges to [[_COMMUNITY_Community 295]]
 - 2 edges to [[_COMMUNITY_Community 536]]
-- 1 edge to [[_COMMUNITY_Community 452]]
 - 1 edge to [[_COMMUNITY_Community 117]]
+- 1 edge to [[_COMMUNITY_Community 452]]
 - 1 edge to [[_COMMUNITY_Community 453]]
 
 ## Top bridge nodes
 - [[Code Review Remediation Plan]] - degree 16, connects to 5 communities
-- [[paper.py module]] - degree 9, connects to 2 communities
+- [[paper.py module_1]] - degree 9, connects to 2 communities
 - [[B1 Per-Trade Drawdown Re-check]] - degree 4, connects to 1 community
 - [[Drawdown-Tiered Kelly Step Reduction]] - degree 3, connects to 1 community
 - [[Rolling Win-Rate Accuracy Circuit Breaker]] - degree 3, connects to 1 community

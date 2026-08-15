@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[TestWalkForwardBacktest]] - `method` [EXTRACTED]
-- [[_make_trade()_6]] - `calls` [EXTRACTED]
+- [[_make_trade()_4]] - `calls` [EXTRACTED]
 - [[walk_forward_backtest returns a dict with 'folds' list.]] - `rationale_for` [EXTRACTED]
 - [[walk_forward_backtest()]] - `calls` [EXTRACTED]
 

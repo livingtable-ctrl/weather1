@@ -13,9 +13,9 @@ tags:
 
 ## Connections
 - [[TestAnalyzePipeline]] - `method` [EXTRACTED]
-- [[_make_enriched()]] - `calls` [EXTRACTED]
+- [[_make_enriched()_2]] - `calls` [EXTRACTED]
 - [[analyze_trade succeeds even when NWS and climatology return None.]] - `rationale_for` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[patch]] - `references` [EXTRACTED]
+- [[patch_1]] - `references` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_53

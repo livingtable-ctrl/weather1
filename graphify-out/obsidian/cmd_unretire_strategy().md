@@ -15,7 +15,7 @@ tags:
 - [[Manually un-retire a forecasting method that was auto-retired. Writes a 72-hour…]] - `rationale_for` [EXTRACTED]
 - [[get_retired_strategies()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 - [[unretire_strategy()]] - `calls` [EXTRACTED]

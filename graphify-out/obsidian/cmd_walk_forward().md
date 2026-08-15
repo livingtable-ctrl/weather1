@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[Run walk-forward backtest on historical paper trades.]] - `rationale_for` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[run_paper_walk_forward()]] - `calls` [EXTRACTED]
 

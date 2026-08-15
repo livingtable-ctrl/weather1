@@ -12,15 +12,15 @@ members: 104
 ## Members
 - [[26 Persistence baseline — models tomorrow's temperature as N(current_value,…]] - rationale - climatology.py
 - [[28 Return the current ENSO phase 'el_nino', 'la_nina', or 'neutral'. Uses…]] - rationale - weather_markets.py
-- [[dot-test_above_condition()]] - code - tests/test_forecasting.py
+- [[dot-test_above_condition()_1]] - code - tests/test_forecasting.py
 - [[dot-test_above_threshold_high_current()]] - code - tests/test_phase4.py
 - [[dot-test_above_threshold_low_current()]] - code - tests/test_phase4.py
 - [[dot-test_all_summer_months_use_lower_ecmwf()]] - code - tests/test_weather_markets.py
 - [[dot-test_all_winter_months_use_high_ecmwf()]] - code - tests/test_weather_markets.py
 - [[dot-test_analyze_trade_blends_persistence_for_short_horizon()]] - code - tests/test_forecasting.py
-- [[dot-test_below_condition()]] - code - tests/test_forecasting.py
+- [[dot-test_below_condition()_1]] - code - tests/test_forecasting.py
 - [[dot-test_below_threshold_low_current()]] - code - tests/test_phase4.py
-- [[dot-test_between_condition()]] - code - tests/test_forecasting.py
+- [[dot-test_between_condition()_1]] - code - tests/test_forecasting.py
 - [[dot-test_between_returns_reasonable_value()]] - code - tests/test_phase4.py
 - [[dot-test_city_weights_used_when_available()]] - code - tests/test_phase4.py
 - [[dot-test_dynamic_weights_override_learned()]] - code - tests/test_phase4.py
@@ -58,7 +58,7 @@ members: 104
 - [[dot-test_unknown_condition_returns_none()]] - code - tests/test_phase4.py
 - [[dot-test_used_as_first_priority_in_forecast_model_weights()]] - code - tests/test_forecasting.py
 - [[dot-test_winter_month_boosts_ecmwf_weight()]] - code - tests/test_weather_markets.py
-- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_1]] - rationale - tests/test_forecasting.py
+- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_3]] - rationale - tests/test_forecasting.py
 - [[All summer months (Apr-Sep) should use the lower ECMWF weight.]] - rationale - tests/test_weather_markets.py
 - [[All winter months (Oct-Mar) should use the elevated ECMWF weight.…]] - rationale - tests/test_weather_markets.py
 - [[Between condition with current value in range → decent probability.]] - rationale - tests/test_phase4.py
@@ -89,8 +89,8 @@ members: 104
 - [[TestDynamicModelWeights_1]] - code - tests/test_phase4.py
 - [[TestEnsoPhase]] - code - tests/test_forecasting.py
 - [[TestEnsoPhase_1]] - code - tests/test_phase4.py
-- [[TestForecastModelWeights_1]] - code - tests/test_weather_markets.py
-- [[TestForecastModelWeights]] - code - tests/test_weather.py
+- [[TestForecastModelWeights]] - code - tests/test_weather_markets.py
+- [[TestForecastModelWeights_1]] - code - tests/test_weather.py
 - [[TestForecastModelWeightsTrackerIntegration]] - code - tests/test_forecasting.py
 - [[TestHRRR]] - code - tests/test_forecasting.py
 - [[TestPerCityLearnedWeights]] - code - tests/test_phase4.py
@@ -127,38 +127,38 @@ SORT file.name ASC
 - 10 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
 - 6 edges to [[_COMMUNITY_Community 51]]
 - 5 edges to [[_COMMUNITY_Community 82]]
-- 4 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 4 edges to [[_COMMUNITY_Community 70]]
+- 4 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
 - 3 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 2 edges to [[_COMMUNITY_Community 26]]
-- 2 edges to [[_COMMUNITY_Community 52]]
 - 2 edges to [[_COMMUNITY_Weather Probability Math Tests]]
 - 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 2 edges to [[_COMMUNITY_Community 26]]
+- 2 edges to [[_COMMUNITY_Community 52]]
 - 2 edges to [[_COMMUNITY_Community 59]]
-- 1 edge to [[_COMMUNITY_Community 211]]
-- 1 edge to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
-- 1 edge to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Community 146]]
-- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
-- 1 edge to [[_COMMUNITY_Community 423]]
+- 1 edge to [[_COMMUNITY_Community 169]]
+- 1 edge to [[_COMMUNITY_Community 170]]
+- 1 edge to [[_COMMUNITY_Community 275]]
+- 1 edge to [[_COMMUNITY_Community 276]]
 - 1 edge to [[_COMMUNITY_Community 303]]
-- 1 edge to [[_COMMUNITY_Community 504]]
-- 1 edge to [[_COMMUNITY_Community 545]]
+- 1 edge to [[_COMMUNITY_Community 394]]
+- 1 edge to [[_COMMUNITY_Community 407]]
+- 1 edge to [[_COMMUNITY_Community 423]]
 - 1 edge to [[_COMMUNITY_Community 424]]
 - 1 edge to [[_COMMUNITY_Community 464]]
-- 1 edge to [[_COMMUNITY_Community 276]]
+- 1 edge to [[_COMMUNITY_Community 504]]
+- 1 edge to [[_COMMUNITY_Community 545]]
 - 1 edge to [[_COMMUNITY_Community 572]]
-- 1 edge to [[_COMMUNITY_Community 169]]
-- 1 edge to [[_COMMUNITY_Community 275]]
-- 1 edge to [[_COMMUNITY_Community 170]]
-- 1 edge to [[_COMMUNITY_Community 394]]
-- 1 edge to [[_COMMUNITY_Forecast Persistent Cache]]
-- 1 edge to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
-- 1 edge to [[_COMMUNITY_Community 142]]
-- 1 edge to [[_COMMUNITY_Community 388]]
 - 1 edge to [[_COMMUNITY_Community 595]]
-- 1 edge to [[_COMMUNITY_Community 407]]
+- 1 edge to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
+- 1 edge to [[_COMMUNITY_Community 40]]
 - 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
+- 1 edge to [[_COMMUNITY_Community 146]]
+- 1 edge to [[_COMMUNITY_Community 142]]
+- 1 edge to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
+- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
+- 1 edge to [[_COMMUNITY_Forecast Persistent Cache]]
+- 1 edge to [[_COMMUNITY_Community 211]]
+- 1 edge to [[_COMMUNITY_Community 388]]
 
 ## Top bridge nodes
 - [[test_forecasting.py]] - degree 49, connects to 25 communities

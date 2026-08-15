@@ -31,8 +31,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 6 edges to [[_COMMUNITY_Community 92]]
-- 1 edge to [[_COMMUNITY_Community 85]]
 - 1 edge to [[_COMMUNITY_Community 527]]
+- 1 edge to [[_COMMUNITY_Community 85]]
 
 ## Top bridge nodes
 - [[_run_with_captured_kelly()]] - degree 7, connects to 2 communities

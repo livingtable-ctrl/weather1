@@ -1,18 +1,17 @@
 ---
-source_file: "updated frontend/screenshots/dark.png"
+source_file: "updated frontend/screenshots/light.png"
 type: "image"
-community: "Community 292"
+community: "Community 192"
 tags:
   - graphify/image
   - graphify/INFERRED
-  - community/Community_292
+  - community/Community_192
 ---
 
 # Paper Balance Metric Card ($1247.83, +24.8%)
 
 ## Connections
-- [[DateGreeting Header with Daily P&L Summary Sentence]] - `conceptually_related_to` [INFERRED]
-- [[Graduation Gate - P&L Progress Bar ($247.83$50, complete)]] - `shares_data_with` [INFERRED]
-- [[Metric Card Row (Paper Balance, Open Positions, Win Rate, Brier Score)]] - `references` [EXTRACTED]
+- [[Metric Cards Row (Paper balance, Open positions, Win rate, Brier score)]] - `references` [EXTRACTED]
+- [[Weather1 Paper Trading Engine (backend concept)]] - `shares_data_with` [INFERRED]
 
-#graphify/image #graphify/INFERRED #community/Community_292
+#graphify/image #graphify/INFERRED #community/Community_192

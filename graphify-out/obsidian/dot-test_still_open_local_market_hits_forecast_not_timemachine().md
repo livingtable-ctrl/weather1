@@ -13,6 +13,6 @@ tags:
 
 ## Connections
 - [[TestFetchTemperaturePirateWeatherHistoricalRouting]] - `method` [EXTRACTED]
-- [[datetime_2]] - `calls` [EXTRACTED]
+- [[datetime]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_206
