@@ -18219,14 +18219,16 @@ Resolution (2026-08-14):
   faithful; if not, that's worth investigating rather than discarding
   either side blind.
 
-[OPEN 2026-08-14 -- new, deliberately deferred (not silently skipped) while
-  resolving the REACT DASHBOARD'S CLOSE BUTTON entry above: an opus review
-  finding (MEDIUM 2 in that entry's Resolution) was fixed in both the
-  tracked frontend/src/App.jsx and the git-ignored "weather app site
-  V_3 (3)/frontend/src/App.jsx" mirror, but deliberately NOT in "weather
-  app site V_3 (3)/src/tabs/PositionsTab.jsx" -- the file that folder's own
-  vite.config.js/index.html actually build, i.e. the real one the user's
-  browser loads.] "weather app site V_3 (3)/src/tabs/PositionsTab.jsx"'S
+[RESOLVED 2026-08-14 -- fixed, see the Resolution below (after the Update
+  note). Originally
+  deliberately deferred (not silently skipped) while resolving the REACT
+  DASHBOARD'S CLOSE BUTTON entry above: an opus review finding (MEDIUM 2 in
+  that entry's Resolution) was fixed in both the tracked frontend/src/
+  App.jsx and the git-ignored "weather app site V_3 (3)/frontend/src/
+  App.jsx" mirror, but deliberately NOT in "weather app site V_3 (3)/src/
+  tabs/PositionsTab.jsx" -- the file that folder's own vite.config.js/
+  index.html actually build, i.e. the real one the user's browser
+  loads.] "weather app site V_3 (3)/src/tabs/PositionsTab.jsx"'S
   selectedPos/confirmClose ARE THE SAME DETACHED-OBJECT-REFERENCE BUG THE
   SIBLING ENTRY JUST FIXED ELSEWHERE, STILL UNFIXED HERE
 Priority: Medium -- same staleness class as the sibling entry's MEDIUM 2
@@ -18298,4 +18300,98 @@ Update (2026-08-14, DASHBOARD BASIC-AUTH entry's session): this entry's
   still unfixed. The "Problem"/"What it would look like"/"Why not now"
   text above should be read as scoped to JUST that reference bug now, not
   the whole manual-entry feature (which already exists).
+
+Resolution (2026-08-14, same session as the Update note above, chosen off a
+  "what's next in the backlog" menu after the auth-loop fix shipped):
+  Applied the exact shape prescribed in "What it would look like" above.
+  `selectedId`/`confirmCloseId` (primitive ids) replace `selectedPos`/
+  `confirmClose` as the actual useState values; `selectedPos`/`confirmClose`
+  are now derived via `useMemo(() => M.positions.find(p => p.id === id) ??
+  null, [M.positions, id])`, re-resolving to the CURRENT object (or null, if
+  the position closed/disappeared elsewhere) on every M.positions poll
+  instead of staying frozen on whatever was captured at click time.
+  `closePriceInput` is set only inside `handleClose(pos)`, itself only
+  called from a genuine row-click -- never touched by the id->object
+  derivation -- so a poll landing mid-edit can't wipe an in-progress manual
+  price entry, exactly the constraint the original entry called out.
+
+  `selectedIds` (the Set-based bulk-selection) needed no change -- it was
+  already storing ids, not objects; `handleBulkClose` already resolves
+  `filtered.filter(p => selectedIds.has(p.id))` fresh from the live array at
+  click time, never a captured reference. Confirmed this by reading it
+  again rather than assuming "same file, must have the same bug."
+
+  Found and fixed a second, independent bug in the SAME keydown `useEffect`
+  this refactor already had to touch (adjacency, not part of the original
+  report): the effect depended on `[confirmClose]` alone, an object that
+  (pre-refactor) only changed once per modal-open -- so typing into the
+  manual-entry input after opening the modal updated `closePriceInput` state
+  without re-subscribing the listener, meaning Enter-to-confirm could submit
+  the closure's STALE pre-typing price instead of what the operator actually
+  typed. Fixed by widening the effect's dependency array to
+  `[confirmCloseId, confirmClose, closePriceInput]`, so the closure Enter
+  calls into is always current.
+
+  Verification: no test/build infrastructure exists for this tree in this
+  worktree (same gap the original entry cited, confirmed still true; per an
+  explicit AskUserQuestion this session, decided against standing up test
+  infra here to match the smaller-scope precedent already set twice today
+  for this same tree). Syntax-verified via `esbuild.transformSync` (JSX-
+  aware). Correctness manually traced across the well-formed-id paths --
+  row-click select/deselect, poll refresh while the detail panel is open,
+  poll refresh while the confirm modal is open (does not touch
+  closePriceInput), typing then Enter (fresh closure, no longer stale),
+  Escape, Cancel, backdrop click -- but this trace initially missed a real
+  gap the opus review below caught, so it should NOT be read as exhaustive.
+
+  Independent opus review (effort=high) found 1 MEDIUM + 2 LOW, both
+  addressed:
+
+  MEDIUM -- a position with no `id` became permanently unclickable, not just
+  "same as before": `setSelectedId(p.id)`/`setSelectedId(confirmCloseId)`
+  stored `undefined` for such a position, and the `!= null` derivation guard
+  treats `undefined` the same as "nothing selected," so the row silently
+  stopped opening at all. This wasn't hypothetical -- mockData.js's 8 MOCK
+  positions (the initial render state before the first successful
+  /api/trades response) have no `id` field, and useData.js's fetchAll()
+  keeps MOCK positions indefinitely on a failed fetch rather than clearing
+  them, so a real dead-click window exists on load and stays open under
+  sustained auth/network failure; paper.py's own defensive id-filtering
+  comment (H-8) also implies a real trade with a null id has existed before.
+  Fixed with a `rowKey = (p) => p.id ?? p.ticker` UI-selection key, used for
+  `selectedId`/`confirmCloseId`/`selectedIds` everywhere a row needs to be
+  identified for selection -- but never for the actual `/api/close-position`
+  request body, which still sends the real `p.id`/`pos.id` and still hits
+  the existing "No trade ID" guard if it's missing. Extending the fallback
+  to bulk-selection (`selectedIds`) surfaced the same gap one level deeper --
+  `handleBulkClose` would have POSTed `trade_id: undefined` for a
+  ticker-keyed position now that it's selectable -- fixed by adding
+  `p.id != null` to `handleBulkClose`'s live-quote filter, mirroring
+  `handleCloseConfirm`'s existing guard.
+
+  LOW (accepted as-is, not fixed, reasoning stated per finding rather than
+  silently dropped): (1) if a position leaves M.positions entirely while the
+  confirm modal is open (bot settles it elsewhere), confirmClose resolves to
+  null and the modal just disappears with no message -- confirmed
+  unreachable in the current codebase (ids aren't reused, a failed fetch
+  keeps prior state rather than emptying it) and net still better than the
+  pre-fix behavior (a dead, no-longer-real position staying submittable
+  indefinitely); a considered fix (auto-clear + toast on id-set-but-
+  unresolved) was rejected because it would also fire during the
+  MOCK-to-real-data transition for a mock position's ticker-based rowKey,
+  producing a misleading "no longer open" message for something that was
+  never a real trade. (2) A poll landing while the confirm modal is open can
+  flip markIsLive underneath the operator (manual input appears/disappears
+  mid-decision) -- both directions fail safe money-wise (never silently
+  submits a fabricated price; an empty-then-typed input fails the existing
+  0.01-1.00 validation) and is arguably the correct, intended consequence of
+  making the modal live rather than frozen; not fixed, no visual "quote
+  updated" cue added.
+
+  NOT built, run, or browser-tested, per the same scope decision noted in
+  the sibling entry's Resolution (a past session's build attempt from this
+  exact worktree overwrote the main clone's live static/dist). Whoever next
+  builds/deploys this tree should manually exercise the confirm-modal flow
+  (open, wait for a poll tick, confirm) and the bulk-select-with-mock-data
+  edge case before trusting it end-to-end.
 

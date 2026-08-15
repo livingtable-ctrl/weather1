@@ -62,13 +62,27 @@ function PortfolioEvCard({ stats }) {
   );
 }
 
+// UI-selection key only -- NEVER used for the actual close-position request,
+// which still requires and checks the real p.id (handleCloseConfirm's own
+// "No trade ID" guard). Falls back to ticker so a position with no id yet
+// (MOCK data on initial load / while /api/trades hasn't succeeded even
+// once, or a real trade whose id came back null -- paper.py's own
+// defensive id filtering implies this has happened before) is still
+// clickable/selectable instead of silently inert.
+const rowKey = (p) => p.id ?? p.ticker;
+
 export default function PositionsTab() {
   const M = useContext(DataContext);
   const [filter, setFilter] = useState('');
   const [sortKey, setSortKey] = useState('edge');
-  const [selectedPos, setSelectedPos] = useState(null);
+  // Keyed by id, not the position object itself -- M.positions is a brand-new
+  // array of brand-new objects every 60s poll (mapTrades rebuilds it from
+  // scratch), so a captured object reference goes stale the moment a poll
+  // lands while the detail panel/confirm modal is open. selectedPos and
+  // confirmClose below are derived fresh from M.positions every render.
+  const [selectedId, setSelectedId] = useState(null);
   const [closeMsg, setCloseMsg] = useState('');
-  const [confirmClose, setConfirmClose] = useState(null);
+  const [confirmCloseId, setConfirmCloseId] = useState(null);
   // Prefilled (not auto-submitted) when the position has no live quote for its
   // own side — pos.mark already falls back to entry_price/actual_fill_price for
   // display, but that fabricated value must never go straight to the server;
@@ -104,7 +118,7 @@ export default function PositionsTab() {
 
   useEffect(() => {
     const handler = () => {
-      setSelectedPos(null);
+      setSelectedId(null);
       setSelectedIds(new Set());
     };
     document.addEventListener('kalshi:escape', handler);
@@ -120,8 +134,13 @@ export default function PositionsTab() {
   // exists to close off.
   function handleBulkClose() {
     if (selectedIds.size === 0) return;
-    const candidates = filtered.filter(p => selectedIds.has(p.id));
-    const positionsToClose = candidates.filter(p => p.markIsLive);
+    const candidates = filtered.filter(p => selectedIds.has(rowKey(p)));
+    // rowKey falls back to ticker for a position with no real id yet (mock
+    // data, or a real trade whose id came back null) so it's still
+    // selectable in the UI -- but /api/close-position needs the real id,
+    // same guard as the single-close path (handleCloseConfirm's own
+    // "No trade ID" check) rather than silently POSTing trade_id: undefined.
+    const positionsToClose = candidates.filter(p => p.id != null && p.markIsLive);
     const skipped = candidates.length - positionsToClose.length;
     if (positionsToClose.length === 0) {
       setBulkActionMsg('✗ No live quotes — none closed. Close them individually instead.');
@@ -151,8 +170,26 @@ export default function PositionsTab() {
     });
   }
 
+  // Re-derived fresh from M.positions every render (not stored as a captured
+  // object) so a 60s poll landing while the detail panel or confirm modal is
+  // open shows the CURRENT mark/markIsLive, not whatever it was at click
+  // time -- and if the position closes/disappears elsewhere, these cleanly
+  // resolve to null instead of staying frozen on stale, no-longer-real data.
+  const selectedPos = useMemo(
+    () => (selectedId != null ? M.positions.find(p => rowKey(p) === selectedId) ?? null : null),
+    [M.positions, selectedId]
+  );
+  const confirmClose = useMemo(
+    () => (confirmCloseId != null ? M.positions.find(p => rowKey(p) === confirmCloseId) ?? null : null),
+    [M.positions, confirmCloseId]
+  );
+
+  // closePriceInput is set ONLY here, on a genuine reselection (a fresh
+  // handleClose(pos) call from a row click) -- keyed to that click event,
+  // not to confirmClose's derived object identity, so a poll refresh while
+  // the modal is open never wipes an in-progress manual-entry edit.
   function handleClose(pos) {
-    setConfirmClose(pos);
+    setConfirmCloseId(rowKey(pos));
     setClosePriceInput(!pos.markIsLive ? pos.mark.toFixed(2) : '');
   }
 
@@ -170,7 +207,7 @@ export default function PositionsTab() {
       }
       exitPrice = parsed;
     }
-    setConfirmClose(null);
+    setConfirmCloseId(null);
 
     if (!pos.id) { setCloseMsg('✗ No trade ID'); setTimeout(() => setCloseMsg(''), 3000); return; }
     fetch('/api/close-position', {
@@ -184,7 +221,7 @@ export default function PositionsTab() {
         else {
           const pnl = d.pnl != null ? (d.pnl >= 0 ? `+$${d.pnl.toFixed(2)}` : `-$${Math.abs(d.pnl).toFixed(2)}`) : '';
           setCloseMsg(`✓ Closed ${pos.ticker} ${pnl}`);
-          setSelectedPos(null);
+          setSelectedId(null);
           M.refresh();
         }
         setTimeout(() => setCloseMsg(''), 4000);
@@ -195,7 +232,7 @@ export default function PositionsTab() {
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.key === 'Escape') {
-        setConfirmClose(null);
+        setConfirmCloseId(null);
         setAlertsPanelOpen(false);
       }
       if (confirmClose && e.key === 'Enter') {
@@ -204,7 +241,16 @@ export default function PositionsTab() {
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [confirmClose]);
+    // Re-subscribes whenever confirmCloseId, the derived confirmClose object,
+    // or closePriceInput changes -- so the closure Enter calls into is never
+    // stale. The old version depended on [confirmClose] alone (an object
+    // that, pre-refactor, only ever changed once per modal-open); typing a
+    // manual price after that would NOT re-subscribe the listener, so Enter
+    // could submit the closure's original (pre-typing) closePriceInput
+    // instead of what the operator actually typed -- a real, independent bug
+    // in the same effect, fixed here since it's the exact block this
+    // refactor already has to touch.
+  }, [confirmCloseId, confirmClose, closePriceInput]);
 
   const filtered = useMemo(() => {
     const f = filter.toLowerCase();
@@ -289,7 +335,7 @@ export default function PositionsTab() {
                   checked={selectedIds.size > 0 && selectedIds.size === filtered.length}
                   onChange={(e) => {
                     if (e.target.checked) {
-                      setSelectedIds(new Set(filtered.map(p => p.id)));
+                      setSelectedIds(new Set(filtered.map(rowKey)));
                     } else {
                       setSelectedIds(new Set());
                     }
@@ -322,18 +368,18 @@ export default function PositionsTab() {
                 : hoursLeft >= 1 ? `${hoursLeft}h`
                 : `${Math.round(msLeft / 60000)}m`;
               return (
-                <tr key={i} onClick={() => setSelectedPos(selectedPos === p ? null : p)} style={{
+                <tr key={i} onClick={() => setSelectedId(selectedId === rowKey(p) ? null : rowKey(p))} style={{
                   borderBottom: '1px solid var(--bg-muted)', cursor: 'pointer',
-                  background: selectedPos === p ? 'var(--bg-subtle)' : 'transparent',
+                  background: selectedId === rowKey(p) ? 'var(--bg-subtle)' : 'transparent',
                 }}>
                   <td style={{ padding: '14px 16px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                     <input
                       type="checkbox"
-                      checked={selectedIds.has(p.id)}
+                      checked={selectedIds.has(rowKey(p))}
                       onChange={(e) => {
                         const next = new Set(selectedIds);
-                        if (e.target.checked) next.add(p.id);
-                        else next.delete(p.id);
+                        if (e.target.checked) next.add(rowKey(p));
+                        else next.delete(rowKey(p));
                         setSelectedIds(next);
                       }}
                       style={{ cursor: 'pointer' }}
@@ -423,7 +469,7 @@ export default function PositionsTab() {
                 background: 'rgba(239,68,68,0.08)', color: '#ef4444',
                 fontSize: 12, fontWeight: 600, cursor: 'pointer',
               }}>Close Position</button>
-              <button onClick={() => setSelectedPos(null)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-card)', fontSize: 12, cursor: 'pointer', color: 'var(--text)' }}>Dismiss</button>
+              <button onClick={() => setSelectedId(null)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-card)', fontSize: 12, cursor: 'pointer', color: 'var(--text)' }}>Dismiss</button>
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16 }}>
@@ -448,7 +494,7 @@ export default function PositionsTab() {
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
-        }} onClick={() => setConfirmClose(null)}>
+        }} onClick={() => setConfirmCloseId(null)}>
           <div onClick={e => e.stopPropagation()} style={{
             background: 'var(--bg-card)', border: '1px solid var(--border)',
             borderRadius: 14, padding: '24px 28px', minWidth: 320, maxWidth: 400,
@@ -476,7 +522,7 @@ export default function PositionsTab() {
               </div>
             )}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => setConfirmClose(null)} style={{
+              <button onClick={() => setConfirmCloseId(null)} style={{
                 padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)',
                 background: 'var(--bg-card)', color: 'var(--text-muted)', fontWeight: 500, fontSize: 13, cursor: 'pointer',
               }}>Cancel</button>
