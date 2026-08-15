@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 521"
 location: "L76"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_521
 ---
 
 # kelly_bet_dollars output should scale proportionally with paper balance.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestKellyScalesWithBalance]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_521

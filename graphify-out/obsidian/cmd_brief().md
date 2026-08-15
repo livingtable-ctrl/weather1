@@ -1,19 +1,19 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "CLI & Preload Pipeline"
-location: "L2192"
+community: "Black Swan Halt State"
+location: "L3000"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Black_Swan_Halt_State
 ---
 
 # cmd_brief()
 
 ## Connections
 - [[Daily briefing — fast single-screen summary.]] - `rationale_for` [EXTRACTED]
-- [[KalshiClient_2]] - `references` [EXTRACTED]
+- [[KalshiClient]] - `references` [EXTRACTED]
 - [[_ascii_chart()]] - `calls` [EXTRACTED]
 - [[_brier_sparkline()]] - `calls` [EXTRACTED]
 - [[_header()]] - `calls` [EXTRACTED]
@@ -21,8 +21,7 @@ tags:
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[batch_prewarm_forecasts()]] - `calls` [EXTRACTED]
 - [[bold()]] - `calls` [EXTRACTED]
-- [[bool_12]] - `references` [EXTRACTED]
-- [[brier_score()]] - `calls` [EXTRACTED]
+- [[brier_score_rolling_with_n()]] - `calls` [EXTRACTED]
 - [[check_aged_positions()]] - `calls` [EXTRACTED]
 - [[check_correlated_event_exposure()]] - `calls` [EXTRACTED]
 - [[check_expiring_trades()]] - `calls` [EXTRACTED]
@@ -40,11 +39,12 @@ tags:
 - [[get_weather_markets()]] - `calls` [EXTRACTED]
 - [[graduation_check()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[parse_city_date()]] - `calls` [EXTRACTED]
 - [[preload_all()]] - `calls` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
+- [[test_menu_ux.py]] - `references` [EXTRACTED]
 - [[yellow()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

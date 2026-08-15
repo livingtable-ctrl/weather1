@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L667"
+community: "Community 188"
+location: "L877"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_188
 ---
 
 # Below 20% of peak → scale = 0.0 (fully paused).
 
 ## Connections
-- [[.test_zero_scaling_below_20_pct()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_zero_scaling_below_20_pct()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_188

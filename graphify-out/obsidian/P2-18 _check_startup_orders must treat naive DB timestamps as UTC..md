@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_h.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 518"
 location: "L221"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_518
 ---
 
 # P2-18: _check_startup_orders must treat naive DB timestamps as UTC.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCronStartupOrdersUtc]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_518

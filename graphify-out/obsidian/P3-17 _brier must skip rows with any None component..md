@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_c.py"
 type: "rationale"
-community: "Module: tests"
-location: "L83"
+community: "Community 387"
+location: "L91"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_387
 ---
 
 # P3-17: _brier must skip rows with any None component.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestBrierNoneFiltering]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_387

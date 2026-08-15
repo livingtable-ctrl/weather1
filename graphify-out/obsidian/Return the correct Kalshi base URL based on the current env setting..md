@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Python Types & Utilities"
-location: "L406"
+community: "Black Swan Halt State"
+location: "L490"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Halt_State
 ---
 
 # Return the correct Kalshi base URL based on the current env setting.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_market_base_url()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State

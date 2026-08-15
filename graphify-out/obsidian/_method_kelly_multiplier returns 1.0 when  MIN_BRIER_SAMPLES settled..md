@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1095"
+community: "Community 478"
+location: "L1202"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_478
 ---
 
 # _method_kelly_multiplier returns 1.0 when < MIN_BRIER_SAMPLES settled.
 
 ## Connections
-- [[.test_method_multiplier_returns_neutral_when_too_few_samples()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_method_multiplier_returns_neutral_when_too_few_samples()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_478

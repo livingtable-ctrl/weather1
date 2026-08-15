@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "rationale"
-community: "Module: tests"
-location: "L469"
+community: "Community 111"
+location: "L1186"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_111
 ---
 
 # Positive control: order fires when dedup finds no prior order this cycle.
 
 ## Connections
-- [[.test_places_order_when_not_yet_ordered()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_places_order_when_not_yet_ordered()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_111

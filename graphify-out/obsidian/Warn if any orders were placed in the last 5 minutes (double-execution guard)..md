@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "rationale"
-community: "Cron Scheduler"
-location: "L138"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L166"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Cron_Scheduler
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # Warn if any orders were placed in the last 5 minutes (double-execution guard).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_check_startup_orders()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Cron_Scheduler
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase3_batch_d.py"
 type: "rationale"
-community: "Module: tests"
-location: "L27"
+community: "Community 87"
+location: "L29"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_87
 ---
 
 # A near-singular matrix that fails Cholesky should pass after _repair_psd.
 
 ## Connections
-- [[.test_repair_psd_makes_cholesky_succeed()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_repair_psd_makes_cholesky_succeed()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_87

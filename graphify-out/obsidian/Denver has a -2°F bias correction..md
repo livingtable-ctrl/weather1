@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_station_bias.py"
 type: "rationale"
-community: "Module: tests"
-location: "L29"
+community: "Community 175"
+location: "L36"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_175
 ---
 
 # Denver has a -2°F bias correction.
 
 ## Connections
-- [[.test_denver_bias_negative()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_denver_bias_negative()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_175

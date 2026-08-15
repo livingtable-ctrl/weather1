@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "rationale"
-community: "Module: tests"
-location: "L144"
+community: "Community 173"
+location: "L182"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_173
 ---
 
 # Normal spread must not be flagged as degenerate.
 
 ## Connections
-- [[.test_varied_temps_not_degenerate()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_varied_temps_not_degenerate()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_173

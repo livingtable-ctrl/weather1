@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_mos.py"
 type: "code"
-community: "Module: tests"
-location: "L107"
+community: "Community 457"
+location: "L224"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_457
 ---
 
 # TestMosIntegration
 
 ## Connections
-- [[.test_analyze_trade_includes_mos_field()]] - `method` [EXTRACTED]
+- [[dot-test_analyze_trade_includes_mos_field()]] - `method` [EXTRACTED]
 - [[test_mos.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_457

@@ -1,17 +1,17 @@
 ---
 source_file: "config.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L111"
+community: "Community 297"
+location: "L314"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_297
 ---
 
 # Raise ValueError for any invalid configuration combination.
 
 ## Connections
-- [[.validate()]] - `rationale_for` [EXTRACTED]
+- [[dot-validate()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_297

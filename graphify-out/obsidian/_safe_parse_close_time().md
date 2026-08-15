@@ -1,0 +1,24 @@
+---
+source_file: "weather_markets.py"
+type: "code"
+community: "ML Bias Correction & Audit Plans"
+location: "L5497"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/ML_Bias_Correction__Audit_Plans
+---
+
+# _safe_parse_close_time()
+
+## Connections
+- [[Parse an ISO close_time string ('...Z' or offset-aware) into an aware UTC…]] - `rationale_for` [EXTRACTED]
+- [[_parse_hurricane_count_condition()]] - `calls` [EXTRACTED]
+- [[_parse_hurricane_next_event_condition()]] - `calls` [EXTRACTED]
+- [[_parse_storm_order_condition()]] - `calls` [EXTRACTED]
+- [[_time_risk()]] - `calls` [EXTRACTED]
+- [[analyze_trade()]] - `calls` [EXTRACTED]
+- [[datetime_4]] - `references` [EXTRACTED]
+- [[weather_markets.py]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans

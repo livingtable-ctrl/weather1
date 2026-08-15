@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L458"
+community: "Community 46"
+location: "L967"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_46
 ---
 
 # Brier values must be in [0.0, 1.0].
 
 ## Connections
-- [[.test_brier_values_in_valid_range()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_brier_values_in_valid_range()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_46

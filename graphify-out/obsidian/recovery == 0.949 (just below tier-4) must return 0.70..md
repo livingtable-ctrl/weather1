@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_g.py"
 type: "rationale"
-community: "Module: tests"
-location: "L103"
+community: "Community 404"
+location: "L104"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_404
 ---
 
 # recovery == 0.949 (just below tier-4) must return 0.70.
 
 ## Connections
-- [[.test_just_below_tier4_returns_reduced()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_just_below_tier4_returns_reduced()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_404

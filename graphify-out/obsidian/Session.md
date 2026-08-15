@@ -1,19 +1,16 @@
 ---
-source_file: "kalshi_client.py"
+source_file: ""
 type: "code"
-community: "Module: tests"
-location: "L87"
+community: "Circuit Breaker & Session Retry Infrastructure"
 tags:
   - graphify/code
-  - graphify/INFERRED
-  - community/Module_tests
+  - graphify/EXTRACTED
+  - community/Circuit_Breaker__Session_Retry_Infrastructure
 ---
 
 # Session
 
 ## Connections
-- [[CircuitBreaker]] - `uses` [INFERRED]
-- [[CircuitOpenError]] - `uses` [INFERRED]
 - [[_build_session()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Circuit_Breaker__Session_Retry_Infrastructure

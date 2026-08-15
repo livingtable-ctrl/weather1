@@ -1,12 +1,12 @@
 ---
 source_file: "web_app.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L64"
+community: "Anomaly Detection & PDF Reporting"
+location: "L87"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Mockable UTC timestamp for tests.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_now_utc()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

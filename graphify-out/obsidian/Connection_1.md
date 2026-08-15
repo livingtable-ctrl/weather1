@@ -1,18 +1,18 @@
 ---
-source_file: "tracker.py"
+source_file: ""
 type: "code"
-community: "Tracker Analytics (Brier/Bias)"
-location: "L117"
+community: "Community 36"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Analytics_Brier/Bias
+  - community/Community_36
 ---
 
 # Connection
 
 ## Connections
 - [[_conn()_1]] - `references` [EXTRACTED]
-- [[_run_migrations()]] - `references` [EXTRACTED]
+- [[_run_migrations()_1]] - `references` [EXTRACTED]
+- [[log_prediction()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Analytics_Brier/Bias
+#graphify/code #graphify/EXTRACTED #community/Community_36

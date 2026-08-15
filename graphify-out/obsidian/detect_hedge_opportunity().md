@@ -1,21 +1,29 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Forecast Analysis Engine"
-location: "L5742"
+community: "Community 348"
+location: "L12602"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecast_Analysis_Engine
+  - community/Community_348
 ---
 
 # detect_hedge_opportunity()
 
 ## Connections
-- [[Return True if the new trade would partially hedge an existing open position]] - `rationale_for` [EXTRACTED]
+- [[dot-test_analyze_trade_result_includes_city()]] - `calls` [EXTRACTED]
+- [[dot-test_different_city_is_not_a_hedge()]] - `calls` [EXTRACTED]
+- [[dot-test_missing_city_returns_false()]] - `calls` [EXTRACTED]
+- [[dot-test_same_city_different_date_is_not_a_hedge()]] - `calls` [EXTRACTED]
+- [[dot-test_same_city_same_date_opposite_side_is_a_hedge()]] - `calls` [EXTRACTED]
+- [[Return True if the new trade would partially hedge an existing open position…]] - `rationale_for` [EXTRACTED]
 - [[_analyze_once()]] - `calls` [EXTRACTED]
-- [[bool_24]] - `references` [EXTRACTED]
+- [[_build_app()]] - `calls` [EXTRACTED]
+- [[cmd_watch()]] - `calls` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
+- [[test_weather_markets.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
+- [[web_app.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecast_Analysis_Engine
+#graphify/code #graphify/EXTRACTED #community/Community_348

@@ -1,0 +1,20 @@
+---
+source_file: "tests/test_trade_validation.py"
+type: "code"
+community: "Community 85"
+location: "L163"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_85
+---
+
+# test_validate_none_kelly_values_both_missing_rejects_without_crash()
+
+## Connections
+- [[Both ci_adjusted_kelly and fee_adjusted_kelly present but None must not raise…]] - `rationale_for` [EXTRACTED]
+- [[_opp()]] - `calls` [EXTRACTED]
+- [[_validate_trade_opportunity()]] - `calls` [INFERRED]
+- [[test_trade_validation.py]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_85

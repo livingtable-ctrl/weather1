@@ -1,25 +1,24 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Cron Scheduler"
-location: "L411"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L677"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Cron_Scheduler
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # _dynamic_kelly_cap()
 
 ## Connections
-- [[Determine STRONG-tier per-trade cap from current Brier score.      Returns a c]] - `rationale_for` [EXTRACTED]
+- [[Determine STRONG-tier per-trade cap from current Brier score. Returns a…]] - `rationale_for` [EXTRACTED]
 - [[_brier()]] - `calls` [INFERRED]
-- [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[brier_score()]] - `calls` [EXTRACTED]
 - [[count_settled_predictions()]] - `calls` [EXTRACTED]
-- [[cron.py]] - `imports` [EXTRACTED]
-- [[float_24]] - `references` [EXTRACTED]
 - [[kelly_bet_dollars()]] - `calls` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
+- [[run_trade_cycle()]] - `calls` [EXTRACTED]
+- [[trade_cycle.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Cron_Scheduler
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

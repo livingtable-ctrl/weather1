@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Module: tests"
-location: "L439"
+community: "Community 394"
+location: "L485"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_394
 ---
 
 # At >= reference_hours before close, return full raw_edge.
 
 ## Connections
-- [[.test_full_edge_at_reference_hours()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_full_edge_at_reference_hours()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_394

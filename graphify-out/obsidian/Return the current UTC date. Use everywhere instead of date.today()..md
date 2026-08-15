@@ -1,12 +1,12 @@
 ---
 source_file: "utils.py"
 type: "rationale"
-community: "Module: tests"
-location: "L14"
+community: "Climatology & Climate Index Fetching"
+location: "L17"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Climatology__Climate_Index_Fetching
 ---
 
 # Return the current UTC date. Use everywhere instead of date.today().
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[utc_today()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching

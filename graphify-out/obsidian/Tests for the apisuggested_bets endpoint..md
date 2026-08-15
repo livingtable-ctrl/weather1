@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_suggested_bets.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 176"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_176
 ---
 
 # Tests for the /api/suggested_bets endpoint.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_suggested_bets.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_176

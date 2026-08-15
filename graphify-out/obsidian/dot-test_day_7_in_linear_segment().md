@@ -1,0 +1,19 @@
+---
+source_file: "tests/test_weather_markets.py"
+type: "code"
+community: "Community 190"
+location: "L1047"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_190
+---
+
+# .test_day_7_in_linear_segment()
+
+## Connections
+- [[TestEdgeConfidence]] - `method` [EXTRACTED]
+- [[days_out=7 is at the boundary of segment 2; should be 0.80.]] - `rationale_for` [EXTRACTED]
+- [[edge_confidence()]] - `calls` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_190

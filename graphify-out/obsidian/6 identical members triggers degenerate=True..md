@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "rationale"
-community: "Module: tests"
-location: "L154"
+community: "Community 173"
+location: "L192"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_173
 ---
 
 # 6 identical members triggers degenerate=True.
 
 ## Connections
-- [[.test_six_identical_members_is_degenerate()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_six_identical_members_is_degenerate()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_173

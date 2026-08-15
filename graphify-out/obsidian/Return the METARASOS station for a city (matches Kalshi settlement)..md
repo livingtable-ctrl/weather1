@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Forecast Analysis Engine"
-location: "L369"
+community: "Tracker P&L Attribution Tests"
+location: "L392"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Forecast_Analysis_Engine
+  - community/Tracker_PL_Attribution_Tests
 ---
 
 # Return the METAR/ASOS station for a city (matches Kalshi settlement).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_metar_station_for_city()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Forecast_Analysis_Engine
+#graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

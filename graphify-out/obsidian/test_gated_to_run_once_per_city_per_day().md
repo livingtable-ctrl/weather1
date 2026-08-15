@@ -1,0 +1,19 @@
+---
+source_file: "tests/test_hourly_target_hours.py"
+type: "code"
+community: "Community 112"
+location: "L81"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_112
+---
+
+# test_gated_to_run_once_per_city_per_day()
+
+## Connections
+- [[_mock_client()]] - `calls` [EXTRACTED]
+- [[_today()_1]] - `calls` [EXTRACTED]
+- [[test_hourly_target_hours.py]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_112

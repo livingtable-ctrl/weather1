@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L2134"
+community: "Community 36"
+location: "L5825"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_36
 ---
 
 # Rational approximation of the inverse normal CDF (Abramowitz & Stegun 26.2.17).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_inv_normal_cdf()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_36

@@ -1,21 +1,19 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Model Weights & Ensemble Blend"
-location: "L715"
+community: "Community 59"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Model_Weights__Ensemble_Blend
+  - community/Community_59
 ---
 
 # _current_forecast_cycle()
 
 ## Connections
-- [[37 Return the current NWP forecast cycle label based on UTC hour.     Cycles]] - `rationale_for` [EXTRACTED]
-- [[str_33]] - `references` [EXTRACTED]
-- [[test_forecasting.py]] - `imports` [EXTRACTED]
-- [[test_phase4.py]] - `imports` [EXTRACTED]
-- [[weather_markets.py]] - `contains` [EXTRACTED]
+- [[Execution Pipeline Plan]] - `calls` [EXTRACTED]
+- [[Phase 4 Forecasting Plan]] - `implements` [EXTRACTED]
+- [[Weather Markets Grade Audit]] - `references` [EXTRACTED]
+- [[weather_markets.py_2]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Model_Weights__Ensemble_Blend
+#graphify/code #graphify/EXTRACTED #community/Community_59

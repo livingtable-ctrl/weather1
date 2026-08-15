@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1719"
+community: "Tracker SQLite Storage Tests"
+location: "L3158"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Tracker_SQLite_Storage_Tests
 ---
 
 # purge_old_predictions removes settled predictions older than retention_days.
 
 ## Connections
-- [[.test_purge_old_predictions_removes_settled()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_purge_old_predictions_removes_settled()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Tracker_SQLite_Storage_Tests

@@ -1,22 +1,22 @@
 ---
 source_file: "backtest.py"
 type: "code"
-community: "Module: frosty"
-location: "L608"
+community: "Backtest Engine & Atomic Writes"
+location: "L662"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Backtest_Engine__Atomic_Writes
 ---
 
 # run_walk_forward()
 
 ## Connections
-- [[Walk-forward validation slide a fixed-size window across the history,     scor]] - `rationale_for` [EXTRACTED]
+- [[Walk-forward validation slide a fixed-size window across the history, scoring…]] - `rationale_for` [EXTRACTED]
 - [[backtest.py]] - `contains` [EXTRACTED]
 - [[cmd_walkforward()]] - `calls` [EXTRACTED]
-- [[int_2]] - `references` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
-- [[str_2]] - `references` [EXTRACTED]
+- [[tracker.DB_PATH  predictions DB]] - `calls` [EXTRACTED]
+- [[utc_today()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes

@@ -1,29 +1,28 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Module: frosty"
-location: "L2461"
+community: "Community 384"
+location: "L6140"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_384
 ---
 
 # auto_retire_strategies()
 
 ## Connections
-- [[P9.5 Auto-retire forecasting methods whose Brier score exceeds retire_threshold]] - `rationale_for` [EXTRACTED]
+- [[P9.5 Auto-retire forecasting methods whose Brier score exceeds…]] - `rationale_for` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[_save_retired_strategies()]] - `calls` [EXTRACTED]
 - [[brier_score_by_method()]] - `calls` [EXTRACTED]
+- [[brier_score_by_method_rolling()]] - `calls` [EXTRACTED]
 - [[cmd_retire_strategies()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
-- [[float_29]] - `references` [EXTRACTED]
 - [[get_retired_strategies()]] - `calls` [EXTRACTED]
-- [[int_24]] - `references` [EXTRACTED]
 - [[is_strategy_pinned()]] - `calls` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
-- [[str_30]] - `references` [EXTRACTED]
+- [[test_p9_p10.py]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_384

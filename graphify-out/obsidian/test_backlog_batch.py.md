@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backlog_batch.py"
 type: "code"
-community: "Module: tests"
+community: "Kelly City Multiplier & Edge Realization"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Kelly_City_Multiplier__Edge_Realization
 ---
 
 # test_backlog_batch.py
@@ -16,9 +16,12 @@ tags:
 - [[TestEdgeRealizationRate]] - `contains` [EXTRACTED]
 - [[TestMaxPositionsPerDate]] - `contains` [EXTRACTED]
 - [[TestPlacePaperOrderDuplicateGuard]] - `contains` [EXTRACTED]
-- [[Tests for backlog items 6, 4, 1, 2.  6 - City-level Kelly scaling from Br]] - `rationale_for` [EXTRACTED]
+- [[Tests for backlog items 6, 4, 1, 2. 6 - City-level Kelly scaling from…]] - `rationale_for` [EXTRACTED]
 - [[_city_kelly_multiplier()]] - `imports` [EXTRACTED]
 - [[get_edge_realization_rate()]] - `imports` [EXTRACTED]
+- [[order_executor.py]] - `calls` [EXTRACTED]
+- [[paper.py]] - `calls` [EXTRACTED]
 - [[portfolio_kelly_fraction()]] - `imports` [EXTRACTED]
+- [[tracker.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization

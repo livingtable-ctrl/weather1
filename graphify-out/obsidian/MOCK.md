@@ -1,17 +1,18 @@
 ---
-source_file: "frontend/src/mockData.js"
+source_file: "weather app site V_3 (3)/src/mockData.js"
 type: "code"
-community: "Module: src"
-location: "L247"
+community: "Community 81"
+location: "L272"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_src
+  - community/Community_81
 ---
 
 # MOCK
 
 ## Connections
-- [[mockData.js]] - `contains` [EXTRACTED]
+- [[weather app site V_3 (3)srcmockData.js]] - `contains` [EXTRACTED]
+- [[weather app site V_3 (3)srcuseData.js]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_src
+#graphify/code #graphify/EXTRACTED #community/Community_81

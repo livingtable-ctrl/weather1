@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "rationale"
-community: "Module: tests"
-location: "L174"
+community: "Community 336"
+location: "L518"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_336
 ---
 
 # P1-19: get_markets must follow cursor pagination until exhausted.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestGetMarketsPagination]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_336

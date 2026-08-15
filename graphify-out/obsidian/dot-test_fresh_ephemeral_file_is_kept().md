@@ -1,0 +1,19 @@
+---
+source_file: "tests/test_cleanup_data_dir.py"
+type: "code"
+community: "Community 47"
+location: "L106"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_47
+---
+
+# .test_fresh_ephemeral_file_is_kept()
+
+## Connections
+- [[An ephemeral file modified within 2 days must not be deleted.]] - `rationale_for` [EXTRACTED]
+- [[TestCleanupDataDir]] - `method` [EXTRACTED]
+- [[_patched_cleanup()]] - `calls` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_47

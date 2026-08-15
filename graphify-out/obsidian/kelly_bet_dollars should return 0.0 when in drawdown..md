@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L237"
+community: "Community 106"
+location: "L315"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_106
 ---
 
 # kelly_bet_dollars should return 0.0 when in drawdown.
 
 ## Connections
-- [[.test_kelly_returns_zero_in_drawdown()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_kelly_returns_zero_in_drawdown()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_106

@@ -1,18 +1,21 @@
 ---
 source_file: "updated frontend/mock-data.js"
 type: "code"
-community: "Module: updated"
+community: "Community 48"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_updated
+  - community/Community_48
 ---
 
 # mock-data.js
 
 ## Connections
-- [[balanceWalk()_1]] - `contains` [EXTRACTED]
+- [[Full Prototype Dashboard]] - `references` [EXTRACTED]
+- [[Kalshi Bot Dashboard Explorations Canvas]] - `references` [EXTRACTED]
+- [[Operator Dashboard Prototype]] - `references` [EXTRACTED]
+- [[balanceWalk()]] - `contains` [EXTRACTED]
 - [[rng()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_updated
+#graphify/code #graphify/EXTRACTED #community/Community_48

@@ -1,17 +1,17 @@
 ---
 source_file: "circuit_breaker.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L245"
+community: "Community 44"
+location: "L259"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_44
 ---
 
 # Wall-clock seconds since the circuit opened; 0.0 if currently closed.
 
 ## Connections
-- [[.seconds_open()]] - `rationale_for` [EXTRACTED]
+- [[dot-seconds_open()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_44

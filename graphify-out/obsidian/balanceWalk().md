@@ -1,18 +1,18 @@
 ---
-source_file: "frontend/src/mockData.js"
+source_file: "updated frontend/mock-data.js"
 type: "code"
-community: "Module: updated"
-location: "L7"
+community: "Community 48"
+location: "L6"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_updated
+  - community/Community_48
 ---
 
 # balanceWalk()
 
 ## Connections
-- [[mockData.js]] - `contains` [EXTRACTED]
-- [[rng()]] - `calls` [INFERRED]
+- [[mock-data.js]] - `contains` [EXTRACTED]
+- [[rng()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_updated
+#graphify/code #graphify/EXTRACTED #community/Community_48

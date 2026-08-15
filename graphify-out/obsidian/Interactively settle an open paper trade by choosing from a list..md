@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Python Types & Utilities"
-location: "L4636"
+community: "Black Swan Halt State"
+location: "L6359"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Halt_State
 ---
 
 # Interactively settle an open paper trade by choosing from a list.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_cmd_settle_open()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_config.py"
 type: "code"
-community: "Module: frosty"
-location: "L26"
+community: "Community 297"
+location: "L48"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_297
 ---
 
 # test_drawdown_halt_out_of_range_raises()
@@ -15,4 +15,4 @@ tags:
 - [[BotConfig]] - `calls` [EXTRACTED]
 - [[test_config.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_297

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_g.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 248"
 location: "L19"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_248
 ---
 
 # P2-16: KALSHI_ENV=prod must log a loud WARNING banner.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestProdStartupWarning]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_248

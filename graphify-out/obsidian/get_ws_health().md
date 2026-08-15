@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Cron Scheduler"
-location: "L51"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L52"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Cron_Scheduler
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # get_ws_health()
@@ -17,4 +17,4 @@ tags:
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[kalshi_ws.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Cron_Scheduler
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

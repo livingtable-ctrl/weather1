@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Forecast Analysis Engine"
-location: "L53"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L90"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecast_Analysis_Engine
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # get_gate_counts()
@@ -14,8 +14,8 @@ tags:
 ## Connections
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
-- [[int_26]] - `references` [EXTRACTED]
-- [[str_33]] - `references` [EXTRACTED]
+- [[run_trade_cycle()]] - `calls` [EXTRACTED]
+- [[trade_cycle.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecast_Analysis_Engine
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "CLI & Preload Pipeline"
-location: "L2193"
+community: "Black Swan Halt State"
+location: "L3001"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Black_Swan_Halt_State
 ---
 
 # Daily briefing — fast single-screen summary.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_brief()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State

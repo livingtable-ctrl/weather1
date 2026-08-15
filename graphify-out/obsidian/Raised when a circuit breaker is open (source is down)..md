@@ -1,12 +1,12 @@
 ---
 source_file: "circuit_breaker.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L31"
+community: "Community 84"
+location: "L33"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_84
 ---
 
 # Raised when a circuit breaker is open (source is down).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[CircuitOpenError]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_84

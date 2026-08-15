@@ -1,24 +1,22 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Module: frosty"
-location: "L1823"
+community: "Tracker P&L Attribution Tests"
+location: "L5508"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Tracker_PL_Attribution_Tests
 ---
 
 # get_outcome_for_ticker()
 
 ## Connections
-- [[Return the recorded outcome for a ticker (True=YES, False=NO),     or None if n]] - `rationale_for` [EXTRACTED]
+- [[Return the recorded outcome for a ticker (True=YES, False=NO), or None if no…]] - `rationale_for` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
 - [[auto_settle_paper_trades()]] - `calls` [EXTRACTED]
-- [[bool_21]] - `references` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
 - [[paper.py]] - `imports` [EXTRACTED]
-- [[str_30]] - `references` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

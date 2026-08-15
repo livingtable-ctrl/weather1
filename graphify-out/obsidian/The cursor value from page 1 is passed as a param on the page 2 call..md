@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "rationale"
-community: "Module: tests"
-location: "L226"
+community: "Community 336"
+location: "L570"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_336
 ---
 
 # The cursor value from page 1 is passed as a param on the page 2 call.
 
 ## Connections
-- [[.test_cursor_passed_on_second_call()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_cursor_passed_on_second_call()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_336

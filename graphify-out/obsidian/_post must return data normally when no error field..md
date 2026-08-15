@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "rationale"
-community: "Module: tests"
-location: "L268"
+community: "Community 283"
+location: "L323"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_283
 ---
 
 # _post must return data normally when no error field.
 
 ## Connections
-- [[.test_post_succeeds_on_clean_response()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_post_succeeds_on_clean_response()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_283

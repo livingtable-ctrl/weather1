@@ -1,18 +1,17 @@
 ---
-source_file: "tracker.py"
+source_file: ""
 type: "code"
-community: "Module: frosty"
-location: "L454"
+community: "NWS/Circuit-Breaker Data Validation"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/NWS/Circuit-Breaker_Data_Validation
 ---
 
 # date
 
 ## Connections
-- [[_fetch_actual_daily_temp()]] - `references` [EXTRACTED]
-- [[log_prediction()]] - `references` [EXTRACTED]
+- [[fetch_nbm_forecast()]] - `references` [EXTRACTED]
+- [[nws_prob()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation

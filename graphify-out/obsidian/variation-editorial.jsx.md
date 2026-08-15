@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/variation-editorial.jsx"
 type: "code"
-community: "Module: updated"
+community: "Community 644"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_updated
+  - community/Community_644
 ---
 
 # variation-editorial.jsx
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[EditVar]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_updated
+#graphify/code #graphify/EXTRACTED #community/Community_644

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_calibration.py"
 type: "code"
-community: "Module: tests"
-location: "L308"
+community: "Community 118"
+location: "L523"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_118
 ---
 
 # test_calibrate_condition_weights_returns_per_type_dict()
@@ -16,4 +16,4 @@ tags:
 - [[calibrate_condition_weights()]] - `calls` [EXTRACTED]
 - [[test_calibration.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_118

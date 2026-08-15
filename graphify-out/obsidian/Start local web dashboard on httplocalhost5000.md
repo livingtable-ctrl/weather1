@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Python Types & Utilities"
-location: "L6101"
+community: "Black Swan Halt State"
+location: "L8031"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Halt_State
 ---
 
 # Start local web dashboard on http://localhost:5000
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_web()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_consistency.py"
 type: "rationale"
-community: "Module: tests"
-location: "L95"
+community: "Community 35"
+location: "L119"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_35
 ---
 
 # Markets from different series should never be compared.
 
 ## Connections
-- [[.test_different_series_not_compared()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_different_series_not_compared()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_35

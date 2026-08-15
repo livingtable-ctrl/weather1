@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L4371"
+community: "Black Swan Halt State"
+location: "L5902"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Black_Swan_Halt_State
 ---
 
 # Run walk-forward backtest on historical paper trades.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_walk_forward()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State

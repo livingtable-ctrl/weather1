@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 80"
 location: "L15"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_80
 ---
 
 # validate_market must reject out-of-range and inverted prices.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestValidateMarketPriceRange]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_80

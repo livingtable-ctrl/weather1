@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Module: frosty"
-location: "L1302"
+community: "Black Swan Halt State"
+location: "L3413"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Black_Swan_Halt_State
 ---
 
 # export_predictions_csv()
@@ -15,9 +15,7 @@ tags:
 - [[Export prediction history with outcomes to CSV. Returns row count.]] - `rationale_for` [EXTRACTED]
 - [[cmd_export()]] - `calls` [EXTRACTED]
 - [[get_history()]] - `calls` [EXTRACTED]
-- [[int_24]] - `references` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
-- [[str_30]] - `references` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

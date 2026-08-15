@@ -1,25 +1,16 @@
 ---
-source_file: "tests/test_calibration.py"
+source_file: ""
 type: "code"
-community: "Module: tests"
-location: "L11"
+community: "Community 196"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_196
 ---
 
 # Path
 
 ## Connections
-- [[.setup_method()_1]] - `calls` [EXTRACTED]
-- [[.setup_method()_3]] - `calls` [EXTRACTED]
-- [[.setup_method()]] - `calls` [EXTRACTED]
-- [[.test_load_city_missing_file_returns_empty()]] - `calls` [EXTRACTED]
-- [[.test_load_city_valid_json_returns_dict()]] - `calls` [EXTRACTED]
-- [[.test_load_seasonal_corrupt_json_returns_empty()]] - `calls` [EXTRACTED]
-- [[.test_load_seasonal_missing_file_returns_empty()]] - `calls` [EXTRACTED]
-- [[.test_load_seasonal_valid_json_returns_dict()]] - `calls` [EXTRACTED]
-- [[_seed_db()]] - `references` [EXTRACTED]
+- [[_log_near_settlement_trades()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_196

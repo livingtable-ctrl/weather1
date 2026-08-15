@@ -1,12 +1,12 @@
 ---
 source_file: "execution_log.py"
 type: "code"
-community: "Execution Log & Dedup"
-location: "L460"
+community: "Execution Log Live-Loss Tracking"
+location: "L790"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Execution_Log__Dedup
+  - community/Execution_Log_Live-Loss_Tracking
 ---
 
 # get_order_by_id()
@@ -18,6 +18,5 @@ tags:
 - [[execution_log.py]] - `contains` [EXTRACTED]
 - [[init_log()]] - `calls` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
-- [[str_11]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Execution_Log__Dedup
+#graphify/code #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking

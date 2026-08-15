@@ -1,12 +1,12 @@
 ---
 source_file: "config.py"
 type: "code"
-community: "Module: frosty"
-location: "L30"
+community: "Community 129"
+location: "L32"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_129
 ---
 
 # _env_int()
@@ -14,8 +14,7 @@ tags:
 ## Connections
 - [[H-11 parse an int env var with a clear error message on bad input.]] - `rationale_for` [EXTRACTED]
 - [[ValueError]] - `calls` [INFERRED]
+- [[_live_max_days_out()]] - `calls` [EXTRACTED]
 - [[config.py]] - `contains` [EXTRACTED]
-- [[int_6]] - `references` [EXTRACTED]
-- [[str_9]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_129

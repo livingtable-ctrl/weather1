@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_edge_version.py"
 type: "code"
-community: "Module: tests"
-location: "L87"
+community: "Community 334"
+location: "L99"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_334
 ---
 
 # test_precip_fast_path_stamps_edge_version()
@@ -16,4 +16,4 @@ tags:
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[test_edge_version.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_334

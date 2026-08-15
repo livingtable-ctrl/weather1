@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L2513"
+community: "Community 160"
+location: "L3723"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_160
 ---
 
 # Summary statistics for a list of ensemble member temperatures.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[ensemble_stats()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_160

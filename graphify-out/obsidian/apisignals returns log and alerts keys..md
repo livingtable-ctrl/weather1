@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Module: tests"
-location: "L304"
+community: "Community 43"
+location: "L342"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_43
 ---
 
 # /api/signals returns log and alerts keys.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_api_signals_returns_correct_shape()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_43

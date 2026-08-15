@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_metar.py"
 type: "rationale"
-community: "Module: tests"
-location: "L151"
+community: "Community 73"
+location: "L174"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_73
 ---
 
 # P1-2: temperature above 140°F → None (physically impossible).
 
 ## Connections
-- [[.test_returns_none_for_implausible_high_temp()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_returns_none_for_implausible_high_temp()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_73

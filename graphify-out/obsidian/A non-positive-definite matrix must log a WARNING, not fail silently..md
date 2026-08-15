@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_f.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 134"
 location: "L80"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_134
 ---
 
 # A non-positive-definite matrix must log a WARNING, not fail silently.
 
 ## Connections
-- [[.test_cholesky_failure_logs_warning()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_cholesky_failure_logs_warning()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_134

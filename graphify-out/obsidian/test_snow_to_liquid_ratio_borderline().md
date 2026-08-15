@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Snow/Precip Physics"
-location: "L356"
+community: "Ensemble Weight Blending Tests"
+location: "L702"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Snow/Precip_Physics
+  - community/Ensemble_Weight_Blending_Tests
 ---
 
 # test_snow_to_liquid_ratio_borderline()
@@ -15,4 +15,4 @@ tags:
 - [[snow_liquid_ratio()]] - `calls` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Snow/Precip_Physics
+#graphify/code #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests

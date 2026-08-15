@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1236"
+community: "Community 529"
+location: "L2863"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_529
 ---
 
 # File mtime 8 days ago → loader returns {} (default weights).
 
 ## Connections
-- [[.test_stale_weights_file_falls_back_to_defaults()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_stale_weights_file_falls_back_to_defaults()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_529

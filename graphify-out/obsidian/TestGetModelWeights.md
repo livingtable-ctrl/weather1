@@ -1,26 +1,27 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Module: tests"
-location: "L336"
+community: "Community 127"
+location: "L357"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_127
 ---
 
 # TestGetModelWeights
 
 ## Connections
-- [[._seed()_2]] - `method` [EXTRACTED]
-- [[.setup_method()_22]] - `method` [EXTRACTED]
-- [[.teardown_method()_19]] - `method` [EXTRACTED]
-- [[.test_city_isolation()]] - `method` [EXTRACTED]
-- [[.test_empty_returns_empty_dict()]] - `method` [EXTRACTED]
-- [[.test_insufficient_observations_returns_equal_weights()]] - `method` [EXTRACTED]
-- [[.test_lower_mae_gets_higher_weight()]] - `method` [EXTRACTED]
-- [[.test_weights_sum_to_one()_5]] - `method` [EXTRACTED]
-- [[.test_window_days_excludes_old_data()]] - `method` [EXTRACTED]
+- [[dot-_seed()_6]] - `method` [EXTRACTED]
+- [[dot-setup_method()_40]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_31]] - `method` [EXTRACTED]
+- [[dot-test_city_isolation()]] - `method` [EXTRACTED]
+- [[dot-test_empty_returns_empty_dict()]] - `method` [EXTRACTED]
+- [[dot-test_insufficient_observations_for_all_returns_empty_dict()]] - `method` [EXTRACTED]
+- [[dot-test_lower_mae_gets_higher_weight()]] - `method` [EXTRACTED]
+- [[dot-test_one_thin_model_excluded_not_blocking_the_other()]] - `method` [EXTRACTED]
+- [[dot-test_weights_sum_to_one()_5]] - `method` [EXTRACTED]
+- [[dot-test_window_days_excludes_old_data()]] - `method` [EXTRACTED]
 - [[test_signal_quality.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_127

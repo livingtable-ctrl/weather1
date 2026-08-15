@@ -1,22 +1,23 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Module: tests"
-location: "L1620"
+community: "Community 322"
+location: "L3454"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_322
 ---
 
 # TestNoSideEntryEdgeSign
 
 ## Connections
-- [[._make_enriched()_5]] - `method` [EXTRACTED]
-- [[.test_entry_side_edge_formula_arithmetic()]] - `method` [EXTRACTED]
-- [[.test_no_trade_entry_side_edge_is_positive()]] - `method` [EXTRACTED]
-- [[.test_yes_trade_entry_side_edge_positive()]] - `method` [EXTRACTED]
-- [[P0-14 — entry_side_edge must be positive for a valid NO trade.      Old formul]] - `rationale_for` [EXTRACTED]
+- [[dot-_make_enriched()_4]] - `method` [EXTRACTED]
+- [[dot-test_ensemble_excluded_from_blend_when_circuit_open()]] - `method` [EXTRACTED]
+- [[dot-test_entry_side_edge_formula_arithmetic()]] - `method` [EXTRACTED]
+- [[dot-test_no_trade_entry_side_edge_is_positive()]] - `method` [EXTRACTED]
+- [[dot-test_yes_trade_entry_side_edge_positive()]] - `method` [EXTRACTED]
+- [[P0-14 — entry_side_edge must be positive for a valid NO trade. Old formula…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_322

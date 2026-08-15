@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Module: tests"
-location: "L452"
+community: "Community 383"
+location: "L262"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_383
 ---
 
 # save_correlations produces valid JSON with pipe-separated keys.
 
 ## Connections
-- [[.test_save_correlations_valid_json()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_save_correlations_valid_json()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_383

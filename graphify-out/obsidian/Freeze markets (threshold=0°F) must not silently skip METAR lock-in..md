@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_j.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 307"
 location: "L16"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_307
 ---
 
 # Freeze markets (threshold=0°F) must not silently skip METAR lock-in.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMetarLockInZeroThreshold]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_307

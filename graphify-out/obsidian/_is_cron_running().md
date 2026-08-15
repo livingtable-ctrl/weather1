@@ -1,21 +1,21 @@
 ---
 source_file: "cron.py"
 type: "code"
-community: "Cron Scheduler"
-location: "L269"
+community: "Community 566"
+location: "L297"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Cron_Scheduler
+  - community/Community_566
 ---
 
 # _is_cron_running()
 
 ## Connections
-- [[Read-only check return True if a cron process holds the lock right now.]] - `rationale_for` [EXTRACTED]
+- [[Read-only check return True if a cron process holds the lock right now. Uses…]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
-- [[bool_7]] - `references` [EXTRACTED]
 - [[cron.py]] - `contains` [EXTRACTED]
+- [[test_p0_16_cron_endpoint.py]] - `calls` [EXTRACTED]
 - [[web_app.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Cron_Scheduler
+#graphify/code #graphify/EXTRACTED #community/Community_566

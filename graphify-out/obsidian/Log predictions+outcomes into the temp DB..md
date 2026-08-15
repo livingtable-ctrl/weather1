@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_regression.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 284"
 location: "L96"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_284
 ---
 
 # Log predictions+outcomes into the temp DB.
 
 ## Connections
-- [[._seed()]] - `rationale_for` [EXTRACTED]
+- [[dot-_seed()_4]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_284

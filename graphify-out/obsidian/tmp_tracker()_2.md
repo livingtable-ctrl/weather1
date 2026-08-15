@@ -1,17 +1,18 @@
 ---
 source_file: "tests/test_pnl_attribution.py"
 type: "code"
-community: "Module: tests"
+community: "Tracker P&L Attribution Tests"
 location: "L15"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Tracker_PL_Attribution_Tests
 ---
 
 # tmp_tracker()
 
 ## Connections
-- [[test_pnl_attribution.py]] - `contains` [EXTRACTED]
+- [[P&L Attribution Tests]] - `contains` [EXTRACTED]
+- [[fixture_10]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

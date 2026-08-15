@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1168"
+community: "Community 412"
+location: "L1997"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_412
 ---
 
 # Each trend entry must have week, brier, and n keys.
 
 ## Connections
-- [[.test_trend_returns_list_of_dicts_with_week_brier_n()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_trend_returns_list_of_dicts_with_week_brier_n()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_412

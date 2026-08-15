@@ -1,20 +1,20 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "code"
-community: "Module: tests"
-location: "L134"
+community: "Community 493"
+location: "L159"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_493
 ---
 
 # TestDashboardAuth
 
 ## Connections
-- [[.test_200_with_correct_credentials()]] - `method` [EXTRACTED]
-- [[.test_401_when_password_set_and_no_credentials()]] - `method` [EXTRACTED]
-- [[.test_no_auth_required_when_password_unset()]] - `method` [EXTRACTED]
+- [[dot-test_200_with_correct_credentials()]] - `method` [EXTRACTED]
+- [[dot-test_401_when_password_set_and_no_credentials()]] - `method` [EXTRACTED]
+- [[dot-test_no_auth_required_when_password_unset()]] - `method` [EXTRACTED]
 - [[test_web_app.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_493

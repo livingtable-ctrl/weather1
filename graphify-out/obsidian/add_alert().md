@@ -1,26 +1,36 @@
 ---
 source_file: "alerts.py"
 type: "code"
-community: "Module: frosty"
-location: "L48"
+community: "Community 94"
+location: "L39"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_94
 ---
 
 # add_alert()
 
 ## Connections
-- [[Add a price alert.      Args         ticker Market ticker (e.g. KXHIGHNY-2]] - `rationale_for` [EXTRACTED]
+- [[dot-test_above_direction_does_not_fire_when_price_below_target()]] - `calls` [EXTRACTED]
+- [[dot-test_above_direction_fires_when_price_at_or_over_target()]] - `calls` [EXTRACTED]
+- [[dot-test_add_alert_defaults_direction_below_cooldown_60()]] - `calls` [EXTRACTED]
+- [[dot-test_add_alert_invalid_direction_raises()]] - `calls` [EXTRACTED]
+- [[dot-test_add_alert_invalid_target_price_raises()]] - `calls` [EXTRACTED]
+- [[dot-test_add_alert_persists_and_increments_id()]] - `calls` [EXTRACTED]
+- [[dot-test_add_alert_returns_expected_fields()]] - `calls` [EXTRACTED]
+- [[dot-test_below_direction_does_not_fire_when_price_above_target()]] - `calls` [EXTRACTED]
+- [[dot-test_below_direction_fires_when_price_at_or_under_target()]] - `calls` [EXTRACTED]
+- [[dot-test_remove_existing_alert_returns_true_and_removes()]] - `calls` [EXTRACTED]
+- [[dot-test_remove_nonexistent_alert_returns_false()]] - `calls` [EXTRACTED]
+- [[dot-test_untriggered_alert_is_active()]] - `calls` [EXTRACTED]
+- [[Add a price alert. Args ticker Market ticker (e.g. KXHIGHNY-26APR09-T72)…]] - `rationale_for` [EXTRACTED]
 - [[ValueError]] - `calls` [INFERRED]
 - [[_cmd_alerts()]] - `calls` [EXTRACTED]
 - [[_load()]] - `calls` [EXTRACTED]
 - [[_save()]] - `calls` [EXTRACTED]
 - [[alerts.py]] - `contains` [EXTRACTED]
-- [[float_1]] - `references` [EXTRACTED]
-- [[int_1]] - `references` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
-- [[str_1]] - `references` [EXTRACTED]
+- [[test_alerts.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_94

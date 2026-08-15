@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_g.py"
 type: "rationale"
-community: "Module: tests"
-location: "L210"
+community: "Community 132"
+location: "L211"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_132
 ---
 
 # P2-47: restore_data must require confirm=True to prevent silent overwrites.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestRestoreDataConfirm]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_132

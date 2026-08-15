@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "rationale"
-community: "Cron Scheduler"
-location: "L370"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L527"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Cron_Scheduler
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # Return signals where |blended_prob − market_price| > _ANOMALY_THRESHOLD.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[check_market_anomalies()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Cron_Scheduler
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

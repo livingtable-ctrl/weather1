@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L717"
+community: "Community 259"
+location: "L927"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_259
 ---
 
 # Tests for auto-settling paper trades when tracker outcomes are recorded.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestAutoSettlePaperTrades]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_259

@@ -1,12 +1,12 @@
 ---
 source_file: "web_app.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L95"
+community: "Anomaly Detection & PDF Reporting"
+location: "L120"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Build and return the Flask app.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_build_app()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

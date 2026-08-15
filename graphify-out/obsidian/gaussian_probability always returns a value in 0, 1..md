@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "rationale"
-community: "Module: tests"
-location: "L130"
+community: "Community 26"
+location: "L140"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_26
 ---
 
 # gaussian_probability always returns a value in [0, 1].
 
 ## Connections
-- [[.test_probability_clamped_to_unit_interval()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_probability_clamped_to_unit_interval()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_26

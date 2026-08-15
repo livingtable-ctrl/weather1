@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1199"
+community: "Community 578"
+location: "L2642"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_578
 ---
 
 # KXHIGHLA temperature series → city == 'LA'.
 
 ## Connections
-- [[.test_la_high_temp_series_detected()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_la_high_temp_series_detected()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_578

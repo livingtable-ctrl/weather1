@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Module: tests"
-location: "L469"
+community: "Community 394"
+location: "L515"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_394
 ---
 
 # analyze_trade edge is time-decay scaled (not raw blended - market).
 
 ## Connections
-- [[.test_analyze_trade_applies_time_decay()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_analyze_trade_applies_time_decay()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_394

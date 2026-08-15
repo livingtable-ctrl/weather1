@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_graduation_gate.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 180"
 location: "L11"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_180
 ---
 
 # RuntimeError raised when ENABLE_MICRO_LIVE=true and count < MIN_BRIER_SAMPLES.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_gate_raises_when_micro_live_and_insufficient_samples()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_180

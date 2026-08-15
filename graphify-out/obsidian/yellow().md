@@ -1,23 +1,28 @@
 ---
 source_file: "colors.py"
 type: "code"
-community: "Python Types & Utilities"
-location: "L31"
+community: "Black Swan Halt State"
+location: "L33"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Halt_State
 ---
 
 # yellow()
 
 ## Connections
-- [[_analyze_once()]] - `calls` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[_format_expiry()]] - `calls` [EXTRACTED]
 - [[_quick_paper_buy()]] - `calls` [EXTRACTED]
+- [[_render_analysis_results()]] - `calls` [EXTRACTED]
 - [[auto_backtest()]] - `calls` [EXTRACTED]
+- [[cmd_admin()]] - `calls` [EXTRACTED]
+- [[cmd_afd()]] - `calls` [EXTRACTED]
+- [[cmd_backfill_daily_temp_settlement()]] - `calls` [EXTRACTED]
+- [[cmd_backfill_ensemble_var()]] - `calls` [EXTRACTED]
+- [[cmd_backfill_price_history()]] - `calls` [EXTRACTED]
 - [[cmd_backtest()]] - `calls` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
 - [[cmd_browse()]] - `calls` [EXTRACTED]
@@ -31,6 +36,7 @@ tags:
 - [[cmd_market()]] - `calls` [EXTRACTED]
 - [[cmd_markets()]] - `calls` [EXTRACTED]
 - [[cmd_menu()]] - `calls` [EXTRACTED]
+- [[cmd_montecarlo()]] - `calls` [EXTRACTED]
 - [[cmd_onboard()]] - `calls` [EXTRACTED]
 - [[cmd_order()]] - `calls` [EXTRACTED]
 - [[cmd_override()]] - `calls` [EXTRACTED]
@@ -39,6 +45,7 @@ tags:
 - [[cmd_resume()]] - `calls` [EXTRACTED]
 - [[cmd_schedule()]] - `calls` [EXTRACTED]
 - [[cmd_setup()]] - `calls` [EXTRACTED]
+- [[cmd_signals()]] - `calls` [EXTRACTED]
 - [[cmd_simulate()]] - `calls` [EXTRACTED]
 - [[cmd_today()]] - `calls` [EXTRACTED]
 - [[cmd_walkforward()]] - `calls` [EXTRACTED]
@@ -48,12 +55,11 @@ tags:
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[edge_color()]] - `calls` [EXTRACTED]
 - [[liquidity_color()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
 - [[output_formatters.py]] - `imports` [EXTRACTED]
 - [[signal_color()]] - `calls` [EXTRACTED]
-- [[str_8]] - `references` [EXTRACTED]
 - [[validate_api_key()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

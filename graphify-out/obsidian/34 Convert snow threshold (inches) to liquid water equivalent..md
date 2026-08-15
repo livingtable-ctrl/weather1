@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Snow/Precip Physics"
-location: "L3451"
+community: "Ensemble Weight Blending Tests"
+location: "L7296"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Snow/Precip_Physics
+  - community/Ensemble_Weight_Blending_Tests
 ---
 
 # #34: Convert snow threshold (inches) to liquid water equivalent.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[liquid_equiv_of_snow_threshold()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Snow/Precip_Physics
+#graphify/rationale #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests

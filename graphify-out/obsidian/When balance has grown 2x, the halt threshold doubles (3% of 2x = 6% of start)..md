@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "rationale"
-community: "Module: tests"
-location: "L376"
+community: "Community 435"
+location: "L379"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_435
 ---
 
 # When balance has grown 2x, the halt threshold doubles (3% of 2x = 6% of start).
 
 ## Connections
-- [[.test_threshold_grows_with_balance()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_threshold_grows_with_balance()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_435

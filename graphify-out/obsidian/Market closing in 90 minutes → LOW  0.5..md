@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Module: tests"
-location: "L211"
+community: "Community 350"
+location: "L298"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_350
 ---
 
 # Market closing in 90 minutes → LOW / 0.5.
 
 ## Connections
-- [[.test_near_close_returns_low_risk()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_near_close_returns_low_risk()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_350

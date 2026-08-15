@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_integration.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 53"
 location: "L80"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_53
 ---
 
 # Integration tests for analyze_trade() (#112).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestAnalyzePipeline]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_53

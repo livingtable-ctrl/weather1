@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L525"
+community: "Community 160"
+location: "L881"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_160
 ---
 
 # min and max match the actual extremes.
 
 ## Connections
-- [[.test_min_max_correct()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_min_max_correct()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_160

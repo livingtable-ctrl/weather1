@@ -1,23 +1,21 @@
 ---
 source_file: "tests/test_forecast_accuracy.py"
 type: "code"
-community: "Module: tests"
+community: "Community 232"
 location: "L52"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_232
 ---
 
 # _open_meteo_response()
 
 ## Connections
-- [[.test_forecast_returns_required_keys()]] - `calls` [EXTRACTED]
-- [[.test_forecast_within_tolerance()]] - `calls` [EXTRACTED]
-- [[Build a minimal Open-Meteo daily forecast JSON for the target date.     Values]] - `rationale_for` [EXTRACTED]
+- [[dot-test_forecast_returns_required_keys()]] - `calls` [EXTRACTED]
+- [[dot-test_forecast_within_tolerance()]] - `calls` [EXTRACTED]
+- [[Build a minimal Open-Meteo daily forecast JSON for the target date. Values are…]] - `rationale_for` [EXTRACTED]
 - [[_build_mock_forecast()]] - `calls` [EXTRACTED]
-- [[float_38]] - `references` [EXTRACTED]
-- [[str_40]] - `references` [EXTRACTED]
 - [[test_forecast_accuracy.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_232

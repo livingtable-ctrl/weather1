@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "A/B Testing System"
-location: "L64"
+community: "Community 207"
+location: "L79"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/A/B_Testing_System
+  - community/Community_207
 ---
 
 # Result must be a dict containing the standard price keys.
 
 ## Connections
-- [[.test_returns_dict_with_expected_keys()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_returns_dict_with_expected_keys()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/A/B_Testing_System
+#graphify/rationale #graphify/EXTRACTED #community/Community_207

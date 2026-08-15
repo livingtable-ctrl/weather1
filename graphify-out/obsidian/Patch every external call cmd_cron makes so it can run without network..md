@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_main_cron_smoke.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 40"
 location: "L14"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_40
 ---
 
 # Patch every external call cmd_cron makes so it can run without network.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[minimal_mocks()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_40

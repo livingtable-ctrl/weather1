@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Python Types & Utilities"
-location: "L417"
+community: "Black Swan Halt State"
+location: "L501"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Halt_State
 ---
 
 # _header()
@@ -36,8 +36,6 @@ tags:
 - [[cmd_simulate()]] - `calls` [EXTRACTED]
 - [[cmd_version_compare()]] - `calls` [EXTRACTED]
 - [[cmd_walkforward()]] - `calls` [EXTRACTED]
-- [[int_12]] - `references` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
-- [[str_15]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

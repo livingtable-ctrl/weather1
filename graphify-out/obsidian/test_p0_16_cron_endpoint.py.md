@@ -1,21 +1,22 @@
 ---
 source_file: "tests/test_p0_16_cron_endpoint.py"
 type: "code"
-community: "Module: tests"
-location: "L1"
+community: "Community 566"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_566
 ---
 
 # test_p0_16_cron_endpoint.py
 
 ## Connections
-- [[P0-16 api_run_cron concurrent-run guard.  Verifies that apirun_cron returns]] - `rationale_for` [EXTRACTED]
+- [[P0-16 api_run_cron concurrent-run guard. Verifies that apirun_cron returns…]] - `rationale_for` [EXTRACTED]
 - [[TestIsCronRunning]] - `contains` [EXTRACTED]
 - [[TestRunCronConcurrentGuard]] - `contains` [EXTRACTED]
 - [[_auth_headers()]] - `contains` [EXTRACTED]
+- [[_build_app()]] - `calls` [EXTRACTED]
+- [[_is_cron_running()]] - `calls` [EXTRACTED]
 - [[_make_app()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_566

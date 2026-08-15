@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1186"
+community: "Community 116"
+location: "L2629"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_116
 ---
 
 # Call enrich_with_forecast with a mocked forecast and return _city.
 
 ## Connections
-- [[._city()]] - `rationale_for` [EXTRACTED]
+- [[dot-_city()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_116

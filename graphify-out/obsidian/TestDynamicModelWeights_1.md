@@ -1,20 +1,20 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "code"
-community: "Model Weights & Ensemble Blend"
-location: "L214"
+community: "Forecasting Persistence Model Tests"
+location: "L176"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Model_Weights__Ensemble_Blend
+  - community/Forecasting_Persistence_Model_Tests
 ---
 
 # TestDynamicModelWeights
 
 ## Connections
-- [[.test_empty_tracker_returns_none()]] - `method` [EXTRACTED]
-- [[.test_high_mae_model_gets_low_weight()]] - `method` [EXTRACTED]
-- [[.test_no_tracker_data_returns_none()]] - `method` [EXTRACTED]
-- [[test_phase4.py]] - `contains` [EXTRACTED]
+- [[dot-test_empty_tracker_returns_none()]] - `method` [EXTRACTED]
+- [[dot-test_high_mae_model_gets_low_weight()]] - `method` [EXTRACTED]
+- [[dot-test_no_tracker_data_returns_none()]] - `method` [EXTRACTED]
+- [[Phase 4 Improvement Tests]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Model_Weights__Ensemble_Blend
+#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests

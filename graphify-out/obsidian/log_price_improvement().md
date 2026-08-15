@@ -1,25 +1,25 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Tracker Analytics (Brier/Bias)"
-location: "L2159"
+community: "Community 36"
+location: "L5850"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Analytics_Brier/Bias
+  - community/Community_36
 ---
 
 # log_price_improvement()
 
 ## Connections
-- [[65 Record the difference between the desired price and the actual fill price.]] - `rationale_for` [EXTRACTED]
+- [[65 Record the difference between the desired price and the actual fill price.…]] - `rationale_for` [EXTRACTED]
+- [[Phase 5 Trading Portfolio Plan]] - `implements` [EXTRACTED]
+- [[Tracker Grade Audit]] - `references` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
-- [[float_29]] - `references` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[int_24]] - `references` [EXTRACTED]
 - [[paper.py]] - `imports` [EXTRACTED]
 - [[place_paper_order()_1]] - `calls` [EXTRACTED]
-- [[str_30]] - `references` [EXTRACTED]
+- [[tracker.py_2]] - `implements` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Analytics_Brier/Bias
+#graphify/code #graphify/EXTRACTED #community/Community_36

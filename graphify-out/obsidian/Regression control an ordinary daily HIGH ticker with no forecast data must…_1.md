@@ -1,0 +1,17 @@
+---
+source_file: "tests/test_snow_markets.py"
+type: "rationale"
+community: "Community 263"
+location: "L266"
+tags:
+  - graphify/rationale
+  - graphify/EXTRACTED
+  - community/Community_263
+---
+
+# Regression control: an ordinary daily HIGH ticker with no forecast data must…
+
+## Connections
+- [[dot-test_daily_high_ticker_unaffected()_2]] - `rationale_for` [EXTRACTED]
+
+#graphify/rationale #graphify/EXTRACTED #community/Community_263

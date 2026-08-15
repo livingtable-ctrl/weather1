@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_edge_version.py"
 type: "rationale"
-community: "Module: tests"
-location: "L88"
+community: "Community 334"
+location: "L100"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_334
 ---
 
 # Precipitation fast-path returns must also carry edge_calc_version.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_precip_fast_path_stamps_edge_version()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_334

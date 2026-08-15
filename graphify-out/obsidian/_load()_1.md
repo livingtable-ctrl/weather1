@@ -1,18 +1,23 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Paper Trading & Exits"
-location: "L210"
+community: "Anomaly Detection & PDF Reporting"
+location: "L378"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Paper_Trading__Exits
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # _load()
 
 ## Connections
+- [[dot-save_peak()_1]] - `calls` [EXTRACTED]
+- [[CorruptionError]] - `calls` [EXTRACTED]
 - [[_daily_paper_spend()]] - `calls` [EXTRACTED]
+- [[_daily_sameday_spend()]] - `calls` [EXTRACTED]
+- [[_drawdown_snapshot()]] - `calls` [EXTRACTED]
+- [[_existed_marker_path()]] - `calls` [EXTRACTED]
 - [[_mark_needs_manual_settle()]] - `calls` [EXTRACTED]
 - [[_validate_checksum()]] - `calls` [EXTRACTED]
 - [[_validate_crc()]] - `calls` [EXTRACTED]
@@ -29,13 +34,14 @@ tags:
 - [[get_performance()]] - `calls` [EXTRACTED]
 - [[get_profit_factor()]] - `calls` [EXTRACTED]
 - [[get_rolling_sharpe()]] - `calls` [EXTRACTED]
+- [[get_sameday_band_stats()]] - `calls` [EXTRACTED]
 - [[is_streak_paused()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
 - [[place_paper_order()_1]] - `calls` [EXTRACTED]
+- [[reset_peak_balance()]] - `calls` [EXTRACTED]
 - [[settle_paper_trade()]] - `calls` [EXTRACTED]
 - [[undo_last_trade()]] - `calls` [EXTRACTED]
-- [[update_peak_profits()]] - `calls` [EXTRACTED]
 - [[validate_paper_trades_integrity()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Paper_Trading__Exits
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

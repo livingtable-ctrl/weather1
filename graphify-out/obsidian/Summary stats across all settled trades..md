@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "CLI & Preload Pipeline"
-location: "L1532"
+community: "Anomaly Detection & PDF Reporting"
+location: "L1999"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Summary stats across all settled trades.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_performance()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "rationale"
-community: "Module: tests"
-location: "L118"
+community: "Community 274"
+location: "L225"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_274
 ---
 
 # Seeding yesterday's row should not affect today's total.
 
 ## Connections
-- [[.test_daily_live_loss_returns_zero_for_new_day()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_daily_live_loss_returns_zero_for_new_day()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_274

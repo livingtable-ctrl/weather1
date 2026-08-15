@@ -1,17 +1,17 @@
 ---
 source_file: "ab_test.py"
 type: "rationale"
-community: "A/B Testing System"
-location: "L158"
+community: "Community 33"
+location: "L161"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/A/B_Testing_System
+  - community/Community_33
 ---
 
 # Return summary statistics for all variants.
 
 ## Connections
-- [[.summary()]] - `rationale_for` [EXTRACTED]
+- [[dot-summary()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/A/B_Testing_System
+#graphify/rationale #graphify/EXTRACTED #community/Community_33

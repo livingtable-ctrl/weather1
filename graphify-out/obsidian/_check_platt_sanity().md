@@ -1,12 +1,12 @@
 ---
 source_file: "system_health.py"
 type: "code"
-community: "Module: frosty"
-location: "L67"
+community: "Community 296"
+location: "L68"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_296
 ---
 
 # _check_platt_sanity()
@@ -16,6 +16,7 @@ tags:
 - [[Return unhealthy if any loaded Platt model has A = 0 (signal inversion).]] - `rationale_for` [EXTRACTED]
 - [[_load_platt_models()]] - `calls` [EXTRACTED]
 - [[check_system_health()]] - `calls` [EXTRACTED]
+- [[system_health.py_2]] - `implements` [EXTRACTED]
 - [[system_health.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_296

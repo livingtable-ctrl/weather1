@@ -1,17 +1,17 @@
 ---
 source_file: "circuit_breaker.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L307"
+community: "Community 95"
+location: "L338"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_95
 ---
 
 # Load persisted cooldowns from disk, discarding any that have already expired.
 
 ## Connections
-- [[._load_cooldowns()]] - `rationale_for` [EXTRACTED]
+- [[dot-_load_cooldowns()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_95

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L96"
+community: "Tracker Brier Score & Outcome Logging"
+location: "L141"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Tracker_Brier_Score__Outcome_Logging
 ---
 
 # get_bias() should return 0.0 with fewer samples than min_samples.
 
 ## Connections
-- [[.test_bias_insufficient_data()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_bias_insufficient_data()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Tracker_Brier_Score__Outcome_Logging

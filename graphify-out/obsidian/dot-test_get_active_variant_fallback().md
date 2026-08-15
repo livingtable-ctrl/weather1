@@ -1,0 +1,19 @@
+---
+source_file: "tests/test_ab_test.py"
+type: "code"
+community: "Community 33"
+location: "L103"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_33
+---
+
+# .test_get_active_variant_fallback()
+
+## Connections
+- [[TestABTest]] - `method` [EXTRACTED]
+- [[get_active_variant returns ('control', None) for unknown test name.]] - `rationale_for` [EXTRACTED]
+- [[get_active_variant()]] - `calls` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_33

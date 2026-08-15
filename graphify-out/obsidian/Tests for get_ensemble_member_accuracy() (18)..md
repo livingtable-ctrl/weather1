@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L776"
+community: "Community 264"
+location: "L1425"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_264
 ---
 
 # Tests for get_ensemble_member_accuracy() (#18).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestEnsembleMemberAccuracy]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_264

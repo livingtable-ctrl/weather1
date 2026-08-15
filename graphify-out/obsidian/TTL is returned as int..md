@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "rationale"
-community: "Module: tests"
-location: "L272"
+community: "Community 82"
+location: "L234"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_82
 ---
 
 # TTL is returned as int.
 
 ## Connections
-- [[.test_returns_int()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_returns_int()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_82

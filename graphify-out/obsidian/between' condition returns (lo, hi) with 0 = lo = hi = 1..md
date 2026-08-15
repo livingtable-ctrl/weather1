@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L578"
+community: "Community 269"
+location: "L934"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_269
 ---
 
 # between' condition: returns (lo, hi) with 0 <= lo <= hi <= 1.
 
 ## Connections
-- [[.test_between_condition_returns_valid_tuple()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_between_condition_returns_valid_tuple()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_269

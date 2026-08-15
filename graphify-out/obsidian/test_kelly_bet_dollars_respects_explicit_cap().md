@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Module: tests"
-location: "L1035"
+community: "Community 56"
+location: "L1142"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_56
 ---
 
 # test_kelly_bet_dollars_respects_explicit_cap()
@@ -16,4 +16,4 @@ tags:
 - [[kelly_bet_dollars()]] - `calls` [EXTRACTED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_56

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_h.py"
 type: "rationale"
-community: "Module: tests"
+community: "Climatology & Climate Index Fetching"
 location: "L101"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Climatology__Climate_Index_Fetching
 ---
 
 # Patching _utc_today in mos changes sigma lookup.
 
 ## Connections
-- [[.test_days_out_frozen()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_days_out_frozen()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching

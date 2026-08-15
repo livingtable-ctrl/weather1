@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "rationale"
-community: "Module: tests"
-location: "L457"
+community: "Trade Cycle Engine & Arbitrage Gates"
+location: "L510"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Trade_Cycle_Engine__Arbitrage_Gates
 ---
 
 # Build minimal scan state that would trigger arb placement.
 
 ## Connections
-- [[._scan_result_with_violation()]] - `rationale_for` [EXTRACTED]
+- [[dot-_scan_result_with_violation()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Trade_Cycle_Engine__Arbitrage_Gates

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Module: tests"
-location: "L241"
+community: "Community 43"
+location: "L279"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_43
 ---
 
 # Trades page returns 200 and contains 'Trades'.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_trades_route_returns_200_with_title()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_43

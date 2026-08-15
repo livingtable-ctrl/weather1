@@ -1,18 +1,18 @@
 ---
-source_file: "frontend/src/App.jsx"
+source_file: "weather app site V_3 (3)/src/App.jsx"
 type: "code"
-community: "Module: src"
-location: "L100"
+community: "Community 93"
+location: "L99"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_src
+  - community/Community_93
 ---
 
 # Nav()
 
 ## Connections
-- [[App.jsx]] - `contains` [EXTRACTED]
 - [[authHeader()]] - `calls` [EXTRACTED]
+- [[weather app site V_3 (3)srcApp.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_src
+#graphify/code #graphify/EXTRACTED #community/Community_93

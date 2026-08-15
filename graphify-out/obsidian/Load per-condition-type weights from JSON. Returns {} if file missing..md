@@ -1,12 +1,12 @@
 ---
 source_file: "calibration.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L311"
+community: "Community 103"
+location: "L373"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_103
 ---
 
 # Load per-condition-type weights from JSON. Returns {} if file missing.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[load_condition_weights()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_103

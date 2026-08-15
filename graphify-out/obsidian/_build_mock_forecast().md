@@ -1,21 +1,19 @@
 ---
 source_file: "tests/test_forecast_accuracy.py"
 type: "code"
-community: "Module: tests"
+community: "Community 232"
 location: "L65"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_232
 ---
 
 # _build_mock_forecast()
 
 ## Connections
-- [[Register mocked Open-Meteo responses for all three models (GFS, ECMWF, ICON)]] - `rationale_for` [EXTRACTED]
+- [[Register mocked Open-Meteo responses for all three models (GFS, ECMWF, ICON) so…]] - `rationale_for` [EXTRACTED]
 - [[_open_meteo_response()]] - `calls` [EXTRACTED]
-- [[float_38]] - `references` [EXTRACTED]
-- [[str_40]] - `references` [EXTRACTED]
 - [[test_forecast_accuracy.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_232

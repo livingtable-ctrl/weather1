@@ -1,0 +1,21 @@
+---
+source_file: "tests/test_forecast_accuracy.py"
+type: "code"
+community: "Community 232"
+location: "L94"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_232
+---
+
+# .test_forecast_within_tolerance()
+
+## Connections
+- [[Mocked forecast returns a high_f within ±5°F of the archived observation.]] - `rationale_for` [EXTRACTED]
+- [[TestForecastAccuracyFixtures]] - `method` [EXTRACTED]
+- [[_open_meteo_response()]] - `calls` [EXTRACTED]
+- [[activate]] - `references` [EXTRACTED]
+- [[parametrize_1]] - `references` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_232

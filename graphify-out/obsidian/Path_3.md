@@ -1,19 +1,16 @@
 ---
-source_file: "climatology.py"
+source_file: ""
 type: "code"
-community: "Module: tests"
-location: "L37"
+community: "Community 37"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_37
 ---
 
 # Path
 
 ## Connections
-- [[CircuitBreaker]] - `uses` [INFERRED]
-- [[_cache_is_stale()]] - `references` [EXTRACTED]
-- [[_cache_path()]] - `references` [EXTRACTED]
+- [[save_walk_forward_params()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_37

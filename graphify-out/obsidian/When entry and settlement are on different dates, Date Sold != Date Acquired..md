@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_i.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 189"
 location: "L215"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_189
 ---
 
 # When entry and settlement are on different dates, Date Sold != Date Acquired.
 
 ## Connections
-- [[.test_date_sold_differs_from_date_acquired()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_date_sold_differs_from_date_acquired()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_189

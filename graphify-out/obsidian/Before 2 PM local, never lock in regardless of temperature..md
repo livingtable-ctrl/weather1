@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_metar.py"
 type: "rationale"
-community: "Module: tests"
-location: "L225"
+community: "Community 399"
+location: "L694"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_399
 ---
 
 # Before 2 PM local, never lock in regardless of temperature.
 
 ## Connections
-- [[.test_not_locked_before_2pm()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_not_locked_before_2pm()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_399

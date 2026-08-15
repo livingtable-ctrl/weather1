@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "code"
-community: "Module: frosty"
-location: "L310"
+community: "ML Bias Multiday-Predictions Filter"
+location: "L340"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/ML_Bias_Multiday-Predictions_Filter
 ---
 
 # apply_platt_per_city()
@@ -16,9 +16,7 @@ tags:
 - [[_logit()]] - `calls` [EXTRACTED]
 - [[_sigmoid()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[float_18]] - `references` [EXTRACTED]
 - [[ml_bias.py]] - `contains` [EXTRACTED]
-- [[str_17]] - `references` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L566"
+community: "Community 343"
+location: "L722"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_343
 ---
 
 # Concentrated same-side bets trigger 50% further reduction.
 
 ## Connections
-- [[.test_portfolio_kelly_with_directional_penalty()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_portfolio_kelly_with_directional_penalty()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_343

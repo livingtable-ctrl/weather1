@@ -1,19 +1,17 @@
 ---
-source_file: "mos.py"
+source_file: ""
 type: "code"
-community: "MOS Forecast Source"
-location: "L65"
+community: "Community 211"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MOS_Forecast_Source
+  - community/Community_211
 ---
 
 # date
 
 ## Connections
-- [[fetch_mos()]] - `references` [EXTRACTED]
-- [[fetch_mos_best()]] - `references` [EXTRACTED]
-- [[is_mos_cached()]] - `references` [EXTRACTED]
+- [[_fetch_daily_temps_f()]] - `references` [EXTRACTED]
+- [[fetch_metar_daily_extreme()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/MOS_Forecast_Source
+#graphify/code #graphify/EXTRACTED #community/Community_211

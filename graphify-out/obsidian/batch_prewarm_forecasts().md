@@ -1,30 +1,29 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Forecast Analysis Engine"
-location: "L1010"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L1557"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecast_Analysis_Engine
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # batch_prewarm_forecasts()
 
 ## Connections
-- [[Pre-warm _forecast_cache with batched Open-Meteo requests.      Instead of one]] - `rationale_for` [EXTRACTED]
-- [[_cmd_cron_body()]] - `calls` [EXTRACTED]
+- [[Pre-warm _forecast_cache with batched Open-Meteo requests. Instead of one HTTP…]] - `rationale_for` [EXTRACTED]
+- [[ValueError]] - `calls` [INFERRED]
 - [[_forecast_model_weights()]] - `calls` [EXTRACTED]
 - [[_om_request()]] - `calls` [EXTRACTED]
+- [[_run_batch_prewarm_for_pairs()]] - `calls` [EXTRACTED]
 - [[_save_forecast_disk_entry()]] - `calls` [EXTRACTED]
 - [[_ttl_until_next_cycle()]] - `calls` [EXTRACTED]
-- [[bool_24]] - `references` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
 - [[cmd_today()]] - `calls` [EXTRACTED]
-- [[cron.py]] - `imports` [EXTRACTED]
-- [[int_26]] - `references` [EXTRACTED]
+- [[is_all_null()]] - `calls` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
-- [[str_33]] - `references` [EXTRACTED]
+- [[trade_cycle.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecast_Analysis_Engine
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

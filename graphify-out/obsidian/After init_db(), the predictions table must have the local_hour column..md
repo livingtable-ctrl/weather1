@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1894"
+community: "Community 316"
+location: "L3333"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_316
 ---
 
 # After init_db(), the predictions table must have the local_hour column.
 
 ## Connections
-- [[.test_local_hour_column_exists_after_init()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_local_hour_column_exists_after_init()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_316

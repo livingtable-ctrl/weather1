@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "A/B Testing System"
-location: "L72"
+community: "Community 207"
+location: "L87"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/A/B_Testing_System
+  - community/Community_207
 ---
 
 # Integer values > 1 are treated as cents and divided by 100.
 
 ## Connections
-- [[.test_cents_converted_to_decimal()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_cents_converted_to_decimal()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/A/B_Testing_System
+#graphify/rationale #graphify/EXTRACTED #community/Community_207

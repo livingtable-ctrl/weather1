@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "rationale"
-community: "Module: tests"
-location: "L66"
+community: "Community 26"
+location: "L76"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_26
 ---
 
 # Unknown city returns the default sigma in the NWS RMSE range.
 
 ## Connections
-- [[.test_get_historical_sigma_unknown_city_default()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_get_historical_sigma_unknown_city_default()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_26

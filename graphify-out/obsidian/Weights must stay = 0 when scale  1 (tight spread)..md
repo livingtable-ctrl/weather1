@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "rationale"
-community: "Module: tests"
-location: "L15"
+community: "Community 282"
+location: "L16"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_282
 ---
 
 # Weights must stay >= 0 when scale > 1 (tight spread).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestConfidenceScaledBlendWeightsNoNegative]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_282

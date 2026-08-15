@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L29"
+community: "Anomaly Detection & PDF Reporting"
+location: "L61"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Raised when a file's CRC32 checksum does not match its content.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[CorruptionError]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

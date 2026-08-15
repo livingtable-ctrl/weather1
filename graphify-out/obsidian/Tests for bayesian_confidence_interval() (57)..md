@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L836"
+community: "Community 314"
+location: "L1485"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_314
 ---
 
 # Tests for bayesian_confidence_interval() (#57).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestBayesianConfidenceInterval]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_314

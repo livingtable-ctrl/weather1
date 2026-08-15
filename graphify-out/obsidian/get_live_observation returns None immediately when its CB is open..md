@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_infrastructure.py"
 type: "rationale"
-community: "Circuit Breaker Fault Tolerance"
-location: "L147"
+community: "Community 44"
+location: "L171"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Circuit_Breaker_Fault_Tolerance
+  - community/Community_44
 ---
 
 # get_live_observation returns None immediately when its CB is open.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_nws_cb_skips_when_open()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Circuit_Breaker_Fault_Tolerance
+#graphify/rationale #graphify/EXTRACTED #community/Community_44

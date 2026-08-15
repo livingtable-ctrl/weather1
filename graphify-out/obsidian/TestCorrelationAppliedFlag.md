@@ -1,24 +1,24 @@
 ---
 source_file: "tests/test_phase2_batch_f.py"
 type: "code"
-community: "Module: tests"
+community: "Community 134"
 location: "L28"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_134
 ---
 
 # TestCorrelationAppliedFlag
 
 ## Connections
-- [[._run()_1]] - `method` [EXTRACTED]
-- [[.test_cholesky_failure_logs_warning()]] - `method` [EXTRACTED]
-- [[.test_correlation_applied_false_when_cholesky_fails()]] - `method` [EXTRACTED]
-- [[.test_correlation_applied_false_when_no_city()]] - `method` [EXTRACTED]
-- [[.test_correlation_applied_false_when_no_trades()]] - `method` [EXTRACTED]
-- [[.test_correlation_applied_true_when_cholesky_succeeds()]] - `method` [EXTRACTED]
+- [[dot-_run()_4]] - `method` [EXTRACTED]
+- [[dot-test_cholesky_failure_logs_warning()]] - `method` [EXTRACTED]
+- [[dot-test_correlation_applied_false_when_cholesky_fails()]] - `method` [EXTRACTED]
+- [[dot-test_correlation_applied_false_when_no_city()]] - `method` [EXTRACTED]
+- [[dot-test_correlation_applied_false_when_no_trades()]] - `method` [EXTRACTED]
+- [[dot-test_correlation_applied_true_when_cholesky_succeeds()]] - `method` [EXTRACTED]
 - [[P2-1 correlation_applied must reflect whether Cholesky actually succeeded.]] - `rationale_for` [EXTRACTED]
-- [[test_phase2_batch_f.py]] - `contains` [EXTRACTED]
+- [[Phase 2 Batch F Regression Tests]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_134

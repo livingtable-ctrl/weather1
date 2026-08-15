@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_c.py"
 type: "rationale"
-community: "Module: tests"
-location: "L213"
+community: "Community 344"
+location: "L229"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_344
 ---
 
 # Concurrent calls must not raise and must each return a dict.
 
 ## Connections
-- [[.test_cache_is_thread_safe()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_cache_is_thread_safe()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_344

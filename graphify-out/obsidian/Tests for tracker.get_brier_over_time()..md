@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L407"
+community: "Community 46"
+location: "L916"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_46
 ---
 
 # Tests for tracker.get_brier_over_time().
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestGetBrierOverTime]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_46

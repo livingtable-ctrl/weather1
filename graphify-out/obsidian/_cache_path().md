@@ -1,21 +1,19 @@
 ---
-source_file: "climatology.py"
+source_file: "acis_precip.py"
 type: "code"
-community: "Module: tests"
-location: "L37"
+community: "Community 62"
+location: "L169"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_62
 ---
 
 # _cache_path()
 
 ## Connections
-- [[Path_3]] - `references` [EXTRACTED]
-- [[climatology.py]] - `contains` [EXTRACTED]
-- [[fetch_historical()]] - `calls` [EXTRACTED]
-- [[preload_all()]] - `calls` [EXTRACTED]
-- [[str_6]] - `references` [EXTRACTED]
+- [[Path]] - `references` [EXTRACTED]
+- [[acis_precip.py]] - `contains` [EXTRACTED]
+- [[fetch_historical_daily()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_62

@@ -1,12 +1,12 @@
 ---
 source_file: "calibration.py"
 type: "rationale"
-community: "Module: tests"
-location: "L234"
+community: "Community 103"
+location: "L280"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_103
 ---
 
 # Load per-city weights from JSON. Returns {} if file missing.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[load_city_weights()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_103

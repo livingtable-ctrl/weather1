@@ -1,18 +1,18 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Python Types & Utilities"
-location: "L926"
+community: "Black Swan Halt State"
+location: "L1041"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Halt_State
 ---
 
 # cmd_markets()
 
 ## Connections
-- [[KalshiClient_2]] - `references` [EXTRACTED]
+- [[KalshiClient]] - `references` [EXTRACTED]
 - [[_header()]] - `calls` [EXTRACTED]
 - [[_market_base_url()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
@@ -20,11 +20,11 @@ tags:
 - [[dim()]] - `calls` [EXTRACTED]
 - [[enrich_with_forecast()]] - `calls` [EXTRACTED]
 - [[get_weather_markets()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 - [[prob_color()]] - `calls` [EXTRACTED]
 - [[signal_color()]] - `calls` [EXTRACTED]
 - [[yellow()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

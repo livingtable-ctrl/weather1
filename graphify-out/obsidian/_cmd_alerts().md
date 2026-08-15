@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Python Types & Utilities"
-location: "L4062"
+community: "Black Swan Halt State"
+location: "L5575"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Halt_State
 ---
 
 # _cmd_alerts()
@@ -25,4 +25,4 @@ tags:
 - [[red()]] - `calls` [EXTRACTED]
 - [[remove_alert()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

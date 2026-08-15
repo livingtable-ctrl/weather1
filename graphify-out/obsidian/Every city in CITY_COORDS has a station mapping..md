@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "rationale"
-community: "Module: tests"
-location: "L398"
+community: "Community 407"
+location: "L360"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_407
 ---
 
 # Every city in CITY_COORDS has a station mapping.
 
 ## Connections
-- [[.test_all_cities_have_station()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_all_cities_have_station()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_407

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_dedup.py"
 type: "rationale"
-community: "Execution Log & Dedup"
-location: "L100"
+community: "Community 97"
+location: "L132"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Execution_Log__Dedup
+  - community/Community_97
 ---
 
 # _auto_place_trades must skip an opp if was_traded_today returns True.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_auto_place_trades_skips_already_traded_today()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Execution_Log__Dedup
+#graphify/rationale #graphify/EXTRACTED #community/Community_97

@@ -1,0 +1,18 @@
+---
+source_file: "tests/test_forecasting.py"
+type: "code"
+community: "Forecasting Persistence Model Tests"
+location: "L85"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Forecasting_Persistence_Model_Tests
+---
+
+# .test_analyze_trade_blends_persistence_for_short_horizon()
+
+## Connections
+- [[TestPersistenceProb]] - `method` [EXTRACTED]
+- [[analyze_trade includes persistence at 15% weight when days_out = 2.]] - `rationale_for` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests

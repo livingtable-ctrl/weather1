@@ -1,12 +1,11 @@
 ---
 source_file: "tests/test_mos.py"
 type: "code"
-community: "Module: tests"
-location: "L1"
+community: "Community 457"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_457
 ---
 
 # test_mos.py
@@ -15,5 +14,9 @@ tags:
 - [[TestFetchMos]] - `contains` [EXTRACTED]
 - [[TestMosIntegration]] - `contains` [EXTRACTED]
 - [[Tests for NOAA MOS via IEM API.]] - `rationale_for` [EXTRACTED]
+- [[analyze_trade()]] - `calls` [EXTRACTED]
+- [[fetch_mos()]] - `calls` [EXTRACTED]
+- [[get_mos_station()]] - `calls` [EXTRACTED]
+- [[test_metar.py]] - `semantically_similar_to` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_457

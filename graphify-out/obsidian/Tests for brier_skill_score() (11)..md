@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L604"
+community: "Community 436"
+location: "L1253"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_436
 ---
 
 # Tests for brier_skill_score() (#11).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestBrierSkillScore]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_436

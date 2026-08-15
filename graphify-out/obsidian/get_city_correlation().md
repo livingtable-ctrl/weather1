@@ -1,21 +1,19 @@
 ---
 source_file: "monte_carlo.py"
 type: "code"
-community: "Module: tests"
-location: "L155"
+community: "Community 181"
+location: "L184"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_181
 ---
 
 # get_city_correlation()
 
 ## Connections
-- [[49 Return the pairwise correlation for two cities.      Tries dynamic correl]] - `rationale_for` [EXTRACTED]
+- [[49 Return the pairwise correlation for two cities. Tries dynamic correlations…]] - `rationale_for` [EXTRACTED]
 - [[_load_dynamic_correlations()]] - `calls` [EXTRACTED]
-- [[float_19]] - `references` [EXTRACTED]
 - [[monte_carlo.py]] - `contains` [EXTRACTED]
-- [[str_18]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_181

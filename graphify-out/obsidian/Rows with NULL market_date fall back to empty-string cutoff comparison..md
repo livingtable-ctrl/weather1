@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase3_batch_c.py"
 type: "rationale"
-community: "Module: tests"
-location: "L321"
+community: "Community 406"
+location: "L329"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_406
 ---
 
 # Rows with NULL market_date fall back to empty-string cutoff comparison.
 
 ## Connections
-- [[.test_no_market_date_rows_handled_gracefully()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_no_market_date_rows_handled_gracefully()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_406

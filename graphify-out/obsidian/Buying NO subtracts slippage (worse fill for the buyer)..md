@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Module: tests"
-location: "L492"
+community: "Community 320"
+location: "L302"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_320
 ---
 
 # Buying NO subtracts slippage (worse fill for the buyer).
 
 ## Connections
-- [[.test_buy_no_decreases_price()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_buy_no_decreases_price()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_320

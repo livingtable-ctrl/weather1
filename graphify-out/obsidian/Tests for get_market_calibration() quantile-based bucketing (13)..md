@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L703"
+community: "Community 437"
+location: "L1352"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_437
 ---
 
 # Tests for get_market_calibration() quantile-based bucketing (#13).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMarketCalibrationAdaptive]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_437

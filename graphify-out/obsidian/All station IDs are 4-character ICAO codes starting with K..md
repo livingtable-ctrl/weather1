@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "rationale"
-community: "Module: tests"
-location: "L407"
+community: "Community 407"
+location: "L369"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_407
 ---
 
 # All station IDs are 4-character ICAO codes starting with K.
 
 ## Connections
-- [[.test_station_ids_are_icao_format()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_station_ids_are_icao_format()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_407

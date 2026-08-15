@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Python Types & Utilities"
-location: "L1916"
+community: "Anomaly Detection & PDF Reporting"
+location: "L2560"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Show a plain-English 'what should I do today?' recommendation.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_today()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

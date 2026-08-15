@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_walk_forward.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 37"
 location: "L128"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_37
 ---
 
 # Result includes overall mean_brier and std_brier across folds.
 
 ## Connections
-- [[.test_result_includes_summary()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_result_includes_summary()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_37

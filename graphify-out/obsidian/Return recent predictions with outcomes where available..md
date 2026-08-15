@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L1124"
+community: "Black Swan Halt State"
+location: "L2992"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Black_Swan_Halt_State
 ---
 
 # Return recent predictions with outcomes where available.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_history()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State

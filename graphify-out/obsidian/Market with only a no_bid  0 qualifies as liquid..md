@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L208"
+community: "Community 178"
+location: "L223"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_178
 ---
 
 # Market with only a no_bid > 0 qualifies as liquid.
 
 ## Connections
-- [[.test_liquid_market_with_no_bid_only()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_liquid_market_with_no_bid_only()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_178

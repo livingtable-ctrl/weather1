@@ -1,0 +1,18 @@
+---
+source_file: "tests/test_mos.py"
+type: "code"
+community: "Community 457"
+location: "L225"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_457
+---
+
+# .test_analyze_trade_includes_mos_field()
+
+## Connections
+- [[TestMosIntegration]] - `method` [EXTRACTED]
+- [[analyze_trade result dict contains mos_max_temp key.]] - `rationale_for` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_457

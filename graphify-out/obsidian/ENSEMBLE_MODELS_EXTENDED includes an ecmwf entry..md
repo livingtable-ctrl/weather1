@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_ecmwf.py"
 type: "rationale"
-community: "Module: tests"
-location: "L52"
+community: "Community 255"
+location: "L114"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_255
 ---
 
 # ENSEMBLE_MODELS_EXTENDED includes an ecmwf entry.
 
 ## Connections
-- [[.test_ecmwf_in_extended_ensemble()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_ecmwf_in_extended_ensemble()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_255

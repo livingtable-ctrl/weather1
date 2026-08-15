@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "rationale"
-community: "Module: tests"
-location: "L17"
+community: "Community 366"
+location: "L59"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_366
 ---
 
 # Return a KalshiClient with no auth (we only test body construction).
 
 ## Connections
-- [[._make_client()_2]] - `rationale_for` [EXTRACTED]
+- [[dot-_make_client()_2]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_366

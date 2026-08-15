@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "rationale"
-community: "Module: tests"
-location: "L348"
+community: "Community 167"
+location: "L511"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_167
 ---
 
 # run_black_swan_check activates kill switch when conditions are met.
 
 ## Connections
-- [[.test_run_black_swan_check_triggers_halt()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_run_black_swan_check_triggers_halt()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_167

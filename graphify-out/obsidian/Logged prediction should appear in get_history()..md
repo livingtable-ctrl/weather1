@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L53"
+community: "Tracker Brier Score & Outcome Logging"
+location: "L55"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Tracker_Brier_Score__Outcome_Logging
 ---
 
 # Logged prediction should appear in get_history().
 
 ## Connections
-- [[.test_log_and_retrieve()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_log_and_retrieve()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Tracker_Brier_Score__Outcome_Logging

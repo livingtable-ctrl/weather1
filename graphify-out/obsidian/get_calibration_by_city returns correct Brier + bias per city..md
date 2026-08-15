@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L203"
+community: "Tracker Brier Score & Outcome Logging"
+location: "L462"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Tracker_Brier_Score__Outcome_Logging
 ---
 
 # get_calibration_by_city returns correct Brier + bias per city.
 
 ## Connections
-- [[.test_calibration_by_city_with_data()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_calibration_by_city_with_data()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Tracker_Brier_Score__Outcome_Logging

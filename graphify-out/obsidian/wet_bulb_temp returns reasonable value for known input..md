@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Snow/Precip Physics"
-location: "L355"
+community: "Ensemble Weight Blending Tests"
+location: "L375"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Snow/Precip_Physics
+  - community/Ensemble_Weight_Blending_Tests
 ---
 
 # wet_bulb_temp returns reasonable value for known input.
 
 ## Connections
-- [[.test_wet_bulb_temp_midpoint()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_wet_bulb_temp_midpoint()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Snow/Precip_Physics
+#graphify/rationale #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests

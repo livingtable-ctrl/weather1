@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_proof.py"
 type: "code"
-community: "Module: tests"
+community: "Community 105"
 location: "L91"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_105
 ---
 
 # test_auto_place_trades_returns_zero_when_halted()
@@ -16,4 +16,4 @@ tags:
 - [[_make_opp()]] - `calls` [EXTRACTED]
 - [[test_execution_proof.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_105

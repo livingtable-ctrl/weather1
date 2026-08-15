@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_data_freshness.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 201"
 location: "L43"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_201
 ---
 
 # Context manager stack that patches all network calls inside analyze_trade.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_mock_externals()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_201

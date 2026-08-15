@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase3_batch_b.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 84"
 location: "L222"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_84
 ---
 
 # execute() probe succeeds → circuit closes.
 
 ## Connections
-- [[.test_execute_probe_success_closes_circuit()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_execute_probe_success_closes_circuit()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_84

@@ -1,19 +1,16 @@
 ---
-source_file: "tests/test_safe_io.py"
+source_file: ""
 type: "code"
-community: "Module: tests"
-location: "L8"
+community: "Backtest Engine & Atomic Writes"
 tags:
   - graphify/code
-  - graphify/INFERRED
-  - community/Module_tests
+  - graphify/EXTRACTED
+  - community/Backtest_Engine__Atomic_Writes
 ---
 
 # Path
 
 ## Connections
-- [[AtomicWriteError]] - `uses` [INFERRED]
-- [[CorruptionError]] - `uses` [INFERRED]
-- [[_write_with_crc()]] - `references` [EXTRACTED]
+- [[_all_source_files()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes

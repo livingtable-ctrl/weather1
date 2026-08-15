@@ -1,18 +1,18 @@
 ---
 source_file: "colors.py"
 type: "code"
-community: "Module: frosty"
-location: "L16"
+community: "Community 599"
+location: "L18"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_599
 ---
 
 # _Stub
 
 ## Connections
-- [[.__getattr__()]] - `method` [EXTRACTED]
+- [[dot-__getattr__()]] - `method` [EXTRACTED]
 - [[colors.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_599

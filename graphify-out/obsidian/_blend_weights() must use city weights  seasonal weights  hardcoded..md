@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L757"
+community: "Community 446"
+location: "L1196"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_446
 ---
 
 # _blend_weights() must use city weights > seasonal weights > hardcoded.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestBlendWeightCalibrationPriority]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_446

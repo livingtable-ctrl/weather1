@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Module: frosty"
-location: "L45"
+community: "Community 198"
+location: "L46"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_198
 ---
 
 # _record_ws_message()
@@ -15,4 +15,4 @@ tags:
 - [[_ws_listener()]] - `calls` [EXTRACTED]
 - [[kalshi_ws.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_198

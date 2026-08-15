@@ -1,19 +1,16 @@
 ---
-source_file: "kalshi_client.py"
+source_file: ""
 type: "code"
-community: "Module: frosty"
-location: "L108"
+community: "Community 226"
 tags:
   - graphify/code
-  - graphify/INFERRED
-  - community/Module_frosty
+  - graphify/EXTRACTED
+  - community/Community_226
 ---
 
 # Response
 
 ## Connections
-- [[CircuitBreaker]] - `uses` [INFERRED]
-- [[CircuitOpenError]] - `uses` [INFERRED]
 - [[_request_with_retry()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_226

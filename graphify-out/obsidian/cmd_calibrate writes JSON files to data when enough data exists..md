@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_calibration.py"
 type: "rationale"
-community: "Module: tests"
-location: "L207"
+community: "Community 69"
+location: "L304"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_69
 ---
 
 # cmd_calibrate writes JSON files to data/ when enough data exists.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCalibrateCLI]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_69

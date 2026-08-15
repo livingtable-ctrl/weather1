@@ -1,23 +1,20 @@
 ---
-source_file: "tests/test_weather_markets.py"
+source_file: "tests/test_weather.py"
 type: "code"
-community: "Module: tests"
-location: "L268"
+community: "Community 492"
+location: "L67"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_492
 ---
 
-# TestNormalCdf
+# TestNormalCDF
 
 ## Connections
-- [[.test_mean_returns_half()]] - `method` [EXTRACTED]
-- [[.test_one_sigma_above_mean()]] - `method` [EXTRACTED]
-- [[.test_shifted_mean()]] - `method` [EXTRACTED]
-- [[.test_symmetry()]] - `method` [EXTRACTED]
-- [[.test_two_sigma_above_mean()]] - `method` [EXTRACTED]
-- [[.test_zero_sigma_returns_step()]] - `method` [EXTRACTED]
-- [[test_weather_markets.py]] - `contains` [EXTRACTED]
+- [[dot-test_above_mean()]] - `method` [EXTRACTED]
+- [[dot-test_below_mean()]] - `method` [EXTRACTED]
+- [[dot-test_median()]] - `method` [EXTRACTED]
+- [[test_weather.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_492

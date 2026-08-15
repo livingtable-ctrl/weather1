@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_nbm.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 182"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_182
 ---
 
 # Tests for NBM data source integration.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_nbm.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_182

@@ -1,12 +1,12 @@
 ---
 source_file: "utils.py"
 type: "rationale"
-community: "Module: frosty"
+community: "NWS/Circuit-Breaker Data Validation"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/NWS/Circuit-Breaker_Data_Validation
 ---
 
 # Shared utilities used across the Kalshi weather trading modules.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[utils.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation

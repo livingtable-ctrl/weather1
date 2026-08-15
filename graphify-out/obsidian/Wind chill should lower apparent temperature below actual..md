@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L35"
+community: "Community 70"
+location: "L50"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_70
 ---
 
 # Wind chill should lower apparent temperature below actual.
 
 ## Connections
-- [[.test_cold_windy_returns_lower_than_actual()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_cold_windy_returns_lower_than_actual()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_70

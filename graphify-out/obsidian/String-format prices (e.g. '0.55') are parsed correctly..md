@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "A/B Testing System"
-location: "L88"
+community: "Community 207"
+location: "L103"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/A/B_Testing_System
+  - community/Community_207
 ---
 
 # String-format prices (e.g. '0.55') are parsed correctly.
 
 ## Connections
-- [[.test_string_prices_parsed()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_string_prices_parsed()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/A/B_Testing_System
+#graphify/rationale #graphify/EXTRACTED #community/Community_207

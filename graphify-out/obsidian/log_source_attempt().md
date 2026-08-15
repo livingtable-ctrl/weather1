@@ -1,24 +1,22 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Module: frosty"
-location: "L1316"
+community: "Tracker P&L Attribution Tests"
+location: "L3427"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Tracker_PL_Attribution_Tests
 ---
 
 # log_source_attempt()
 
 ## Connections
-- [[Record whether a forecast source returned usable data for a city today.     Use]] - `rationale_for` [EXTRACTED]
+- [[Record whether a forecast source returned usable data for a city today. Uses…]] - `rationale_for` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[bool_21]] - `references` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[str_30]] - `references` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

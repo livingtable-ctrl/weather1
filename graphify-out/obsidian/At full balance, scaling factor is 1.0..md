@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L661"
+community: "Community 188"
+location: "L871"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_188
 ---
 
 # At full balance, scaling factor is 1.0.
 
 ## Connections
-- [[.test_full_scaling_at_peak()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_full_scaling_at_peak()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_188

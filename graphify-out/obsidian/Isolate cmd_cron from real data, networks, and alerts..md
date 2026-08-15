@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_integration.py"
 type: "rationale"
-community: "Module: tests"
-location: "L20"
+community: "Cron Integration Tests"
+location: "L52"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Cron_Integration_Tests
 ---
 
 # Isolate cmd_cron from real data, networks, and alerts.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cron_env()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Cron_Integration_Tests

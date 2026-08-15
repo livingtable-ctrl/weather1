@@ -1,20 +1,20 @@
 ---
-source_file: "forecast_cache.py"
+source_file: ""
 type: "code"
-community: "Module: frosty"
-location: "L22"
+community: "Community 51"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_51
 ---
 
 # T
 
 ## Connections
-- [[.get()]] - `references` [EXTRACTED]
-- [[.set()]] - `references` [EXTRACTED]
-- [[.set_at()]] - `references` [EXTRACTED]
-- [[.set_with_ttl()]] - `references` [EXTRACTED]
+- [[dot-get()]] - `references` [EXTRACTED]
+- [[dot-set()]] - `references` [EXTRACTED]
+- [[dot-set_at()]] - `references` [EXTRACTED]
+- [[dot-set_at_with_ttl()]] - `references` [EXTRACTED]
+- [[dot-set_with_ttl()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_51

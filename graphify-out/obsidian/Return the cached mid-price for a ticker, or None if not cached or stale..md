@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L174"
+community: "Community 198"
+location: "L245"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_198
 ---
 
 # Return the cached mid-price for a ticker, or None if not cached or stale.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_cached_mid_price()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_198

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1628"
+community: "Community 322"
+location: "L3462"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_322
 ---
 
 # Build a minimal enriched dict for analyze_trade targeting a NO recommendation.
 
 ## Connections
-- [[._make_enriched()_5]] - `rationale_for` [EXTRACTED]
+- [[dot-_make_enriched()_4]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_322

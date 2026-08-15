@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "rationale"
-community: "Module: tests"
-location: "L356"
+community: "Community 595"
+location: "L318"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_595
 ---
 
 # log_prediction should accept forecast_cycle parameter without error.
 
 ## Connections
-- [[.test_log_prediction_accepts_forecast_cycle()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_log_prediction_accepts_forecast_cycle()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_595

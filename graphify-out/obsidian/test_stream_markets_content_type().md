@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "code"
-community: "Module: tests"
-location: "L444"
+community: "Community 43"
+location: "L486"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_43
 ---
 
 # test_stream_markets_content_type()
@@ -15,4 +15,4 @@ tags:
 - [[GET apistreammarkets returns Content-Type textevent-stream.]] - `rationale_for` [EXTRACTED]
 - [[test_web_app.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_43

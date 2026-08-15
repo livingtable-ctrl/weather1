@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "A/B Testing System"
-location: "L95"
+community: "Community 207"
+location: "L110"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/A/B_Testing_System
+  - community/Community_207
 ---
 
 # Missing price fields default to 0.0 without raising.
 
 ## Connections
-- [[.test_missing_fields_fall_back_to_zero()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_missing_fields_fall_back_to_zero()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/A/B_Testing_System
+#graphify/rationale #graphify/EXTRACTED #community/Community_207

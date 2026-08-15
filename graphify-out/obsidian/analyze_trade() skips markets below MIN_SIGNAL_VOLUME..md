@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "rationale"
-community: "Module: tests"
-location: "L136"
+community: "Community 52"
+location: "L157"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_52
 ---
 
 # analyze_trade() skips markets below MIN_SIGNAL_VOLUME.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMinSignalVolume]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_52

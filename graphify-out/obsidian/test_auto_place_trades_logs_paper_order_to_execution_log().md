@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Portfolio Kelly & P&L"
-location: "L978"
+community: "Community 92"
+location: "L814"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Portfolio_Kelly__PL
+  - community/Community_92
 ---
 
 # test_auto_place_trades_logs_paper_order_to_execution_log()
 
 ## Connections
-- [[_auto_place_trades must log paper orders to execution_log so was_traded_today()]] - `rationale_for` [EXTRACTED]
+- [[_auto_place_trades must log paper orders to execution_log so was_traded_today()…]] - `rationale_for` [EXTRACTED]
 - [[test_trading.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Portfolio_Kelly__PL
+#graphify/code #graphify/EXTRACTED #community/Community_92

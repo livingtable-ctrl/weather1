@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_proof.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 105"
 location: "L11"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_105
 ---
 
 # Minimal flat opportunity dict accepted by _auto_place_trades.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_make_opp()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_105

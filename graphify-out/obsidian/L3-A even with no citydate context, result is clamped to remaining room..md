@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L391"
+community: "Community 107"
+location: "L547"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_107
 ---
 
 # L3-A: even with no city/date context, result is clamped to remaining room.
 
 ## Connections
-- [[.test_l3a_no_city_context_also_clamped()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_l3a_no_city_context_also_clamped()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_107

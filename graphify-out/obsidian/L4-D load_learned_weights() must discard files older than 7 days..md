@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1233"
+community: "Community 529"
+location: "L2860"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_529
 ---
 
 # L4-D: load_learned_weights() must discard files older than 7 days.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestLearnedWeightsTTL]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_529

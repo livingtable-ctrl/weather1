@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_integration.py"
 type: "rationale"
-community: "Module: tests"
-location: "L111"
+community: "Community 53"
+location: "L122"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_53
 ---
 
 # analyze_trade returns a non-None dict with forecast_prob and edge keys.
 
 ## Connections
-- [[.test_analyze_trade_returns_result()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_analyze_trade_returns_result()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_53

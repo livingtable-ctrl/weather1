@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L67"
+community: "Tracker Brier Score & Outcome Logging"
+location: "L109"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Tracker_Brier_Score__Outcome_Logging
 ---
 
 # Logging the same ticker twice on the same day should update, not insert.
 
 ## Connections
-- [[.test_no_duplicate_same_day()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_no_duplicate_same_day()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Tracker_Brier_Score__Outcome_Logging

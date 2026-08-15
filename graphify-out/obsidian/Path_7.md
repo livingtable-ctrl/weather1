@@ -1,18 +1,17 @@
 ---
-source_file: "safe_io.py"
+source_file: ""
 type: "code"
-community: "Paper Trading & Exits"
-location: "L21"
+community: "Community 454"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Paper_Trading__Exits
+  - community/Community_454
 ---
 
 # Path
 
 ## Connections
-- [[atomic_write_json()]] - `references` [EXTRACTED]
-- [[project_root()]] - `references` [EXTRACTED]
+- [[_compute_paper_min_edge_from_files()]] - `references` [EXTRACTED]
+- [[_file_fingerprint()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Paper_Trading__Exits
+#graphify/code #graphify/EXTRACTED #community/Community_454

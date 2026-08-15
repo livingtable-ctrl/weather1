@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_http.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 142"
 location: "L48"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_142
 ---
 
 # All three models respond — forecast should average their values.
 
 ## Connections
-- [[.test_returns_forecast_when_all_models_respond()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_returns_forecast_when_all_models_respond()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_142

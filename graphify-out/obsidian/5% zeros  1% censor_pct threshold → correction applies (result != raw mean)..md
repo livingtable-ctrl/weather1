@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L622"
+community: "Community 191"
+location: "L978"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_191
 ---
 
 # 5% zeros > 1% censor_pct threshold → correction applies (result != raw mean).
 
 ## Connections
-- [[.test_exactly_at_threshold_applies_correction()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_exactly_at_threshold_applies_correction()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_191

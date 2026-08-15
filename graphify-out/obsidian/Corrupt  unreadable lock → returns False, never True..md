@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_cron_lock.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 121"
 location: "L145"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_121
 ---
 
 # Corrupt / unreadable lock → returns False, never True.
 
 ## Connections
-- [[.test_fails_closed_on_corrupt_lock_file()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_fails_closed_on_corrupt_lock_file()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_121

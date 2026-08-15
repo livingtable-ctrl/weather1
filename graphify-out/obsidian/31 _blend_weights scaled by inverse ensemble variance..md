@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Forecast Analysis Engine"
-location: "L3394"
+community: "Ensemble Weight Blending Tests"
+location: "L7238"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Forecast_Analysis_Engine
+  - community/Ensemble_Weight_Blending_Tests
 ---
 
 # #31: _blend_weights scaled by inverse ensemble variance.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_confidence_scaled_blend_weights()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Forecast_Analysis_Engine
+#graphify/rationale #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests

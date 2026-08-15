@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "rationale"
-community: "Module: tests"
-location: "L15"
+community: "Community 26"
+location: "L25"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_26
 ---
 
 # P(T > threshold) = 50% when threshold equals the forecast mean.
 
 ## Connections
-- [[.test_50pct_at_mean()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_50pct_at_mean()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_26

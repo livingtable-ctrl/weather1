@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "code"
-community: "Module: tests"
-location: "L798"
+community: "Community 26"
+location: "L1171"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_26
 ---
 
 # test_ensemble_cdf_prob_between()
@@ -15,4 +15,4 @@ tags:
 - [[P(between) counts members in range.]] - `rationale_for` [EXTRACTED]
 - [[test_gaussian_prob.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_26

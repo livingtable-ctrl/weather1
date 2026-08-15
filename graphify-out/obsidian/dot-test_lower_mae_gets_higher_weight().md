@@ -1,0 +1,18 @@
+---
+source_file: "tests/test_signal_quality.py"
+type: "code"
+community: "Community 127"
+location: "L401"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_127
+---
+
+# .test_lower_mae_gets_higher_weight()
+
+## Connections
+- [[dot-_seed()_6]] - `calls` [EXTRACTED]
+- [[TestGetModelWeights]] - `method` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_127

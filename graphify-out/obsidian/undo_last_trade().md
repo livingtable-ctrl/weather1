@@ -1,21 +1,22 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Paper Trading & Exits"
-location: "L2344"
+community: "Anomaly Detection & PDF Reporting"
+location: "L2916"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Paper_Trading__Exits
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # undo_last_trade()
 
 ## Connections
-- [[Reverse the most recently placed (unsettled) paper trade if it was placed     w]] - `rationale_for` [EXTRACTED]
+- [[Reverse the most recently placed (unsettled) paper trade if it was placed…_1]] - `rationale_for` [EXTRACTED]
 - [[_load()_1]] - `calls` [EXTRACTED]
 - [[_save()_1]] - `calls` [EXTRACTED]
-- [[int_19]] - `references` [EXTRACTED]
+- [[cmd_undo()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Paper_Trading__Exits
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

@@ -1,12 +1,12 @@
 ---
 source_file: "execution_log.py"
 type: "rationale"
-community: "Execution Log & Dedup"
-location: "L451"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L781"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Execution_Log__Dedup
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # Return the most recent N order log entries.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_recent_orders()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Execution_Log__Dedup
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

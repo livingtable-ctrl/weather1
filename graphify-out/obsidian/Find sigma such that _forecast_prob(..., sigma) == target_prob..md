@@ -1,12 +1,12 @@
 ---
 source_file: "sigma_audit.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L91"
+community: "Community 331"
+location: "L84"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_331
 ---
 
 # Find sigma such that _forecast_prob(..., sigma) == target_prob.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_implied_sigma()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_331

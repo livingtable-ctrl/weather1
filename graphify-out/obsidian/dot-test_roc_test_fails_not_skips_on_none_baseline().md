@@ -1,0 +1,18 @@
+---
+source_file: "tests/test_p1_remaining.py"
+type: "code"
+community: "Community 474"
+location: "L493"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_474
+---
+
+# .test_roc_test_fails_not_skips_on_none_baseline()
+
+## Connections
+- [[TestRegressionBaselineFail]] - `method` [EXTRACTED]
+- [[test_roc_auc_not_degraded must pytest.fail when baseline value is None.]] - `rationale_for` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_474

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 430"
 location: "L110"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_430
 ---
 
 # Callers that don't pass edge_calc_version store NULL (backward compat).
 
 ## Connections
-- [[.test_log_prediction_version_defaults_to_none()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_log_prediction_version_defaults_to_none()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_430

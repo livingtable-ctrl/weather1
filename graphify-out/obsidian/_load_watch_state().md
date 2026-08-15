@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Python Types & Utilities"
-location: "L377"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L442"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # _load_watch_state()
@@ -16,4 +16,4 @@ tags:
 - [[cmd_watch()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

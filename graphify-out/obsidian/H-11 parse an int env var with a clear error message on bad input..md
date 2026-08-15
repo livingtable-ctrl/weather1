@@ -1,12 +1,12 @@
 ---
 source_file: "config.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L31"
+community: "Community 129"
+location: "L33"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_129
 ---
 
 # H-11: parse an int env var with a clear error message on bad input.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_env_int()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_129

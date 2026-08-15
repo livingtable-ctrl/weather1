@@ -1,22 +1,24 @@
 ---
 source_file: "tests/test_calibration.py"
 type: "code"
-community: "Module: tests"
-location: "L206"
+community: "Community 69"
+location: "L303"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_69
 ---
 
 # TestCalibrateCLI
 
 ## Connections
-- [[.setup_method()_3]] - `method` [EXTRACTED]
-- [[.teardown_method()_3]] - `method` [EXTRACTED]
-- [[.test_calibrate_calls_update_learned_weights()]] - `method` [EXTRACTED]
-- [[.test_calibrate_writes_seasonal_json()]] - `method` [EXTRACTED]
+- [[dot-setup_method()_3]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_3]] - `method` [EXTRACTED]
+- [[dot-test_calibrate_calls_update_learned_weights()]] - `method` [EXTRACTED]
+- [[dot-test_calibrate_platt_excludes_rain_only_city()]] - `method` [EXTRACTED]
+- [[dot-test_calibrate_platt_excludes_snow_only_city()]] - `method` [EXTRACTED]
+- [[dot-test_calibrate_writes_seasonal_json()]] - `method` [EXTRACTED]
 - [[cmd_calibrate writes JSON files to data when enough data exists.]] - `rationale_for` [EXTRACTED]
 - [[test_calibration.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_69

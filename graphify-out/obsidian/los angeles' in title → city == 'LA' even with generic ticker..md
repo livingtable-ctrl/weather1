@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1211"
+community: "Community 116"
+location: "L2654"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_116
 ---
 
 # los angeles' in title → city == 'LA' even with generic ticker.
 
 ## Connections
-- [[.test_la_title_detected()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_la_title_detected()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_116

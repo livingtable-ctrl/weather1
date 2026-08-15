@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "rationale"
-community: "Module: tests"
-location: "L293"
+community: "Community 214"
+location: "L275"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_214
 ---
 
 # Verify source: Platt block is inside '_city_correction_applied' guard.
 
 ## Connections
-- [[.test_gbm_and_platt_not_sequentially_applied()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_gbm_and_platt_not_sequentially_applied()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_214

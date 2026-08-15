@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase3_batch_a.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 57"
 location: "L41"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_57
 ---
 
 # Build a minimal run_backtest return dict directly.
 
 ## Connections
-- [[._fake_summary()]] - `rationale_for` [EXTRACTED]
+- [[dot-_fake_summary()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_57

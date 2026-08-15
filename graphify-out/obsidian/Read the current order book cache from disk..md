@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "rationale"
-community: "Module: tests"
-location: "L166"
+community: "Community 227"
+location: "L193"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_227
 ---
 
 # Read the current order book cache from disk.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[read_orderbook_cache()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_227

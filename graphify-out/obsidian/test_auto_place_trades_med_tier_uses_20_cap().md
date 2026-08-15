@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Portfolio Kelly & P&L"
-location: "L672"
+community: "Community 92"
+location: "L355"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Portfolio_Kelly__PL
+  - community/Community_92
 ---
 
 # test_auto_place_trades_med_tier_uses_20_cap()
@@ -15,4 +15,4 @@ tags:
 - [[_auto_place_trades with cap=20.0 should call kelly_quantity with cap=20.0.]] - `rationale_for` [EXTRACTED]
 - [[test_trading.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Portfolio_Kelly__PL
+#graphify/code #graphify/EXTRACTED #community/Community_92

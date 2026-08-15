@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_hmac_bias.py"
+source_file: ""
 type: "code"
-community: "Module: tests"
-location: "L12"
+community: "Forecast Persistent Cache"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Forecast_Persistent_Cache
 ---
 
 # Path
 
 ## Connections
-- [[_write_valid_pkl()]] - `references` [EXTRACTED]
+- [[dot-dump_to_disk()]] - `references` [EXTRACTED]
+- [[dot-load_from_disk()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Forecast_Persistent_Cache

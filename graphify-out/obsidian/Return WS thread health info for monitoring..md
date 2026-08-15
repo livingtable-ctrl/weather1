@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "rationale"
-community: "Cron Scheduler"
-location: "L52"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L53"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Cron_Scheduler
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # Return WS thread health info for monitoring.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_ws_health()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Cron_Scheduler
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

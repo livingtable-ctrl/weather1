@@ -1,30 +1,36 @@
 ---
 source_file: "pdf_report.py"
 type: "code"
-community: "CLI & Preload Pipeline"
+community: "Anomaly Detection & PDF Reporting"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # pdf_report.py
 
 ## Connections
-- [[Weekly trading report generator. Produces a PDF (requires fpdf2) or HTML fallba]] - `rationale_for` [EXTRACTED]
+- [[Grade Audit Module Doc TIER 2 Files]] - `references` [EXTRACTED]
+- [[Weekly trading report generator. Produces a PDF (requires fpdf2) or HTML…]] - `rationale_for` [EXTRACTED]
 - [[_collect_data()]] - `contains` [EXTRACTED]
 - [[_generate_html()]] - `contains` [EXTRACTED]
 - [[_generate_pdf()]] - `contains` [EXTRACTED]
 - [[_pdf()]] - `contains` [EXTRACTED]
-- [[brier_score()]] - `imports` [EXTRACTED]
+- [[brier_score_rolling_with_n()]] - `imports` [EXTRACTED]
 - [[fear_greed_index()]] - `imports` [EXTRACTED]
 - [[generate_weekly_report()]] - `contains` [EXTRACTED]
+- [[generate_weekly_report() Silent .pdf→.html Switch (710)]] - `references` [EXTRACTED]
 - [[get_all_trades()]] - `imports` [EXTRACTED]
 - [[get_balance()]] - `imports` [EXTRACTED]
 - [[get_current_streak()]] - `imports` [EXTRACTED]
 - [[get_max_drawdown_pct()]] - `imports` [EXTRACTED]
 - [[get_open_trades()]] - `imports` [EXTRACTED]
 - [[get_performance()]] - `imports` [EXTRACTED]
+- [[main.py]] - `references` [EXTRACTED]
+- [[paths.py]] - `imports_from` [EXTRACTED]
+- [[pdf_report.py File Grade median 710, no red flags]] - `references` [EXTRACTED]
+- [[pdf_report.py Grade Audit]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

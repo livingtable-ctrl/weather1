@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "rationale"
-community: "Module: tests"
-location: "L404"
+community: "Community 369"
+location: "L581"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_369
 ---
 
 # Writing a different hash file → changed=True.
 
 ## Connections
-- [[.test_check_config_integrity_detects_change()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_check_config_integrity_detects_change()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_369

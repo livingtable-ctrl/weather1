@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L665"
+community: "Community 487"
+location: "L1314"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_487
 ---
 
 # Tests for get_optimal_threshold() (#60).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestGetOptimalThreshold]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_487

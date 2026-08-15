@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase3_batch_a.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 57"
 location: "L192"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_57
 ---
 
 # Two invocations of fetch_archive_temps with same args produce same list.
 
 ## Connections
-- [[.test_two_runs_same_result()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_two_runs_same_result()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_57

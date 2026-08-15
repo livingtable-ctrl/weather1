@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_cron_lock.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 121"
 location: "L39"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_121
 ---
 
 # Lock held by a live PID → returns False (fail closed).
 
 ## Connections
-- [[.test_blocks_when_live_pid_holds_lock()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_blocks_when_live_pid_holds_lock()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_121

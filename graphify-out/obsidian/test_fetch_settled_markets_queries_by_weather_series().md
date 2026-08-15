@@ -1,19 +1,18 @@
 ---
 source_file: "tests/test_walk_forward.py"
 type: "code"
-community: "Module: tests"
+community: "Community 37"
 location: "L200"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_37
 ---
 
 # test_fetch_settled_markets_queries_by_weather_series()
 
 ## Connections
-- [[MagicMock]] - `calls` [INFERRED]
-- [[_fetch_settled_markets must query by series_ticker, not dump all global markets.]] - `rationale_for` [EXTRACTED]
+- [[_fetch_settled_markets must query by series_ticker, not dump all global…]] - `rationale_for` [EXTRACTED]
 - [[test_walk_forward.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_37

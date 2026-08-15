@@ -1,21 +1,24 @@
 ---
 source_file: "alerts.py"
 type: "code"
-community: "Module: frosty"
+community: "Community 94"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_94
 ---
 
 # alerts.py
 
 ## Connections
-- [[Price alerts — notify when a market's YES price crosses a user-set threshold. S]] - `rationale_for` [EXTRACTED]
+- [[Grade Audit Final Report]] - `references` [EXTRACTED]
+- [[Price alerts — notify when a market's YES price crosses a user-set threshold.…]] - `rationale_for` [EXTRACTED]
 - [[_is_halt_level()]] - `contains` [EXTRACTED]
 - [[_load()]] - `contains` [EXTRACTED]
+- [[_recent_settled()]] - `contains` [EXTRACTED]
 - [[_save()]] - `contains` [EXTRACTED]
+- [[_trade_lost()]] - `contains` [EXTRACTED]
 - [[_trade_won()]] - `contains` [EXTRACTED]
 - [[activate_black_swan_halt()]] - `contains` [EXTRACTED]
 - [[add_alert()]] - `contains` [EXTRACTED]
@@ -24,15 +27,19 @@ tags:
 - [[check_anomalies()]] - `contains` [EXTRACTED]
 - [[check_black_swan_conditions()]] - `contains` [EXTRACTED]
 - [[clear_black_swan_state()]] - `contains` [EXTRACTED]
+- [[count_settled_predictions()]] - `imports` [EXTRACTED]
 - [[get_alerts()]] - `contains` [EXTRACTED]
 - [[get_black_swan_status()]] - `contains` [EXTRACTED]
-- [[get_history()]] - `imports` [EXTRACTED]
 - [[get_state_snapshot()]] - `imports` [EXTRACTED]
+- [[get_win_rate_window()]] - `contains` [EXTRACTED]
 - [[load_paper_trades()]] - `imports` [EXTRACTED]
 - [[mark_triggered()]] - `contains` [EXTRACTED]
+- [[parse_market_price()]] - `imports` [EXTRACTED]
+- [[paths.py]] - `imports_from` [EXTRACTED]
 - [[remove_alert()]] - `contains` [EXTRACTED]
 - [[run_anomaly_check()]] - `contains` [EXTRACTED]
 - [[run_black_swan_check()]] - `contains` [EXTRACTED]
+- [[safe_io.py]] - `imports` [EXTRACTED]
 - [[save_alerts()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_94

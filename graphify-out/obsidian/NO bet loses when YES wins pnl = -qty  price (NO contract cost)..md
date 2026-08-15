@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "rationale"
-community: "Module: tests"
-location: "L339"
+community: "Community 171"
+location: "L987"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_171
 ---
 
 # NO bet loses when YES wins: pnl = -qty * price (NO contract cost).
 
 ## Connections
-- [[.test_no_side_settlement_yes_wins()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_no_side_settlement_yes_wins()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_171

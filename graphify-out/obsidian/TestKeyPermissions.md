@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Module: tests"
-location: "L135"
+community: "Community 549"
+location: "L479"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_549
 ---
 
 # TestKeyPermissions
 
 ## Connections
-- [[.test_no_warning_on_private_key()]] - `method` [EXTRACTED]
-- [[.test_warns_on_world_readable_key()]] - `method` [EXTRACTED]
+- [[dot-test_no_warning_on_private_key()]] - `method` [EXTRACTED]
+- [[dot-test_warns_on_world_readable_key()]] - `method` [EXTRACTED]
 - [[test_kalshi_client.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_549

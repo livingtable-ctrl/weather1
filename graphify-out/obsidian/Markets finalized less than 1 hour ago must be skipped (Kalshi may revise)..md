@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L2006"
+community: "Community 153"
+location: "L5995"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_153
 ---
 
 # Markets finalized less than 1 hour ago must be skipped (Kalshi may revise).
 
 ## Connections
-- [[.test_sync_outcomes_skips_market_closed_less_than_1h_ago()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_sync_outcomes_skips_market_closed_less_than_1h_ago()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_153

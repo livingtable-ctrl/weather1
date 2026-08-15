@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_settlement_monitor.py"
 type: "rationale"
-community: "Module: frosty"
+community: "METAR Settlement Monitoring"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/METAR_Settlement_Monitoring
 ---
 
 # Tests for METAR settlement lag monitoring.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_settlement_monitor.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/METAR_Settlement_Monitoring

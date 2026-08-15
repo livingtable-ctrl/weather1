@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "rationale"
-community: "Module: tests"
-location: "L176"
+community: "Community 172"
+location: "L678"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_172
 ---
 
 # When circuit is open, must return None without fetching.
 
 ## Connections
-- [[.test_circuit_breaker_open_returns_none()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_circuit_breaker_open_returns_none()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_172

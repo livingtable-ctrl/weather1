@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "rationale"
-community: "Module: tests"
-location: "L164"
+community: "Community 173"
+location: "L202"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_173
 ---
 
 # degenerate key must be present for any non-empty input.
 
 ## Connections
-- [[.test_degenerate_key_always_present_when_nonempty()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_degenerate_key_always_present_when_nonempty()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_173

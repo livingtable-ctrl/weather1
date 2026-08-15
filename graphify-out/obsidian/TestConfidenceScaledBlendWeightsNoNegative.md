@@ -1,25 +1,25 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "code"
-community: "Module: tests"
-location: "L14"
+community: "Community 282"
+location: "L15"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_282
 ---
 
 # TestConfidenceScaledBlendWeightsNoNegative
 
 ## Connections
-- [[._call()]] - `method` [EXTRACTED]
-- [[.test_no_negative_weights_no_clim()]] - `method` [EXTRACTED]
-- [[.test_no_negative_weights_no_nws()]] - `method` [EXTRACTED]
-- [[.test_no_negative_weights_tight_spread()]] - `method` [EXTRACTED]
-- [[.test_tight_spread_boosts_ensemble()]] - `method` [EXTRACTED]
-- [[.test_weights_sum_to_one()_2]] - `method` [EXTRACTED]
-- [[.test_wide_spread_reduces_ensemble()]] - `method` [EXTRACTED]
+- [[dot-_call()]] - `method` [EXTRACTED]
+- [[dot-test_no_negative_weights_no_clim()]] - `method` [EXTRACTED]
+- [[dot-test_no_negative_weights_no_nws()]] - `method` [EXTRACTED]
+- [[dot-test_no_negative_weights_tight_spread()]] - `method` [EXTRACTED]
+- [[dot-test_tight_spread_boosts_ensemble()]] - `method` [EXTRACTED]
+- [[dot-test_weights_sum_to_one()_2]] - `method` [EXTRACTED]
+- [[dot-test_wide_spread_reduces_ensemble()]] - `method` [EXTRACTED]
+- [[Phase 2 Batch K Regression Tests]] - `contains` [EXTRACTED]
 - [[Weights must stay = 0 when scale  1 (tight spread).]] - `rationale_for` [EXTRACTED]
-- [[test_phase2_batch_k.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_282

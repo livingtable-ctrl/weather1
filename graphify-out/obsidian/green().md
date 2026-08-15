@@ -1,23 +1,23 @@
 ---
 source_file: "colors.py"
 type: "code"
-community: "Python Types & Utilities"
-location: "L23"
+community: "Black Swan Halt State"
+location: "L25"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Halt_State
 ---
 
 # green()
 
 ## Connections
-- [[_analyze_once()]] - `calls` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[_cmd_alerts()]] - `calls` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[_cmd_settle_open()]] - `calls` [EXTRACTED]
 - [[_quick_paper_buy()]] - `calls` [EXTRACTED]
+- [[_render_analysis_results()]] - `calls` [EXTRACTED]
 - [[auto_settle()]] - `calls` [EXTRACTED]
 - [[cmd_admin()]] - `calls` [EXTRACTED]
 - [[cmd_backtest()]] - `calls` [EXTRACTED]
@@ -52,9 +52,11 @@ tags:
 - [[cmd_settle()]] - `calls` [EXTRACTED]
 - [[cmd_setup()]] - `calls` [EXTRACTED]
 - [[cmd_shadow_compare()]] - `calls` [EXTRACTED]
+- [[cmd_signals()]] - `calls` [EXTRACTED]
 - [[cmd_simulate()]] - `calls` [EXTRACTED]
 - [[cmd_sync()]] - `calls` [EXTRACTED]
 - [[cmd_today()]] - `calls` [EXTRACTED]
+- [[cmd_undo()]] - `calls` [EXTRACTED]
 - [[cmd_unretire_strategy()]] - `calls` [EXTRACTED]
 - [[cmd_walkforward()]] - `calls` [EXTRACTED]
 - [[cmd_watch()]] - `calls` [EXTRACTED]
@@ -64,12 +66,11 @@ tags:
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[edge_color()]] - `calls` [EXTRACTED]
 - [[liquidity_color()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
 - [[output_formatters.py]] - `imports` [EXTRACTED]
 - [[signal_color()]] - `calls` [EXTRACTED]
-- [[str_8]] - `references` [EXTRACTED]
 - [[validate_api_key()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

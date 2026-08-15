@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1713"
+community: "Community 322"
+location: "L3615"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_322
 ---
 
 # Unit test of the P0-14 arithmetic: verify corrected formula value.
 
 ## Connections
-- [[.test_entry_side_edge_formula_arithmetic()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_entry_side_edge_formula_arithmetic()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_322

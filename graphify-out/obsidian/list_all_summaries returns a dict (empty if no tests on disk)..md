@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_ab_test.py"
 type: "rationale"
-community: "A/B Test Module"
+community: "Community 33"
 location: "L111"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/A/B_Test_Module
+  - community/Community_33
 ---
 
 # list_all_summaries returns a dict (empty if no tests on disk).
 
 ## Connections
-- [[.test_list_all_summaries_returns_dict()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_list_all_summaries_returns_dict()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/A/B_Test_Module
+#graphify/rationale #graphify/EXTRACTED #community/Community_33

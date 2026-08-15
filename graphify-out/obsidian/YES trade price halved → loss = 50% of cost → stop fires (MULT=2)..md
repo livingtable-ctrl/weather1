@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1424"
+community: "Community 159"
+location: "L1827"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_159
 ---
 
 # YES trade: price halved → loss = 50% of cost → stop fires (MULT=2).
 
 ## Connections
-- [[.test_stop_triggers_when_yes_price_halves()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_stop_triggers_when_yes_price_halves()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_159

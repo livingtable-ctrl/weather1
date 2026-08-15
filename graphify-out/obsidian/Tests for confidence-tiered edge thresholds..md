@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_confidence_tiers.py"
 type: "rationale"
-community: "Module: frosty"
+community: "Community 252"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_252
 ---
 
 # Tests for confidence-tiered edge thresholds.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_confidence_tiers.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_252

@@ -1,17 +1,18 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "CLI & Preload Pipeline"
-location: "L945"
+community: "Anomaly Detection & PDF Reporting"
+location: "L1281"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # get_open_trades()
 
 ## Connections
+- [[dot-get_open()_1]] - `calls` [EXTRACTED]
 - [[_analyze_once()]] - `calls` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
@@ -19,20 +20,23 @@ tags:
 - [[_check_early_exits()]] - `calls` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[_cmd_settle_open()]] - `calls` [EXTRACTED]
+- [[_collect_data Function]] - `calls` [EXTRACTED]
 - [[_collect_data()]] - `calls` [EXTRACTED]
 - [[_load()_1]] - `calls` [EXTRACTED]
+- [[_log_shadow_predictions()]] - `calls` [EXTRACTED]
 - [[auto_settle_paper_trades()]] - `calls` [EXTRACTED]
 - [[check_aged_positions()]] - `calls` [EXTRACTED]
 - [[check_correlated_event_exposure()]] - `calls` [EXTRACTED]
-- [[check_exit_targets()]] - `calls` [EXTRACTED]
 - [[check_expiring_trades()]] - `calls` [EXTRACTED]
 - [[check_model_exits()]] - `calls` [EXTRACTED]
+- [[check_paper_position_exits()]] - `calls` [EXTRACTED]
 - [[check_position_limits()]] - `calls` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
 - [[cmd_dashboard()]] - `calls` [EXTRACTED]
 - [[cmd_menu()]] - `calls` [EXTRACTED]
 - [[cmd_montecarlo()]] - `calls` [EXTRACTED]
 - [[cmd_paper()]] - `calls` [EXTRACTED]
+- [[cmd_watch()]] - `calls` [EXTRACTED]
 - [[cmd_watch_settle()]] - `calls` [EXTRACTED]
 - [[covariance_kelly_scale()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
@@ -55,4 +59,4 @@ tags:
 - [[test_trading.py]] - `imports` [EXTRACTED]
 - [[web_app.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

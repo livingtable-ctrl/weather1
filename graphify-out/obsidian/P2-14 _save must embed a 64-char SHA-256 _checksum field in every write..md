@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_b.py"
 type: "rationale"
-community: "Module: tests"
-location: "L199"
+community: "Community 403"
+location: "L196"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_403
 ---
 
 # P2-14: _save must embed a 64-char SHA-256 _checksum field in every write.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestSaveEmbedsSHA256]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_403

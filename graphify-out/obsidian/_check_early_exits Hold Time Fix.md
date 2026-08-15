@@ -1,0 +1,17 @@
+---
+source_file: "docs/superpowers/plans/2026-04-25-fix-early-exits.md"
+type: "document"
+community: "Community 210"
+tags:
+  - graphify/document
+  - graphify/EXTRACTED
+  - community/Community_210
+---
+
+# _check_early_exits Hold Time Fix
+
+## Connections
+- [[Fix High Early Exit Rate Plan]] - `implements` [EXTRACTED]
+- [[main.py module]] - `references` [EXTRACTED]
+
+#graphify/document #graphify/EXTRACTED #community/Community_210

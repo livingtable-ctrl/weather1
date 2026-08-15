@@ -1,17 +1,17 @@
 ---
 source_file: "forecast_cache.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L41"
+community: "Community 51"
+location: "L44"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_51
 ---
 
 # Remove the entry with the smallest (oldest) timestamp. Must hold _lock.
 
 ## Connections
-- [[._evict_oldest()]] - `rationale_for` [EXTRACTED]
+- [[dot-_evict_oldest()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_51

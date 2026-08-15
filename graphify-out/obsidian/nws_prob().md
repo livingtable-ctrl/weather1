@@ -1,26 +1,27 @@
 ---
 source_file: "nws.py"
 type: "code"
-community: "Module: frosty"
-location: "L261"
+community: "NWS/Circuit-Breaker Data Validation"
+location: "L299"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/NWS/Circuit-Breaker_Data_Validation
 ---
 
 # nws_prob()
 
 ## Connections
-- [[Convert NWS forecast temperature to a probability using a narrow normal     dis]] - `rationale_for` [EXTRACTED]
+- [[Convert NWS forecast temperature to a probability using a narrow normal…]] - `rationale_for` [EXTRACTED]
+- [[Phase 2 Batch H Regression Tests]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[date_4]] - `references` [EXTRACTED]
-- [[float_22]] - `references` [EXTRACTED]
+- [[date_5]] - `references` [EXTRACTED]
+- [[fetch_mos()]] - `semantically_similar_to` [INFERRED]
 - [[get_nws_daily_forecast()]] - `calls` [EXTRACTED]
 - [[normal_cdf()]] - `calls` [EXTRACTED]
 - [[nws.py]] - `contains` [EXTRACTED]
-- [[str_21]] - `references` [EXTRACTED]
-- [[utc_today()]] - `calls` [EXTRACTED]
+- [[prob_threshold()]] - `calls` [EXTRACTED]
+- [[utc_today()]] - `calls` [INFERRED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation

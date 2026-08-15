@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_safe_io.py"
 type: "code"
-community: "Module: tests"
+community: "Community 301"
 location: "L140"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_301
 ---
 
 # test_validate_checksum_rejects_mismatch()
@@ -16,4 +16,4 @@ tags:
 - [[_validate_checksum()]] - `calls` [EXTRACTED]
 - [[test_safe_io.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_301

@@ -1,18 +1,19 @@
 ---
 source_file: "tests/test_edge_threshold.py"
 type: "code"
-community: "Module: tests"
+community: "Community 217"
 location: "L4"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_217
 ---
 
 # test_paper_min_edge_is_at_most_5_pct()
 
 ## Connections
-- [[PAPER_MIN_EDGE must be = 5% per system requirements.]] - `rationale_for` [EXTRACTED]
+- [[get_paper_min_edge()]] - `calls` [EXTRACTED]
+- [[get_paper_min_edge() must be = 5% per system requirements.]] - `rationale_for` [EXTRACTED]
 - [[test_edge_threshold.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_217

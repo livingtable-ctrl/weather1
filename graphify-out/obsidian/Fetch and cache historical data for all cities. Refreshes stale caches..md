@@ -1,12 +1,12 @@
 ---
 source_file: "climatology.py"
 type: "rationale"
-community: "CLI & Preload Pipeline"
-location: "L230"
+community: "Climatology & Climate Index Fetching"
+location: "L497"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Climatology__Climate_Index_Fetching
 ---
 
 # Fetch and cache historical data for all cities. Refreshes stale caches.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[preload_all()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching

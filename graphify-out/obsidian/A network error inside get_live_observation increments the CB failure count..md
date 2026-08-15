@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_infrastructure.py"
 type: "rationale"
-community: "Circuit Breaker Fault Tolerance"
-location: "L177"
+community: "Community 44"
+location: "L201"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Circuit_Breaker_Fault_Tolerance
+  - community/Community_44
 ---
 
 # A network error inside get_live_observation increments the CB failure count.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_nws_cb_records_failure_on_exception()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Circuit_Breaker_Fault_Tolerance
+#graphify/rationale #graphify/EXTRACTED #community/Community_44

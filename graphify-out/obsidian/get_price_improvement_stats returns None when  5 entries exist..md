@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Module: tests"
-location: "L262"
+community: "Community 557"
+location: "L212"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_557
 ---
 
 # get_price_improvement_stats returns None when < 5 entries exist.
 
 ## Connections
-- [[.test_stats_returns_none_with_fewer_than_5_entries()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_stats_returns_none_with_fewer_than_5_entries()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_557

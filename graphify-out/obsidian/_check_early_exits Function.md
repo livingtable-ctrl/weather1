@@ -1,0 +1,16 @@
+---
+source_file: "order_executor.py"
+type: "code"
+community: "Community 158"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_158
+---
+
+# _check_early_exits Function
+
+## Connections
+- [[_passes_exit_gates()]] - `calls` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_158

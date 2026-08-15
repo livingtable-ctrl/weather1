@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_integration.py"
 type: "rationale"
-community: "Module: tests"
-location: "L203"
+community: "Community 53"
+location: "L233"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_53
 ---
 
 # analyze_trade returns None when _date is missing.
 
 ## Connections
-- [[.test_analyze_trade_missing_date_returns_none()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_analyze_trade_missing_date_returns_none()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_53

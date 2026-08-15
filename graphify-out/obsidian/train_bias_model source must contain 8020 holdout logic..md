@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_m.py"
 type: "rationale"
-community: "Module: tests"
-location: "L333"
+community: "Community 32"
+location: "L336"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_32
 ---
 
 # train_bias_model source must contain 80/20 holdout logic.
 
 ## Connections
-- [[.test_train_source_has_holdout_split()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_train_source_has_holdout_split()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_32

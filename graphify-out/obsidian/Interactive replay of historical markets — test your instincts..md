@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Python Types & Utilities"
-location: "L6116"
+community: "Black Swan Halt State"
+location: "L8046"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Halt_State
 ---
 
 # Interactive replay of historical markets — test your instincts.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_simulate()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State

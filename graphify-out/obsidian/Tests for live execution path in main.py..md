@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 111"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_111
 ---
 
 # Tests for live execution path in main.py.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_live_execution.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_111

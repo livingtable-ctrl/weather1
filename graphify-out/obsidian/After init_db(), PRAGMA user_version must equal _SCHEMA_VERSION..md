@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1907"
+community: "Community 316"
+location: "L3346"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_316
 ---
 
 # After init_db(), PRAGMA user_version must equal _SCHEMA_VERSION.
 
 ## Connections
-- [[.test_user_version_equals_schema_version_after_init()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_user_version_equals_schema_version_after_init()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_316

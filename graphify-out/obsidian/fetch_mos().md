@@ -1,23 +1,24 @@
 ---
 source_file: "mos.py"
 type: "code"
-community: "MOS Forecast Source"
-location: "L105"
+community: "Community 99"
+location: "L131"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MOS_Forecast_Source
+  - community/Community_99
 ---
 
 # fetch_mos()
 
 ## Connections
-- [[Fetch MOS forecast for a station from the IEM API.      Args         station]] - `rationale_for` [EXTRACTED]
+- [[Fetch MOS forecast for a station from the IEM API. Args station ASOS station…]] - `rationale_for` [EXTRACTED]
+- [[_local_or_utc_today()]] - `calls` [EXTRACTED]
 - [[_parse_temp()]] - `calls` [EXTRACTED]
-- [[date_3]] - `references` [EXTRACTED]
+- [[date_4]] - `references` [EXTRACTED]
 - [[fetch_mos_best()]] - `calls` [EXTRACTED]
 - [[mos.py]] - `contains` [EXTRACTED]
-- [[str_19]] - `references` [EXTRACTED]
-- [[utc_today()]] - `calls` [EXTRACTED]
+- [[nws_prob()]] - `semantically_similar_to` [INFERRED]
+- [[test_mos.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/MOS_Forecast_Source
+#graphify/code #graphify/EXTRACTED #community/Community_99

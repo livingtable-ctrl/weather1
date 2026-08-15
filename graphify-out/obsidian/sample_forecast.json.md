@@ -1,18 +1,16 @@
 ---
 source_file: "tests/fixtures/sample_forecast.json"
-type: "code"
-community: "Module: fixtures"
-location: "L1"
+type: "document"
+community: "Legacy Static Dashboard JS Pages"
 tags:
-  - graphify/code
+  - graphify/document
   - graphify/EXTRACTED
-  - community/Module_fixtures
+  - community/Legacy_Static_Dashboard_JS_Pages
 ---
 
 # sample_forecast.json
 
 ## Connections
-- [[Chicago]] - `contains` [EXTRACTED]
-- [[NYC]] - `contains` [EXTRACTED]
+- [[testsconftest.py Fixtures]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_fixtures
+#graphify/document #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages

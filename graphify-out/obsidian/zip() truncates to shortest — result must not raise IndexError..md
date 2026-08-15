@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_m.py"
 type: "rationale"
-community: "Module: tests"
-location: "L304"
+community: "Community 555"
+location: "L307"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_555
 ---
 
 # zip() truncates to shortest — result must not raise IndexError.
 
 ## Connections
-- [[.test_zip_uses_shortest_list()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_zip_uses_shortest_list()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_555

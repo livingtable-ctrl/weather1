@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L969"
+community: "Community 56"
+location: "L1076"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_56
 ---
 
 # #79: place_paper_order warns when execution exceeds MAX_ORDER_LATENCY_MS.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMaxOrderLatency]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_56

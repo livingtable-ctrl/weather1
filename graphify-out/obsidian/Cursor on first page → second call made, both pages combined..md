@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "rationale"
-community: "Module: tests"
-location: "L202"
+community: "Community 336"
+location: "L546"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_336
 ---
 
 # Cursor on first page → second call made, both pages combined.
 
 ## Connections
-- [[.test_two_page_pagination_combines_results()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_two_page_pagination_combines_results()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_336

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L291"
+community: "Community 265"
+location: "L550"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_265
 ---
 
 # Focused tests for tracker.brier_score() (#111).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestBrierScore]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_265

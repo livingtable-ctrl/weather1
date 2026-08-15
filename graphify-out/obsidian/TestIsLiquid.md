@@ -1,23 +1,27 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Module: tests"
-location: "L191"
+community: "Community 178"
+location: "L206"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_178
 ---
 
 # TestIsLiquid
 
 ## Connections
-- [[.test_illiquid_market_all_zeros()]] - `method` [EXTRACTED]
-- [[.test_illiquid_market_empty_dict()]] - `method` [EXTRACTED]
-- [[.test_liquid_market_with_no_bid_only()]] - `method` [EXTRACTED]
-- [[.test_liquid_market_with_quotes_and_volume()]] - `method` [EXTRACTED]
-- [[.test_liquid_market_with_volume_only()]] - `method` [EXTRACTED]
-- [[.test_liquid_market_with_yes_bid_only()]] - `method` [EXTRACTED]
+- [[dot-test_falls_back_to_legacy_volume_when_volume_fp_is_zero()]] - `method` [EXTRACTED]
+- [[dot-test_illiquid_market_all_zeros()]] - `method` [EXTRACTED]
+- [[dot-test_illiquid_market_empty_dict()]] - `method` [EXTRACTED]
+- [[dot-test_liquid_market_with_no_bid_only()]] - `method` [EXTRACTED]
+- [[dot-test_liquid_market_with_quotes_and_volume()]] - `method` [EXTRACTED]
+- [[dot-test_liquid_market_with_volume_fp_only()]] - `method` [EXTRACTED]
+- [[dot-test_liquid_market_with_volume_only()]] - `method` [EXTRACTED]
+- [[dot-test_liquid_market_with_yes_bid_only()]] - `method` [EXTRACTED]
+- [[dot-test_string_volume_fp_with_no_quotes_does_not_crash()]] - `method` [EXTRACTED]
+- [[dot-test_volume_fp_takes_precedence_over_legacy_when_both_nonzero()]] - `method` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_178

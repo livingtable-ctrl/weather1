@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L176"
+community: "Tracker Brier Score & Outcome Logging"
+location: "L221"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Tracker_Brier_Score__Outcome_Logging
 ---
 
 # sync_outcomes should not double-count already-settled markets.
 
 ## Connections
-- [[.test_sync_outcomes_skips_already_settled()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_sync_outcomes_skips_already_settled()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Tracker_Brier_Score__Outcome_Logging

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Module: tests"
-location: "L263"
+community: "Community 323"
+location: "L415"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_323
 ---
 
 # Tests that CI width correctly scales the fee-adjusted Kelly fraction.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCIAdjustedKelly]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_323

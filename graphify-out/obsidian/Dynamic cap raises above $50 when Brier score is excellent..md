@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1046"
+community: "Community 56"
+location: "L1153"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_56
 ---
 
 # Dynamic cap raises above $50 when Brier score is excellent.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_kelly_bet_dollars_dynamic_cap_higher_with_good_brier()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_56

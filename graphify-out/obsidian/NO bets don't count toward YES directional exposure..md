@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L551"
+community: "Community 343"
+location: "L707"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_343
 ---
 
 # NO bets don't count toward YES directional exposure.
 
 ## Connections
-- [[.test_directional_exposure_other_side()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_directional_exposure_other_side()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_343

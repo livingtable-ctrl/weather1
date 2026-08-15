@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_alerts_side.py"
 type: "code"
-community: "Module: tests"
-location: "L71"
+community: "Community 208"
+location: "L84"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_208
 ---
 
 # TestCheckAnomaliesNoSideConsecutiveLoss
 
 ## Connections
-- [[.test_no_side_consecutive_losses_trigger()]] - `method` [EXTRACTED]
-- [[.test_no_side_wins_not_counted_as_consec_losses()]] - `method` [EXTRACTED]
+- [[dot-test_no_side_consecutive_losses_trigger()]] - `method` [EXTRACTED]
+- [[dot-test_no_side_wins_not_counted_as_consec_losses()]] - `method` [EXTRACTED]
 - [[test_alerts_side.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_208

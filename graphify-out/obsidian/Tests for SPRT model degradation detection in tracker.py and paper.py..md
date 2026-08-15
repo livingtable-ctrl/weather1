@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_sprt.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 380"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_380
 ---
 
 # Tests for SPRT model degradation detection in tracker.py and paper.py.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_sprt.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_380

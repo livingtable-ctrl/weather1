@@ -1,17 +1,17 @@
 ---
-source_file: "execution_log.py"
+source_file: ""
 type: "code"
-community: "Execution Log & Dedup"
-location: "L30"
+community: "Execution Log Live-Loss Tracking"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Execution_Log__Dedup
+  - community/Execution_Log_Live-Loss_Tracking
 ---
 
 # Connection
 
 ## Connections
 - [[_conn()]] - `references` [EXTRACTED]
+- [[_run_migrations()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Execution_Log__Dedup
+#graphify/code #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking

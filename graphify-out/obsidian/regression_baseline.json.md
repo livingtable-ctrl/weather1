@@ -1,18 +1,16 @@
 ---
 source_file: "tests/fixtures/regression_baseline.json"
-type: "code"
-community: "Module: fixtures"
-location: "L1"
+type: "document"
+community: "Community 608"
 tags:
-  - graphify/code
-  - graphify/EXTRACTED
-  - community/Module_fixtures
+  - graphify/document
+  - graphify/AMBIGUOUS
+  - community/Community_608
 ---
 
 # regression_baseline.json
 
 ## Connections
-- [[brier_score]] - `contains` [EXTRACTED]
-- [[roc_auc]] - `contains` [EXTRACTED]
+- [[pyproject.toml Project Config]] - `conceptually_related_to` [AMBIGUOUS]
 
-#graphify/code #graphify/EXTRACTED #community/Module_fixtures
+#graphify/document #graphify/AMBIGUOUS #community/Community_608

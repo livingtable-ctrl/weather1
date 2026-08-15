@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Module: tests"
-location: "L65"
+community: "Community 492"
+location: "L69"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_492
 ---
 
 # P(X <= mu) = 0.5 for a normal distribution.
 
 ## Connections
-- [[.test_median()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_median()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_492

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "rationale"
-community: "Module: tests"
-location: "L213"
+community: "Community 283"
+location: "L268"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_283
 ---
 
 # _get/_post/_delete must raise ValueError on 200-with-error responses.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestKalshiClientErrorBody]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_283

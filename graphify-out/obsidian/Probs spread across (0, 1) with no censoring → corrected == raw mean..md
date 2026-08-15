@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L592"
+community: "Community 191"
+location: "L948"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_191
 ---
 
 # Probs spread across (0, 1) with no censoring → corrected == raw mean.
 
 ## Connections
-- [[.test_no_censoring_returns_mean_unchanged()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_no_censoring_returns_mean_unchanged()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_191

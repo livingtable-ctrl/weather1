@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/variation-terminal.jsx"
 type: "code"
-community: "Module: updated"
+community: "Community 646"
 location: "L4"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_updated
+  - community/Community_646
 ---
 
 # TermVar
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[variation-terminal.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_updated
+#graphify/code #graphify/EXTRACTED #community/Community_646

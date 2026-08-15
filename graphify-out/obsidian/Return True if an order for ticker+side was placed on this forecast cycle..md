@@ -1,12 +1,12 @@
 ---
 source_file: "execution_log.py"
 type: "rationale"
-community: "Execution Log & Dedup"
-location: "L229"
+community: "Execution Log Live-Loss Tracking"
+location: "L329"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Execution_Log__Dedup
+  - community/Execution_Log_Live-Loss_Tracking
 ---
 
 # Return True if an order for ticker+side was placed on this forecast cycle.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[was_ordered_this_cycle()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Execution_Log__Dedup
+#graphify/rationale #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking

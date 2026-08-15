@@ -1,19 +1,21 @@
 ---
 source_file: "cron.py"
 type: "code"
-community: "Cron Scheduler"
-location: "L105"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L133"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Cron_Scheduler
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # _write_cron_running_flag()
 
 ## Connections
-- [[Write UTC ISO timestamp to RUNNING_FLAG_PATH; warn if a fresh flag already exist]] - `rationale_for` [EXTRACTED]
+- [[Write UTC ISO timestamp to RUNNING_FLAG_PATH; warn if a fresh flag already…]] - `rationale_for` [EXTRACTED]
+- [[_build_cron_context()]] - `indirect_call` [INFERRED]
 - [[cron.py]] - `contains` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
+- [[test_execution_stability.py_1]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Cron_Scheduler
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

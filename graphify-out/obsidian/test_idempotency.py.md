@@ -1,22 +1,23 @@
 ---
 source_file: "tests/test_idempotency.py"
 type: "code"
-community: "Module: tests"
-location: "L1"
+community: "Community 143"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_143
 ---
 
 # test_idempotency.py
 
 ## Connections
-- [[KalshiClient_1]] - `imports` [EXTRACTED]
+- [[Grade Audit Module Doc kalshi_client.py]] - `references` [EXTRACTED]
+- [[KalshiClient]] - `imports` [EXTRACTED]
+- [[KalshiClient.place_order()_find_order_by_client_id()]] - `references` [EXTRACTED]
 - [[P0-4 place_order idempotency key and POST retry exclusion.]] - `rationale_for` [EXTRACTED]
 - [[TestClientOrderId]] - `contains` [EXTRACTED]
 - [[TestPostFailureDedup]] - `contains` [EXTRACTED]
 - [[TestPostRetryExcluded]] - `contains` [EXTRACTED]
-- [[_build_session()]] - `imports` [EXTRACTED]
+- [[_build_session()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_143

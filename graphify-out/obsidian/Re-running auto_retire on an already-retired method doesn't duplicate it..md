@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 101"
 location: "L197"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_101
 ---
 
 # Re-running auto_retire on an already-retired method doesn't duplicate it.
 
 ## Connections
-- [[.test_already_retired_not_duplicated()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_already_retired_not_duplicated()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_101

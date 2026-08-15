@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_calibration.py"
 type: "rationale"
-community: "Module: tests"
-location: "L145"
+community: "Community 69"
+location: "L208"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_69
 ---
 
 # 10 predictions (< 50) → city absent.
 
 ## Connections
-- [[.test_below_threshold_omits_city()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_below_threshold_omits_city()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_69

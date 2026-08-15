@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Kelly Criterion Sizing"
-location: "L54"
+community: "Kelly Sizing Property-Based Tests"
+location: "L58"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Kelly_Criterion_Sizing
+  - community/Kelly_Sizing_Property-Based_Tests
 ---
 
 # A tiny edge that is negative after fees should return 0.
 
 ## Connections
-- [[.test_fee_wipes_small_edge()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_fee_wipes_small_edge()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Kelly_Criterion_Sizing
+#graphify/rationale #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests

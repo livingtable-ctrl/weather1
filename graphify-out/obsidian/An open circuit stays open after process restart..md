@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "rationale"
-community: "Module: tests"
-location: "L234"
+community: "Community 204"
+location: "L235"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_204
 ---
 
 # An open circuit stays open after process restart.
 
 ## Connections
-- [[.test_open_state_persists_across_instances()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_open_state_persists_across_instances()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_204

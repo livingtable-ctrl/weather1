@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "rationale"
-community: "Module: tests"
-location: "L145"
+community: "Community 272"
+location: "L147"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_272
 ---
 
 # _check_early_exits must not exit a trade entered less than 12 hours ago.
 
 ## Connections
-- [[.test_new_trade_not_exited_by_probability_shift()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_new_trade_not_exited_by_probability_shift()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_272

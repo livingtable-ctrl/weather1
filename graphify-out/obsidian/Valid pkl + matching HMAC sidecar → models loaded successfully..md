@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_hmac_bias.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 120"
 location: "L37"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_120
 ---
 
 # Valid pkl + matching HMAC sidecar → models loaded successfully.
 
 ## Connections
-- [[.test_valid_hmac_loads_models()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_valid_hmac_loads_models()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_120

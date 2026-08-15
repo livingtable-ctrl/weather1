@@ -1,12 +1,12 @@
 ---
 source_file: "output_formatters.py"
 type: "rationale"
-community: "Python Types & Utilities"
-location: "L492"
+community: "Black Swan Halt State"
+location: "L500"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Halt_State
 ---
 
 # Show P&L attribution by signal source.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_pnl_attribution()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State

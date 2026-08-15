@@ -1,22 +1,23 @@
 ---
 source_file: "execution_log.py"
 type: "code"
-community: "Execution Log & Dedup"
-location: "L228"
+community: "Execution Log Live-Loss Tracking"
+location: "L328"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Execution_Log__Dedup
+  - community/Execution_Log_Live-Loss_Tracking
 ---
 
 # was_ordered_this_cycle()
 
 ## Connections
 - [[Return True if an order for ticker+side was placed on this forecast cycle.]] - `rationale_for` [EXTRACTED]
+- [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[_conn()]] - `calls` [EXTRACTED]
-- [[bool_8]] - `references` [EXTRACTED]
+- [[_place_live_order()]] - `calls` [EXTRACTED]
 - [[execution_log.py]] - `contains` [EXTRACTED]
 - [[init_log()]] - `calls` [EXTRACTED]
-- [[str_11]] - `references` [EXTRACTED]
+- [[test_execution_log.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Execution_Log__Dedup
+#graphify/code #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking

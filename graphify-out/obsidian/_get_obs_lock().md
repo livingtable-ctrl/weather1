@@ -1,12 +1,12 @@
 ---
 source_file: "nws.py"
 type: "code"
-community: "Module: frosty"
-location: "L91"
+community: "NWS/Circuit-Breaker Data Validation"
+location: "L113"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/NWS/Circuit-Breaker_Data_Validation
 ---
 
 # _get_obs_lock()
@@ -17,6 +17,5 @@ tags:
 - [[get_live_observation()]] - `calls` [EXTRACTED]
 - [[get_live_precip_obs()]] - `calls` [EXTRACTED]
 - [[nws.py]] - `contains` [EXTRACTED]
-- [[str_21]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation

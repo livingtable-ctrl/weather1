@@ -1,17 +1,18 @@
 ---
 source_file: "LIVE_TRADING_RUNBOOK.md"
 type: "document"
-community: "Module: sem"
+community: "Community 40"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Module_sem
+  - community/Community_40
 ---
 
 # Live Trading Runbook
 
 ## Connections
-- [[Kill Switch Safety Mechanism]] - `references` [EXTRACTED]
-- [[Main CLI (entry point, commands, cron trigger)]] - `references` [EXTRACTED]
+- [[LiveTradingGate]] - `references` [EXTRACTED]
+- [[cron.py_1]] - `references` [EXTRACTED]
+- [[graduation_check()]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Module_sem
+#graphify/document #graphify/EXTRACTED #community/Community_40

@@ -1,23 +1,49 @@
 ---
 source_file: "config.py"
 type: "code"
-community: "Module: frosty"
+community: "Community 129"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_129
 ---
 
 # config.py
 
 ## Connections
 - [[BotConfig]] - `contains` [EXTRACTED]
-- [[Central configuration dataclass. Parses and validates all environment variables.]] - `rationale_for` [EXTRACTED]
+- [[BotConfig class]] - `implements` [EXTRACTED]
+- [[BotConfig.validate() Missing Threshold Guards (510)]] - `references` [EXTRACTED]
+- [[Central configuration dataclass. Parses and validates all environment…]] - `rationale_for` [EXTRACTED]
+- [[ForecastCache]] - `imports` [EXTRACTED]
+- [[Grade Audit Module Doc TIER 2 Files]] - `references` [EXTRACTED]
+- [[_compute_paper_min_edge_from_files()]] - `contains` [EXTRACTED]
 - [[_env_float()]] - `contains` [EXTRACTED]
 - [[_env_int()]] - `contains` [EXTRACTED]
+- [[_file_fingerprint()]] - `contains` [EXTRACTED]
+- [[_live_breakeven_trigger_pct()]] - `contains` [EXTRACTED]
+- [[_live_kelly_cap()]] - `contains` [EXTRACTED]
+- [[_live_max_city_date_exposure()]] - `contains` [EXTRACTED]
+- [[_live_max_days_out()]] - `contains` [EXTRACTED]
+- [[_live_max_same_day_spend()]] - `contains` [EXTRACTED]
+- [[_live_method_kelly_gate()]] - `contains` [EXTRACTED]
+- [[_live_min_arb_edge()]] - `contains` [EXTRACTED]
 - [[_paper_min_edge_default()]] - `contains` [EXTRACTED]
+- [[_paper_min_edge_default() RF1 Promotion (410)]] - `references` [EXTRACTED]
+- [[config.py File Grade median T2 ~710, one T1 RF1 promotion]] - `references` [EXTRACTED]
+- [[config.py Grade Audit]] - `references` [EXTRACTED]
+- [[forecast_cache.py]] - `imports_from` [EXTRACTED]
+- [[get_config()]] - `contains` [EXTRACTED]
 - [[load_and_validate()]] - `contains` [EXTRACTED]
+- [[load_and_validate() Bypasses lru_cache Clear (610)]] - `references` [EXTRACTED]
 - [[load_swept_min_edge()]] - `imports` [EXTRACTED]
+- [[main.py]] - `imports_from` [EXTRACTED]
+- [[paths.py]] - `imports_from` [EXTRACTED]
+- [[reset_config()]] - `contains` [EXTRACTED]
+- [[test_config.py]] - `calls` [EXTRACTED]
+- [[test_config_divergence_guard.py]] - `calls` [EXTRACTED]
+- [[test_config_validation.py]] - `calls` [EXTRACTED]
+- [[utils.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_129

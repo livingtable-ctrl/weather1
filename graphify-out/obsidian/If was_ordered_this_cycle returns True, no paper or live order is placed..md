@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "rationale"
-community: "Module: tests"
-location: "L134"
+community: "Community 111"
+location: "L261"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_111
 ---
 
 # If was_ordered_this_cycle returns True, no paper or live order is placed.
 
 ## Connections
-- [[.test_cycle_dedup_skips_already_ordered()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_cycle_dedup_skips_already_ordered()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_111

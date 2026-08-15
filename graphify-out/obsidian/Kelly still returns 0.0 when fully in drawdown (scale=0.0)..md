@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L709"
+community: "Community 188"
+location: "L919"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_188
 ---
 
 # Kelly still returns 0.0 when fully in drawdown (scale=0.0).
 
 ## Connections
-- [[.test_kelly_zero_below_20_pct()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_kelly_zero_below_20_pct()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_188

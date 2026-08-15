@@ -1,20 +1,18 @@
 ---
-source_file: "tests/test_infrastructure.py"
+source_file: ""
 type: "code"
-community: "Circuit Breaker Fault Tolerance"
-location: "L52"
+community: "Community 55"
 tags:
   - graphify/code
-  - graphify/INFERRED
-  - community/Circuit_Breaker_Fault_Tolerance
+  - graphify/EXTRACTED
+  - community/Community_55
 ---
 
 # Path
 
 ## Connections
-- [[AtomicWriteError]] - `uses` [INFERRED]
-- [[CircuitBreaker]] - `uses` [INFERRED]
-- [[test_atomic_write_creates_file()]] - `references` [EXTRACTED]
-- [[test_atomic_write_is_atomic()]] - `references` [EXTRACTED]
+- [[_cache_is_stale()_3]] - `references` [EXTRACTED]
+- [[_cache_path()_3]] - `references` [EXTRACTED]
+- [[_load_stale_cache_or_none()_2]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Circuit_Breaker_Fault_Tolerance
+#graphify/code #graphify/EXTRACTED #community/Community_55

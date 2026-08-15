@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_walk_forward.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 37"
 location: "L113"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_37
 ---
 
 # All fold Brier scores are between 0.0 and 1.0.
 
 ## Connections
-- [[.test_brier_scores_in_valid_range()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_brier_scores_in_valid_range()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_37

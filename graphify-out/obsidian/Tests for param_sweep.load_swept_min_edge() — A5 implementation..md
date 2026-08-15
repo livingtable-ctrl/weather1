@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_param_sweep_load.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 186"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_186
 ---
 
 # Tests for param_sweep.load_swept_min_edge() — A5 implementation.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_param_sweep_load.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_186

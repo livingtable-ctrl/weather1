@@ -1,20 +1,21 @@
 ---
-source_file: "nws.py"
+source_file: ""
 type: "code"
-community: "Module: frosty"
-location: "L232"
+community: "Community 99"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_99
 ---
 
 # date
 
 ## Connections
-- [[CircuitBreaker]] - `uses` [INFERRED]
-- [[fetch_nbm_forecast()]] - `references` [EXTRACTED]
-- [[get_nws_daily_forecast()]] - `calls` [EXTRACTED]
-- [[nws_prob()]] - `references` [EXTRACTED]
+- [[_local_or_utc_today()]] - `references` [EXTRACTED]
+- [[fetch_mos()]] - `references` [EXTRACTED]
+- [[fetch_mos_best()]] - `references` [EXTRACTED]
+- [[fetch_nbm_iem()]] - `references` [EXTRACTED]
+- [[fetch_nbm_quantiles()]] - `references` [EXTRACTED]
+- [[is_mos_cached()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_99

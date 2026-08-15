@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_dedup.py"
 type: "rationale"
-community: "Execution Log & Dedup"
+community: "Community 97"
 location: "L55"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Execution_Log__Dedup
+  - community/Community_97
 ---
 
 # Traded KXTEST must not block a different ticker.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_was_traded_today_false_for_different_ticker()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Execution_Log__Dedup
+#graphify/rationale #graphify/EXTRACTED #community/Community_97

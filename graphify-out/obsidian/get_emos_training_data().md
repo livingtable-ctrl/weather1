@@ -1,0 +1,23 @@
+---
+source_file: "tracker.py"
+type: "code"
+community: "Tracker P&L Attribution Tests"
+location: "L2766"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Tracker_PL_Attribution_Tests
+---
+
+# get_emos_training_data()
+
+## Connections
+- [[Return rows for EMOS fitting {ens_mean, ens_var, settled_temp_f}. Excludes…]] - `rationale_for` [EXTRACTED]
+- [[_cmd_emos_train()]] - `calls` [EXTRACTED]
+- [[_conn()_1]] - `calls` [EXTRACTED]
+- [[init_db()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
+- [[test_ml_bias.py]] - `calls` [EXTRACTED]
+- [[tracker.py]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

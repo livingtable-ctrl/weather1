@@ -1,22 +1,22 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Module: tests"
-location: "L603"
+community: "Community 436"
+location: "L1252"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_436
 ---
 
 # TestBrierSkillScore
 
 ## Connections
-- [[.test_market_level_model_near_zero()]] - `method` [EXTRACTED]
-- [[.test_perfect_model_positive_bss()]] - `method` [EXTRACTED]
-- [[.test_returns_none_below_10_samples()]] - `method` [EXTRACTED]
+- [[dot-test_market_level_model_near_zero()]] - `method` [EXTRACTED]
+- [[dot-test_perfect_model_positive_bss()]] - `method` [EXTRACTED]
+- [[dot-test_returns_none_below_10_samples()]] - `method` [EXTRACTED]
 - [[Tests for brier_skill_score() (11).]] - `rationale_for` [EXTRACTED]
 - [[_Phase3Base]] - `inherits` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_436

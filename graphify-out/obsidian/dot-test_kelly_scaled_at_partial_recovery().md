@@ -1,0 +1,18 @@
+---
+source_file: "tests/test_paper.py"
+type: "code"
+community: "Community 188"
+location: "L907"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_188
+---
+
+# .test_kelly_scaled_at_partial_recovery()
+
+## Connections
+- [[Kelly dollars are scaled by recovery factor, not all-or-nothing.]] - `rationale_for` [EXTRACTED]
+- [[TestDrawdownScaling]] - `method` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_188

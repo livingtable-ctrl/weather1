@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_walk_forward.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 37"
 location: "L73"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_37
 ---
 
 # Less than train_months + test_months of data → empty list.
 
 ## Connections
-- [[.test_insufficient_data_returns_empty()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_insufficient_data_returns_empty()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_37

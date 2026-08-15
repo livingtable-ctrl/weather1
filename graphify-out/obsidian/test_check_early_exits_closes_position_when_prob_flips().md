@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Portfolio Kelly & P&L"
-location: "L802"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L563"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Portfolio_Kelly__PL
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # test_check_early_exits_closes_position_when_prob_flips()
@@ -18,4 +18,4 @@ tags:
 - [[place_paper_order()_1]] - `calls` [EXTRACTED]
 - [[test_trading.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Portfolio_Kelly__PL
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

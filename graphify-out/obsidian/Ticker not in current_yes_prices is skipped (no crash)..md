@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1465"
+community: "Community 159"
+location: "L1872"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_159
 ---
 
 # Ticker not in current_yes_prices is skipped (no crash).
 
 ## Connections
-- [[.test_missing_ticker_skipped()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_missing_ticker_skipped()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_159

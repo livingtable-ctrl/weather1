@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Tracker Analytics (Brier/Bias)"
-location: "L327"
+community: "Community 500"
+location: "L626"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_Analytics_Brier/Bias
+  - community/Community_500
 ---
 
 # Record a micro live fill for slippage tracking (#P10.4).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[log_live_fill()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_Analytics_Brier/Bias
+#graphify/rationale #graphify/EXTRACTED #community/Community_500

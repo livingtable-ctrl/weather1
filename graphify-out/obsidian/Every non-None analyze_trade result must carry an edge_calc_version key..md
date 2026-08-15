@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_edge_version.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 334"
 location: "L47"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_334
 ---
 
 # Every non-None analyze_trade result must carry an edge_calc_version key.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_analyze_trade_returns_edge_version()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_334

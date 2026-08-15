@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Module: tests"
-location: "L199"
+community: "Community 70"
+location: "L219"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_70
 ---
 
 # Standard cold+wind, no humidity penalty.
 
 ## Connections
-- [[.test_wind_chill_only()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_wind_chill_only()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_70

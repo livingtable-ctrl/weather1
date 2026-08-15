@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_forecast_accuracy.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 232"
 location: "L95"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_232
 ---
 
 # Mocked forecast returns a high_f within ±5°F of the archived observation.
 
 ## Connections
-- [[.test_forecast_within_tolerance()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_forecast_within_tolerance()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_232

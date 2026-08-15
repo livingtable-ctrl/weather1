@@ -1,14 +1,17 @@
 ---
 source_file: "check_edge.py"
 type: "code"
-community: "Module: check"
+community: "NWS/Circuit-Breaker Data Validation"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_check
+  - community/NWS/Circuit-Breaker_Data_Validation
 ---
 
 # check_edge.py
 
-#graphify/code #graphify/EXTRACTED #community/Module_check
+## Connections
+- [[paths.py]] - `imports_from` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Module: tests"
-location: "L79"
+community: "Weather Probability Math Tests"
+location: "L83"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Weather_Probability_Math_Tests
 ---
 
 # If forecast equals threshold exactly, P(above) ~ 0.5.
 
 ## Connections
-- [[.test_above_condition()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-test_above_condition()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Weather_Probability_Math_Tests

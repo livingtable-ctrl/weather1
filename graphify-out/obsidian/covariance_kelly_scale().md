@@ -1,23 +1,23 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Paper Trading & Exits"
-location: "L1323"
+community: "Anomaly Detection & PDF Reporting"
+location: "L1744"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Paper_Trading__Exits
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # covariance_kelly_scale()
 
 ## Connections
-- [[51 Portfolio Kelly covariance adjustment.      Computes the marginal increas]] - `rationale_for` [EXTRACTED]
+- [[51 Portfolio Kelly covariance adjustment. Computes the marginal increase in…]] - `rationale_for` [EXTRACTED]
+- [[Phase 2 Batch I Regression Tests]] - `calls` [EXTRACTED]
 - [[_exposure_denom()]] - `calls` [EXTRACTED]
-- [[float_24]] - `references` [EXTRACTED]
 - [[get_open_trades()]] - `calls` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
 - [[portfolio_kelly_fraction()]] - `calls` [EXTRACTED]
-- [[str_23]] - `references` [EXTRACTED]
+- [[test_debug_fixes.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Paper_Trading__Exits
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

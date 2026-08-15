@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "rationale"
-community: "Module: tests"
-location: "L48"
+community: "Community 26"
+location: "L58"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_26
 ---
 
 # Higher sigma → probability closer to 0.5.
 
 ## Connections
-- [[.test_wider_sigma_flattens_probability()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_wider_sigma_flattens_probability()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_26

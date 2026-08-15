@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Module: frosty"
-location: "L1123"
+community: "Black Swan Halt State"
+location: "L2991"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Black_Swan_Halt_State
 ---
 
 # get_history()
@@ -16,15 +16,12 @@ tags:
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[_cmd_settle_open()]] - `calls` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
-- [[alerts.py]] - `imports` [EXTRACTED]
-- [[check_black_swan_conditions()]] - `calls` [EXTRACTED]
 - [[cmd_history()]] - `calls` [EXTRACTED]
 - [[export_predictions_csv()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[int_24]] - `references` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
 - [[output_formatters.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 - [[web_app.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

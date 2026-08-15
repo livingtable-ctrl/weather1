@@ -1,20 +1,20 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Module: tests"
-location: "L1449"
+community: "Community 530"
+location: "L3099"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_530
 ---
 
 # TestUtcTodayDate
 
 ## Connections
-- [[.test_market_lookup_uses_utc_date_not_local()]] - `method` [EXTRACTED]
-- [[.test_no_date_today_calls_remain()]] - `method` [EXTRACTED]
-- [[L5-E weather_markets must use datetime.now(UTC).date() not date.today().]] - `rationale_for` [EXTRACTED]
+- [[dot-test_forecast_uncertainty_is_a_pure_function_of_days_out()]] - `method` [EXTRACTED]
+- [[dot-test_no_date_today_calls_remain()]] - `method` [EXTRACTED]
+- [[L5-E weather_markets must use datetime.now(UTC).date() not date.today() for…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_530

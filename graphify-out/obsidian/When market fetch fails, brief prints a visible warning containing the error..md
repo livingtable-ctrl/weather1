@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_main_cron_smoke.py"
 type: "rationale"
-community: "Module: tests"
-location: "L92"
+community: "Community 550"
+location: "L130"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_550
 ---
 
 # When market fetch fails, brief prints a visible warning containing the error.
 
 ## Connections
-- [[.test_top_opportunities_shows_error_reason()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_top_opportunities_shows_error_reason()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_550

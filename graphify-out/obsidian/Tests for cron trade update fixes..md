@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_trade_updates.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 253"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_253
 ---
 
 # Tests for cron trade update fixes.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_cron_trade_updates.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_253

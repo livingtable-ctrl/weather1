@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L219"
+community: "Tracker Brier Score & Outcome Logging"
+location: "L478"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Tracker_Brier_Score__Outcome_Logging
 ---
 
 # get_calibration_by_type returns empty dict with no data.
 
 ## Connections
-- [[.test_calibration_by_type_empty()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_calibration_by_type_empty()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Tracker_Brier_Score__Outcome_Logging

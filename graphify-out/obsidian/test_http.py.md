@@ -1,20 +1,22 @@
 ---
 source_file: "tests/test_http.py"
 type: "code"
-community: "Module: tests"
-location: "L1"
+community: "Community 142"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_142
 ---
 
 # test_http.py
 
 ## Connections
-- [[HTTP integration tests using `responses` to mock Open-Meteo API calls. These ru]] - `rationale_for` [EXTRACTED]
+- [[Grade Audit Module Doc kalshi_client.py]] - `references` [EXTRACTED]
+- [[HTTP integration tests using `responses` to mock Open-Meteo API calls. These…]] - `rationale_for` [EXTRACTED]
 - [[TestGetWeatherForecastMocked]] - `contains` [EXTRACTED]
+- [[_forecast_model_weights()]] - `references` [EXTRACTED]
 - [[_open_meteo_payload()]] - `contains` [EXTRACTED]
-- [[get_weather_forecast()]] - `imports` [EXTRACTED]
+- [[get_weather_forecast()]] - `references` [EXTRACTED]
+- [[weather_markets.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_142

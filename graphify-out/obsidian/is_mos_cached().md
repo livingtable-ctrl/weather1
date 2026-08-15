@@ -1,21 +1,19 @@
 ---
 source_file: "mos.py"
 type: "code"
-community: "MOS Forecast Source"
-location: "L65"
+community: "Community 99"
+location: "L76"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MOS_Forecast_Source
+  - community/Community_99
 ---
 
 # is_mos_cached()
 
 ## Connections
-- [[Return True if a fresh MOS cache entry exists for this stationdate (no network]] - `rationale_for` [EXTRACTED]
-- [[bool_16]] - `references` [EXTRACTED]
-- [[date_3]] - `references` [EXTRACTED]
+- [[Return True if a fresh MOS cache entry exists for this stationdate (no network…]] - `rationale_for` [EXTRACTED]
+- [[date_4]] - `references` [EXTRACTED]
 - [[mos.py]] - `contains` [EXTRACTED]
-- [[str_19]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/MOS_Forecast_Source
+#graphify/code #graphify/EXTRACTED #community/Community_99

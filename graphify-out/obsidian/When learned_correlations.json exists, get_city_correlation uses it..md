@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Module: tests"
-location: "L78"
+community: "Community 489"
+location: "L26"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_489
 ---
 
 # When learned_correlations.json exists, get_city_correlation uses it.
 
 ## Connections
-- [[.test_uses_dynamic_when_available()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_uses_dynamic_when_available()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_489

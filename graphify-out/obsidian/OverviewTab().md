@@ -1,17 +1,18 @@
 ---
-source_file: "frontend/src/App.jsx"
+source_file: "weather app site V_3 (3)/src/tabs/OverviewTab.jsx"
 type: "code"
-community: "Module: src"
-location: "L467"
+community: "Community 193"
+location: "L53"
 tags:
   - graphify/code
-  - graphify/EXTRACTED
-  - community/Module_src
+  - graphify/INFERRED
+  - community/Community_193
 ---
 
 # OverviewTab()
 
 ## Connections
-- [[App.jsx]] - `contains` [EXTRACTED]
+- [[OverviewTab.jsx]] - `contains` [EXTRACTED]
+- [[weather app site V_3 (3)srcApp.jsx]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_src
+#graphify/code #graphify/INFERRED #community/Community_193

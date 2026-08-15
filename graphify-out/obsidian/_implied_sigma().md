@@ -1,22 +1,21 @@
 ---
 source_file: "sigma_audit.py"
 type: "code"
-community: "Module: frosty"
-location: "L84"
+community: "Community 331"
+location: "L77"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_331
 ---
 
 # _implied_sigma()
 
 ## Connections
 - [[Find sigma such that _forecast_prob(..., sigma) == target_prob.]] - `rationale_for` [EXTRACTED]
+- [[_forecast_prob()]] - `calls` [EXTRACTED]
 - [[brentq()]] - `calls` [EXTRACTED]
-- [[float_28]] - `references` [EXTRACTED]
 - [[run_audit()]] - `calls` [EXTRACTED]
 - [[sigma_audit.py]] - `contains` [EXTRACTED]
-- [[str_29]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_331

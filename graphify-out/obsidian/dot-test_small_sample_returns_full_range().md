@@ -1,0 +1,19 @@
+---
+source_file: "tests/test_weather.py"
+type: "code"
+community: "Community 415"
+location: "L273"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_415
+---
+
+# .test_small_sample_returns_full_range()
+
+## Connections
+- [[Fewer than 5 members → returns (0.0, 1.0) as uninformative CI.]] - `rationale_for` [EXTRACTED]
+- [[TestBootstrapCIPrecip]] - `method` [EXTRACTED]
+- [[_bootstrap_ci_precip()]] - `calls` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_415

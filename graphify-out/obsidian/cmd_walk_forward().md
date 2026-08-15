@@ -1,21 +1,20 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Module: frosty"
-location: "L4370"
+community: "Black Swan Halt State"
+location: "L5901"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Black_Swan_Halt_State
 ---
 
 # cmd_walk_forward()
 
 ## Connections
 - [[Run walk-forward backtest on historical paper trades.]] - `rationale_for` [EXTRACTED]
-- [[load_paper_trades()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
-- [[walk_forward_backtest()]] - `calls` [EXTRACTED]
+- [[run_paper_walk_forward()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

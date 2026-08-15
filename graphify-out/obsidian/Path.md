@@ -1,17 +1,18 @@
 ---
-source_file: "alerts.py"
+source_file: ""
 type: "code"
-community: "Module: frosty"
-location: "L196"
+community: "Community 62"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_62
 ---
 
 # Path
 
 ## Connections
-- [[save_alerts()]] - `references` [EXTRACTED]
+- [[_cache_is_stale()]] - `references` [EXTRACTED]
+- [[_cache_path()]] - `references` [EXTRACTED]
+- [[_load_stale_cache_or_none()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_62

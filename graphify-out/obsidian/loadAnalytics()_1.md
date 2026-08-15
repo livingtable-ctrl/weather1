@@ -1,18 +1,18 @@
 ---
 source_file: "updated frontend/reference/analytics.js"
 type: "code"
-community: "Module: reference"
+community: "Community 448"
 location: "L27"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_reference
+  - community/Community_448
 ---
 
 # loadAnalytics()
 
 ## Connections
-- [[analytics.js_1]] - `contains` [EXTRACTED]
 - [[makeLayout()_3]] - `calls` [EXTRACTED]
+- [[referenceanalytics.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_reference
+#graphify/code #graphify/EXTRACTED #community/Community_448

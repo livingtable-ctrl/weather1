@@ -1,12 +1,12 @@
 ---
 source_file: "cloud_backup.py"
 type: "rationale"
-community: "Module: frosty"
+community: "Community 326"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_326
 ---
 
 # cloud_backup.py — sync data/ to OneDrive, Google Drive, or a custom path.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cloud_backup.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_326

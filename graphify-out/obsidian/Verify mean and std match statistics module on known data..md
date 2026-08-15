@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L515"
+community: "Community 160"
+location: "L871"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_160
 ---
 
 # Verify mean and std match statistics module on known data.
 
 ## Connections
-- [[.test_mean_std_correct()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_mean_std_correct()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_160

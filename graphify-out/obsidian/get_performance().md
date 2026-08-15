@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "CLI & Preload Pipeline"
-location: "L1531"
+community: "Anomaly Detection & PDF Reporting"
+location: "L1998"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # get_performance()
@@ -14,6 +14,7 @@ tags:
 ## Connections
 - [[Summary stats across all settled trades.]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
+- [[_collect_data Function]] - `calls` [EXTRACTED]
 - [[_collect_data()]] - `calls` [EXTRACTED]
 - [[_load()_1]] - `calls` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
@@ -30,4 +31,4 @@ tags:
 - [[pdf_report.py]] - `imports` [EXTRACTED]
 - [[web_app.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

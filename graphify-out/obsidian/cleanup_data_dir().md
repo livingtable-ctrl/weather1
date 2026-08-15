@@ -1,19 +1,19 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Python Types & Utilities"
-location: "L527"
+community: "Black Swan Halt State"
+location: "L628"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Halt_State
 ---
 
 # cleanup_data_dir()
 
 ## Connections
-- [[Delete stale cached data files to prevent unbounded growth.     Skips climate_]] - `rationale_for` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
+- [[Delete stale cached data files to prevent unbounded growth. Skips…]] - `rationale_for` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

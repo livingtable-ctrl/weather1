@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_settlement_monitor.py"
 type: "rationale"
-community: "Module: tests"
-location: "L17"
+community: "METAR Settlement Monitoring"
+location: "L50"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/METAR_Settlement_Monitoring
 ---
 
 # build_settlement_signal returns dict with required keys.
 
 ## Connections
-- [[.test_signal_structure()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_signal_structure()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/METAR_Settlement_Monitoring

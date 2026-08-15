@@ -1,19 +1,21 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "code"
-community: "Module: tests"
+community: "Community 43"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_43
 ---
 
 # test_web_app.py
 
 ## Connections
+- [[TestAnomalyStatusMatchesRealCheck]] - `contains` [EXTRACTED]
 - [[TestDashboardAuth]] - `contains` [EXTRACTED]
 - [[TestKillSwitchAPI]] - `contains` [EXTRACTED]
+- [[TestPaperOrderCityDateServerDerived]] - `contains` [EXTRACTED]
 - [[Tests for web_app.py dashboard API endpoints.]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `imports` [EXTRACTED]
 - [[_build_stream_data()]] - `imports` [EXTRACTED]
@@ -22,6 +24,7 @@ tags:
 - [[client()]] - `contains` [EXTRACTED]
 - [[test_analytics_route_returns_200_with_title()]] - `contains` [EXTRACTED]
 - [[test_api_brier_history_returns_list()]] - `contains` [EXTRACTED]
+- [[test_api_config_includes_both_fee_rates()]] - `contains` [EXTRACTED]
 - [[test_api_forecast_quality_returns_correct_shape()]] - `contains` [EXTRACTED]
 - [[test_api_graduation_returns_correct_shape()]] - `contains` [EXTRACTED]
 - [[test_api_risk_returns_correct_shape()]] - `contains` [EXTRACTED]
@@ -44,5 +47,8 @@ tags:
 - [[test_status_includes_brier_drift()]] - `contains` [EXTRACTED]
 - [[test_stream_markets_content_type()]] - `contains` [EXTRACTED]
 - [[test_trades_route_returns_200_with_title()]] - `contains` [EXTRACTED]
+- [[tracker.py_1]] - `shares_data_with` [INFERRED]
+- [[utils.py]] - `imports` [EXTRACTED]
+- [[web_app.py (Flask dashboardAPI)]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_43

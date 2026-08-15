@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_mos.py"
 type: "rationale"
-community: "Module: tests"
-location: "L87"
+community: "Community 187"
+location: "L116"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_187
 ---
 
 # max_temp_f is the highest tmp reading across all hours for the target date.
 
 ## Connections
-- [[.test_max_temp_is_highest_in_day()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_max_temp_is_highest_in_day()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_187

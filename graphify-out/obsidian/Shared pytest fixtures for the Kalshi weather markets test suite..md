@@ -1,12 +1,12 @@
 ---
 source_file: "tests/conftest.py"
 type: "rationale"
-community: "Module: tests"
+community: "Test Fixture Cache Clearing (conftest)"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Test_Fixture_Cache_Clearing_conftest
 ---
 
 # Shared pytest fixtures for the Kalshi weather markets test suite.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[conftest.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Test_Fixture_Cache_Clearing_conftest

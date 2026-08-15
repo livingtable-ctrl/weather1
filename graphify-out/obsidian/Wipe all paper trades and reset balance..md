@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Paper Trading & Exits"
-location: "L1731"
+community: "Anomaly Detection & PDF Reporting"
+location: "L2264"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Paper_Trading__Exits
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Wipe all paper trades and reset balance.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[reset_paper_account()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Paper_Trading__Exits
+#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

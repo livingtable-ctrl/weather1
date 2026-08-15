@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_dedup.py"
 type: "code"
-community: "Execution Log & Dedup"
+community: "Community 97"
 location: "L54"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Execution_Log__Dedup
+  - community/Community_97
 ---
 
 # test_was_traded_today_false_for_different_ticker()
@@ -16,4 +16,4 @@ tags:
 - [[test_dedup.py]] - `contains` [EXTRACTED]
 - [[was_traded_today()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Execution_Log__Dedup
+#graphify/code #graphify/EXTRACTED #community/Community_97

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_b.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 226"
 location: "L76"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_226
 ---
 
 # P3-5: Read failures must not block write operations.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestKalshiCircuitBreakerSplit]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_226

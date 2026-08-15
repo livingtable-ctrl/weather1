@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kelly_property.py"
 type: "rationale"
-community: "Kelly Criterion Sizing"
+community: "Kelly Sizing Property-Based Tests"
 location: "L31"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Kelly_Criterion_Sizing
+  - community/Kelly_Sizing_Property-Based_Tests
 ---
 
 # kelly_fraction never exceeds the hard cap (KELLY_CAP = 0.25).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_kelly_fraction_never_exceeds_cap()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Kelly_Criterion_Sizing
+#graphify/rationale #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests

@@ -1,18 +1,17 @@
 ---
-source_file: "tests/test_cleanup_data_dir.py"
+source_file: ""
 type: "code"
-community: "Module: tests"
-location: "L25"
+community: "Execution Log Live-Loss Tracking"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Execution_Log_Live-Loss_Tracking
 ---
 
 # Path
 
 ## Connections
-- [[_patched_cleanup()]] - `references` [EXTRACTED]
-- [[_write_stale()]] - `references` [EXTRACTED]
+- [[_degraded_flag_path()]] - `references` [EXTRACTED]
+- [[append_entry()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking

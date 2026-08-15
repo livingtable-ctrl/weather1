@@ -1,18 +1,20 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Module: tests"
-location: "L132"
+community: "Community 111"
+location: "L259"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_111
 ---
 
 # TestAutoPlaceTradesCycleCheck
 
 ## Connections
-- [[.test_cycle_dedup_skips_already_ordered()]] - `method` [EXTRACTED]
+- [[dot-test_cycle_dedup_skips_already_ordered()]] - `method` [EXTRACTED]
+- [[LivePositionStore]] - `uses` [INFERRED]
+- [[Position]] - `uses` [INFERRED]
 - [[test_live_execution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_111

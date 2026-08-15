@@ -1,12 +1,12 @@
 ---
 source_file: "pdf_report.py"
 type: "rationale"
-community: "CLI & Preload Pipeline"
-location: "L66"
+community: "Anomaly Detection & PDF Reporting"
+location: "L67"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Generate PDF using fpdf2.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_generate_pdf()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

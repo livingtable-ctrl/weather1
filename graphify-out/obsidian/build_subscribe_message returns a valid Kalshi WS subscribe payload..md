@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_kalshi_ws.py"
 type: "rationale"
-community: "Module: tests"
-location: "L93"
+community: "Community 130"
+location: "L178"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_130
 ---
 
 # build_subscribe_message returns a valid Kalshi WS subscribe payload.
 
 ## Connections
-- [[.test_subscribe_message_structure()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_subscribe_message_structure()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_130

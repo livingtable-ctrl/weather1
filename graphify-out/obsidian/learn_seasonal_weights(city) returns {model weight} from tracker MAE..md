@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Module: tests"
-location: "L558"
+community: "Community 276"
+location: "L626"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_276
 ---
 
 # learn_seasonal_weights(city) returns {model: weight} from tracker MAE.
 
 ## Connections
-- [[.test_learn_seasonal_weights_returns_dict()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_learn_seasonal_weights_returns_dict()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_276

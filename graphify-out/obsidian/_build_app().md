@@ -1,34 +1,44 @@
 ---
 source_file: "web_app.py"
 type: "code"
-community: "Module: frosty"
-location: "L94"
+community: "Anomaly Detection & PDF Reporting"
+location: "L119"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # _build_app()
 
 ## Connections
-- [[.test_empty_when_no_opportunities()]] - `calls` [EXTRACTED]
-- [[.test_market_fetch_failure_returns_500()]] - `calls` [EXTRACTED]
-- [[.test_returns_top_n_sorted_by_ev()]] - `calls` [EXTRACTED]
+- [[dot-test_empty_when_no_opportunities()]] - `calls` [EXTRACTED]
+- [[dot-test_market_fetch_failure_returns_500()]] - `calls` [EXTRACTED]
+- [[dot-test_returns_top_n_sorted_by_ev()]] - `calls` [EXTRACTED]
 - [[BotConfig]] - `calls` [EXTRACTED]
 - [[Build and return the Flask app.]] - `rationale_for` [EXTRACTED]
+- [[KalshiClient]] - `calls` [EXTRACTED]
+- [[_calibration_curve()]] - `calls` [EXTRACTED]
+- [[_conn()_1]] - `calls` [EXTRACTED]
 - [[_daily_paper_spend()]] - `calls` [EXTRACTED]
 - [[_is_cron_running()]] - `calls` [EXTRACTED]
 - [[analytics_client()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[brier_score()]] - `calls` [EXTRACTED]
+- [[brier_score_rolling()]] - `calls` [EXTRACTED]
+- [[brier_score_rolling_with_n()]] - `calls` [EXTRACTED]
 - [[check_aged_positions()]] - `calls` [EXTRACTED]
 - [[check_correlated_event_exposure()]] - `calls` [EXTRACTED]
+- [[check_position_limits()]] - `calls` [EXTRACTED]
+- [[clamp_last_calibration_count()]] - `calls` [EXTRACTED]
 - [[client()]] - `calls` [EXTRACTED]
 - [[close_paper_early()]] - `calls` [EXTRACTED]
 - [[corr_kelly_scale()]] - `calls` [EXTRACTED]
 - [[count_settled_predictions()]] - `calls` [EXTRACTED]
+- [[count_settled_predictions_rolling()]] - `calls` [EXTRACTED]
 - [[detect_brier_drift()]] - `calls` [EXTRACTED]
+- [[detect_hedge_opportunity()]] - `calls` [EXTRACTED]
+- [[drawdown_scaling_factor()]] - `calls` [EXTRACTED]
 - [[enrich_with_forecast()]] - `calls` [EXTRACTED]
 - [[fear_greed_index()]] - `calls` [EXTRACTED]
 - [[generate_weekly_report()]] - `calls` [EXTRACTED]
@@ -40,38 +50,56 @@ tags:
 - [[get_calibration_by_city()]] - `calls` [EXTRACTED]
 - [[get_component_attribution()]] - `calls` [EXTRACTED]
 - [[get_daily_pnl()]] - `calls` [EXTRACTED]
+- [[get_edge_realization_by_city()]] - `calls` [EXTRACTED]
 - [[get_ensemble_member_accuracy()]] - `calls` [EXTRACTED]
 - [[get_expiry_date_clustering()]] - `calls` [EXTRACTED]
 - [[get_feature_summary()]] - `calls` [EXTRACTED]
 - [[get_history()]] - `calls` [EXTRACTED]
 - [[get_live_pnl_summary()]] - `calls` [EXTRACTED]
+- [[get_max_drawdown_pct()]] - `calls` [EXTRACTED]
 - [[get_mean_slippage()]] - `calls` [EXTRACTED]
 - [[get_model_attribution_by_city()]] - `calls` [EXTRACTED]
 - [[get_open_trades()]] - `calls` [EXTRACTED]
+- [[get_peak_balance()]] - `calls` [EXTRACTED]
 - [[get_performance()]] - `calls` [EXTRACTED]
+- [[get_portfolio_expected_value()]] - `calls` [EXTRACTED]
 - [[get_price_improvement_stats()]] - `calls` [EXTRACTED]
 - [[get_recent_orders()]] - `calls` [EXTRACTED]
+- [[get_sameday_calibration()]] - `calls` [EXTRACTED]
 - [[get_source_reliability()]] - `calls` [EXTRACTED]
 - [[get_total_exposure()]] - `calls` [EXTRACTED]
 - [[get_weather_forecast()]] - `calls` [EXTRACTED]
 - [[get_weather_markets()]] - `calls` [EXTRACTED]
+- [[get_win_rate_window()]] - `calls` [EXTRACTED]
 - [[graduation_check()]] - `calls` [EXTRACTED]
 - [[has_ml_model()]] - `calls` [EXTRACTED]
+- [[init_db()]] - `calls` [EXTRACTED]
+- [[is_trading_paused()]] - `calls` [EXTRACTED]
 - [[kelly_bet_dollars()]] - `calls` [EXTRACTED]
 - [[kelly_fraction()]] - `calls` [EXTRACTED]
 - [[kelly_quantity()]] - `calls` [EXTRACTED]
 - [[list_all_summaries()]] - `calls` [EXTRACTED]
 - [[load_paper_trades()]] - `calls` [EXTRACTED]
 - [[log_prediction()]] - `calls` [EXTRACTED]
+- [[parse_market_price()]] - `calls` [EXTRACTED]
 - [[place_paper_order()_1]] - `calls` [EXTRACTED]
 - [[portfolio_kelly_fraction()]] - `calls` [EXTRACTED]
 - [[read_settlement_signals()]] - `calls` [EXTRACTED]
+- [[run_anomaly_check()]] - `calls` [EXTRACTED]
+- [[run_stress_test()]] - `calls` [EXTRACTED]
+- [[simulate_portfolio()]] - `calls` [EXTRACTED]
 - [[spread_kelly_multiplier()]] - `calls` [EXTRACTED]
 - [[start_web()]] - `calls` [EXTRACTED]
+- [[test_api_edge_realization_returns_list()]] - `calls` [EXTRACTED]
+- [[test_api_reliability_returns_empty_for_unknown_city()]] - `calls` [EXTRACTED]
+- [[test_health_endpoint_returns_ok()]] - `calls` [EXTRACTED]
+- [[test_p0_16_cron_endpoint.py]] - `calls` [EXTRACTED]
 - [[test_suggested_bets.py]] - `imports` [EXTRACTED]
+- [[test_tracker.py]] - `imports` [EXTRACTED]
 - [[test_web_analytics.py]] - `imports` [EXTRACTED]
 - [[test_web_app.py]] - `imports` [EXTRACTED]
+- [[utc_today()]] - `calls` [EXTRACTED]
 - [[validate_paper_trades_integrity()]] - `calls` [EXTRACTED]
 - [[web_app.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

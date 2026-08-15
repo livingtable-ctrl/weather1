@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1417"
+community: "Community 267"
+location: "L3068"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_267
 ---
 
 # load_learned_weights must return {} when any weight is <= 0.
 
 ## Connections
-- [[.test_load_rejects_non_positive_weights()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_load_rejects_non_positive_weights()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_267

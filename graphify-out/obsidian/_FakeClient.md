@@ -1,22 +1,24 @@
 ---
-source_file: "tests/test_execution_proof.py"
+source_file: "tests/test_alerts.py"
 type: "code"
-community: "Module: tests"
-location: "L195"
+community: "Community 325"
+location: "L211"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_325
 ---
 
 # _FakeClient
 
 ## Connections
-- [[.__init__()_7]] - `method` [EXTRACTED]
-- [[.get_market()_1]] - `method` [EXTRACTED]
-- [[Minimal KalshiClient stand-in for price-refresh tests.]] - `rationale_for` [EXTRACTED]
-- [[test_execution_proof.py]] - `contains` [EXTRACTED]
-- [[test_l1b_price_refresh_skips_when_edge_gone()]] - `calls` [EXTRACTED]
-- [[test_l1b_price_refresh_uses_fresh_market_prob()]] - `calls` [EXTRACTED]
+- [[dot-__init__()_9]] - `method` [EXTRACTED]
+- [[dot-get_market()_1]] - `method` [EXTRACTED]
+- [[dot-test_above_direction_does_not_fire_when_price_below_target()]] - `calls` [EXTRACTED]
+- [[dot-test_above_direction_fires_when_price_at_or_over_target()]] - `calls` [EXTRACTED]
+- [[dot-test_below_direction_does_not_fire_when_price_above_target()]] - `calls` [EXTRACTED]
+- [[dot-test_below_direction_fires_when_price_at_or_under_target()]] - `calls` [EXTRACTED]
+- [[dot-test_no_active_alerts_returns_empty_without_fetching()]] - `calls` [EXTRACTED]
+- [[test_alerts.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_325

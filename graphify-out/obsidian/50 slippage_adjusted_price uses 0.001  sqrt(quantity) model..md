@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Module: tests"
-location: "L481"
+community: "Community 320"
+location: "L291"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_320
 ---
 
 # #50: slippage_adjusted_price uses 0.001 * sqrt(quantity) model.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestSlippageAdjustedPrice]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_320

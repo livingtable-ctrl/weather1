@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_cleanup_data_dir.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 47"
 location: "L118"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_47
 ---
 
 # _PERMANENT_DATA_FILES must include the key calibration files.
 
 ## Connections
-- [[.test_permanent_file_set_covers_expected_names()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_permanent_file_set_covers_expected_names()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_47

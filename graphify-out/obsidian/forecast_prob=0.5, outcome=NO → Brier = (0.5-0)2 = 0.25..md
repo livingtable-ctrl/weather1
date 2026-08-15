@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L344"
+community: "Community 265"
+location: "L606"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_265
 ---
 
 # forecast_prob=0.5, outcome=NO → Brier = (0.5-0)^2 = 0.25.
 
 ## Connections
-- [[.test_midpoint_prediction()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_midpoint_prediction()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_265

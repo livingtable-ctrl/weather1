@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_station_bias.py"
 type: "rationale"
-community: "Module: tests"
-location: "L42"
+community: "Community 175"
+location: "L48"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_175
 ---
 
 # LA has no known systematic bias.
 
 ## Connections
-- [[.test_los_angeles_no_bias()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_los_angeles_no_bias()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_175

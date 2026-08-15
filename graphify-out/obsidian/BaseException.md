@@ -1,20 +1,16 @@
 ---
-source_file: "main.py"
+source_file: ""
 type: "code"
-community: "Module: tests"
-location: "L121"
+community: "Community 498"
 tags:
   - graphify/code
-  - graphify/INFERRED
-  - community/Module_tests
+  - graphify/EXTRACTED
+  - community/Community_498
 ---
 
 # BaseException
 
 ## Connections
-- [[CronContext]] - `uses` [INFERRED]
-- [[KalshiClient_1]] - `uses` [INFERRED]
-- [[LiveTradingGate]] - `uses` [INFERRED]
 - [[_excepthook()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_498

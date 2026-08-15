@@ -1,23 +1,22 @@
 ---
 source_file: "execution_log.py"
 type: "code"
-community: "Execution Log & Dedup"
-location: "L323"
+community: "Execution Log Live-Loss Tracking"
+location: "L559"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Execution_Log__Dedup
+  - community/Execution_Log_Live-Loss_Tracking
 ---
 
 # record_live_settlement()
 
 ## Connections
-- [[Write settlement outcome to an order row.      outcome_yes=True means the YES]] - `rationale_for` [EXTRACTED]
+- [[Write settlement outcome to an order row. outcome_yes=True means the YES side…]] - `rationale_for` [EXTRACTED]
 - [[_conn()]] - `calls` [EXTRACTED]
-- [[bool_8]] - `references` [EXTRACTED]
+- [[_poll_pending_orders()]] - `calls` [EXTRACTED]
 - [[execution_log.py]] - `contains` [EXTRACTED]
-- [[float_11]] - `references` [EXTRACTED]
 - [[init_log()]] - `calls` [EXTRACTED]
-- [[int_8]] - `references` [EXTRACTED]
+- [[test_execution_log.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Execution_Log__Dedup
+#graphify/code #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking

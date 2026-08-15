@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_d.py"
 type: "rationale"
-community: "Module: tests"
-location: "L103"
+community: "Community 433"
+location: "L141"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_433
 ---
 
 # P3-22: prune_feature_log must keep at most _MAX_LOG_LINES entries.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestFeatureImportancePruning]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_433

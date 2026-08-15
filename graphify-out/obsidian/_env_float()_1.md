@@ -1,19 +1,18 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Paper Trading & Exits"
-location: "L99"
+community: "Community 78"
+location: "L238"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Paper_Trading__Exits
+  - community/Community_78
 ---
 
 # _env_float()
 
 ## Connections
-- [[float_24]] - `references` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
-- [[str_23]] - `references` [EXTRACTED]
+- [[test_debug_fixes.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Paper_Trading__Exits
+#graphify/code #graphify/EXTRACTED #community/Community_78

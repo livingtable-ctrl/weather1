@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_c.py"
 type: "rationale"
-community: "Module: tests"
-location: "L154"
+community: "Community 344"
+location: "L157"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_344
 ---
 
 # P2-12: get_indices must refresh after TTL expires, not cache forever.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestClimateIndicesTTL]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_344

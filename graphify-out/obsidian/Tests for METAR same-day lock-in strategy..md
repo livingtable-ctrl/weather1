@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 73"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_73
 ---
 
 # Tests for METAR same-day lock-in strategy.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_metar.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_73

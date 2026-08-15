@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_integration.py"
 type: "rationale"
-community: "Module: tests"
-location: "L322"
+community: "Cron Integration Tests"
+location: "L547"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Cron_Integration_Tests
 ---
 
 # Lock must be cleaned up even if cron is interrupted mid-run.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_cron_lock_released_on_keyboard_interrupt()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Cron_Integration_Tests

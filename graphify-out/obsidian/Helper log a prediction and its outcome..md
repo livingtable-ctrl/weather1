@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L310"
+community: "Community 265"
+location: "L569"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_265
 ---
 
 # Helper: log a prediction and its outcome.
 
 ## Connections
-- [[._insert_prediction_and_outcome()]] - `rationale_for` [EXTRACTED]
+- [[dot-_insert_prediction_and_outcome()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_265

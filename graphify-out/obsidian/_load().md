@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "code"
-community: "Module: frosty"
+community: "Community 94"
 location: "L23"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_94
 ---
 
 # _load()
@@ -18,4 +18,4 @@ tags:
 - [[mark_triggered()]] - `calls` [EXTRACTED]
 - [[remove_alert()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_94

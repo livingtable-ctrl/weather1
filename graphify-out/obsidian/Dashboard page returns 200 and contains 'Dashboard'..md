@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Module: tests"
-location: "L121"
+community: "Community 43"
+location: "L146"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_43
 ---
 
 # Dashboard page returns 200 and contains 'Dashboard'.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_dashboard_route_returns_200_with_title()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_43

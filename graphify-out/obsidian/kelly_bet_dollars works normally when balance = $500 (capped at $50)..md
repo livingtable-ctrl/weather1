@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L244"
+community: "Community 106"
+location: "L322"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_106
 ---
 
 # kelly_bet_dollars works normally when balance >= $500 (capped at $50).
 
 ## Connections
-- [[.test_kelly_normal_above_threshold()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_kelly_normal_above_threshold()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_106

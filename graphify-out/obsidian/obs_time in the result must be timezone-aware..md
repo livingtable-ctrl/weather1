@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_j.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 236"
 location: "L124"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_236
 ---
 
 # obs_time in the result must be timezone-aware.
 
 ## Connections
-- [[.test_result_obs_time_is_utc_aware()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_result_obs_time_is_utc_aware()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_236

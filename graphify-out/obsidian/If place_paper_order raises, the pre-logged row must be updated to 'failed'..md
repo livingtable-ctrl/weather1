@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_p0_10_paper_prelog.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 340"
 location: "L119"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_340
 ---
 
 # If place_paper_order raises, the pre-logged row must be updated to 'failed'.
 
 ## Connections
-- [[.test_failure_updates_entry_to_failed()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_failure_updates_entry_to_failed()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_340

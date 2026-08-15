@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts_side.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 194"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_194
 ---
 
 # Tests for P1-14 — alerts win/loss side confusion fix.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_alerts_side.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_194

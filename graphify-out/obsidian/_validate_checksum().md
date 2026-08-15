@@ -1,19 +1,19 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Module: tests"
-location: "L57"
+community: "Community 301"
+location: "L89"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_301
 ---
 
 # _validate_checksum()
 
 ## Connections
 - [[CorruptionError]] - `calls` [EXTRACTED]
-- [[Validate SHA-256 checksum in data dict. Raises CorruptionError on mismatch.]] - `rationale_for` [EXTRACTED]
+- [[Validate SHA-256 checksum in data dict. Raises CorruptionError on mismatch.…]] - `rationale_for` [EXTRACTED]
 - [[_compute_checksum()]] - `calls` [EXTRACTED]
 - [[_load()_1]] - `calls` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
@@ -25,4 +25,4 @@ tags:
 - [[test_validate_checksum_skips_when_absent()]] - `calls` [EXTRACTED]
 - [[verify_backup()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_301

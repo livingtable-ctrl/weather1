@@ -1,18 +1,20 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "CLI & Preload Pipeline"
-location: "L2303"
+community: "Anomaly Detection & PDF Reporting"
+location: "L2875"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # get_balance_history()
 
 ## Connections
-- [[Return a time-ordered list of balance snapshots derived from the trade ledger.]] - `rationale_for` [EXTRACTED]
+- [[Phase 2 Batch F Regression Tests]] - `calls` [AMBIGUOUS]
+- [[Phase 2 Batch I Regression Tests]] - `calls` [EXTRACTED]
+- [[Return a time-ordered list of balance snapshots derived from the trade ledger.…]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[_load()_1]] - `calls` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
@@ -21,4 +23,4 @@ tags:
 - [[paper.py]] - `contains` [EXTRACTED]
 - [[web_app.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

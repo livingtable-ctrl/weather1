@@ -1,32 +1,28 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Cron Scheduler"
-location: "L317"
+community: "Community 245"
+location: "L385"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Cron_Scheduler
+  - community/Community_245
 ---
 
 # KalshiWebSocket
 
 ## Connections
-- [[.__init__()_6]] - `method` [EXTRACTED]
-- [[._run()]] - `method` [EXTRACTED]
-- [[.start()]] - `method` [EXTRACTED]
-- [[.stop()]] - `method` [EXTRACTED]
-- [[.subscribe()]] - `method` [EXTRACTED]
-- [[Background WebSocket thread for real-time Kalshi order book data.      Usage]] - `rationale_for` [EXTRACTED]
+- [[dot-__init__()_6]] - `method` [EXTRACTED]
+- [[dot-_run()]] - `method` [EXTRACTED]
+- [[dot-start()]] - `method` [EXTRACTED]
+- [[dot-stop()]] - `method` [EXTRACTED]
+- [[dot-subscribe()]] - `method` [EXTRACTED]
+- [[Background WebSocket thread for real-time Kalshi order book data. Usage ws =…]] - `rationale_for` [EXTRACTED]
 - [[CronContext]] - `uses` [INFERRED]
-- [[KalshiClient]] - `uses` [INFERRED]
+- [[Phase 2 Batch E Regression Tests]] - `imports` [EXTRACTED]
 - [[TestWebSocketSubscribeOrder]] - `uses` [INFERRED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
-- [[bool_7]] - `uses` [INFERRED]
 - [[cron.py]] - `imports` [EXTRACTED]
-- [[float_10]] - `uses` [INFERRED]
-- [[int_7]] - `uses` [INFERRED]
 - [[kalshi_ws.py]] - `contains` [EXTRACTED]
-- [[test_phase2_batch_e.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Cron_Scheduler
+#graphify/code #graphify/EXTRACTED #community/Community_245

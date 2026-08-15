@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L41"
+community: "Community 70"
+location: "L56"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_70
 ---
 
 # Moderate temp/wind/humidity falls through to actual temperature.
 
 ## Connections
-- [[.test_moderate_conditions_returns_near_actual()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_moderate_conditions_returns_near_actual()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_70

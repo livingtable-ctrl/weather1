@@ -1,17 +1,18 @@
 ---
-source_file: "frontend/src/App.jsx"
+source_file: "weather app site V_3 (3)/src/shared.jsx"
 type: "code"
-community: "Module: src"
-location: "L407"
+community: "Community 193"
+location: "L278"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_src
+  - community/Community_193
 ---
 
 # SystemEventsCard()
 
 ## Connections
-- [[App.jsx]] - `contains` [EXTRACTED]
+- [[OverviewTab.jsx]] - `imports` [EXTRACTED]
+- [[shared.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_src
+#graphify/code #graphify/EXTRACTED #community/Community_193

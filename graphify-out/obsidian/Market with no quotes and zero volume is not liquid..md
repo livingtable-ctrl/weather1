@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L213"
+community: "Community 178"
+location: "L228"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_178
 ---
 
 # Market with no quotes and zero volume is not liquid.
 
 ## Connections
-- [[.test_illiquid_market_all_zeros()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_illiquid_market_all_zeros()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_178

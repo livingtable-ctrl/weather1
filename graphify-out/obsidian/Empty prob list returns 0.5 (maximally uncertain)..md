@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L644"
+community: "Community 191"
+location: "L1000"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_191
 ---
 
 # Empty prob list returns 0.5 (maximally uncertain).
 
 ## Connections
-- [[.test_empty_list_returns_half()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_empty_list_returns_half()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_191

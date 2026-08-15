@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_spend_validation.py"
 type: "rationale"
-community: "Module: tests"
-location: "L11"
+community: "Community 244"
+location: "L14"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_244
 ---
 
 # Warning logged when MAX_DAILY_SPEND exceeds current paper balance.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_spend_cap_warning_logged_when_exceeds_balance()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_244

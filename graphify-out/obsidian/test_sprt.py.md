@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_sprt.py"
 type: "code"
-community: "Module: tests"
+community: "Community 380"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_380
 ---
 
 # test_sprt.py
@@ -15,5 +15,9 @@ tags:
 - [[TestIsAccuracyHaltedSprt]] - `contains` [EXTRACTED]
 - [[TestSprtModelHealth]] - `contains` [EXTRACTED]
 - [[Tests for SPRT model degradation detection in tracker.py and paper.py.]] - `rationale_for` [EXTRACTED]
+- [[is_accuracy_halted()]] - `calls` [EXTRACTED]
+- [[sprt_model_health()]] - `calls` [EXTRACTED]
+- [[test_risk_control.py]] - `semantically_similar_to` [INFERRED]
+- [[utils.py_1]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_380

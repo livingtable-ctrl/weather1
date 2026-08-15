@@ -1,0 +1,17 @@
+---
+source_file: "tests/test_climatology.py"
+type: "rationale"
+community: "Community 392"
+location: "L499"
+tags:
+  - graphify/rationale
+  - graphify/EXTRACTED
+  - community/Community_392
+---
+
+# backlog.txt "PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE…
+
+## Connections
+- [[TestLoadAllSigmasMerge]] - `rationale_for` [EXTRACTED]
+
+#graphify/rationale #graphify/EXTRACTED #community/Community_392

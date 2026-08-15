@@ -1,0 +1,17 @@
+---
+source_file: "acis_snow.py"
+type: "rationale"
+community: "Community 62"
+location: "L182"
+tags:
+  - graphify/rationale
+  - graphify/EXTRACTED
+  - community/Community_62
+---
+
+# Own copy, not imported from acis_precip: that module's version reads…
+
+## Connections
+- [[_cache_is_stale()_1]] - `rationale_for` [EXTRACTED]
+
+#graphify/rationale #graphify/EXTRACTED #community/Community_62

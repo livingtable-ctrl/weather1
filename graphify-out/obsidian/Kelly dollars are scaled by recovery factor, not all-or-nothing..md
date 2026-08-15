@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L698"
+community: "Community 188"
+location: "L908"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_188
 ---
 
 # Kelly dollars are scaled by recovery factor, not all-or-nothing.
 
 ## Connections
-- [[.test_kelly_scaled_at_partial_recovery()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_kelly_scaled_at_partial_recovery()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_188

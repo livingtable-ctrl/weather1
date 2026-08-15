@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_kalshi_ws.py"
 type: "rationale"
-community: "Module: tests"
-location: "L153"
+community: "Community 130"
+location: "L241"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_130
 ---
 
 # An entry with no ts field is treated as stale.
 
 ## Connections
-- [[.test_missing_ts_returns_none()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_missing_ts_returns_none()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_130

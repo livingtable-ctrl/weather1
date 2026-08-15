@@ -1,24 +1,24 @@
 ---
 source_file: "tests/test_phase3_batch_e.py"
 type: "code"
-community: "Module: tests"
+community: "Community 308"
 location: "L108"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_308
 ---
 
 # TestCronConsistencyCheck
 
 ## Connections
-- [[.test_consistency_violations_logged_at_warning()]] - `method` [EXTRACTED]
-- [[.test_excess_violations_set_skip_flag()]] - `method` [EXTRACTED]
-- [[.test_find_violations_called_in_cron_source()]] - `method` [EXTRACTED]
-- [[.test_find_violations_detects_inversion()]] - `method` [EXTRACTED]
-- [[.test_find_violations_with_clean_markets_returns_empty()]] - `method` [EXTRACTED]
-- [[.test_skip_flag_blocks_auto_trading()]] - `method` [EXTRACTED]
-- [[P3-14 _cmd_cron_body must call find_violations after market scan and loghalt o]] - `rationale_for` [EXTRACTED]
-- [[test_phase3_batch_e.py]] - `contains` [EXTRACTED]
+- [[dot-test_consistency_violations_logged_at_warning()]] - `method` [EXTRACTED]
+- [[dot-test_excess_violations_set_skip_flag()]] - `method` [EXTRACTED]
+- [[dot-test_find_violations_called_in_source()]] - `method` [EXTRACTED]
+- [[dot-test_find_violations_detects_inversion()]] - `method` [EXTRACTED]
+- [[dot-test_find_violations_with_clean_markets_returns_empty()]] - `method` [EXTRACTED]
+- [[dot-test_skip_flag_blocks_auto_trading()]] - `method` [EXTRACTED]
+- [[P3-14 the consistency check must run after market scan and loghalt on excess…]] - `rationale_for` [EXTRACTED]
+- [[Phase 3 Batch E AB TestConsistency Tests]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_308

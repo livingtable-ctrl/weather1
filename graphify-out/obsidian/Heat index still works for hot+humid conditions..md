@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 70"
 location: "L166"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_70
 ---
 
 # Heat index still works for hot+humid conditions.
 
 ## Connections
-- [[.test_existing_hot_humid_still_works()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_existing_hot_humid_still_works()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_70

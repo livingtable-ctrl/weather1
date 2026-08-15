@@ -1,33 +1,29 @@
 ---
 source_file: "cron.py"
 type: "code"
-community: "Cron Scheduler"
-location: "L65"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L84"
 tags:
   - graphify/code
-  - graphify/INFERRED
-  - community/Cron_Scheduler
+  - graphify/EXTRACTED
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # CronContext
 
 ## Connections
-- [[All callable dependencies that cmd_cron needs from outside cron.py.      Const]] - `rationale_for` [EXTRACTED]
-- [[BaseException]] - `uses` [INFERRED]
-- [[ExceptHookArgs]] - `uses` [INFERRED]
-- [[KalshiClient_1]] - `uses` [INFERRED]
-- [[KalshiClient_2]] - `uses` [INFERRED]
+- [[All callable dependencies that cmd_cron needs from outside cron.py. Constructed…]] - `rationale_for` [EXTRACTED]
+- [[KalshiClient]] - `uses` [INFERRED]
 - [[KalshiWebSocket]] - `uses` [INFERRED]
-- [[TracebackType]] - `uses` [INFERRED]
-- [[_CronContext]] - `uses` [INFERRED]
-- [[_build_cron_context()]] - `calls` [EXTRACTED]
+- [[TradeCycleResult]] - `uses` [INFERRED]
+- [[_build_cron_context()]] - `references` [EXTRACTED]
 - [[_cmd_cron_body()]] - `references` [EXTRACTED]
-- [[bool_12]] - `uses` [INFERRED]
+- [[_run_batch_prewarm()]] - `references` [EXTRACTED]
+- [[_run_batch_prewarm_for_pairs()]] - `references` [EXTRACTED]
 - [[cmd_cron()]] - `references` [EXTRACTED]
 - [[cron.py]] - `contains` [EXTRACTED]
-- [[float_16]] - `uses` [INFERRED]
-- [[int_12]] - `uses` [INFERRED]
 - [[main.py]] - `imports` [EXTRACTED]
-- [[str_15]] - `uses` [INFERRED]
+- [[run_trade_cycle()]] - `references` [EXTRACTED]
+- [[trade_cycle.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Cron_Scheduler
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

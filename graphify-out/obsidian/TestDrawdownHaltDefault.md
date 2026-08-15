@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Module: tests"
-location: "L360"
+community: "Community 108"
+location: "L363"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_108
 ---
 
 # TestDrawdownHaltDefault
 
 ## Connections
-- [[.test_drawdown_halt_default_is_20pct()]] - `method` [EXTRACTED]
+- [[dot-test_drawdown_halt_default_is_20pct()]] - `method` [EXTRACTED]
 - [[test_risk_control.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_108

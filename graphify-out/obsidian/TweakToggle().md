@@ -1,17 +1,17 @@
 ---
 source_file: "updated frontend/tweaks-panel.jsx"
 type: "code"
-community: "Module: updated"
+community: "Community 48"
 location: "L348"
 tags:
   - graphify/code
-  - graphify/EXTRACTED
-  - community/Module_updated
+  - graphify/INFERRED
+  - community/Community_48
 ---
 
 # TweakToggle()
 
 ## Connections
-- [[tweaks-panel.jsx]] - `contains` [EXTRACTED]
+- [[tweaks-panel.jsx]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_updated
+#graphify/code #graphify/INFERRED #community/Community_48

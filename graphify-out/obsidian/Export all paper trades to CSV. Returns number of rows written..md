@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Paper Trading & Exits"
-location: "L1719"
+community: "Anomaly Detection & PDF Reporting"
+location: "L2233"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Paper_Trading__Exits
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Export all paper trades to CSV. Returns number of rows written.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[export_trades_csv()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Paper_Trading__Exits
+#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

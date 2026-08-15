@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Module: tests"
-location: "L418"
+community: "Community 383"
+location: "L228"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_383
 ---
 
 # #49: load_correlations_from_backtest / save_correlations round-trip.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCorrelationPersistence]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_383

@@ -1,17 +1,19 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Module: tests"
-location: "L928"
+community: "Community 36"
+location: "L1577"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_36
 ---
 
 # test_get_component_attribution_works()
 
 ## Connections
+- [[get_component_attribution()]] - `calls` [EXTRACTED]
+- [[init_db()]] - `calls` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_36

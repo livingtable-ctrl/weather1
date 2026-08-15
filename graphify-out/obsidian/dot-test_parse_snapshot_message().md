@@ -1,0 +1,19 @@
+---
+source_file: "tests/test_kalshi_ws.py"
+type: "code"
+community: "Community 352"
+location: "L15"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_352
+---
+
+# .test_parse_snapshot_message()
+
+## Connections
+- [[TestParseOrderbookMessage]] - `method` [EXTRACTED]
+- [[parse_message returns structured snapshot from orderbook_snapshot type.]] - `rationale_for` [EXTRACTED]
+- [[parse_message()]] - `calls` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_352

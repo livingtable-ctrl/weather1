@@ -1,18 +1,19 @@
 ---
 source_file: "tests/test_infrastructure.py"
 type: "code"
-community: "Circuit Breaker Fault Tolerance"
-location: "L220"
+community: "Circuit Breaker & Session Retry Infrastructure"
+location: "L367"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Circuit_Breaker_Fault_Tolerance
+  - community/Circuit_Breaker__Session_Retry_Infrastructure
 ---
 
 # test_atomic_write_raises_on_double_failure()
 
 ## Connections
 - [[If both primary and tmp writes fail, AtomicWriteError is raised.]] - `rationale_for` [EXTRACTED]
+- [[atomic_write_json()]] - `calls` [EXTRACTED]
 - [[test_infrastructure.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Circuit_Breaker_Fault_Tolerance
+#graphify/code #graphify/EXTRACTED #community/Circuit_Breaker__Session_Retry_Infrastructure

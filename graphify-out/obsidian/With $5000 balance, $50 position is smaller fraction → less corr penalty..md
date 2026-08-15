@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_i.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 481"
 location: "L265"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_481
 ---
 
 # With $5000 balance, $50 position is smaller fraction → less corr penalty.
 
 ## Connections
-- [[.test_scale_less_aggressive_on_grown_account()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_scale_less_aggressive_on_grown_account()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_481

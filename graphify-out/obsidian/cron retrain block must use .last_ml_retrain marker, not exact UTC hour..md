@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_m.py"
 type: "rationale"
-community: "Module: tests"
-location: "L14"
+community: "Community 374"
+location: "L13"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_374
 ---
 
 # cron retrain block must use .last_ml_retrain marker, not exact UTC hour.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMlRetrainMarkerFile]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_374

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase3_batch_d.py"
 type: "rationale"
-community: "Module: tests"
-location: "L37"
+community: "Community 87"
+location: "L75"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_87
 ---
 
 # Identity matrix is already PD — repair should return immediately.
 
 ## Connections
-- [[.test_repair_psd_identity_unchanged()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_repair_psd_identity_unchanged()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_87

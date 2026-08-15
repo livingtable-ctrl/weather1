@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_m.py"
 type: "rationale"
-community: "Module: tests"
-location: "L149"
+community: "Community 32"
+location: "L152"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_32
 ---
 
 # sweep_parameter itself must still work on arbitrary lists.
 
 ## Connections
-- [[.test_sweep_parameter_unchanged()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_sweep_parameter_unchanged()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_32

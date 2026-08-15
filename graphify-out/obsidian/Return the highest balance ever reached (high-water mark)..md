@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "CLI & Preload Pipeline"
-location: "L348"
+community: "Anomaly Detection & PDF Reporting"
+location: "L537"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Return the highest balance ever reached (high-water mark).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_peak_balance()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

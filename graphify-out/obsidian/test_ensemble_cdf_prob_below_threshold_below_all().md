@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "code"
-community: "Module: tests"
-location: "L789"
+community: "Community 26"
+location: "L1162"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_26
 ---
 
 # test_ensemble_cdf_prob_below_threshold_below_all()
@@ -15,4 +15,4 @@ tags:
 - [[Threshold below all members → P(above) near 1.0.]] - `rationale_for` [EXTRACTED]
 - [[test_gaussian_prob.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_26

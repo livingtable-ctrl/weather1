@@ -1,22 +1,23 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "CLI & Preload Pipeline"
-location: "L2762"
+community: "Black Swan Halt State"
+location: "L3891"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Black_Swan_Halt_State
 ---
 
 # cmd_dashboard()
 
 ## Connections
-- [[KalshiClient_2]] - `references` [EXTRACTED]
+- [[KalshiClient]] - `references` [EXTRACTED]
+- [[Paper Trading Ledger Module]] - `calls` [EXTRACTED]
 - [[Single-screen portfolio health view balance, positions, calibration.]] - `rationale_for` [EXTRACTED]
 - [[_header()]] - `calls` [EXTRACTED]
 - [[bold()]] - `calls` [EXTRACTED]
-- [[brier_score()]] - `calls` [EXTRACTED]
+- [[brier_score_rolling_with_n()]] - `calls` [EXTRACTED]
 - [[check_expiring_trades()]] - `calls` [EXTRACTED]
 - [[cyan()]] - `calls` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
@@ -30,9 +31,9 @@ tags:
 - [[get_rolling_sharpe()]] - `calls` [EXTRACTED]
 - [[get_unrealized_pnl_paper()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
-- [[main()]] - `calls` [EXTRACTED]
+- [[main()_1]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
 - [[yellow()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

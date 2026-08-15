@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_graduation_gate.py"
 type: "code"
-community: "Module: tests"
+community: "Community 180"
 location: "L41"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_180
 ---
 
 # test_gate_skipped_when_micro_live_false()
@@ -15,4 +15,4 @@ tags:
 - [[No exception when ENABLE_MICRO_LIVE is not 'true' (gate is skipped entirely).]] - `rationale_for` [EXTRACTED]
 - [[test_graduation_gate.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_180

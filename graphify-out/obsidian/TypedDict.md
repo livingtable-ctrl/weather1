@@ -1,11 +1,11 @@
 ---
 source_file: ""
 type: "code"
-community: "Module: frosty"
+community: "Community 456"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_456
 ---
 
 # TypedDict
@@ -16,4 +16,4 @@ tags:
 - [[MarketCondition]] - `inherits` [EXTRACTED]
 - [[MarketDict]] - `inherits` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_456

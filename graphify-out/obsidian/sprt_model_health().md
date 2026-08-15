@@ -1,21 +1,22 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Module: frosty"
-location: "L962"
+community: "Community 52"
+location: "L2826"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_52
 ---
 
 # sprt_model_health()
 
 ## Connections
-- [[Run SPRT on the last `window` settled trades.      Sequential Probability Rati]] - `rationale_for` [EXTRACTED]
+- [[Run SPRT on the last `window` settled trades. Sequential Probability Ratio Test…]] - `rationale_for` [EXTRACTED]
 - [[_get_recent_win_loss()]] - `calls` [EXTRACTED]
-- [[float_29]] - `references` [EXTRACTED]
-- [[int_24]] - `references` [EXTRACTED]
+- [[is_accuracy_halted()]] - `calls` [EXTRACTED]
+- [[test_sprt.py]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
+- [[tracker.py_1]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_52

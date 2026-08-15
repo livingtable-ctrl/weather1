@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L646"
+community: "Community 188"
+location: "L856"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_188
 ---
 
 # Tests for the gradual drawdown recovery sizing feature.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestDrawdownScaling]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_188

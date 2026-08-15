@@ -1,20 +1,21 @@
 ---
 source_file: "frontend/src/App.jsx"
 type: "code"
-community: "Module: src"
-location: "L9"
+community: "Community 499"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_src
+  - community/Community_499
 ---
 
 # ErrorBoundary
 
 ## Connections
-- [[.constructor()]] - `method` [EXTRACTED]
-- [[.getDerivedStateFromError()]] - `method` [EXTRACTED]
-- [[.render()]] - `method` [EXTRACTED]
-- [[App.jsx]] - `contains` [EXTRACTED]
+- [[dot-constructor()]] - `method` [EXTRACTED]
+- [[dot-getDerivedStateFromError()]] - `method` [EXTRACTED]
+- [[dot-render()]] - `method` [EXTRACTED]
+- [[frontendsrcApp.jsx]] - `contains` [EXTRACTED]
+- [[main.jsx entry point]] - `calls` [EXTRACTED]
+- [[useData.js (hook module)]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_src
+#graphify/code #graphify/EXTRACTED #community/Community_499

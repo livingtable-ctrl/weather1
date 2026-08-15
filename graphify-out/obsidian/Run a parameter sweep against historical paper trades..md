@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Python Types & Utilities"
-location: "L6640"
+community: "Community 32"
+location: "L8762"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Community_32
 ---
 
 # Run a parameter sweep against historical paper trades.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_sweep()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/rationale #graphify/EXTRACTED #community/Community_32

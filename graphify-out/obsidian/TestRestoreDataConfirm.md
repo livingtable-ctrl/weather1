@@ -1,22 +1,22 @@
 ---
 source_file: "tests/test_phase2_batch_g.py"
 type: "code"
-community: "Module: tests"
-location: "L209"
+community: "Community 132"
+location: "L210"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_132
 ---
 
 # TestRestoreDataConfirm
 
 ## Connections
-- [[.test_restore_default_raises()]] - `method` [EXTRACTED]
-- [[.test_restore_snapshots_existing_data()]] - `method` [EXTRACTED]
-- [[.test_restore_with_confirm_proceeds()]] - `method` [EXTRACTED]
-- [[.test_restore_without_confirm_raises()]] - `method` [EXTRACTED]
+- [[dot-test_restore_default_raises()]] - `method` [EXTRACTED]
+- [[dot-test_restore_snapshots_existing_data()]] - `method` [EXTRACTED]
+- [[dot-test_restore_with_confirm_proceeds()]] - `method` [EXTRACTED]
+- [[dot-test_restore_without_confirm_raises()]] - `method` [EXTRACTED]
 - [[P2-47 restore_data must require confirm=True to prevent silent overwrites.]] - `rationale_for` [EXTRACTED]
-- [[test_phase2_batch_g.py]] - `contains` [EXTRACTED]
+- [[Phase 2 Batch G Regression Tests]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_132

@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Paper Trading & Exits"
-location: "L1718"
+community: "Anomaly Detection & PDF Reporting"
+location: "L2232"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Paper_Trading__Exits
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # export_trades_csv()
@@ -15,9 +15,7 @@ tags:
 - [[Export all paper trades to CSV. Returns number of rows written.]] - `rationale_for` [EXTRACTED]
 - [[cmd_export()]] - `calls` [EXTRACTED]
 - [[get_all_trades()]] - `calls` [EXTRACTED]
-- [[int_19]] - `references` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
-- [[str_23]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Paper_Trading__Exits
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

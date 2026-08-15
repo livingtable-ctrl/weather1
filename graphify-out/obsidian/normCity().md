@@ -1,19 +1,22 @@
 ---
 source_file: "frontend/src/App.jsx"
 type: "code"
-community: "Module: src"
+community: "Community 155"
 location: "L68"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_src
+  - community/Community_155
 ---
 
 # normCity()
 
 ## Connections
-- [[App.jsx]] - `contains` [EXTRACTED]
-- [[PositionsTab()]] - `calls` [EXTRACTED]
-- [[SignalsTab()]] - `calls` [EXTRACTED]
+- [[AnalyticsTab()]] - `calls` [EXTRACTED]
+- [[ForecastTab()]] - `calls` [EXTRACTED]
+- [[PositionsTab]] - `calls` [EXTRACTED]
+- [[SignalsTab]] - `calls` [EXTRACTED]
+- [[TradesTab()]] - `calls` [EXTRACTED]
+- [[frontendsrcApp.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_src
+#graphify/code #graphify/EXTRACTED #community/Community_155

@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_debug_fixes.py"
 type: "code"
-community: "Module: tests"
+community: "Community 78"
 location: "L341"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_78
 ---
 
 # TestLogPredictionWarning
 
 ## Connections
-- [[.test_log_prediction_failure_emits_warning()]] - `method` [EXTRACTED]
+- [[dot-test_log_prediction_failure_emits_warning()]] - `method` [EXTRACTED]
 - [[test_debug_fixes.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_78

@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/variation-hybrid.jsx"
 type: "code"
-community: "Module: updated"
+community: "Community 645"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_updated
+  - community/Community_645
 ---
 
 # variation-hybrid.jsx
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[HybridVar]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_updated
+#graphify/code #graphify/EXTRACTED #community/Community_645

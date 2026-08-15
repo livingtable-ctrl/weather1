@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "CLI & Preload Pipeline"
-location: "L2763"
+community: "Black Swan Halt State"
+location: "L3892"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Black_Swan_Halt_State
 ---
 
 # Single-screen portfolio health view: balance, positions, calibration.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_dashboard()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State

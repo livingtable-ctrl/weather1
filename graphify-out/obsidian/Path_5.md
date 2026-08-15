@@ -1,17 +1,17 @@
 ---
-source_file: "execution_log.py"
+source_file: ""
 type: "code"
-community: "Execution Log & Dedup"
-location: "L476"
+community: "Climatology & Climate Index Fetching"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Execution_Log__Dedup
+  - community/Climatology__Climate_Index_Fetching
 ---
 
 # Path
 
 ## Connections
-- [[append_entry()]] - `references` [EXTRACTED]
+- [[_cache_is_stale()_2]] - `references` [EXTRACTED]
+- [[_cache_path()_2]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Execution_Log__Dedup
+#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching

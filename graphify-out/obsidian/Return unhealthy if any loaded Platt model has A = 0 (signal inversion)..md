@@ -1,12 +1,12 @@
 ---
 source_file: "system_health.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L68"
+community: "Community 296"
+location: "L69"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_296
 ---
 
 # Return unhealthy if any loaded Platt model has A <= 0 (signal inversion).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_check_platt_sanity()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_296

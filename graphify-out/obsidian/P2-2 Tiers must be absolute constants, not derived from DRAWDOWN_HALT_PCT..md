@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_drawdown_tiers.py"
 type: "rationale"
-community: "Module: tests"
-location: "L95"
+community: "Community 362"
+location: "L71"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_362
 ---
 
 # P2-2: Tiers must be absolute constants, not derived from DRAWDOWN_HALT_PCT.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestDrawdownTiersRelativeToHalt]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_362

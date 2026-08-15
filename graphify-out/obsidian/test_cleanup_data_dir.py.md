@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cleanup_data_dir.py"
 type: "code"
-community: "Module: tests"
+community: "Community 47"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_47
 ---
 
 # test_cleanup_data_dir.py
@@ -16,6 +16,13 @@ tags:
 - [[TestCleanupDataDir]] - `contains` [EXTRACTED]
 - [[_patched_cleanup()]] - `contains` [EXTRACTED]
 - [[_write_stale()]] - `contains` [EXTRACTED]
+- [[atomic_write_json_with_history()]] - `imports` [EXTRACTED]
 - [[data_dir()]] - `contains` [EXTRACTED]
+- [[main.py]] - `calls` [EXTRACTED]
+- [[safe_io.py]] - `calls` [EXTRACTED]
+- [[test_atomic_write_json_with_history_keeps_previous_versions()]] - `contains` [EXTRACTED]
+- [[test_prune_old_analysis_attempts_removes_stale_rows()]] - `contains` [EXTRACTED]
+- [[test_vacuum_database_runs_without_error()]] - `contains` [EXTRACTED]
+- [[tracker.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_47

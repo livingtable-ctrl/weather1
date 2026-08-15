@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L289"
+community: "Community 82"
+location: "L635"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_82
 ---
 
 # CDF at +2 sigma ≈ 0.9772.
 
 ## Connections
-- [[.test_two_sigma_above_mean()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_two_sigma_above_mean()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_82

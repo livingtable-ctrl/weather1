@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_graduation_gate.py"
 type: "code"
-community: "Module: tests"
+community: "Community 180"
 location: "L26"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_180
 ---
 
 # test_gate_passes_when_micro_live_and_sufficient_samples()
@@ -15,4 +15,4 @@ tags:
 - [[No exception when ENABLE_MICRO_LIVE=true and count = MIN_BRIER_SAMPLES.]] - `rationale_for` [EXTRACTED]
 - [[test_graduation_gate.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_180

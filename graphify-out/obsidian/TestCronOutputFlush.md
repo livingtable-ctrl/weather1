@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_menu_ux.py"
 type: "code"
-community: "Module: tests"
-location: "L7"
+community: "Community 551"
+location: "L9"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_551
 ---
 
 # TestCronOutputFlush
 
 ## Connections
-- [[.test_cron_option_actually_runs_cmd_cron()]] - `method` [EXTRACTED]
-- [[.test_stdout_flushed_before_cmd_cron()]] - `method` [EXTRACTED]
+- [[dot-test_cron_option_actually_runs_cmd_cron()]] - `method` [EXTRACTED]
+- [[dot-test_stdout_flushed_before_cmd_cron()]] - `method` [EXTRACTED]
 - [[test_menu_ux.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_551

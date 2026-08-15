@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L544"
+community: "Community 269"
+location: "L900"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_269
 ---
 
 # Tests for _bootstrap_ci — bootstrap 90% CI on ensemble probability.
 
 ## Connections
-- [[TestBootstrapCI]] - `rationale_for` [EXTRACTED]
+- [[TestBootstrapCI_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_269

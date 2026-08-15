@@ -1,19 +1,18 @@
 ---
-source_file: "ab_test.py"
+source_file: ""
 type: "code"
-community: "A/B Test Module"
-location: "L63"
+community: "Community 33"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/A/B_Test_Module
+  - community/Community_33
 ---
 
 # Any
 
 ## Connections
-- [[.__init__()]] - `references` [EXTRACTED]
-- [[.pick_variant()]] - `references` [EXTRACTED]
+- [[dot-__init__()]] - `references` [EXTRACTED]
+- [[dot-pick_variant()]] - `references` [EXTRACTED]
 - [[get_active_variant()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/A/B_Test_Module
+#graphify/code #graphify/EXTRACTED #community/Community_33

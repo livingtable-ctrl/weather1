@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading_gates.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 40"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_40
 ---
 
 # P0-2: LiveTradingGate must block live orders when graduation/safety gates fail.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_trading_gates.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_40

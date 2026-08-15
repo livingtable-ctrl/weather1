@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase3_batch_b.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 84"
 location: "L184"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_84
 ---
 
 # Second is_open() call while probe is in flight must be blocked.
 
 ## Connections
-- [[.test_half_open_blocks_subsequent_callers()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_half_open_blocks_subsequent_callers()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_84

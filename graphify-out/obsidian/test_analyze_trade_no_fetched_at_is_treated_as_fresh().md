@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_data_freshness.py"
 type: "code"
-community: "Module: tests"
-location: "L169"
+community: "Community 201"
+location: "L181"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_201
 ---
 
 # test_analyze_trade_no_fetched_at_is_treated_as_fresh()
@@ -17,4 +17,4 @@ tags:
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[test_data_freshness.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_201

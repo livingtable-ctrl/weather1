@@ -1,24 +1,22 @@
 ---
 source_file: "ml_bias.py"
 type: "code"
-community: "Module: frosty"
-location: "L322"
+community: "ML Bias Correction & Audit Plans"
+location: "L352"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/ML_Bias_Correction__Audit_Plans
 ---
 
 # apply_ml_prob_correction()
 
 ## Connections
-- [[Apply ML-based probability calibration correction.     The model predicts (actu]] - `rationale_for` [EXTRACTED]
+- [[Apply ML-based probability calibration correction. The model predicts (actual -…]] - `rationale_for` [EXTRACTED]
 - [[_load_models()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[float_18]] - `references` [EXTRACTED]
-- [[int_14]] - `references` [EXTRACTED]
 - [[ml_bias.py]] - `contains` [EXTRACTED]
-- [[str_17]] - `references` [EXTRACTED]
+- [[test_ml_bias.py]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans

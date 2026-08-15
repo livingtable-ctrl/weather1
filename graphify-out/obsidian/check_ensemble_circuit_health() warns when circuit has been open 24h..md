@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Snow/Precip Physics"
-location: "L1144"
+community: "Ensemble Weight Blending Tests"
+location: "L2587"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Snow/Precip_Physics
+  - community/Ensemble_Weight_Blending_Tests
 ---
 
 # check_ensemble_circuit_health() warns when circuit has been open >24h.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCheckEnsembleCircuitHealth]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Snow/Precip_Physics
+#graphify/rationale #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests

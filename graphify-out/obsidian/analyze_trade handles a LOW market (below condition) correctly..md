@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_integration.py"
 type: "rationale"
-community: "Module: tests"
-location: "L247"
+community: "Community 53"
+location: "L277"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_53
 ---
 
 # analyze_trade handles a LOW market (below condition) correctly.
 
 ## Connections
-- [[.test_analyze_trade_below_condition()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_analyze_trade_below_condition()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_53

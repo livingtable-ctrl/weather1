@@ -1,12 +1,12 @@
 ---
 source_file: "backtest.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L919"
+community: "Community 37"
+location: "L976"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_37
 ---
 
 # Compute Brier score from a list of trade dicts.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_brier_score_from_trades()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_37

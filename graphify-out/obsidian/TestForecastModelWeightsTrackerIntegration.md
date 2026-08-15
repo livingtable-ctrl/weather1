@@ -1,19 +1,21 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Model Weights & Ensemble Blend"
-location: "L711"
+community: "Forecasting Persistence Model Tests"
+location: "L834"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Model_Weights__Ensemble_Blend
+  - community/Forecasting_Persistence_Model_Tests
 ---
 
 # TestForecastModelWeightsTrackerIntegration
 
 ## Connections
-- [[.test_seasonal_fallback_when_no_tracker_rows()]] - `method` [EXTRACTED]
-- [[.test_tracker_weights_used_when_available()]] - `method` [EXTRACTED]
+- [[dot-test_partial_tracker_weights_backfilled_from_baseline()]] - `method` [EXTRACTED]
+- [[dot-test_seasonal_fallback_when_no_tracker_rows()]] - `method` [EXTRACTED]
+- [[dot-test_tracker_weights_used_when_available()]] - `method` [EXTRACTED]
+- [[ForecastCache]] - `uses` [INFERRED]
 - [[test_forecasting.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Model_Weights__Ensemble_Blend
+#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests

@@ -1,12 +1,12 @@
 ---
 source_file: "web_app.py"
 type: "rationale"
-community: "CLI & Preload Pipeline"
-location: "L79"
+community: "Anomaly Detection & PDF Reporting"
+location: "L102"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Build SSE payload. Extracted for testability.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_build_stream_data()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

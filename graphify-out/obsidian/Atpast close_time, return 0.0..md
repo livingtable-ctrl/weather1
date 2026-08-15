@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Module: tests"
-location: "L449"
+community: "Community 394"
+location: "L495"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_394
 ---
 
 # At/past close_time, return 0.0.
 
 ## Connections
-- [[.test_zero_edge_at_close()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_zero_edge_at_close()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_394

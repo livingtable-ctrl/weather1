@@ -1,22 +1,20 @@
 ---
 source_file: "utils.py"
 type: "code"
-community: "Module: frosty"
-location: "L43"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L164"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # min_prob_edge_for_days_out()
 
 ## Connections
-- [[Minimum probability-edge required based on market horizon.      Further-out ma]] - `rationale_for` [EXTRACTED]
-- [[_cmd_cron_body()]] - `calls` [EXTRACTED]
-- [[cron.py]] - `imports` [EXTRACTED]
-- [[float_30]] - `references` [EXTRACTED]
-- [[int_25]] - `references` [EXTRACTED]
+- [[Minimum probability-edge required based on market horizon. Further-out markets…]] - `rationale_for` [EXTRACTED]
+- [[run_trade_cycle()]] - `calls` [EXTRACTED]
+- [[trade_cycle.py]] - `imports` [EXTRACTED]
 - [[utils.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

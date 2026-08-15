@@ -1,0 +1,16 @@
+---
+source_file: "docs/superpowers/plans/2026-04-30-bug-fixes.md"
+type: "document"
+community: "Community 294"
+tags:
+  - graphify/document
+  - graphify/EXTRACTED
+  - community/Community_294
+---
+
+# Fix Silent Briefing Failures
+
+## Connections
+- [[Bug Fixes April 30 2026 Plan]] - `implements` [EXTRACTED]
+
+#graphify/document #graphify/EXTRACTED #community/Community_294

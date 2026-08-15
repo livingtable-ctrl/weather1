@@ -1,24 +1,25 @@
 ---
-source_file: "tests/test_tracker.py"
+source_file: "tests/test_execution_log.py"
 type: "code"
-community: "Module: tests"
-location: "L1868"
+community: "Community 256"
+location: "L98"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_256
 ---
 
 # TestSchemaVersionMatchesMigrations
 
 ## Connections
-- [[.setUp()_24]] - `method` [EXTRACTED]
-- [[.tearDown()_24]] - `method` [EXTRACTED]
-- [[.test_local_hour_column_exists_after_init()]] - `method` [EXTRACTED]
-- [[.test_log_prediction_succeeds_with_local_hour()]] - `method` [EXTRACTED]
-- [[.test_schema_version_equals_migration_count()]] - `method` [EXTRACTED]
-- [[.test_user_version_equals_schema_version_after_init()]] - `method` [EXTRACTED]
-- [[P0-12 — _SCHEMA_VERSION must equal the number of migrations so local_hour     c]] - `rationale_for` [EXTRACTED]
-- [[test_tracker.py]] - `contains` [EXTRACTED]
+- [[dot-setup_method()_5]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_5]] - `method` [EXTRACTED]
+- [[dot-test_all_migrated_columns_present_on_fresh_db()]] - `method` [EXTRACTED]
+- [[dot-test_genuine_operational_error_is_not_swallowed()]] - `method` [EXTRACTED]
+- [[dot-test_legacy_db_with_all_columns_but_no_version_self_heals()]] - `method` [EXTRACTED]
+- [[dot-test_schema_version_equals_migration_count()]] - `method` [EXTRACTED]
+- [[dot-test_user_version_equals_schema_version_after_init()]] - `method` [EXTRACTED]
+- [[backlog.txt execution_log.py's SWALLOWED-ALTER MIGRATIONS vs tracker.py's…]] - `rationale_for` [EXTRACTED]
+- [[test_execution_log.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_256

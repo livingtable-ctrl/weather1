@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "rationale"
-community: "Cron Scheduler"
-location: "L262"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L290"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Cron_Scheduler
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # Delete the cron lock file.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_release_cron_lock()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Cron_Scheduler
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

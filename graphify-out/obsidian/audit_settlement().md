@@ -1,24 +1,33 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Module: frosty"
-location: "L1401"
+community: "Tracker P&L Attribution Tests"
+location: "L3748"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Tracker_PL_Attribution_Tests
 ---
 
 # audit_settlement()
 
 ## Connections
-- [[Cross-check Kalshi's settlement against Open-Meteo archive data.      Logs a W]] - `rationale_for` [EXTRACTED]
-- [[_fetch_actual_daily_temp()]] - `calls` [EXTRACTED]
+- [[Write outcomes.settled_temp_f  settled_value from Kalshi's own settlement data…]] - `rationale_for` [EXTRACTED]
+- [[_conn()_1]] - `calls` [EXTRACTED]
+- [[_fetch_asos_hour_temp()]] - `calls` [EXTRACTED]
+- [[_get_settlement_kalshi_client()]] - `calls` [EXTRACTED]
+- [[_metar_station_for_city()]] - `calls` [EXTRACTED]
 - [[_parse_market_condition()]] - `calls` [EXTRACTED]
-- [[bool_21]] - `references` [EXTRACTED]
+- [[backfill_daily_temp_settlement()]] - `calls` [EXTRACTED]
+- [[backfill_emos_data()]] - `calls` [EXTRACTED]
+- [[mark_outcome_disputed()]] - `calls` [EXTRACTED]
+- [[mark_outcome_undisputed()]] - `calls` [EXTRACTED]
 - [[parse_city_date()]] - `calls` [EXTRACTED]
-- [[str_30]] - `references` [EXTRACTED]
+- [[parse_ticker_hour()]] - `calls` [EXTRACTED]
 - [[sync_outcomes()]] - `calls` [EXTRACTED]
+- [[test_rain_markets.py]] - `calls` [EXTRACTED]
+- [[test_snow_markets.py]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
+- [[tracker.py_1]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

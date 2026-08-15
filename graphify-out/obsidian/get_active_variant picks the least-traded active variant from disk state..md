@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_ab_test.py"
 type: "rationale"
-community: "A/B Test Module"
+community: "Community 33"
 location: "L129"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/A/B_Test_Module
+  - community/Community_33
 ---
 
 # get_active_variant picks the least-traded active variant from disk state.
 
 ## Connections
-- [[.test_get_active_variant_returns_least_traded()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_get_active_variant_returns_least_traded()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/A/B_Test_Module
+#graphify/rationale #graphify/EXTRACTED #community/Community_33

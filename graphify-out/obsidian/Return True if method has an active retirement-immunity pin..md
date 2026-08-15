@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L2339"
+community: "Community 583"
+location: "L6021"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_583
 ---
 
 # Return True if method has an active retirement-immunity pin.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[is_strategy_pinned()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_583

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "rationale"
-community: "Module: tests"
-location: "L186"
+community: "Community 172"
+location: "L688"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_172
 ---
 
 # A fetch exception must call record_failure on the circuit breaker.
 
 ## Connections
-- [[.test_exception_triggers_circuit_breaker_failure()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_exception_triggers_circuit_breaker_failure()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_172

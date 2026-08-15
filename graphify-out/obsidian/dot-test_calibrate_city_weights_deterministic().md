@@ -1,0 +1,21 @@
+---
+source_file: "tests/test_phase3_batch_c.py"
+type: "code"
+community: "Community 72"
+location: "L200"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_72
+---
+
+# .test_calibrate_city_weights_deterministic()
+
+## Connections
+- [[Same data → same weights (random search uses fixed seed=42).]] - `rationale_for` [EXTRACTED]
+- [[TestRandomSearchAndGate]] - `method` [EXTRACTED]
+- [[_make_db()_1]] - `calls` [EXTRACTED]
+- [[_rows()]] - `calls` [EXTRACTED]
+- [[calibrate_city_weights()]] - `calls` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_72

@@ -1,12 +1,12 @@
 ---
 source_file: "static/signals.js"
 type: "code"
-community: "Module: static"
+community: "Legacy Static Dashboard JS Pages"
 location: "L233"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_static
+  - community/Legacy_Static_Dashboard_JS_Pages
 ---
 
 # renderLog()
@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[applyFilters()]] - `calls` [EXTRACTED]
 - [[loadSignals()]] - `calls` [EXTRACTED]
-- [[signals.js]] - `contains` [EXTRACTED]
+- [[staticsignals.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_static
+#graphify/code #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages

@@ -1,25 +1,26 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Module: tests"
-location: "L450"
+community: "Community 371"
+location: "L606"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_371
 ---
 
 # TestHighWaterMark
 
 ## Connections
-- [[.setUp()_4]] - `method` [EXTRACTED]
-- [[.tearDown()_4]] - `method` [EXTRACTED]
-- [[.test_drawdown_zero_at_start()]] - `method` [EXTRACTED]
-- [[.test_max_drawdown_pct_correct()]] - `method` [EXTRACTED]
-- [[.test_paused_from_peak_not_start()]] - `method` [EXTRACTED]
-- [[.test_peak_does_not_decrease_on_loss()]] - `method` [EXTRACTED]
-- [[.test_peak_tracks_winning_trade()]] - `method` [EXTRACTED]
-- [[.test_performance_includes_peak_and_drawdown()]] - `method` [EXTRACTED]
+- [[dot-setUp()_4]] - `method` [EXTRACTED]
+- [[dot-tearDown()_4]] - `method` [EXTRACTED]
+- [[dot-test_drawdown_zero_at_start()]] - `method` [EXTRACTED]
+- [[dot-test_max_drawdown_pct_correct()]] - `method` [EXTRACTED]
+- [[dot-test_paused_from_peak_not_start()]] - `method` [EXTRACTED]
+- [[dot-test_peak_does_not_decrease_on_loss()]] - `method` [EXTRACTED]
+- [[dot-test_peak_tracks_winning_trade()]] - `method` [EXTRACTED]
+- [[dot-test_performance_includes_peak_and_drawdown()]] - `method` [EXTRACTED]
+- [[Position]] - `uses` [INFERRED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_371

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1483"
+community: "Community 413"
+location: "L2361"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_413
 ---
 
 # #18 - get_ensemble_member_accuracy() must stratify by city and season.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestEnsembleMemberAccuracyStratified]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_413

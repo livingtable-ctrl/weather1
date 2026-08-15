@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Python Types & Utilities"
-location: "L139"
+community: "Community 498"
+location: "L192"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Community_498
 ---
 
 # _thread_excepthook()
@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[ExceptHookArgs]] - `references` [EXTRACTED]
 - [[_write_crash_log()]] - `calls` [EXTRACTED]
-- [[main.py]] - `contains` [EXTRACTED]
+- [[main.py]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/code #graphify/EXTRACTED #community/Community_498

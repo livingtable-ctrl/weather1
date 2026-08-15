@@ -1,18 +1,17 @@
 ---
-source_file: "updated frontend/mock-data.js"
+source_file: "weather app site V_3 (3)/src/mockData.js"
 type: "code"
-community: "Module: updated"
-location: "L6"
+community: "Community 81"
+location: "L7"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_updated
+  - community/Community_81
 ---
 
 # balanceWalk()
 
 ## Connections
-- [[mock-data.js]] - `contains` [EXTRACTED]
-- [[rng()]] - `calls` [EXTRACTED]
+- [[weather app site V_3 (3)srcmockData.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_updated
+#graphify/code #graphify/EXTRACTED #community/Community_81

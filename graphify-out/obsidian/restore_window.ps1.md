@@ -1,14 +1,14 @@
 ---
 source_file: "restore_window.ps1"
 type: "code"
-community: "Module: restore"
+community: "Community 689"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_restore
+  - community/Community_689
 ---
 
 # restore_window.ps1
 
-#graphify/code #graphify/EXTRACTED #community/Module_restore
+#graphify/code #graphify/EXTRACTED #community/Community_689

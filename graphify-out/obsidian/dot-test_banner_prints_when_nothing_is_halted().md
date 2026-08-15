@@ -1,0 +1,19 @@
+---
+source_file: "tests/test_trade_cycle_engine.py"
+type: "code"
+community: "Community 266"
+location: "L1872"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_266
+---
+
+# .test_banner_prints_when_nothing_is_halted()
+
+## Connections
+- [[TestPlacementAttemptedBannerAllConditions]] - `method` [EXTRACTED]
+- [[_med_market_analysis()]] - `calls` [EXTRACTED]
+- [[_strong_market_analysis()]] - `calls` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_266

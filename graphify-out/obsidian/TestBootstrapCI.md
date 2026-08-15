@@ -1,23 +1,19 @@
 ---
-source_file: "tests/test_weather_markets.py"
+source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Module: tests"
-location: "L543"
+community: "Community 98"
+location: "L322"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_98
 ---
 
-# TestBootstrapCI
+# TestBootstrapCi
 
 ## Connections
-- [[.test_above_condition_clear_outcome()]] - `method` [EXTRACTED]
-- [[.test_below_condition_returns_valid_tuple()]] - `method` [EXTRACTED]
-- [[.test_between_condition_returns_valid_tuple()]] - `method` [EXTRACTED]
-- [[.test_small_n_under_30_returns_wide_ci()]] - `method` [EXTRACTED]
-- [[.test_too_few_members_returns_wide_ci()]] - `method` [EXTRACTED]
-- [[Tests for _bootstrap_ci — bootstrap 90% CI on ensemble probability.]] - `rationale_for` [EXTRACTED]
-- [[test_weather_markets.py]] - `contains` [EXTRACTED]
+- [[dot-test_ci_brackets_point_estimate()]] - `method` [EXTRACTED]
+- [[dot-test_too_few_years_returns_degenerate_ci()]] - `method` [EXTRACTED]
+- [[test_hurricane_climatology.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_98

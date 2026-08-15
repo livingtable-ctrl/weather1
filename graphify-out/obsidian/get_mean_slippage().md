@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Module: frosty"
-location: "L350"
+community: "Tracker P&L Attribution Tests"
+location: "L649"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Tracker_PL_Attribution_Tests
 ---
 
 # get_mean_slippage()
@@ -17,10 +17,8 @@ tags:
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
-- [[float_29]] - `references` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[int_24]] - `references` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 - [[web_app.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

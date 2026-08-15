@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_b.py"
 type: "rationale"
-community: "Module: tests"
-location: "L219"
+community: "Community 403"
+location: "L216"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_403
 ---
 
 # Round-trip: _load after _save must succeed without CorruptionError.
 
 ## Connections
-- [[.test_save_checksum_is_verifiable()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_save_checksum_is_verifiable()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_403

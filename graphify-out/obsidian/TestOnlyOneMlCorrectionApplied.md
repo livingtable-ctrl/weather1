@@ -1,24 +1,24 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "code"
-community: "Module: tests"
-location: "L238"
+community: "Community 214"
+location: "L220"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_214
 ---
 
 # TestOnlyOneMlCorrectionApplied
 
 ## Connections
-- [[.test_gbm_and_platt_not_sequentially_applied()]] - `method` [EXTRACTED]
-- [[.test_has_ml_model_false_when_no_models()]] - `method` [EXTRACTED]
-- [[.test_has_ml_model_helper_exists()]] - `method` [EXTRACTED]
-- [[.test_has_ml_model_true_when_model_present()]] - `method` [EXTRACTED]
-- [[.test_platt_not_called_when_gbm_model_present()]] - `method` [EXTRACTED]
-- [[.test_source_uses_has_ml_model_gate()]] - `method` [EXTRACTED]
+- [[dot-test_gbm_and_platt_not_sequentially_applied()]] - `method` [EXTRACTED]
+- [[dot-test_has_ml_model_false_when_no_models()]] - `method` [EXTRACTED]
+- [[dot-test_has_ml_model_helper_exists()]] - `method` [EXTRACTED]
+- [[dot-test_has_ml_model_true_when_model_present()]] - `method` [EXTRACTED]
+- [[dot-test_platt_not_called_when_gbm_model_present()]] - `method` [EXTRACTED]
+- [[dot-test_source_uses_has_ml_model_gate()]] - `method` [EXTRACTED]
 - [[GBM and Platt must not both be applied to the same city's probability.]] - `rationale_for` [EXTRACTED]
-- [[test_phase2_batch_k.py]] - `contains` [EXTRACTED]
+- [[Phase 2 Batch K Regression Tests]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_214

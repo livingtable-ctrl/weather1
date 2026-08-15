@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L47"
+community: "Community 70"
+location: "L62"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_70
 ---
 
 # Wind chill only applies when temp <= 50 and wind >= 3 mph.
 
 ## Connections
-- [[.test_boundary_wind_chill_threshold()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_boundary_wind_chill_threshold()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_70

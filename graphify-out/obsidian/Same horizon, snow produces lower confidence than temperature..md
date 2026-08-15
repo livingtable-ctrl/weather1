@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 190"
 location: "L52"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_190
 ---
 
 # Same horizon, snow produces lower confidence than temperature.
 
 ## Connections
-- [[.test_precip_snow_lower_than_temp()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_precip_snow_lower_than_temp()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_190

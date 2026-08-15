@@ -1,18 +1,16 @@
 ---
-source_file: "nws.py"
+source_file: ""
 type: "code"
-community: "Module: frosty"
-location: "L91"
+community: "NWS/Circuit-Breaker Data Validation"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/NWS/Circuit-Breaker_Data_Validation
 ---
 
 # Lock
 
 ## Connections
-- [[CircuitBreaker]] - `uses` [INFERRED]
 - [[_get_obs_lock()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation

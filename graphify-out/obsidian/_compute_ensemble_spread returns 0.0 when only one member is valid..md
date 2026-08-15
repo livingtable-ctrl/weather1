@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_ecmwf.py"
 type: "rationale"
-community: "Module: tests"
-location: "L72"
+community: "Community 255"
+location: "L134"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_255
 ---
 
 # _compute_ensemble_spread returns 0.0 when only one member is valid.
 
 ## Connections
-- [[.test_spread_single_valid_member_returns_zero()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_spread_single_valid_member_returns_zero()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_255

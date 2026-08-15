@@ -1,0 +1,17 @@
+---
+source_file: "tests/test_hurricane_gating.py"
+type: "code"
+community: "Community 61"
+location: "L268"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_61
+---
+
+# .test_kxnextcat5hurdate_no_longer_blanket_gated()
+
+## Connections
+- [[TestAnalyzeTradeHurricaneGating]] - `method` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_61

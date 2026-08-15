@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "rationale"
-community: "Module: tests"
-location: "L245"
+community: "Community 171"
+location: "L843"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_171
 ---
 
 # Orders older than gtc_cancel_hours are cancelled via the API.
 
 ## Connections
-- [[.test_gtc_cancel_fires_for_old_pending_order()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_gtc_cancel_fires_for_old_pending_order()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_171

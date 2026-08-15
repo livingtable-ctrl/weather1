@@ -1,18 +1,18 @@
 ---
 source_file: "frontend/src/App.jsx"
 type: "code"
-community: "Module: src"
+community: "Community 327"
 location: "L1733"
 tags:
   - graphify/code
-  - graphify/EXTRACTED
-  - community/Module_src
+  - graphify/INFERRED
+  - community/Community_327
 ---
 
 # SettingsTab()
 
 ## Connections
-- [[App.jsx]] - `contains` [EXTRACTED]
-- [[authHeader()]] - `calls` [EXTRACTED]
+- [[authHeader Function]] - `calls` [EXTRACTED]
+- [[frontendsrcApp.jsx]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_src
+#graphify/code #graphify/INFERRED #community/Community_327

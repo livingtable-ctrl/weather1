@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_idempotency.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 548"
 location: "L8"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_548
 ---
 
 # _build_session must not include POST in allowed_methods.
 
 ## Connections
-- [[.test_post_not_in_allowed_methods()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_post_not_in_allowed_methods()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_548

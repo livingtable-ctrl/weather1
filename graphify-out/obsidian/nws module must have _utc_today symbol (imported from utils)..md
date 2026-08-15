@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_h.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 519"
 location: "L83"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_519
 ---
 
 # nws module must have _utc_today symbol (imported from utils).
 
 ## Connections
-- [[.test_nws_imports_utc_today()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_nws_imports_utc_today()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_519

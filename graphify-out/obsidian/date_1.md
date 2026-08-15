@@ -1,12 +1,11 @@
 ---
-source_file: "climate_indices.py"
+source_file: ""
 type: "code"
-community: "Module: frosty"
-location: "L188"
+community: "Climatology & Climate Index Fetching"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Climatology__Climate_Index_Fetching
 ---
 
 # date
@@ -14,4 +13,4 @@ tags:
 ## Connections
 - [[temperature_adjustment()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching

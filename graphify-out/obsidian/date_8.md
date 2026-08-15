@@ -1,17 +1,19 @@
 ---
-source_file: "tests/test_integration.py"
+source_file: ""
 type: "code"
-community: "Module: tests"
-location: "L30"
+community: "Community 309"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_309
 ---
 
 # date
 
 ## Connections
-- [[_make_enriched()]] - `references` [EXTRACTED]
+- [[dot-test_consensus_bonus_actually_raises_ci_adjusted_kelly()]] - `calls` [EXTRACTED]
+- [[dot-test_no_side_empty_bid_book()_1]] - `calls` [EXTRACTED]
+- [[dot-test_yes_side_normal_book()_1]] - `calls` [EXTRACTED]
+- [[_ny_tomorrow()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_309

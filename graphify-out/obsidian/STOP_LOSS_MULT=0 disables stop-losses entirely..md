@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1453"
+community: "Community 159"
+location: "L1860"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_159
 ---
 
 # STOP_LOSS_MULT=0 disables stop-losses entirely.
 
 ## Connections
-- [[.test_stop_not_triggered_when_multiplier_zero()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_stop_not_triggered_when_multiplier_zero()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_159

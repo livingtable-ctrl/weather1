@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L788"
+community: "Community 259"
+location: "L998"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_259
 ---
 
 # NO-side trade that loses (outcome=YES) must have zero payout.
 
 ## Connections
-- [[.test_no_side_loss_recorded_as_loss()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_no_side_loss_recorded_as_loss()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_259

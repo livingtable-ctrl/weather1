@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_metar.py"
 type: "rationale"
-community: "Module: tests"
-location: "L135"
+community: "Community 73"
+location: "L158"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_73
 ---
 
 # P1-2: observation 30 minutes old → accepted.
 
 ## Connections
-- [[.test_returns_result_when_observation_fresh()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_returns_result_when_observation_fresh()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_73

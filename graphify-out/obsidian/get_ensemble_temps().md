@@ -1,27 +1,29 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Forecast Analysis Engine"
-location: "L2452"
+community: "ML Bias Correction & Audit Plans"
+location: "L3644"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecast_Analysis_Engine
+  - community/ML_Bias_Correction__Audit_Plans
 ---
 
 # get_ensemble_temps()
 
 ## Connections
-- [[Return all ensemble member temperatures for a citydate, combining     ICON (51]] - `rationale_for` [EXTRACTED]
+- [[Grade Audit Final Report]] - `cites` [EXTRACTED]
+- [[Return all ensemble member temperatures for a citydate, combining ICON (51…]] - `rationale_for` [EXTRACTED]
+- [[Score Improvement Plan]] - `conceptually_related_to` [INFERRED]
+- [[_analyze_hourly_trade()]] - `calls` [EXTRACTED]
 - [[_fetch_model_ensemble()]] - `calls` [EXTRACTED]
+- [[_model_bias()]] - `calls` [EXTRACTED]
 - [[_model_weights()]] - `calls` [EXTRACTED]
 - [[_save_ensemble_disk_entry()]] - `calls` [EXTRACTED]
 - [[_ttl_until_next_cycle()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[date_7]] - `references` [EXTRACTED]
-- [[float_31]] - `references` [EXTRACTED]
-- [[int_26]] - `references` [EXTRACTED]
-- [[str_33]] - `references` [EXTRACTED]
+- [[date_11]] - `references` [EXTRACTED]
+- [[weather_markets.py_2]] - `implements` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecast_Analysis_Engine
+#graphify/code #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans

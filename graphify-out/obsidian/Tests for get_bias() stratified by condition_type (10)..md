@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L537"
+community: "Community 411"
+location: "L1046"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_411
 ---
 
 # Tests for get_bias() stratified by condition_type (#10).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestGetBiasConditionType]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_411

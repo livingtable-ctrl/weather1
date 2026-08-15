@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Model Weights & Ensemble Blend"
+community: "Forecasting Persistence Model Tests"
 location: "L9"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Model_Weights__Ensemble_Blend
+  - community/Forecasting_Persistence_Model_Tests
 ---
 
 # Returns None when get_model_weights returns empty dict (no rows).
 
 ## Connections
-- [[.test_returns_none_when_no_tracker_rows()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_returns_none_when_no_tracker_rows()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Model_Weights__Ensemble_Blend
+#graphify/rationale #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests

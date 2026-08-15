@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "rationale"
-community: "Module: tests"
-location: "L28"
+community: "Community 471"
+location: "L29"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_471
 ---
 
 # apply_ml_prob_correction returns our_prob unchanged if no trained model exists.
 
 ## Connections
-- [[.test_apply_ml_prob_correction_falls_back_when_no_model()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_apply_ml_prob_correction_falls_back_when_no_model()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_471

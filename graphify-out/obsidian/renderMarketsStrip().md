@@ -1,17 +1,17 @@
 ---
 source_file: "static/dashboard.js"
 type: "code"
-community: "Module: static"
+community: "Legacy Static Dashboard JS Pages"
 location: "L45"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_static
+  - community/Legacy_Static_Dashboard_JS_Pages
 ---
 
 # renderMarketsStrip()
 
 ## Connections
-- [[dashboard.js]] - `contains` [EXTRACTED]
+- [[staticdashboard.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_static
+#graphify/code #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages

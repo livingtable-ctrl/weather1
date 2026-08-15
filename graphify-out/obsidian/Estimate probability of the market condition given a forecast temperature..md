@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L3199"
+community: "Weather Probability Math Tests"
+location: "L5845"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Weather_Probability_Math_Tests
 ---
 
 # Estimate probability of the market condition given a forecast temperature.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_forecast_probability()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Weather_Probability_Math_Tests

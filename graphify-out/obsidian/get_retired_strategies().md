@@ -1,26 +1,28 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Module: frosty"
-location: "L2424"
+community: "Community 384"
+location: "L6118"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_384
 ---
 
 # get_retired_strategies()
 
 ## Connections
-- [[P9.5 Load retired strategy methods from disk.      Returns {method {retired]] - `rationale_for` [EXTRACTED]
+- [[P9.5 Load retired strategy methods from disk. Returns {method {retired_at…]] - `rationale_for` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[auto_retire_strategies()]] - `calls` [EXTRACTED]
+- [[check_retirement_probation()]] - `calls` [EXTRACTED]
 - [[cmd_retire_strategies()]] - `calls` [EXTRACTED]
 - [[cmd_unretire_strategy()]] - `calls` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
-- [[str_30]] - `references` [EXTRACTED]
+- [[test_p0_11_retired_strategy.py]] - `calls` [EXTRACTED]
+- [[test_p9_p10.py]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 - [[unretire_strategy()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_384

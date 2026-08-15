@@ -1,19 +1,20 @@
 ---
-source_file: "pdf_report.py"
+source_file: ""
 type: "code"
-community: "CLI & Preload Pipeline"
-location: "L65"
+community: "Community 326"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Community_326
 ---
 
 # Path
 
 ## Connections
-- [[_generate_html()]] - `references` [EXTRACTED]
-- [[_generate_pdf()]] - `references` [EXTRACTED]
-- [[generate_weekly_report()]] - `calls` [EXTRACTED]
+- [[_find_google_drive()]] - `references` [EXTRACTED]
+- [[_find_sync_folder()]] - `references` [EXTRACTED]
+- [[backup_data()]] - `references` [EXTRACTED]
+- [[backup_to_s3()]] - `references` [EXTRACTED]
+- [[restore_data()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/code #graphify/EXTRACTED #community/Community_326

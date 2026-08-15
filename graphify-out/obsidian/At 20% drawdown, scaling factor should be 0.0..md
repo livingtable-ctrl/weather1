@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_drawdown_tiers.py"
 type: "rationale"
-community: "Module: tests"
-location: "L121"
+community: "Community 362"
+location: "L97"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_362
 ---
 
 # At 20% drawdown, scaling factor should be 0.0.
 
 ## Connections
-- [[.test_halt_at_20pct_drawdown()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_halt_at_20pct_drawdown()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_362

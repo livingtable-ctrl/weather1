@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_g.py"
 type: "rationale"
-community: "Module: tests"
-location: "L242"
+community: "Community 132"
+location: "L243"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_132
 ---
 
 # restore_data must snapshot current data/ before overwriting.
 
 ## Connections
-- [[.test_restore_snapshots_existing_data()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_restore_snapshots_existing_data()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_132

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_starting_balance.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 228"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_228
 ---
 
 # P0-7: STARTING_BALANCE must be configurable via environment variable.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_starting_balance.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_228

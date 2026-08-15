@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Model Weights & Ensemble Blend"
-location: "L250"
+community: "Forecasting Persistence Model Tests"
+location: "L391"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Model_Weights__Ensemble_Blend
+  - community/Forecasting_Persistence_Model_Tests
 ---
 
 # All summer months (Apr-Sep) should use the lower ECMWF weight.
 
 ## Connections
-- [[.test_all_summer_months_use_lower_ecmwf()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_all_summer_months_use_lower_ecmwf()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Model_Weights__Ensemble_Blend
+#graphify/rationale #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests

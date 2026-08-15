@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Module: tests"
-location: "L596"
+community: "Community 276"
+location: "L667"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_276
 ---
 
 # Falls back to seasonal weights when no learned data for city.
 
 ## Connections
-- [[.test_forecast_model_weights_falls_back_to_seasonal()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_forecast_model_weights_falls_back_to_seasonal()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_276

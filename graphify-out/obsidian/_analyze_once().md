@@ -1,39 +1,33 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Python Types & Utilities"
-location: "L1243"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L1382"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # _analyze_once()
 
 ## Connections
-- [[KalshiClient_2]] - `references` [EXTRACTED]
-- [[LiveTradingGate]] - `calls` [EXTRACTED]
+- [[KalshiClient]] - `references` [EXTRACTED]
+- [[_liquidity_edge_scale()]] - `calls` [EXTRACTED]
+- [[_render_analysis_results()]] - `calls` [EXTRACTED]
 - [[alert_strong_signal()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[bold()]] - `calls` [EXTRACTED]
-- [[bool_12]] - `references` [EXTRACTED]
 - [[cmd_analyze()]] - `calls` [EXTRACTED]
 - [[cmd_watch()]] - `calls` [EXTRACTED]
-- [[cyan()]] - `calls` [EXTRACTED]
+- [[compute_market_implied_distributions()]] - `calls` [EXTRACTED]
 - [[detect_hedge_opportunity()]] - `calls` [EXTRACTED]
-- [[dim()]] - `calls` [EXTRACTED]
 - [[enrich_with_forecast()]] - `calls` [EXTRACTED]
-- [[find_violations()]] - `calls` [EXTRACTED]
-- [[float_16]] - `references` [EXTRACTED]
 - [[get_open_trades()]] - `calls` [EXTRACTED]
 - [[get_weather_markets()]] - `calls` [EXTRACTED]
-- [[green()]] - `calls` [EXTRACTED]
 - [[is_liquid()]] - `calls` [EXTRACTED]
+- [[is_stale()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
-- [[place_paper_order()_1]] - `calls` [EXTRACTED]
-- [[prob_color()]] - `calls` [EXTRACTED]
-- [[red()]] - `calls` [EXTRACTED]
-- [[yellow()]] - `calls` [EXTRACTED]
+- [[resolve_market_implied_for_analysis()]] - `calls` [EXTRACTED]
+- [[test_p1_remaining.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

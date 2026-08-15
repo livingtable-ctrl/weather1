@@ -1,14 +1,16 @@
 ---
 source_file: "tests/fixtures/sample_markets.json"
-type: "code"
-community: "Module: tests"
-location: "L1"
+type: "document"
+community: "Legacy Static Dashboard JS Pages"
 tags:
-  - graphify/code
+  - graphify/document
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Legacy_Static_Dashboard_JS_Pages
 ---
 
 # sample_markets.json
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+## Connections
+- [[testsconftest.py Fixtures]] - `references` [EXTRACTED]
+
+#graphify/document #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages

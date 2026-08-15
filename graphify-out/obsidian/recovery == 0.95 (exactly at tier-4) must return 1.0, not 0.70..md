@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_g.py"
 type: "rationale"
-community: "Module: tests"
-location: "L96"
+community: "Community 404"
+location: "L97"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_404
 ---
 
 # recovery == 0.95 (exactly at tier-4) must return 1.0, not 0.70.
 
 ## Connections
-- [[.test_exactly_tier4_returns_full()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_exactly_tier4_returns_full()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_404

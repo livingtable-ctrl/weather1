@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_circuit_breaker.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 293"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_293
 ---
 
 # Tests for CircuitBreaker — open/close/half-open, backoff, wall-clock.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_circuit_breaker.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_293

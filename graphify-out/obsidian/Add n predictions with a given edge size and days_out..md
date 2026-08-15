@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L879"
+community: "Community 315"
+location: "L1528"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_315
 ---
 
 # Add n predictions with a given edge size and days_out.
 
 ## Connections
-- [[._add_decay()]] - `rationale_for` [EXTRACTED]
+- [[dot-_add_decay()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_315

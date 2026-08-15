@@ -1,23 +1,22 @@
 ---
 source_file: "notify.py"
 type: "code"
-community: "CLI & Preload Pipeline"
-location: "L129"
+community: "Community 96"
+location: "L238"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Community_96
 ---
 
 # _send_email()
 
 ## Connections
-- [[Send an email notification via SMTP (STARTTLS).     Reads SMTP_HOST, SMTP_PORT,]] - `rationale_for` [EXTRACTED]
+- [[Send an email notification via SMTP (STARTTLS). Reads SMTP_HOST, SMTP_PORT,…]] - `rationale_for` [EXTRACTED]
 - [[alert_strong_signal()]] - `calls` [EXTRACTED]
-- [[bool_17]] - `references` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
 - [[notify.py]] - `contains` [EXTRACTED]
-- [[str_20]] - `references` [EXTRACTED]
+- [[send_system_alert()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/code #graphify/EXTRACTED #community/Community_96

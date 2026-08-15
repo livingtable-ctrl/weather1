@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "rationale"
-community: "Module: tests"
-location: "L52"
+community: "Community 282"
+location: "L53"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_282
 ---
 
 # Wider-than-reference spread (std > 4°F) must decrease w_ens.
 
 ## Connections
-- [[.test_wide_spread_reduces_ensemble()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_wide_spread_reduces_ensemble()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_282

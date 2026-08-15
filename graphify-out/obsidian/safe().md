@@ -1,18 +1,19 @@
 ---
 source_file: "frontend/src/useData.js"
 type: "code"
-community: "Module: src"
-location: "L46"
+community: "Community 213"
+location: "L55"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_src
+  - community/Community_213
 ---
 
 # safe()
 
 ## Connections
-- [[apiFetch()]] - `calls` [EXTRACTED]
-- [[useData.js]] - `contains` [EXTRACTED]
+- [[apiFetch Function]] - `calls` [EXTRACTED]
+- [[frontendsrcuseData.js]] - `contains` [EXTRACTED]
+- [[useData Hook]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_src
+#graphify/code #graphify/EXTRACTED #community/Community_213

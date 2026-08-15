@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_cron_lock.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 121"
 location: "L22"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_121
 ---
 
 # No existing lock → returns True and writes lock file.
 
 ## Connections
-- [[.test_acquires_when_no_lock_exists()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_acquires_when_no_lock_exists()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_121

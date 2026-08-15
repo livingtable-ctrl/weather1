@@ -1,23 +1,27 @@
 ---
 source_file: "climate_indices.py"
 type: "code"
-community: "Module: frosty"
-location: "L109"
+community: "Climatology & Climate Index Fetching"
+location: "L130"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Climatology__Climate_Index_Fetching
 ---
 
 # get_indices()
 
 ## Connections
-- [[Return current (or specified) AO, NAO, ENSO values.     Results are cached with]] - `rationale_for` [EXTRACTED]
+- [[ForecastCache]] - `shares_data_with` [EXTRACTED]
+- [[Phase 2 Batch C Regression Tests]] - `calls` [EXTRACTED]
+- [[Return current (or specified) AO, NAO, ENSO values. Results are cached with a…]] - `rationale_for` [EXTRACTED]
 - [[_fetch_enso()]] - `calls` [EXTRACTED]
 - [[_fetch_monthly_index()]] - `calls` [EXTRACTED]
 - [[climate_indices.py]] - `contains` [EXTRACTED]
+- [[fetch_seasonal_precip_mean_mm()]] - `semantically_similar_to` [INFERRED]
 - [[get_enso_index()]] - `calls` [EXTRACTED]
-- [[int_5]] - `references` [EXTRACTED]
+- [[load_all_sigmas()]] - `conceptually_related_to` [EXTRACTED]
 - [[temperature_adjustment()]] - `calls` [EXTRACTED]
+- [[utc_today()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching

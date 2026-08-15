@@ -1,21 +1,20 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Forecast Analysis Engine"
-location: "L3013"
+community: "ML Bias Correction & Audit Plans"
+location: "L5472"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecast_Analysis_Engine
+  - community/ML_Bias_Correction__Audit_Plans
 ---
 
 # _forecast_uncertainty()
 
 ## Connections
-- [[Estimated standard deviation of forecast error in °F.     Weather forecasts get]] - `rationale_for` [EXTRACTED]
+- [[Estimated standard deviation of forecast error in °F. Weather forecasts get…]] - `rationale_for` [EXTRACTED]
+- [[_compute_ensemble_prob()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[date_7]] - `references` [EXTRACTED]
-- [[float_31]] - `references` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecast_Analysis_Engine
+#graphify/code #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans

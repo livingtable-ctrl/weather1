@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "rationale"
-community: "Module: tests"
-location: "L13"
+community: "Community 363"
+location: "L15"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_363
 ---
 
 # Point execution_log at a fresh temp DB for each test.
 
 ## Connections
-- [[.setup_method()_4]] - `rationale_for` [EXTRACTED]
+- [[dot-setup_method()_4]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_363

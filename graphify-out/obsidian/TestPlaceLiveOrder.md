@@ -1,21 +1,25 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Module: tests"
-location: "L33"
+community: "Community 337"
+location: "L39"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_337
 ---
 
 # TestPlaceLiveOrder
 
 ## Connections
-- [[.setup_method()_8]] - `method` [EXTRACTED]
-- [[.teardown_method()_7]] - `method` [EXTRACTED]
-- [[.test_daily_loss_limit_blocks_after_db_loss()]] - `method` [EXTRACTED]
-- [[.test_max_trade_dollars_caps_size()]] - `method` [EXTRACTED]
+- [[dot-setup_method()_11]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_10]] - `method` [EXTRACTED]
+- [[dot-test_daily_live_spend_cap_blocks_across_cycles()]] - `method` [EXTRACTED]
+- [[dot-test_daily_loss_limit_blocks_after_db_loss()]] - `method` [EXTRACTED]
+- [[dot-test_daily_loss_limit_blocks_without_keyerror_when_key_missing()]] - `method` [EXTRACTED]
+- [[dot-test_max_trade_dollars_caps_size()]] - `method` [EXTRACTED]
+- [[LivePositionStore]] - `uses` [INFERRED]
+- [[Position]] - `uses` [INFERRED]
 - [[test_live_execution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_337

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "rationale"
-community: "Module: tests"
-location: "L287"
+community: "Community 204"
+location: "L288"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_204
 ---
 
 # persist=False circuit breaker never writes state file.
 
 ## Connections
-- [[.test_persist_false_does_not_write_state()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_persist_false_does_not_write_state()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_204

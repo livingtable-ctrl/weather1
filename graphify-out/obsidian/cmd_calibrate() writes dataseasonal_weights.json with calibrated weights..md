@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_calibration.py"
 type: "rationale"
-community: "Module: tests"
-location: "L219"
+community: "Community 69"
+location: "L316"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_69
 ---
 
 # cmd_calibrate() writes data/seasonal_weights.json with calibrated weights.
 
 ## Connections
-- [[.test_calibrate_writes_seasonal_json()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_calibrate_writes_seasonal_json()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_69

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L686"
+community: "Community 487"
+location: "L1335"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_487
 ---
 
 # Optimal threshold should be between 0.05 and 0.95.
 
 ## Connections
-- [[.test_threshold_within_range()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_threshold_within_range()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_487

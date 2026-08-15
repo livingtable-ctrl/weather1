@@ -1,17 +1,17 @@
 ---
 source_file: "updated frontend/design-canvas.jsx"
 type: "code"
-community: "Module: updated"
+community: "Community 48"
 location: "L125"
 tags:
   - graphify/code
-  - graphify/EXTRACTED
-  - community/Module_updated
+  - graphify/INFERRED
+  - community/Community_48
 ---
 
 # DesignCanvas()
 
 ## Connections
-- [[design-canvas.jsx]] - `contains` [EXTRACTED]
+- [[design-canvas.jsx]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_updated
+#graphify/code #graphify/INFERRED #community/Community_48

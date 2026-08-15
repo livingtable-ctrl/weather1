@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 80"
 location: "L56"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_80
 ---
 
 # bid >= ask must be rejected.
 
 ## Connections
-- [[.test_inverted_spread_rejected()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_inverted_spread_rejected()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_80

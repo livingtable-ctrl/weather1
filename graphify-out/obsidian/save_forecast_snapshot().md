@@ -1,21 +1,19 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Forecast Analysis Engine"
-location: "L2195"
+community: "ML Bias Correction & Audit Plans"
+location: "L3143"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecast_Analysis_Engine
+  - community/ML_Bias_Correction__Audit_Plans
 ---
 
 # save_forecast_snapshot()
 
 ## Connections
-- [[Save raw forecast data used for a trade decision to dataforecast_snapshots.]] - `rationale_for` [EXTRACTED]
+- [[Save raw forecast data used for a trade decision to dataforecast_snapshots.…]] - `rationale_for` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[date_7]] - `calls` [EXTRACTED]
-- [[str_33]] - `references` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecast_Analysis_Engine
+#graphify/code #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans

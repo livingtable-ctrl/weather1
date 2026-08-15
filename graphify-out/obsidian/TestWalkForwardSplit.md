@@ -1,21 +1,21 @@
 ---
 source_file: "tests/test_walk_forward.py"
 type: "code"
-community: "Module: tests"
+community: "Community 37"
 location: "L24"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_37
 ---
 
 # TestWalkForwardSplit
 
 ## Connections
-- [[.test_creates_correct_number_of_folds()]] - `method` [EXTRACTED]
-- [[.test_insufficient_data_returns_empty()]] - `method` [EXTRACTED]
-- [[.test_no_data_leakage()]] - `method` [EXTRACTED]
-- [[.test_test_period_advances_each_fold()]] - `method` [EXTRACTED]
+- [[dot-test_creates_correct_number_of_folds()]] - `method` [EXTRACTED]
+- [[dot-test_insufficient_data_returns_empty()]] - `method` [EXTRACTED]
+- [[dot-test_no_data_leakage()]] - `method` [EXTRACTED]
+- [[dot-test_test_period_advances_each_fold()]] - `method` [EXTRACTED]
 - [[test_walk_forward.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_37

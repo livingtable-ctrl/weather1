@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_integration.py"
 type: "rationale"
-community: "Module: tests"
-location: "L221"
+community: "Community 53"
+location: "L251"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_53
 ---
 
 # Additional integration tests for below + precip conditions (#112).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestAnalyzePipelineExtra]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_53

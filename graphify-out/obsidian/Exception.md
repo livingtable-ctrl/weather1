@@ -1,17 +1,16 @@
 ---
 source_file: ""
 type: "code"
-community: "Module: frosty"
+community: "Community 84"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_84
 ---
 
 # Exception
 
 ## Connections
-- [[AtomicWriteError]] - `inherits` [EXTRACTED]
 - [[CircuitOpenError]] - `inherits` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_84

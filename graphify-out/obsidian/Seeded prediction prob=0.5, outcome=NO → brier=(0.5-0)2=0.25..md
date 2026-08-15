@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L446"
+community: "Community 46"
+location: "L955"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_46
 ---
 
 # Seeded prediction: prob=0.5, outcome=NO → brier=(0.5-0)^2=0.25.
 
 ## Connections
-- [[.test_returns_correct_brier_for_seeded_data()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_returns_correct_brier_for_seeded_data()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_46

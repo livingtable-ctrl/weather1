@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_edge_version.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 334"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_334
 ---
 
 # Tests for P0.2 — EDGE_CALC_VERSION constant and analyze_trade stamp.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_edge_version.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_334

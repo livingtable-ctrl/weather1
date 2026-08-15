@@ -1,19 +1,20 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Paper Trading & Exits"
-location: "L790"
+community: "Anomaly Detection & PDF Reporting"
+location: "L1072"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Paper_Trading__Exits
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # settle_paper_trade()
 
 ## Connections
 - [[ABTest]] - `calls` [EXTRACTED]
-- [[Record settlement for a paper trade. YES wins if outcome_yes=True.     Returns]] - `rationale_for` [EXTRACTED]
+- [[Code Review Fixes Plan]] - `references` [EXTRACTED]
+- [[Record settlement for a paper trade. YES wins if outcome_yes=True. Returns the…]] - `rationale_for` [EXTRACTED]
 - [[ValueError]] - `calls` [EXTRACTED]
 - [[_cmd_settle_open()]] - `calls` [EXTRACTED]
 - [[_load()_1]] - `calls` [EXTRACTED]
@@ -21,11 +22,11 @@ tags:
 - [[_score_ensemble_members()]] - `calls` [EXTRACTED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]
 - [[auto_settle_paper_trades()]] - `calls` [EXTRACTED]
-- [[bool_19]] - `references` [EXTRACTED]
 - [[cmd_paper()]] - `calls` [EXTRACTED]
-- [[int_19]] - `references` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
 - [[settle_analysis_attempt()]] - `calls` [EXTRACTED]
+- [[test_p1_remaining.py]] - `calls` [EXTRACTED]
+- [[test_paper.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Paper_Trading__Exits
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

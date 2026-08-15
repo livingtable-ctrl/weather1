@@ -1,17 +1,16 @@
 ---
-source_file: "circuit_breaker.py"
+source_file: ""
 type: "code"
-community: "Circuit Breaker Fault Tolerance"
-location: "L260"
+community: "Community 44"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Circuit_Breaker_Fault_Tolerance
+  - community/Community_44
 ---
 
 # Any
 
 ## Connections
-- [[.execute()]] - `references` [EXTRACTED]
+- [[dot-execute()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Circuit_Breaker_Fault_Tolerance
+#graphify/code #graphify/EXTRACTED #community/Community_44

@@ -1,17 +1,17 @@
 ---
 source_file: "kalshi_client.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L206"
+community: "Community 298"
+location: "L253"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_298
 ---
 
 # Return the full URL path (e.g. /trade-api/v2/markets) used in signing.
 
 ## Connections
-- [[._full_path()]] - `rationale_for` [EXTRACTED]
+- [[dot-_full_path()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_298

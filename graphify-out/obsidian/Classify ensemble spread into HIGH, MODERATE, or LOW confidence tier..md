@@ -1,12 +1,12 @@
 ---
 source_file: "utils.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L84"
+community: "Community 252"
+location: "L213"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_252
 ---
 
 # Classify ensemble spread into HIGH, MODERATE, or LOW confidence tier.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[classify_confidence_tier()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_252

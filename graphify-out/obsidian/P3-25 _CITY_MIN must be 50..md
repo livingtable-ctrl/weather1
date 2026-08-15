@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_c.py"
 type: "rationale"
-community: "Module: tests"
-location: "L124"
+community: "Community 72"
+location: "L132"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_72
 ---
 
 # P3-25: _CITY_MIN must be 50.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCityMinThreshold]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_72

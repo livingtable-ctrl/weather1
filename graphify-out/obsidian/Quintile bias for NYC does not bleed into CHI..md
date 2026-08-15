@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1857"
+community: "Community 76"
+location: "L3296"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_76
 ---
 
 # Quintile bias for NYC does not bleed into CHI.
 
 ## Connections
-- [[.test_city_isolation()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-test_city_isolation()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_76

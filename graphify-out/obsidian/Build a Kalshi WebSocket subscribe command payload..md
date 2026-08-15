@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "rationale"
-community: "Module: tests"
-location: "L210"
+community: "Community 130"
+location: "L278"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_130
 ---
 
 # Build a Kalshi WebSocket subscribe command payload.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[build_subscribe_message()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_130

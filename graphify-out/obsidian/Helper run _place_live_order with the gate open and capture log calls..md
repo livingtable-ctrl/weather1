@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_prelog.py"
 type: "rationale"
-community: "Module: tests"
-location: "L10"
+community: "Community 219"
+location: "L12"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_219
 ---
 
 # Helper: run _place_live_order with the gate open and capture log calls.
 
 ## Connections
-- [[._run_place()]] - `rationale_for` [EXTRACTED]
+- [[dot-_run_place()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_219

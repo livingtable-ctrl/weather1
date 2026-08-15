@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_b.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 84"
 location: "L174"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_84
 ---
 
 # P3-6: HALF-OPEN must allow exactly one probe and reopen on probe failure.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCircuitBreakerHalfOpen]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_84

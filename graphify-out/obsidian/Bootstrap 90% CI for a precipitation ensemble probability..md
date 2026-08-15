@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Forecast Analysis Engine"
-location: "L3628"
+community: "ML Bias Correction & Audit Plans"
+location: "L7379"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Forecast_Analysis_Engine
+  - community/ML_Bias_Correction__Audit_Plans
 ---
 
 # Bootstrap 90% CI for a precipitation ensemble probability.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_bootstrap_ci_precip()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Forecast_Analysis_Engine
+#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_settlement_monitor.py"
 type: "rationale"
-community: "Module: tests"
-location: "L37"
+community: "METAR Settlement Monitoring"
+location: "L70"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/METAR_Settlement_Monitoring
 ---
 
 # write_settlement_signals writes JSON to signals file.
 
 ## Connections
-- [[.test_write_settlement_signals_creates_file()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_write_settlement_signals_creates_file()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/METAR_Settlement_Monitoring

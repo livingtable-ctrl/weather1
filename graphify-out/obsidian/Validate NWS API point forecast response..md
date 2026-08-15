@@ -1,12 +1,12 @@
 ---
 source_file: "schema_validator.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L135"
+community: "NWS/Circuit-Breaker Data Validation"
+location: "L174"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/NWS/Circuit-Breaker_Data_Validation
 ---
 
 # Validate NWS API point forecast response.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[validate_nws_response()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation

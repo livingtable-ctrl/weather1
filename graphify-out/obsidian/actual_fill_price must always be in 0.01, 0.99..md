@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Module: tests"
-location: "L871"
+community: "Community 402"
+location: "L1059"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_402
 ---
 
 # actual_fill_price must always be in [0.01, 0.99].
 
 ## Connections
-- [[.test_actual_fill_price_in_valid_range()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_actual_fill_price_in_valid_range()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_402

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "code"
-community: "Module: tests"
-location: "L72"
+community: "Community 43"
+location: "L97"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_43
 ---
 
 # test_build_stream_data_has_markets_key()
@@ -16,4 +16,4 @@ tags:
 - [[_build_stream_data()]] - `calls` [EXTRACTED]
 - [[test_web_app.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_43

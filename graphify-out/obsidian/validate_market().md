@@ -1,26 +1,27 @@
 ---
 source_file: "schema_validator.py"
 type: "code"
-community: "Module: frosty"
-location: "L23"
+community: "Community 86"
+location: "L36"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_86
 ---
 
 # validate_market()
 
 ## Connections
-- [[._call()_2]] - `calls` [EXTRACTED]
-- [[.get_market()]] - `calls` [EXTRACTED]
-- [[.get_markets()]] - `calls` [EXTRACTED]
-- [[Validate a Kalshi market dict has required fields and sane prices.     Returns]] - `rationale_for` [EXTRACTED]
-- [[_price_to_decimal()]] - `calls` [EXTRACTED]
-- [[bool_20]] - `references` [EXTRACTED]
+- [[dot-_call()_2]] - `calls` [EXTRACTED]
+- [[dot-get_market()]] - `calls` [EXTRACTED]
+- [[dot-get_markets()]] - `calls` [EXTRACTED]
+- [[Grade Audit Final Report]] - `cites` [EXTRACTED]
+- [[Phase 2 Batch L Regression Tests]] - `imports` [EXTRACTED]
+- [[Validate a Kalshi market dict has required fields and sane prices. Returns True…]] - `rationale_for` [EXTRACTED]
+- [[_safe_price()]] - `calls` [EXTRACTED]
 - [[kalshi_client.py]] - `imports` [EXTRACTED]
+- [[parse_market_price()]] - `conceptually_related_to` [EXTRACTED]
+- [[schema_validator.py_1]] - `implements` [EXTRACTED]
 - [[schema_validator.py]] - `contains` [EXTRACTED]
-- [[str_27]] - `references` [EXTRACTED]
-- [[test_phase2_batch_l.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Community_86

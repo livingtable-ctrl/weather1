@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_improvements.py"
 type: "rationale"
-community: "Module: tests"
-location: "L197"
+community: "Community 526"
+location: "L201"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_526
 ---
 
 # _score_ensemble_members must run once at least 2 temp samples exist.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestEnsembleMemberThreshold]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_526

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "rationale"
-community: "Module: tests"
-location: "L131"
+community: "Community 173"
+location: "L169"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_173
 ---
 
 # ensemble_stats must flag all-identical members as degenerate.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestEnsembleStatsDegenerate]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_173

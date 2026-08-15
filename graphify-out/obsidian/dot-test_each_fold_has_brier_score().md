@@ -1,0 +1,20 @@
+---
+source_file: "tests/test_walk_forward.py"
+type: "code"
+community: "Community 37"
+location: "L96"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Community_37
+---
+
+# .test_each_fold_has_brier_score()
+
+## Connections
+- [[Each fold in results has 'brier', 'n_test', 'test_period' keys.]] - `rationale_for` [EXTRACTED]
+- [[TestWalkForwardBacktest]] - `method` [EXTRACTED]
+- [[_make_trade()_6]] - `calls` [EXTRACTED]
+- [[walk_forward_backtest()]] - `calls` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_37

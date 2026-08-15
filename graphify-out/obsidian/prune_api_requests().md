@@ -1,24 +1,24 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Tracker Analytics (Brier/Bias)"
-location: "L397"
+community: "Tracker P&L Attribution Tests"
+location: "L696"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Analytics_Brier/Bias
+  - community/Tracker_PL_Attribution_Tests
 ---
 
 # prune_api_requests()
 
 ## Connections
-- [[P2-13 Delete api_requests rows older than days_to_keep. Returns row count delet]] - `rationale_for` [EXTRACTED]
+- [[dot-test_prune_api_requests_exported()]] - `indirect_call` [INFERRED]
+- [[P2-13 Delete api_requests rows older than days_to_keep. Returns row count…]] - `rationale_for` [EXTRACTED]
+- [[Phase 2 Batch C Regression Tests]] - `imports` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[int_24]] - `references` [EXTRACTED]
-- [[test_phase2_batch_c.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Analytics_Brier/Bias
+#graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

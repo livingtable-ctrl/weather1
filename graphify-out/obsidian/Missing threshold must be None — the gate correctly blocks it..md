@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_j.py"
 type: "rationale"
-community: "Module: tests"
+community: "Community 307"
 location: "L24"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_307
 ---
 
 # Missing threshold must be None — the gate correctly blocks it.
 
 ## Connections
-- [[.test_condition_missing_threshold_is_none()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_condition_missing_threshold_is_none()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_307

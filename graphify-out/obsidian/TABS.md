@@ -1,17 +1,17 @@
 ---
 source_file: "frontend/src/App.jsx"
 type: "code"
-community: "Module: src"
-location: "L2045"
+community: "Community 155"
+location: "L2049"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_src
+  - community/Community_155
 ---
 
 # TABS
 
 ## Connections
-- [[App.jsx]] - `contains` [EXTRACTED]
+- [[frontendsrcApp.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_src
+#graphify/code #graphify/EXTRACTED #community/Community_155

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Module: tests"
-location: "L894"
+community: "Community 315"
+location: "L1543"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_315
 ---
 
 # get_edge_decay_curve(condition_type='HIGH') returns a list.
 
 ## Connections
-- [[.test_condition_type_filter_returns_list()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_condition_type_filter_returns_list()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_315

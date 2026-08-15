@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_integration.py"
 type: "rationale"
-community: "Module: tests"
-location: "L181"
+community: "Community 53"
+location: "L197"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_53
 ---
 
 # analyze_trade succeeds even when NWS and climatology return None.
 
 ## Connections
-- [[.test_analyze_trade_works_without_nws_or_clim()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_analyze_trade_works_without_nws_or_clim()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_53

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_g.py"
 type: "rationale"
-community: "Module: tests"
-location: "L150"
+community: "Community 515"
+location: "L151"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_515
 ---
 
 # Default target must be execution_entries.jsonl, not .json.
 
 ## Connections
-- [[.test_default_path_is_jsonl()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_default_path_is_jsonl()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_515

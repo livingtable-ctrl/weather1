@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_kalshi_ws.py"
 type: "rationale"
-community: "Module: tests"
-location: "L15"
+community: "Community 352"
+location: "L16"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_352
 ---
 
 # parse_message returns structured snapshot from orderbook_snapshot type.
 
 ## Connections
-- [[.test_parse_snapshot_message()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_parse_snapshot_message()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_352

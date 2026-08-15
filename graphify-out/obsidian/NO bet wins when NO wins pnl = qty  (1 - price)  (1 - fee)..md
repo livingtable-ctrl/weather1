@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "rationale"
-community: "Module: tests"
-location: "L375"
+community: "Community 171"
+location: "L1023"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_171
 ---
 
 # NO bet wins when NO wins: pnl = qty * (1 - price) * (1 - fee).
 
 ## Connections
-- [[.test_no_side_settlement_no_wins()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_no_side_settlement_no_wins()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_171

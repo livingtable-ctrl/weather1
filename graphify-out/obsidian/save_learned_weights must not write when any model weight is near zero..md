@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L1325"
+community: "Community 267"
+location: "L2946"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_267
 ---
 
 # save_learned_weights must not write when any model weight is near zero.
 
 ## Connections
-- [[.test_save_rejects_near_zero_weights()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_save_rejects_near_zero_weights()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_267

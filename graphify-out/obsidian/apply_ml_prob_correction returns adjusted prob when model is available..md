@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "rationale"
-community: "Module: tests"
-location: "L38"
+community: "Community 471"
+location: "L39"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_471
 ---
 
 # apply_ml_prob_correction returns adjusted prob when model is available.
 
 ## Connections
-- [[.test_apply_ml_prob_correction_adjusts_probability()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_apply_ml_prob_correction_adjusts_probability()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_471

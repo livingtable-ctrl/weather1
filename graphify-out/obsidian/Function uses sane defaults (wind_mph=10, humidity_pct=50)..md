@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L53"
+community: "Community 70"
+location: "L68"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_70
 ---
 
 # Function uses sane defaults (wind_mph=10, humidity_pct=50).
 
 ## Connections
-- [[.test_default_params_used()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_default_params_used()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_70

@@ -1,18 +1,18 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Module: frosty"
-location: "L2611"
+community: "Anomaly Detection & PDF Reporting"
+location: "L3219"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # get_expiry_date_clustering()
 
 ## Connections
-- [[Identify dates with 2+ open positions settling — concentration risk.     Return]] - `rationale_for` [EXTRACTED]
+- [[Identify dates with 2+ open positions settling — concentration risk. Returns…]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[cmd_paper()]] - `calls` [EXTRACTED]
 - [[get_open_trades()]] - `calls` [EXTRACTED]
@@ -20,4 +20,4 @@ tags:
 - [[paper.py]] - `contains` [EXTRACTED]
 - [[web_app.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

@@ -1,12 +1,12 @@
 ---
 source_file: "web_app.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L2064"
+community: "Anomaly Detection & PDF Reporting"
+location: "L3203"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # Start the Flask web dashboard.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[start_web()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

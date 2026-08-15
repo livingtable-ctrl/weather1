@@ -1,17 +1,18 @@
 ---
-source_file: "frontend/src/useData.js"
+source_file: "weather app site V_3 (3)/src/useData.js"
 type: "code"
-community: "Module: src"
-location: "L212"
+community: "Community 66"
+location: "L237"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_src
+  - community/Community_66
 ---
 
 # mapRisk()
 
 ## Connections
-- [[useData.js]] - `contains` [EXTRACTED]
+- [[useData()]] - `calls` [EXTRACTED]
+- [[weather app site V_3 (3)srcuseData.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_src
+#graphify/code #graphify/EXTRACTED #community/Community_66

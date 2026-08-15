@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "rationale"
-community: "Module: tests"
-location: "L71"
+community: "Community 80"
+location: "L88"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_80
 ---
 
 # Integer cent prices (1–99) must pass after normalisation.
 
 ## Connections
-- [[.test_cent_integer_prices_valid()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_cent_integer_prices_valid()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_80

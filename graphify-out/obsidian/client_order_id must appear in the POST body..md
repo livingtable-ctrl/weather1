@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_idempotency.py"
 type: "rationale"
-community: "Module: tests"
-location: "L77"
+community: "Community 143"
+location: "L82"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_143
 ---
 
 # client_order_id must appear in the POST body.
 
 ## Connections
-- [[.test_client_order_id_in_request_body()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_client_order_id_in_request_body()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_143

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase3_batch_c.py"
 type: "rationale"
-community: "Module: tests"
-location: "L193"
+community: "Community 72"
+location: "L201"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_72
 ---
 
 # Same data → same weights (random search uses fixed seed=42).
 
 ## Connections
-- [[.test_calibrate_city_weights_deterministic()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_calibrate_city_weights_deterministic()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_72

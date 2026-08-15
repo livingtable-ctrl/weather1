@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_metar.py"
 type: "rationale"
-community: "Module: tests"
-location: "L106"
+community: "Community 73"
+location: "L129"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_73
 ---
 
 # P1-2: response with invalid obsTime string → None.
 
 ## Connections
-- [[.test_returns_none_when_obstime_unparseable()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_returns_none_when_obstime_unparseable()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_73

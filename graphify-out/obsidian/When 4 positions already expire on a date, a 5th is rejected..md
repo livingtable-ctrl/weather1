@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_backlog_batch.py"
 type: "rationale"
-community: "Module: tests"
-location: "L110"
+community: "Kelly City Multiplier & Edge Realization"
+location: "L112"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Kelly_City_Multiplier__Edge_Realization
 ---
 
 # When 4 positions already expire on a date, a 5th is rejected.
 
 ## Connections
-- [[.test_blocks_when_date_cap_reached()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_blocks_when_date_cap_reached()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization

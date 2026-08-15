@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "rationale"
-community: "Module: tests"
-location: "L373"
+community: "Community 435"
+location: "L376"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_435
 ---
 
 # is_daily_loss_halted uses current balance, not STARTING_BALANCE.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestDailyLossThresholdScalesWithBalance]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_435

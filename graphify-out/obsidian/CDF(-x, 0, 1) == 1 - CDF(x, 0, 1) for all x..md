@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L278"
+community: "Community 82"
+location: "L624"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_82
 ---
 
 # CDF(-x, 0, 1) == 1 - CDF(x, 0, 1) for all x.
 
 ## Connections
-- [[.test_symmetry()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_symmetry()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_82

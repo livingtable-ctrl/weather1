@@ -1,18 +1,21 @@
 ---
 source_file: "frontend/src/App.jsx"
 type: "code"
-community: "Module: src"
-location: "L2056"
+community: "Community 155"
+location: "L2060"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_src
+  - community/Community_155
 ---
 
 # App()
 
 ## Connections
-- [[App.jsx]] - `contains` [EXTRACTED]
-- [[useData()]] - `calls` [EXTRACTED]
+- [[applyTheme()]] - `calls` [EXTRACTED]
+- [[authHeader Function]] - `calls` [EXTRACTED]
+- [[frontendsrcApp.jsx]] - `contains` [EXTRACTED]
+- [[main.jsx]] - `imports` [EXTRACTED]
+- [[useData Hook]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_src
+#graphify/code #graphify/EXTRACTED #community/Community_155

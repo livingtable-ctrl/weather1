@@ -1,30 +1,31 @@
 ---
 source_file: "updated frontend/tweaks-panel.jsx"
 type: "code"
-community: "Module: updated"
+community: "Community 48"
 location: "L1"
 tags:
   - graphify/code
-  - graphify/EXTRACTED
-  - community/Module_updated
+  - graphify/INFERRED
+  - community/Community_48
 ---
 
 # tweaks-panel.jsx
 
 ## Connections
-- [[TweakButton()]] - `contains` [EXTRACTED]
-- [[TweakColor()]] - `contains` [EXTRACTED]
-- [[TweakNumber()]] - `contains` [EXTRACTED]
-- [[TweakRadio()]] - `contains` [EXTRACTED]
-- [[TweakRow()]] - `contains` [EXTRACTED]
-- [[TweakSection()]] - `contains` [EXTRACTED]
-- [[TweakSelect()]] - `contains` [EXTRACTED]
-- [[TweakSlider()]] - `contains` [EXTRACTED]
-- [[TweakText()]] - `contains` [EXTRACTED]
-- [[TweakToggle()]] - `contains` [EXTRACTED]
-- [[TweaksPanel()]] - `contains` [EXTRACTED]
+- [[Operator Dashboard Prototype]] - `references` [EXTRACTED]
+- [[TweakButton()]] - `indirect_call` [INFERRED]
+- [[TweakColor()]] - `indirect_call` [INFERRED]
+- [[TweakNumber()]] - `indirect_call` [INFERRED]
+- [[TweakRadio()]] - `indirect_call` [INFERRED]
+- [[TweakRow()]] - `indirect_call` [INFERRED]
+- [[TweakSection()]] - `indirect_call` [INFERRED]
+- [[TweakSelect()]] - `indirect_call` [INFERRED]
+- [[TweakSlider()]] - `indirect_call` [INFERRED]
+- [[TweakText()]] - `indirect_call` [INFERRED]
+- [[TweakToggle()]] - `indirect_call` [INFERRED]
+- [[TweaksPanel()]] - `indirect_call` [INFERRED]
 - [[__TwkCheck()]] - `contains` [EXTRACTED]
 - [[__twkIsLight()]] - `contains` [EXTRACTED]
-- [[useTweaks()]] - `contains` [EXTRACTED]
+- [[useTweaks()]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_updated
+#graphify/code #graphify/INFERRED #community/Community_48

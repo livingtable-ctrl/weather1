@@ -1,23 +1,22 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Tracker Analytics (Brier/Bias)"
-location: "L274"
+community: "Tracker P&L Attribution Tests"
+location: "L564"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Analytics_Brier/Bias
+  - community/Tracker_PL_Attribution_Tests
 ---
 
 # purge_old_predictions()
 
 ## Connections
-- [[Delete settled predictions older than retention_days and their outcomes.]] - `rationale_for` [EXTRACTED]
+- [[Delete settled predictions older than retention_days and their outcomes.…]] - `rationale_for` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[_conn()_1]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
-- [[int_24]] - `references` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Analytics_Brier/Bias
+#graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests

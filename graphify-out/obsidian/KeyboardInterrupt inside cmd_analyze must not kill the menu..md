@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_menu_ux.py"
 type: "rationale"
-community: "Module: tests"
-location: "L59"
+community: "Community 592"
+location: "L61"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_592
 ---
 
 # KeyboardInterrupt inside cmd_analyze must not kill the menu.
 
 ## Connections
-- [[.test_keyboard_interrupt_in_analyze_returns_to_menu()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_keyboard_interrupt_in_analyze_returns_to_menu()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_592

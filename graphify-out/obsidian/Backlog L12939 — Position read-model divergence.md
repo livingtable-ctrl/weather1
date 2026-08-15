@@ -1,0 +1,19 @@
+---
+source_file: "BACKLOG_OPEN.md"
+type: "document"
+community: "Community 497"
+location: "L29"
+tags:
+  - graphify/document
+  - graphify/INFERRED
+  - community/Community_497
+---
+
+# Backlog L12939 — Position read-model divergence
+
+## Connections
+- [[BACKLOG_OPEN]] - `references` [EXTRACTED]
+- [[Backlog L17703 — React dashboard 4th paper-close site]] - `semantically_similar_to` [INFERRED]
+- [[close_paper_early()]] - `references` [INFERRED]
+
+#graphify/document #graphify/INFERRED #community/Community_497

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "rationale"
-community: "Model Weights & Ensemble Blend"
+community: "Forecasting Persistence Model Tests"
 location: "L90"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Model_Weights__Ensemble_Blend
+  - community/Forecasting_Persistence_Model_Tests
 ---
 
 # El Niño winter should give ECMWF higher weight than neutral.
 
 ## Connections
-- [[.test_el_nino_boosts_ecmwf_above_neutral()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_el_nino_boosts_ecmwf_above_neutral()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Model_Weights__Ensemble_Blend
+#graphify/rationale #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests

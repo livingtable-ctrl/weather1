@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_kalshi_ws.py"
 type: "rationale"
-community: "Module: tests"
-location: "L128"
+community: "Community 130"
+location: "L213"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_130
 ---
 
 # An entry timestamped >WS_CACHE_TTL_SECS ago returns None.
 
 ## Connections
-- [[.test_stale_entry_returns_none()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_stale_entry_returns_none()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_130

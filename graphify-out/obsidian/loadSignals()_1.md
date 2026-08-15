@@ -1,20 +1,20 @@
 ---
 source_file: "updated frontend/reference/signals.js"
 type: "code"
-community: "Module: reference"
+community: "Community 324"
 location: "L170"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_reference
+  - community/Community_324
 ---
 
 # loadSignals()
 
 ## Connections
 - [[populateFilters()_1]] - `calls` [EXTRACTED]
+- [[referencesignals.js]] - `contains` [EXTRACTED]
 - [[renderAlerts()_1]] - `calls` [EXTRACTED]
 - [[renderLog()_1]] - `calls` [EXTRACTED]
-- [[signals.js_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_reference
+#graphify/code #graphify/EXTRACTED #community/Community_324

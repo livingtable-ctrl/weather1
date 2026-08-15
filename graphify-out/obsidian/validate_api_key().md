@@ -1,20 +1,20 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Python Types & Utilities"
-location: "L489"
+community: "Black Swan Halt State"
+location: "L583"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Python_Types__Utilities
+  - community/Black_Swan_Halt_State
 ---
 
 # validate_api_key()
 
 ## Connections
-- [[KalshiClient_2]] - `references` [EXTRACTED]
-- [[Make a lightweight authenticated request to confirm credentials work.     Retur]] - `rationale_for` [EXTRACTED]
-- [[bool_12]] - `references` [EXTRACTED]
+- [[KalshiClient]] - `references` [EXTRACTED]
+- [[Make a lightweight authenticated request to confirm credentials work. Returns…]] - `rationale_for` [EXTRACTED]
+- [[cmd_balance Function]] - `calls` [EXTRACTED]
 - [[cmd_balance()]] - `calls` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
@@ -23,4 +23,4 @@ tags:
 - [[red()]] - `calls` [EXTRACTED]
 - [[yellow()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Python_Types__Utilities
+#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State

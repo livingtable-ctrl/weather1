@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_silent_failures.py"
 type: "code"
-community: "Module: tests"
+community: "Community 220"
 location: "L28"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_220
 ---
 
 # _patch_analyze_prereqs()
@@ -16,4 +16,4 @@ tags:
 - [[test_analyze_trade_logs_consensus_failure()]] - `calls` [EXTRACTED]
 - [[test_silent_failures.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_220

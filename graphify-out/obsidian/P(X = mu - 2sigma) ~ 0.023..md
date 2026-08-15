@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Module: tests"
-location: "L73"
+community: "Community 492"
+location: "L77"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_492
 ---
 
 # P(X <= mu - 2sigma) ~ 0.023.
 
 ## Connections
-- [[.test_below_mean()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_below_mean()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_492

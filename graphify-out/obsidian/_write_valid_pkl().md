@@ -1,25 +1,23 @@
 ---
 source_file: "tests/test_hmac_bias.py"
 type: "code"
-community: "Module: tests"
+community: "Community 120"
 location: "L12"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_120
 ---
 
 # _write_valid_pkl()
 
 ## Connections
-- [[.test_no_secret_set_returns_empty()]] - `calls` [EXTRACTED]
-- [[.test_tampered_pkl_returns_empty()]] - `calls` [EXTRACTED]
-- [[.test_valid_hmac_loads_models()]] - `calls` [EXTRACTED]
-- [[.test_wrong_secret_returns_empty()]] - `calls` [EXTRACTED]
-- [[Path_10]] - `references` [EXTRACTED]
+- [[dot-test_no_secret_set_returns_empty()]] - `calls` [EXTRACTED]
+- [[dot-test_tampered_pkl_returns_empty()]] - `calls` [EXTRACTED]
+- [[dot-test_valid_hmac_loads_models()]] - `calls` [EXTRACTED]
+- [[dot-test_wrong_secret_returns_empty()]] - `calls` [EXTRACTED]
+- [[Path_21]] - `references` [EXTRACTED]
 - [[Write a valid pkl + sidecar and return the raw bytes.]] - `rationale_for` [EXTRACTED]
-- [[bytes_1]] - `references` [EXTRACTED]
-- [[str_41]] - `references` [EXTRACTED]
 - [[test_hmac_bias.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_120

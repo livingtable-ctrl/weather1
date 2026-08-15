@@ -1,27 +1,24 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "A/B Testing System"
-location: "L73"
+community: "Community 67"
+location: "L112"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/A/B_Testing_System
+  - community/Community_67
 ---
 
 # _midpoint_price()
 
 ## Connections
-- [[.test_midpoint_no_side()]] - `calls` [INFERRED]
-- [[.test_midpoint_yes_side()]] - `calls` [INFERRED]
-- [[Return midpoint of current bidask for the given side, rounded to 2dp.      Ka]] - `rationale_for` [EXTRACTED]
-- [[_check_early_exits()]] - `calls` [EXTRACTED]
+- [[dot-test_midpoint_no_side()]] - `calls` [EXTRACTED]
+- [[dot-test_midpoint_yes_side()]] - `calls` [EXTRACTED]
+- [[Return midpoint of current bidask for the given side, rounded to 2dp. Handles…]] - `rationale_for` [EXTRACTED]
 - [[_place_live_order()]] - `calls` [EXTRACTED]
-- [[cmd_menu()]] - `calls` [EXTRACTED]
-- [[cmd_watch()]] - `calls` [EXTRACTED]
-- [[float_23]] - `references` [EXTRACTED]
-- [[main.py]] - `imports` [EXTRACTED]
+- [[_reprice_or_cancel_pending_orders()]] - `calls` [EXTRACTED]
+- [[coalesce_market_price()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
-- [[str_22]] - `references` [EXTRACTED]
+- [[test_live_execution.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/A/B_Testing_System
+#graphify/code #graphify/EXTRACTED #community/Community_67

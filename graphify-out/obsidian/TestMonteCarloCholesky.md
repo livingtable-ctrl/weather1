@@ -1,23 +1,25 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Module: tests"
-location: "L1281"
+community: "Community 87"
+location: "L1553"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_87
 ---
 
 # TestMonteCarloCholesky
 
 ## Connections
-- [[.test_cholesky_correlated()]] - `method` [EXTRACTED]
-- [[.test_cholesky_identity()]] - `method` [EXTRACTED]
-- [[.test_cholesky_not_positive_definite_returns_none()]] - `method` [EXTRACTED]
-- [[.test_past_date_only_portfolio_returns_empty_result()]] - `method` [EXTRACTED]
-- [[.test_past_date_trade_excluded_from_simulation()]] - `method` [EXTRACTED]
-- [[.test_simulate_portfolio_correlated_widens_distribution()]] - `method` [EXTRACTED]
+- [[dot-test_cholesky_correlated()]] - `method` [EXTRACTED]
+- [[dot-test_cholesky_identity()]] - `method` [EXTRACTED]
+- [[dot-test_cholesky_not_positive_definite_returns_none()]] - `method` [EXTRACTED]
+- [[dot-test_past_date_only_portfolio_returns_empty_result()]] - `method` [EXTRACTED]
+- [[dot-test_past_date_trade_excluded_from_simulation()]] - `method` [EXTRACTED]
+- [[dot-test_simulate_portfolio_correlated_widens_distribution()]] - `method` [EXTRACTED]
+- [[dot-test_unparseable_target_date_falls_back_to_string_compare_no_crash()]] - `method` [EXTRACTED]
+- [[Position]] - `uses` [INFERRED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_87

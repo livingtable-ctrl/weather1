@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "code"
-community: "Module: frosty"
-location: "L32"
+community: "ML Bias Multiday-Predictions Filter"
+location: "L47"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/ML_Bias_Multiday-Predictions_Filter
 ---
 
 # _compute_hmac()
@@ -16,8 +16,6 @@ tags:
 - [[_hmac_secret()]] - `calls` [EXTRACTED]
 - [[_load_models()]] - `calls` [EXTRACTED]
 - [[_write_hmac()]] - `calls` [EXTRACTED]
-- [[bytes]] - `references` [EXTRACTED]
 - [[ml_bias.py]] - `contains` [EXTRACTED]
-- [[str_17]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_frosty
+#graphify/code #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter

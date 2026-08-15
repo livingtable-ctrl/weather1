@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "rationale"
-community: "Module: tests"
-location: "L270"
+community: "Community 127"
+location: "L291"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_127
 ---
 
 # Point tracker at a fresh temp DB for isolation.
 
 ## Connections
-- [[.setup_method()_21]] - `rationale_for` [EXTRACTED]
+- [[dot-setup_method()_39]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_127

@@ -1,12 +1,12 @@
 ---
 source_file: "web_app.py"
 type: "code"
-community: "CLI & Preload Pipeline"
-location: "L78"
+community: "Anomaly Detection & PDF Reporting"
+location: "L101"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # _build_stream_data()
@@ -14,11 +14,11 @@ tags:
 ## Connections
 - [[Build SSE payload. Extracted for testability.]] - `rationale_for` [EXTRACTED]
 - [[_get_live_market_snapshot()]] - `calls` [EXTRACTED]
-- [[brier_score()]] - `calls` [EXTRACTED]
+- [[brier_score_rolling_with_n()]] - `calls` [EXTRACTED]
 - [[get_balance()]] - `calls` [EXTRACTED]
 - [[get_open_trades()]] - `calls` [EXTRACTED]
 - [[test_build_stream_data_has_markets_key()]] - `calls` [EXTRACTED]
 - [[test_web_app.py]] - `imports` [EXTRACTED]
 - [[web_app.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Module: tests"
-location: "L668"
+community: "Community 190"
+location: "L1024"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_190
 ---
 
 # Tests for edge_confidence(days_out) horizon discount factor.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestEdgeConfidence]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_190

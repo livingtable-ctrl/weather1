@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_infrastructure.py"
 type: "code"
-community: "Circuit Breaker Fault Tolerance"
-location: "L331"
+community: "Circuit Breaker & Session Retry Infrastructure"
+location: "L484"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Circuit_Breaker_Fault_Tolerance
+  - community/Circuit_Breaker__Session_Retry_Infrastructure
 ---
 
 # test_pragma_user_version_set_after_init()
@@ -15,4 +15,4 @@ tags:
 - [[After init_db(), PRAGMA user_version equals _SCHEMA_VERSION.]] - `rationale_for` [EXTRACTED]
 - [[test_infrastructure.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Circuit_Breaker_Fault_Tolerance
+#graphify/code #graphify/EXTRACTED #community/Circuit_Breaker__Session_Retry_Infrastructure

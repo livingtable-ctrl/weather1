@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L28"
+community: "ML Bias Multiday-Predictions Filter"
+location: "L43"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/ML_Bias_Multiday-Predictions_Filter
 ---
 
 # Return the HMAC secret from env. Empty string disables verification (dev only).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_hmac_secret()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter

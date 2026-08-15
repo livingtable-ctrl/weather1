@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Paper Trading & Exits"
-location: "L2385"
+community: "Anomaly Detection & PDF Reporting"
+location: "L2971"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Paper_Trading__Exits
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # _mark_needs_manual_settle()
@@ -16,7 +16,6 @@ tags:
 - [[_load()_1]] - `calls` [EXTRACTED]
 - [[_save()_1]] - `calls` [EXTRACTED]
 - [[auto_settle_paper_trades()]] - `calls` [EXTRACTED]
-- [[int_19]] - `references` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Paper_Trading__Exits
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

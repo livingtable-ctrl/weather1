@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_settlement_monitor.py"
 type: "rationale"
-community: "Module: tests"
-location: "L196"
+community: "Community 262"
+location: "L437"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_262
 ---
 
 # T-ticker (above/below) markets are unaffected by the B-ticker changes.
 
 ## Connections
-- [[.test_t_ticker_still_works_as_before()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_t_ticker_still_works_as_before()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_262

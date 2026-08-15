@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "rationale"
-community: "Cron Scheduler"
-location: "L400"
+community: "Black Swan Detection & Walk-Forward Backtest"
+location: "L581"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Cron_Scheduler
+  - community/Black_Swan_Detection__Walk-Forward_Backtest
 ---
 
 # Core scan logic — extracted from cmd_cron so it can be wrapped in try/finally.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_cmd_cron_body()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Cron_Scheduler
+#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest

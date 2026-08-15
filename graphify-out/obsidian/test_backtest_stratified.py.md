@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backtest_stratified.py"
 type: "code"
-community: "Module: tests"
+community: "Backtest Engine & Atomic Writes"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Backtest_Engine__Atomic_Writes
 ---
 
 # test_backtest_stratified.py
@@ -14,6 +14,9 @@ tags:
 ## Connections
 - [[TestFetchArchiveTempsEnsembleCenter]] - `contains` [EXTRACTED]
 - [[Tests for backtest ensemble and archive temperature helpers.]] - `rationale_for` [EXTRACTED]
+- [[backtest.py_1]] - `calls` [EXTRACTED]
 - [[fetch_archive_temps()]] - `imports` [EXTRACTED]
+- [[safe_io.py]] - `references` [EXTRACTED]
+- [[test_backtest.py]] - `semantically_similar_to` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes

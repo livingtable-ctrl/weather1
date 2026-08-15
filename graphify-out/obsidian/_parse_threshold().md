@@ -1,21 +1,23 @@
 ---
 source_file: "consistency.py"
 type: "code"
-community: "Module: tests"
-location: "L30"
+community: "Community 35"
+location: "L58"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_35
 ---
 
 # _parse_threshold()
 
 ## Connections
-- [[Extract (condition_type, threshold) from a market ticker.     Returns (above,]] - `rationale_for` [EXTRACTED]
+- [[dot-test_above_condition_derived_from_title_with_no_series_ticker()]] - `calls` [EXTRACTED]
+- [[dot-test_below_condition_derived_from_title_with_no_series_ticker()]] - `calls` [EXTRACTED]
+- [[dot-test_series_prefix_would_invert_these_two_real_ladders()]] - `calls` [EXTRACTED]
+- [[Extract (condition_type, threshold) from a market ticker. Returns (above,…]] - `rationale_for` [EXTRACTED]
 - [[_group_markets()]] - `calls` [EXTRACTED]
 - [[consistency.py]] - `contains` [EXTRACTED]
-- [[float_9]] - `references` [EXTRACTED]
-- [[str_10]] - `references` [EXTRACTED]
+- [[test_consistency.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Module_tests
+#graphify/code #graphify/EXTRACTED #community/Community_35

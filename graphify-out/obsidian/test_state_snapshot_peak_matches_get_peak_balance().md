@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_state_consistency.py"
 type: "code"
-community: "CLI & Preload Pipeline"
+community: "Anomaly Detection & PDF Reporting"
 location: "L38"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/CLI__Preload_Pipeline
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # test_state_snapshot_peak_matches_get_peak_balance()
@@ -17,4 +17,4 @@ tags:
 - [[get_state_snapshot()]] - `calls` [EXTRACTED]
 - [[test_state_consistency.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/CLI__Preload_Pipeline
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting

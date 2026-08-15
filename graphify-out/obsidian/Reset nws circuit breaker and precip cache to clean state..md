@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "rationale"
-community: "Module: tests"
-location: "L123"
+community: "Community 172"
+location: "L625"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_172
 ---
 
 # Reset nws circuit breaker and precip cache to clean state.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_reset_nws_cb()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_172

@@ -1,17 +1,17 @@
 ---
 source_file: "kalshi_client.py"
 type: "rationale"
-community: "Module: frosty"
-location: "L213"
+community: "Community 298"
+location: "L260"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_frosty
+  - community/Community_298
 ---
 
 # Raise ValueError if a 200 response contains an error field.
 
 ## Connections
-- [[._check_error_body()]] - `rationale_for` [EXTRACTED]
+- [[dot-_check_error_body()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_frosty
+#graphify/rationale #graphify/EXTRACTED #community/Community_298

@@ -1,12 +1,12 @@
 ---
 source_file: "calibration.py"
 type: "rationale"
-community: "Module: tests"
-location: "L331"
+community: "Community 119"
+location: "L453"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Module_tests
+  - community/Community_119
 ---
 
 # P2-7: Warn on missing or malformed weight file entries at startup.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[validate_weight_files()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Module_tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_119

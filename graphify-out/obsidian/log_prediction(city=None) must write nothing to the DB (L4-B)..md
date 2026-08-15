@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Portfolio Kelly & P&L"
-location: "L1078"
+community: "Community 92"
+location: "L914"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Portfolio_Kelly__PL
+  - community/Community_92
 ---
 
 # log_prediction(city=None) must write nothing to the DB (L4-B).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_log_prediction_with_null_city_is_noop()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Portfolio_Kelly__PL
+#graphify/rationale #graphify/EXTRACTED #community/Community_92

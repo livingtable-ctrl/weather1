@@ -1,30 +1,31 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Paper Trading & Exits"
-location: "L914"
+community: "Anomaly Detection & PDF Reporting"
+location: "L1243"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Paper_Trading__Exits
+  - community/Anomaly_Detection__PDF_Reporting
 ---
 
 # close_paper_early()
 
 ## Connections
-- [[Close an open paper trade at current market price instead of waiting for settlem]] - `rationale_for` [EXTRACTED]
+- [[dot-exit()_1]] - `calls` [EXTRACTED]
+- [[Backlog L12939 — Position read-model divergence]] - `references` [INFERRED]
+- [[Close an open paper trade at current market price instead of waiting for…]] - `rationale_for` [EXTRACTED]
+- [[Trading Logic Audit 2026-04-23]] - `references` [EXTRACTED]
 - [[ValueError]] - `calls` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[_load()_1]] - `calls` [EXTRACTED]
 - [[_save()_1]] - `calls` [EXTRACTED]
-- [[check_exit_targets()]] - `calls` [EXTRACTED]
 - [[cmd_menu()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
-- [[float_24]] - `references` [EXTRACTED]
-- [[int_19]] - `references` [EXTRACTED]
 - [[main.py]] - `imports` [EXTRACTED]
 - [[paper.py]] - `contains` [EXTRACTED]
+- [[test_menu_ux.py]] - `references` [EXTRACTED]
 - [[web_app.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Paper_Trading__Exits
+#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
