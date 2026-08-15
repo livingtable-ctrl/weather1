@@ -35,6 +35,28 @@ def client(monkeypatch):
         yield c
 
 
+@pytest.fixture
+def client_and_kalshi_mock(monkeypatch):
+    """Like `client`, but the Kalshi client _build_app is closed over is a
+    MagicMock (real get_markets attribute) instead of a plain object() --
+    for tests that need to control what /api/trades' live quote batch-fetch
+    returns. The plain `client` fixture's object() dummy already fails
+    closed safely on client.get_markets(...) (AttributeError, caught by the
+    route's own broad except) without needing any mock at all -- this
+    fixture exists only for tests that want the live path to actually run."""
+    monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
+    monkeypatch.setattr(utils, "DASHBOARD_PASSWORD", "")
+    from unittest.mock import MagicMock
+
+    from web_app import _build_app
+
+    mock_kalshi = MagicMock()
+    app = _build_app(mock_kalshi)
+    app.config["TESTING"] = True
+    with app.test_client() as c:
+        yield c, mock_kalshi
+
+
 def test_balance_history_default_50(client):
     """Default returns at most 50 points."""
     history = [
@@ -321,6 +343,14 @@ def test_api_trades_returns_correct_shape(client):
             ],
         ),
     ):
+        # The `client` fixture's underlying Kalshi client is a plain
+        # object() with no get_markets -- /api/trades' live batch-fetch
+        # hits AttributeError, caught by its own broad except, and falls
+        # back to the (empty) SSE snapshot cache. No real network call is
+        # possible here; nothing needs mocking for that reason. This test
+        # stays scoped to response shape, not quote enrichment (see
+        # TestApiTradesLiveQuoteEnrichment below, which uses
+        # client_and_kalshi_mock to actually exercise the live path).
         r = client.get("/api/trades")
         assert r.status_code == 200
         d = r.get_json()
@@ -329,6 +359,182 @@ def test_api_trades_returns_correct_shape(client):
         assert len(d["open"]) == 1
         assert len(d["closed"]) == 1
         assert d["closed"][0]["ticker"] == "T2"
+
+
+class TestApiTradesLiveQuoteEnrichment:
+    """L18015: /api/trades' live-quote enrichment used to depend solely on
+    the opportunistic top-10-positive-edge SSE snapshot cache, which drops a
+    position the moment its own edge decays past zero -- normal, expected
+    behavior for an already-held position, not something that should cost it
+    its live quote. Now batch-fetches every open position's own ticker in
+    one live GET /markets?tickers=... call (reusing the same `client` this
+    route's closure already has, not a freshly-constructed one), falling
+    back to the SSE cache only if the live call fails or a specific ticker
+    isn't in the batch.
+
+    Uses client_and_kalshi_mock (a MagicMock client) rather than the plain
+    `client` fixture, since these tests need to control what the live batch
+    call returns."""
+
+    def _open_trade(self, ticker="T1"):
+        return {
+            "id": 1,
+            "ticker": ticker,
+            "city": "NYC",
+            "side": "yes",
+            "entry_price": 0.6,
+            "cost": 10.0,
+            "target_date": "2025-12-01",
+        }
+
+    def test_live_batch_fetch_is_used_when_it_succeeds(self, client_and_kalshi_mock):
+        """A ticker the SSE cache never saw (e.g. its edge already decayed
+        below zero, so /analyze's opps filter dropped it) still gets a live
+        quote via the batched call -- the actual bug this entry describes."""
+        c, mock_kalshi = client_and_kalshi_mock
+        with (
+            patch("paper.get_open_trades", return_value=[self._open_trade("T1")]),
+            patch("paper.get_all_trades", return_value=[]),
+            patch(
+                "web_app._get_live_market_snapshot", return_value=[]
+            ),  # empty SSE cache
+        ):
+            mock_kalshi.get_markets.return_value = [
+                {"ticker": "T1", "yes_bid": 62, "yes_ask": 65}
+            ]
+            r = c.get("/api/trades")
+            d = r.get_json()
+            assert d["open"][0]["current_yes_bid"] == pytest.approx(0.62)
+            assert d["open"][0]["current_yes_ask"] == pytest.approx(0.65)
+            # Positive control: confirm the batch was actually called with
+            # this exact ticker, not just that a plausible-looking number
+            # happened to appear.
+            mock_kalshi.get_markets.assert_called_once_with(tickers="T1", limit=1)
+
+    def test_live_quote_takes_precedence_over_a_different_sse_value_for_the_same_ticker(
+        self, client_and_kalshi_mock
+    ):
+        """When BOTH sources have data for the same ticker (not just when one
+        is empty), the live value must win -- the SSE cache can be stale by
+        up to however long since the operator last loaded /analyze."""
+        c, mock_kalshi = client_and_kalshi_mock
+        with (
+            patch("paper.get_open_trades", return_value=[self._open_trade("T1")]),
+            patch("paper.get_all_trades", return_value=[]),
+            patch(
+                "web_app._get_live_market_snapshot",
+                return_value=[{"ticker": "T1", "yes_bid": 0.10, "yes_ask": 0.12}],
+            ),
+        ):
+            mock_kalshi.get_markets.return_value = [
+                {"ticker": "T1", "yes_bid": 62, "yes_ask": 65}
+            ]
+            r = c.get("/api/trades")
+            d = r.get_json()
+            assert d["open"][0]["current_yes_bid"] == pytest.approx(0.62)
+            assert d["open"][0]["current_yes_ask"] == pytest.approx(0.65)
+
+    def test_falls_back_to_sse_cache_when_live_fetch_raises(
+        self, client_and_kalshi_mock
+    ):
+        """A network/auth failure on the live batch call must not break
+        /api/trades -- fall back to whatever the SSE cache has."""
+        c, mock_kalshi = client_and_kalshi_mock
+        with (
+            patch("paper.get_open_trades", return_value=[self._open_trade("T1")]),
+            patch("paper.get_all_trades", return_value=[]),
+            patch(
+                "web_app._get_live_market_snapshot",
+                return_value=[{"ticker": "T1", "yes_bid": 0.40, "yes_ask": 0.44}],
+            ),
+        ):
+            mock_kalshi.get_markets.side_effect = RuntimeError("network error")
+            r = c.get("/api/trades")
+            assert r.status_code == 200  # must not 500
+            d = r.get_json()
+            assert d["open"][0]["current_yes_bid"] == pytest.approx(0.40)
+            assert d["open"][0]["current_yes_ask"] == pytest.approx(0.44)
+
+    def test_ticker_missing_from_live_batch_falls_back_to_sse_cache(
+        self, client_and_kalshi_mock
+    ):
+        """A ticker requested in the batch but not returned (e.g. delisted)
+        falls back per-ticker to the SSE cache, not to no-quote at all."""
+        c, mock_kalshi = client_and_kalshi_mock
+        with (
+            patch(
+                "paper.get_open_trades",
+                return_value=[self._open_trade("T1"), self._open_trade("T2")],
+            ),
+            patch("paper.get_all_trades", return_value=[]),
+            patch(
+                "web_app._get_live_market_snapshot",
+                return_value=[{"ticker": "T2", "yes_bid": 0.10, "yes_ask": 0.15}],
+            ),
+        ):
+            # Batch only returns T1 -- T2 is missing from the live response.
+            mock_kalshi.get_markets.return_value = [
+                {"ticker": "T1", "yes_bid": 62, "yes_ask": 65}
+            ]
+            r = c.get("/api/trades")
+            d = r.get_json()
+            by_ticker = {t["ticker"]: t for t in d["open"]}
+            assert by_ticker["T1"]["current_yes_bid"] == pytest.approx(0.62)
+            assert by_ticker["T2"]["current_yes_bid"] == pytest.approx(0.10)
+
+    def test_no_open_positions_skips_the_live_call_entirely(
+        self, client_and_kalshi_mock
+    ):
+        """No open positions -> no tickers to batch -> get_markets is never
+        even called (no wasted API call)."""
+        c, mock_kalshi = client_and_kalshi_mock
+        with (
+            patch("paper.get_open_trades", return_value=[]),
+            patch("paper.get_all_trades", return_value=[]),
+        ):
+            r = c.get("/api/trades")
+            assert r.status_code == 200
+            mock_kalshi.get_markets.assert_not_called()
+
+    def test_multiple_open_positions_batch_into_one_call(self, client_and_kalshi_mock):
+        """N open positions -> ONE get_markets(tickers=...) call, not N --
+        the entire point of using the batched endpoint over per-ticker
+        get_market() calls."""
+        c, mock_kalshi = client_and_kalshi_mock
+        with (
+            patch(
+                "paper.get_open_trades",
+                return_value=[self._open_trade("T1"), self._open_trade("T2")],
+            ),
+            patch("paper.get_all_trades", return_value=[]),
+        ):
+            mock_kalshi.get_markets.return_value = []
+            c.get("/api/trades")
+            assert mock_kalshi.get_markets.call_count == 1
+            _, kwargs = mock_kalshi.get_markets.call_args
+            assert set(kwargs["tickers"].split(",")) == {"T1", "T2"}
+            assert kwargs["limit"] == 2
+
+    def test_malformed_live_price_degrades_to_no_quote_not_a_crash(
+        self, client_and_kalshi_mock
+    ):
+        """A live market with an unparseable price field must not 500 the
+        whole endpoint -- degrades that one field via _safe_market_price,
+        matching the SSE cache's own established handling."""
+        c, mock_kalshi = client_and_kalshi_mock
+        with (
+            patch("paper.get_open_trades", return_value=[self._open_trade("T1")]),
+            patch("paper.get_all_trades", return_value=[]),
+            patch("web_app._get_live_market_snapshot", return_value=[]),
+        ):
+            mock_kalshi.get_markets.return_value = [
+                {"ticker": "T1", "yes_bid": "not-a-number", "yes_ask": 65}
+            ]
+            r = c.get("/api/trades")
+            assert r.status_code == 200
+            d = r.get_json()
+            assert d["open"][0]["current_yes_bid"] == 0
+            assert d["open"][0]["current_yes_ask"] == pytest.approx(0.65)
 
 
 def test_signals_route_returns_200_with_title(client):

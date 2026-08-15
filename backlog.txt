@@ -18012,10 +18012,11 @@ Resolution (2026-08-14):
   changes) -- flagged to the user directly, who confirmed they'll handle
   the restart themselves.
 
-[OPEN 2026-08-14 -- new, filed by adjacency while resolving the REACT
-  DASHBOARD'S CLOSE BUTTON entry above: investigating that entry's no-quote
-  fallback UX decision surfaced this as the actual root cause, not just a
-  rare edge case.] `/API/TRADES`'S LIVE QUOTE ENRICHMENT (current_yes_bid/
+[RESOLVED 2026-08-14 -- fixed, see Resolution below. Originally filed by
+  adjacency while resolving the REACT DASHBOARD'S CLOSE BUTTON entry above:
+  investigating that entry's no-quote fallback UX decision surfaced this as
+  the actual root cause, not just a rare edge case.] `/API/TRADES`'S LIVE
+  QUOTE ENRICHMENT (current_yes_bid/
   current_yes_ask) ONLY EVER COVERS THE TOP-10 CURRENTLY-POSITIVE-EDGE
   MARKETS, NOT ARBITRARY HELD POSITIONS
 Priority: Low-Medium -- not a live-money correctness bug (the entry above's
@@ -18066,6 +18067,115 @@ When to revisit:
   the honest "no live quote" state more often than intended), but worth
   fixing before the manual-price-entry UX becomes the dashboard's default
   experience rather than its intended rare-case fallback.
+
+Resolution (2026-08-14, chosen off a "what's next in the backlog" menu
+  after the PositionsTab.jsx fix shipped): the "What it would look like"
+  section above explicitly warned not to assume a batched Kalshi endpoint
+  exists "without verifying against Kalshi's actual API docs or a live test
+  call first" -- verified directly against https://docs.kalshi.com/
+  api-reference/market/get-markets rather than trusting a web-search
+  summary alone: `GET /markets` genuinely accepts a `tickers` parameter
+  ("Comma-separated list of market tickers to retrieve"), and
+  kalshi_client.py's existing `get_markets(self, **params)` already passes
+  arbitrary params straight through to that endpoint, so
+  `client.get_markets(tickers="A,B,C")` needed zero client-side changes.
+  This eliminated the entry's original N-calls-per-poll cost concern
+  entirely -- one batched call now covers every open position, not one per
+  position -- so the AskUserQuestion this session asked was narrower than
+  the entry anticipated: not "how do we afford per-position live fetching"
+  but "given batching is free, opt into one new live call every 60s?" User
+  chose yes.
+
+  Shipped in web_app.py's `/api/trades`: batch-fetch every open position's
+  ticker in one `client.get_markets(tickers=",".join(tickers),
+  limit=min(len(tickers), 1000))` call, falling back per-ticker to the
+  existing SSE opportunistic-cache enrichment if the live call raises
+  entirely or a specific ticker isn't in the batch response. No open
+  positions -> no tickers -> get_markets is never even called. Also
+  extracted the price-coercion helper (`_safe_snapshot_price`, previously a
+  function nested inside the /analyze route, unusable elsewhere) to a
+  module-level `_safe_market_price()` and reused it for the new batch path
+  too, rather than writing a second, potentially-diverging copy of the same
+  coalesce_market_price()-wrapping logic -- this codebase has a documented
+  HIGH-severity history (the REACT DASHBOARD'S CLOSE BUTTON entry above) of
+  bugs from bypassing that exact coalescer.
+
+  First-draft design mistake, caught by opus review and redesigned before
+  shipping (recorded here since the mistake itself is the useful lesson,
+  not just its fix): the first version constructed a FRESH `KalshiClient`
+  locally inside `/api/trades` on every call (matching `/api/paper-order`'s
+  existing pattern of doing this for a one-shot, user-initiated action).
+  For a route polled every 60s by every open dashboard tab, that meant
+  re-validating the private key file's Windows ACL (`icacls`) and
+  re-parsing the PEM on every single poll indefinitely -- a real, repeated
+  filesystem-ACL mutation on the live trading private key, not just wasted
+  CPU. It also meant an unmocked construction in
+  `test_api_trades_returns_correct_shape` would build a REAL client with
+  REAL credentials: main.py's `load_dotenv()` (triggered at conftest.py
+  collection time) searches upward from cwd for a `.env` file and finds the
+  MAIN CLONE's real one when pytest runs from a nested worktree (this
+  worktree has no `.env` of its own) -- so that test was on track to hit
+  Kalshi's actual demo API for a fake ticker on every run, a regression
+  introduced by this session's own first draft, not a pre-existing
+  condition (an earlier version of this note wrongly called it
+  "pre-existing" -- corrected here). The actual fix for all of this:
+  `_build_app(client)`'s own `client` parameter is already a live
+  `KalshiClient` captured in every route's closure (three OTHER routes --
+  `get_weather_markets(client)` -- already reuse it this exact way); the
+  module-level `_client` global is genuinely unused elsewhere in the file,
+  but that's a red herring, not evidence there was no client to reuse.
+  Switching `/api/trades` to `client.get_markets(...)` instead of
+  constructing its own removes the repeated-icacls cost entirely AND makes
+  the test-isolation problem structurally impossible rather than
+  patched-over: the test fixtures pass either a plain `object()` (fails
+  closed via AttributeError, caught by the route's own broad except -- no
+  mock needed, no real client ever exists) or a `MagicMock` (for tests that
+  need to control what the live path returns), and no code path in
+  `/api/trades` imports or constructs `kalshi_client.KalshiClient` at all
+  anymore.
+
+  Also added, from the same review: a warning log when the batch returns
+  fewer tickers than requested (previously silent -- a wrong `KALSHI_ENV`
+  or similar misconfiguration would make this whole fix a silent no-op with
+  zero diagnostic signal, since Kalshi returning `[]` for unrecognized
+  tickers isn't an exception, just an empty result); `limit=min(len(tickers),
+  1000)` on the batch call so an unrecognized/ignored `tickers` filter can't
+  degenerate into `get_markets`'s cursor-pagination loop enumerating Kalshi's
+  entire market list every 60s.
+
+  Reviewed and deliberately left as-is (reasoning stated, not silently
+  dropped): a live network call inside a 60s-polled route has no per-call
+  timeout override of its own (inherits kalshi_client.py's existing 15s
+  timeout + 3-retry backoff, worst case longer than one poll interval under
+  a real Kalshi outage) -- fixing this needs a client-level API change
+  (an optional timeout override threaded through `get_markets`) that's a
+  bigger, separate piece of work than this entry's own scope, and the
+  existing read-path circuit breaker eventually short-circuits it anyway.
+  Also: the live-vs-SSE fallback is per-ticker, not per-field, so a market
+  that returns a genuine `{yes_bid: 0, yes_ask: 0}` (no resting quote on
+  either side) is treated as "live and $0" rather than falling through to a
+  possibly-better SSE value for that one field -- but this fails safe
+  either way (computeMark's own `> 0` gate already routes a $0/no-quote
+  price through manual entry, never a silent submit), and per-field
+  fallback would add real complexity for a case this safe.
+
+  7 new tests in tests/test_web_app.py's `TestApiTradesLiveQuoteEnrichment`
+  (live-batch-used-when-it-succeeds, live-quote-wins-over-a-DIFFERENT-
+  SSE-value-for-the-same-ticker -- the opus review's own coverage-gap
+  finding, the original draft only tested disjoint-ticker cases --
+  falls-back-on-exception, ticker-missing-from-batch-falls-back-per-ticker,
+  no-positions-skips-the-call-entirely, N-positions-batch-into-ONE-call,
+  malformed-price-degrades-not-crashes), using a new `client_and_kalshi_mock`
+  fixture (a MagicMock client) alongside the existing `client` fixture
+  (plain `object()`, still sufficient for tests that don't care about live
+  quotes). 42 tests pass in tests/test_web_app.py. Two claims
+  mutation-tested via Edit (not string-replace): (1) "live quote is
+  actually used, not just present, even against a differing SSE value" --
+  reverting to always-use-the-SSE-snapshot broke 4 tests including the new
+  precedence one; (2) "a live-fetch failure falls back instead of 500ing"
+  -- removing the except-fallback (re-raising instead) broke the fallback
+  test with an unhandled RuntimeError instead of a clean 200.
+  ruff/ruff-format/mypy clean on both changed files.
 
 [RESOLVED 2026-08-14 -- diagnosed and fixed, see Resolution below. Originally
   filed UNDIAGNOSED, user-reported while a prior session was live-testing

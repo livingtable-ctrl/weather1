@@ -90,6 +90,21 @@ def _now_utc():
     return datetime.now(UTC)
 
 
+def _safe_market_price(market: dict, *keys: str) -> float:
+    """coalesce_market_price(), degrading a malformed price field to 0 (=no
+    quote) instead of raising -- raw market dicts carry either legacy cents
+    (yes_bid/yes_ask ints) or dollar-strings (yes_bid_dollars/yes_ask_dollars)
+    depending on Kalshi's API shape at fetch time; coalesce_market_price
+    handles both, this just keeps one market's bad field from taking down
+    the whole caller instead of degrading just that one entry."""
+    from utils import coalesce_market_price
+
+    try:
+        return coalesce_market_price(market, *keys)
+    except (ValueError, TypeError):
+        return 0
+
+
 def _get_live_market_snapshot(max_markets: int = 5) -> list[dict]:
     """Return cached top market snapshot for SSE. Populated by analyze route."""
     try:
@@ -686,27 +701,13 @@ def _build_app(client):
 
         # NOTE: This is read by _get_live_market_snapshot() for SSE. Under multi-process WSGI,
         # each process has its own cache — only the most recently analyzed process updates live data.
-        from utils import YES_ASK_KEYS, YES_BID_KEYS, coalesce_market_price
-
-        def _safe_snapshot_price(market: dict, *keys: str) -> float:
-            # Raw market dicts carry either legacy cents (yes_bid/yes_ask ints)
-            # or dollar-strings (yes_bid_dollars/yes_ask_dollars) depending on
-            # Kalshi's API shape at fetch time -- coalesce_market_price handles
-            # both, but a per-item try/except here (rather than relying on the
-            # per-market try/except above, which doesn't cover this later
-            # comprehension) keeps one market's malformed price field from
-            # crashing the whole snapshot instead of just degrading that one
-            # entry to "no quote".
-            try:
-                return coalesce_market_price(market, *keys)
-            except (ValueError, TypeError):
-                return 0
+        from utils import YES_ASK_KEYS, YES_BID_KEYS
 
         _get_live_market_snapshot._cache = [  # type: ignore[attr-defined]
             {
                 "ticker": m.get("ticker", ""),
-                "yes_bid": _safe_snapshot_price(m, *YES_BID_KEYS),
-                "yes_ask": _safe_snapshot_price(m, *YES_ASK_KEYS),
+                "yes_bid": _safe_market_price(m, *YES_BID_KEYS),
+                "yes_ask": _safe_market_price(m, *YES_ASK_KEYS),
                 "edge": a.get("net_edge", a.get("edge", 0)),
             }
             for m, a in sorted(
@@ -1403,12 +1404,71 @@ setInterval(() => {{
 
         open_trades = get_open_trades()
 
-        # Enrich open trades with current implied prob from SSE snapshot
+        # Live quote enrichment (L18015): batch-fetch every open position's
+        # own ticker in ONE request via Kalshi's GET /markets `tickers=`
+        # filter (comma-separated, confirmed against the official API docs —
+        # kalshi_client.get_markets(**params) already passes it straight
+        # through) rather than depending solely on the opportunistic
+        # top-10-positive-edge SSE snapshot cache below, which drops a
+        # position the moment its edge decays past zero — normal, expected
+        # behavior for an already-held position, not something that should
+        # cost it its live quote. Reuses the `client` this closure already
+        # has (the same one get_weather_markets(client) uses elsewhere in
+        # this file) rather than constructing a fresh KalshiClient on every
+        # 60s poll -- construction re-validates the private key file's
+        # permissions (icacls on Windows) and re-parses the PEM every time,
+        # a real repeated cost/side-effect a shared client avoids entirely.
+        # `client` can be a test double (plain object()) or None in
+        # standalone/test contexts -- the broad except below handles that
+        # the same way it handles a real network failure, so this never
+        # needs its own guard.
+        live_quotes: dict[str, dict] = {}
+        _tickers = sorted({t.get("ticker", "") for t in open_trades if t.get("ticker")})
+        if _tickers:
+            try:
+                from utils import YES_ASK_KEYS, YES_BID_KEYS
+
+                for m in client.get_markets(
+                    tickers=",".join(_tickers), limit=min(len(_tickers), 1000)
+                ):
+                    _mt = m.get("ticker", "")
+                    if _mt:
+                        live_quotes[_mt] = {
+                            "yes_bid": _safe_market_price(m, *YES_BID_KEYS),
+                            "yes_ask": _safe_market_price(m, *YES_ASK_KEYS),
+                        }
+                if len(live_quotes) < len(_tickers):
+                    # Not necessarily a bug (a position's market can genuinely
+                    # be gone -- delisted/expired) but silent under-coverage
+                    # here means L18015 looks unfixed with zero diagnostic
+                    # signal, e.g. if KALSHI_ENV points at the wrong
+                    # environment and every call quietly returns [].
+                    _log.warning(
+                        "api/trades: live batch returned %d/%d requested "
+                        "tickers (missing: %s) -- remainder falls back to "
+                        "the SSE snapshot cache",
+                        len(live_quotes),
+                        len(_tickers),
+                        sorted(set(_tickers) - set(live_quotes)),
+                    )
+            except Exception as _live_exc:
+                _log.warning(
+                    "api/trades: live quote batch-fetch failed, falling back "
+                    "to the SSE snapshot cache: %s",
+                    _live_exc,
+                )
+
+        # Enrich open trades with current implied prob -- live batch-fetch
+        # first, falling back to the SSE opportunistic snapshot cache
+        # (stale/partial but better than nothing) if the live call failed
+        # entirely or a specific ticker wasn't returned in the batch.
         snapshot = {m["ticker"]: m for m in _get_live_market_snapshot()}
         for t in open_trades:
-            snap = snapshot.get(t.get("ticker", ""), {})
-            t["current_yes_bid"] = snap.get("yes_bid")
-            t["current_yes_ask"] = snap.get("yes_ask")
+            ticker = t.get("ticker", "")
+            live = live_quotes.get(ticker)
+            snap = snapshot.get(ticker, {})
+            t["current_yes_bid"] = live["yes_bid"] if live else snap.get("yes_bid")
+            t["current_yes_ask"] = live["yes_ask"] if live else snap.get("yes_ask")
             # Pass through needs_manual_settle flag so the UI can badge it
             t.setdefault("needs_manual_settle", bool(t.get("needs_manual_settle")))
 
