@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { DataContext } from '../DataContext.js';
+import { authHeader } from '../useData.js';
 import { normCity, StatCard, BalanceSparkline, SystemEventsCard } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
@@ -64,7 +65,7 @@ export default function OverviewTab() {
 
   const [cronStale, setCronStale] = useState(false);
   useEffect(() => {
-    fetch('/health').then(r => r.json())
+    fetch('/health', { headers: authHeader() }).then(r => r.json())
       .then(d => { if ((d.hours_since_cron ?? 0) > 48) setCronStale(true); })
       .catch(() => {});
   }, []);

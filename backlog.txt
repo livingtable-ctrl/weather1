@@ -18067,10 +18067,10 @@ When to revisit:
   fixing before the manual-price-entry UX becomes the dashboard's default
   experience rather than its intended rare-case fallback.
 
-[OPEN 2026-08-14 -- new, user-reported while this session was live-testing
+[RESOLVED 2026-08-14 -- diagnosed and fixed, see Resolution below. Originally
+  filed UNDIAGNOSED, user-reported while a prior session was live-testing
   the entry above's dashboard fix; user confirmed afterward this predates
-  today's changes, so it is NOT caused by the fix above -- filed as-is,
-  UNDIAGNOSED, for a future session to actually investigate.] DASHBOARD
+  that session's changes, so it was NOT caused by the fix above.] DASHBOARD
   BASIC-AUTH PASSWORD PROMPT REPEATS INDEFINITELY, INCLUDING ON A CORRECT
   PASSWORD
 Priority: Unknown -- not yet diagnosed. Potentially High if it's actually
@@ -18116,6 +18116,108 @@ When to revisit:
   Soon -- this gates kill-switch and trade-control endpoints; an operator
   who can't reliably authenticate during a real incident is a real
   operational risk, independent of how it's eventually root-caused.
+
+Resolution (2026-08-14):
+  Two real, independent bugs, both found by reading frontend/src/useData.js
+  and its sibling "weather app site V_3 (3)/src/useData.js" (the tree
+  confirmed by an earlier session to be the one actually built and served
+  to the browser) rather than by guessing at browser Basic-Auth quirks --
+  the earlier "browser-native caching" and "hmac.compare_digest encoding"
+  theories were both ruled out; server-side _check_auth was never touched.
+
+  Bug 1 (both trees) -- 401-storm on batch fetch: useData.js's fetchAll()
+  fires 17 (frontend/) or 22 (V_3(3)/src) concurrent endpoint fetches via
+  Promise.allSettled. The old apiFetch() called window.prompt() itself on
+  every individual 401, so any batch where the stored password was
+  missing/stale produced up to N blocking password dialogs in a row --
+  entering the correct password on an early one couldn't retroactively fix
+  the later ones, since their requests had already been sent (and 401'd)
+  before that password existed. This alone explains "keeps spamming."
+
+  Bug 2 (V_3(3)/src) -- missing CSRF header, corrected mid-session: commit
+  54b0c576 (verified via `git show --stat`) added a server-side requirement
+  that every state-changing request (POST/PUT/DELETE) carry an
+  `X-Requested-With: XMLHttpRequest` header (web_app.py's _check_auth, CSRF
+  mitigation) and updated the TRACKED frontend/src/useData.js's authHeader()
+  to send it -- but never touched "weather app site V_3 (3)/src/useData.js"
+  in git history (confirmed: not a `git log -S`-followed copy). HOWEVER: an
+  independent opus review (effort:high) of this session's own diff found
+  that the MAIN CLONE (C:\Users\thesa\claude kalshi, not this worktree) had
+  ~130 lines of UNCOMMITTED changes sitting in exactly these two files
+  (useData.js, tabs/PositionsTab.jsx) -- already including this same CSRF
+  header, the ee22c44c computeMark/mapTrades fix, AND a full manual
+  close-price-entry UI in PositionsTab.jsx that goes beyond what the
+  sibling entry below described as "deferred." Confirmed live in the
+  actually-served bundle (static/dist/assets/index-B0PKsZq3.js). So Bug 2
+  had ALREADY been hand-patched out-of-band, uncommitted, sometime after
+  the ee22c44c session -- it was NOT actively live at the moment this
+  session started, but was never captured in git anywhere, and this
+  session's branch (built from the stale committed version) would have
+  either conflicted with or risked silently discarding that work on the
+  next pull/merge. Per explicit AskUserQuestion, that uncommitted work was
+  read from the main clone (read-only -- nothing in the main clone was
+  modified or discarded) and ported into this branch as the new baseline,
+  with this session's fetchAllSafe fix layered on top, so the committed
+  result is now a strict superset of both. Bug 1 (the prompt storm) WAS
+  still genuinely live in the served bundle at session start (confirmed:
+  the bundle contained the old per-request window.prompt() and an
+  unauthenticated scan-version poll) and remains the primary explanation
+  for the reported symptom.
+
+  Shipped, both files: extracted apiFetch's per-request window.prompt() out
+  into a new exported `fetchAllSafe(endpoints, promptFn)` that runs the
+  whole batch via Promise.allSettled first, then prompts exactly ONCE for
+  any 401s across the batch and retries only the endpoints that actually
+  failed auth -- a correct password now completes that same fetch cycle
+  instead of leaving other endpoints null until the next 60s poll. Also
+  hardened against two overlapping fetchAllSafe() calls (60s poll vs. the
+  5s "cron just finished" fast-refresh) each independently prompting for
+  the same real auth event: snapshot the stored password before the batch,
+  skip the prompt if it already changed underneath this call, retry
+  directly instead (opus review LOW 1). Fixed the same missing-
+  Authorization-header gap in both trees' 5s scan-version poll, plus (V_3
+  (3)/src only, opus review MEDIUM 3) three more unauthenticated fetch()
+  calls found by the same grep: AnalyticsTab.jsx's /api/edge-realization
+  and /api/reliability/<city>, and OverviewTab.jsx's /health -- all behind
+  the same unconditional @app.before_request gate, all silently 401ing
+  forever once a password is set. V_3(3)/src additionally got authHeader()
+  's X-Requested-With addition (Bug 2, now redundant with the ported
+  main-clone version but kept as the single source of truth going forward).
+
+  Tests: frontend/src/useData.test.js gained 6 new fetchAllSafe cases
+  (all-succeed/never-prompts, all-401/prompts-exactly-once, correct-
+  password-retries-with-the-fresh-credential, selective-retry-doesn't-
+  refetch-successful-siblings, concurrent-batch-skips-its-own-prompt,
+  cancel-leaves-endpoints-rejected). 18/18 pass (12 pre-existing computeMark
+  + 6 new), re-counted via `npm test` immediately before writing this
+  sentence. Mutation-tested three separate claims by temporarily reverting
+  each fix (Edit tool, not a string-replace script) and confirming the
+  relevant test(s) failed before reverting: (1) "prompts exactly once" --
+  reverting to per-endpoint prompting broke 2 tests (6 and 3 prompt calls
+  instead of 1); (2) "retry uses the FRESH password" -- moving
+  sessionStorage.setItem() to after the retry (so the retry would go out
+  with stale/no credentials) broke the retry test, which an opus review
+  found the ORIGINAL call-count-only mock could NOT have caught (a real
+  gap in the first version of this test, now fixed by having the mock
+  check the actual Authorization header sent); (3) "concurrent batch skips
+  its own prompt" -- hardcoding havePwd=false broke the new concurrent-
+  batch test. V_3(3)/src/useData.js and the 3 .jsx files have no
+  package.json/vite.config/index.html in this worktree (confirmed absent
+  -- they exist only in the main clone, untracked) so none of them run
+  through vitest here; syntax-verified instead via esbuild's own JSX
+  transform (`esbuild.transformSync`, the same transformer Vite uses
+  internally) since plain `node --check` can't parse JSX. Per the same
+  AskUserQuestion, none of the V_3(3)/src changes were built, run, or
+  browser-tested this session -- a past session's attempt to build this
+  exact tree from this exact worktree accidentally overwrote the main
+  clone's live static/dist ahead of a matching backend patch. Whoever
+  builds/deploys V_3(3)/src next should smoke-test the password flow (both
+  a batch 401 and an actual state-changing POST) once for real, and should
+  also reconcile the main clone's own now-likely-redundant uncommitted
+  diff in useData.js/PositionsTab.jsx once this branch is merged and
+  pulled there -- expect it to collapse to an empty diff if the port was
+  faithful; if not, that's worth investigating rather than discarding
+  either side blind.
 
 [OPEN 2026-08-14 -- new, deliberately deferred (not silently skipped) while
   resolving the REACT DASHBOARD'S CLOSE BUTTON entry above: an opus review
@@ -18176,4 +18278,24 @@ When to revisit:
   not systematically wrong on every close the way the pre-fix mark
   computation was), but it's the same bug class already fixed elsewhere
   in this exact feature, just not here yet.
+
+Update (2026-08-14, DASHBOARD BASIC-AUTH entry's session): this entry's
+  premise needs a correction, not a resolution. Discovered mid-session (via
+  opus review of an unrelated auth-loop fix) that the main clone
+  (C:\Users\thesa\claude kalshi, not this worktree) already had ~130 lines
+  of UNCOMMITTED changes to this exact file sitting in its working tree --
+  including a full manual close-price-entry UI (handleClose/
+  handleCloseConfirm gating on markIsLive, the confirm-modal input field,
+  bulk-close skipping non-live-quote positions) that substantially
+  overlaps this entry's own "what it would look like" section above. That
+  work was ported into this branch (see the DASHBOARD BASIC-AUTH entry's
+  own Resolution for the full story) and PositionsTab.jsx now has it. The
+  ONE part of this entry NOT covered by that ported work is still open and
+  unchanged: selectedPos/confirmClose (lines ~69-71, ~154-157, ~325 in the
+  now-current file) still hold direct object references captured at click
+  time, not ids re-resolved against the live M.positions array -- the
+  detached-object-reference bug this entry's title describes is real and
+  still unfixed. The "Problem"/"What it would look like"/"Why not now"
+  text above should be read as scoped to JUST that reference bug now, not
+  the whole manual-entry feature (which already exists).
 

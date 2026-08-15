@@ -1,5 +1,6 @@
 ﻿import React, { useState, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
+import { authHeader } from '../useData.js';
 import { normCity, StatCard, BrierTrendChart } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
@@ -1030,7 +1031,7 @@ export default function AnalyticsTab() {
   const [edgeRealization, setEdgeRealization] = useState([]);
 
   React.useEffect(() => {
-    fetch('/api/edge-realization')
+    fetch('/api/edge-realization', { headers: authHeader() })
       .then(r => r.json())
       .then(d => setEdgeRealization(d))
       .catch(() => {});
@@ -1044,7 +1045,7 @@ export default function AnalyticsTab() {
     });
     const top3 = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c]) => c);
     top3.forEach(city => {
-      fetch(`/api/reliability/${encodeURIComponent(city)}`)
+      fetch(`/api/reliability/${encodeURIComponent(city)}`, { headers: authHeader() })
         .then(r => r.json())
         .then(d => setReliabilityData(prev => ({ ...prev, [city]: d })))
         .catch(() => {});

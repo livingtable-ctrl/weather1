@@ -43,8 +43,6 @@ export function authHeader() {
 async function apiFetch(path) {
   const res = await fetch(path, { headers: authHeader() });
   if (res.status === 401) {
-    const p = window.prompt('Dashboard password:');
-    if (p !== null) sessionStorage.setItem('kalshi-pwd', p);
     throw Object.assign(new Error('AUTH'), { isAuth: true });
   }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -297,6 +295,76 @@ function mapPriceImprovement(raw) {
   return raw;
 }
 
+const ENDPOINTS = [
+  '/api/status',            // 0
+  '/api/graduation',        // 1
+  '/api/trades',            // 2
+  '/api/risk',              // 3
+  '/api/circuit-status',    // 4
+  '/api/balance_history',   // 5
+  '/api/analytics',         // 6
+  '/api/price-improvement', // 7
+  '/api/today_forecasts',   // 8
+  '/api/live_signals',      // 9
+  '/api/config',            // 10
+  '/api/ab-tests',          // 11
+  '/api/override',          // 12
+  '/api/system-events',     // 13
+  '/api/backup-status',     // 14
+  '/api/brier_history',     // 15
+  '/api/forecast_quality',  // 16
+];
+
+/**
+ * Runs `safe(path)` for every endpoint in `endpoints` in parallel. A batch
+ * 401 (missing/stale stored password) hits every endpoint in the same
+ * Promise.allSettled at once — prompting inside apiFetch itself (the old
+ * behavior) meant every failing endpoint independently called
+ * window.prompt(), i.e. up to `endpoints.length` blocking dialogs in a row,
+ * and entering the password correctly on an early one couldn't fix the
+ * later ones, since their requests had already been sent (and 401'd) before
+ * that password existed. This prompts exactly ONCE per batch, after every
+ * endpoint has settled, and retries only the ones that actually failed
+ * auth — a correct password then completes this same batch instead of
+ * leaving those endpoints null until the next scheduled poll.
+ * `promptFn` is injectable so this can be unit-tested without a real browser
+ * `window.prompt`.
+ *
+ * Two overlapping calls (e.g. the 60s poll firing while a "cron just
+ * finished" fast-refresh is still in flight) can each independently hit a
+ * batch 401 here. Snapshotting the stored password before this batch's
+ * fetches go out, and re-checking it after they settle, lets a later call
+ * detect that an earlier call's prompt already resolved while this one was
+ * waiting — skipping its own prompt and retrying straight away with the
+ * password that's already there, instead of asking the operator twice for
+ * one real auth event.
+ */
+export async function fetchAllSafe(endpoints, promptFn = window.prompt) {
+  const pwdBefore = sessionStorage.getItem('kalshi-pwd');
+  const results = await Promise.allSettled(endpoints.map(safe));
+
+  const authFailedIdx = results
+    .map((r, i) => (r.status === 'rejected' && r.reason?.isAuth ? i : -1))
+    .filter((i) => i !== -1);
+  if (authFailedIdx.length) {
+    let havePwd = sessionStorage.getItem('kalshi-pwd') !== pwdBefore;
+    if (!havePwd) {
+      const p = promptFn('Dashboard password:');
+      if (p !== null) {
+        sessionStorage.setItem('kalshi-pwd', p);
+        havePwd = true;
+      }
+    }
+    if (havePwd) {
+      const retried = await Promise.allSettled(
+        authFailedIdx.map((i) => safe(endpoints[i]))
+      );
+      authFailedIdx.forEach((idx, j) => { results[idx] = retried[j]; });
+    }
+  }
+  return results;
+}
+
 // ---------------------------------------------------------------------------
 // Main hook
 // ---------------------------------------------------------------------------
@@ -308,25 +376,7 @@ export default function useData(setConnected) {
   // ── Fetch all endpoints in parallel ────────────────────────────────────
   async function fetchAll() {
     try {
-      const results = await Promise.allSettled([
-        safe('/api/status'),            // 0
-        safe('/api/graduation'),        // 1
-        safe('/api/trades'),            // 2
-        safe('/api/risk'),              // 3
-        safe('/api/circuit-status'),    // 4
-        safe('/api/balance_history'),   // 5
-        safe('/api/analytics'),         // 6
-        safe('/api/price-improvement'), // 7
-        safe('/api/today_forecasts'),   // 8
-        safe('/api/live_signals'),      // 9
-        safe('/api/config'),            // 10
-        safe('/api/ab-tests'),          // 11
-        safe('/api/override'),          // 12
-        safe('/api/system-events'),     // 13
-        safe('/api/backup-status'),     // 14
-        safe('/api/brier_history'),     // 15
-        safe('/api/forecast_quality'),  // 16
-      ]);
+      const results = await fetchAllSafe(ENDPOINTS);
 
       // Unwrap allSettled — treat rejected as null
       const [
@@ -426,12 +476,14 @@ export default function useData(setConnected) {
 
         return next;
       });
-    } catch (e) {
-      // AUTH errors: user was already prompted via window.prompt in apiFetch.
-      // Reschedule a fresh fetch after 5 s so the new password is used.
-      if (e.isAuth) {
-        setTimeout(fetchAll, 5_000);
-      }
+    } catch {
+      // Unexpected error in the merge/mapping logic above (not an endpoint
+      // fetch failure — those are already caught per-endpoint by safe()).
+      // Only catches synchronous throws in this try block, e.g. a bad
+      // response shape from a mapper — a throw inside setData's updater
+      // itself may surface as a React render error this can't see. Swallow
+      // what it does catch so it doesn't kill the polling loop; the next
+      // scheduled fetchAll() retries regardless.
     }
   }
 
@@ -492,7 +544,7 @@ export default function useData(setConnected) {
     // moment the timestamp advances (i.e. a new cron run just finished).
     let lastVersion = null;
     const scanPollRef = setInterval(() => {
-      fetch('/api/scan-version')
+      fetch('/api/scan-version', { headers: authHeader() })
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (!d || d.version == null) return;

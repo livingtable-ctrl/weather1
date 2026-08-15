@@ -69,6 +69,11 @@ export default function PositionsTab() {
   const [selectedPos, setSelectedPos] = useState(null);
   const [closeMsg, setCloseMsg] = useState('');
   const [confirmClose, setConfirmClose] = useState(null);
+  // Prefilled (not auto-submitted) when the position has no live quote for its
+  // own side — pos.mark already falls back to entry_price/actual_fill_price for
+  // display, but that fabricated value must never go straight to the server;
+  // the operator has to see and confirm/edit it in the confirm-close modal.
+  const [closePriceInput, setClosePriceInput] = useState('');
   const [alertsPanelOpen, setAlertsPanelOpen] = useState(false);
   const [alerts, setAlerts] = useState(() => {
     try { return JSON.parse(localStorage.getItem('kalshi-position-alerts') || '[]'); }
@@ -106,23 +111,40 @@ export default function PositionsTab() {
     return () => document.removeEventListener('kalshi:escape', handler);
   }, []);
 
-  // Bulk close positions
+  // Bulk close positions. Skips any position with no live quote for its side
+  // rather than submitting its fabricated fallback price — bulk close has no
+  // per-position manual-entry step (that only exists in the single-close
+  // confirm modal below), so silently sending pos.mark here would book
+  // whatever entry_price/actual_fill_price the display was falling back to
+  // with no operator confirmation at all, exactly the bug this whole fix
+  // exists to close off.
   function handleBulkClose() {
     if (selectedIds.size === 0) return;
-    const positionsToClose = filtered.filter(p => selectedIds.has(p.id));
+    const candidates = filtered.filter(p => selectedIds.has(p.id));
+    const positionsToClose = candidates.filter(p => p.markIsLive);
+    const skipped = candidates.length - positionsToClose.length;
+    if (positionsToClose.length === 0) {
+      setBulkActionMsg('✗ No live quotes — none closed. Close them individually instead.');
+      setTimeout(() => setBulkActionMsg(''), 4000);
+      return;
+    }
     setBulkActionMsg(`Closing ${positionsToClose.length} positions...`);
 
     Promise.all(positionsToClose.map(p =>
       fetch('/api/close-position', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader() },
-        body: JSON.stringify({ trade_id: p.id, exit_price: p.mark || 0 }),
+        body: JSON.stringify({ trade_id: p.id, exit_price: p.mark || 0, manual: false }),
       }).then(r => r.json())
     )).then(() => {
-      setBulkActionMsg(`✓ Closed ${positionsToClose.length} positions`);
+      setBulkActionMsg(
+        skipped > 0
+          ? `✓ Closed ${positionsToClose.length} — skipped ${skipped} with no live quote`
+          : `✓ Closed ${positionsToClose.length} positions`
+      );
       setSelectedIds(new Set());
       M.refresh();
-      setTimeout(() => setBulkActionMsg(''), 3000);
+      setTimeout(() => setBulkActionMsg(''), 4000);
     }).catch(() => {
       setBulkActionMsg('✗ Bulk close failed');
       setTimeout(() => setBulkActionMsg(''), 3000);
@@ -131,18 +153,30 @@ export default function PositionsTab() {
 
   function handleClose(pos) {
     setConfirmClose(pos);
+    setClosePriceInput(!pos.markIsLive ? pos.mark.toFixed(2) : '');
   }
 
   function handleCloseConfirm() {
     if (!confirmClose) return;
     const pos = confirmClose;
+    const manual = !pos.markIsLive;
+    let exitPrice = pos.mark || 0;
+    if (manual) {
+      const parsed = parseFloat(closePriceInput);
+      if (!Number.isFinite(parsed) || parsed < 0.01 || parsed > 1) {
+        setCloseMsg('✗ Enter a valid exit price (0.01–1.00)');
+        setTimeout(() => setCloseMsg(''), 3000);
+        return;
+      }
+      exitPrice = parsed;
+    }
     setConfirmClose(null);
 
     if (!pos.id) { setCloseMsg('✗ No trade ID'); setTimeout(() => setCloseMsg(''), 3000); return; }
     fetch('/api/close-position', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
-      body: JSON.stringify({ trade_id: pos.id, exit_price: pos.mark || 0 }),
+      body: JSON.stringify({ trade_id: pos.id, exit_price: exitPrice, manual }),
     })
       .then(r => r.json())
       .then(d => {
@@ -420,9 +454,27 @@ export default function PositionsTab() {
             borderRadius: 14, padding: '24px 28px', minWidth: 320, maxWidth: 400,
           }}>
             <h3 style={{ margin: '0 0 10px', fontSize: 16, fontWeight: 700 }}>Close position?</h3>
-            <p style={{ margin: '0 0 18px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>
-              Close <strong style={{ color: '#3b82f6' }}>{confirmClose.ticker}</strong> at mark price <strong>{(confirmClose.mark * 100).toFixed(0)}¢</strong>?
-            </p>
+            {confirmClose.markIsLive ? (
+              <p style={{ margin: '0 0 18px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>
+                Close <strong style={{ color: '#3b82f6' }}>{confirmClose.ticker}</strong> at mark price <strong>{(confirmClose.mark * 100).toFixed(0)}¢</strong>?
+              </p>
+            ) : (
+              <div style={{ margin: '0 0 18px' }}>
+                <p style={{ margin: '0 0 10px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>
+                  No live quote for <strong style={{ color: '#3b82f6' }}>{confirmClose.ticker}</strong> — enter the exit price yourself:
+                </p>
+                <input
+                  type="number" step="0.01" min="0.01" max="1" autoFocus
+                  value={closePriceInput}
+                  onChange={e => setClosePriceInput(e.target.value)}
+                  style={{
+                    width: '100%', padding: '9px 12px', borderRadius: 8,
+                    border: '1px solid var(--border)', background: 'var(--bg-subtle)',
+                    color: 'var(--text)', fontSize: 14, fontFamily: 'ui-monospace, monospace',
+                  }}
+                />
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={() => setConfirmClose(null)} style={{
                 padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)',
