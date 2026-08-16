@@ -2028,6 +2028,28 @@ def _cmd_cron_body(
                         for s in sorted(_seas_live)
                     )
                     print(dim(f"  [Calibrate] seasonal weights: {_seas_lines}"))
+
+                # METAR lock-in calibration -- same weekly cadence as T-scaling/
+                # blend weights above (2026-08-16: previously manual-only via
+                # `py main.py calibrate`, which meant it went stale indefinitely
+                # if nobody remembered to run it). fit_and_save_metar_
+                # calibration() already has its own EPV-based data floor
+                # (min(n_pos,n_neg)>=10) and refuses to save an unreliable fit,
+                # so folding it into this unconditional weekly block can't
+                # cause a premature activation the way it could for a method
+                # without that floor (e.g. EMOS, which got its own explicit
+                # confirmation gate for exactly that reason -- METAR's floor
+                # check already provides the equivalent protection here).
+                from ml_bias import fit_and_save_metar_calibration as _fit_save_metar
+
+                _metar_cal = _fit_save_metar()
+                if _metar_cal is not None:
+                    _mc_a, _mc_b, _mc_c = _metar_cal
+                    print(
+                        dim(
+                            f"  [MetarCal] fitted — a={_mc_a:.4f} b={_mc_b:.4f} c={_mc_c:.4f}"
+                        )
+                    )
     except Exception as _e:
         # Bumped from debug to warning: the marker is always touched below
         # (deliberately, to avoid a tight retry loop), so a persistent failure

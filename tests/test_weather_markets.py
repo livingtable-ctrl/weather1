@@ -2270,6 +2270,375 @@ def test_metar_locked_trade_has_nbm_quantile_prob_key(monkeypatch):
     assert result["nbm_quantile_prob"] is None
 
 
+# ── METAR lock-in beta calibration wiring in analyze_trade ───────────────────
+
+
+def _metar_locked_enriched(ticker="KXHIGHNY-26APR09-T72"):
+    """Minimal enriched dict that reaches analyze_trade's metar_locked branch
+    -- same shape as test_metar_locked_trade_has_ecmwf_forecast_mean_keys
+    above, factored out since the new calibration tests need several
+    variants of it."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    return {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
+        "_date": today,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": ticker,
+        "title": "Will NYC high temperature be above 72°F?",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 0.72,
+        "yes_bid": 0.62,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            + __import__("datetime").timedelta(hours=2)
+        ).isoformat(),
+    }
+
+
+def test_metar_calibration_applied_for_above_market(monkeypatch):
+    """A calibration model on disk must actually correct a METAR-locked
+    above-market prediction -- confirms the wiring reaches
+    apply_metar_calibration, not just that the loader/fit functions work in
+    isolation."""
+    import ml_bias
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, 0.85, {"current_temp_f": 76.0})
+    )
+    # Known, hand-computable model: a==b==2.0, c=0.0 (the Platt special case).
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: (2.0, 2.0, 0.0))
+
+    result = analyze_trade(_metar_locked_enriched())
+    assert result is not None
+    expected = ml_bias.apply_metar_calibration(0.85, (2.0, 2.0, 0.0))
+    assert result["forecast_prob"] == pytest.approx(expected, abs=1e-6)
+    assert abs(result["forecast_prob"] - 0.85) > 1e-6, (
+        "calibration model was loaded but had no visible effect — check the "
+        "wiring, not just the math"
+    )
+
+
+def test_metar_calibration_skipped_for_between_market(monkeypatch):
+    """Between markets share the same METAR lock-in formula but weren't part
+    of the population the calibration model was fit on -- must stay
+    uncorrected even when a model exists on disk."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, 0.85, {"current_temp_f": 76.0})
+    )
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: (2.0, 2.0, 0.0))
+
+    result = analyze_trade(_metar_locked_enriched(ticker="KXHIGHNY-26APR09-B74.5"))
+    assert result is not None
+    assert result["condition"]["type"] == "between"
+    assert result["forecast_prob"] == pytest.approx(0.85, abs=1e-6), (
+        "between market's raw METAR probability was corrected — the "
+        "condition_type != 'between' guard isn't excluding it"
+    )
+
+
+def test_metar_calibration_noop_when_no_model_on_disk(monkeypatch):
+    """No calibration file yet (fresh install, or below the 30-row floor)
+    must leave the raw METAR lock-in probability untouched, not raise."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, 0.85, {"current_temp_f": 76.0})
+    )
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: None)
+
+    result = analyze_trade(_metar_locked_enriched())
+    assert result is not None
+    assert result["forecast_prob"] == pytest.approx(0.85, abs=1e-6)
+
+
+def test_metar_calibration_magnitude_capped(monkeypatch):
+    """A correction whose shift exceeds _ML_CORRECTION_LIMIT (0.30) must be
+    skipped entirely, same safety pattern already applied to GBM and Platt
+    corrections in this file."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, 0.85, {"current_temp_f": 76.0})
+    )
+    # a=b=1 (Platt identity slope) with c=-10 pushes 0.85 down to ~0.0003 --
+    # a ~0.85 delta, far outside the ±0.30 window (unlike a large a=b, which
+    # just saturates the sigmoid near 1.0 and produces only a ~0.15 delta
+    # from 0.85 -- verified directly before writing this assertion, not
+    # assumed), so it must be skipped rather than applied outright.
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: (1.0, 1.0, -10.0))
+
+    result = analyze_trade(_metar_locked_enriched())
+    assert result is not None
+    assert result["forecast_prob"] == pytest.approx(0.85, abs=1e-6), (
+        "an out-of-bound correction was applied instead of being capped/skipped"
+    )
+
+
+def test_metar_calibration_no_lock_correction_survives_the_cap(monkeypatch):
+    """Regression test for a HIGH finding from two independent opus reviews
+    (2026-08-16): reusing _ML_CORRECTION_LIMIT (0.30, sized for GBM/Platt's
+    small touch-ups) as the cap for this correction meant EVERY NO-lock
+    correction from the real fitted model (delta ~0.35-0.38 on the observed
+    0.03-0.15 raw range) was silently skipped, while YES-lock corrections
+    (delta up to ~0.20) were still applied -- leaving the fix a no-op on
+    exactly the worse-miscalibrated half (measured 93% NO-confidence vs 50%
+    actual) while still correcting the other half. Uses the exact real
+    production coefficients (a=b=0.2262, c=0.4001) two reviews independently
+    verified against this repo's actual 33-row dataset."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, 0.03, {"current_temp_f": 76.0})
+    )
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: (0.2262, 0.2262, 0.4001))
+
+    result = analyze_trade(_metar_locked_enriched())
+    assert result is not None
+    assert result["forecast_prob"] != pytest.approx(0.03, abs=1e-3), (
+        "a real NO-lock correction was skipped by the magnitude cap"
+    )
+    assert result["forecast_prob"] == pytest.approx(0.4046, abs=1e-3)
+
+
+def test_metar_calibration_records_raw_prob_via_bias_correction(monkeypatch):
+    """Regression test for a HIGH finding from both opus reviews
+    (2026-08-16): the METAR branch left bias_correction hardcoded at 0.0, so
+    tracker.py's raw_prob = forecast_prob + bias_correction reconstructed
+    the ALREADY-CALIBRATED value, not the true raw
+    _dynamic_lock_in_confidence() output. A future `calibrate` run would
+    then train on partly-already-corrected data, understating the true
+    miscalibration and pulling the fit toward identity over successive
+    retrains -- a closed feedback loop. bias_correction must equal
+    (raw - calibrated) so raw_prob reconstructs correctly."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, 0.85, {"current_temp_f": 76.0})
+    )
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: (2.0, 2.0, 0.0))
+
+    result = analyze_trade(_metar_locked_enriched())
+    assert result is not None
+    assert result["forecast_prob"] != pytest.approx(0.85, abs=1e-6), (
+        "test setup error -- expected the calibration to actually move the prob"
+    )
+    reconstructed_raw = result["forecast_prob"] + result["bias_correction"]
+    assert reconstructed_raw == pytest.approx(0.85, abs=1e-6), (
+        f"bias_correction={result['bias_correction']} does not reconstruct "
+        f"the true raw METAR probability (0.85) from forecast_prob="
+        f"{result['forecast_prob']} -- future retrains would train on "
+        f"already-calibrated data"
+    )
+
+
+def test_metar_calibration_bias_correction_zero_when_uncorrected(monkeypatch):
+    """When no calibration model exists, bias_correction must stay 0.0 (not
+    accidentally pick up a stale nonzero value) -- positive control pairing
+    with the test above, confirming the fix only activates when a
+    correction actually ran."""
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    monkeypatch.setattr(
+        wm, "_metar_lock_in", lambda *a, **kw: (True, 0.85, {"current_temp_f": 76.0})
+    )
+    monkeypatch.setattr(wm, "_load_metar_calibration", lambda: None)
+
+    result = analyze_trade(_metar_locked_enriched())
+    assert result is not None
+    assert result["bias_correction"] == pytest.approx(0.0)
+    assert result["forecast_prob"] + result["bias_correction"] == pytest.approx(0.85)
+
+
+class TestLoadMetarCalibration:
+    """_load_metar_calibration's caching/validation, mirroring
+    _load_platt_models's already-established safety properties for the
+    identical class of risk (a corrupted or hand-edited calibration file
+    silently corrupting live probabilities)."""
+
+    def _isolate(self, tmp_path, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "METAR_CALIBRATION_PATH", tmp_path / "metar_cal.json")
+        monkeypatch.setattr(wm, "_METAR_CAL", None)
+        monkeypatch.setattr(wm, "_METAR_CAL_MTIME", None)
+        return tmp_path
+
+    def test_returns_none_when_file_missing(self, tmp_path, monkeypatch):
+        import weather_markets as wm
+
+        self._isolate(tmp_path, monkeypatch)
+        assert wm._load_metar_calibration() is None
+
+    def test_loads_valid_file(self, tmp_path, monkeypatch):
+        import json
+
+        import weather_markets as wm
+
+        path = self._isolate(tmp_path, monkeypatch) / "metar_cal.json"
+        path.write_text(json.dumps({"a": 0.5, "b": 0.8, "c": 0.1}))
+
+        result = wm._load_metar_calibration()
+        assert result == pytest.approx((0.5, 0.8, 0.1))
+
+    def test_rejects_degenerate_nonpositive_coefficients(self, tmp_path, monkeypatch):
+        """a<=0 or b<=0 means the map isn't a valid beta-calibration density
+        (same 'signal would be inverted' logic _load_platt_models already
+        applies to Platt's A<=0) -- a hand-edited or corrupted file with
+        these must not be trusted."""
+        import json
+
+        import weather_markets as wm
+
+        path = self._isolate(tmp_path, monkeypatch) / "metar_cal.json"
+        path.write_text(json.dumps({"a": -0.5, "b": 0.8, "c": 0.1}))
+
+        assert wm._load_metar_calibration() is None
+
+    def test_rejects_out_of_bounds_coefficients(self, tmp_path, monkeypatch):
+        import json
+
+        import weather_markets as wm
+
+        path = self._isolate(tmp_path, monkeypatch) / "metar_cal.json"
+        path.write_text(json.dumps({"a": 50.0, "b": 0.8, "c": 0.1}))
+
+        assert wm._load_metar_calibration() is None
+
+    def test_reloads_after_file_changes(self, tmp_path, monkeypatch):
+        """A fresh calibrate run must be picked up by an already-running
+        process on its NEXT call, not only at first load -- same
+        mtime-invalidation reasoning as ml_bias._load_emos_params."""
+        import json
+        import time
+
+        import weather_markets as wm
+
+        path = self._isolate(tmp_path, monkeypatch) / "metar_cal.json"
+        path.write_text(json.dumps({"a": 0.5, "b": 0.8, "c": 0.1}))
+        first = wm._load_metar_calibration()
+        assert first == pytest.approx((0.5, 0.8, 0.1))
+
+        time.sleep(1.1)  # ensure a distinct mtime across filesystems
+        path.write_text(json.dumps({"a": 0.3, "b": 0.4, "c": 0.2}))
+        second = wm._load_metar_calibration()
+        assert second == pytest.approx((0.3, 0.4, 0.2)), (
+            "stale cache returned instead of re-reading the changed file"
+        )
+
+    def test_editing_a_good_file_to_invalid_actually_disables_it(
+        self, tmp_path, monkeypatch
+    ):
+        """Regression test for a HIGH finding (opus review, 2026-08-16): an
+        earlier version returned the STALE cached model on a validation
+        failure instead of None. An operator who hand-edits the file to
+        neutralize a bad correction (e.g. because a running loop/watch
+        process is applying a model they've since determined is wrong) must
+        see it actually take effect on the next call, not keep silently
+        applying the old model forever."""
+        import json
+        import time
+
+        import weather_markets as wm
+
+        path = self._isolate(tmp_path, monkeypatch) / "metar_cal.json"
+        path.write_text(json.dumps({"a": 0.5, "b": 0.8, "c": 0.1}))
+        first = wm._load_metar_calibration()
+        assert first == pytest.approx((0.5, 0.8, 0.1))
+
+        time.sleep(1.1)
+        path.write_text(json.dumps({"a": -0.5, "b": 0.8, "c": 0.1}))  # degenerate
+        second = wm._load_metar_calibration()
+        assert second is None, (
+            "a validation failure on a file that previously held a good "
+            "model must clear the cache, not keep serving the stale model"
+        )
+
+    def test_transient_stat_error_keeps_cached_model(self, tmp_path, monkeypatch):
+        """A transient I/O error reading the file (e.g. an AV lock, or the
+        brief window during os.replace) must NOT wipe a good cached model
+        -- distinct from the file genuinely not existing. Simulated by
+        making Path.exists() raise mid-check, the way a real OS-level lock
+        would surface."""
+        import json
+
+        import weather_markets as wm
+
+        path = self._isolate(tmp_path, monkeypatch) / "metar_cal.json"
+        path.write_text(json.dumps({"a": 0.5, "b": 0.8, "c": 0.1}))
+        first = wm._load_metar_calibration()
+        assert first == pytest.approx((0.5, 0.8, 0.1))
+
+        def _raise_oserror(self):
+            raise OSError("simulated transient lock")
+
+        monkeypatch.setattr(type(path), "exists", _raise_oserror, raising=False)
+
+        second = wm._load_metar_calibration()
+        assert second == pytest.approx((0.5, 0.8, 0.1)), (
+            "a transient stat/exists() failure wiped the good cached model "
+            "instead of keeping it and retrying next call"
+        )
+
+    def test_malformed_json_does_not_crash_first_load(self, tmp_path, monkeypatch):
+        import weather_markets as wm
+
+        path = self._isolate(tmp_path, monkeypatch) / "metar_cal.json"
+        path.write_text("{not valid json")
+
+        assert wm._load_metar_calibration() is None
+
+    def test_missing_keys_does_not_crash_first_load(self, tmp_path, monkeypatch):
+        """A partial file (e.g. a torn concurrent write) missing b/c must
+        not raise -- caught by the broad except around the JSON parse."""
+        import json
+
+        import weather_markets as wm
+
+        path = self._isolate(tmp_path, monkeypatch) / "metar_cal.json"
+        path.write_text(json.dumps({"a": 0.5}))
+
+        assert wm._load_metar_calibration() is None
+
+    def test_loader_exception_does_not_crash_analyze_trade(self, monkeypatch):
+        """If _load_metar_calibration itself raises unexpectedly (bug, not
+        just a bad file), analyze_trade's enclosing try/except must degrade
+        to uncorrected rather than let the exception escape and abort the
+        whole market scan."""
+        import weather_markets as wm
+        from weather_markets import analyze_trade
+
+        monkeypatch.setattr(
+            wm,
+            "_metar_lock_in",
+            lambda *a, **kw: (True, 0.85, {"current_temp_f": 76.0}),
+        )
+
+        def _boom():
+            raise RuntimeError("simulated unexpected failure")
+
+        monkeypatch.setattr(wm, "_load_metar_calibration", _boom)
+
+        result = analyze_trade(_metar_locked_enriched())  # must not raise
+        assert result is not None
+        assert result["forecast_prob"] == pytest.approx(0.85, abs=1e-6)
+
+
 def test_om_rate_limit_enforces_interval(monkeypatch):
     """_om_rate_limit ensures at least the per-endpoint interval between calls."""
     import time

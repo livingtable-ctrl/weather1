@@ -47,6 +47,7 @@ from paths import (
     HOURLY_TARGET_HOURS_PATH,
     HURRICANE_COUNT_TO_DATE_PATH,
     LEARNED_WEIGHTS_PATH,
+    METAR_CALIBRATION_PATH,
     PLATT_MODELS_PATH,
     RETIREMENT_PROBATION_PATH,
     SERIES_DRIFT_PATH,
@@ -953,6 +954,8 @@ def _maybe_refresh_calibration_weights() -> None:
 # ── Per-city Platt scaling models (mtime-gated; None = not yet loaded) ────────
 _PLATT_MODELS: dict[str, tuple[float, float]] | None = None
 _PLATT_MODELS_MTIME: float | None = None  # mtime of the file behind the cache above
+_METAR_CAL: tuple[float, float, float] | None = None
+_METAR_CAL_MTIME: float | None = None  # mtime of the file behind the cache above
 
 # Minimum settled below predictions required before the two data-sparse below-market
 # gates can be manually activated (BELOW_GATE_ENABLED=1 in .env).
@@ -1250,6 +1253,105 @@ def _load_platt_models() -> dict[str, tuple[float, float]]:
                 exc,
             )
     return _PLATT_MODELS
+
+
+def _load_metar_calibration() -> tuple[float, float, float] | None:
+    """Load the beta-calibration (a, b, c) for METAR lock-in same-day
+    predictions, mtime-gated exactly like _load_platt_models above (so a
+    fresh `py main.py calibrate` run is picked up by an already-running
+    loop/watch process without a restart).
+
+    Re-validates a>0/b>0 and coefficient bounds at load time (not just at
+    fit time in ml_bias.fit_metar_calibration) -- a corrupted or hand-edited
+    file could otherwise bypass that check, mirroring _load_platt_models's
+    own re-validation of A<=0 for the identical reason.
+
+    Three distinct failure modes, handled differently (opus-review-caught
+    HIGH+MEDIUM findings, 2026-08-16, on an earlier version that treated
+    them all the same -- "keep whatever was cached" on every failure path):
+    - File genuinely absent (path.exists() is False): clear the cache. This
+      is the normal "not trained yet" / "deactivated" state.
+    - Transient I/O error (exists()/stat() itself raises OSError -- e.g. an
+      AV scanner lock or a rename-in-progress window): KEEP the cached
+      model and retry next call. The file may well still be there; treating
+      a transient read hiccup the same as "genuinely gone" would flip a
+      working correction off for no real reason.
+    - File exists and parses, but fails validation (degenerate a<=0/b<=0,
+      or out-of-bounds coefficients): CLEAR the cache, not keep it. This is
+      a real, stable, on-disk state, not a torn read -- if an operator edits
+      the file to neutralize a bad correction, a long-running loop/watch
+      process must actually stop applying the old cached model, not keep
+      using it indefinitely because a validation failure was being treated
+      like the same "maybe transient, keep the old value" case as a
+      corrupt-JSON parse failure. mtime is still recorded here so a
+      standing-invalid file doesn't get re-parsed and re-logged on every
+      single call.
+    """
+    global _METAR_CAL, _METAR_CAL_MTIME
+    path = METAR_CALIBRATION_PATH
+
+    try:
+        exists = path.exists()
+    except OSError:
+        return _METAR_CAL  # transient -- keep cache, retry next call
+    if not exists:
+        _METAR_CAL = None
+        _METAR_CAL_MTIME = None
+        return None
+
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return _METAR_CAL  # transient -- keep cache, retry next call
+
+    if _METAR_CAL is not None and mtime == _METAR_CAL_MTIME:
+        return _METAR_CAL
+
+    import json
+
+    try:
+        data = json.loads(path.read_text())
+        a, b, c = float(data["a"]), float(data["b"]), float(data["c"])
+    except Exception as exc:
+        # Malformed JSON / missing keys -- could be a torn read from a
+        # concurrent write. Same resilience as _load_platt_models: don't
+        # wipe a previously-good cached model on a parse failure, since
+        # unlike the validation-failure case below this isn't a stable
+        # on-disk state -- the next call may well read a clean file.
+        if _METAR_CAL is None:
+            _METAR_CAL_MTIME = mtime
+        else:
+            _log.warning(
+                "_load_metar_calibration: reload failed, keeping cached model: %s",
+                exc,
+            )
+        return _METAR_CAL
+
+    if a <= 0 or b <= 0:
+        _log.error(
+            "METAR calibration has a=%.3f b=%.3f (need both >0) — "
+            "degenerate map, refusing to load",
+            a,
+            b,
+        )
+        _METAR_CAL = None
+        _METAR_CAL_MTIME = mtime
+        return None
+    if abs(a) > 10 or abs(b) > 10 or abs(c) > 10:
+        _log.warning(
+            "METAR calibration has out-of-bounds coefficients "
+            "(a=%.2f b=%.2f c=%.2f) — refusing to load",
+            a,
+            b,
+            c,
+        )
+        _METAR_CAL = None
+        _METAR_CAL_MTIME = mtime
+        return None
+
+    _METAR_CAL = (a, b, c)
+    _METAR_CAL_MTIME = mtime
+    return _METAR_CAL
 
 
 def _ttl_until_next_cycle(now: datetime | None = None) -> int:
@@ -12236,6 +12338,100 @@ def analyze_trade(
         _city_correction_applied = (
             True  # skip all three tiers via the guard flags below
         )
+
+    # Beta calibration for METAR-locked above/below same-day predictions.
+    # Deliberately independent of the GBM/Platt tiers below -- METAR lock-in
+    # bypasses both entirely (see the `if metar_locked:` guard above) because
+    # they're trained on model-blend outputs, not observation-derived
+    # probabilities, and would miscalibrate METAR data. This corrects
+    # _dynamic_lock_in_confidence()'s own raw output instead, which real
+    # settlement data showed is itself significantly overconfident (measured
+    # 2026-08-16: YES-locks 89.6% predicted vs 70.4% actual, n=27; NO-locks
+    # 93.0% NO-confidence vs 50.0% actual, n=6) and was never validated
+    # against outcomes when introduced (commit 5faa7e4a, "L6-D" — its tests
+    # only check the formula reproduces its own documented example values).
+    # Scoped to above/below only -- between markets share the same lock-in
+    # formula but weren't part of this measurement and may have a different
+    # miscalibration profile (see backlog.txt's between-specific METAR notes).
+    #
+    # Deliberately does NOT check _city_correction_applied or
+    # _n_settled/_MIN_BIAS_CORRECTION_TRADES (opus review flagged this as
+    # worth stating explicitly, 2026-08-16): that gate exists to stop GBM/
+    # Platt from running on a model still too immature to trust, using
+    # OVERALL settled-trade count as the maturity proxy. This correction has
+    # its own, independently-measured population-specific floor
+    # (ml_bias.METAR_CALIBRATION_MIN_EPV_PER_PREDICTOR, enforced at fit
+    # time in fit_metar_calibration -- if there isn't enough METAR-lockout
+    # data specifically, no file gets written and _load_metar_calibration
+    # returns None, so this block is a no-op regardless of overall
+    # settled-trade count) -- gating it on the GLOBAL count too would tie
+    # its eligibility to an unrelated population's sample size.
+    if metar_locked and condition.get("type") != "between":
+        # This correction gets its OWN magnitude cap, not _ML_CORRECTION_LIMIT
+        # (0.30). _ML_CORRECTION_LIMIT was sized for GBM/Platt's small
+        # touch-ups to an already-reasonable model-blend probability; METAR's
+        # miscalibration is the opposite case -- large BY DESIGN (that's the
+        # whole reason this correction exists). Reusing 0.30 here was an
+        # opus-review-caught HIGH finding (2026-08-16): on the real 33-row
+        # fit, every NO-lock correction (delta 0.35-0.38 on the measured
+        # 0.03-0.15 raw range) exceeded 0.30 and was silently skipped, while
+        # every YES-lock correction (delta up to ~0.20) was applied --
+        # leaving the fix a no-op on exactly the worse-miscalibrated half
+        # (NO-locks measured at 93% confidence / 50% actual) while still
+        # correcting the other half, a new asymmetry that didn't exist
+        # before. 0.60 comfortably covers the full observed range (up to
+        # 0.43pp between the two measured groups) with headroom for the fit
+        # to shift as more data accrues, while still catching a genuinely
+        # pathological correction (delta > 0.60 would flip the market's
+        # likely direction entirely, implausible for a legitimate
+        # recalibration of an already-directionally-consistent signal).
+        _METAR_CORRECTION_LIMIT = 0.60
+        try:
+            from ml_bias import apply_metar_calibration as _apply_metar_cal
+
+            _metar_cal = _load_metar_calibration()
+            if _metar_cal is not None:
+                _new_prob = _apply_metar_cal(blended_prob, _metar_cal)
+                _delta = abs(_new_prob - blended_prob)
+                _log.info(
+                    "analyze_trade: METAR beta-calibration %s %.3f → %.3f (Δ%.3f)",
+                    enriched.get("ticker", "?"),
+                    blended_prob,
+                    _new_prob,
+                    _delta,
+                )
+                if _delta > _METAR_CORRECTION_LIMIT:
+                    _log.warning(
+                        "analyze_trade: METAR beta-calibration for %s exceeds "
+                        "±%.2f (Δ=%.3f) — skipping",
+                        enriched.get("ticker", "?"),
+                        _METAR_CORRECTION_LIMIT,
+                        _delta,
+                    )
+                else:
+                    blended_prob = max(0.01, min(0.99, _new_prob))
+        except Exception as _beta_exc:
+            _log.warning(
+                "analyze_trade: METAR beta-calibration failed for %s: %s",
+                enriched.get("ticker", "?"),
+                _beta_exc,
+            )
+
+    # Record the METAR correction's shift as bias_correction so tracker.py's
+    # raw_prob = forecast_prob + bias_correction reconstructs the RAW,
+    # pre-calibration probability -- not the already-calibrated one. Without
+    # this (opus-review-caught HIGH finding, 2026-08-16), bias stayed
+    # hardcoded 0.0 for METAR-locked trades, so log_prediction's raw_prob
+    # ended up identical to the calibrated forecast_prob. The next
+    # `calibrate` run then trains fit_metar_calibration() partly on rows
+    # that are ALREADY calibrated, understating the true miscalibration and
+    # pulling the fit toward identity over successive retrains -- a closed
+    # feedback loop with no way to recover the true raw series afterward.
+    # Scoped to metar_locked only: the non-metar (ensemble) path tracks its
+    # own real bias via get_quintile_bias() above and must not be touched.
+    if metar_locked:
+        bias = round(_pre_correction_prob - blended_prob, 6)
+
     if not _city_correction_applied and days_out > 0:
         # Skip GBM correction for same-day trades — the model is trained on
         # multi-day ensemble probabilities and would corrupt METAR-derived probs.

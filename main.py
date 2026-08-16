@@ -91,6 +91,7 @@ from paths import (
     LAST_BACKTEST_PATH,
     LAST_CALIBRATION_COUNT_PATH,
     LIVE_CONFIG_PATH,
+    METAR_CALIBRATION_PATH,
     ONBOARDED_MARKER_PATH,
     WALK_FORWARD_RESULTS_PATH,
     WATCH_STATE_PATH,
@@ -622,6 +623,7 @@ _PERMANENT_DATA_FILES = {
     "temperature_scale.json",
     "emos_params.json",
     "correlations.json",
+    "metar_lockout_calibration.json",
 }
 
 
@@ -6201,6 +6203,36 @@ def cmd_calibrate() -> None:
             print(dim("\nPlatt: need 200+ settled trades per city (not yet)"))
     except Exception as _exc:
         print(dim(f"\nPlatt calibration skipped: {_exc}"))
+
+    # METAR lock-in beta calibration (requires >=10 settled same-day lock-ins
+    # in the minority class). Separate from Platt above: METAR-locked
+    # predictions are observation-derived, not model-blend outputs, and
+    # analyze_trade's METAR branch bypasses Platt/GBM/T-scaling entirely --
+    # see backlog.txt's METAR calibration entry. fit_and_save_metar_
+    # calibration() is the same shared fit-and-persist function cron.py's
+    # weekly auto-retrain calls, so this command and the weekly cycle can't
+    # drift out of sync with each other.
+    try:
+        from ml_bias import fit_and_save_metar_calibration as _fit_save_metar_cal
+
+        _metar_cal = _fit_save_metar_cal()
+        if _metar_cal is not None:
+            _a, _b, _c = _metar_cal
+            print(
+                green(
+                    f"\nMETAR lock-in calibration trained: a={_a:.3f} b={_b:.3f} c={_c:.3f}"
+                )
+            )
+            print(f"  Written to: {METAR_CALIBRATION_PATH}")
+        else:
+            print(
+                dim(
+                    "\nMETAR calibration: need >=10 settled same-day lock-ins "
+                    "in the minority class (not yet)"
+                )
+            )
+    except Exception as _metar_exc:
+        print(dim(f"\nMETAR calibration skipped: {_metar_exc}"))
 
     # P1-9: generate learned_weights.json from tracker inverse-MAE data
     try:

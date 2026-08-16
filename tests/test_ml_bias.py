@@ -123,6 +123,217 @@ def test_apply_platt_per_city_monotonicity():
         )
 
 
+# ── METAR lock-in beta calibration ───────────────────────────────────────────
+
+
+def _metar_rows(n_yes: int, yes_hit_rate: float, n_no: int, no_hit_rate: float, seed=7):
+    """Synthesize {our_prob, settled_yes} rows shaped like real METAR lock-in
+    data: high-confidence YES-locks (prob clustered high) and high-confidence
+    NO-locks (prob clustered low), each with their own real hit rate."""
+    import random
+
+    rng = random.Random(seed)
+    rows = []
+    for _ in range(n_yes):
+        p = rng.uniform(0.75, 0.97)
+        rows.append(
+            {"our_prob": p, "settled_yes": 1 if rng.random() < yes_hit_rate else 0}
+        )
+    for _ in range(n_no):
+        p = rng.uniform(0.03, 0.15)
+        rows.append(
+            {"our_prob": p, "settled_yes": 1 if rng.random() < (1 - no_hit_rate) else 0}
+        )
+    return rows
+
+
+def test_fit_metar_calibration_below_epv_floor_returns_none():
+    """Floor is on the MINORITY class count (EPV -- events per predictor
+    variable), not raw row count. n_no=5 is the minority class here and is
+    below METAR_CALIBRATION_MIN_EPV_PER_PREDICTOR (10) even though the
+    total row count (25) might otherwise look plausible."""
+    import ml_bias
+
+    rows = _metar_rows(n_yes=20, yes_hit_rate=0.7, n_no=5, no_hit_rate=0.9)
+    n_pos = sum(r["settled_yes"] for r in rows)
+    n_neg = len(rows) - n_pos
+    assert min(n_pos, n_neg) < ml_bias.METAR_CALIBRATION_MIN_EPV_PER_PREDICTOR
+    assert ml_bias.fit_metar_calibration(rows) is None
+
+
+def test_fit_metar_calibration_at_epv_floor_succeeds():
+    """The mirror case: minority class exactly at/above the floor must
+    succeed -- positive control for the test above, so a floor check that's
+    silently always-true (e.g. comparing the wrong count) wouldn't pass both."""
+    import ml_bias
+
+    rows = _metar_rows(n_yes=20, yes_hit_rate=0.7, n_no=15, no_hit_rate=0.9)
+    n_pos = sum(r["settled_yes"] for r in rows)
+    n_neg = len(rows) - n_pos
+    assert min(n_pos, n_neg) >= ml_bias.METAR_CALIBRATION_MIN_EPV_PER_PREDICTOR
+    assert ml_bias.fit_metar_calibration(rows) is not None
+
+
+def test_fit_metar_calibration_rejects_non_binary_labels():
+    """A corrupted settled_yes value (anything other than exactly 0 or 1)
+    must refuse to fit rather than silently distort the result."""
+    import ml_bias
+
+    rows = _metar_rows(n_yes=20, yes_hit_rate=0.7, n_no=15, no_hit_rate=0.9)
+    rows[0]["settled_yes"] = 2
+    assert ml_bias.fit_metar_calibration(rows) is None
+
+
+def test_fit_metar_calibration_on_real_repo_data():
+    """Regression test for this repo's real production data (2026-08-16):
+    27 YES-locks / 6 NO-locks, both overconfident. Confirms the simplified
+    Platt-only fit (see fit_metar_calibration's docstring for why an
+    earlier 2-parameter beta-calibration attempt with a degenerate-fit
+    fallback was replaced by fitting Platt directly) reproduces the exact
+    coefficients two independent opus reviews verified against this same
+    dataset (a=b=0.2262, c=0.4001)."""
+    import ml_bias
+
+    real_pred_actual_pairs = [
+        (0.030, 1),
+        (0.030, 1),
+        (0.030, 0),
+        (0.053, 1),
+        (0.130, 0),
+        (0.149, 0),
+        (0.756, 0),
+        (0.757, 1),
+        (0.768, 0),
+        (0.808, 0),
+        (0.809, 1),
+        (0.827, 0),
+        (0.839, 1),
+        (0.843, 1),
+        (0.881, 0),
+        (0.899, 1),
+        (0.899, 1),
+        (0.923, 1),
+        (0.923, 0),
+        (0.923, 0),
+        (0.928, 0),
+        (0.933, 1),
+        (0.934, 1),
+        (0.934, 1),
+        (0.935, 1),
+        (0.935, 1),
+        (0.942, 1),
+        (0.958, 1),
+        (0.958, 1),
+        (0.970, 1),
+        (0.970, 1),
+        (0.970, 1),
+        (0.970, 1),
+    ]
+    rows = [{"our_prob": p, "settled_yes": y} for p, y in real_pred_actual_pairs]
+    assert len(rows) == 33
+
+    fit = ml_bias.fit_metar_calibration(rows)
+    assert fit is not None
+    a, b, c = fit
+    assert a > 0 and b == pytest.approx(a), "must always be the a==b Platt form"
+    assert a == pytest.approx(0.2262, abs=1e-3)
+    assert c == pytest.approx(0.4001, abs=1e-3)
+
+
+def test_apply_metar_calibration_matches_hand_computed_value():
+    import math
+
+    import ml_bias
+
+    params = (0.5, 0.8, 0.1)
+    raw = 0.7
+    expected = 1.0 / (
+        1.0 + math.exp(-(0.5 * math.log(0.7) - 0.8 * math.log(0.3) + 0.1))
+    )
+    assert ml_bias.apply_metar_calibration(raw, params) == pytest.approx(expected)
+
+
+def test_apply_metar_calibration_platt_special_case_matches_apply_platt():
+    """When a==b (fit_metar_calibration's Platt-only result is always this
+    form), apply_metar_calibration must equal ordinary Platt scaling on
+    logit(s) -- the mathematical identity this whole design relies on to
+    reuse apply_metar_calibration's existing (a,b,c) signature unchanged."""
+    import ml_bias
+
+    a = 0.226
+    c = 0.400
+    for raw in (0.05, 0.3, 0.5, 0.7, 0.95):
+        beta_result = ml_bias.apply_metar_calibration(raw, (a, a, c))
+        platt_result = ml_bias.apply_platt_per_city("X", raw, {"X": (a, c)})
+        assert beta_result == pytest.approx(platt_result, abs=1e-9)
+
+
+def test_sigmoid_does_not_overflow_on_extreme_input():
+    """_sigmoid must not raise OverflowError for a large-magnitude logit --
+    reachable from apply_metar_calibration given an adversarial/corrupted
+    coefficient set that somehow bypasses the loader's bounds (defense in
+    depth, not assuming the loader is the only caller). Plain
+    1/(1+exp(-x)) raises for x <~ -745; verified this reproduces on the
+    unfixed implementation before writing the numerically-stable version."""
+    import ml_bias
+
+    assert ml_bias._sigmoid(-800.0) == pytest.approx(0.0, abs=1e-9)
+    assert ml_bias._sigmoid(800.0) == pytest.approx(1.0, abs=1e-9)
+    assert ml_bias._sigmoid(0.0) == pytest.approx(0.5)
+
+
+def test_get_metar_lockout_calibration_data_scopes_correctly(tmp_path, monkeypatch):
+    """Must include only days_out=0, method='metar_lockout', non-excluded
+    condition_type rows -- everything else (ensemble sameday, multi-day
+    metar_lockout-labeled rows [shouldn't exist but guard anyway], between)
+    must be excluded."""
+    import tracker
+
+    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    with tracker._conn() as con:
+        # Row 1: real target population -> must appear
+        con.execute(
+            "INSERT INTO predictions (ticker, our_prob, market_prob, predicted_at, days_out, method, condition_type) "
+            "VALUES ('KXHIGH-M1', 0.90, 0.85, '2026-06-01', 0, 'metar_lockout', 'above')"
+        )
+        con.execute(
+            "INSERT INTO outcomes (ticker, settled_yes, settled_at) VALUES ('KXHIGH-M1', 1, '2026-06-01')"
+        )
+        # Row 2: same-day but method='ensemble', not metar_lockout -> excluded
+        con.execute(
+            "INSERT INTO predictions (ticker, our_prob, market_prob, predicted_at, days_out, method, condition_type) "
+            "VALUES ('KXHIGH-M2', 0.60, 0.55, '2026-06-02', 0, 'ensemble', 'above')"
+        )
+        con.execute(
+            "INSERT INTO outcomes (ticker, settled_yes, settled_at) VALUES ('KXHIGH-M2', 1, '2026-06-02')"
+        )
+        # Row 3: metar_lockout but multi-day (days_out=1) -> excluded (shouldn't
+        # exist in practice, but the query must not silently include it)
+        con.execute(
+            "INSERT INTO predictions (ticker, our_prob, market_prob, predicted_at, days_out, method, condition_type) "
+            "VALUES ('KXHIGH-M3', 0.90, 0.85, '2026-06-03', 1, 'metar_lockout', 'above')"
+        )
+        con.execute(
+            "INSERT INTO outcomes (ticker, settled_yes, settled_at) VALUES ('KXHIGH-M3', 1, '2026-06-03')"
+        )
+        # Row 4: metar_lockout, same-day, but condition_type='between' -> excluded
+        con.execute(
+            "INSERT INTO predictions (ticker, our_prob, market_prob, predicted_at, days_out, method, condition_type) "
+            "VALUES ('KXHIGH-M4', 0.90, 0.85, '2026-06-04', 0, 'metar_lockout', 'between')"
+        )
+        con.execute(
+            "INSERT INTO outcomes (ticker, settled_yes, settled_at) VALUES ('KXHIGH-M4', 1, '2026-06-04')"
+        )
+
+    rows = tracker.get_metar_lockout_calibration_data()
+    assert len(rows) == 1
+    assert rows[0]["our_prob"] == pytest.approx(0.90)
+    assert rows[0]["settled_yes"] == 1
+
+
 # ── Temperature scaling (apply_temperature_scaling) ──────────────────────────
 
 
@@ -1559,3 +1770,294 @@ class TestTrainAllTemperatureScalingSkipLogging:
                 f"'{label}' skip must not ALSO log the misattributed "
                 f"'no better than T=1.0' message, got: {infos}"
             )
+
+    def test_sameday_fit_excludes_metar_lockout_rows(self, tmp_path, monkeypatch):
+        """train_all_temperature_scaling's sameday T fit must not train on
+        method='metar_lockout' rows -- analyze_trade's METAR-locked branch
+        never calls apply_temperature_scaling (bypasses it entirely), so
+        including them in the fit population was a train/serve mismatch:
+        the fitted T would partly reflect data it's never actually applied
+        to. Positive control: with metar_lockout rows removed, the fit must
+        still run cleanly on the remaining (non-metar) sameday rows."""
+        from datetime import date
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        tracker.init_db()
+
+        # 20 ordinary sameday (ensemble) rows: overconfident-but-correct-
+        # direction (predict 0.9, ~65% actual hit rate) -- a real, FIXABLE
+        # miscalibration T-scaling can compress toward. Using a flat 0.5
+        # prediction here (an earlier version of this test did) is a trap:
+        # logit(0.5)=0, so T-scaling can't move a 0.5 prediction at ANY T,
+        # and _fit_T degenerates to "hit the upper bound" with no real
+        # signal either way -- silently vacuous regardless of the exclusion.
+        import random as _random
+
+        _rng = _random.Random(5)
+        for i in range(20):
+            settled = 1 if _rng.random() < 0.65 else 0
+            self._seed(
+                tracker, f"KXHIGHNY-26JUL{i:02d}-T75", "NYC", date.today(), 0.9, settled
+            )
+            with tracker._conn() as con:
+                con.execute(
+                    "UPDATE predictions SET days_out = 0 WHERE ticker = ?",
+                    (f"KXHIGHNY-26JUL{i:02d}-T75",),
+                )
+
+        # 20 severely-miscalibrated metar_lockout rows (predict 0.95, ALWAYS
+        # actual=0 -- directional bias T-scaling can never fix) -- if pooled
+        # in, _fit_T hits the upper bound and returns None for the whole
+        # sameday key (verified directly: pooling these with the 20 rows
+        # above makes trained=={} entirely). Must be invisible to this fit.
+        for i in range(20):
+            self._seed(
+                tracker, f"KXHIGHNY-26JUL{i:02d}-LOCK", "NYC", date.today(), 0.95, 0
+            )
+            with tracker._conn() as con:
+                con.execute(
+                    "UPDATE predictions SET days_out = 0, method = 'metar_lockout' "
+                    "WHERE ticker = ?",
+                    (f"KXHIGHNY-26JUL{i:02d}-LOCK",),
+                )
+
+        with tracker._conn() as con:
+            all_sameday = con.execute(
+                "SELECT COUNT(*) FROM predictions WHERE days_out = 0"
+            ).fetchone()[0]
+            non_lockout_sameday = con.execute(
+                "SELECT COUNT(*) FROM predictions WHERE days_out = 0 "
+                "AND (method IS NULL OR method != 'metar_lockout')"
+            ).fetchone()[0]
+        assert all_sameday == 40
+        # Positive control: confirms the 20 metar_lockout rows are really
+        # present and reachable, so a passing fit below is the query
+        # filtering them out, not them never having existed.
+        assert non_lockout_sameday == 20
+
+        trained = ml_bias.train_all_temperature_scaling(
+            min_samples_global=1, min_samples_condition=1
+        )
+
+        # If the metar_lockout rows leaked into this fit, "sameday" would be
+        # ABSENT from trained entirely (directional-bias detection discards
+        # the whole fit) -- so this must be an unconditional membership
+        # assertion, not a conditional check on the value, to actually catch
+        # that failure mode.
+        assert "sameday" in trained, (
+            "sameday T fit is missing entirely -- metar_lockout rows likely "
+            "leaked into the training population and triggered the "
+            "directional-bias upper-bound discard"
+        )
+        assert trained["sameday"] < 8.0, (
+            f"sameday T={trained['sameday']:.2f} hit the upper bound -- "
+            f"metar_lockout rows likely leaked into the training population"
+        )
+
+
+class TestFitAndSaveMetarCalibration:
+    """Direct unit tests for ml_bias.fit_and_save_metar_calibration() -- the
+    single shared fit+persist+cache-invalidate implementation used by both
+    `py main.py calibrate` and cron.py's weekly D5 auto-retrain block (added
+    2026-08-16 so the two callers can't drift, mirroring calibration.py's
+    calibrate_and_save() for seasonal/city blend weights)."""
+
+    def _seed_rows(self, tracker, n=35, seed=17):
+        import random
+        from datetime import date, timedelta
+
+        rng = random.Random(seed)
+        for i in range(n):
+            p = rng.uniform(0.75, 0.97)
+            settled = 1 if rng.random() < 0.7 else 0
+            analysis = {
+                "condition": {"type": "above", "threshold": 70.0},
+                "forecast_prob": p,
+                "market_prob": 0.5,
+                "edge": 0.1,
+                "method": "metar_lockout",
+            }
+            ticker = f"KXHIGHNY-26JUL{i:03d}-FSMC"
+            tracker.log_prediction(
+                ticker, "NYC", date.today() - timedelta(days=i % 5), analysis
+            )
+            tracker.log_outcome(ticker, settled)
+            with tracker._conn() as con:
+                con.execute(
+                    "UPDATE predictions SET days_out = 0 WHERE ticker = ?", (ticker,)
+                )
+
+    def test_writes_file_with_history_backup_and_invalidates_cache(
+        self, tmp_path, monkeypatch
+    ):
+        import json
+
+        import ml_bias
+        import tracker
+        import weather_markets as wm
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        cal_path = tmp_path / "metar_lockout_calibration.json"
+        monkeypatch.setattr(ml_bias, "_METAR_CALIBRATION_PATH", cal_path)
+        monkeypatch.setattr(wm, "_METAR_CAL", ("stale", "cache", "value"))
+        monkeypatch.setattr(wm, "_METAR_CAL_MTIME", 12345.0)
+        tracker.init_db()
+        self._seed_rows(tracker, n=35)
+
+        # Pre-seed an existing file so the write has something to back up.
+        cal_path.write_text(json.dumps({"a": 0.0, "b": 0.0, "c": 0.0, "n": 0}))
+
+        result = ml_bias.fit_and_save_metar_calibration()
+
+        assert result is not None
+        a, b, c = result
+        assert a == b  # Platt-equivalent shape (see fit_metar_calibration docstring)
+
+        assert cal_path.exists()
+        data = json.loads(cal_path.read_text())
+        assert data["a"] == a
+        assert data["b"] == b
+        assert data["c"] == c
+        assert data["n"] == 35
+        assert "fitted_at" in data
+
+        # atomic_write_json_with_history must have backed up the pre-existing
+        # file -- this is the fix for issue #8 from the risk review (no
+        # history preservation on a weekly-unattended retrain).
+        history_dir = tmp_path / ".history"
+        assert history_dir.exists()
+        backups = list(history_dir.glob("metar_lockout_calibration_*.json"))
+        assert backups, "expected a .history/ backup of the pre-existing file"
+        backed_up = json.loads(backups[0].read_text())
+        assert backed_up == {"a": 0.0, "b": 0.0, "c": 0.0, "n": 0}
+
+        # cache must be invalidated so a running loop/watch process reloads
+        assert wm._METAR_CAL is None
+
+    def test_returns_none_and_writes_nothing_below_floor(self, tmp_path, monkeypatch):
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        cal_path = tmp_path / "metar_lockout_calibration.json"
+        monkeypatch.setattr(ml_bias, "_METAR_CALIBRATION_PATH", cal_path)
+        tracker.init_db()
+        self._seed_rows(tracker, n=10)  # below the EPV floor (min(n_pos,n_neg)>=10)
+
+        result = ml_bias.fit_and_save_metar_calibration()
+
+        assert result is None
+        assert not cal_path.exists()
+
+
+class TestCmdCalibrateMetarBlock:
+    """cmd_calibrate()'s new METAR lock-in beta-calibration block, mirroring
+    the existing Platt block's own wiring pattern (data_dir override,
+    atomic_write_json, cache invalidation)."""
+
+    def _seed_metar_rows(self, tracker, n=35, seed=9):
+        import random
+        from datetime import date, timedelta
+
+        rng = random.Random(seed)
+        for i in range(n):
+            p = rng.uniform(0.75, 0.97)
+            settled = 1 if rng.random() < 0.7 else 0
+            analysis = {
+                "condition": {"type": "above", "threshold": 70.0},
+                "forecast_prob": p,
+                "market_prob": 0.5,
+                "edge": 0.1,
+                "method": "metar_lockout",
+            }
+            ticker = f"KXHIGHNY-26JUL{i:03d}-LOCK"
+            tracker.log_prediction(
+                ticker, "NYC", date.today() - timedelta(days=i % 5), analysis
+            )
+            tracker.log_outcome(ticker, settled)
+            with tracker._conn() as con:
+                con.execute(
+                    "UPDATE predictions SET days_out = 0 WHERE ticker = ?", (ticker,)
+                )
+
+    def test_writes_calibration_file_when_enough_data(self, tmp_path, monkeypatch):
+        import json
+
+        import main
+        import ml_bias
+        import tracker
+        import weather_markets as wm
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(main, "_CALIBRATE_DATA_DIR", tmp_path)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        monkeypatch.setattr(
+            wm, "METAR_CALIBRATION_PATH", tmp_path / "metar_lockout_calibration.json"
+        )
+        # fit_and_save_metar_calibration() writes via ml_bias's own imported
+        # copy of the path constant, not weather_markets's -- both must be
+        # patched or the fit silently writes to real production data.
+        monkeypatch.setattr(
+            ml_bias,
+            "_METAR_CALIBRATION_PATH",
+            tmp_path / "metar_lockout_calibration.json",
+        )
+        # main.py's own imported copy is only used for the printed "Written
+        # to:" message -- patch it too so test output isn't misleading.
+        monkeypatch.setattr(
+            main, "METAR_CALIBRATION_PATH", tmp_path / "metar_lockout_calibration.json"
+        )
+        monkeypatch.setattr(wm, "_METAR_CAL", ("stale", "cache", "value"))
+        monkeypatch.setattr(wm, "_METAR_CAL_MTIME", 12345.0)
+        tracker.init_db()
+
+        self._seed_metar_rows(tracker, n=35)
+
+        main.cmd_calibrate()
+
+        cal_path = tmp_path / "metar_lockout_calibration.json"
+        assert cal_path.exists()
+        data = json.loads(cal_path.read_text())
+        assert data["a"] > 0 and data["b"] > 0
+        assert data["n"] == 35
+        # cache must be invalidated so a running process picks up the fresh fit
+        assert wm._METAR_CAL is None
+
+    def test_no_file_written_below_floor(self, tmp_path, monkeypatch):
+        import main
+        import ml_bias
+        import tracker
+        import weather_markets as wm
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(main, "_CALIBRATE_DATA_DIR", tmp_path)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        monkeypatch.setattr(
+            wm, "METAR_CALIBRATION_PATH", tmp_path / "metar_lockout_calibration.json"
+        )
+        monkeypatch.setattr(
+            ml_bias,
+            "_METAR_CALIBRATION_PATH",
+            tmp_path / "metar_lockout_calibration.json",
+        )
+        monkeypatch.setattr(
+            main, "METAR_CALIBRATION_PATH", tmp_path / "metar_lockout_calibration.json"
+        )
+        tracker.init_db()
+
+        self._seed_metar_rows(
+            tracker, n=10
+        )  # below the EPV floor (min(n_pos,n_neg)>=10)
+
+        main.cmd_calibrate()
+
+        assert not (tmp_path / "metar_lockout_calibration.json").exists()

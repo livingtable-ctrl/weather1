@@ -1,6 +1,280 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[OPEN 2026-08-16 -- found by adjacency while building the METAR lock-in
+  calibration fix below (opus review, live-path-integration lens); not
+  fixed in that same change per the same-payload test -- see "Why not
+  now" below.] SETTLEMENT_MONITOR.PY'S FORCE-CLOSE TRIGGER USES THE SAME
+  RAW, NOW-KNOWN-OVERCONFIDENT METAR LOCK-IN NUMBER THE ENTRY PATH JUST
+  GOT CALIBRATED -- THE TWO SIDES OF THE SAME TRADE NOW DISAGREE
+Priority: Medium -- affects paper trades directly (which feed the accuracy
+  circuit breaker, which DOES gate live money), not live orders directly.
+
+Problem:
+  `metar.py`'s `_dynamic_lock_in_confidence()` -- the same hand-tuned,
+  never-outcome-validated formula the entry-path fix below (this file's
+  first entry) just measured at 89.6% predicted / 70.4% actual on YES-locks
+  and corrected -- has a SECOND live consumer: `settlement_monitor.py:370`
+  calls `metar.check_metar_lockout()`, which uses the identical raw
+  formula. `cron.py:1471` force-closes matching PAPER positions at
+  0.97/0.03 whenever that raw confidence >= 0.80.
+
+  After the entry-path fix ships, `analyze_trade` prices a fresh METAR
+  lock at the CALIBRATED probability (e.g. 0.71 instead of 0.90), while
+  `cron`'s settlement-lag auto-close treats the SAME underlying signal as
+  confident enough to force-close an open position at 0.97/0.03 -- the
+  two sides of the same trade are now priced under different calibration
+  regimes. Paper P&L from these forced closes feeds the accuracy circuit
+  breaker (paper.is_accuracy_halted()), so this isn't cosmetic bookkeeping.
+
+What it would look like:
+  Wire `ml_bias.apply_metar_calibration()` (built for the entry-path fix)
+  into `settlement_monitor.py`'s force-close confidence check too, using
+  the same `data/metar_lockout_calibration.json` model. The `between`
+  path in settlement_monitor.py uses its own separate confidence formula
+  (not `_dynamic_lock_in_confidence`) and is out of scope here -- only the
+  T-ticker (above/below) force-close path at line 370 is affected.
+
+Why not now:
+  Genuinely separate module (`settlement_monitor.py`, not
+  `weather_markets.py`), separate call chain (`cron.py` ->
+  `run_settlement_monitor` -> `check_city_settlement`, not `analyze_trade`),
+  separate consumer with its own threshold semantics (a force-CLOSE
+  trigger, not an entry price) -- fails the same-payload test the standing
+  workflow uses to decide inline-fix vs. follow-up-entry (does this feed
+  the SAME output/data-flow the current change is already touching? No --
+  it's a different function's own confidence check on a different
+  decision). Found via opus review while building the entry-path fix, not
+  originally in scope for it.
+
+When to revisit:
+  No blocking dependency -- `ml_bias.apply_metar_calibration()` and
+  `data/metar_lockout_calibration.json` already exist once the entry-path
+  fix ships. Buildable immediately by whoever picks this up.
+
+[RESOLVED 2026-08-16 -- see resolution below.] METAR SAME-DAY LOCK-IN PREDICTIONS GET ZERO STATISTICAL CALIBRATION CORRECTION -- RAW _dynamic_lock_in_confidence() OUTPUT FEEDS LIVE TRADES UNCORRECTED
+Priority: High -- directly affects real-money live trades. `py main.py
+  validate`'s same-day calibration curve showed the 7% and 91% buckets
+  badly miscalibrated (predicted 90.8% vs actual 72.7% at the high end,
+  N=33); root-caused to a specific, quantifiable gap in the live trade-
+  analysis path, not a general "same-day needs better calibration" framing.
+
+Problem:
+  weather_markets.py's analyze_trade() has an `if not metar_locked: ...
+  else: ...` split (~line 11252/12084). The `if` branch (normal ensemble
+  path) runs temperature scaling (section 7b), then GBM, then Platt. The
+  `else` branch (METAR-locked) never reaches ANY of them --
+  `_temp_scaling_applied` is hardcoded False rather than computed (the
+  comment there explains this is deliberate: GBM/Platt are trained on
+  model-blend outputs and would miscalibrate METAR-derived probabilities if
+  applied). So `blended_prob` for a METAR lock is exactly
+  `_dynamic_lock_in_confidence()`'s raw output (metar.py, commit `5faa7e4a`
+  "L6-D", April 2026) -- a hand-tuned linear formula (0.72 + 0.18*clearance
+  factor + 0.07*hour factor) whose only tests check it reproduces its own
+  documented example values. It was never validated against real settlement
+  outcomes.
+
+  Queried the DB directly (2026-08-16) for `method='metar_lockout'` sameday
+  predictions with real outcomes (33 total, condition_type NULL/above/
+  below):
+    YES-locks (n=27): predicted 89.6% avg, actual hit rate 70.4% -- 19.2pp
+      overconfident. 12 of 27 wrong despite claiming 75-97% confidence.
+    NO-locks (n=6): predicted ~93% NO-confidence avg, actual NO rate 50.0%
+      -- worse, though n=6 is thin.
+  Secondary bug found in the same investigation: `train_all_temperature_
+  scaling`'s sameday T-fit query pooled in these same metar_lockout rows
+  (no method filter) even though that T is NEVER applied to them at
+  inference (the else branch never calls apply_temperature_scaling) -- a
+  train/serve mismatch dragging the T fit toward data it doesn't actually
+  correct.
+
+Resolution (2026-08-16):
+  First pass added ml_bias.fit_metar_calibration()/apply_metar_calibration():
+  full 2-parameter beta calibration (Kull, Silva Filho & Flach, AISTATS
+  2017), g(s)=sigmoid(a*ln(s) - b*ln(1-s) + c), with a fallback to plain
+  Platt scaling (the a=b special case) when the full fit degenerated. Wired
+  into weather_markets.py's metar_locked branch reusing `_ML_CORRECTION_LIMIT`
+  (0.30, the same cap GBM/Platt use) as a safety valve, and a `>=30`-row
+  floor framed as Gneiting 2005's 10-per-parameter rule.
+
+  Per explicit user request, TWO independent opus reviews (effort=high) ran
+  against that first pass -- one scoped to statistical/mathematical
+  correctness, one to live-trading-path integration -- and both
+  independently found the design itself was wrong, not just buggy, plus
+  several real implementation gaps. All addressed, none deferred:
+
+  REDESIGNED to fit Platt scaling directly instead of "beta calibration
+  with a Platt fallback" (both reviews, converging on the same conclusion
+  from different angles):
+    - ln(s) and ln(1-s) are deterministic functions of each other, and
+      METAR lock-in scores cluster in two narrow bands ([0.72,0.97] for
+      YES-locks, [0.03,0.28] for NO-locks) -- identifying genuine asymmetry
+      needs curvature WITHIN each band, which this scoring distribution
+      barely provides regardless of sample size. Empirically: even at
+      n=400 with deliberately asymmetric synthetic miscalibration, the full
+      fit degenerated to the Platt-equivalent a=b solution in 6 of 8
+      random seeds.
+    - The full-fit path had no regularization, so a real, plausible
+      perfect-separation sample produced unregularized coefficients that
+      passed every guard and forced maximum-confidence (0.01/0.99)
+      corrections from a nonexistent MLE.
+    - The degenerate-fallback logic itself went through two unsafe designs
+      first: pinning the offending coefficient at a fixed 1.0 (verified
+      unsafe -- acts as an offset term, distorts the other coefficient's
+      sign too), then falling back to Platt -- but since the full fit
+      degenerates most of the time anyway (see above), Platt WAS
+      effectively the primary path, just reached through fragile,
+      unregularized, two-optimizer (BFGS+Nelder-Mead) machinery first.
+  Fitting Platt directly reuses `_fit_platt`'s existing, already-validated
+  bounds (raises if a<=0, |a|>5, or |b|>5) -- closing the separation/blowup
+  risk for free -- and is what the real production data (27 YES-locks, 6
+  NO-locks) already converged to. Result still stored as (a,a,c) so
+  apply_metar_calibration's signature/JSON schema needed no change.
+
+  HIGH fixes beyond the redesign:
+    - The magnitude cap was reusing `_ML_CORRECTION_LIMIT` (0.30, sized for
+      GBM/Platt's small touch-ups to an already-reasonable probability).
+      Verified against the real fitted model that EVERY NO-lock correction
+      (delta 0.35-0.38 on the measured 0.03-0.15 raw range) exceeded 0.30
+      and was silently skipped, while every YES-lock correction (delta up
+      to ~0.20) was applied -- the fix was a no-op on exactly the
+      worse-miscalibrated half (measured 93% NO-confidence vs 50% actual)
+      while still correcting the other half, a NEW asymmetry that didn't
+      exist before. Gave this correction its own `_METAR_CORRECTION_LIMIT`
+      (0.60), sized to comfortably cover the full observed range with
+      headroom while still catching a genuinely pathological correction.
+    - Closed feedback loop: `bias` stayed hardcoded 0.0 in the metar_locked
+      branch, so tracker.py's `raw_prob = forecast_prob + bias_correction`
+      reconstructed the ALREADY-CALIBRATED value, not the true raw
+      `_dynamic_lock_in_confidence()` output. Every future `calibrate` run
+      would train partly on already-corrected data, understating the true
+      miscalibration and pulling the fit toward identity over successive
+      retrains, with no way to recover the true raw series afterward. Fixed
+      by setting `bias = pre_correction_prob - blended_prob` for
+      metar_locked trades (scoped so the non-metar path's own real bias,
+      from get_quintile_bias(), is untouched).
+    - `_load_metar_calibration` returned the STALE cached model (not None)
+      on a degenerate or out-of-bounds file -- the opposite of
+      `_load_platt_models`'s behavior. An operator hand-editing the file to
+      neutralize a bad correction would not actually disable it in an
+      already-running loop/watch process. Rewired to distinguish 3 cases:
+      file genuinely absent (clear cache), transient I/O error on
+      exists()/stat() (KEEP cache, retry next call -- a new gap the review
+      also caught: the previous version wiped the cache on ANY OSError,
+      including a real-but-transient AV-lock/rename-window read failure),
+      and file present-but-invalid (clear cache, but record mtime so a
+      standing-invalid file isn't re-parsed and re-logged every call).
+
+  MEDIUM fixes:
+    - No validation that settled_yes is exactly 0 or 1 -- a corrupted DB
+      row could silently distort the fit. Added.
+    - No check for non-finite (NaN/inf) fit coefficients before saving.
+      Added.
+    - The `>=30`-row floor was framed as "Gneiting 2005's 10-per-parameter
+      rule" but Gneiting 2005 is a continuous-outcome ensemble-calibration
+      heuristic (correctly used elsewhere in this file for EMOS), not a
+      classification events-per-variable (EPV) rule -- and even taken at
+      face value it should count the MINORITY class, not raw row count
+      (real data: 22 y=1, 11 y=0 -- a flat n>=30 floor passes despite the
+      minority class sitting at only 11). Replaced with a proper EPV floor
+      (Peduzzi et al. 1996: >=10 minority-class events per fitted
+      predictor; Platt fits exactly 1 predictor, so min(n_pos,n_neg)>=10).
+    - Explicitly documented (not silently left ambiguous) that this
+      correction deliberately does NOT check `_city_correction_applied`/
+      `_MIN_BIAS_CORRECTION_TRADES` -- that gate uses OVERALL settled-trade
+      count as a maturity proxy for GBM/Platt; this correction has its own
+      population-specific EPV floor instead, and tying it to an unrelated
+      population's sample size would be wrong.
+    - `_sigmoid` raised OverflowError for very negative input (plain
+      1/(1+exp(-x)) blows up past ~-745) -- apply_metar_calibration is
+      reachable from more than just the bounds-checked loader. Rewrote as
+      the standard numerically-stable two-branch form.
+    - Found (not fixed here -- genuinely separate module/consumer, filed as
+      its own entry above, "SETTLEMENT_MONITOR.PY'S FORCE-CLOSE TRIGGER..."):
+      settlement_monitor.py's paper-position force-close path uses the
+      same raw, now-known-overconfident `_dynamic_lock_in_confidence()`
+      output this fix corrects on the entry side only.
+
+  Adjacent fix (unchanged from first pass): sameday T-fit query now
+  excludes `method='metar_lockout'` rows -- analyze_trade's METAR-locked
+  branch never calls apply_temperature_scaling, so training that fit on a
+  population it's never applied to was a train/serve mismatch.
+
+  63 new/updated tests across test_ml_bias.py (Platt-only fit/apply unit
+  tests including the exact real-33-row regression, EPV floor with a
+  paired positive+negative control, non-binary-label rejection, sigmoid
+  overflow, sameday-exclusion, cmd_calibrate wiring) and
+  test_weather_markets.py (the H1 magnitude-cap regression using the real
+  fitted coefficients, the H2 bias_correction/feedback-loop regression with
+  its own positive control, stale-cache-on-rejection, transient-I/O
+  resilience, malformed/partial-JSON handling, loader-exception resilience
+  inside analyze_trade, plus the original above/below-applies/
+  between-excluded/no-file-no-ops/magnitude-cap/caching coverage). 331
+  tests collected in the scoped suite. Mutation-tested via Edit (not
+  string-replace) on every safety-relevant branch from both review rounds:
+  the EPV floor, the magnitude-cap SIZE (not just its existence), the
+  bias_correction fix, the stale-cache-clearing fix, the between-market
+  exclusion, and the sameday-exclusion SQL filter -- each confirmed to fail
+  when reverted. Ruff + mypy + ruff-format clean (a first-pass ruff-format
+  miss on 3 files, caught by the second review, fixed).
+
+  Follow-up (2026-08-16, same day): the fit above was still manual-only
+  (`py main.py calibrate`), which meant it would go stale indefinitely if
+  nobody remembered to run it -- one of the 14 risks raised when reviewing
+  this fix, resolved by direct research into cron.py's D5 block rather than
+  guessing between the two options offered. Findings: (1) T-scaling/GBM/
+  blend-weights already retrain unattended, weekly, with zero confirmation
+  step, via cron.py's D5 block (marker-file gate, >=6 days) -- there was no
+  documented reason Platt/METAR calibration should be held to a stricter
+  standard than its siblings; (2) METAR calibration's own EPV floor
+  (min(n_pos,n_neg)>=10, see above) already provides the same premature-
+  activation protection the EMOS confirmation gate exists to add for a
+  method that has NO such floor -- folding METAR calibration into the
+  unattended weekly block doesn't reintroduce the risk the EMOS gate was
+  built to close.
+  Extracted the fit+persist+cache-invalidate logic (previously inline in
+  `cmd_calibrate()`) into a new shared `ml_bias.fit_and_save_metar_
+  calibration()`, mirroring calibration.py's own `calibrate_and_save()`
+  pattern -- one canonical implementation so `cmd_calibrate()` and cron.py's
+  D5 block can't drift. Wired into D5's existing `if _should_retrain:`
+  block, same try/except/finally scope as T-scaling/GBM/blend-weights, so a
+  retrain failure here can't silently stop the SIBLING retrains (each is
+  independently already exception-isolated at the point it's called).
+  Incidental fix while extracting: switched from plain `atomic_write_json`
+  to `atomic_write_json_with_history`, closing issue #8 from the same risk
+  review (no recoverable backup before an unattended retrain overwrites the
+  file) for free -- this file had no other backup mechanism.
+  Settlement_monitor.py's shared-input risk (issue found above, filed
+  separately) was NOT addressed by this follow-up and remains its own open
+  entry per explicit user decision -- deliberately left as filed, not
+  built, this session.
+  New tests: `TestFitAndSaveMetarCalibration` (writes file + history
+  backup + cache invalidation on success; returns None and writes nothing
+  below the floor) directly exercises the extracted function. The
+  pre-existing `TestCmdCalibrateMetarBlock` tests were silently broken by
+  the extraction -- they patched `weather_markets.METAR_CALIBRATION_PATH`/
+  `main._CALIBRATE_DATA_DIR`, but the extracted function writes via its own
+  `ml_bias._METAR_CALIBRATION_PATH` module-level import, so the monkeypatch
+  no longer reached the real write call. Caught when the "fixed" test
+  actually wrote synthetic coefficients to the REAL main-clone
+  `data/metar_lockout_calibration.json` (confirmed by exact content match,
+  then deleted). Fixed by patching `ml_bias._METAR_CALIBRATION_PATH`
+  directly, and mutation-tested by redirecting (not removing) that patch to
+  a second tmp path, confirming the test fails without it, before
+  reverting. cron.py's D5 block itself has NO test coverage of the retrain
+  wiring for ANY of its siblings (train_bias, train_all_temperature_
+  scaling, calibrate_and_save) -- the whole block is unconditionally
+  skipped under pytest via a `PYTEST_CURRENT_TEST` env check, by design.
+  Matched that existing precedent rather than special-casing METAR
+  calibration; confidence instead comes from the extracted function's own
+  direct unit tests plus a source-level read confirming the new call sits
+  inside the same guarded block, same indentation, as its siblings.
+  Full scoped suite (test_ml_bias.py, test_weather_markets.py, all
+  test_cron_*.py + test_p0_16_cron_endpoint.py + test_main_cron_smoke.py)
+  passing (65 + 264 + 89 = 418 tests), ruff/ruff-format/mypy clean via the
+  actual pre-commit hooks (not just the repo .venv copies, which can
+  disagree).
+
 [RESOLVED 2026-08-11 -- see resolution below.] ANALYZE_TRADE'S past_date GATE COMPARES A CITY-LOCAL target_date AGAINST UTC's CURRENT DATE -- REJECTS LEGITIMATELY-STILL-OPEN SAME-DAY MARKETS FOR ~4-8 HOURS EVERY EVENING, PER CITY
 Priority: High -- this is analyze_trade's own gate, the live/paper TRADE-ENTRY
   path (order_executor's upstream signal source), not a settlement-only

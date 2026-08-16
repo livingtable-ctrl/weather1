@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     import numpy as np
 
 from paths import EMOS_PARAMS_PATH as _EMOS_PARAMS_PATH
+from paths import METAR_CALIBRATION_PATH as _METAR_CALIBRATION_PATH
 from paths import ML_BIAS_HMAC_PATH as _HMAC_PATH
 from paths import ML_BIAS_MODEL_PATH as _MODEL_PATH
 from paths import TEMPERATURE_SCALE_PATH as _TEMP_PATH
@@ -281,9 +282,18 @@ def _logit(p: float) -> float:
 
 
 def _sigmoid(x: float) -> float:
+    """Numerically stable sigmoid -- branches on the sign of x so math.exp
+    never receives an argument large enough to raise OverflowError (plain
+    1/(1+exp(-x)) blows up for x <~ -745; verified this is reachable, not
+    hypothetical, from apply_metar_calibration on an unvalidated/adversarial
+    coefficient set)."""
     import math
 
-    return 1.0 / (1.0 + math.exp(-x))
+    if x >= 0:
+        z = math.exp(-x)
+        return 1.0 / (1.0 + z)
+    z = math.exp(x)
+    return z / (1.0 + z)
 
 
 def _fit_platt(xs: list[float], ys: list[int]) -> tuple[float, float]:
@@ -361,6 +371,193 @@ def apply_platt_per_city(
         return raw_prob
     a, b = models[city]
     return _sigmoid(a * _logit(raw_prob) + b)
+
+
+# Minimum settled predictions in the MINORITY class (not raw row count)
+# before a METAR calibration fit is trusted -- Peduzzi et al. 1996's
+# events-per-variable (EPV) rule for logistic regression: >=10 events in the
+# minority class per fitted predictor (not counting the intercept). Platt
+# scaling (see fit_metar_calibration below) fits exactly 1 predictor
+# (logit(s)), so the floor is min(n_pos, n_neg) >= 10.
+#
+# An earlier version of this floor used a flat n>=30 raw-row-count
+# threshold, framed as "Gneiting 2005's 10-per-parameter rule" for what was
+# then a 3-parameter beta-calibration fit. Two independent opus reviews
+# (2026-08-16) caught this was wrong on two counts: Gneiting 2005 is a
+# continuous-outcome ensemble-calibration heuristic (used correctly
+# elsewhere in this file for EMOS), not a classification EPV rule; and even
+# taken at face value, EPV must be counted on the minority class, not raw n
+# -- this repo's real 33-row dataset has only 11 in the minority class
+# (settled_yes=0), so a flat n>=30 floor would pass data that's actually
+# thin by the standard it claims to cite.
+METAR_CALIBRATION_MIN_EPV_PER_PREDICTOR = 10
+
+
+def fit_metar_calibration(rows: list[dict]) -> tuple[float, float, float] | None:
+    """Fit Platt scaling on METAR same-day lock-in predictions, returned as
+    a (a, a, c) triple -- mathematically identical to Platt scaling
+    (sigmoid(a*ln(s) - a*ln(1-s) + c) == sigmoid(a*logit(s) + c) when the
+    two coefficients are equal), kept in this 3-tuple shape purely so
+    apply_metar_calibration's call signature and the on-disk JSON schema
+    don't need to change.
+
+    An earlier version of this function fit full 2-parameter beta
+    calibration (Kull, Silva Filho & Flach, AISTATS 2017:
+    sigmoid(a*ln(s) - b*ln(1-s) + c), weighting "evidence toward YES" and
+    "evidence toward NO" separately -- the theoretically right shape for
+    METAR lock-in's measured asymmetric miscalibration), falling back to
+    Platt when the full fit degenerated. Two independent opus reviews
+    (2026-08-16) found this was the wrong DESIGN, not just a buggy
+    implementation of a good one:
+      - ln(s) and ln(1-s) are deterministic functions of each other, and
+        METAR lock-in scores cluster in two narrow bands ([0.72,0.97] for
+        YES-locks, [0.03,0.28] for NO-locks) -- identifying genuine
+        asymmetry needs curvature WITHIN each band, which this scoring
+        distribution barely provides regardless of sample size.
+        Empirically: even at n=400 with deliberately asymmetric synthetic
+        miscalibration, the full 2-parameter fit degenerated to the
+        Platt-equivalent a=b solution in 6 of 8 random seeds.
+      - The full-fit path had no regularization, so a real, plausible
+        perfect-separation sample produced unregularized coefficients that
+        passed every positivity/magnitude guard and forced maximum-
+        confidence (0.01/0.99) corrections from a nonexistent MLE.
+      - The degenerate-case fallback went through two unsafe designs before
+        landing on "fall back to Platt": pinning the offending coefficient
+        at a fixed 1.0 acts as an offset term in the log-likelihood and
+        distorts the other coefficient's sign too (verified on this repo's
+        real data). But "fall back to Platt from a fit that degenerates
+        most of the time anyway" means Platt WAS effectively the primary
+        path, just reached through a lot of fragile, unregularized,
+        two-optimizer machinery first.
+    Fitting Platt directly reuses `_fit_platt`'s existing, already-validated
+    bounds (raises if a<=0, |a|>5, or |b|>5) -- closing the separation/
+    blowup risk for free -- and is what the real production data (2026-08-16:
+    27 YES-locks, 6 NO-locks) already converges to.
+
+    `rows` is [{"our_prob": float, "settled_yes": 0|1}, ...] -- same shape
+    as get_emos_training_data()'s rows. Returns None if the minority class
+    is below METAR_CALIBRATION_MIN_EPV_PER_PREDICTOR, if any settled_yes
+    value isn't exactly 0 or 1 (a corrupted label must not silently distort
+    the fit rather than being caught), if the fit produces a non-finite
+    coefficient, or if _fit_platt itself rejects the result.
+    """
+    pairs = [
+        (float(r["our_prob"]), r["settled_yes"])
+        for r in rows
+        if r.get("our_prob") is not None and r.get("settled_yes") is not None
+    ]
+    invalid = [y for _, y in pairs if y not in (0, 1)]
+    if invalid:
+        _log.warning(
+            "fit_metar_calibration: %d row(s) with settled_yes not in {0, 1} "
+            "(sample: %s) — refusing to fit on corrupted labels",
+            len(invalid),
+            invalid[:5],
+        )
+        return None
+
+    n_pos = sum(1 for _, y in pairs if y == 1)
+    n_neg = len(pairs) - n_pos
+    min_class = min(n_pos, n_neg)
+    if min_class < METAR_CALIBRATION_MIN_EPV_PER_PREDICTOR:
+        _log.info(
+            "fit_metar_calibration: minority class has %d rows (n_pos=%d "
+            "n_neg=%d), need >= %d — skipping",
+            min_class,
+            n_pos,
+            n_neg,
+            METAR_CALIBRATION_MIN_EPV_PER_PREDICTOR,
+        )
+        return None
+
+    logit_s = [_logit(p) for p, _ in pairs]  # _logit self-clips to [1e-6, 1-1e-6]
+    labels = [int(y) for _, y in pairs]
+
+    try:
+        platt_a, platt_c = _fit_platt(logit_s, labels)
+    except Exception as exc:
+        _log.warning("fit_metar_calibration: Platt fit failed: %s", exc)
+        return None
+
+    if not (math.isfinite(platt_a) and math.isfinite(platt_c)):
+        _log.warning(
+            "fit_metar_calibration: non-finite coefficients (a=%s c=%s) — "
+            "refusing to save",
+            platt_a,
+            platt_c,
+        )
+        return None
+
+    return (platt_a, platt_a, platt_c)
+
+
+def apply_metar_calibration(
+    raw_prob: float, params: tuple[float, float, float]
+) -> float:
+    """Apply beta calibration: sigmoid(a*ln(s) - b*ln(1-s) + c). params is
+    currently always (a, a, c) (see fit_metar_calibration) but the general
+    2-coefficient form is kept here in case a future session revisits the
+    asymmetric fit with a data source that doesn't share this one's
+    two-narrow-clusters geometry."""
+    a, b, c = params
+    eps = 1e-6
+    s = min(max(raw_prob, eps), 1 - eps)
+    return _sigmoid(a * math.log(s) - b * math.log(1 - s) + c)
+
+
+def fit_and_save_metar_calibration() -> tuple[float, float, float] | None:
+    """Fetch METAR-lockout calibration data, fit, and persist to disk with
+    cache invalidation -- the single canonical implementation shared by both
+    `py main.py calibrate` and cron.py's weekly D5 auto-retrain block, so the
+    two callers can't drift (same reasoning as calibration.py's own
+    calibrate_and_save(), which plays the identical shared role for seasonal/
+    city blend weights).
+
+    Writes via atomic_write_json_with_history (not the plain atomic_write_json
+    an earlier version used) so a retrain that makes things worse can be
+    recovered from data/.history/ -- this file has no other backup mechanism.
+
+    Returns the fitted (a, b, c), or None if there isn't enough data yet or
+    the fit failed validation (see fit_metar_calibration for why).
+    """
+    import tracker
+
+    rows = tracker.get_metar_lockout_calibration_data()
+    fit = fit_metar_calibration(rows)
+    if fit is None:
+        return None
+
+    a, b, c = fit
+    from datetime import UTC, datetime
+
+    from safe_io import atomic_write_json_with_history
+
+    atomic_write_json_with_history(
+        {
+            "a": a,
+            "b": b,
+            "c": c,
+            "n": len(rows),
+            "fitted_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        },
+        _METAR_CALIBRATION_PATH,
+    )
+
+    try:
+        import weather_markets as _wm
+
+        _wm._METAR_CAL = None  # invalidate cache so the next call reloads
+    except Exception:
+        pass
+
+    _log.info(
+        "fit_and_save_metar_calibration: saved a=%.4f b=%.4f c=%.4f (n=%d)",
+        a,
+        b,
+        c,
+        len(rows),
+    )
+    return fit
 
 
 def apply_ml_prob_correction(
@@ -648,6 +845,13 @@ def train_all_temperature_scaling(
                 # from ordinary daily rows by string alone, which is why
                 # hourly needs ticker-prefix exclusion instead, below).
             ).fetchall()
+            # metar_lockout rows excluded: analyze_trade's METAR-locked branch
+            # never calls apply_temperature_scaling (bypasses section 7b
+            # entirely -- see weather_markets.py's `else:` at the metar_locked
+            # split), so a sameday T fit on a population that includes them
+            # was training on data the transform is never actually applied
+            # to. metar_lockout now gets its own dedicated beta-calibration
+            # fit (fit_metar_calibration above) instead.
             sameday_rows = con.execute(
                 """
                 SELECT p.our_prob, o.settled_yes
@@ -655,6 +859,7 @@ def train_all_temperature_scaling(
                 JOIN outcomes_valid o ON p.ticker = o.ticker
                 WHERE p.our_prob IS NOT NULL AND o.settled_yes IS NOT NULL
                   AND p.days_out = 0
+                  AND (p.method IS NULL OR p.method != 'metar_lockout')
                   AND (p.condition_type IS NULL
                        OR p.condition_type NOT IN
                           ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))

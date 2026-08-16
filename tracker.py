@@ -2819,6 +2819,35 @@ def get_emos_training_data() -> list[dict]:
     ]
 
 
+def get_metar_lockout_calibration_data() -> list[dict]:
+    """Return rows for ml_bias.fit_metar_calibration(): {our_prob, settled_yes}
+    for METAR-locked same-day above/below predictions.
+
+    Scoped to condition_type NULL/above/below (same exclusion list as
+    get_sameday_calibration_cli) -- between/precip/etc. share the lock-in
+    formula but weren't part of the calibration gap this measures, and are
+    deliberately excluded from correction until validated separately.
+    """
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT p.our_prob, o.settled_yes
+            FROM predictions p
+            JOIN outcomes_valid o ON p.ticker = o.ticker
+            WHERE p.our_prob IS NOT NULL
+              AND o.settled_yes IS NOT NULL
+              AND p.days_out = 0
+              AND p.method = 'metar_lockout'
+              AND (p.condition_type IS NULL
+                   OR p.condition_type NOT IN
+                      ('between', 'precip_month_total', 'snow_month_total',
+                       'hurricane_count', 'hurricane_next_event', 'storm_order'))
+            """
+        ).fetchall()
+    return [{"our_prob": float(r[0]), "settled_yes": int(r[1])} for r in rows]
+
+
 def _get_recent_win_loss(window: int) -> tuple[int, int]:
     """Query the last `window` settled predictions and count wins.
 
