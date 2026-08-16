@@ -58,7 +58,11 @@ All commands: `py main.py <command> [args]`
 | `validate` | Alias for `walkforward` |
 | `walk-forward` | Full walk-forward backtest with rolling windows |
 | `calibrate` | Refit Platt scaling and temperature scaling from settled predictions |
-| `emos-train` | Fit EMOS parameters (a/b from all 79 rows, c/d from 15 with ens_var) — run once after backfill-emos |
+| `emos-train` | Fit EMOS parameters and print the result — dry run, does NOT go live |
+| `emos-train --activate` | Fit + activate EMOS as the live probability method (refuses below 40 ens_var rows, prompts to confirm, resets T-scaling to 1.0) |
+| `emos-train --activate --force` | Same, but overrides the 40-row floor (not recommended) |
+| `emos-status` | Show whether EMOS is currently active, and its fitted a/b/c/d/n if so |
+| `emos-deactivate` | Revert to the ensemble/climatology blend + T-scaling, restoring pre-activation T immediately (prompts to confirm) |
 | `train-bias` | Retrain GBM bias model + Platt per city + temperature scaling |
 | `drift` | Check for model drift (compares recent vs historical Brier) |
 | `features` | Show feature importance for current model |

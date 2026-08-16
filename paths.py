@@ -36,6 +36,11 @@ LIVE_CONFIG_PATH = _DATA / "live_config.json"
 
 # Model artifacts
 TEMPERATURE_SCALE_PATH = _DATA / "temperature_scale.json"
+# Snapshot of global/above/below/between's pre-EMOS-activation T values,
+# written by ml_bias.reset_temperature_scale_for_emos() so deactivate_emos()
+# can restore them immediately instead of leaving those keys pinned at the
+# 1.0 placeholder until the next scheduled retrain.
+TEMPERATURE_SCALE_PRE_EMOS_PATH = _DATA / "temperature_scale_pre_emos.json"
 EMOS_PARAMS_PATH = _DATA / "emos_params.json"
 CONDITION_WEIGHTS_PATH = _DATA / "condition_weights.json"
 SEASONAL_WEIGHTS_PATH = _DATA / "seasonal_weights.json"

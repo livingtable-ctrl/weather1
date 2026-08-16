@@ -1646,7 +1646,10 @@ RESOLVED 2026-08-02: re-read all 7 cited sites' actual code (not just this
   dead-code and config-divergence guards also re-run clean. ruff check,
   ruff format, and mypy all clean on all 7 changed source files.
 
-[EMOS CALIBRATION STAYS DISABLED UNTIL THE ens_var-POPULATED TRAINING SET CLEARS 40 ROWS]
+[PARTIALLY RESOLVED 2026-08-16 -- confirmation gate built and the data floor
+  has cleared; actual go-live is still a deliberate follow-up decision, not
+  done as part of this change -- see Resolution below.]
+  EMOS CALIBRATION STAYS DISABLED UNTIL THE ens_var-POPULATED TRAINING SET CLEARS 40 ROWS
 Priority: Medium -- directly explains a real, already-observed Brier
   degradation (two consecutive weeks over the P10.3 alert threshold,
   0.2329 and 0.2804, found 2026-07-31), but no code is broken and no
@@ -1716,6 +1719,136 @@ When to revisit:
   Check the ens_var-populated multi-day row count (see query above) in
   ~2 weeks (~mid-August 2026); activate deliberately once it clears 40,
   following the "what it would look like" steps above.
+
+Resolution (2026-08-16):
+  The ens_var-populated count cleared 40 as predicted (48 rows as of this
+  session, up from 31 on 2026-07-31 -- matches the cited ~5-8/week accrual
+  rate). Added a dedicated live counter for it,
+  tracker.count_emos_variance_ready_predictions(), since none existed
+  before (cron.py's own EMOS-ready banner was using
+  count_emos_ready_predictions() -- ens_mean-only, no ens_var filter --
+  which clears 40 earlier than the real variance-fit population does
+  whenever backfilled Previous-Runs-API rows, which never carry ens_var,
+  make up part of the total; fixed the banner to use the stricter count and
+  stopped it suggesting `backfill-emos` at that stage, since backfill rows
+  can't move this count).
+
+  Built the actual confirmation gate the "process/safety concern" above was
+  about: `py main.py emos-train` is now a dry run by default -- it fits and
+  prints a/b/c/d but does NOT write emos_params.json (the file whose mere
+  existence is the only switch weather_markets.py checks). A new
+  `--activate` flag is required to go live, and even with the flag it still
+  prompts a typed 'yes' confirmation (mirrors the accuracy-override CLI
+  pattern in main.py's cmd_admin) before writing anything. Confirmed
+  activation also resets T_above/T_below/T_global to 1.0 in
+  temperature_scale.json in the same step (ml_bias.reset_temperature_scale_
+  for_emos()) -- the coupled reset this entry's own "what it would look
+  like" section called for, now atomic with activation instead of a
+  separate manual step nobody remembered to do last time. Added
+  `emos-status` (shows whether EMOS is live and its fitted values) and
+  `emos-deactivate` (reverts to the ensemble/climatology blend + T-scaling,
+  also confirm-gated) for symmetry with accuracy-override/-clear/-status --
+  deactivation previously meant manually deleting a file with no tooling.
+
+  Deliberately did NOT run `emos-train --activate` as part of this session
+  -- this entry's own "What it would look like" text requires verifying the
+  resulting calibration curve (`py main.py validate`) beats the current
+  T-scaling baseline before trusting EMOS live, which is a separate,
+  substantive decision the confirmation gate exists to make possible, not
+  something to shortcut through while building the gate itself.
+
+  Independent opus review (effort=high) of the first-pass gate found 5
+  HIGH + 9 MEDIUM + 11 LOW -- every finding was in the coupled T-scaling
+  half or the revert path, not the confirm-prompt mechanism itself, which
+  it confirmed was solid. All addressed, none deferred:
+
+  HIGH -- (1) the T=1.0 reset didn't persist: cron.py's own weekly
+  train_all_temperature_scaling() retrain would silently refit and
+  overwrite it within ~7 days while EMOS stayed live, recreating exactly
+  the double-calibration the reset exists to prevent -- fixed by gating
+  that function on `EMOS_PARAMS_PATH.exists()`, skipping global/above/
+  below/between whenever EMOS is active. (2) emos-deactivate cleared the
+  in-process EMOS cache only in the CLI process that ran it, so a
+  concurrently-running `loop`/`watch` process kept using cached EMOS
+  params indefinitely -- the emergency revert didn't revert. (3) the
+  matching problem on activation's T-scaling half (a running loop's
+  temperature-scale cache stayed stale after a separate process reset it).
+  Both (2)/(3) fixed by making _load_emos_params()/_load_temperature_scale()
+  check the file's mtime on every call (cheap stat, reload only on real
+  change) instead of caching permanently after first load. (4) 'between' IS
+  an EMOS-covered condition type (weather_markets.py calls
+  emos_interval_prob for it) but the reset's docstring and key-list both
+  claimed otherwise and left it untouched -- the strongest T in the file
+  (~6.8, "between markets have a much larger calibration gap") was landing
+  on top of EMOS's own fit undetected. Fixed: 'between' now resets
+  alongside global/above/below. (5) deactivation didn't restore T -- it
+  stayed at the 1.0 placeholder for up to a week (weekly, not daily as the
+  original text claimed) AND permanently disabled the
+  _T_ABOVE_PRIOR/_T_BELOW_PRIOR fallback (which only fires when a key is
+  fully ABSENT, never once a placeholder key exists), reproducing this
+  entry's own documented zero-calibration incident as deactivate's *normal*
+  outcome. Fixed: reset_temperature_scale_for_emos() now snapshots the
+  pre-reset values to temperature_scale_pre_emos.json, and deactivate_emos()
+  restores them immediately (not waiting for the next retrain) via a new
+  restore_temperature_scale_from_emos_snapshot().
+
+  MEDIUM -- the two-file activation write (emos_params.json then
+  temperature_scale.json) had no rollback: a failure between them left EMOS
+  live with stale T -- wrapped in try/except with an explicit rollback via
+  deactivate_emos() and a clear FAILED/Rollback-complete message.
+  --activate had no data-quality floor of its own (only cron.py's banner
+  suggested 40 rows, enforcing nothing) -- added a hard refusal below 40
+  ens_var rows, with a --force override (mirrors backfill-emos's existing
+  flag) and n/n_var now restated in the confirm prompt itself. A corrupt
+  emos_params.json was unrecoverable via any CLI command (status/deactivate
+  both silently reported "not active") -- get_emos_status() now returns a
+  distinct corrupt:true, and both commands offer to remove it.
+  cron.py's banner regression: the ens_var-strictness fix (see above)
+  accidentally also stopped suggesting `backfill-emos` once ens_mean alone
+  cleared 40, even though backfill-emos legitimately still helps the a/b
+  fit below that -- restored as its own 4th branch. emos-status/
+  emos-deactivate were gated behind full Kalshi credential validation even
+  though neither touches the API -- the emergency revert must not be
+  blockable by an unrelated broken API key, so both now bypass validate_env()
+  the same way `calibrate` already does (emos-train left as-is: a rarer,
+  more deliberate action). Neither activate nor deactivate checked for a
+  cron cycle in flight -- added a cron._is_cron_running() guard to both (one
+  scan could otherwise price some markets pre-switch, some post-switch).
+  Added reset_for_emos/reset_at provenance fields so a pinned 1.0 isn't
+  mistaken for a real fit on inspection. web_app.py's /api/emos-status
+  duplicated get_emos_status() with a stale "Run: py main.py emos-train"
+  message (no longer true post-dry-run-by-default) -- corrected. First-ever
+  activation's exact fitted params were unrecoverable after a deactivate
+  (atomic_write_json_with_history only snapshots on overwrite, nothing to
+  overwrite on a first write) -- deactivate_emos() now archives to
+  data/.history/ via a raw text copy before unlinking, working even on a
+  corrupt file.
+
+  LOW -- fixed the old-format T-scale migration's key name (n_samples, not
+  n -- matches train_all_temperature_scaling's own migration), a docstring
+  typo (ml_bias._cmd_emos_train -> main._cmd_emos_train, it's in main.py),
+  and "daily calibration" -> "weekly" in both the deactivate message and
+  code comments (this entry's own earlier resolution text repeated the same
+  daily/weekly error, also fixed). Added tests for the previously-uncovered
+  old-format migration branch and cron.py's banner 4-way branch logic.
+
+  40 new/updated tests total across tests/test_ml_bias.py's TestEmos +
+  TestTrainAllTemperatureScalingSkipLogging classes and
+  tests/test_main_cron_smoke.py's TestEmosActivationGate/
+  TestEmosStatusAndDeactivate classes (84 collected in the scoped suite, up
+  from 63 pre-review). Mutation-tested via the Edit tool (not string-replace
+  scripts) on every HIGH/MEDIUM fix's own test: the retrain skip-guard, the
+  between-key inclusion, the deactivate-restores-T behavior, the >=40
+  variance-floor refusal, the cron-lock guard (both activate and deactivate
+  call sites), and the activation rollback -- each confirmed to actually
+  fail when its fix was reverted, not just pass by construction. 84 pass in
+  the scoped suite; a wider sweep (test_cron_integration.py +
+  test_tracker.py + test_p9_p10.py) surfaced one unrelated pre-existing
+  failure (log_prediction's known UTC-vs-local days_out bug, already
+  tracked separately) -- confirmed identical on unmodified master via git
+  stash, not a regression from this change. Ruff + mypy clean on all
+  changed files (main.py, ml_bias.py, tracker.py, cron.py, web_app.py,
+  paths.py).
 
 [RESOLVED 2026-07-31 -- re-examined via the standing 17-step workflow;
   decided against changing counting semantics]

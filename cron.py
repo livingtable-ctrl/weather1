@@ -426,8 +426,9 @@ _PROD_REMINDER_CHECKLIST = """\
 [1-month prod reminder] Deferred items to review:
 
   1. emos-train       : EMOS code deployed but emos_params.json absent (fallback mode).
-                        Run: py main.py emos-train
-                        Two-stage: a+b from all 79 rows, c+d from 15 with non-NULL ens_var.
+                        Run: py main.py emos-train           (dry run, review the fit)
+                        Then: py main.py emos-train --activate   (go live, requires confirm)
+                        Two-stage: a+b from all rows, c+d from rows with non-NULL ens_var.
 
   2. below_gate       : Gate is DORMANT until count_settled_below_predictions() >= 30.
                         Check count, then set BELOW_GATE_ENABLED=1 in .env.
@@ -775,9 +776,13 @@ def _cmd_cron_body(
     _EMOS_PARAMS_PATH = EMOS_PARAMS_PATH
     if not _EMOS_PARAMS_PATH.exists():
         try:
-            from tracker import count_emos_ready_predictions
+            from tracker import (
+                count_emos_ready_predictions,
+                count_emos_variance_ready_predictions,
+            )
 
             _emos_n = count_emos_ready_predictions()
+            _emos_var_n = count_emos_variance_ready_predictions()
             _EMOS_TRAIN_GATE = 40
             if _emos_n == 0:
                 print(
@@ -787,17 +792,35 @@ def _cmd_cron_body(
                     )
                 )
             elif _emos_n < _EMOS_TRAIN_GATE:
+                # backfill-emos DOES move ens_mean (a/b are fit from all rows,
+                # not just ens_var ones), so still suggest it here -- it just
+                # won't move the ens_var-populated count in the branch below.
                 print(
                     yellow(
-                        f"  [EMOS] ens_mean rows: {_emos_n}/{_EMOS_TRAIN_GATE} — "
-                        f"accumulating; run 'py main.py backfill-emos' if new trades settled."
+                        f"  [EMOS] ens_mean rows: {_emos_n}/{_EMOS_TRAIN_GATE}, "
+                        f"ens_var-populated: {_emos_var_n}/{_EMOS_TRAIN_GATE} — "
+                        f"run 'py main.py backfill-emos' if new trades settled "
+                        f"(won't move the ens_var count, only forward-fill live "
+                        f"trades do)."
+                    )
+                )
+            elif _emos_var_n < _EMOS_TRAIN_GATE:
+                # ens_mean already cleared 40, but ens_var (what c/d are
+                # actually fit from) hasn't -- backfill-emos can't help this
+                # count, only forward-fill live trades populate ens_var.
+                print(
+                    yellow(
+                        f"  [EMOS] ens_mean rows: {_emos_n}, ens_var-populated: "
+                        f"{_emos_var_n}/{_EMOS_TRAIN_GATE} — accumulating from live "
+                        f"forward-fill trades."
                     )
                 )
             else:
                 print(
                     yellow(
-                        f"  [EMOS] ens_mean rows: {_emos_n} — READY. "
-                        f"Implement and run 'py main.py emos-train' to fit EMOS parameters."
+                        f"  [EMOS] ens_var-populated rows: {_emos_var_n} — READY. "
+                        f"Run 'py main.py emos-train' to review the fit (dry run by "
+                        f"default), then add --activate to go live."
                     )
                 )
         except Exception:

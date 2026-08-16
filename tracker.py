@@ -2630,6 +2630,32 @@ def count_emos_ready_predictions() -> int:
     return row[0] if row else 0
 
 
+def count_emos_variance_ready_predictions() -> int:
+    """Count multiday_predictions rows with ens_mean, settled_temp_f, AND
+    ens_var all populated -- the population EMOS actually uses to fit its
+    c/d (variance) parameters, not just a/b.
+
+    count_emos_ready_predictions() counts ens_mean+settled_temp_f rows
+    regardless of ens_var, so it clears the Gneiting 2005 40-row floor
+    earlier than the variance fit's real data actually does whenever
+    backfilled Previous-Runs-API rows (which never carry ens_var) make up
+    part of the total. This stricter count is what should gate any
+    "EMOS is READY" message -- fitting c/d on fewer than 40 real ens_var
+    rows (see main._cmd_emos_train's own >= 10 floor, well below the
+    40-row statistical minimum) understates the sample the fit is really
+    built on.
+    """
+    init_db()
+    with _conn() as con:
+        row = con.execute(
+            "SELECT COUNT(*) FROM multiday_predictions p "
+            "JOIN outcomes_valid o ON p.ticker = o.ticker "
+            "WHERE p.ens_mean IS NOT NULL AND o.settled_temp_f IS NOT NULL "
+            "AND p.ens_var IS NOT NULL"
+        ).fetchone()
+    return row[0] if row else 0
+
+
 def count_settled_below_predictions() -> int:
     """Count multi-day below-type predictions with a known outcome."""
     init_db()

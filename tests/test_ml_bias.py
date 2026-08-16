@@ -1069,6 +1069,47 @@ class TestEmos:
         assert abs(rows[0]["settled_temp_f"] - 73.0) < 0.01
         assert rows[0]["ens_var"] == pytest.approx(4.5, abs=0.01)
 
+    def test_count_emos_variance_ready_predictions_requires_ens_var(
+        self, tmp_path, monkeypatch
+    ):
+        """The stricter count (what actually gates EMOS's c/d variance fit)
+        must exclude backfill rows that have ens_mean but no ens_var --
+        count_emos_ready_predictions() (mean-only) does NOT exclude them,
+        which is exactly why the two counts can diverge and the looser one
+        can't be trusted alone as an EMOS-readiness signal."""
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        with tracker._conn() as con:
+            # Row 1: ens_mean + ens_var + settled_temp_f all populated -> counted
+            con.execute(
+                "INSERT INTO predictions (ticker, our_prob, market_prob, predicted_at, days_out, ens_mean, ens_var) "
+                "VALUES ('KXHIGH-T70', 0.6, 0.55, '2026-06-01', 1, 72.3, 4.5)"
+            )
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes, settled_at, settled_temp_f) "
+                "VALUES ('KXHIGH-T70', 1, '2026-06-01', 73.0)"
+            )
+            # Row 2: ens_mean + settled_temp_f present but ens_var NULL
+            # (backfill row) -> must be excluded from the strict count
+            con.execute(
+                "INSERT INTO predictions (ticker, our_prob, market_prob, predicted_at, days_out, ens_mean) "
+                "VALUES ('KXHIGH-T72', 0.5, 0.48, '2026-06-02', 1, 71.0)"
+            )
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes, settled_at, settled_temp_f) "
+                "VALUES ('KXHIGH-T72', 0, '2026-06-02', 70.0)"
+            )
+
+        assert tracker.count_emos_variance_ready_predictions() == 1
+        # Positive control: the looser mean-only count must be 2, proving row 2
+        # really was inserted and reachable -- so the strict count above is
+        # actually filtering it on ens_var, not silently seeing zero rows total.
+        assert tracker.count_emos_ready_predictions() == 2
+
     def test_emos_exceedance_prob_called_via_load_emos_params(
         self, monkeypatch, tmp_path
     ):
@@ -1094,6 +1135,238 @@ class TestEmos:
         prob = ml_bias.emos_exceedance_prob(loaded, 70.0, 4.0, threshold=72.0)
         assert 0.0 < prob < 0.5, (
             f"Expected prob < 0.5 when threshold > mean; got {prob}"
+        )
+
+    def test_get_emos_status_inactive_when_file_missing(self, tmp_path, monkeypatch):
+        import ml_bias
+        from ml_bias import get_emos_status
+
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", tmp_path / "emos_params.json")
+        assert get_emos_status() == {"active": False}
+
+    def test_get_emos_status_active_returns_all_fields(self, tmp_path, monkeypatch):
+        import ml_bias
+        from ml_bias import get_emos_status, save_emos_params
+
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", tmp_path / "emos_params.json")
+        monkeypatch.setattr(ml_bias, "_EMOS_CACHE", None)
+        save_emos_params(1.1, 0.9, 2.2, 0.15, n=55, mean_crps=0.28)
+
+        status = get_emos_status()
+        assert status["active"] is True
+        assert status["a"] == pytest.approx(1.1)
+        assert status["n"] == 55
+        assert status["mean_crps"] == pytest.approx(0.28)
+        assert status["fitted_at"]
+
+    @pytest.fixture()
+    def isolated_temp_paths(self, tmp_path, monkeypatch):
+        """Shared isolation for reset/deactivate tests -- patches every
+        module-level path/cache global these functions touch, including the
+        pre-EMOS snapshot path and the two mtime-invalidation caches added
+        alongside the opus-review fixes."""
+        import ml_bias
+
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        monkeypatch.setattr(ml_bias, "_TEMP_CACHE", None)
+        monkeypatch.setattr(ml_bias, "_TEMP_CACHE_MTIME", None)
+        monkeypatch.setattr(
+            ml_bias,
+            "_TEMP_PRE_EMOS_SNAPSHOT_PATH",
+            tmp_path / "temperature_scale_pre_emos.json",
+        )
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", tmp_path / "emos_params.json")
+        monkeypatch.setattr(ml_bias, "_EMOS_CACHE", None)
+        monkeypatch.setattr(ml_bias, "_EMOS_CACHE_MTIME", None)
+        return tmp_path
+
+    def test_reset_temperature_scale_sets_identity_preserves_sameday(
+        self, isolated_temp_paths
+    ):
+        """global/above/below/between all reset to T=1.0 (EMOS covers all
+        4 -- 'between' included, since weather_markets.py calls
+        emos_interval_prob for it) preserving their prior n; only 'sameday'
+        (METAR-derived, EMOS never touches it) stays untouched."""
+        import json
+
+        from ml_bias import reset_temperature_scale_for_emos
+
+        temp_path = isolated_temp_paths / "temperature_scale.json"
+        temp_path.write_text(
+            json.dumps(
+                {
+                    "global": {"T": 5.2, "n": 40},
+                    "above": {"T": 4.1, "n": 20},
+                    "below": {"T": 3.9, "n": 18},
+                    "between": {"T": 6.8, "n": 23},
+                    "sameday": {"T": 2.1, "n": 60},
+                }
+            )
+        )
+
+        reset_temperature_scale_for_emos()
+
+        result = json.loads(temp_path.read_text())
+        for key, prior_n in (
+            ("global", 40),
+            ("above", 20),
+            ("below", 18),
+            ("between", 23),
+        ):
+            assert result[key]["T"] == 1.0
+            assert result[key]["n"] == prior_n
+            assert result[key]["reset_for_emos"] is True
+            assert result[key]["reset_at"]
+        assert result["sameday"] == {"T": 2.1, "n": 60}
+
+    def test_reset_temperature_scale_handles_missing_file(self, isolated_temp_paths):
+        import json
+
+        from ml_bias import reset_temperature_scale_for_emos
+
+        reset_temperature_scale_for_emos()  # must not raise
+
+        result = json.loads(
+            (isolated_temp_paths / "temperature_scale.json").read_text()
+        )
+        assert result["global"]["T"] == 1.0
+        assert result["above"]["T"] == 1.0
+        assert result["below"]["T"] == 1.0
+        assert result["between"]["T"] == 1.0
+
+    def test_reset_temperature_scale_migrates_old_single_value_format(
+        self, isolated_temp_paths
+    ):
+        """Old format is {"T": x, "n_samples": y} -- NOT {"T": x, "n": y}.
+        Must match train_all_temperature_scaling's own migration convention
+        (ml_bias.py's global-fit block), not silently zero the sample count."""
+        import json
+
+        from ml_bias import reset_temperature_scale_for_emos
+
+        temp_path = isolated_temp_paths / "temperature_scale.json"
+        temp_path.write_text(json.dumps({"T": 5.2, "n_samples": 40}))
+
+        reset_temperature_scale_for_emos()
+
+        result = json.loads(temp_path.read_text())
+        assert result["global"]["T"] == 1.0
+        assert result["global"]["n"] == 40
+
+    def test_reset_temperature_scale_snapshots_prior_values(self, isolated_temp_paths):
+        import json
+
+        from ml_bias import reset_temperature_scale_for_emos
+
+        temp_path = isolated_temp_paths / "temperature_scale.json"
+        temp_path.write_text(json.dumps({"global": {"T": 5.2, "n": 40}}))
+
+        reset_temperature_scale_for_emos()
+
+        snapshot_path = isolated_temp_paths / "temperature_scale_pre_emos.json"
+        assert snapshot_path.exists()
+        snapshot = json.loads(snapshot_path.read_text())
+        assert snapshot["global"] == {"T": 5.2, "n": 40}
+
+    def test_restore_from_emos_snapshot_noop_when_no_snapshot(
+        self, isolated_temp_paths
+    ):
+        from ml_bias import restore_temperature_scale_from_emos_snapshot
+
+        assert restore_temperature_scale_from_emos_snapshot() is False
+
+    def test_restore_from_emos_snapshot_restores_and_consumes_it(
+        self, isolated_temp_paths
+    ):
+        import json
+
+        from ml_bias import (
+            reset_temperature_scale_for_emos,
+            restore_temperature_scale_from_emos_snapshot,
+        )
+
+        temp_path = isolated_temp_paths / "temperature_scale.json"
+        temp_path.write_text(json.dumps({"global": {"T": 5.2, "n": 40}}))
+        reset_temperature_scale_for_emos()
+        assert json.loads(temp_path.read_text())["global"]["T"] == 1.0
+
+        restored = restore_temperature_scale_from_emos_snapshot()
+
+        assert restored is True
+        result = json.loads(temp_path.read_text())
+        assert result["global"] == {"T": 5.2, "n": 40}
+        assert not (isolated_temp_paths / "temperature_scale_pre_emos.json").exists()
+
+    def test_deactivate_emos_removes_file_and_returns_true_when_active(
+        self, isolated_temp_paths
+    ):
+        from ml_bias import deactivate_emos, save_emos_params
+
+        save_emos_params(1.0, 1.0, 1.0, 0.1, n=50)
+
+        was_active = deactivate_emos()
+
+        assert was_active is True
+        assert not (isolated_temp_paths / "emos_params.json").exists()
+
+    def test_deactivate_emos_noop_when_already_inactive(self, isolated_temp_paths):
+        from ml_bias import deactivate_emos
+
+        was_active = deactivate_emos()
+
+        assert was_active is False
+
+    def test_deactivate_emos_archives_to_history_before_unlink(
+        self, isolated_temp_paths
+    ):
+        """First-ever activation's params must survive deactivation --
+        atomic_write_json_with_history only snapshots on overwrite, so a
+        bare unlink on a file that's never been overwritten would lose the
+        only copy."""
+        from ml_bias import deactivate_emos, save_emos_params
+
+        save_emos_params(1.23, 0.94, 2.1, 0.18, n=79, mean_crps=0.42)
+
+        deactivate_emos()
+
+        history_dir = isolated_temp_paths / ".history"
+        archived = list(history_dir.glob("emos_params_*.json"))
+        assert len(archived) == 1
+        import json
+
+        assert json.loads(archived[0].read_text())["a"] == pytest.approx(1.23)
+
+    def test_load_emos_params_picks_up_change_without_process_restart(
+        self, isolated_temp_paths
+    ):
+        """A long-running process (loop/watch) must see a save/deactivate
+        made by a separate CLI invocation on its NEXT call, not only at
+        first load -- the mtime check is what makes this possible instead
+        of a cache that's permanent once populated."""
+        import time
+
+        from ml_bias import _load_emos_params, deactivate_emos, save_emos_params
+
+        assert _load_emos_params() is None
+
+        save_emos_params(1.0, 2.0, 3.0, 0.1, n=50)
+        loaded = _load_emos_params()
+        assert loaded is not None
+        assert loaded[0] == pytest.approx(1.0)
+
+        # Force a distinct mtime (some filesystems have 1-2s mtime resolution)
+        time.sleep(1.1)
+        save_emos_params(9.0, 9.0, 9.0, 0.9, n=99)
+        reloaded = _load_emos_params()
+        assert reloaded is not None
+        assert reloaded[0] == pytest.approx(9.0), (
+            "stale cache returned instead of re-reading the changed file"
+        )
+
+        deactivate_emos()
+        assert _load_emos_params() is None, (
+            "deactivation must be visible on the very next call in this "
+            "same process, without a restart"
         )
 
 
@@ -1174,6 +1447,72 @@ class TestTrainAllTemperatureScalingSkipLogging:
         # Neither fit produced a T (both hit the bound and returned None),
         # so nothing should have been written to disk.
         assert not (tmp_path / "temperature_scale.json").exists()
+
+    def test_skips_emos_covered_keys_while_emos_is_active(self, tmp_path, monkeypatch):
+        """While EMOS is live, global/above/below/between must not be
+        refit -- overwriting the 1.0 reset placeholder with a real T would
+        silently double-calibrate on top of EMOS's own fit within one
+        retrain cycle (see reset_temperature_scale_for_emos's docstring)."""
+        import json
+        from datetime import date, timedelta
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        monkeypatch.setattr(ml_bias, "_TEMP_CACHE", None)
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", tmp_path / "emos_params.json")
+        tracker.init_db()
+
+        market_date = date.today() + timedelta(days=11)
+        # Overconfident-but-correct-direction (0.9 predicted vs ~0.58 actual)
+        # -- fittable by T-scaling (compresses toward 0.5), unlike the
+        # directional-bias case above which hits the upper bound and
+        # returns None regardless of whether EMOS is active.
+        for i in range(24):
+            self._seed(
+                tracker,
+                f"KXHIGHNY-26AUG{i:02d}-T75",
+                "NYC",
+                market_date,
+                0.9,
+                1 if i < 14 else 0,
+                "above",
+            )
+
+        # Baseline: without EMOS active, the fit runs and writes normally.
+        trained = ml_bias.train_all_temperature_scaling(
+            min_samples_global=1, min_samples_condition=1
+        )
+        assert "global" in trained
+        assert "above" in trained
+
+        # Simulate an EMOS activation having reset these keys to the 1.0
+        # placeholder, then retrain again with the same fittable data.
+        (tmp_path / "temperature_scale.json").write_text(
+            json.dumps(
+                {
+                    "global": {"T": 1.0, "n": 0, "reset_for_emos": True},
+                    "above": {"T": 1.0, "n": 0, "reset_for_emos": True},
+                }
+            )
+        )
+        monkeypatch.setattr(ml_bias, "_TEMP_CACHE", None)
+        (tmp_path / "emos_params.json").write_text(
+            json.dumps({"a": 1.0, "b": 1.0, "c": 1.0, "d": 0.1})
+        )
+
+        trained_while_active = ml_bias.train_all_temperature_scaling(
+            min_samples_global=1, min_samples_condition=1
+        )
+
+        assert "global" not in trained_while_active
+        assert "above" not in trained_while_active
+        result = json.loads((tmp_path / "temperature_scale.json").read_text())
+        assert result["global"]["T"] == 1.0
+        assert result["above"]["T"] == 1.0
 
     def test_directional_bias_warning_labels_sameday_and_hourly(
         self, tmp_path, monkeypatch, caplog

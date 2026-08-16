@@ -22,14 +22,28 @@ from paths import EMOS_PARAMS_PATH as _EMOS_PARAMS_PATH
 from paths import ML_BIAS_HMAC_PATH as _HMAC_PATH
 from paths import ML_BIAS_MODEL_PATH as _MODEL_PATH
 from paths import TEMPERATURE_SCALE_PATH as _TEMP_PATH
+from paths import TEMPERATURE_SCALE_PRE_EMOS_PATH as _TEMP_PRE_EMOS_SNAPSHOT_PATH
 
 _log = logging.getLogger(__name__)
 _EMOS_CACHE: tuple | None = None  # cached (a, b, c, d)
+# mtime the cache above was loaded from -- checked on every _load_emos_params()
+# call so a long-running process (loop/watch) picks up an activate/deactivate
+# made by a separate CLI invocation within its next call, not just at first
+# load. Without this, deactivate_emos() clearing the cache in the CLI
+# process's own memory has no effect on an already-running trading loop.
+_EMOS_CACHE_MTIME: float | None = None
 _MODELS_CACHE: dict | None = None
 _LOAD_ATTEMPTED: bool = False  # True only after a successful or definitive load
 _TEMP_CACHE: dict | None = (
     None  # {condition_key: T} where condition_key is "global"|"between"|"above"|"below"
 )
+_TEMP_CACHE_MTIME: float | None = (
+    None  # same mtime-invalidation reasoning as _EMOS_CACHE_MTIME
+)
+# Condition types EMOS's fit actually covers -- must stay in sync with
+# weather_markets.py's _ensemble_probability_core, which calls
+# emos_exceedance_prob for above/below and emos_interval_prob for between.
+EMOS_COVERED_CONDITION_KEYS = ("global", "above", "below", "between")
 # T priors for above/below markets.  Applied when temperature_scale.json is missing
 # or lacks a condition-specific entry.  Derived empirically by reblending N=14 trades
 # with current weights and grid-searching for NLL minimum (Jun 2026):
@@ -399,11 +413,18 @@ def _load_temperature_scale() -> dict | None:
     Returns a dict keyed by condition type (including "global"), or None when the file
     is absent or unreadable.
     """
-    global _TEMP_CACHE
-    if _TEMP_CACHE is not None:
-        return _TEMP_CACHE
+    global _TEMP_CACHE, _TEMP_CACHE_MTIME
     if not _TEMP_PATH.exists():
+        if _TEMP_CACHE is not None:
+            _TEMP_CACHE = None
+            _TEMP_CACHE_MTIME = None
         return None
+    try:
+        mtime = _TEMP_PATH.stat().st_mtime
+    except OSError:
+        return _TEMP_CACHE
+    if _TEMP_CACHE is not None and _TEMP_CACHE_MTIME == mtime:
+        return _TEMP_CACHE
     try:
         import json
 
@@ -418,6 +439,7 @@ def _load_temperature_scale() -> dict | None:
                 for k, v in raw.items()
                 if isinstance(v, dict) and "T" in v
             }
+        _TEMP_CACHE_MTIME = mtime
         return _TEMP_CACHE
     except Exception as exc:
         _log.warning("ml_bias: failed to parse temperature_scale.json: %s", exc)
@@ -682,8 +704,21 @@ def train_all_temperature_scaling(
 
     trained: dict[str, float] = {}
 
+    # While EMOS is active, global/above/below/between are its keys, pinned
+    # to 1.0 by reset_temperature_scale_for_emos() -- refitting them here
+    # would silently overwrite that placeholder with a real T, so this
+    # process (or any other reading temperature_scale.json) would start
+    # double-calibrating on top of EMOS's own fit within one retrain cycle.
+    # sameday/hourly are unaffected -- EMOS never covers those pools.
+    _emos_active = _EMOS_PARAMS_PATH.exists()
+
     # Global fit
-    if len(all_probs) >= min_samples_global:
+    if _emos_active:
+        _log.info(
+            "train_all_temperature_scaling: EMOS is active — skipping global T "
+            "refit (would double-calibrate on top of EMOS's own fit)"
+        )
+    elif len(all_probs) >= min_samples_global:
         T_global = _fit_T(all_probs, all_labels, "global")
         if T_global is not None:
             existing["global"] = {"T": T_global, "n": len(all_probs)}
@@ -711,6 +746,13 @@ def train_all_temperature_scaling(
             by_type[ct][1].append(float(r["settled_yes"]))
 
     for ctype, (cprobs, clabels) in by_type.items():
+        if _emos_active and ctype in EMOS_COVERED_CONDITION_KEYS:
+            _log.info(
+                "train_all_temperature_scaling: EMOS is active — skipping %s T "
+                "refit (would double-calibrate on top of EMOS's own fit)",
+                ctype,
+            )
+            continue
         if len(cprobs) < min_samples_condition:
             _log.info(
                 "train_all_temperature_scaling: %s has %d samples, need %d — skipping",
@@ -878,12 +920,25 @@ def emos_interval_prob(
 
 
 def _load_emos_params() -> tuple[float, float, float, float] | None:
-    """Return cached (a, b, c, d) from emos_params.json, or None if not trained."""
-    global _EMOS_CACHE
-    if _EMOS_CACHE is not None:
-        return _EMOS_CACHE
+    """Return cached (a, b, c, d) from emos_params.json, or None if not trained.
+
+    Re-checks the file's mtime on every call (a cheap stat, not a re-read
+    unless it actually changed) so a long-running loop/watch process picks
+    up an emos-train --activate or emos-deactivate made by a separate CLI
+    invocation on its very next call, rather than only at process start.
+    """
+    global _EMOS_CACHE, _EMOS_CACHE_MTIME
     if not _EMOS_PARAMS_PATH.exists():
+        if _EMOS_CACHE is not None:
+            _EMOS_CACHE = None
+            _EMOS_CACHE_MTIME = None
         return None
+    try:
+        mtime = _EMOS_PARAMS_PATH.stat().st_mtime
+    except OSError:
+        return _EMOS_CACHE
+    if _EMOS_CACHE is not None and _EMOS_CACHE_MTIME == mtime:
+        return _EMOS_CACHE
     try:
         data = json.loads(_EMOS_PARAMS_PATH.read_text())
         _EMOS_CACHE = (
@@ -892,6 +947,7 @@ def _load_emos_params() -> tuple[float, float, float, float] | None:
             float(data["c"]),
             float(data["d"]),
         )
+        _EMOS_CACHE_MTIME = mtime
         _log.info(
             "EMOS params loaded: a=%.4f b=%.4f c=%.4f d=%.4f n=%s crps=%s",
             *_EMOS_CACHE,
@@ -930,3 +986,206 @@ def save_emos_params(
     atomic_write_json_with_history(payload, _EMOS_PARAMS_PATH)
     _EMOS_CACHE = (float(a), float(b), float(c), float(d))
     _log.info("EMOS params saved: a=%.4f b=%.4f c=%.4f d=%.4f (n=%d)", a, b, c, d, n)
+
+
+def get_emos_status() -> dict:
+    """Return {"active": bool, "a"/"b"/"c"/"d"/"n"/"mean_crps"/"fitted_at": ...}
+    describing whether EMOS is currently the live probability method for
+    multi-day above/below/between predictions.
+
+    Returns {"active": False} when emos_params.json doesn't exist, or
+    {"active": False, "corrupt": True, "error": ...} when it exists but
+    fails to parse -- distinct from "doesn't exist" so a caller (e.g.
+    cmd_emos_deactivate) can still offer to remove a corrupt file instead
+    of reporting nothing to do.
+    """
+    if not _EMOS_PARAMS_PATH.exists():
+        return {"active": False}
+    try:
+        data = json.loads(_EMOS_PARAMS_PATH.read_text())
+        return {
+            "active": True,
+            "a": float(data["a"]),
+            "b": float(data["b"]),
+            "c": float(data["c"]),
+            "d": float(data["d"]),
+            "n": data.get("n"),
+            "mean_crps": data.get("mean_crps"),
+            "fitted_at": data.get("fitted_at"),
+        }
+    except Exception as exc:
+        return {"active": False, "corrupt": True, "error": str(exc)}
+
+
+def reset_temperature_scale_for_emos() -> None:
+    """Reset T_global/T_above/T_below/T_between to 1.0 (identity/no-op) in
+    temperature_scale.json, as the coupled step of activating EMOS.
+
+    EMOS's own fitted Gaussian (a,b,c,d) replaces T-scaling's role for
+    multi-day above/below/global/between predictions once live -- 'between'
+    IS covered (weather_markets.py calls emos_interval_prob for it), unlike
+    sameday/hourly which are METAR-derived and EMOS never touches. Leaving
+    T at a previously-fit non-identity value would double-calibrate on top
+    of EMOS.
+
+    Snapshots the pre-reset values for these 4 keys to
+    temperature_scale_pre_emos.json first, so deactivate_emos() can restore
+    them immediately rather than leaving this process's T pinned at the 1.0
+    placeholder for up to a week until the next scheduled retrain -- which
+    would also permanently disable apply_temperature_scaling's
+    _T_ABOVE_PRIOR/_T_BELOW_PRIOR fallback (it only fires when a key is
+    fully absent, never once a 1.0 placeholder key exists) and reproduce
+    the exact zero-calibration incident recorded in backlog.txt's EMOS
+    entry. Each reset key is also tagged reset_for_emos/reset_at so it's
+    inspectable-by-eye as a placeholder, not a real fit.
+    """
+    global _TEMP_CACHE, _TEMP_CACHE_MTIME
+    from datetime import UTC, datetime
+
+    from safe_io import atomic_write_json_with_history
+
+    existing: dict = {}
+    if _TEMP_PATH.exists():
+        try:
+            existing = json.loads(_TEMP_PATH.read_text())
+            if not isinstance(existing, dict):
+                existing = {}
+            elif "T" in existing:
+                # Old single-value format -- mirror train_all_temperature_
+                # scaling's own migration (ml_bias.py ~line 674): the old
+                # sample-count key is "n_samples", not "n".
+                existing = {
+                    "global": {
+                        "T": float(existing["T"]),
+                        "n": existing.get("n_samples", 0),
+                    }
+                }
+        except Exception:
+            existing = {}
+
+    snapshot = {
+        key: existing[key]
+        for key in EMOS_COVERED_CONDITION_KEYS
+        if isinstance(existing.get(key), dict)
+    }
+    if snapshot:
+        atomic_write_json_with_history(snapshot, _TEMP_PRE_EMOS_SNAPSHOT_PATH)
+
+    reset_at = datetime.now(UTC).isoformat(timespec="seconds")
+    for key in EMOS_COVERED_CONDITION_KEYS:
+        prior = existing.get(key)
+        prior_n = prior.get("n", 0) if isinstance(prior, dict) else 0
+        existing[key] = {
+            "T": 1.0,
+            "n": prior_n,
+            "reset_for_emos": True,
+            "reset_at": reset_at,
+        }
+
+    atomic_write_json_with_history(existing, _TEMP_PATH)
+    _TEMP_CACHE = None
+    _TEMP_CACHE_MTIME = None
+    _log.info(
+        "reset_temperature_scale_for_emos: %s reset to 1.0 (pre-reset snapshot saved for restore on deactivate)",
+        ", ".join(EMOS_COVERED_CONDITION_KEYS),
+    )
+
+
+def restore_temperature_scale_from_emos_snapshot() -> bool:
+    """Restore global/above/below/between to their pre-EMOS-activation T
+    values from the snapshot reset_temperature_scale_for_emos() saved, as
+    part of deactivate_emos(). Safe no-op (returns False) if no snapshot
+    exists -- e.g. EMOS was never actually activated through the confirm
+    gate, or a previous deactivate already consumed it.
+
+    Restoring immediately (rather than waiting for the next scheduled
+    retrain) closes the double-calibration/zero-calibration gap described
+    in reset_temperature_scale_for_emos()'s own docstring.
+    """
+    global _TEMP_CACHE, _TEMP_CACHE_MTIME
+
+    if not _TEMP_PRE_EMOS_SNAPSHOT_PATH.exists():
+        return False
+    try:
+        snapshot = json.loads(_TEMP_PRE_EMOS_SNAPSHOT_PATH.read_text())
+        if not isinstance(snapshot, dict) or not snapshot:
+            _TEMP_PRE_EMOS_SNAPSHOT_PATH.unlink(missing_ok=True)
+            return False
+
+        existing: dict = {}
+        if _TEMP_PATH.exists():
+            try:
+                existing = json.loads(_TEMP_PATH.read_text())
+                if not isinstance(existing, dict):
+                    existing = {}
+            except Exception:
+                existing = {}
+
+        for key, value in snapshot.items():
+            existing[key] = value
+
+        from safe_io import atomic_write_json_with_history
+
+        atomic_write_json_with_history(existing, _TEMP_PATH)
+        _TEMP_CACHE = None
+        _TEMP_CACHE_MTIME = None
+        _TEMP_PRE_EMOS_SNAPSHOT_PATH.unlink(missing_ok=True)
+        _log.info(
+            "restore_temperature_scale_from_emos_snapshot: restored %s",
+            ", ".join(sorted(snapshot)),
+        )
+        return True
+    except Exception as exc:
+        _log.warning(
+            "restore_temperature_scale_from_emos_snapshot: failed, pre-EMOS "
+            "values NOT restored -- T remains at the 1.0 placeholder: %s",
+            exc,
+        )
+        return False
+
+
+def deactivate_emos() -> bool:
+    """Remove emos_params.json, reverting multi-day above/below/between
+    predictions to the ensemble/climatology blend + temperature scaling,
+    and immediately restore temperature_scale.json's pre-activation T
+    values (see restore_temperature_scale_from_emos_snapshot). Safe to call
+    whether or not EMOS is currently active. Returns True only if it was
+    actually active (a file existed), matching
+    paper.clear_accuracy_halt_override()'s same-shape return convention.
+
+    Archives the current emos_params.json content to data/.history/ before
+    removing it, even on a corrupt/unparseable file (raw text copy, no JSON
+    round-trip) -- atomic_write_json_with_history only snapshots on
+    OVERWRITE, so a bare unlink on the very first activation's file would
+    otherwise make those exact fitted parameters unrecoverable.
+    """
+    global _EMOS_CACHE, _EMOS_CACHE_MTIME
+    was_active = _EMOS_PARAMS_PATH.exists()
+
+    if was_active:
+        try:
+            import time as _time
+            from datetime import UTC, datetime
+
+            history_dir = _EMOS_PARAMS_PATH.parent / ".history"
+            history_dir.mkdir(exist_ok=True)
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+            history_file = history_dir / f"{_EMOS_PARAMS_PATH.stem}_{stamp}.json"
+            if history_file.exists():
+                history_file = (
+                    history_dir
+                    / f"{_EMOS_PARAMS_PATH.stem}_{stamp}_{int(_time.monotonic() * 1000) % 1000}.json"
+                )
+            history_file.write_text(
+                _EMOS_PARAMS_PATH.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+        except Exception as exc:
+            _log.warning("deactivate_emos: history backup failed: %s", exc)
+
+    _EMOS_PARAMS_PATH.unlink(missing_ok=True)
+    _EMOS_CACHE = None
+    _EMOS_CACHE_MTIME = None
+    restore_temperature_scale_from_emos_snapshot()
+    if was_active:
+        _log.info("deactivate_emos: emos_params.json removed, EMOS no longer live")
+    return was_active

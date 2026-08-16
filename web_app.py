@@ -1918,7 +1918,7 @@ setInterval(() => {{
                 {
                     "trained": False,
                     "params": None,
-                    "message": "Not trained. Run: py main.py emos-train",
+                    "message": "Not trained. Run: py main.py emos-train --activate",
                 }
             )
         try:
@@ -1943,7 +1943,8 @@ setInterval(() => {{
                 {
                     "trained": False,
                     "error": str(_exc),
-                    "message": "Error reading emos_params.json",
+                    "message": "emos_params.json exists but is corrupt/unreadable — "
+                    "run 'py main.py emos-deactivate' from the CLI to remove it.",
                 }
             )
 

@@ -6288,8 +6288,24 @@ def cmd_calibrate() -> None:
     print("\nRestart the app (or re-import weather_markets) to pick up new weights.")
 
 
-def _cmd_emos_train() -> None:
-    """Two-stage EMOS fit: mean calibration (a,b) from all rows, variance (c,d) from ens_var rows."""
+def _cmd_emos_train(activate: bool = False, force: bool = False) -> None:
+    """Two-stage EMOS fit: mean calibration (a,b) from all rows, variance (c,d) from ens_var rows.
+
+    Fitting and activating are deliberately separate: by default this only
+    computes and prints the fit (a dry run) without writing emos_params.json
+    -- the file whose mere existence is the ONLY gate weather_markets.py
+    checks to switch multi-day above/below/between predictions onto EMOS.
+    Pass --activate to actually go live, which still requires typed
+    confirmation on top of the flag. This two-gate design exists because a
+    prior deploy accidentally went live as a side effect of just running
+    this command with no separate go-live step -- see backlog.txt's EMOS
+    entry.
+
+    --activate refuses to proceed when fewer than 40 rows have real ens_var
+    (the c/d variance fit's actual population -- Gneiting 2005's 10-cases-
+    per-parameter floor for 4 EMOS parameters), since c/d below 10 rows are
+    hardcoded defaults, not a real fit. Pass --force to override.
+    """
     try:
         import numpy as np
     except ImportError:
@@ -6355,10 +6371,213 @@ def _cmd_emos_train() -> None:
     except Exception:
         pass
 
-    save_emos_params(a, b, c, d, n=n, mean_crps=mean_crps)
-    print("\nSaved → data/emos_params.json")
+    if not activate:
+        print(
+            yellow(
+                "\nDRY RUN — EMOS NOT activated. Fit results above are for review only; "
+                "no file was written and the live probability method is unchanged.\n"
+                "Run 'py main.py emos-train --activate' to go live with these parameters."
+            )
+        )
+        return
+
+    _EMOS_VAR_FLOOR = 40
+    if n_var < _EMOS_VAR_FLOOR and not force:
+        print(
+            red(
+                f"\nREFUSING to activate — only {n_var} rows have real ens_var "
+                f"(need >= {_EMOS_VAR_FLOOR}, Gneiting 2005's 10-cases-per-parameter "
+                f"floor for 4 EMOS parameters). c/d above "
+                + (
+                    "came from a genuine fit on a thin sample, well short of the floor."
+                    if n_var >= 10
+                    else "are HARDCODED DEFAULTS (c=1.0, d=0.1) — not a real fit at all."
+                )
+                + " Wait for more forward-fill data, or pass --force to override "
+                "(not recommended — sigma would be built on an unreliable variance fit)."
+            )
+        )
+        return
+
+    try:
+        if _cron_module._is_cron_running():
+            print(
+                red(
+                    "\nA cron cycle is currently running — refusing to activate "
+                    "mid-scan (would split one scan across two probability "
+                    "methods, some markets priced with the old method, some "
+                    "with EMOS). Wait for it to finish and try again."
+                )
+            )
+            return
+    except Exception:
+        pass  # fail open on an inability to check, matching _is_cron_running's own default
+
     print(
-        "\nNEXT: set T_above=T_below=T_global=1.0 in data/temperature_scale.json (done in same commit as EMOS deploy)"
+        yellow(
+            f"\nThis will make EMOS the live probability method for multi-day "
+            f"above/below/between predictions (n={n}, ens_var-populated n_var={n_var}), "
+            f"replacing the current ensemble/climatology blend + temperature scaling. "
+            f"It will also reset T_global/T_above/T_below/T_between to 1.0 in "
+            f"temperature_scale.json (EMOS's own fit replaces T-scaling's role for "
+            f"those condition types — leaving the old T in place would double-"
+            f"calibrate on top of it; the pre-reset values are saved so "
+            f"emos-deactivate can restore them immediately). "
+            f"Type 'yes' to confirm: "
+        ),
+        end="",
+        flush=True,
+    )
+    try:
+        answer = input().strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        print(dim("  Cancelled — EMOS not activated."))
+        return
+    if answer != "yes":
+        print(dim("  Cancelled — EMOS not activated."))
+        return
+
+    from ml_bias import deactivate_emos, reset_temperature_scale_for_emos
+
+    try:
+        save_emos_params(a, b, c, d, n=n, mean_crps=mean_crps)
+        reset_temperature_scale_for_emos()
+    except Exception as exc:
+        print(red(f"\nACTIVATION FAILED partway through: {exc}"))
+        print(red("Rolling back to avoid a partially-activated state..."))
+        try:
+            deactivate_emos()
+            print(dim("Rollback complete — EMOS is NOT active."))
+        except Exception as rollback_exc:
+            print(red(f"ROLLBACK ALSO FAILED: {rollback_exc}"))
+            print(
+                red(
+                    "Manual intervention required — check data/emos_params.json "
+                    "and data/temperature_scale.json by hand."
+                )
+            )
+        return
+
+    print(green("\nEMOS is now LIVE → data/emos_params.json"))
+    print(
+        green(
+            "T_global/T_above/T_below/T_between reset to 1.0 → data/temperature_scale.json"
+        )
+    )
+    print(
+        dim(
+            "\nRun 'py main.py emos-status' any time to check, or "
+            "'py main.py emos-deactivate' to revert."
+        )
+    )
+
+
+def cmd_emos_status() -> None:
+    """Show whether EMOS is currently the live probability method."""
+    from ml_bias import get_emos_status
+
+    status = get_emos_status()
+    if status.get("corrupt"):
+        print(
+            red(
+                f"  emos_params.json exists but is CORRUPT/unreadable: "
+                f"{status.get('error')}"
+            )
+        )
+        print(dim("  Run 'py main.py emos-deactivate' to remove it."))
+        return
+    if not status["active"]:
+        print(
+            dim("  EMOS is NOT active — using ensemble/climatology blend + T-scaling.")
+        )
+        return
+
+    print(green("  EMOS is ACTIVE (live probability method for above/below/between)."))
+    print(
+        f"  a={status['a']:.4f}  b={status['b']:.4f}  c={status['c']:.4f}  d={status['d']:.4f}"
+    )
+    if status.get("n") is not None:
+        print(f"  Trained on n={status['n']} rows", end="")
+        if status.get("mean_crps") is not None:
+            print(f"  mean_crps={status['mean_crps']:.4f}", end="")
+        print()
+    if status.get("fitted_at"):
+        print(f"  Fitted at: {status['fitted_at']}")
+
+
+def cmd_emos_deactivate(reason: str = "manual deactivation") -> None:
+    """Revert EMOS to inactive, restoring the ensemble/climatology blend + T-scaling path."""
+    from ml_bias import deactivate_emos, get_emos_status
+
+    status = get_emos_status()
+
+    if status.get("corrupt"):
+        print(
+            yellow(
+                f"  emos_params.json exists but is CORRUPT/unreadable: "
+                f"{status.get('error')}"
+            )
+        )
+        print(yellow("  Type 'yes' to remove it: "), end="", flush=True)
+        try:
+            answer = input().strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            print(dim("  Cancelled."))
+            return
+        if answer != "yes":
+            print(dim("  Cancelled."))
+            return
+        deactivate_emos()
+        print(green("  Corrupt emos_params.json removed."))
+        return
+
+    if not status["active"]:
+        print(dim("  EMOS is not currently active — nothing to do."))
+        return
+
+    try:
+        if _cron_module._is_cron_running():
+            print(
+                red(
+                    "\nA cron cycle is currently running — refusing to deactivate "
+                    "mid-scan (would split one scan across two probability "
+                    "methods). Wait for it to finish and try again."
+                )
+            )
+            return
+    except Exception:
+        pass  # fail open on an inability to check, matching _is_cron_running's own default
+
+    print(
+        yellow(
+            f"  EMOS is currently active (fitted {status.get('fitted_at', '?')}, "
+            f"n={status.get('n', '?')}). Deactivating reverts multi-day "
+            f"above/below/between predictions to the ensemble/climatology blend + "
+            f"temperature scaling, restoring the pre-activation T values "
+            f"immediately (saved when EMOS was activated). "
+            f"Type 'yes' to confirm: "
+        ),
+        end="",
+        flush=True,
+    )
+    try:
+        answer = input().strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        print(dim("  Cancelled — EMOS still active."))
+        return
+    if answer != "yes":
+        print(dim("  Cancelled — EMOS still active."))
+        return
+
+    deactivate_emos()
+    _log.info("cmd_emos_deactivate: EMOS deactivated (reason: %s)", reason)
+    print(
+        green(
+            "  EMOS deactivated — reverted to ensemble/climatology blend + T-scaling."
+        )
     )
 
 
@@ -9012,6 +9231,17 @@ def main():
         cmd_schedule_cycles()
         return
 
+    # emos-status/emos-deactivate only touch the local DB and data/ files --
+    # no API credentials required. This matters most for emos-deactivate:
+    # it's the emergency revert for a bad EMOS activation, and a revert must
+    # not be blocked by an unrelated broken/rotated API key.
+    if args and args[0].lower() in ("emos-status", "emos_status"):
+        cmd_emos_status()
+        return
+    if args and args[0].lower() in ("emos-deactivate", "emos_deactivate"):
+        cmd_emos_deactivate()
+        return
+
     if not validate_env():
         if not Path(".env").exists():
             print(
@@ -9318,7 +9548,9 @@ def main():
     elif cmd == "calibrate":
         cmd_calibrate()
     elif cmd in ("emos-train", "emos_train"):
-        _cmd_emos_train()
+        _cmd_emos_train(activate="--activate" in args, force="--force" in args)
+    # emos-status/emos-deactivate are dispatched earlier (credential-free
+    # bypass, see the top of main()) and never reach here.
     elif cmd in ("backfill-emos", "backfill_emos"):
         cmd_backfill_emos(force="--force" in args)
     elif cmd in ("backfill-price-history", "backfill_price_history"):
