@@ -9091,5 +9091,2591 @@
     "seen": 1786948183.1095886,
     "ast_hash": "c6ac2a6eb57fa4c9fa778caae8848ec0",
     "semantic_hash": "c6ac2a6eb57fa4c9fa778caae8848ec0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\.graphify_analysis.json": {
+    "mtime": 1786953145.7632098,
+    "seen": 1786953226.142824,
+    "ast_hash": "36d0b97a034d31f29abcac4eca265047",
+    "semantic_hash": "36d0b97a034d31f29abcac4eca265047"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\.graphify_full_ast.json": {
+    "mtime": 1786953113.0363834,
+    "seen": 1786953226.1428275,
+    "ast_hash": "b37d22e2c3bc1904bd50ece37dd4287f",
+    "semantic_hash": "b37d22e2c3bc1904bd50ece37dd4287f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\ab_test.py": {
+    "mtime": 1786951357.7029514,
+    "seen": 1786953226.142829,
+    "ast_hash": "5f93d3b4d20da720c566f8e321c5371b",
+    "semantic_hash": "5f93d3b4d20da720c566f8e321c5371b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\acis_precip.py": {
+    "mtime": 1786951357.7039547,
+    "seen": 1786953226.14283,
+    "ast_hash": "707daafd3e4e1bd2de8a23c2c024c99b",
+    "semantic_hash": "707daafd3e4e1bd2de8a23c2c024c99b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\acis_snow.py": {
+    "mtime": 1786951357.7039547,
+    "seen": 1786953226.1428306,
+    "ast_hash": "e5a7ca028a543a3f3f2eaf3c2c4e53e9",
+    "semantic_hash": "e5a7ca028a543a3f3f2eaf3c2c4e53e9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\alerts.py": {
+    "mtime": 1786951357.704959,
+    "seen": 1786953226.142831,
+    "ast_hash": "0f4e574365ab819d41d8c6cf77651a15",
+    "semantic_hash": "0f4e574365ab819d41d8c6cf77651a15"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\backlog_index.py": {
+    "mtime": 1786951357.7099514,
+    "seen": 1786953226.1428316,
+    "ast_hash": "36910ae2aab82b61a9816049d605f196",
+    "semantic_hash": "36910ae2aab82b61a9816049d605f196"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\backtest.py": {
+    "mtime": 1786951357.7099514,
+    "seen": 1786953226.1428323,
+    "ast_hash": "21b0fce7a3ed669a7bcc8ebba1564c9a",
+    "semantic_hash": "21b0fce7a3ed669a7bcc8ebba1564c9a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\calibration.py": {
+    "mtime": 1786951357.7109509,
+    "seen": 1786953226.1428332,
+    "ast_hash": "52fe333c799208ad0a710b56e833c57f",
+    "semantic_hash": "52fe333c799208ad0a710b56e833c57f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\check_edge.py": {
+    "mtime": 1786951357.7109509,
+    "seen": 1786953226.1428342,
+    "ast_hash": "6388ef1e0dd5c21aa9539fc8abf46486",
+    "semantic_hash": "6388ef1e0dd5c21aa9539fc8abf46486"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\circuit_breaker.py": {
+    "mtime": 1786951357.7109509,
+    "seen": 1786953226.1428347,
+    "ast_hash": "314bbfdea9d5f48147589b931c5b35e6",
+    "semantic_hash": "314bbfdea9d5f48147589b931c5b35e6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\climate_indices.py": {
+    "mtime": 1786951357.711951,
+    "seen": 1786953226.142835,
+    "ast_hash": "a359e3e599195893638663b771fd8e29",
+    "semantic_hash": "a359e3e599195893638663b771fd8e29"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\climatology.py": {
+    "mtime": 1786951357.711951,
+    "seen": 1786953226.1428356,
+    "ast_hash": "a7085ba971371433d46b7d6e90f8015a",
+    "semantic_hash": "a7085ba971371433d46b7d6e90f8015a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\cloud_backup.py": {
+    "mtime": 1786951357.711951,
+    "seen": 1786953226.1428366,
+    "ast_hash": "768d82c6510bb44fb034579f458f4534",
+    "semantic_hash": "768d82c6510bb44fb034579f458f4534"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\colors.py": {
+    "mtime": 1786951357.7129514,
+    "seen": 1786953226.142837,
+    "ast_hash": "185ccc4f7f6e66220c4d5c002d7ce644",
+    "semantic_hash": "185ccc4f7f6e66220c4d5c002d7ce644"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\config.py": {
+    "mtime": 1786951357.7129514,
+    "seen": 1786953226.1428382,
+    "ast_hash": "27cd731360f3585b17416bf44caa7c65",
+    "semantic_hash": "27cd731360f3585b17416bf44caa7c65"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\consistency.py": {
+    "mtime": 1786951357.713951,
+    "seen": 1786953226.1428387,
+    "ast_hash": "b892210585c024a6c54b35aa9072f1df",
+    "semantic_hash": "b892210585c024a6c54b35aa9072f1df"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\cron.py": {
+    "mtime": 1786951357.714951,
+    "seen": 1786953226.1428397,
+    "ast_hash": "d7cd2b21ca8901f85b31db7e6a836c41",
+    "semantic_hash": "d7cd2b21ca8901f85b31db7e6a836c41"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\data\\city_weights.json": {
+    "mtime": 1786951357.7159514,
+    "seen": 1786953226.1428401,
+    "ast_hash": "99914b932bd37a50b983c5e7c90ae93b",
+    "semantic_hash": "99914b932bd37a50b983c5e7c90ae93b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\data\\condition_weights.json": {
+    "mtime": 1786951357.7159514,
+    "seen": 1786953226.1428406,
+    "ast_hash": "0c229f2b79a25bc1e57924f752924bc2",
+    "semantic_hash": "0c229f2b79a25bc1e57924f752924bc2"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\data\\seasonal_weights.json": {
+    "mtime": 1786951357.7159514,
+    "seen": 1786953226.1428413,
+    "ast_hash": "fefb8eb8665845624fa8e184abd5524b",
+    "semantic_hash": "fefb8eb8665845624fa8e184abd5524b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\data\\temperature_scale.json": {
+    "mtime": 1786951357.7159514,
+    "seen": 1786953226.142842,
+    "ast_hash": "c6ac2a6eb57fa4c9fa778caae8848ec0",
+    "semantic_hash": "c6ac2a6eb57fa4c9fa778caae8848ec0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\execution_log.py": {
+    "mtime": 1786952531.312027,
+    "seen": 1786953226.1428435,
+    "ast_hash": "b0a06d70294bcfdef39034cbf6f0d21c",
+    "semantic_hash": "b0a06d70294bcfdef39034cbf6f0d21c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\feature_importance.py": {
+    "mtime": 1786951357.7664738,
+    "seen": 1786953226.1428442,
+    "ast_hash": "425ef2f0cac48454a8ec53e9fab17d0f",
+    "semantic_hash": "425ef2f0cac48454a8ec53e9fab17d0f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\forecast_cache.py": {
+    "mtime": 1786951357.7664738,
+    "seen": 1786953226.142845,
+    "ast_hash": "6722807b38870c115b79a2f73ccb116b",
+    "semantic_hash": "6722807b38870c115b79a2f73ccb116b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\frontend\\package.json": {
+    "mtime": 1786951357.7684739,
+    "seen": 1786953226.1428454,
+    "ast_hash": "23c7e488957ed0a0f00fed8f30ce94da",
+    "semantic_hash": "23c7e488957ed0a0f00fed8f30ce94da"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\frontend\\src\\App.jsx": {
+    "mtime": 1786951357.7694743,
+    "seen": 1786953226.142846,
+    "ast_hash": "65eba888df26ddf76a3409067fc9b10b",
+    "semantic_hash": "65eba888df26ddf76a3409067fc9b10b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\frontend\\src\\main.jsx": {
+    "mtime": 1786951357.7694743,
+    "seen": 1786953226.1428468,
+    "ast_hash": "1f7d55a5ad976edcb22c0c275954113f",
+    "semantic_hash": "1f7d55a5ad976edcb22c0c275954113f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\frontend\\src\\mockData.js": {
+    "mtime": 1786951357.7704778,
+    "seen": 1786953226.142847,
+    "ast_hash": "dfdbe47d211d13cfe1c392d0eab912a1",
+    "semantic_hash": "dfdbe47d211d13cfe1c392d0eab912a1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\frontend\\src\\useData.js": {
+    "mtime": 1786951357.7704778,
+    "seen": 1786953226.1428478,
+    "ast_hash": "30165d6102d1a436131397afd4613adb",
+    "semantic_hash": "30165d6102d1a436131397afd4613adb"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\frontend\\src\\useData.test.js": {
+    "mtime": 1786951357.7704778,
+    "seen": 1786953226.1428485,
+    "ast_hash": "af0ae6e2eea3d1a287773b2a280b447f",
+    "semantic_hash": "af0ae6e2eea3d1a287773b2a280b447f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\frontend\\vite.config.js": {
+    "mtime": 1786951357.7714741,
+    "seen": 1786953226.142849,
+    "ast_hash": "2cb4cee473464ad482b0245a5d1a1d79",
+    "semantic_hash": "2cb4cee473464ad482b0245a5d1a1d79"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\hurricane_climatology.py": {
+    "mtime": 1786951397.5277748,
+    "seen": 1786953226.1428494,
+    "ast_hash": "fee893946a0ec2b3f17305e10e400d86",
+    "semantic_hash": "fee893946a0ec2b3f17305e10e400d86"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\kalshi_client.py": {
+    "mtime": 1786951397.5277748,
+    "seen": 1786953226.1428502,
+    "ast_hash": "cfa473c9915393a66703a3f3d53cea94",
+    "semantic_hash": "cfa473c9915393a66703a3f3d53cea94"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\kalshi_ws.py": {
+    "mtime": 1786951397.528772,
+    "seen": 1786953226.1428509,
+    "ast_hash": "ca4561160037ab5296218f7b2d34c6d6",
+    "semantic_hash": "ca4561160037ab5296218f7b2d34c6d6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\main.py": {
+    "mtime": 1786951397.5297737,
+    "seen": 1786953226.1428516,
+    "ast_hash": "8a62e918770c8d9ac52fa88d9cdd1881",
+    "semantic_hash": "8a62e918770c8d9ac52fa88d9cdd1881"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\market_types.py": {
+    "mtime": 1786951397.5297737,
+    "seen": 1786953226.1428523,
+    "ast_hash": "aa01dd1b677e92a12c65b98d7a4b4a13",
+    "semantic_hash": "aa01dd1b677e92a12c65b98d7a4b4a13"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\metar.py": {
+    "mtime": 1786951397.530776,
+    "seen": 1786953226.142853,
+    "ast_hash": "28ff400bc0a39b31959ef8fc9d752245",
+    "semantic_hash": "28ff400bc0a39b31959ef8fc9d752245"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\ml_bias.py": {
+    "mtime": 1786951397.530776,
+    "seen": 1786953226.142854,
+    "ast_hash": "26cdc44293a4f167a85456dd5f7d4ebf",
+    "semantic_hash": "26cdc44293a4f167a85456dd5f7d4ebf"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\monte_carlo.py": {
+    "mtime": 1786951397.5317755,
+    "seen": 1786953226.1428545,
+    "ast_hash": "16600a18b8825f1b509ecad88c258d46",
+    "semantic_hash": "16600a18b8825f1b509ecad88c258d46"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\mos.py": {
+    "mtime": 1786951397.5317755,
+    "seen": 1786953226.142855,
+    "ast_hash": "f6737223dedb4962d9e6e2fc6d09358a",
+    "semantic_hash": "f6737223dedb4962d9e6e2fc6d09358a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\notify.py": {
+    "mtime": 1786951397.5324461,
+    "seen": 1786953226.1428556,
+    "ast_hash": "0dce8636f92b423582eb17af67870d2b",
+    "semantic_hash": "0dce8636f92b423582eb17af67870d2b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\nws.py": {
+    "mtime": 1786951397.5324461,
+    "seen": 1786953226.1428566,
+    "ast_hash": "7c0e83b01382005594910eaaa180daa1",
+    "semantic_hash": "7c0e83b01382005594910eaaa180daa1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\nws_afd.py": {
+    "mtime": 1786951397.5324461,
+    "seen": 1786953226.1428573,
+    "ast_hash": "73a68e099d14cdce482cfe46e43228d1",
+    "semantic_hash": "73a68e099d14cdce482cfe46e43228d1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\order_executor.py": {
+    "mtime": 1786951876.1719897,
+    "seen": 1786953226.1428578,
+    "ast_hash": "116e79cc717076f20518634355789519",
+    "semantic_hash": "116e79cc717076f20518634355789519"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\output_formatters.py": {
+    "mtime": 1786951397.5337746,
+    "seen": 1786953226.1428583,
+    "ast_hash": "224e9c22a151b590c51bf524da39b96d",
+    "semantic_hash": "224e9c22a151b590c51bf524da39b96d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\paper.py": {
+    "mtime": 1786951397.534858,
+    "seen": 1786953226.142859,
+    "ast_hash": "8b37dd671431e5f3708eeb88f4e617e3",
+    "semantic_hash": "8b37dd671431e5f3708eeb88f4e617e3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\param_sweep.py": {
+    "mtime": 1786951397.534858,
+    "seen": 1786953226.1428597,
+    "ast_hash": "434dbafeecbcd141d24f34f306a0da63",
+    "semantic_hash": "434dbafeecbcd141d24f34f306a0da63"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\paths.py": {
+    "mtime": 1786951397.5354047,
+    "seen": 1786953226.1428607,
+    "ast_hash": "0f6d5ab5a66306f582ab8eacb9aa4232",
+    "semantic_hash": "0f6d5ab5a66306f582ab8eacb9aa4232"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\pdf_report.py": {
+    "mtime": 1786951397.5357604,
+    "seen": 1786953226.1428616,
+    "ast_hash": "c98fd705ada8ae2ef9854ecd141335fd",
+    "semantic_hash": "c98fd705ada8ae2ef9854ecd141335fd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\positions.py": {
+    "mtime": 1786951397.5357604,
+    "seen": 1786953226.142862,
+    "ast_hash": "5f61a1cea48cef24ef0a57280ab2a8a7",
+    "semantic_hash": "5f61a1cea48cef24ef0a57280ab2a8a7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\pyproject.toml": {
+    "mtime": 1786951397.5357604,
+    "seen": 1786953226.1428626,
+    "ast_hash": "0682db3dffe1d05efb773d8354e38a97",
+    "semantic_hash": "0682db3dffe1d05efb773d8354e38a97"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\regime.py": {
+    "mtime": 1786951397.5357604,
+    "seen": 1786953226.1428633,
+    "ast_hash": "73568a4d5e692c1f4cf4a706179e9e72",
+    "semantic_hash": "73568a4d5e692c1f4cf4a706179e9e72"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\restore_window.ps1": {
+    "mtime": 1786951397.536767,
+    "seen": 1786953226.142864,
+    "ast_hash": "98a65148784de09901a805a1789f5ba7",
+    "semantic_hash": "98a65148784de09901a805a1789f5ba7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\safe_io.py": {
+    "mtime": 1786951397.536767,
+    "seen": 1786953226.1428647,
+    "ast_hash": "5d3f1f3a7040c409f1ae91e2a026e43f",
+    "semantic_hash": "5d3f1f3a7040c409f1ae91e2a026e43f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\schema_validator.py": {
+    "mtime": 1786951397.5377634,
+    "seen": 1786953226.1428654,
+    "ast_hash": "6dc93cf5f09ee3772dbb8eb8d3709f0d",
+    "semantic_hash": "6dc93cf5f09ee3772dbb8eb8d3709f0d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\settlement_monitor.py": {
+    "mtime": 1786951397.538767,
+    "seen": 1786953226.142866,
+    "ast_hash": "05b7aecc83bbde54ba1d657091836af5",
+    "semantic_hash": "05b7aecc83bbde54ba1d657091836af5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\sigma_audit.py": {
+    "mtime": 1786951397.538767,
+    "seen": 1786953226.1428666,
+    "ast_hash": "bf657652ac0de8811606fd3fb3d979c9",
+    "semantic_hash": "bf657652ac0de8811606fd3fb3d979c9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\static\\analytics.js": {
+    "mtime": 1786951397.539767,
+    "seen": 1786953226.1428678,
+    "ast_hash": "b4e532d471305f4cc9414ca7565e88e7",
+    "semantic_hash": "b4e532d471305f4cc9414ca7565e88e7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\static\\dashboard.js": {
+    "mtime": 1786951397.539767,
+    "seen": 1786953226.1428685,
+    "ast_hash": "868305d2bc44478c6dedc622ce02360f",
+    "semantic_hash": "868305d2bc44478c6dedc622ce02360f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\static\\forecast.js": {
+    "mtime": 1786951397.5417683,
+    "seen": 1786953226.142869,
+    "ast_hash": "ca42c50ec161c36482c01f473321fc15",
+    "semantic_hash": "ca42c50ec161c36482c01f473321fc15"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\static\\risk.js": {
+    "mtime": 1786951397.5417683,
+    "seen": 1786953226.1428697,
+    "ast_hash": "892a00760f94410d3e3a3b605fa3725d",
+    "semantic_hash": "892a00760f94410d3e3a3b605fa3725d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\static\\signals.js": {
+    "mtime": 1786951397.5427678,
+    "seen": 1786953226.1428702,
+    "ast_hash": "a9324c125360d1f3063ae6c5377e2f4f",
+    "semantic_hash": "a9324c125360d1f3063ae6c5377e2f4f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\static\\trades.js": {
+    "mtime": 1786951397.5427678,
+    "seen": 1786953226.1428711,
+    "ast_hash": "94fa32ddba68f0c965229f39c1b0e621",
+    "semantic_hash": "94fa32ddba68f0c965229f39c1b0e621"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\system_health.py": {
+    "mtime": 1786951397.5437634,
+    "seen": 1786953226.1428719,
+    "ast_hash": "d951cb46723ad721aa7a402893204d21",
+    "semantic_hash": "d951cb46723ad721aa7a402893204d21"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\__init__.py": {
+    "mtime": 1786951397.5467675,
+    "seen": 1786953226.1428723,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\conftest.py": {
+    "mtime": 1786951397.54777,
+    "seen": 1786953226.1428728,
+    "ast_hash": "d855c8d4e6e5b05b59fdd36bfa9591f8",
+    "semantic_hash": "d855c8d4e6e5b05b59fdd36bfa9591f8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\fixtures\\regression_baseline.json": {
+    "mtime": 1786951397.54777,
+    "seen": 1786953226.1428733,
+    "ast_hash": "51fe9aaeebc010c41b3c8b5868d7397b",
+    "semantic_hash": "51fe9aaeebc010c41b3c8b5868d7397b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\fixtures\\sample_forecast.json": {
+    "mtime": 1786951397.54777,
+    "seen": 1786953226.1428738,
+    "ast_hash": "cfdb06396c5ef115604566662e8d21cd",
+    "semantic_hash": "cfdb06396c5ef115604566662e8d21cd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\fixtures\\sample_markets.json": {
+    "mtime": 1786951397.5487673,
+    "seen": 1786953226.1428745,
+    "ast_hash": "76306b59dbd70c1007cbf3ccc976a71c",
+    "semantic_hash": "76306b59dbd70c1007cbf3ccc976a71c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_ab_test.py": {
+    "mtime": 1786951397.5487673,
+    "seen": 1786953226.142875,
+    "ast_hash": "10af1b7e57bb4834f661532b3cc72438",
+    "semantic_hash": "10af1b7e57bb4834f661532b3cc72438"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_acis_precip.py": {
+    "mtime": 1786951397.5487673,
+    "seen": 1786953226.1428757,
+    "ast_hash": "9c967feec5b6aec2a412158f76050535",
+    "semantic_hash": "9c967feec5b6aec2a412158f76050535"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_alerts.py": {
+    "mtime": 1786951397.5497675,
+    "seen": 1786953226.1428764,
+    "ast_hash": "6a921010ce747e93346ec34b6a5f6167",
+    "semantic_hash": "6a921010ce747e93346ec34b6a5f6167"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_alerts_side.py": {
+    "mtime": 1786951397.5497675,
+    "seen": 1786953226.1428773,
+    "ast_hash": "965cc5c408df648ff3abc6bd9b3d4509",
+    "semantic_hash": "965cc5c408df648ff3abc6bd9b3d4509"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_backlog_batch.py": {
+    "mtime": 1786951397.5497675,
+    "seen": 1786953226.1428783,
+    "ast_hash": "4cca44571df59fcfdbfc94db65771086",
+    "semantic_hash": "4cca44571df59fcfdbfc94db65771086"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_backtest.py": {
+    "mtime": 1786951397.5507674,
+    "seen": 1786953226.1428785,
+    "ast_hash": "8e156787a2b93676fe477315b988db1f",
+    "semantic_hash": "8e156787a2b93676fe477315b988db1f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_backtest_stratified.py": {
+    "mtime": 1786951397.5507674,
+    "seen": 1786953226.1428792,
+    "ast_hash": "2199e2e461ef499da327de38b0cbe790",
+    "semantic_hash": "2199e2e461ef499da327de38b0cbe790"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_bare_os_replace_guard.py": {
+    "mtime": 1786951397.5507674,
+    "seen": 1786953226.1428797,
+    "ast_hash": "0da1d05b98dcba6f7e4221e74aced171",
+    "semantic_hash": "0da1d05b98dcba6f7e4221e74aced171"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_bug_b_unparseable_date_logging.py": {
+    "mtime": 1786951397.5507674,
+    "seen": 1786953226.1428804,
+    "ast_hash": "8ea85abdb905a813fd6b92e7db02c4d7",
+    "semantic_hash": "8ea85abdb905a813fd6b92e7db02c4d7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_calibration.py": {
+    "mtime": 1786951397.5517664,
+    "seen": 1786953226.1428814,
+    "ast_hash": "620212ad08fdc41b0b8f2a131ea24933",
+    "semantic_hash": "620212ad08fdc41b0b8f2a131ea24933"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_circuit_breaker.py": {
+    "mtime": 1786951397.5517664,
+    "seen": 1786953226.1428819,
+    "ast_hash": "390e6f1231fc6e787ccdebe24f8a0b0f",
+    "semantic_hash": "390e6f1231fc6e787ccdebe24f8a0b0f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_city_registry_manifest.py": {
+    "mtime": 1786951397.5517664,
+    "seen": 1786953226.1428826,
+    "ast_hash": "0d579d661e8fc8f905b81682f74f2513",
+    "semantic_hash": "0d579d661e8fc8f905b81682f74f2513"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_city_registry_report_logging.py": {
+    "mtime": 1786951397.552768,
+    "seen": 1786953226.142883,
+    "ast_hash": "c0e9494fb349ada3f7da8445a2e255bf",
+    "semantic_hash": "c0e9494fb349ada3f7da8445a2e255bf"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_cleanup_data_dir.py": {
+    "mtime": 1786951397.5529768,
+    "seen": 1786953226.142884,
+    "ast_hash": "f9568ae85ca20b2ec19ded0b995ed290",
+    "semantic_hash": "f9568ae85ca20b2ec19ded0b995ed290"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_climate_indices.py": {
+    "mtime": 1786951397.5529768,
+    "seen": 1786953226.1428845,
+    "ast_hash": "b55968724a32d95954c7fbbca8d232bc",
+    "semantic_hash": "b55968724a32d95954c7fbbca8d232bc"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_climatology.py": {
+    "mtime": 1786951397.5536819,
+    "seen": 1786953226.1428852,
+    "ast_hash": "c3f8aa5a4eda55956f2444c1fe1394de",
+    "semantic_hash": "c3f8aa5a4eda55956f2444c1fe1394de"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_cloud_backup.py": {
+    "mtime": 1786951397.5536819,
+    "seen": 1786953226.1428857,
+    "ast_hash": "596fdf679958657049a298b92ebf7a5b",
+    "semantic_hash": "596fdf679958657049a298b92ebf7a5b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_cmd_schedule_settlement_monitor.py": {
+    "mtime": 1786951397.5536819,
+    "seen": 1786953226.1428862,
+    "ast_hash": "272a3578472d57f0b5ce9c50fe6064d8",
+    "semantic_hash": "272a3578472d57f0b5ce9c50fe6064d8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_cmd_setup.py": {
+    "mtime": 1786951397.5536819,
+    "seen": 1786953226.1428869,
+    "ast_hash": "6675cb6fd75a0dfda17a28f33e277111",
+    "semantic_hash": "6675cb6fd75a0dfda17a28f33e277111"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_confidence_tiers.py": {
+    "mtime": 1786951397.5547786,
+    "seen": 1786953226.142887,
+    "ast_hash": "f6020ab56b14743098cb7fefc3a7fce5",
+    "semantic_hash": "f6020ab56b14743098cb7fefc3a7fce5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_config.py": {
+    "mtime": 1786951397.5547786,
+    "seen": 1786953226.1428876,
+    "ast_hash": "7aefe0f4e8fffbc13dce4f8c1a40878b",
+    "semantic_hash": "7aefe0f4e8fffbc13dce4f8c1a40878b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_config_divergence_guard.py": {
+    "mtime": 1786951397.5552204,
+    "seen": 1786953226.1428885,
+    "ast_hash": "6b1574ecf691dafb748a2934800d080e",
+    "semantic_hash": "6b1574ecf691dafb748a2934800d080e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_config_validation.py": {
+    "mtime": 1786951397.5552204,
+    "seen": 1786953226.1428893,
+    "ast_hash": "de8ba7013e420db0c3af05efbf31ad82",
+    "semantic_hash": "de8ba7013e420db0c3af05efbf31ad82"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_consistency.py": {
+    "mtime": 1786951397.5552204,
+    "seen": 1786953226.1428897,
+    "ast_hash": "5697b2d2aa2daba3e0613bb3cd76ea27",
+    "semantic_hash": "5697b2d2aa2daba3e0613bb3cd76ea27"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_cron_group_c.py": {
+    "mtime": 1786951397.5552204,
+    "seen": 1786953226.1428905,
+    "ast_hash": "3e31ba9fbe312b56aea1e3c14cc83c9e",
+    "semantic_hash": "3e31ba9fbe312b56aea1e3c14cc83c9e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_cron_integration.py": {
+    "mtime": 1786951397.5562284,
+    "seen": 1786953226.142891,
+    "ast_hash": "adda68d913907dee780636ce013ec94d",
+    "semantic_hash": "adda68d913907dee780636ce013ec94d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_cron_lock.py": {
+    "mtime": 1786951397.5562284,
+    "seen": 1786953226.1428914,
+    "ast_hash": "5a73f44a6c599e263474d59f94ac37c4",
+    "semantic_hash": "5a73f44a6c599e263474d59f94ac37c4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_cron_trade_updates.py": {
+    "mtime": 1786951397.5562284,
+    "seen": 1786953226.142892,
+    "ast_hash": "17183aa48f23543817dfb8e7d76064fe",
+    "semantic_hash": "17183aa48f23543817dfb8e7d76064fe"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_cron_watchdog.py": {
+    "mtime": 1786951397.557223,
+    "seen": 1786953226.1428928,
+    "ast_hash": "62e7d8751ed80f7fc4d9ed5eb7736b2c",
+    "semantic_hash": "62e7d8751ed80f7fc4d9ed5eb7736b2c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_data_freshness.py": {
+    "mtime": 1786951397.557223,
+    "seen": 1786953226.1428936,
+    "ast_hash": "34cdf4acb7ba350177fb08c523fb3a82",
+    "semantic_hash": "34cdf4acb7ba350177fb08c523fb3a82"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_date_today_guard.py": {
+    "mtime": 1786951397.557223,
+    "seen": 1786953226.142894,
+    "ast_hash": "b9ac2e008891020fee7e224359572a64",
+    "semantic_hash": "b9ac2e008891020fee7e224359572a64"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_dead_code_scan.py": {
+    "mtime": 1786951397.558227,
+    "seen": 1786953226.1428945,
+    "ast_hash": "0809a00d38afe91532b9a6a1a448f175",
+    "semantic_hash": "0809a00d38afe91532b9a6a1a448f175"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_dead_man.py": {
+    "mtime": 1786951397.558227,
+    "seen": 1786953226.1428952,
+    "ast_hash": "848a6cd5306737966812bf37177114a8",
+    "semantic_hash": "848a6cd5306737966812bf37177114a8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_debug_fixes.py": {
+    "mtime": 1786951397.558227,
+    "seen": 1786953226.142896,
+    "ast_hash": "9124aadc78b1a37db02609b927f70fe3",
+    "semantic_hash": "9124aadc78b1a37db02609b927f70fe3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_dedup.py": {
+    "mtime": 1786951397.5592282,
+    "seen": 1786953226.1428962,
+    "ast_hash": "46929e0d27803b3d0701db0ddbdc27b8",
+    "semantic_hash": "46929e0d27803b3d0701db0ddbdc27b8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_disputed_row_guard.py": {
+    "mtime": 1786951397.5592282,
+    "seen": 1786953226.1428967,
+    "ast_hash": "e1d0de005a3759002bf6c9f46aa15f96",
+    "semantic_hash": "e1d0de005a3759002bf6c9f46aa15f96"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_drawdown_tiers.py": {
+    "mtime": 1786951397.5592282,
+    "seen": 1786953226.1428971,
+    "ast_hash": "0c4e5fd0322276ac8ba727e6cff03cec",
+    "semantic_hash": "0c4e5fd0322276ac8ba727e6cff03cec"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_early_exits.py": {
+    "mtime": 1786951397.560232,
+    "seen": 1786953226.1428978,
+    "ast_hash": "67d35f06d81c4a93852b00185645ae17",
+    "semantic_hash": "67d35f06d81c4a93852b00185645ae17"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_ecmwf.py": {
+    "mtime": 1786951397.560232,
+    "seen": 1786953226.1428983,
+    "ast_hash": "7557ec952e7e2b6a5be62d940a43ab3c",
+    "semantic_hash": "7557ec952e7e2b6a5be62d940a43ab3c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_edge_threshold.py": {
+    "mtime": 1786951397.560232,
+    "seen": 1786953226.1428993,
+    "ast_hash": "25aa46006839ff1ba19bdc4bec17c27a",
+    "semantic_hash": "25aa46006839ff1ba19bdc4bec17c27a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_edge_version.py": {
+    "mtime": 1786951397.5612264,
+    "seen": 1786953226.1428998,
+    "ast_hash": "824ee26ef24afad52bf16fc17f7799e4",
+    "semantic_hash": "824ee26ef24afad52bf16fc17f7799e4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_execution_log.py": {
+    "mtime": 1786951397.5612264,
+    "seen": 1786953226.1429002,
+    "ast_hash": "b0e109276e38d4d18ed569f530adbb17",
+    "semantic_hash": "b0e109276e38d4d18ed569f530adbb17"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_execution_proof.py": {
+    "mtime": 1786951397.5612264,
+    "seen": 1786953226.1429007,
+    "ast_hash": "3799478fed0c8381209cc1abbbec1e0b",
+    "semantic_hash": "3799478fed0c8381209cc1abbbec1e0b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_execution_stability.py": {
+    "mtime": 1786951397.5622263,
+    "seen": 1786953226.142901,
+    "ast_hash": "e3c88b0fbe376bd52ef87693f9048c12",
+    "semantic_hash": "e3c88b0fbe376bd52ef87693f9048c12"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_feature_importance_days_out.py": {
+    "mtime": 1786951397.5622263,
+    "seen": 1786953226.1429014,
+    "ast_hash": "eabff1ee2c3c4d349a74dbdbefc9a628",
+    "semantic_hash": "eabff1ee2c3c4d349a74dbdbefc9a628"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_flash_crash_cb.py": {
+    "mtime": 1786951397.5622263,
+    "seen": 1786953226.142902,
+    "ast_hash": "e2fff07c5ddc59dd69075b96085cbbd6",
+    "semantic_hash": "e2fff07c5ddc59dd69075b96085cbbd6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_forecast_accuracy.py": {
+    "mtime": 1786951397.5632308,
+    "seen": 1786953226.1429024,
+    "ast_hash": "1a1bae9cb4422cd831589c5733041ee5",
+    "semantic_hash": "1a1bae9cb4422cd831589c5733041ee5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_forecast_cache.py": {
+    "mtime": 1786951397.5632308,
+    "seen": 1786953226.1429029,
+    "ast_hash": "922295dd9229f3dc0f5b5c2e2929d76b",
+    "semantic_hash": "922295dd9229f3dc0f5b5c2e2929d76b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_forecasting.py": {
+    "mtime": 1786951397.5632308,
+    "seen": 1786953226.1429036,
+    "ast_hash": "26cea04a7cd55ac1f39df3717919b2cd",
+    "semantic_hash": "26cea04a7cd55ac1f39df3717919b2cd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_gaussian_prob.py": {
+    "mtime": 1786951397.564227,
+    "seen": 1786953226.142904,
+    "ast_hash": "a77cae182a5ca46eb73b8d37e3cabd64",
+    "semantic_hash": "a77cae182a5ca46eb73b8d37e3cabd64"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_graduation_gate.py": {
+    "mtime": 1786951397.564227,
+    "seen": 1786953226.1429048,
+    "ast_hash": "f44acbf4c80aae879781e7758f29121c",
+    "semantic_hash": "f44acbf4c80aae879781e7758f29121c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_hmac_bias.py": {
+    "mtime": 1786951397.564227,
+    "seen": 1786953226.1429057,
+    "ast_hash": "6193b8c8f3a79f04da35daa5f36ee30a",
+    "semantic_hash": "6193b8c8f3a79f04da35daa5f36ee30a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_hourly_markets.py": {
+    "mtime": 1786951397.565227,
+    "seen": 1786953226.1429062,
+    "ast_hash": "d57ee1b4904b53268be1fd6d97589976",
+    "semantic_hash": "d57ee1b4904b53268be1fd6d97589976"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_hourly_target_hours.py": {
+    "mtime": 1786951397.565227,
+    "seen": 1786953226.142907,
+    "ast_hash": "1dfb5124d07421f79453f0e0915cff3d",
+    "semantic_hash": "1dfb5124d07421f79453f0e0915cff3d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_http.py": {
+    "mtime": 1786951397.565227,
+    "seen": 1786953226.1429076,
+    "ast_hash": "dcf8a30e6cb831ce116971a7ae93ff28",
+    "semantic_hash": "dcf8a30e6cb831ce116971a7ae93ff28"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_hurricane_climatology.py": {
+    "mtime": 1786951397.5662227,
+    "seen": 1786953226.1429086,
+    "ast_hash": "f4ae2dc1cf2ffce2f357d2ab9695b7dd",
+    "semantic_hash": "f4ae2dc1cf2ffce2f357d2ab9695b7dd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_hurricane_gating.py": {
+    "mtime": 1786951397.5662227,
+    "seen": 1786953226.1429088,
+    "ast_hash": "82b3fbbcb13bc5835382486fdbdfa905",
+    "semantic_hash": "82b3fbbcb13bc5835382486fdbdfa905"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_hurricane_markets.py": {
+    "mtime": 1786951397.5662227,
+    "seen": 1786953226.1429095,
+    "ast_hash": "7dd5bb2a74c98ba3d47469654c65267d",
+    "semantic_hash": "7dd5bb2a74c98ba3d47469654c65267d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_idempotency.py": {
+    "mtime": 1786951397.5672238,
+    "seen": 1786953226.1429102,
+    "ast_hash": "b1859ef5454df53a04b61d813575cba7",
+    "semantic_hash": "b1859ef5454df53a04b61d813575cba7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_infrastructure.py": {
+    "mtime": 1786951397.5672238,
+    "seen": 1786953226.1429107,
+    "ast_hash": "626cbbf820d03613cb18bd2400d7f2d0",
+    "semantic_hash": "626cbbf820d03613cb18bd2400d7f2d0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_integration.py": {
+    "mtime": 1786951397.5672238,
+    "seen": 1786953226.1429114,
+    "ast_hash": "1a31ca3d08c080955b919ce583592041",
+    "semantic_hash": "1a31ca3d08c080955b919ce583592041"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_integration_live.py": {
+    "mtime": 1786951397.5682378,
+    "seen": 1786953226.1429126,
+    "ast_hash": "65dcbda18926750e1419b2320de68cc0",
+    "semantic_hash": "65dcbda18926750e1419b2320de68cc0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_isoformat_cutoff_guard.py": {
+    "mtime": 1786951397.5682378,
+    "seen": 1786953226.142913,
+    "ast_hash": "954edb1df57680bed2075a64a80b1b55",
+    "semantic_hash": "954edb1df57680bed2075a64a80b1b55"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_kalshi_client.py": {
+    "mtime": 1786951397.5682378,
+    "seen": 1786953226.1429138,
+    "ast_hash": "5dd2d2151391b989928f713a89d9626d",
+    "semantic_hash": "5dd2d2151391b989928f713a89d9626d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_kalshi_ws.py": {
+    "mtime": 1786951397.5692296,
+    "seen": 1786953226.1429143,
+    "ast_hash": "b8d602073f31622196f669b5c0ebd4fe",
+    "semantic_hash": "b8d602073f31622196f669b5c0ebd4fe"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_kelly_property.py": {
+    "mtime": 1786951397.5692296,
+    "seen": 1786953226.1429148,
+    "ast_hash": "cc29f5eeae60dea29bb2519bac89f097",
+    "semantic_hash": "cc29f5eeae60dea29bb2519bac89f097"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_live_execution.py": {
+    "mtime": 1786952575.4775035,
+    "seen": 1786953226.142915,
+    "ast_hash": "b774a25d7376ddd968882b05abb5f443",
+    "semantic_hash": "b774a25d7376ddd968882b05abb5f443"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_log_rotation.py": {
+    "mtime": 1786951397.57023,
+    "seen": 1786953226.1429155,
+    "ast_hash": "9d5930973ece8fac0cdaffed25f2707a",
+    "semantic_hash": "9d5930973ece8fac0cdaffed25f2707a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_main_cron_smoke.py": {
+    "mtime": 1786951397.57023,
+    "seen": 1786953226.1429162,
+    "ast_hash": "50b693a66a31906babe9f996e8ec9111",
+    "semantic_hash": "50b693a66a31906babe9f996e8ec9111"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_market_implied_distribution.py": {
+    "mtime": 1786951397.57023,
+    "seen": 1786953226.1429167,
+    "ast_hash": "f48bf8b02ac5532e6b1f3a799a02d4ad",
+    "semantic_hash": "f48bf8b02ac5532e6b1f3a799a02d4ad"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_menu_ux.py": {
+    "mtime": 1786951397.5712264,
+    "seen": 1786953226.1429172,
+    "ast_hash": "1f03f27f63014e86201eec5a6e17500e",
+    "semantic_hash": "1f03f27f63014e86201eec5a6e17500e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_metar.py": {
+    "mtime": 1786951397.5720105,
+    "seen": 1786953226.1429176,
+    "ast_hash": "efcf24efa281219803a6797fafb2aec9",
+    "semantic_hash": "efcf24efa281219803a6797fafb2aec9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_ml_bias.py": {
+    "mtime": 1786951397.5720105,
+    "seen": 1786953226.142918,
+    "ast_hash": "ee92ca012aa1b99d60a1a5a3a4ff81dc",
+    "semantic_hash": "ee92ca012aa1b99d60a1a5a3a4ff81dc"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_mos.py": {
+    "mtime": 1786951397.5720105,
+    "seen": 1786953226.1429186,
+    "ast_hash": "c113ac9598de300422b81a8163bccfd6",
+    "semantic_hash": "c113ac9598de300422b81a8163bccfd6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_mos_nbp.py": {
+    "mtime": 1786951397.573238,
+    "seen": 1786953226.1429195,
+    "ast_hash": "65feede9124b9d3bc1f6c23531df80a2",
+    "semantic_hash": "65feede9124b9d3bc1f6c23531df80a2"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_mos_nbs.py": {
+    "mtime": 1786951397.573238,
+    "seen": 1786953226.1429198,
+    "ast_hash": "323bf178f96a2cc8d44c49dbc0481531",
+    "semantic_hash": "323bf178f96a2cc8d44c49dbc0481531"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_nbm.py": {
+    "mtime": 1786951397.573238,
+    "seen": 1786953226.1429203,
+    "ast_hash": "9054113fc5a38284f75c888bf89d00b7",
+    "semantic_hash": "9054113fc5a38284f75c888bf89d00b7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_near_settlement_log.py": {
+    "mtime": 1786951397.573238,
+    "seen": 1786953226.1429207,
+    "ast_hash": "6ae21e5e835d94e514a1876018f34358",
+    "semantic_hash": "6ae21e5e835d94e514a1876018f34358"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_notify.py": {
+    "mtime": 1786951397.574244,
+    "seen": 1786953226.1429212,
+    "ast_hash": "d59c77e8b01be4ebd4b59def593a5cc6",
+    "semantic_hash": "d59c77e8b01be4ebd4b59def593a5cc6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_nws.py": {
+    "mtime": 1786951397.574244,
+    "seen": 1786953226.1429217,
+    "ast_hash": "34519ccad12381c8ab8067359ca9a8f3",
+    "semantic_hash": "34519ccad12381c8ab8067359ca9a8f3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_nws_afd.py": {
+    "mtime": 1786951397.574244,
+    "seen": 1786953226.142922,
+    "ast_hash": "d5fb694c79e80feb6dced97128ae5a4c",
+    "semantic_hash": "d5fb694c79e80feb6dced97128ae5a4c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_obs_weight.py": {
+    "mtime": 1786951397.574244,
+    "seen": 1786953226.1429224,
+    "ast_hash": "767f1521a2d4e036df8da03f610e8f2c",
+    "semantic_hash": "767f1521a2d4e036df8da03f610e8f2c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_p0_10_paper_prelog.py": {
+    "mtime": 1786951397.5752406,
+    "seen": 1786953226.142923,
+    "ast_hash": "fde26728e04b5b71fa1b9b47105bc7d0",
+    "semantic_hash": "fde26728e04b5b71fa1b9b47105bc7d0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_p0_11_retired_strategy.py": {
+    "mtime": 1786951397.5752406,
+    "seen": 1786953226.1429236,
+    "ast_hash": "740e8a4f9b66b617dec9464b94f6c609",
+    "semantic_hash": "740e8a4f9b66b617dec9464b94f6c609"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_p0_16_cron_endpoint.py": {
+    "mtime": 1786951397.5752406,
+    "seen": 1786953226.142924,
+    "ast_hash": "5f9840d22c3f664df500b611942679bf",
+    "semantic_hash": "5f9840d22c3f664df500b611942679bf"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_p1_remaining.py": {
+    "mtime": 1786951397.5762446,
+    "seen": 1786953226.1429245,
+    "ast_hash": "589dd1586f9443afab9851128b7acf46",
+    "semantic_hash": "589dd1586f9443afab9851128b7acf46"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_p9_p10.py": {
+    "mtime": 1786951397.5762446,
+    "seen": 1786953226.142925,
+    "ast_hash": "edadcc3ea5f2b5d468fa7f24a66a57e2",
+    "semantic_hash": "edadcc3ea5f2b5d468fa7f24a66a57e2"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_paper.py": {
+    "mtime": 1786951397.577244,
+    "seen": 1786953226.1429255,
+    "ast_hash": "54eaecb6b354b4fc29c3393dfb1653f8",
+    "semantic_hash": "54eaecb6b354b4fc29c3393dfb1653f8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_paper_cross_process_lock.py": {
+    "mtime": 1786951397.577244,
+    "seen": 1786953226.142926,
+    "ast_hash": "281361a119508c34ceb1bdb2b20ec0cb",
+    "semantic_hash": "281361a119508c34ceb1bdb2b20ec0cb"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_paper_metrics.py": {
+    "mtime": 1786951397.577244,
+    "seen": 1786953226.1429265,
+    "ast_hash": "50ab06a1b35f420008c524d005ff7eac",
+    "semantic_hash": "50ab06a1b35f420008c524d005ff7eac"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_param_sweep_load.py": {
+    "mtime": 1786951397.578244,
+    "seen": 1786953226.142927,
+    "ast_hash": "f47e7afd32956fc89d75208b092a19e6",
+    "semantic_hash": "f47e7afd32956fc89d75208b092a19e6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_paths_bypass_guard.py": {
+    "mtime": 1786951397.578244,
+    "seen": 1786953226.1429274,
+    "ast_hash": "bd19ecafa3aaf8fcd2ec6bebebb37f81",
+    "semantic_hash": "bd19ecafa3aaf8fcd2ec6bebebb37f81"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_a.py": {
+    "mtime": 1786951397.578244,
+    "seen": 1786953226.142928,
+    "ast_hash": "0ef58eaea2e1fd1818303e49dd7858e3",
+    "semantic_hash": "0ef58eaea2e1fd1818303e49dd7858e3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_b.py": {
+    "mtime": 1786951397.578244,
+    "seen": 1786953226.1429284,
+    "ast_hash": "b7b9648f227c7995a7e7f68f32b4404f",
+    "semantic_hash": "b7b9648f227c7995a7e7f68f32b4404f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_c.py": {
+    "mtime": 1786951397.579244,
+    "seen": 1786953226.1429288,
+    "ast_hash": "c3692120c0e01b40df26341c047c274f",
+    "semantic_hash": "c3692120c0e01b40df26341c047c274f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_d.py": {
+    "mtime": 1786951397.579244,
+    "seen": 1786953226.1429293,
+    "ast_hash": "331e9949a364e45e8ba48ab30598907e",
+    "semantic_hash": "331e9949a364e45e8ba48ab30598907e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_e.py": {
+    "mtime": 1786951397.579244,
+    "seen": 1786953226.14293,
+    "ast_hash": "785e2696f5a6e19390d8d30249504d80",
+    "semantic_hash": "785e2696f5a6e19390d8d30249504d80"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_f.py": {
+    "mtime": 1786951397.5802417,
+    "seen": 1786953226.1429303,
+    "ast_hash": "eb37c51fab22ca2d1ca9485a79666e63",
+    "semantic_hash": "eb37c51fab22ca2d1ca9485a79666e63"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_g.py": {
+    "mtime": 1786951397.5802417,
+    "seen": 1786953226.142931,
+    "ast_hash": "0d7aff67615fa7a9dbc5b6c95ee98142",
+    "semantic_hash": "0d7aff67615fa7a9dbc5b6c95ee98142"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_h.py": {
+    "mtime": 1786951397.581245,
+    "seen": 1786953226.1429315,
+    "ast_hash": "2d8ffd5155c8932b7d49a878362230e7",
+    "semantic_hash": "2d8ffd5155c8932b7d49a878362230e7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_i.py": {
+    "mtime": 1786951397.581245,
+    "seen": 1786953226.142932,
+    "ast_hash": "039d4924cfa7129be81b259b4c8e87ce",
+    "semantic_hash": "039d4924cfa7129be81b259b4c8e87ce"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_j.py": {
+    "mtime": 1786951397.581245,
+    "seen": 1786953226.1429324,
+    "ast_hash": "3107bbcfddca70ea0f59978123c372b1",
+    "semantic_hash": "3107bbcfddca70ea0f59978123c372b1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_k.py": {
+    "mtime": 1786951397.5822442,
+    "seen": 1786953226.142933,
+    "ast_hash": "c4ca03ce875bfc1b901f7fb6b758d99e",
+    "semantic_hash": "c4ca03ce875bfc1b901f7fb6b758d99e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_l.py": {
+    "mtime": 1786951397.5822442,
+    "seen": 1786953226.1429336,
+    "ast_hash": "bb1dc40308af2566adb633b76795238e",
+    "semantic_hash": "bb1dc40308af2566adb633b76795238e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_m.py": {
+    "mtime": 1786951397.5822442,
+    "seen": 1786953226.142934,
+    "ast_hash": "72d3d7e9a48e4b88217412442a1cfd2c",
+    "semantic_hash": "72d3d7e9a48e4b88217412442a1cfd2c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_n.py": {
+    "mtime": 1786951397.5822442,
+    "seen": 1786953226.1429346,
+    "ast_hash": "e709c720c0990d8feffc5013a07ed722",
+    "semantic_hash": "e709c720c0990d8feffc5013a07ed722"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_o.py": {
+    "mtime": 1786951397.5822442,
+    "seen": 1786953226.1429348,
+    "ast_hash": "7d093930278a63489ae08095984f7971",
+    "semantic_hash": "7d093930278a63489ae08095984f7971"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase2_batch_p.py": {
+    "mtime": 1786951397.5822442,
+    "seen": 1786953226.1429353,
+    "ast_hash": "67456f707493481c4280df4c2338dfb7",
+    "semantic_hash": "67456f707493481c4280df4c2338dfb7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase3_batch_a.py": {
+    "mtime": 1786951397.5840695,
+    "seen": 1786953226.1429358,
+    "ast_hash": "074a614249ce5e311b7861479156c9a0",
+    "semantic_hash": "074a614249ce5e311b7861479156c9a0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase3_batch_b.py": {
+    "mtime": 1786951397.5840695,
+    "seen": 1786953226.1429362,
+    "ast_hash": "6add6857a68dc19c9c720d9b49e6f4a5",
+    "semantic_hash": "6add6857a68dc19c9c720d9b49e6f4a5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase3_batch_c.py": {
+    "mtime": 1786951397.585077,
+    "seen": 1786953226.1429365,
+    "ast_hash": "b41fb9cbd41b17742be4179db8d2cb1c",
+    "semantic_hash": "b41fb9cbd41b17742be4179db8d2cb1c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase3_batch_d.py": {
+    "mtime": 1786951397.585077,
+    "seen": 1786953226.1429372,
+    "ast_hash": "46501fe86d60edfd73c66755de8b1e50",
+    "semantic_hash": "46501fe86d60edfd73c66755de8b1e50"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase3_batch_e.py": {
+    "mtime": 1786951397.5860744,
+    "seen": 1786953226.1429374,
+    "ast_hash": "7971dffa849c068238f80cffec2f81f8",
+    "semantic_hash": "7971dffa849c068238f80cffec2f81f8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_phase4.py": {
+    "mtime": 1786951397.5860744,
+    "seen": 1786953226.142938,
+    "ast_hash": "ad9fe6e2d23d297a52c3bf5b94f6ca43",
+    "semantic_hash": "ad9fe6e2d23d297a52c3bf5b94f6ca43"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_pnl_attribution.py": {
+    "mtime": 1786951397.5860744,
+    "seen": 1786953226.1429381,
+    "ast_hash": "98e7d528366f5f34fd511073117fe0a8",
+    "semantic_hash": "98e7d528366f5f34fd511073117fe0a8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_positions.py": {
+    "mtime": 1786951397.5870733,
+    "seen": 1786953226.1429386,
+    "ast_hash": "91ae4fba0403bbb7dfee60bba0de6095",
+    "semantic_hash": "91ae4fba0403bbb7dfee60bba0de6095"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_prediction_kwargs.py": {
+    "mtime": 1786951397.5870733,
+    "seen": 1786953226.142939,
+    "ast_hash": "091bbf04f83ac5f8ea0647eb230578ca",
+    "semantic_hash": "091bbf04f83ac5f8ea0647eb230578ca"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_prelog.py": {
+    "mtime": 1786951397.5880735,
+    "seen": 1786953226.1429393,
+    "ast_hash": "ad67b51300e579c7487499af5e00b9fd",
+    "semantic_hash": "ad67b51300e579c7487499af5e00b9fd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_price_and_size.py": {
+    "mtime": 1786951397.5880735,
+    "seen": 1786953226.14294,
+    "ast_hash": "31b9d9dd35807ab051870abb8af7e6fd",
+    "semantic_hash": "31b9d9dd35807ab051870abb8af7e6fd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_rain_markets.py": {
+    "mtime": 1786951397.5890768,
+    "seen": 1786953226.1429408,
+    "ast_hash": "357f428c9ea126c4dd4ed56ab77428e1",
+    "semantic_hash": "357f428c9ea126c4dd4ed56ab77428e1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_regime.py": {
+    "mtime": 1786951397.5890768,
+    "seen": 1786953226.1429415,
+    "ast_hash": "75660b94b2ab040fa1bd841a0367bf37",
+    "semantic_hash": "75660b94b2ab040fa1bd841a0367bf37"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_regression.py": {
+    "mtime": 1786951397.5890768,
+    "seen": 1786953226.142942,
+    "ast_hash": "98badcbe641b327f70716432451890cf",
+    "semantic_hash": "98badcbe641b327f70716432451890cf"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_retirement_probation.py": {
+    "mtime": 1786951397.5890768,
+    "seen": 1786953226.1429422,
+    "ast_hash": "99f5809459fa039dae136639929cbb77",
+    "semantic_hash": "99f5809459fa039dae136639929cbb77"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_risk_control.py": {
+    "mtime": 1786951397.5900772,
+    "seen": 1786953226.1429427,
+    "ast_hash": "9f46f4a825716632fa90705bf886fb4c",
+    "semantic_hash": "9f46f4a825716632fa90705bf886fb4c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_safe_io.py": {
+    "mtime": 1786951397.5900772,
+    "seen": 1786953226.1429431,
+    "ast_hash": "f6aa4d61cad43e7e439c2facb5c2cbee",
+    "semantic_hash": "f6aa4d61cad43e7e439c2facb5c2cbee"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_sameday_reserve.py": {
+    "mtime": 1786951397.5910778,
+    "seen": 1786953226.1429434,
+    "ast_hash": "4feff5113d7262801697f8c51ad5b667",
+    "semantic_hash": "4feff5113d7262801697f8c51ad5b667"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_schema_drift.py": {
+    "mtime": 1786951397.5910778,
+    "seen": 1786953226.142944,
+    "ast_hash": "edb068523d859b4398eff5161599cb91",
+    "semantic_hash": "edb068523d859b4398eff5161599cb91"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_series_drift.py": {
+    "mtime": 1786951397.5910778,
+    "seen": 1786953226.1429446,
+    "ast_hash": "4a4637f13747841bdceb8fd858419080",
+    "semantic_hash": "4a4637f13747841bdceb8fd858419080"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_settlement_monitor.py": {
+    "mtime": 1786951397.5910778,
+    "seen": 1786953226.1429448,
+    "ast_hash": "6aa43d1d12aec8e215331d6f7e90fd5a",
+    "semantic_hash": "6aa43d1d12aec8e215331d6f7e90fd5a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_shadow_predictions.py": {
+    "mtime": 1786951397.5910778,
+    "seen": 1786953226.1429453,
+    "ast_hash": "10c12866188c203674869f0e5b5fb71a",
+    "semantic_hash": "10c12866188c203674869f0e5b5fb71a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_signal_quality.py": {
+    "mtime": 1786951397.5927231,
+    "seen": 1786953226.142946,
+    "ast_hash": "d59298beb0821aa5722a5767ef7443e8",
+    "semantic_hash": "d59298beb0821aa5722a5767ef7443e8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_silent_failures.py": {
+    "mtime": 1786951397.5927231,
+    "seen": 1786953226.1429465,
+    "ast_hash": "19d1a62fe178c6ee488d4dd160acda13",
+    "semantic_hash": "19d1a62fe178c6ee488d4dd160acda13"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_snow_markets.py": {
+    "mtime": 1786951397.5927231,
+    "seen": 1786953226.1429474,
+    "ast_hash": "22903cb0403ebd398b1846ecb9e4b921",
+    "semantic_hash": "22903cb0403ebd398b1846ecb9e4b921"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_spend_validation.py": {
+    "mtime": 1786951397.5937304,
+    "seen": 1786953226.142948,
+    "ast_hash": "aa506290ad53aa817d2d3ad25069da82",
+    "semantic_hash": "aa506290ad53aa817d2d3ad25069da82"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_sprt.py": {
+    "mtime": 1786951397.5937304,
+    "seen": 1786953226.1429484,
+    "ast_hash": "e09e6601e7f52bb40ae2a686c9f74c6c",
+    "semantic_hash": "e09e6601e7f52bb40ae2a686c9f74c6c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_starting_balance.py": {
+    "mtime": 1786951397.5937304,
+    "seen": 1786953226.1429489,
+    "ast_hash": "03785debaf2d0a75ec2d37e957181eaa",
+    "semantic_hash": "03785debaf2d0a75ec2d37e957181eaa"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_state_consistency.py": {
+    "mtime": 1786951397.5937304,
+    "seen": 1786953226.142949,
+    "ast_hash": "f78c0a9a029d8d575790db09d7e414b8",
+    "semantic_hash": "f78c0a9a029d8d575790db09d7e414b8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_station_bias.py": {
+    "mtime": 1786951397.594726,
+    "seen": 1786953226.1429498,
+    "ast_hash": "e8adce711d01459fdca4cf8f2738c3bb",
+    "semantic_hash": "e8adce711d01459fdca4cf8f2738c3bb"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_suggested_bets.py": {
+    "mtime": 1786951397.594726,
+    "seen": 1786953226.1429503,
+    "ast_hash": "cd26dff7b281f6add3cf7b618409bea1",
+    "semantic_hash": "cd26dff7b281f6add3cf7b618409bea1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_target_date_due.py": {
+    "mtime": 1786951397.594726,
+    "seen": 1786953226.142951,
+    "ast_hash": "01a6c692ca49a059dd4fea60e5c8b4f0",
+    "semantic_hash": "01a6c692ca49a059dd4fea60e5c8b4f0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_tracker.py": {
+    "mtime": 1786951397.5957303,
+    "seen": 1786953226.1429513,
+    "ast_hash": "9c5e92a66ad3958326ae3bf2abb7add4",
+    "semantic_hash": "9c5e92a66ad3958326ae3bf2abb7add4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_trade_cycle_engine.py": {
+    "mtime": 1786951397.5967329,
+    "seen": 1786953226.1429517,
+    "ast_hash": "39b7a0bdae2543f2633b0f6052e498c2",
+    "semantic_hash": "39b7a0bdae2543f2633b0f6052e498c2"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_trade_improvements.py": {
+    "mtime": 1786951397.5967329,
+    "seen": 1786953226.1429522,
+    "ast_hash": "51c6591a626e1e6df5e9ea3bd85112c9",
+    "semantic_hash": "51c6591a626e1e6df5e9ea3bd85112c9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_trade_validation.py": {
+    "mtime": 1786951397.5967329,
+    "seen": 1786953226.1429524,
+    "ast_hash": "fa93bf8b219076dd730bb8c2f552e554",
+    "semantic_hash": "fa93bf8b219076dd730bb8c2f552e554"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_trading.py": {
+    "mtime": 1786951397.5977304,
+    "seen": 1786953226.142953,
+    "ast_hash": "b17d8a9ee098afc9505abef96d0766ce",
+    "semantic_hash": "b17d8a9ee098afc9505abef96d0766ce"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_trading_gates.py": {
+    "mtime": 1786951397.5977304,
+    "seen": 1786953226.1429534,
+    "ast_hash": "1b464e673140c8153a63a5e508309dbe",
+    "semantic_hash": "1b464e673140c8153a63a5e508309dbe"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_walk_forward.py": {
+    "mtime": 1786951397.5977304,
+    "seen": 1786953226.1429543,
+    "ast_hash": "e1bdc02209ee94d94e4721b9385429ae",
+    "semantic_hash": "e1bdc02209ee94d94e4721b9385429ae"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_weather.py": {
+    "mtime": 1786951397.5987294,
+    "seen": 1786953226.1429548,
+    "ast_hash": "6f1f77d2df3e88680414b478a27142ee",
+    "semantic_hash": "6f1f77d2df3e88680414b478a27142ee"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_weather_markets.py": {
+    "mtime": 1786951397.5987294,
+    "seen": 1786953226.1429553,
+    "ast_hash": "fad1bc3ca721cc6b51ec6415a7cafa6a",
+    "semantic_hash": "fad1bc3ca721cc6b51ec6415a7cafa6a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_web_analytics.py": {
+    "mtime": 1786951397.5995877,
+    "seen": 1786953226.1429558,
+    "ast_hash": "c058840aa83043b09ba5cab44893afde",
+    "semantic_hash": "c058840aa83043b09ba5cab44893afde"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_web_app.py": {
+    "mtime": 1786951397.5995877,
+    "seen": 1786953226.1429565,
+    "ast_hash": "dfd227664bdbb2fc60a217d0a6caf982",
+    "semantic_hash": "dfd227664bdbb2fc60a217d0a6caf982"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tests\\test_web_auth.py": {
+    "mtime": 1786951397.5995877,
+    "seen": 1786953226.142957,
+    "ast_hash": "eccbfb89ad08526f3cc54c1d921c0121",
+    "semantic_hash": "eccbfb89ad08526f3cc54c1d921c0121"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\tracker.py": {
+    "mtime": 1786951397.6007335,
+    "seen": 1786953226.1429572,
+    "ast_hash": "5ff5983d37caf3a87be9cdbb9f48dd38",
+    "semantic_hash": "5ff5983d37caf3a87be9cdbb9f48dd38"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\trade_cycle.py": {
+    "mtime": 1786951397.6019523,
+    "seen": 1786953226.142958,
+    "ast_hash": "1cd0d902ccbdd6c34d84c9fc059400a2",
+    "semantic_hash": "1cd0d902ccbdd6c34d84c9fc059400a2"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\trading_gates.py": {
+    "mtime": 1786951397.6019523,
+    "seen": 1786953226.1429584,
+    "ast_hash": "0f402d062ee0fc517205a19ac45bb828",
+    "semantic_hash": "0f402d062ee0fc517205a19ac45bb828"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\.design-canvas.state.json": {
+    "mtime": 1786951397.6024585,
+    "seen": 1786953226.1429589,
+    "ast_hash": "20a4371df9d36f35f12a3e0516c5ba77",
+    "semantic_hash": "20a4371df9d36f35f12a3e0516c5ba77"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\design-canvas.jsx": {
+    "mtime": 1786951397.6035936,
+    "seen": 1786953226.1429594,
+    "ast_hash": "0950ec9a021402ad1b0bf71764e6f8cd",
+    "semantic_hash": "0950ec9a021402ad1b0bf71764e6f8cd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\full-prototype-v2.jsx": {
+    "mtime": 1786951397.6035936,
+    "seen": 1786953226.1429598,
+    "ast_hash": "3e94a7fde37746176840faf14702876f",
+    "semantic_hash": "3e94a7fde37746176840faf14702876f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\full-prototype.jsx": {
+    "mtime": 1786951397.604598,
+    "seen": 1786953226.1429603,
+    "ast_hash": "3859268e0b8a05bf149f29ec6048cd72",
+    "semantic_hash": "3859268e0b8a05bf149f29ec6048cd72"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\mock-data.js": {
+    "mtime": 1786951397.604598,
+    "seen": 1786953226.1429605,
+    "ast_hash": "f9549b68a57c5a793879e782b0f2f79f",
+    "semantic_hash": "f9549b68a57c5a793879e782b0f2f79f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\prototype.jsx": {
+    "mtime": 1786951397.6056027,
+    "seen": 1786953226.1429615,
+    "ast_hash": "71c322dadd8ec6dcbe2346118621d378",
+    "semantic_hash": "71c322dadd8ec6dcbe2346118621d378"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\reference\\analytics.js": {
+    "mtime": 1786951397.6066008,
+    "seen": 1786953226.142962,
+    "ast_hash": "b4e532d471305f4cc9414ca7565e88e7",
+    "semantic_hash": "b4e532d471305f4cc9414ca7565e88e7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\reference\\dashboard.js": {
+    "mtime": 1786951397.606957,
+    "seen": 1786953226.1429622,
+    "ast_hash": "89eb44ac519a182637fc2db3ebdf481e",
+    "semantic_hash": "89eb44ac519a182637fc2db3ebdf481e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\reference\\forecast.js": {
+    "mtime": 1786951397.6079636,
+    "seen": 1786953226.142963,
+    "ast_hash": "ca42c50ec161c36482c01f473321fc15",
+    "semantic_hash": "ca42c50ec161c36482c01f473321fc15"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\reference\\risk.js": {
+    "mtime": 1786951397.6079636,
+    "seen": 1786953226.1429636,
+    "ast_hash": "892a00760f94410d3e3a3b605fa3725d",
+    "semantic_hash": "892a00760f94410d3e3a3b605fa3725d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\reference\\signals.js": {
+    "mtime": 1786951397.6089697,
+    "seen": 1786953226.142964,
+    "ast_hash": "8bc152f7d4652dfe131dfd8b16b20eb0",
+    "semantic_hash": "8bc152f7d4652dfe131dfd8b16b20eb0"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\reference\\trades.js": {
+    "mtime": 1786951397.6099677,
+    "seen": 1786953226.1429644,
+    "ast_hash": "94fa32ddba68f0c965229f39c1b0e621",
+    "semantic_hash": "94fa32ddba68f0c965229f39c1b0e621"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\tweaks-panel.jsx": {
+    "mtime": 1786951397.610963,
+    "seen": 1786953226.142965,
+    "ast_hash": "57011f25c9a7189038c2f317aeef1fbc",
+    "semantic_hash": "57011f25c9a7189038c2f317aeef1fbc"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\variation-calm.jsx": {
+    "mtime": 1786951397.610963,
+    "seen": 1786953226.1429656,
+    "ast_hash": "81593404f1f9e902cd9cca33c186e9a7",
+    "semantic_hash": "81593404f1f9e902cd9cca33c186e9a7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\variation-editorial.jsx": {
+    "mtime": 1786951397.610963,
+    "seen": 1786953226.142966,
+    "ast_hash": "67739b406227bc90cc650263a609631c",
+    "semantic_hash": "67739b406227bc90cc650263a609631c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\variation-hybrid.jsx": {
+    "mtime": 1786951397.6119645,
+    "seen": 1786953226.1429663,
+    "ast_hash": "3edc9c239b639a367394968ce1068e0e",
+    "semantic_hash": "3edc9c239b639a367394968ce1068e0e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\variation-terminal.jsx": {
+    "mtime": 1786951397.6119645,
+    "seen": 1786953226.1429667,
+    "ast_hash": "8f152f45e4bbba8b9bbe9e3d099a2ba5",
+    "semantic_hash": "8f152f45e4bbba8b9bbe9e3d099a2ba5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\utils.py": {
+    "mtime": 1786951397.61296,
+    "seen": 1786953226.142967,
+    "ast_hash": "ff7b347d511e169536110e028de6fd3c",
+    "semantic_hash": "ff7b347d511e169536110e028de6fd3c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\watchdog.py": {
+    "mtime": 1786951397.61296,
+    "seen": 1786953226.1429675,
+    "ast_hash": "419614acd739e176ba840eaf06ffbf51",
+    "semantic_hash": "419614acd739e176ba840eaf06ffbf51"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather app site V_3 (3)\\src\\App.jsx": {
+    "mtime": 1786951397.61296,
+    "seen": 1786953226.1429677,
+    "ast_hash": "e59751834c917be03b46c4cd264c0cff",
+    "semantic_hash": "e59751834c917be03b46c4cd264c0cff"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather app site V_3 (3)\\src\\mockData.js": {
+    "mtime": 1786951397.6139688,
+    "seen": 1786953226.1429684,
+    "ast_hash": "a408d844e4db1d3a46ad57c305fd9fd6",
+    "semantic_hash": "a408d844e4db1d3a46ad57c305fd9fd6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather app site V_3 (3)\\src\\shared.jsx": {
+    "mtime": 1786951397.6139688,
+    "seen": 1786953226.142969,
+    "ast_hash": "11e878d8a0bc8f8f70969630c5948cee",
+    "semantic_hash": "11e878d8a0bc8f8f70969630c5948cee"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather app site V_3 (3)\\src\\tabs\\ActivityTab.jsx": {
+    "mtime": 1786951397.6139688,
+    "seen": 1786953226.1429691,
+    "ast_hash": "3662016441f5bd0aa109cb8ba28ba224",
+    "semantic_hash": "3662016441f5bd0aa109cb8ba28ba224"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather app site V_3 (3)\\src\\tabs\\AnalyticsTab.jsx": {
+    "mtime": 1786951397.6149628,
+    "seen": 1786953226.1429696,
+    "ast_hash": "29982bd4cc151e96197a6fd39d08e99c",
+    "semantic_hash": "29982bd4cc151e96197a6fd39d08e99c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather app site V_3 (3)\\src\\tabs\\ForecastTab.jsx": {
+    "mtime": 1786951397.6149628,
+    "seen": 1786953226.14297,
+    "ast_hash": "c92ab6e9c75b71a4f3eb25b40bc5c1c6",
+    "semantic_hash": "c92ab6e9c75b71a4f3eb25b40bc5c1c6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather app site V_3 (3)\\src\\tabs\\OverviewTab.jsx": {
+    "mtime": 1786951397.6149628,
+    "seen": 1786953226.1429708,
+    "ast_hash": "2e9582eeec8628a0999f79753afc21cf",
+    "semantic_hash": "2e9582eeec8628a0999f79753afc21cf"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather app site V_3 (3)\\src\\tabs\\PositionsTab.jsx": {
+    "mtime": 1786951397.615963,
+    "seen": 1786953226.1429713,
+    "ast_hash": "585a535f60f59cede2a5b3da290ef1c9",
+    "semantic_hash": "585a535f60f59cede2a5b3da290ef1c9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather app site V_3 (3)\\src\\tabs\\RiskTab.jsx": {
+    "mtime": 1786951397.615963,
+    "seen": 1786953226.1429722,
+    "ast_hash": "d6856d59090c3331ef19fd711eeb9614",
+    "semantic_hash": "d6856d59090c3331ef19fd711eeb9614"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather app site V_3 (3)\\src\\tabs\\SettingsTab.jsx": {
+    "mtime": 1786951397.615963,
+    "seen": 1786953226.1429727,
+    "ast_hash": "23db02398f26e7e17c9ed1dc94e4a223",
+    "semantic_hash": "23db02398f26e7e17c9ed1dc94e4a223"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather app site V_3 (3)\\src\\tabs\\SignalsTab.jsx": {
+    "mtime": 1786951397.616969,
+    "seen": 1786953226.1429732,
+    "ast_hash": "c2d7ac2c7ebe81230cbbccc30e9a35fd",
+    "semantic_hash": "c2d7ac2c7ebe81230cbbccc30e9a35fd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather app site V_3 (3)\\src\\tabs\\TradesTab.jsx": {
+    "mtime": 1786951397.616969,
+    "seen": 1786953226.1429737,
+    "ast_hash": "d770aa88c231986b238c163d55ea0ea1",
+    "semantic_hash": "d770aa88c231986b238c163d55ea0ea1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather app site V_3 (3)\\src\\useData.js": {
+    "mtime": 1786951397.616969,
+    "seen": 1786953226.142974,
+    "ast_hash": "bd9f346eb5d250967c36545fa1eaea61",
+    "semantic_hash": "bd9f346eb5d250967c36545fa1eaea61"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\weather_markets.py": {
+    "mtime": 1786951397.6189628,
+    "seen": 1786953226.1429744,
+    "ast_hash": "ea88ce4f10d9bcab4b3b8fb515069a33",
+    "semantic_hash": "ea88ce4f10d9bcab4b3b8fb515069a33"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\web_app.py": {
+    "mtime": 1786951397.6199627,
+    "seen": 1786953226.142975,
+    "ast_hash": "006fb6694f0f0b7eee67e27ae835345a",
+    "semantic_hash": "006fb6694f0f0b7eee67e27ae835345a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\.github\\workflows\\ci.yml": {
+    "mtime": 1786951357.6989522,
+    "seen": 1786953226.1429756,
+    "ast_hash": "50fca724a3871fffc98a6367ecc70def",
+    "semantic_hash": "50fca724a3871fffc98a6367ecc70def"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\.pre-commit-config.yaml": {
+    "mtime": 1786951357.6999524,
+    "seen": 1786953226.1429758,
+    "ast_hash": "6daebb04f2b51cb156a24551e329b359",
+    "semantic_hash": "6daebb04f2b51cb156a24551e329b359"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\AUDIT_PLAN.md": {
+    "mtime": 1786951357.700956,
+    "seen": 1786953226.1429765,
+    "ast_hash": "0f2a979a17051754b676f764e5cd9244",
+    "semantic_hash": "0f2a979a17051754b676f764e5cd9244"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\BACKLOG_OPEN.md": {
+    "mtime": 1786952058.3354206,
+    "seen": 1786953226.142977,
+    "ast_hash": "c0966bdf7ccc60fc22b3fd3a64e0a620",
+    "semantic_hash": "c0966bdf7ccc60fc22b3fd3a64e0a620"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\COMMANDS.md": {
+    "mtime": 1786951357.7019515,
+    "seen": 1786953226.1429777,
+    "ast_hash": "c76f8d524407ef7c309d4a2a41e85d55",
+    "semantic_hash": "c76f8d524407ef7c309d4a2a41e85d55"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\LIVE_TRADING_RUNBOOK.md": {
+    "mtime": 1786951357.7019515,
+    "seen": 1786953226.1429787,
+    "ast_hash": "3660940d110328a540b39b1c96766b18",
+    "semantic_hash": "3660940d110328a540b39b1c96766b18"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\README.md": {
+    "mtime": 1786951357.7029514,
+    "seen": 1786953226.142979,
+    "ast_hash": "7d44a9195352ab3a4d65e1f98b80599e",
+    "semantic_hash": "7d44a9195352ab3a4d65e1f98b80599e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\ai_code_hallucination_audit_prompt.md": {
+    "mtime": 1786951357.7039547,
+    "seen": 1786953226.1429794,
+    "ast_hash": "46c21164d4dc3e150e50cc0006d53261",
+    "semantic_hash": "46c21164d4dc3e150e50cc0006d53261"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\backlog.txt": {
+    "mtime": 1786952659.5835102,
+    "seen": 1786953226.14298,
+    "ast_hash": "5b9bdb8abedaf4e599e2adfc991a3311",
+    "semantic_hash": "5b9bdb8abedaf4e599e2adfc991a3311"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\code_review_plan.md": {
+    "mtime": 1786951357.7129514,
+    "seen": 1786953226.1429803,
+    "ast_hash": "c5d313014ce82f4b9a8a710ba2fd652a",
+    "semantic_hash": "c5d313014ce82f4b9a8a710ba2fd652a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\PRIORITY-CHECKLIST.md": {
+    "mtime": 1786951357.7169514,
+    "seen": 1786953226.1429808,
+    "ast_hash": "6802e547f9afdf41fb830698cc469b67",
+    "semantic_hash": "6802e547f9afdf41fb830698cc469b67"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\RESEARCH-FINDINGS.md": {
+    "mtime": 1786951357.7169514,
+    "seen": 1786953226.142981,
+    "ast_hash": "f29366dbe4b00b30027774ee9e307649",
+    "semantic_hash": "f29366dbe4b00b30027774ee9e307649"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\audit-2026-04-23.md": {
+    "mtime": 1786951357.7179513,
+    "seen": 1786953226.1429815,
+    "ast_hash": "4a380b8273fc2803e59c5716af7670cc",
+    "semantic_hash": "4a380b8273fc2803e59c5716af7670cc"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\audit_findings.md": {
+    "mtime": 1786951357.7189586,
+    "seen": 1786953226.142982,
+    "ast_hash": "ce4ccfb2e980b4401fffe890865ee158",
+    "semantic_hash": "ce4ccfb2e980b4401fffe890865ee158"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\audit_findings_2026-06-04.md": {
+    "mtime": 1786951357.7189586,
+    "seen": 1786953226.1429825,
+    "ast_hash": "7bdeb0aea9cc64e487c32e6cacdd8909",
+    "semantic_hash": "7bdeb0aea9cc64e487c32e6cacdd8909"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\full_system_audit_prompt.md": {
+    "mtime": 1786951357.7189586,
+    "seen": 1786953226.1429832,
+    "ast_hash": "311e92d2012bc2991160fbf9c0e2b9e9",
+    "semantic_hash": "311e92d2012bc2991160fbf9c0e2b9e9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\full_system_grade_prompt.md": {
+    "mtime": 1786951357.7199595,
+    "seen": 1786953226.1429837,
+    "ast_hash": "984f4adf534b3c1bad7e8366d4049588",
+    "semantic_hash": "984f4adf534b3c1bad7e8366d4049588"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\alerts.md": {
+    "mtime": 1786951357.7199595,
+    "seen": 1786953226.1429842,
+    "ast_hash": "b84dd374458a8e4b6e1c907a94cf28d9",
+    "semantic_hash": "b84dd374458a8e4b6e1c907a94cf28d9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\calibration.md": {
+    "mtime": 1786951357.7199595,
+    "seen": 1786953226.1429846,
+    "ast_hash": "c76102b5233d336cddc4b01b3d5a7abf",
+    "semantic_hash": "c76102b5233d336cddc4b01b3d5a7abf"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\circuit_breaker.md": {
+    "mtime": 1786951357.7199595,
+    "seen": 1786953226.142985,
+    "ast_hash": "c3de305ace1c3c79a2969faf75a25695",
+    "semantic_hash": "c3de305ace1c3c79a2969faf75a25695"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\cron.md": {
+    "mtime": 1786951357.7209594,
+    "seen": 1786953226.1429858,
+    "ast_hash": "4b5f8beb8955a23c5a6959193fe65cf8",
+    "semantic_hash": "4b5f8beb8955a23c5a6959193fe65cf8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\forecast_cache.md": {
+    "mtime": 1786951357.7209594,
+    "seen": 1786953226.1429865,
+    "ast_hash": "1d2310cdba5808fb882569844e550199",
+    "semantic_hash": "1d2310cdba5808fb882569844e550199"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\kalshi_client.md": {
+    "mtime": 1786951357.7209594,
+    "seen": 1786953226.142987,
+    "ast_hash": "bb58e8e4ff9e770634378501fcbdb1ae",
+    "semantic_hash": "bb58e8e4ff9e770634378501fcbdb1ae"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\main.md": {
+    "mtime": 1786951357.7219512,
+    "seen": 1786953226.1429875,
+    "ast_hash": "4f135afef97ff0e262b65e521725a205",
+    "semantic_hash": "4f135afef97ff0e262b65e521725a205"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\metar.md": {
+    "mtime": 1786951357.7219512,
+    "seen": 1786953226.1429882,
+    "ast_hash": "3904187c6d87a3c2a41d03bcbee5b1fe",
+    "semantic_hash": "3904187c6d87a3c2a41d03bcbee5b1fe"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\ml_bias.md": {
+    "mtime": 1786951357.7219512,
+    "seen": 1786953226.1429887,
+    "ast_hash": "08ec9d1a932e8f4b96e96b3b077bb86b",
+    "semantic_hash": "08ec9d1a932e8f4b96e96b3b077bb86b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\monte_carlo.md": {
+    "mtime": 1786951357.722952,
+    "seen": 1786953226.1429894,
+    "ast_hash": "747fc1eda8618d20dcba1f8cbaaab7fa",
+    "semantic_hash": "747fc1eda8618d20dcba1f8cbaaab7fa"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\nws.md": {
+    "mtime": 1786951357.722952,
+    "seen": 1786953226.1429896,
+    "ast_hash": "97edc0de0f7e90547bf35451e3c40e3d",
+    "semantic_hash": "97edc0de0f7e90547bf35451e3c40e3d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\order_executor.md": {
+    "mtime": 1786951357.722952,
+    "seen": 1786953226.14299,
+    "ast_hash": "994be6341787b8292dd5074c419ade98",
+    "semantic_hash": "994be6341787b8292dd5074c419ade98"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\paper.md": {
+    "mtime": 1786951357.722952,
+    "seen": 1786953226.1429906,
+    "ast_hash": "b577fb7634f0971bdf7d25271605ca20",
+    "semantic_hash": "b577fb7634f0971bdf7d25271605ca20"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\safe_io.md": {
+    "mtime": 1786951357.722952,
+    "seen": 1786953226.142991,
+    "ast_hash": "8a0ab1a3d62035783536dd9d990b956a",
+    "semantic_hash": "8a0ab1a3d62035783536dd9d990b956a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\tier2.md": {
+    "mtime": 1786951357.723955,
+    "seen": 1786953226.1429915,
+    "ast_hash": "b7f028834f16823eaf688c366fce61b4",
+    "semantic_hash": "b7f028834f16823eaf688c366fce61b4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\tracker.md": {
+    "mtime": 1786951357.723955,
+    "seen": 1786953226.1429925,
+    "ast_hash": "a7781ba80a3af862005001f14f886c1f",
+    "semantic_hash": "a7781ba80a3af862005001f14f886c1f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\modules\\weather_markets.md": {
+    "mtime": 1786951357.723955,
+    "seen": 1786953226.1429935,
+    "ast_hash": "f5413d075635b25f30c4942a76025fe9",
+    "semantic_hash": "f5413d075635b25f30c4942a76025fe9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\ab_test.py.md": {
+    "mtime": 1786951357.723955,
+    "seen": 1786953226.142994,
+    "ast_hash": "47d0932e912667b089b68f10dffe0423",
+    "semantic_hash": "47d0932e912667b089b68f10dffe0423"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\alerts.py.md": {
+    "mtime": 1786951357.7249572,
+    "seen": 1786953226.1429942,
+    "ast_hash": "fc93a06d6f8db47379eb265647fa58f5",
+    "semantic_hash": "fc93a06d6f8db47379eb265647fa58f5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\calibration.py.md": {
+    "mtime": 1786951357.7249572,
+    "seen": 1786953226.1429946,
+    "ast_hash": "153f08a49ab05677a026215045849ea9",
+    "semantic_hash": "153f08a49ab05677a026215045849ea9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\circuit_breaker.py.md": {
+    "mtime": 1786951357.7249572,
+    "seen": 1786953226.142995,
+    "ast_hash": "be0bc05b3ba7d49b3b4f2e11092bcadc",
+    "semantic_hash": "be0bc05b3ba7d49b3b4f2e11092bcadc"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\climatology.py.md": {
+    "mtime": 1786951357.7259572,
+    "seen": 1786953226.1429956,
+    "ast_hash": "943db5675520abf02709e2f93ee90261",
+    "semantic_hash": "943db5675520abf02709e2f93ee90261"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\cloud_backup.py.md": {
+    "mtime": 1786951357.7259572,
+    "seen": 1786953226.1429963,
+    "ast_hash": "165e7a7033f594133fd3ceb9b1a0467b",
+    "semantic_hash": "165e7a7033f594133fd3ceb9b1a0467b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\colors.py.md": {
+    "mtime": 1786951357.7259572,
+    "seen": 1786953226.1429965,
+    "ast_hash": "b5b98943a842066a5380b69bbe18edfe",
+    "semantic_hash": "b5b98943a842066a5380b69bbe18edfe"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\config.py.md": {
+    "mtime": 1786951357.7269597,
+    "seen": 1786953226.142997,
+    "ast_hash": "34c77ef2c80be74fffa7520d8df05b83",
+    "semantic_hash": "34c77ef2c80be74fffa7520d8df05b83"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\consistency.py.md": {
+    "mtime": 1786951357.7269597,
+    "seen": 1786953226.1429975,
+    "ast_hash": "7b0a57b1c0c826e5d95d524fbf0da092",
+    "semantic_hash": "7b0a57b1c0c826e5d95d524fbf0da092"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\cron.py.md": {
+    "mtime": 1786951357.7269597,
+    "seen": 1786953226.142998,
+    "ast_hash": "b62f657c93c2c44654f0ed5807034b84",
+    "semantic_hash": "b62f657c93c2c44654f0ed5807034b84"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\execution_log.py.md": {
+    "mtime": 1786951357.7279575,
+    "seen": 1786953226.1429982,
+    "ast_hash": "86ac38f0b640a0f807848358b6b3af25",
+    "semantic_hash": "86ac38f0b640a0f807848358b6b3af25"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\feature_importance.py.md": {
+    "mtime": 1786951357.7279575,
+    "seen": 1786953226.1429987,
+    "ast_hash": "db43644efa39bc8884db4199fc924768",
+    "semantic_hash": "db43644efa39bc8884db4199fc924768"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\forecast_cache.py.md": {
+    "mtime": 1786951357.7279575,
+    "seen": 1786953226.1429994,
+    "ast_hash": "06adb52c131cd5a6cfe4ecba5e6a2236",
+    "semantic_hash": "06adb52c131cd5a6cfe4ecba5e6a2236"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\kalshi_client.py.md": {
+    "mtime": 1786951357.7279575,
+    "seen": 1786953226.143,
+    "ast_hash": "e07db33f5c9528a5ad6505d665326af7",
+    "semantic_hash": "e07db33f5c9528a5ad6505d665326af7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\kalshi_ws.py.md": {
+    "mtime": 1786951357.7289577,
+    "seen": 1786953226.1430004,
+    "ast_hash": "837c140de7c34da8d2c9512fc258084a",
+    "semantic_hash": "837c140de7c34da8d2c9512fc258084a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\main.py.md": {
+    "mtime": 1786951357.7289577,
+    "seen": 1786953226.143001,
+    "ast_hash": "a47bf3d892095ac85d0fd379399f580f",
+    "semantic_hash": "a47bf3d892095ac85d0fd379399f580f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\metar.py.md": {
+    "mtime": 1786951357.7289577,
+    "seen": 1786953226.1430016,
+    "ast_hash": "f1b7cba6ba819979914d54f228d5b4ca",
+    "semantic_hash": "f1b7cba6ba819979914d54f228d5b4ca"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\ml_bias.py.md": {
+    "mtime": 1786951357.7299578,
+    "seen": 1786953226.143002,
+    "ast_hash": "7447828322556828b90ef63093775cc3",
+    "semantic_hash": "7447828322556828b90ef63093775cc3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\monte_carlo.py.md": {
+    "mtime": 1786951357.7299578,
+    "seen": 1786953226.1430025,
+    "ast_hash": "210adf43aa6e1ff7a27fa4d409954b55",
+    "semantic_hash": "210adf43aa6e1ff7a27fa4d409954b55"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\notify.py.md": {
+    "mtime": 1786951357.7299578,
+    "seen": 1786953226.143003,
+    "ast_hash": "f1925789d9b22bc3d2950ca5cc708fc5",
+    "semantic_hash": "f1925789d9b22bc3d2950ca5cc708fc5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\nws.py.md": {
+    "mtime": 1786951357.7309556,
+    "seen": 1786953226.1430035,
+    "ast_hash": "215202b044299dd520b4f3b9f84f8829",
+    "semantic_hash": "215202b044299dd520b4f3b9f84f8829"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\order_executor.py.md": {
+    "mtime": 1786951357.7309556,
+    "seen": 1786953226.143004,
+    "ast_hash": "5a8b3ba0264a8851cf93c0553d578dac",
+    "semantic_hash": "5a8b3ba0264a8851cf93c0553d578dac"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\output_formatters.py.md": {
+    "mtime": 1786951357.7309556,
+    "seen": 1786953226.1430044,
+    "ast_hash": "ff26f80a776b07a399cd2e9a685f7a8a",
+    "semantic_hash": "ff26f80a776b07a399cd2e9a685f7a8a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\paper.py.md": {
+    "mtime": 1786951357.7309556,
+    "seen": 1786953226.143005,
+    "ast_hash": "e47520304e09c42e86cb79cbeecd1004",
+    "semantic_hash": "e47520304e09c42e86cb79cbeecd1004"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\param_sweep.py.md": {
+    "mtime": 1786951357.7319596,
+    "seen": 1786953226.1430051,
+    "ast_hash": "bb11a0c332b0811ec5879567e391fb11",
+    "semantic_hash": "bb11a0c332b0811ec5879567e391fb11"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\paths.py.md": {
+    "mtime": 1786951357.7319596,
+    "seen": 1786953226.1430056,
+    "ast_hash": "af7e945b2c63b43ee2b231e54bb24eac",
+    "semantic_hash": "af7e945b2c63b43ee2b231e54bb24eac"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\pdf_report.py.md": {
+    "mtime": 1786951357.7319596,
+    "seen": 1786953226.1430063,
+    "ast_hash": "138d5f2c4e2d878f9972355915106b05",
+    "semantic_hash": "138d5f2c4e2d878f9972355915106b05"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\regime.py.md": {
+    "mtime": 1786951357.7319596,
+    "seen": 1786953226.1430066,
+    "ast_hash": "2ef1f207fc0d3a33f51f922649a2253d",
+    "semantic_hash": "2ef1f207fc0d3a33f51f922649a2253d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\safe_io.py.md": {
+    "mtime": 1786951357.7329562,
+    "seen": 1786953226.1430068,
+    "ast_hash": "ecfc9b8d0d6d21ba26f1e0d915bff1e1",
+    "semantic_hash": "ecfc9b8d0d6d21ba26f1e0d915bff1e1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\schema_validator.py.md": {
+    "mtime": 1786951357.7329562,
+    "seen": 1786953226.1430073,
+    "ast_hash": "7f97e7fc7b1b10c1204bae1ca134c58e",
+    "semantic_hash": "7f97e7fc7b1b10c1204bae1ca134c58e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\system_health.py.md": {
+    "mtime": 1786951357.7329562,
+    "seen": 1786953226.1430075,
+    "ast_hash": "a2c4ffbd3001fa38f4bfeec252ef9aef",
+    "semantic_hash": "a2c4ffbd3001fa38f4bfeec252ef9aef"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\tracker.py.md": {
+    "mtime": 1786951357.733959,
+    "seen": 1786953226.143008,
+    "ast_hash": "11db41647686ab1d6991ac8f672569a6",
+    "semantic_hash": "11db41647686ab1d6991ac8f672569a6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\outputs\\weather_markets.py.md": {
+    "mtime": 1786951357.733959,
+    "seen": 1786953226.1430087,
+    "ast_hash": "65c0f3ddfd367df957559afaedaeb2a5",
+    "semantic_hash": "65c0f3ddfd367df957559afaedaeb2a5"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\preamble.md": {
+    "mtime": 1786951357.733959,
+    "seen": 1786953226.1430092,
+    "ast_hash": "d33b85cc65184cbd61962f43a54f65f2",
+    "semantic_hash": "d33b85cc65184cbd61962f43a54f65f2"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\report.md": {
+    "mtime": 1786951357.7349515,
+    "seen": 1786953226.14301,
+    "ast_hash": "53bd7bbae5ffe1d739a323078fdfe652",
+    "semantic_hash": "53bd7bbae5ffe1d739a323078fdfe652"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\grade_audit\\synthesis.md": {
+    "mtime": 1786951357.7349515,
+    "seen": 1786953226.1430104,
+    "ast_hash": "7b77ba3ec184ce07d6c7b3c1b067570d",
+    "semantic_hash": "7b77ba3ec184ce07d6c7b3c1b067570d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\improvements.txt": {
+    "mtime": 1786951357.7349515,
+    "seen": 1786953226.1430109,
+    "ast_hash": "54930762141c57756d53d11e536ffb50",
+    "semantic_hash": "54930762141c57756d53d11e536ffb50"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\plans\\2026-04-10-phase1-testing-foundation.md": {
+    "mtime": 1786951357.7359555,
+    "seen": 1786953226.1430113,
+    "ast_hash": "17c11133ba742bae774550af92d6dff1",
+    "semantic_hash": "17c11133ba742bae774550af92d6dff1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\plans\\2026-04-10-phase2-infrastructure.md": {
+    "mtime": 1786951357.7359555,
+    "seen": 1786953226.1430116,
+    "ast_hash": "6b74e19f707154e7711a3173d236d106",
+    "semantic_hash": "6b74e19f707154e7711a3173d236d106"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\plans\\2026-04-10-phase3-tracker-analytics.md": {
+    "mtime": 1786951357.7359555,
+    "seen": 1786953226.143012,
+    "ast_hash": "e4cebb77b3ee88a5417129479c2c08f4",
+    "semantic_hash": "e4cebb77b3ee88a5417129479c2c08f4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\plans\\2026-04-10-phase4-forecasting.md": {
+    "mtime": 1786951357.7369568,
+    "seen": 1786953226.1430125,
+    "ast_hash": "85ed116c6da2d7ad574d02ae4e9a3fa4",
+    "semantic_hash": "85ed116c6da2d7ad574d02ae4e9a3fa4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\plans\\2026-04-10-phase5-trading-portfolio.md": {
+    "mtime": 1786951357.7369568,
+    "seen": 1786953226.1430128,
+    "ast_hash": "3abe6da3e722c760e23559480fd1378a",
+    "semantic_hash": "3abe6da3e722c760e23559480fd1378a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\plans\\2026-04-10-phase6-dashboard.md": {
+    "mtime": 1786951357.7369568,
+    "seen": 1786953226.1430135,
+    "ast_hash": "9aa351148fe296754bec0725edda7695",
+    "semantic_hash": "9aa351148fe296754bec0725edda7695"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\plans\\2026-04-10-phase7-data-safety.md": {
+    "mtime": 1786951357.7379582,
+    "seen": 1786953226.1430137,
+    "ast_hash": "5596b8e639f034e3f54867e55d907f9f",
+    "semantic_hash": "5596b8e639f034e3f54867e55d907f9f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\plans\\2026-04-17-score-improvements.md": {
+    "mtime": 1786951357.7379582,
+    "seen": 1786953226.1430142,
+    "ast_hash": "d87bc8fe110edb3179cd0fb20691c881",
+    "semantic_hash": "d87bc8fe110edb3179cd0fb20691c881"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\plans\\2026-04-19-accuracy-improvements-v2.md": {
+    "mtime": 1786951357.7379582,
+    "seen": 1786953226.1430147,
+    "ast_hash": "6bc1db790653535a895c50c1b84a2fe9",
+    "semantic_hash": "6bc1db790653535a895c50c1b84a2fe9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\plans\\2026-04-19-accuracy-improvements.md": {
+    "mtime": 1786951357.7379582,
+    "seen": 1786953226.1430151,
+    "ast_hash": "91f6b68608ebfc4b7b64814dbbe39779",
+    "semantic_hash": "91f6b68608ebfc4b7b64814dbbe39779"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-10-dashboard-modernization.md": {
+    "mtime": 1786951357.7389507,
+    "seen": 1786953226.1430156,
+    "ast_hash": "7ad8868326c4ca06fea7a8c3ced0f588",
+    "semantic_hash": "7ad8868326c4ca06fea7a8c3ced0f588"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-10-execution-pipeline.md": {
+    "mtime": 1786951357.7399583,
+    "seen": 1786953226.143016,
+    "ast_hash": "9d93613c5d2dceb0fca08f306927649a",
+    "semantic_hash": "9d93613c5d2dceb0fca08f306927649a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-10-group-a-testing.md": {
+    "mtime": 1786951357.7399583,
+    "seen": 1786953226.1430168,
+    "ast_hash": "85b99450e28ed42069df6ad5c0307105",
+    "semantic_hash": "85b99450e28ed42069df6ad5c0307105"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-10-group-b-data-integrity.md": {
+    "mtime": 1786951357.7409513,
+    "seen": 1786953226.1430173,
+    "ast_hash": "c27df088cc28a312fbaf465c3a38582e",
+    "semantic_hash": "c27df088cc28a312fbaf465c3a38582e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-10-group-c-model-forecasting.md": {
+    "mtime": 1786951357.7409513,
+    "seen": 1786953226.1430175,
+    "ast_hash": "2dec8473ff1455848eb3094d0ebc853d",
+    "semantic_hash": "2dec8473ff1455848eb3094d0ebc853d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-10-group-d-trading-kelly.md": {
+    "mtime": 1786951357.7409513,
+    "seen": 1786953226.143018,
+    "ast_hash": "0ec048d0b815d1de84d1ee1f4b31e075",
+    "semantic_hash": "0ec048d0b815d1de84d1ee1f4b31e075"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-10-group-e-calibration-scoring.md": {
+    "mtime": 1786951357.741951,
+    "seen": 1786953226.1430187,
+    "ast_hash": "99bfe9976e8f62f58c2092eff26d0c36",
+    "semantic_hash": "99bfe9976e8f62f58c2092eff26d0c36"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-10-group-f-infrastructure.md": {
+    "mtime": 1786951357.741951,
+    "seen": 1786953226.143019,
+    "ast_hash": "30b60cd3c649339d444574a28c53a069",
+    "semantic_hash": "30b60cd3c649339d444574a28c53a069"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-10-group-g-dashboard.md": {
+    "mtime": 1786951357.741951,
+    "seen": 1786953226.1430194,
+    "ast_hash": "863f79aa99c310c06a0529df028f76ea",
+    "semantic_hash": "863f79aa99c310c06a0529df028f76ea"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-10-live-order-lifecycle.md": {
+    "mtime": 1786951357.7429547,
+    "seen": 1786953226.1430206,
+    "ast_hash": "f6d74db5e79a1a313f2a3ec7261bb2ce",
+    "semantic_hash": "f6d74db5e79a1a313f2a3ec7261bb2ce"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-10-model-signal-calibration.md": {
+    "mtime": 1786951357.7429547,
+    "seen": 1786953226.143021,
+    "ast_hash": "27ac51956a0e4e42d5cc38a45f4e12b3",
+    "semantic_hash": "27ac51956a0e4e42d5cc38a45f4e12b3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-10-signal-quality.md": {
+    "mtime": 1786951357.7429547,
+    "seen": 1786953226.1430218,
+    "ast_hash": "3338d41870e1bf1c1b10dc56963f28d7",
+    "semantic_hash": "3338d41870e1bf1c1b10dc56963f28d7"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-10-suggested-bets.md": {
+    "mtime": 1786951357.7439601,
+    "seen": 1786953226.1430223,
+    "ast_hash": "059a1b94f9972fd91fec6b048f01bf1f",
+    "semantic_hash": "059a1b94f9972fd91fec6b048f01bf1f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-11-profit-optimization.md": {
+    "mtime": 1786951357.7439601,
+    "seen": 1786953226.1430225,
+    "ast_hash": "5af0a42c6730912e5e09e8238bddd8d9",
+    "semantic_hash": "5af0a42c6730912e5e09e8238bddd8d9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-13-system-hardening.md": {
+    "mtime": 1786951357.7449613,
+    "seen": 1786953226.143023,
+    "ast_hash": "616a2cc787366395b07ac89fbf865b79",
+    "semantic_hash": "616a2cc787366395b07ac89fbf865b79"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-14-p10-long-term-health.md": {
+    "mtime": 1786951357.7449613,
+    "seen": 1786953226.1430237,
+    "ast_hash": "49f516b036377543183742fe4f293094",
+    "semantic_hash": "49f516b036377543183742fe4f293094"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-14-p2-risk-control.md": {
+    "mtime": 1786951357.7449613,
+    "seen": 1786953226.1430244,
+    "ast_hash": "15851e17b581675dc69d6ecf24596b71",
+    "semantic_hash": "15851e17b581675dc69d6ecf24596b71"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-14-p3-execution-stability.md": {
+    "mtime": 1786951357.7459629,
+    "seen": 1786953226.143025,
+    "ast_hash": "c9609ff98f120a491b5a0dcdb57ca521",
+    "semantic_hash": "c9609ff98f120a491b5a0dcdb57ca521"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-14-p4-logging-foundation.md": {
+    "mtime": 1786951357.7459629,
+    "seen": 1786953226.1430256,
+    "ast_hash": "8dcb1b8a9872016d40806c157dfb9b2e",
+    "semantic_hash": "8dcb1b8a9872016d40806c157dfb9b2e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-14-p5-testing-layer.md": {
+    "mtime": 1786951357.7459629,
+    "seen": 1786953226.1430264,
+    "ast_hash": "37a7ead75806c9cc4efb2bfd1600607b",
+    "semantic_hash": "37a7ead75806c9cc4efb2bfd1600607b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-14-p6-data-engineering.md": {
+    "mtime": 1786951357.7459629,
+    "seen": 1786953226.1430268,
+    "ast_hash": "81da14f756dc8374aeaed698f51c1abc",
+    "semantic_hash": "81da14f756dc8374aeaed698f51c1abc"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-14-p7-market-realism.md": {
+    "mtime": 1786951357.7469573,
+    "seen": 1786953226.1430273,
+    "ast_hash": "8cdf9d1b579cbeb597b93ce0e35838d2",
+    "semantic_hash": "8cdf9d1b579cbeb597b93ce0e35838d2"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-14-p8-monitoring.md": {
+    "mtime": 1786951357.7469573,
+    "seen": 1786953226.1430278,
+    "ast_hash": "2266eb530d720fa6e84f30a8643bffd9",
+    "semantic_hash": "2266eb530d720fa6e84f30a8643bffd9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-14-p9-strategy-intelligence.md": {
+    "mtime": 1786951357.747958,
+    "seen": 1786953226.1430283,
+    "ast_hash": "9307c99fdd1f0aabaa1382e87185ae65",
+    "semantic_hash": "9307c99fdd1f0aabaa1382e87185ae65"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-15-p11-signal-execution-intelligence.md": {
+    "mtime": 1786951357.747958,
+    "seen": 1786953226.143029,
+    "ast_hash": "eae39850277b2704e2e8f92b084ceaeb",
+    "semantic_hash": "eae39850277b2704e2e8f92b084ceaeb"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-15-p12-signal-calibration-intelligence.md": {
+    "mtime": 1786951357.747958,
+    "seen": 1786953226.1430295,
+    "ast_hash": "a1ec8c15d20c75470fc32db037478150",
+    "semantic_hash": "a1ec8c15d20c75470fc32db037478150"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-16-master-priority-roadmap.md": {
+    "mtime": 1786951357.7489629,
+    "seen": 1786953226.14303,
+    "ast_hash": "9131ede1e95a8e7b829f1c53652a86dc",
+    "semantic_hash": "9131ede1e95a8e7b829f1c53652a86dc"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-16-phase-a-data-foundation.md": {
+    "mtime": 1786951357.7489629,
+    "seen": 1786953226.1430302,
+    "ast_hash": "f45208bdf7795148bebdcec7d0054c3d",
+    "semantic_hash": "f45208bdf7795148bebdcec7d0054c3d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-16-phase-b-risk-engine.md": {
+    "mtime": 1786951357.7489629,
+    "seen": 1786953226.143031,
+    "ast_hash": "2aae794f0b9a13254f154f6d908edef9",
+    "semantic_hash": "2aae794f0b9a13254f154f6d908edef9"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-16-phase-c-new-data-sources.md": {
+    "mtime": 1786951357.7499616,
+    "seen": 1786953226.1430314,
+    "ast_hash": "4b8811b866fd78cad1a27476b967d4a1",
+    "semantic_hash": "4b8811b866fd78cad1a27476b967d4a1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-16-phase-d-monitoring-settlement.md": {
+    "mtime": 1786951357.7499616,
+    "seen": 1786953226.1430323,
+    "ast_hash": "d3481954a096f07eeceddf44bcccc938",
+    "semantic_hash": "d3481954a096f07eeceddf44bcccc938"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-16-phase-e-walk-forward-backtest.md": {
+    "mtime": 1786951357.7499616,
+    "seen": 1786953226.143033,
+    "ast_hash": "0cabb6114a2000fd397918514dc79d2a",
+    "semantic_hash": "0cabb6114a2000fd397918514dc79d2a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-16-phase-f-websocket.md": {
+    "mtime": 1786951357.750962,
+    "seen": 1786953226.1430335,
+    "ast_hash": "03c5889fe6ce2256231cb02c8e6ac64f",
+    "semantic_hash": "03c5889fe6ce2256231cb02c8e6ac64f"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-16-phase-g-long-term.md": {
+    "mtime": 1786951357.750962,
+    "seen": 1786953226.1430342,
+    "ast_hash": "c6f7425099864b2c4aca26e0962a16b3",
+    "semantic_hash": "c6f7425099864b2c4aca26e0962a16b3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-18-remediation.md": {
+    "mtime": 1786951357.750962,
+    "seen": 1786953226.1430345,
+    "ast_hash": "a6368c752b9dc6e8fdea75fb7747570c",
+    "semantic_hash": "a6368c752b9dc6e8fdea75fb7747570c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-25-fix-backtest-simulate-validate.md": {
+    "mtime": 1786951357.7519617,
+    "seen": 1786953226.143035,
+    "ast_hash": "89421433f4e575c56d35d46d8d4e3c50",
+    "semantic_hash": "89421433f4e575c56d35d46d8d4e3c50"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-25-fix-browse-cities.md": {
+    "mtime": 1786951357.7559621,
+    "seen": 1786953226.1430352,
+    "ast_hash": "123a7a998606c11ecfd266fc21fcdc4a",
+    "semantic_hash": "123a7a998606c11ecfd266fc21fcdc4a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-25-fix-cron-trade-updates.md": {
+    "mtime": 1786951357.7559621,
+    "seen": 1786953226.1430357,
+    "ast_hash": "bf6ead3d2e52b8836e400ca00218ee1d",
+    "semantic_hash": "bf6ead3d2e52b8836e400ca00218ee1d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-25-fix-early-exits.md": {
+    "mtime": 1786951357.7559621,
+    "seen": 1786953226.1430361,
+    "ast_hash": "8e7d148325dd85dbd9f551cdfc7305c6",
+    "semantic_hash": "8e7d148325dd85dbd9f551cdfc7305c6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-25-fix-menu-ux.md": {
+    "mtime": 1786951357.7569637,
+    "seen": 1786953226.1430366,
+    "ast_hash": "bd4e22d5f14a85bd55aaa5cce9b5039e",
+    "semantic_hash": "bd4e22d5f14a85bd55aaa5cce9b5039e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-25-fix-signals-page.md": {
+    "mtime": 1786951357.7569637,
+    "seen": 1786953226.143037,
+    "ast_hash": "6a6978924e3b08650f6b4dadbefa0670",
+    "semantic_hash": "6a6978924e3b08650f6b4dadbefa0670"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-25-fix-web-analytics.md": {
+    "mtime": 1786951357.7569637,
+    "seen": 1786953226.1430378,
+    "ast_hash": "ae02ccf4a7b68a3bf5b887f550359fbb",
+    "semantic_hash": "ae02ccf4a7b68a3bf5b887f550359fbb"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-25-profit-goal.md": {
+    "mtime": 1786951357.7569637,
+    "seen": 1786953226.143038,
+    "ast_hash": "6785cd2313b7e8e5e1cecc4d1c351cfb",
+    "semantic_hash": "6785cd2313b7e8e5e1cecc4d1c351cfb"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-25-top-5-trades.md": {
+    "mtime": 1786951357.7569637,
+    "seen": 1786953226.1430383,
+    "ast_hash": "b90525c7e7dc99167ae65f9b530451f8",
+    "semantic_hash": "b90525c7e7dc99167ae65f9b530451f8"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-04-30-bug-fixes.md": {
+    "mtime": 1786951357.7584703,
+    "seen": 1786953226.1430387,
+    "ast_hash": "a70bd86083bd49bdc812eab7845d46ec",
+    "semantic_hash": "a70bd86083bd49bdc812eab7845d46ec"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-05-01-feature-roadmap.md": {
+    "mtime": 1786951357.7584703,
+    "seen": 1786953226.1430392,
+    "ast_hash": "03545c1068abae9b54fe16a0616b3788",
+    "semantic_hash": "03545c1068abae9b54fe16a0616b3788"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-05-01-new-computer-setup.md": {
+    "mtime": 1786951357.7594733,
+    "seen": 1786953226.1430397,
+    "ast_hash": "72c0feccce66af59aede7b1363cf5314",
+    "semantic_hash": "72c0feccce66af59aede7b1363cf5314"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-06-27-category-a-prediction-pipeline.md": {
+    "mtime": 1786951357.7594733,
+    "seen": 1786953226.1430402,
+    "ast_hash": "7660dcc6f8c027a915329dca1dd1b7f3",
+    "semantic_hash": "7660dcc6f8c027a915329dca1dd1b7f3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-06-27-category-b-risk-management.md": {
+    "mtime": 1786951357.7604735,
+    "seen": 1786953226.1430407,
+    "ast_hash": "bf995016a726a8483151fd3099d8935d",
+    "semantic_hash": "bf995016a726a8483151fd3099d8935d"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-06-27-category-c-position-management.md": {
+    "mtime": 1786951357.7604735,
+    "seen": 1786953226.1430414,
+    "ast_hash": "b12a5bc95f36134e2d937ebc4730a03b",
+    "semantic_hash": "b12a5bc95f36134e2d937ebc4730a03b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-06-27-category-d-analytics-reporting.md": {
+    "mtime": 1786951357.7614737,
+    "seen": 1786953226.1430418,
+    "ast_hash": "e01f90d75417fd60acbb7c49bd3a7e17",
+    "semantic_hash": "e01f90d75417fd60acbb7c49bd3a7e17"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-06-27-category-e-infrastructure-ops.md": {
+    "mtime": 1786951357.7614737,
+    "seen": 1786953226.1430423,
+    "ast_hash": "936485e398bcf41bab53df33c2f54b57",
+    "semantic_hash": "936485e398bcf41bab53df33c2f54b57"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-06-27-category-f-security.md": {
+    "mtime": 1786951357.7614737,
+    "seen": 1786953226.1430428,
+    "ast_hash": "c861b0588e0911258ea09be9fd9e0e4c",
+    "semantic_hash": "c861b0588e0911258ea09be9fd9e0e4c"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-06-27-category-g-architecture.md": {
+    "mtime": 1786951357.7614737,
+    "seen": 1786953226.1430433,
+    "ast_hash": "7c4962831cc5431f871caa8967e09b8a",
+    "semantic_hash": "7c4962831cc5431f871caa8967e09b8a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-06-27-category-h-dashboard-ux.md": {
+    "mtime": 1786951357.762473,
+    "seen": 1786953226.143044,
+    "ast_hash": "886e7c03cee43fd91288e83ea134dbfe",
+    "semantic_hash": "886e7c03cee43fd91288e83ea134dbfe"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\2026-06-27-category-lv-visionary.md": {
+    "mtime": 1786951357.762473,
+    "seen": 1786953226.1430447,
+    "ast_hash": "fce704faedf75c8c2dc9525579172a30",
+    "semantic_hash": "fce704faedf75c8c2dc9525579172a30"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\plans\\do-after-graduation.md": {
+    "mtime": 1786951357.762473,
+    "seen": 1786953226.143045,
+    "ast_hash": "2f02ea45a4c426add94b8aac4567f00a",
+    "semantic_hash": "2f02ea45a4c426add94b8aac4567f00a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\specs\\2026-04-10-dashboard-modernization-design.md": {
+    "mtime": 1786951357.7634773,
+    "seen": 1786953226.1430454,
+    "ast_hash": "cb28900d83bae8633ca036dc9cecf7d4",
+    "semantic_hash": "cb28900d83bae8633ca036dc9cecf7d4"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\specs\\2026-04-10-execution-pipeline-design.md": {
+    "mtime": 1786951357.7634773,
+    "seen": 1786953226.143046,
+    "ast_hash": "79d78ff6784cd5e6ca0a6ac45bd7ab88",
+    "semantic_hash": "79d78ff6784cd5e6ca0a6ac45bd7ab88"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\specs\\2026-04-10-live-order-lifecycle-design.md": {
+    "mtime": 1786951357.7644732,
+    "seen": 1786953226.1430464,
+    "ast_hash": "218c2a711fa7f0cc42349c8f52e69201",
+    "semantic_hash": "218c2a711fa7f0cc42349c8f52e69201"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\specs\\2026-04-10-model-signal-calibration-design.md": {
+    "mtime": 1786951357.7644732,
+    "seen": 1786953226.1430466,
+    "ast_hash": "3c90589580c12aae317b65308c7724ab",
+    "semantic_hash": "3c90589580c12aae317b65308c7724ab"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\specs\\2026-04-10-signal-quality-design.md": {
+    "mtime": 1786951357.7644732,
+    "seen": 1786953226.143047,
+    "ast_hash": "019681b83fefcfafd523b506172421f6",
+    "semantic_hash": "019681b83fefcfafd523b506172421f6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\specs\\2026-04-10-suggested-bets-design.md": {
+    "mtime": 1786951357.7654748,
+    "seen": 1786953226.1430476,
+    "ast_hash": "d8265522c09947bcb08b9121ae843ce3",
+    "semantic_hash": "d8265522c09947bcb08b9121ae843ce3"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\docs\\superpowers\\specs\\2026-04-11-profit-optimization-design.md": {
+    "mtime": 1786951357.7654748,
+    "seen": 1786953226.1430483,
+    "ast_hash": "61d38cecc7caadbf667baaa1761ef742",
+    "semantic_hash": "61d38cecc7caadbf667baaa1761ef742"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\frontend\\index.html": {
+    "mtime": 1786951357.7674773,
+    "seen": 1786953226.1430488,
+    "ast_hash": "ce47f61781eba82f80450ef001aa1a47",
+    "semantic_hash": "ce47f61781eba82f80450ef001aa1a47"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\mypy_out.txt": {
+    "mtime": 1786951397.5317755,
+    "seen": 1786953226.1430492,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\requirements.txt": {
+    "mtime": 1786951397.536767,
+    "seen": 1786953226.1430497,
+    "ast_hash": "d2d70506e87c76c4d21137462e934460",
+    "semantic_hash": "d2d70506e87c76c4d21137462e934460"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\system_audit_prompt.txt": {
+    "mtime": 1786951397.5437634,
+    "seen": 1786953226.14305,
+    "ast_hash": "00ed021091f467fcfabff8a912dbe568",
+    "semantic_hash": "00ed021091f467fcfabff8a912dbe568"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\templates\\analytics.html": {
+    "mtime": 1786951397.5437634,
+    "seen": 1786953226.1430504,
+    "ast_hash": "f32565284b34a2ab3823b09d2e267257",
+    "semantic_hash": "f32565284b34a2ab3823b09d2e267257"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\templates\\base.html": {
+    "mtime": 1786951397.5447676,
+    "seen": 1786953226.1430507,
+    "ast_hash": "642c325354e887e36717e935cc9001a1",
+    "semantic_hash": "642c325354e887e36717e935cc9001a1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\templates\\dashboard.html": {
+    "mtime": 1786951397.5447676,
+    "seen": 1786953226.1430511,
+    "ast_hash": "c68f0014646daf7c118b41d1f17f2c78",
+    "semantic_hash": "c68f0014646daf7c118b41d1f17f2c78"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\templates\\forecast.html": {
+    "mtime": 1786951397.5447676,
+    "seen": 1786953226.1430519,
+    "ast_hash": "c6cc31ddee5b8a65a9157dc2725d64b6",
+    "semantic_hash": "c6cc31ddee5b8a65a9157dc2725d64b6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\templates\\risk.html": {
+    "mtime": 1786951397.545764,
+    "seen": 1786953226.1430523,
+    "ast_hash": "c49f8d088a28573c00aee45364e90b7e",
+    "semantic_hash": "c49f8d088a28573c00aee45364e90b7e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\templates\\signals.html": {
+    "mtime": 1786951397.545764,
+    "seen": 1786953226.1430526,
+    "ast_hash": "773e86256232ca622ec9938ff251343a",
+    "semantic_hash": "773e86256232ca622ec9938ff251343a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\templates\\trades.html": {
+    "mtime": 1786951397.545764,
+    "seen": 1786953226.1430533,
+    "ast_hash": "70bb74b0ccc478a6017c997c81f3a8fe",
+    "semantic_hash": "70bb74b0ccc478a6017c997c81f3a8fe"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\test_output.txt": {
+    "mtime": 1786951397.5467675,
+    "seen": 1786953226.1430538,
+    "ast_hash": "5bf20cd3e78d04a4cbe8eb6662e24a76",
+    "semantic_hash": "5bf20cd3e78d04a4cbe8eb6662e24a76"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\test_output2.txt": {
+    "mtime": 1786951397.5467675,
+    "seen": 1786953226.143054,
+    "ast_hash": "dd1d3fbf61ecdd1c00960171fd0c1ffd",
+    "semantic_hash": "dd1d3fbf61ecdd1c00960171fd0c1ffd"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\HANDOFF.md": {
+    "mtime": 1786951397.6024585,
+    "seen": 1786953226.143055,
+    "ast_hash": "d1bc0c78d3ec8721cd8d594389f2b420",
+    "semantic_hash": "d1bc0c78d3ec8721cd8d594389f2b420"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\Kalshi Bot Dashboard.html": {
+    "mtime": 1786951397.6024585,
+    "seen": 1786953226.1430554,
+    "ast_hash": "557f2469181096fbc040fcb24f79c267",
+    "semantic_hash": "557f2469181096fbc040fcb24f79c267"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\full-prototype.html": {
+    "mtime": 1786951397.604598,
+    "seen": 1786953226.1430557,
+    "ast_hash": "3cef0bac62bccf3aedf675c34604e169",
+    "semantic_hash": "3cef0bac62bccf3aedf675c34604e169"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\prototype.html": {
+    "mtime": 1786951397.604598,
+    "seen": 1786953226.1430562,
+    "ast_hash": "867731c02b5ea31f7f977e246c3ad840",
+    "semantic_hash": "867731c02b5ea31f7f977e246c3ad840"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\reference\\analytics.html": {
+    "mtime": 1786951397.6056027,
+    "seen": 1786953226.1430566,
+    "ast_hash": "f32565284b34a2ab3823b09d2e267257",
+    "semantic_hash": "f32565284b34a2ab3823b09d2e267257"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\reference\\base.html": {
+    "mtime": 1786951397.606957,
+    "seen": 1786953226.1430569,
+    "ast_hash": "642c325354e887e36717e935cc9001a1",
+    "semantic_hash": "642c325354e887e36717e935cc9001a1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\reference\\dashboard.html": {
+    "mtime": 1786951397.606957,
+    "seen": 1786953226.1430573,
+    "ast_hash": "c622f4a31b85ba416dd2a027bfc4411b",
+    "semantic_hash": "c622f4a31b85ba416dd2a027bfc4411b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\reference\\forecast.html": {
+    "mtime": 1786951397.606957,
+    "seen": 1786953226.1430578,
+    "ast_hash": "c6cc31ddee5b8a65a9157dc2725d64b6",
+    "semantic_hash": "c6cc31ddee5b8a65a9157dc2725d64b6"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\reference\\risk.html": {
+    "mtime": 1786951397.6079636,
+    "seen": 1786953226.143058,
+    "ast_hash": "c49f8d088a28573c00aee45364e90b7e",
+    "semantic_hash": "c49f8d088a28573c00aee45364e90b7e"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\reference\\signals.html": {
+    "mtime": 1786951397.6079636,
+    "seen": 1786953226.1430588,
+    "ast_hash": "773e86256232ca622ec9938ff251343a",
+    "semantic_hash": "773e86256232ca622ec9938ff251343a"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\reference\\trades.html": {
+    "mtime": 1786951397.6089697,
+    "seen": 1786953226.1430593,
+    "ast_hash": "70bb74b0ccc478a6017c997c81f3a8fe",
+    "semantic_hash": "70bb74b0ccc478a6017c997c81f3a8fe"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\screenshots\\dark-v2.png": {
+    "mtime": 1786951397.6099677,
+    "seen": 1786953226.1430597,
+    "ast_hash": "d4356a800854d2cc439683db23724393",
+    "semantic_hash": "d4356a800854d2cc439683db23724393"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\screenshots\\dark.png": {
+    "mtime": 1786951397.6099677,
+    "seen": 1786953226.1430602,
+    "ast_hash": "3db7c04752e10ea693d08db6b442b1d1",
+    "semantic_hash": "3db7c04752e10ea693d08db6b442b1d1"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\partial-exits-pnl-gap-2395e1\\updated frontend\\screenshots\\light.png": {
+    "mtime": 1786951397.610963,
+    "seen": 1786953226.1430607,
+    "ast_hash": "83250b58b5ce50d51ae42f2c0f214055",
+    "semantic_hash": "83250b58b5ce50d51ae42f2c0f214055"
   }
 }
