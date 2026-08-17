@@ -1193,18 +1193,20 @@ def _exit_live_position(
 
     Scope note on partial fills: an immediate_or_cancel order can legally
     partial-fill (match what's immediately available, cancel the rest). This
-    function only treats the position as CLOSED when the full requested
-    quantity fills. A genuine partial fill (0 < fill_count < quantity)
-    reduces the original position's tracked quantity by exactly the filled
-    amount (execution_log.record_live_partial_exit) and realizes that
-    portion's P&L immediately (add_live_loss), same as a full exit, but
+    function only treats the ORIGINAL POSITION as closed when the full
+    requested quantity fills -- a genuine partial fill (0 < fill_count <
+    quantity) reduces the original position's tracked quantity by exactly
+    the filled amount (execution_log.record_live_partial_exit) and realizes
+    that portion's P&L immediately (add_live_loss), same as a full exit, but
     leaves the position open at its new smaller size -- the next cycle's
     _get_live_open_positions() picks it up again and any further protective
     exit is attempted against the reduced remainder, not the original
-    quantity. Aggregate-only accounting: the sold portion doesn't get its
-    own export_live_tax_csv row (that only happens at a position's full
-    closure, same as today's full-exit path) -- filed as a follow-up in
-    backlog.txt if per-lot tax reporting on partial exits is ever needed.
+    quantity. Separately, THIS EXIT ORDER's own row (log_id below) IS marked
+    settled with its own pnl (execution_log.record_live_early_exit) so the
+    sold lot gets its own export_live_tax_csv row and counts toward
+    get_live_pnl_summary -- see backlog.txt's now-resolved "aggregate-only
+    P&L" entry for why this matters (a partial exit's realized P&L used to
+    only ever land in the daily aggregate total, with no per-lot row at all).
 
     Every exit order logged below passes closes_position_id=position["id"]
     -- without it, this SELL order's own row (live=1, status='filled',
@@ -1286,6 +1288,11 @@ def _exit_live_position(
         remaining_qty = qty - fill_count
         execution_log.record_live_partial_exit(position["id"], fill_count)
         execution_log.add_live_loss(-partial_pnl)
+        # Settle the EXIT ORDER's own row (not the position row -- that one
+        # must stay open, see the docstring above) so this sold lot gets its
+        # own tax-CSV row and counts toward get_live_pnl_summary instead of
+        # only ever landing in the daily aggregate total.
+        execution_log.record_live_early_exit(log_id, exit_price, reason, partial_pnl)
         _log.warning(
             "[LiveExit] %s: IOC exit PARTIALLY filled (%d/%d) via %s — "
             "position reduced to %d remaining, will retry next cycle "

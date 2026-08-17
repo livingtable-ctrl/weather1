@@ -1375,7 +1375,7 @@ one -- see the "same payload" reasoning above):
   - MANUAL cmd_order LIVE SELLS DON'T SET closes_position_id OR REDUCE
     TRACKED POSITION SIZE -- AND MAY NOT EVEN LOG live=True
 
-[OPEN 2026-08-09 -- new, split out of the entry above per its own "same payload" scoping] AGGREGATE-ONLY P&L ACCOUNTING FOR PARTIAL LIVE EXITS UNDER-REPORTS PER-TRADE TAX CSV AND THE DASHBOARD'S total_pnl SUMMARY
+[RESOLVED 2026-08-17 -- see resolution below.] AGGREGATE-ONLY P&L ACCOUNTING FOR PARTIAL LIVE EXITS UNDER-REPORTS PER-TRADE TAX CSV AND THE DASHBOARD'S total_pnl SUMMARY
 Priority: Low -- reporting/accounting completeness only, not a live-order
   safety gate; today's aggregate daily total (execution_log.get_today_live_loss(),
   fed by add_live_loss()) IS correct in real time. ENABLE_MICRO_LIVE is False,
@@ -1408,6 +1408,79 @@ Recommendation (not yet actioned -- filed for later decision):
   deferred rather than guessed at when this entry was filed, since
   ENABLE_MICRO_LIVE being off means there's no real urgency forcing the
   choice yet.
+
+Resolution (2026-08-17):
+  Re-verification before implementing found option (a)'s "child row" already
+  exists: order_executor.py's _exit_live_position() logs a fresh row per
+  exit attempt via execution_log.log_order(..., closes_position_id=
+  position["id"]) BEFORE placing the order (line ~1230), so every partial
+  exit already has its own row -- it just never got settled_at/pnl written
+  to it. This made (a) a much smaller change than either option as
+  originally scoped, and the AskUserQuestion (asked twice, second pass with
+  full technical detail per option) confirmed (a) over (b).
+
+  Two changes:
+    - order_executor.py's partial-fill branch (~line 1287) now also calls
+      execution_log.record_live_early_exit(log_id, exit_price, reason,
+      partial_pnl) targeting the EXIT ORDER's own row (log_id), not the
+      position's row (position["id"] stays open/untouched, unchanged from
+      before -- still needed so the remainder keeps surfacing for a future
+      exit attempt).
+    - execution_log.py's export_live_tax_csv() SELECT gained a self-LEFT
+      JOIN (orders AS pos ON pos.id = o.closes_position_id) and two COALESCE
+      fixes: quantity now reads COALESCE(fill_quantity, quantity) (a partial
+      exit row's own `quantity` is the originally-REQUESTED IOC amount, not
+      what actually sold), and price now reads COALESCE(pos.price, o.price)
+      (a partial-exit row's own `price` is its OWN exit price, not the
+      position's entry price -- the join pulls the true entry price from
+      the referenced position row; falls through to the row's own price
+      unchanged for ordinary settlement/full-exit rows, which have no
+      closes_position_id match).
+    get_live_pnl_summary() needed ZERO changes -- its SUM(pnl) already
+    aggregates any row with settled_at+pnl set, so it automatically picks up
+    the newly-settled partial-exit rows once the first change above lands.
+
+  Tests: three new tests in tests/test_live_execution.py's TestExitLivePosition
+  -- test_partial_fill_settles_the_exit_orders_own_row (asserts the exit
+  order's own row gets settled_at/exit_price/exit_reason/pnl, and that its
+  fill_quantity (actual sold amount) differs from its quantity (requested
+  amount)); test_partial_then_full_exit_combined_pnl_not_under_reported
+  (the scenario the entry described end to end: a partial gain leg + a
+  final loss leg, asserting get_live_pnl_summary().total_pnl reflects BOTH
+  legs' combined pnl -- and explicitly asserting it does NOT equal the
+  final leg's pnl alone, with the gap pinned to exactly the partial leg's
+  pnl -- plus export_live_tax_csv producing 2 rows with correct per-row
+  entry_price/quantity/outcome); and (added after an opus review flagged
+  the gap) test_two_partial_fills_then_final_close_all_three_legs_counted,
+  proving 2 partial legs before a final close each settle their OWN row
+  independently, not just the first one. All three mutation-tested via
+  Edit: reverting the order_executor.py change fails the first two
+  immediately (assert -0.7 == -0.142); separately reverting the
+  JOIN/COALESCE change (keeping the order_executor.py fix) fails the
+  entry_price assertion specifically (0.6 instead of 0.4) -- confirms each
+  half of the fix is independently covered, not just the combination.
+
+  Opus review (general-purpose agent, traced every other orders-table
+  reader -- get_today_live_spend, get_filled_unsettled_live_orders,
+  update_live_peak_profit, the dashboard/alerts paths) found no HIGH/MEDIUM
+  issues; 3 LOW items, 2 addressed (the missing 2+-partial-fill test above,
+  and a stale record_live_early_exit docstring that didn't mention its
+  second call shape -- both fixed), 1 left as-is (pre-existing multi-write
+  crash-window non-atomicity shared with the already-existing full-exit
+  branch, not a new bug class this change introduces).
+
+  146 tests pass across tests/test_live_execution.py + test_execution_log.py
+  (the two files with any code or test changes). ruff + ruff-format + mypy
+  clean via the pre-commit hook on execution_log.py, order_executor.py, and
+  tests/test_live_execution.py.
+
+  graphify-out/ refresh skipped this session: the installed graphify
+  version (0.9.45) still doesn't match a stale v0.9.42 AST cache dir
+  committed at HEAD, and re-running the AST layer triggered the same
+  whole-graph community-ID relabeling churn (~99K line graph.json diff)
+  flagged in a prior session's notes -- reverted rather than bundling
+  unrelated churn into this narrow fix; graphify-out is now one commit
+  further behind, unchanged from before this session.
 
 [OPEN 2026-08-09 -- new, split out of the entry above per its own "same payload" scoping] MANUAL cmd_order LIVE SELLS DON'T SET closes_position_id OR REDUCE TRACKED POSITION SIZE -- AND MAY NOT EVEN LOG live=True
 Priority: Low -- manual CLI-only path (main.py cmd_order), not the automated

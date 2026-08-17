@@ -3245,6 +3245,217 @@ class TestExitLivePosition(_LiveDBTestBase):
             ).fetchone()
         assert row["pnl"] == pytest.approx(-0.75)
 
+    def test_partial_fill_settles_the_exit_orders_own_row(self):
+        """L1378: a partial IOC exit must settle its OWN row (not the
+        position row, which must stay open for the remainder) so the sold
+        lot gets a real pnl/settled_at instead of only ever landing in the
+        daily aggregate total via add_live_loss."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "3.00",  # only 3 of 10 requested
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.60, "model_exit", "2026-05-15_12z"
+            )
+        assert result is False
+
+        with execution_log._conn() as con:
+            exit_row = con.execute(
+                "SELECT quantity, fill_quantity, settled_at, exit_price, "
+                "exit_reason, pnl FROM orders WHERE closes_position_id = ?",
+                (row_id,),
+            ).fetchone()
+        # Requested qty (10, the whole remaining position at the time) is
+        # NOT the same as what actually sold (3) -- export_live_tax_csv must
+        # read fill_quantity, not quantity, for this row.
+        assert exit_row["quantity"] == 10
+        assert exit_row["fill_quantity"] == 3
+        assert exit_row["settled_at"] is not None
+        assert exit_row["exit_price"] == pytest.approx(0.60)
+        assert exit_row["exit_reason"] == "model_exit"
+        # gross_pnl = 3 * (0.60 - 0.40) = 0.60; gain -> fee: 0.60 * 0.93
+        assert exit_row["pnl"] == pytest.approx(0.558)
+
+    def test_partial_then_full_exit_combined_pnl_not_under_reported(self, tmp_path):
+        """Regression for L1378: a position sold in two legs (a partial IOC
+        exit, then a later full exit of the remainder) must have BOTH legs'
+        pnl counted in get_live_pnl_summary/export_live_tax_csv, not just
+        the final leg -- proves the fix closes the exact gap the entry
+        described, not just that some pnl shows up somewhere."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+
+        # Leg 1: partial exit, gain. gross = 3*(0.60-0.40)=0.60, fee applies:
+        # 0.60 * 0.93 = 0.558
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_partial",
+            "fill_count_fp": "3.00",
+        }
+        position = self._position(id=row_id, quantity=10)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            leg1_result = _exit_live_position(
+                mock_client, position, 0.60, "model_exit", "2026-05-15_12z"
+            )
+        assert leg1_result is False
+        partial_pnl = 0.558
+
+        # Leg 2: full exit of the reduced remainder (7 left), loss. gross =
+        # 7*(0.30-0.40)=-0.70, loss -> no fee.
+        mock_client2 = MagicMock()
+        mock_client2.place_order.return_value = {
+            "order_id": "ord_final",
+            "fill_count_fp": "7.00",
+        }
+        position2 = self._position(id=row_id, quantity=7)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            leg2_result = _exit_live_position(
+                mock_client2, position2, 0.30, "stop_loss", "2026-05-15_12z"
+            )
+        assert leg2_result is True
+        final_pnl = -0.70
+
+        summary = execution_log.get_live_pnl_summary()
+        # The core assertion: the combined total, not just the final leg.
+        assert summary["total_pnl"] == pytest.approx(partial_pnl + final_pnl)
+        # Pin the exact size of the gap the un-fixed code would have left:
+        # pre-fix, total_pnl would have been final_pnl alone (the partial
+        # leg's row was never settled), silently dropping partial_pnl.
+        assert summary["total_pnl"] != pytest.approx(final_pnl)
+        gap = summary["total_pnl"] - final_pnl
+        assert gap == pytest.approx(partial_pnl)
+        assert summary["settled_count"] == 2
+
+        out_path = str(tmp_path / "live_tax.csv")
+        count = execution_log.export_live_tax_csv(out_path)
+        assert count == 2
+        import csv
+
+        with open(out_path, newline="") as f:
+            rows = list(csv.DictReader(f))
+        rows_by_pnl = {round(float(r["pnl"]), 3): r for r in rows}
+        partial_row = rows_by_pnl[round(partial_pnl, 3)]
+        final_row = rows_by_pnl[round(final_pnl, 3)]
+        # Both legs must report the TRUE entry price (0.40), not the
+        # partial leg's own row price (which is its exit price, 0.60).
+        assert partial_row["entry_price"] == "0.4"
+        assert final_row["entry_price"] == "0.4"
+        # The partial leg's quantity must be the actual sold amount (3),
+        # not the requested IOC qty at the time (10).
+        assert partial_row["quantity"] == "3"
+        assert final_row["quantity"] == "7"
+        assert partial_row["outcome"] == "early_exit"
+        assert final_row["outcome"] == "early_exit"
+
+    def test_two_partial_fills_then_final_close_all_three_legs_counted(self):
+        """N partial fills before a final close must each settle their OWN
+        exit-order row -- not just the first one -- since every
+        _exit_live_position call creates a fresh log_order row regardless of
+        how many partial legs already happened against the same position."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+
+        # Leg 1: partial, gain. gross=3*(0.60-0.40)=0.60, fee: 0.60*0.93=0.558
+        mock1 = MagicMock()
+        mock1.place_order.return_value = {"order_id": "ord1", "fill_count_fp": "3.00"}
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            r1 = _exit_live_position(
+                mock1,
+                self._position(id=row_id, quantity=10),
+                0.60,
+                "model_exit",
+                "2026-05-15_12z",
+            )
+        assert r1 is False
+        pnl1 = 0.558
+
+        # Leg 2: partial, loss. gross=4*(0.30-0.40)=-0.40, no fee.
+        mock2 = MagicMock()
+        mock2.place_order.return_value = {"order_id": "ord2", "fill_count_fp": "4.00"}
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            r2 = _exit_live_position(
+                mock2,
+                self._position(id=row_id, quantity=7),
+                0.30,
+                "stop_loss",
+                "2026-05-15_12z",
+            )
+        assert r2 is False
+        pnl2 = -0.40
+
+        # Leg 3: final close of the last 3. gross=3*(0.50-0.40)=0.30, fee:
+        # 0.30*0.93=0.279
+        mock3 = MagicMock()
+        mock3.place_order.return_value = {"order_id": "ord3", "fill_count_fp": "3.00"}
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            r3 = _exit_live_position(
+                mock3,
+                self._position(id=row_id, quantity=3),
+                0.50,
+                "model_exit",
+                "2026-05-15_12z",
+            )
+        assert r3 is True
+        pnl3 = 0.279
+
+        summary = execution_log.get_live_pnl_summary()
+        assert summary["total_pnl"] == pytest.approx(pnl1 + pnl2 + pnl3)
+        assert summary["settled_count"] == 3
+
+        with execution_log._conn() as con:
+            # The final leg's own exit-order row is deliberately left
+            # unsettled (its pnl lands on the position row instead, same as
+            # any full-exit) -- filter to settled rows to isolate the two
+            # partial legs' own rows.
+            exit_rows = con.execute(
+                "SELECT pnl FROM orders WHERE closes_position_id = ? "
+                "AND pnl IS NOT NULL ORDER BY placed_at",
+                (row_id,),
+            ).fetchall()
+        # Both partial legs' own rows settled independently -- not just leg 1.
+        assert [round(r["pnl"], 3) for r in exit_rows] == [
+            round(pnl1, 3),
+            round(pnl2, 3),
+        ]
+
 
 class TestCheckLivePositionExits(_LiveDBTestBase):
     def _open_position_row(self, ticker="KXHIGH-25MAY15-T75", **overrides):

@@ -608,6 +608,13 @@ def record_live_early_exit(
     the underlying market hasn't actually resolved yet, we just closed our
     own position early; there is no real "yes won" / "no won" fact to record
     here. pnl is the realized net P&L (already fee-adjusted) from this exit.
+
+    Also called by order_executor._exit_live_position on a PARTIAL fill, but
+    targeted at the exit order's own row (closes_position_id set, not a
+    position row) instead of the position's -- settles that row's own
+    pnl/exit_price/exit_reason so the sold lot gets counted by
+    export_live_tax_csv/get_live_pnl_summary, while the actual position row
+    stays open (untouched) for the remainder.
     """
     init_log()
     with _conn() as con:
@@ -665,33 +672,44 @@ def export_live_tax_csv(path: str, tax_year: int | None = None) -> int:
     If tax_year is provided, filters to rows where settled_at starts with that year.
 
     CSV columns: date, ticker, side, quantity, entry_price, outcome, pnl, settled_at
+
+    A settled row is one of two shapes, disambiguated by closes_position_id:
+    - closes_position_id IS NULL: a position's own row, settled via
+      record_live_settlement/record_live_early_exit at full closure. `price`
+      on this row IS the entry price (record_live_early_exit never touches
+      it), so it's used directly.
+    - closes_position_id IS NOT NULL: a partial exit's own row (see
+      order_executor._exit_live_position), settled via
+      record_live_early_exit called on the EXIT order's row instead of the
+      position's. This row's own `price`/`quantity` are the exit order's
+      limit price and REQUESTED quantity, not the entry price or the actual
+      sold amount -- the self-join pulls the true entry price from the
+      referenced position row, and fill_quantity (set by log_order_result
+      when the IOC fill came back) gives the actual sold amount instead of
+      what was requested.
     Returns count of rows written.
     """
     import csv
 
     init_log()
     with _conn() as con:
+        base_query = """
+            SELECT o.placed_at, o.ticker, o.side,
+                   COALESCE(o.fill_quantity, o.quantity) AS quantity,
+                   COALESCE(pos.price, o.price) AS price,
+                   o.outcome_yes, o.pnl, o.settled_at
+            FROM orders o
+            LEFT JOIN orders pos ON pos.id = o.closes_position_id
+            WHERE o.live = 1 AND o.settled_at IS NOT NULL AND o.pnl IS NOT NULL
+        """
         if tax_year is not None:
             rows = con.execute(
-                """
-                SELECT placed_at, ticker, side, quantity, price,
-                       outcome_yes, pnl, settled_at
-                FROM orders
-                WHERE live = 1 AND settled_at IS NOT NULL AND pnl IS NOT NULL
-                  AND settled_at LIKE ?
-                ORDER BY settled_at
-                """,
+                base_query + " AND o.settled_at LIKE ? ORDER BY o.settled_at",
                 (f"{tax_year}%",),
             ).fetchall()
         else:
             rows = con.execute(
-                """
-                SELECT placed_at, ticker, side, quantity, price,
-                       outcome_yes, pnl, settled_at
-                FROM orders
-                WHERE live = 1 AND settled_at IS NOT NULL AND pnl IS NOT NULL
-                ORDER BY settled_at
-                """,
+                base_query + " ORDER BY o.settled_at",
             ).fetchall()
 
     with open(path, "w", newline="", encoding="utf-8") as f:
