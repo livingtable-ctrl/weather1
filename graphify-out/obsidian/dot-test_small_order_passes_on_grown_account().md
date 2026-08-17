@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_i.py"
 type: "code"
-community: "Community 482"
+community: "Community 520"
 location: "L315"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_482
+  - community/Community_520
 ---
 
 # .test_small_order_passes_on_grown_account()
@@ -15,4 +15,4 @@ tags:
 - [[$50 trade on a $5000 account = 1% exposure — well under 50% cap.]] - `rationale_for` [EXTRACTED]
 - [[TestCheckPositionLimitsDenom]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_482
+#graphify/code #graphify/EXTRACTED #community/Community_520

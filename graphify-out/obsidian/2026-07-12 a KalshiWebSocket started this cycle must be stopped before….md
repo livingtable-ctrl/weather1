@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_integration.py"
 type: "rationale"
-community: "Cron Integration Tests"
+community: "Community 31"
 location: "L847"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Cron_Integration_Tests
+  - community/Community_31
 ---
 
 # 2026-07-12: a KalshiWebSocket started this cycle must be stopped before…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_cmd_cron_stops_active_websocket_on_exit()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Cron_Integration_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_31

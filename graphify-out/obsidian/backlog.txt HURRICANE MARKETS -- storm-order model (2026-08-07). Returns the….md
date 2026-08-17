@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "ML Bias Correction & Audit Plans"
-location: "L9247"
+community: "Community 5"
+location: "L9349"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_5
 ---
 
 # backlog.txt "HURRICANE MARKETS" -- storm-order model (2026-08-07). Returns the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_get_cached_storms_named_to_date()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

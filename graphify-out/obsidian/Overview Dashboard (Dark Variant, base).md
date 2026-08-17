@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/screenshots/dark.png"
 type: "image"
-community: "Community 247"
+community: "Community 244"
 tags:
   - graphify/image
   - graphify/AMBIGUOUS
-  - community/Community_247
+  - community/Community_244
 ---
 
 # Overview Dashboard (Dark Variant, base)
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[Overview Dashboard (Dark v2 Variant)]] - `conceptually_related_to` [AMBIGUOUS]
 
-#graphify/image #graphify/AMBIGUOUS #community/Community_247
+#graphify/image #graphify/AMBIGUOUS #community/Community_244

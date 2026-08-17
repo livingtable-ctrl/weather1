@@ -1,26 +1,27 @@
 ---
 type: community
-cohesion: 0.24
-members: 11
+cohesion: 0.23
+members: 12
 ---
 
 # Community 329
 
-**Cohesion:** 0.24 - loosely connected
-**Members:** 11 nodes
+**Cohesion:** 0.23 - loosely connected
+**Members:** 12 nodes
 
 ## Members
-- [[dot-test_no_remaining_count_means_pure_price_change_pending()]] - code - tests/test_live_execution.py
-- [[dot-test_remaining_count_positive_means_still_pending()]] - code - tests/test_live_execution.py
-- [[dot-test_remaining_count_zero_means_filled()]] - code - tests/test_live_execution.py
-- [[dot-test_unparseable_remaining_count_fails_to_pending()]] - code - tests/test_live_execution.py
-- [[Amend caused a partial fill (2 of 5) but 3 are still resting -- must stay…]] - rationale - tests/test_live_execution.py
-- [[Fail toward the safer assumption (still resting, will be re-verified by the…]] - rationale - tests/test_live_execution.py
-- [[TestResolveAmendStatus]] - code - tests/test_live_execution.py
-- [[Translate an amend_order() response into this bot's internal status vocabulary…]] - rationale - order_executor.py
-- [[_resolve_amend_status()]] - code - order_executor.py
-- [[order_executor._resolve_amend_status -- translates an amend_order() response…]] - rationale - tests/test_live_execution.py
-- [[remaining_countfill_count absent (both None) -- Kalshi's docs say these are…]] - rationale - tests/test_live_execution.py
+- [[LOWER contains LOW -- same substring-check behavior as…]] - rationale - tests/test_weather.py
+- [[dot-test_high_checked_before_low()]] - code - tests/test_weather.py
+- [[dot-test_high_ticker_returns_max()]] - code - tests/test_weather.py
+- [[dot-test_low_must_be_exact_substring_match()]] - code - tests/test_weather.py
+- [[dot-test_low_ticker_returns_min()]] - code - tests/test_weather.py
+- [[dot-test_neither_high_nor_low_returns_none()]] - code - tests/test_weather.py
+- [[Codebase-wide single source of truth for the does this ticker's market measure…]] - rationale - weather_markets.py
+- [[Real, reachable case (not theoretical) -- e.g. an hourly KXTEMPxxxH ticker or a…]] - rationale - tests/test_weather.py
+- [[TestVarFromTickerPrefix]] - code - tests/test_weather.py
+- [[This codebase's real ticker vocabulary never contains both substrings…]] - rationale - tests/test_weather.py
+- [[_var_from_ticker_prefix()]] - code - weather_markets.py
+- [[backlog.txt VAR-CONVENTION LITERAL HAND-COPIED ACROSS 7+ FILES BEYOND…]] - rationale - tests/test_weather.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,12 +31,15 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 111]]
-- 2 edges to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 67]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 3 edges to [[_COMMUNITY_Community 2]]
+- 2 edges to [[_COMMUNITY_Community 396]]
+- 2 edges to [[_COMMUNITY_Community 1]]
+- 2 edges to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 397]]
+- 1 edge to [[_COMMUNITY_Community 8]]
+- 1 edge to [[_COMMUNITY_Community 44]]
+- 1 edge to [[_COMMUNITY_Community 6]]
 
 ## Top bridge nodes
-- [[_resolve_amend_status()]] - degree 9, connects to 4 communities
-- [[TestResolveAmendStatus]] - degree 8, connects to 2 communities
+- [[_var_from_ticker_prefix()]] - degree 18, connects to 8 communities
+- [[TestVarFromTickerPrefix]] - degree 7, connects to 1 community

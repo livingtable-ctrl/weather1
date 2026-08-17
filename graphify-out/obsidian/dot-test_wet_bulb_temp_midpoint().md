@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Ensemble Weight Blending Tests"
+community: "Community 11"
 location: "L374"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_11
 ---
 
 # .test_wet_bulb_temp_midpoint()
@@ -16,4 +16,4 @@ tags:
 - [[wet_bulb_temp returns reasonable value for known input.]] - `rationale_for` [EXTRACTED]
 - [[wet_bulb_temp()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_11

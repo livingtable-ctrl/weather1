@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Tracker P&L Attribution Tests"
-location: "L5365"
+community: "Community 2"
+location: "L5467"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_2
 ---
 
 # Extract the local hour from a KXTEMPxxxH hourly ticker (e.g.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[parse_ticker_hour()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

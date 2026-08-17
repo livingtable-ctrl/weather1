@@ -1,12 +1,12 @@
 ---
 source_file: "backtest.py"
 type: "code"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 8"
 location: "L49"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_8
 ---
 
 # fetch_archive_temps()
@@ -17,8 +17,8 @@ tags:
 - [[atomic_write_json()]] - `calls` [EXTRACTED]
 - [[backtest.py]] - `contains` [EXTRACTED]
 - [[climatological_prob()]] - `semantically_similar_to` [INFERRED]
-- [[date_7]] - `references` [EXTRACTED]
+- [[date_11]] - `references` [EXTRACTED]
 - [[run_backtest()]] - `calls` [EXTRACTED]
 - [[test_backtest_stratified.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/code #graphify/EXTRACTED #community/Community_8

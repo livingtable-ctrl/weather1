@@ -1,12 +1,12 @@
 ---
 source_file: "climatology.py"
 type: "code"
-community: "Climatology & Climate Index Fetching"
+community: "Community 102"
 location: "L315"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_102
 ---
 
 # _load_sigma_cache_file()
@@ -17,4 +17,4 @@ tags:
 - [[climatology.py]] - `contains` [EXTRACTED]
 - [[load_all_sigmas()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_102

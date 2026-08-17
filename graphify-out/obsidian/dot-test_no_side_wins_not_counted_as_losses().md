@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts_side.py"
 type: "code"
-community: "Community 208"
+community: "Community 108"
 location: "L52"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_208
+  - community/Community_108
 ---
 
 # .test_no_side_wins_not_counted_as_losses()
@@ -17,4 +17,4 @@ tags:
 - [[_make_trade()_1]] - `calls` [EXTRACTED]
 - [[check_anomalies()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_208
+#graphify/code #graphify/EXTRACTED #community/Community_108

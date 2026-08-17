@@ -1,31 +1,32 @@
 ---
 type: community
-cohesion: 0.15
-members: 16
+cohesion: 0.12
+members: 17
 ---
 
 # Community 209
 
-**Cohesion:** 0.15 - loosely connected
-**Members:** 16 nodes
+**Cohesion:** 0.12 - loosely connected
+**Members:** 17 nodes
 
 ## Members
-- [[D7 Model Version History]] - document - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[Data Integrity Audit Scope (safe_io, checksums)]] - document - system_audit_prompt.txt
-- [[ML  Forecast Audit Scope]] - document - system_audit_prompt.txt
-- [[boto3]] - code - requirements.txt
-- [[calibrate_city_weights() (122)]] - document - docs/superpowers/specs/2026-04-10-model-signal-calibration-design.md
-- [[calibrate_seasonal_weights() (118)]] - document - docs/superpowers/specs/2026-04-10-model-signal-calibration-design.md
-- [[calibration.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[datacity_weights.json]] - code - system_audit_prompt.txt
-- [[datalearned_correlations.json]] - code - system_audit_prompt.txt
-- [[datalearned_weights.json (known corruption bd6c0ef)]] - code - system_audit_prompt.txt
-- [[datapredictions.db (Outcomes DB)]] - code - system_audit_prompt.txt
-- [[dataseasonal_weights.json]] - code - system_audit_prompt.txt
-- [[forecast_cache.py Module]] - code - system_audit_prompt.txt
-- [[monte_carlo.py Module (Cholesky)]] - code - system_audit_prompt.txt
-- [[python main.py calibrate CLI Command]] - document - docs/superpowers/specs/2026-04-10-model-signal-calibration-design.md
-- [[safe_io.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[dot-test_cholesky_correlated()_1]] - code - tests/test_paper.py
+- [[dot-test_cholesky_identity()_1]] - code - tests/test_paper.py
+- [[dot-test_past_date_only_portfolio_returns_empty_result()]] - code - tests/test_paper.py
+- [[dot-test_simulate_portfolio_correlated_widens_distribution()]] - code - tests/test_paper.py
+- [[dot-test_target_date_excluded_uses_city_local_today_not_utc()]] - code - tests/test_paper.py
+- [[dot-test_unparseable_target_date_fallback_uses_city_local_today()]] - code - tests/test_paper.py
+- [[dot-test_unparseable_target_date_falls_back_to_string_compare_no_crash()]] - code - tests/test_paper.py
+- [[dot-test_zoneinfo_failure_falls_back_to_utc_in_simulation()]] - code - tests/test_paper.py
+- [[All-stale portfolio skips every trade and returns the zero-position result.]] - rationale - tests/test_paper.py
+- [[All-stale portfolio skips every trade and returns the zero-position result._1]] - rationale - tests/test_paper.py
+- [[Bug A fix (backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2) a genuinely…]] - rationale - tests/test_paper.py
+- [[Bug A fix (backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2) a genuinely…_1]] - rationale - tests/test_paper.py
+- [[Correlated positions (same citydate) should widen P&L distribution vs…]] - rationale - tests/test_paper.py
+- [[If ZoneInfo construction raises for any reason, simulate_portfolio must fall…]] - rationale - tests/test_paper.py
+- [[Regression for backlog.txt L569 simulate_portfolio's past-date check must…]] - rationale - tests/test_paper.py
+- [[TestMonteCarloCholesky]] - code - tests/test_paper.py
+- [[The unparseable-date string-compare fallback (`_tdate  _today_mc.isoformat()`)…]] - rationale - tests/test_paper.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -35,15 +36,15 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 141]]
-- 4 edges to [[_COMMUNITY_Community 179]]
-- 3 edges to [[_COMMUNITY_Community 249]]
-- 2 edges to [[_COMMUNITY_Community 154]]
-- 1 edge to [[_COMMUNITY_Community 197]]
+- 7 edges to [[_COMMUNITY_Community 303]]
+- 3 edges to [[_COMMUNITY_Community 188]]
+- 1 edge to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 21]]
+- 1 edge to [[_COMMUNITY_Community 23]]
 
 ## Top bridge nodes
-- [[Data Integrity Audit Scope (safe_io, checksums)]] - degree 14, connects to 4 communities
-- [[ML  Forecast Audit Scope]] - degree 6, connects to 3 communities
-- [[calibrate_seasonal_weights() (118)]] - degree 4, connects to 1 community
-- [[D7 Model Version History]] - degree 3, connects to 1 community
-- [[calibrate_city_weights() (122)]] - degree 3, connects to 1 community
+- [[TestMonteCarloCholesky]] - degree 12, connects to 4 communities
+- [[dot-test_past_date_only_portfolio_returns_empty_result()]] - degree 5, connects to 2 communities
+- [[dot-test_unparseable_target_date_falls_back_to_string_compare_no_crash()]] - degree 4, connects to 1 community
+- [[dot-test_simulate_portfolio_correlated_widens_distribution()]] - degree 3, connects to 1 community
+- [[dot-test_target_date_excluded_uses_city_local_today_not_utc()]] - degree 3, connects to 1 community

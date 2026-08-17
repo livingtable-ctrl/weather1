@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_isoformat_cutoff_guard.py"
 type: "code"
-community: "Community 75"
+community: "Community 66"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_75
+  - community/Community_66
 ---
 
 # test_isoformat_cutoff_guard.py
@@ -16,7 +17,8 @@ tags:
 - [[_iter_isoformat_cutoff_sites()]] - `contains` [EXTRACTED]
 - [[_production_py_files()_1]] - `contains` [EXTRACTED]
 - [[backtest.py_1]] - `references` [EXTRACTED]
-- [[get_mean_slippageprune_api_requestsprune_old_analysis_attempts (isoformat cutoffs)]] - `references` [EXTRACTED]
+- [[functools]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
 - [[rAutomated guard against a new hand-rolled `.isoformat()` SQL cutoff…]] - `rationale_for` [EXTRACTED]
 - [[sql_normalize_iso_column()]] - `references` [EXTRACTED]
 - [[test_black_wrapped_multiline_cutoff_is_caught()]] - `contains` [EXTRACTED]
@@ -30,4 +32,4 @@ tags:
 - [[test_two_level_nested_call_args_are_caught()]] - `contains` [EXTRACTED]
 - [[test_utc_today_base_variant_is_caught()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_75
+#graphify/code #graphify/EXTRACTED #community/Community_66

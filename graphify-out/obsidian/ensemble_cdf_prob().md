@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Weather Probability Math Tests"
-location: "L3789"
+community: "Community 396"
+location: "L3891"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_396
 ---
 
 # ensemble_cdf_prob()
@@ -20,4 +20,4 @@ tags:
 - [[test_weather.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_396

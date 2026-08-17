@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "code"
-community: "Community 164"
+community: "Community 20"
 location: "L1488"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_164
+  - community/Community_20
 ---
 
 # .test_order_executor_uses_the_shared_helper_not_a_local_copy()
@@ -15,4 +15,4 @@ tags:
 - [[Regression guard for the consolidation itself order_executor.py must no longer…]] - `rationale_for` [EXTRACTED]
 - [[TestCoalesceMarketPrice]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_164
+#graphify/code #graphify/EXTRACTED #community/Community_20

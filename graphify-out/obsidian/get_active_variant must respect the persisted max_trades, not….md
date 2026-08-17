@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_m.py"
 type: "rationale"
-community: "Community 345"
+community: "Community 9"
 location: "L425"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_345
+  - community/Community_9
 ---
 
 # get_active_variant must respect the persisted max_trades, not…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_get_active_variant_uses_persisted_max()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_345
+#graphify/rationale #graphify/EXTRACTED #community/Community_9

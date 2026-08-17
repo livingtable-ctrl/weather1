@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 421
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-setup_method()_28]] - code - tests/test_execution_log.py
-- [[dot-teardown_method()_20]] - code - tests/test_execution_log.py
-- [[dot-test_api_canceled_order_does_not_block_reentry()]] - code - tests/test_execution_log.py
-- [[dot-test_filled_order_still_blocks_reentry()]] - code - tests/test_execution_log.py
-- [[dot-test_legacy_british_cancelled_spelling_does_not_block_reentry()]] - code - tests/test_execution_log.py
-- [[Deep-review followup rows written before the F8 spelling fix deployed (with…]] - rationale - tests/test_execution_log.py
-- [[F8 was_ordered_recently() must exclude API-canceled orders.…]] - rationale - tests/test_execution_log.py
-- [[TestWasOrderedRecentlyCanceledSpelling]] - code - tests/test_execution_log.py
+- [[dot-test_daily_ticker_unaffected_reaches_gate_check()]] - code - tests/test_hurricane_gating.py
+- [[dot-test_refuses_kxtropstorm_too()]] - code - tests/test_hurricane_gating.py
+- [[dot-test_refuses_monthly_snow_ticker()]] - code - tests/test_hurricane_gating.py
+- [[dot-test_refuses_without_fetching_market_or_placing_order()]] - code - tests/test_hurricane_gating.py
+- [[Regression control an ordinary ticker must still reach past this guard…]] - rationale - tests/test_hurricane_gating.py
+- [[TestCmdOrderRefusesHurricane]] - code - tests/test_hurricane_gating.py
+- [[The broadened-marker-set finding applies to cmd_order's own direct check too,…]] - rationale - tests/test_hurricane_gating.py
+- [[cmd_order's snow guard, mirroring the hurricane one -- added same session so…]] - rationale - tests/test_hurricane_gating.py
+- [[main.py cmd_order is a confirmed, real bypass of analyze_trade()'s gates for…]] - rationale - tests/test_hurricane_gating.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,7 +28,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
-- [[TestWasOrderedRecentlyCanceledSpelling]] - degree 7, connects to 1 community
+- [[TestCmdOrderRefusesHurricane]] - degree 6, connects to 1 community

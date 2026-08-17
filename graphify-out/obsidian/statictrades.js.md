@@ -1,22 +1,22 @@
 ---
 source_file: "static/trades.js"
 type: "code"
-community: "Legacy Static Dashboard JS Pages"
+community: "Community 233"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Legacy_Static_Dashboard_JS_Pages
+  - community/Community_233
 ---
 
 # static/trades.js
 
 ## Connections
 - [[loadTrades()]] - `contains` [EXTRACTED]
-- [[populateCityFilter()_1]] - `contains` [EXTRACTED]
+- [[populateCityFilter()]] - `contains` [EXTRACTED]
 - [[renderClosed()]] - `contains` [EXTRACTED]
 - [[renderOpen()]] - `contains` [EXTRACTED]
 - [[renderPagination()]] - `contains` [EXTRACTED]
-- [[renderSummary()_1]] - `contains` [EXTRACTED]
+- [[renderSummary()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_233

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/conftest.py"
 type: "rationale"
-community: "Test Fixture Cache Clearing (conftest)"
+community: "Community 18"
 location: "L480"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Test_Fixture_Cache_Clearing_conftest
+  - community/Community_18
 ---
 
 # Load sample markets from fixture JSON file.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[sample_markets()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Test_Fixture_Cache_Clearing_conftest
+#graphify/rationale #graphify/EXTRACTED #community/Community_18

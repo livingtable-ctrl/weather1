@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 1"
 location: "L3231"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_1
 ---
 
 # Annualised Sharpe ratio over the last window_days calendar days. Uses daily P&L…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_rolling_sharpe()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_1

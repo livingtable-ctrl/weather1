@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L1561"
+community: "Community 5"
+location: "L1663"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_5
 ---
 
 # Pre-warm _forecast_cache with batched Open-Meteo requests. Instead of one HTTP…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[batch_prewarm_forecasts()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

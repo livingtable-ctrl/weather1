@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_notify.py"
 type: "code"
-community: "Community 149"
+community: "Community 153"
 location: "L159"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_149
+  - community/Community_153
 ---
 
 # .test_non_dict_json_fails_open()
@@ -16,4 +16,4 @@ tags:
 - [[TestSystemCooldownElapsed]] - `method` [EXTRACTED]
 - [[Valid JSON that isn't a dict (e.g. `null` or a bare list) must not crash with…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_149
+#graphify/code #graphify/EXTRACTED #community/Community_153

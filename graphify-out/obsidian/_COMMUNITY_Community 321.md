@@ -10,18 +10,18 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[dot-_city()_2]] - code - tests/test_weather_markets.py
-- [[dot-test_austin_hourly_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_chicago_hourly_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_la_hourly_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_nyc_hourly_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_washington_dc_hourly_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[Real ticker pulled live 2026-07-20.]] - rationale - tests/test_weather_markets.py
-- [[Real ticker pulled live 2026-07-20._1]] - rationale - tests/test_weather_markets.py
-- [[TestHourlyDirectionalCityDetection]] - code - tests/test_weather_markets.py
-- [[Would return None without the explicit _KXTEMP_HOURLY_CITY fix -- KXTEMPDCH…]] - rationale - tests/test_weather_markets.py
-- [[Would return None without the explicit _KXTEMP_HOURLY_CITY fix -- none of the…]] - rationale - tests/test_weather_markets.py
-- [[backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 1 KXTEMPxxxH tickers…]] - rationale - tests/test_weather_markets.py
+- [[dot-setUp()_21]] - code - tests/test_tracker.py
+- [[dot-tearDown()_20]] - code - tests/test_tracker.py
+- [[dot-test_local_hour_column_exists_after_init()]] - code - tests/test_tracker.py
+- [[dot-test_log_prediction_succeeds_with_local_hour()]] - code - tests/test_tracker.py
+- [[dot-test_schema_version_equals_migration_count()_1]] - code - tests/test_tracker.py
+- [[dot-test_user_version_equals_schema_version_after_init()_1]] - code - tests/test_tracker.py
+- [[After init_db(), PRAGMA user_version must equal _SCHEMA_VERSION.]] - rationale - tests/test_tracker.py
+- [[After init_db(), the predictions table must have the local_hour column.]] - rationale - tests/test_tracker.py
+- [[P0-12 — _SCHEMA_VERSION must equal the number of migrations so local_hour…]] - rationale - tests/test_tracker.py
+- [[TestSchemaVersionMatchesMigrations_1]] - code - tests/test_tracker.py
+- [[_SCHEMA_VERSION must equal len(_MIGRATIONS) — off-by-one leaves last migration…]] - rationale - tests/test_tracker.py
+- [[log_prediction must not crash when local_hour is present in analysis dict.]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,12 +31,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 5 edges to [[_COMMUNITY_Community 102]]
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[TestHourlyDirectionalCityDetection]] - degree 8, connects to 1 community
-- [[dot-test_austin_hourly_ticker_detected()]] - degree 3, connects to 1 community
-- [[dot-test_la_hourly_ticker_detected()]] - degree 3, connects to 1 community
-- [[dot-test_nyc_hourly_ticker_detected()]] - degree 3, connects to 1 community
-- [[dot-test_washington_dc_hourly_ticker_detected()]] - degree 3, connects to 1 community
+- [[TestSchemaVersionMatchesMigrations_1]] - degree 8, connects to 1 community

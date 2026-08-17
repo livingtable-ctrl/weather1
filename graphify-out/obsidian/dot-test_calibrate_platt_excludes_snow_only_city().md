@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_calibration.py"
 type: "code"
-community: "Community 69"
+community: "Community 58"
 location: "L434"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_69
+  - community/Community_58
 ---
 
 # .test_calibrate_platt_excludes_snow_only_city()
@@ -17,4 +17,4 @@ tags:
 - [[_seed_db()]] - `calls` [EXTRACTED]
 - [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Snow Step 2 the identical…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_69
+#graphify/code #graphify/EXTRACTED #community/Community_58

@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_candle()]] - `calls` [EXTRACTED]
-- [[dot-_trade()_2]] - `calls` [EXTRACTED]
+- [[dot-_trade()_1]] - `calls` [EXTRACTED]
 - [[All 4 trades share one identical timestamp - mid_epoch equals that timestamp…]] - `rationale_for` [EXTRACTED]
 - [[TestTradeFlowSettlementCorrelation]] - `method` [EXTRACTED]
 

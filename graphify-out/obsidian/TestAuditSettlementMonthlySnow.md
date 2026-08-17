@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 238"
+community: "Community 240"
 location: "L582"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_238
+  - community/Community_240
 ---
 
 # TestAuditSettlementMonthlySnow
@@ -24,4 +24,4 @@ tags:
 - [[backlog.txt Snow Step 2 audit_settlement()'s new snow branch reads Kalshi's…]] - `rationale_for` [EXTRACTED]
 - [[test_snow_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_238
+#graphify/code #graphify/EXTRACTED #community/Community_240

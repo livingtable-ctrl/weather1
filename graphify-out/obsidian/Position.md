@@ -1,23 +1,26 @@
 ---
 source_file: "positions.py"
 type: "code"
-community: "Community 45"
+community: "Community 12"
 location: "L35"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_45
+  - community/Community_12
 ---
 
 # Position
 
 ## Connections
-- [[dot-_trade()]] - `calls` [EXTRACTED]
+- [[dot-_trade()_4]] - `calls` [EXTRACTED]
+- [[dot-exit()_1]] - `references` [EXTRACTED]
 - [[dot-exit()]] - `references` [EXTRACTED]
-- [[dot-get_open()]] - `references` [EXTRACTED]
 - [[dot-get_open()_1]] - `references` [EXTRACTED]
-- [[dot-save_peak()]] - `references` [EXTRACTED]
+- [[dot-get_open()]] - `references` [EXTRACTED]
+- [[dot-get_open()_2]] - `references` [EXTRACTED]
 - [[dot-save_peak()_1]] - `references` [EXTRACTED]
+- [[dot-save_peak()]] - `references` [EXTRACTED]
+- [[dot-save_peak()_2]] - `references` [EXTRACTED]
 - [[dot-test_does_not_overwrite_a_higher_stored_peak()]] - `calls` [EXTRACTED]
 - [[dot-test_exit_wraps_exit_live_position()]] - `calls` [EXTRACTED]
 - [[dot-test_records_new_peak_when_higher()]] - `calls` [EXTRACTED]
@@ -27,7 +30,9 @@ tags:
 - [[dot-test_save_peak_writes_only_the_targeted_position()]] - `calls` [EXTRACTED]
 - [[dot-test_zero_ask_no_longer_books_phantom_win()]] - `calls` [EXTRACTED]
 - [[dot-test_zero_bid_no_longer_fires_phantom_stop_loss()]] - `calls` [EXTRACTED]
+- [[CorruptionError]] - `uses` [INFERRED]
 - [[LivePositionStore]] - `uses` [INFERRED]
+- [[PaperPositionStore]] - `uses` [INFERRED]
 - [[TestAutoPlaceTradesCycleCheck]] - `uses` [INFERRED]
 - [[TestAutoSettlePaperTrades]] - `uses` [INFERRED]
 - [[TestCancelAndVerifySafeToReplace]] - `uses` [INFERRED]
@@ -85,16 +90,18 @@ tags:
 - [[TestValidatePaperTradesIntegrity]] - `uses` [INFERRED]
 - [[TestVarGateFailsClosed]] - `uses` [INFERRED]
 - [[The subset of an open position's fields NOT the full stored record on either…]] - `rationale_for` [EXTRACTED]
+- [[_CrossProcessDataLock]] - `uses` [INFERRED]
 - [[_FakeMarketClient]] - `uses` [INFERRED]
 - [[_LiveDBTestBase]] - `uses` [INFERRED]
 - [[_live_dict_to_position()]] - `references` [EXTRACTED]
+- [[_trade_to_position()]] - `references` [EXTRACTED]
 - [[check_breakeven_stops()]] - `references` [EXTRACTED]
 - [[check_stop_losses()]] - `references` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
 - [[positions.py]] - `contains` [EXTRACTED]
 - [[test_live_execution.py]] - `imports` [EXTRACTED]
 - [[test_paper.py]] - `imports` [EXTRACTED]
-- [[test_positions.py]] - `calls` [EXTRACTED]
+- [[test_positions.py]] - `imports` [EXTRACTED]
 - [[update_peak_profits()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Community_45
+#graphify/code #graphify/INFERRED #community/Community_12

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_calibration.py"
 type: "code"
-community: "Community 69"
+community: "Community 58"
 location: "L315"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_69
+  - community/Community_58
 ---
 
 # .test_calibrate_writes_seasonal_json()
@@ -17,4 +17,4 @@ tags:
 - [[_seed_db()]] - `calls` [EXTRACTED]
 - [[cmd_calibrate() writes dataseasonal_weights.json with calibrated weights.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_69
+#graphify/code #graphify/EXTRACTED #community/Community_58

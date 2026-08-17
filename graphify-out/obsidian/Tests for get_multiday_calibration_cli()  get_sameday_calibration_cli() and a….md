@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 135"
+community: "Community 10"
 location: "L1113"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_135
+  - community/Community_10
 ---
 
 # Tests for get_multiday_calibration_cli() / get_sameday_calibration_cli() and a…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCliCalibrationSplit]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_135
+#graphify/rationale #graphify/EXTRACTED #community/Community_10

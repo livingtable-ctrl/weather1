@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/screenshots/light.png"
 type: "image"
-community: "Community 192"
+community: "Community 197"
 tags:
   - graphify/image
   - graphify/EXTRACTED
-  - community/Community_192
+  - community/Community_197
 ---
 
 # Graduation Progress Panel (Trades/P&L/Brier gates)
@@ -17,4 +17,4 @@ tags:
 - [[P&L Graduation Gate Progress Bar ($247.83$50, complete)]] - `references` [EXTRACTED]
 - [[Trades Graduation Gate Progress Bar (56730, complete)]] - `references` [EXTRACTED]
 
-#graphify/image #graphify/EXTRACTED #community/Community_192
+#graphify/image #graphify/EXTRACTED #community/Community_197

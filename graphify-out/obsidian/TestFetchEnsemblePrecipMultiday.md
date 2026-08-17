@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 310"
+community: "Community 315"
 location: "L1217"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_310
+  - community/Community_315
 ---
 
 # TestFetchEnsemblePrecipMultiday
@@ -22,4 +22,4 @@ tags:
 - [[Unit tests for _fetch_ensemble_precip_multiday itself, mocking _om_request…]] - `rationale_for` [EXTRACTED]
 - [[test_rain_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_310
+#graphify/code #graphify/EXTRACTED #community/Community_315

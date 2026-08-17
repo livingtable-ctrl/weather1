@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 98"
+community: "Community 166"
 location: "L432"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_98
+  - community/Community_166
 ---
 
 # .test_conditional_mode_boundary_is_strict_not_inclusive()
@@ -16,4 +16,4 @@ tags:
 - [[TestNextEventOutcomes]] - `method` [EXTRACTED]
 - [[_next_event_fixture_storms()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_98
+#graphify/code #graphify/EXTRACTED #community/Community_166

@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.36
+members: 8
 ---
 
 # Community 478
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.36 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_cap_returns_conservative_when_too_few_samples()]] - code - tests/test_paper.py
-- [[dot-test_cap_uses_brier_when_enough_samples()]] - code - tests/test_paper.py
-- [[dot-test_method_multiplier_returns_neutral_when_too_few_samples()]] - code - tests/test_paper.py
-- [[TestDynamicKellyCapMinSamples]] - code - tests/test_paper.py
-- [[_dynamic_kelly_cap returns $50 (conservative) when  MIN_BRIER_SAMPLES settled.]] - rationale - tests/test_paper.py
-- [[_dynamic_kelly_cap uses Brier scaling when = MIN_BRIER_SAMPLES settled.]] - rationale - tests/test_paper.py
-- [[_method_kelly_multiplier returns 1.0 when  MIN_BRIER_SAMPLES settled.]] - rationale - tests/test_paper.py
+- [[dot-_make_enriched()_4]] - code - tests/test_trading.py
+- [[dot-_run()_6]] - code - tests/test_trading.py
+- [[dot-test_adjusted_edge_zero_at_close()]] - code - tests/test_trading.py
+- [[dot-test_net_edge_reduced_near_close_vs_far()]] - code - tests/test_trading.py
+- [[Regression for L7-D adjusted_edge must be 0 when market has already closed…]] - rationale - tests/test_trading.py
+- [[Regression for L7-D net_edge must be smaller when close_time is imminent (1h…]] - rationale - tests/test_trading.py
+- [[Regression tests for L7-D time_decay_edge must apply to all edge metrics…]] - rationale - tests/test_trading.py
+- [[TestTimeDecayEdgeScope]] - code - tests/test_trading.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,8 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 56]]
+- 1 edge to [[_COMMUNITY_Community 86]]
 
 ## Top bridge nodes
-- [[TestDynamicKellyCapMinSamples]] - degree 5, connects to 2 communities
+- [[TestTimeDecayEdgeScope]] - degree 6, connects to 1 community

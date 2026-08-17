@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "code"
-community: "Community 266"
+community: "Community 134"
 location: "L2139"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_266
+  - community/Community_134
 ---
 
 # _banner_line()
@@ -17,4 +17,4 @@ tags:
 - [[Return the single console line containing `marker` (e.g. STRONG SIGNAL or…]] - `rationale_for` [EXTRACTED]
 - [[test_trade_cycle_engine.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_266
+#graphify/code #graphify/EXTRACTED #community/Community_134

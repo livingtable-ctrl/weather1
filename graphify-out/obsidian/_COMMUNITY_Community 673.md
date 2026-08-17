@@ -1,16 +1,18 @@
 ---
 type: community
 cohesion: 1.00
-members: 1
+members: 3
 ---
 
 # Community 673
 
 **Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Members:** 3 nodes
 
 ## Members
-- [[Monte Carlo Simulation Module]] - code - monte_carlo.py
+- [[loadRisk()_1]] - code - updated frontend/reference/risk.js
+- [[makeLayout()_5]] - code - updated frontend/reference/risk.js
+- [[referencerisk.js]] - code - updated frontend/reference/risk.js
 
 ## Live Query (requires Dataview plugin)
 

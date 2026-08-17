@@ -1,47 +1,47 @@
 ---
 type: community
-cohesion: 0.12
+cohesion: 0.11
 members: 32
 ---
 
 # Community 74
 
-**Cohesion:** 0.12 - loosely connected
+**Cohesion:** 0.11 - loosely connected
 **Members:** 32 nodes
 
 ## Members
-- [[0% baseline win rate (all losses) → cap = 1, not max_positions. The wins==0…]] - rationale - tests/test_sameday_reserve.py
-- [[Band with no historical data → treated as baseline → cap = MAX.]] - rationale - tests/test_sameday_reserve.py
-- [[Dynamic enabled but band-stats baseline  threshold → full cap, feature stays…]] - rationale - tests/test_sameday_reserve.py
-- [[Dynamic gate must key off get_sameday_band_stats' own baseline total, not…]] - rationale - tests/test_sameday_reserve.py
-- [[Effective same-day slot cap for the current UTC hour. Dynamic mode scales cap…]] - rationale - order_executor.py
-- [[If count_settled_sameday_predictions raises, return full cap (fail open).]] - rationale - tests/test_sameday_reserve.py
-- [[Return a fake datetime class that reports the given UTC hour.]] - rationale - tests/test_sameday_reserve.py
-- [[SAME_DAY_RESERVE_SLOTS=0 → full cap, no DB call.]] - rationale - tests/test_sameday_reserve.py
-- [[Slots  0 but settled  threshold → full cap (not enough data).]] - rationale - tests/test_sameday_reserve.py
-- [[Slots  0, threshold met, hour  cutoff → cap reduced.]] - rationale - tests/test_sameday_reserve.py
-- [[Slots  0, threshold met, hour = cutoff → full cap released.]] - rationale - tests/test_sameday_reserve.py
-- [[Sparse band (N=3) → shrinkage pulls toward baseline, moderate reduction.]] - rationale - tests/test_sameday_reserve.py
-- [[Strong band win rate (baseline) → cap clamped to MAX.]] - rationale - tests/test_sameday_reserve.py
-- [[Tests for the same-day slot reservation system…]] - rationale - tests/test_sameday_reserve.py
-- [[Weak band with enough data → cap materially reduced.]] - rationale - tests/test_sameday_reserve.py
-- [[_fake_dt()]] - code - tests/test_sameday_reserve.py
-- [[_patch_dynamic_env()]] - code - tests/test_sameday_reserve.py
-- [[_patch_env()]] - code - tests/test_sameday_reserve.py
-- [[_sameday_effective_cap()]] - code - order_executor.py
-- [[test_db_error_fails_open()]] - code - tests/test_sameday_reserve.py
-- [[test_dynamic_gate_ignores_tracker_prediction_count()]] - code - tests/test_sameday_reserve.py
-- [[test_dynamic_insufficient_samples()]] - code - tests/test_sameday_reserve.py
-- [[test_dynamic_sparse_band()]] - code - tests/test_sameday_reserve.py
-- [[test_dynamic_strong_band()]] - code - tests/test_sameday_reserve.py
-- [[test_dynamic_unknown_band()]] - code - tests/test_sameday_reserve.py
-- [[test_dynamic_weak_band()]] - code - tests/test_sameday_reserve.py
-- [[test_dynamic_zero_baseline_wins_returns_minimum()]] - code - tests/test_sameday_reserve.py
-- [[test_feature_disabled_returns_max()]] - code - tests/test_sameday_reserve.py
-- [[test_reservation_active_before_cutoff()]] - code - tests/test_sameday_reserve.py
-- [[test_reservation_released_at_cutoff()]] - code - tests/test_sameday_reserve.py
-- [[test_sameday_reserve.py]] - code - tests/test_sameday_reserve.py
-- [[test_threshold_not_met_returns_max()]] - code - tests/test_sameday_reserve.py
+- [[dot-_seed_pending()]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_40]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_31]] - code - tests/test_live_execution.py
+- [[dot-test_amend_exchange_success_survives_bookkeeping_failure()]] - code - tests/test_live_execution.py
+- [[dot-test_amend_failure_leaves_old_row_pending_not_amended()]] - code - tests/test_live_execution.py
+- [[dot-test_amend_success_logs_new_row_and_marks_old_row_amended()]] - code - tests/test_live_execution.py
+- [[dot-test_amend_that_crosses_the_book_is_logged_as_filled()]] - code - tests/test_live_execution.py
+- [[dot-test_empty_liquid_opps_is_a_noop()]] - code - tests/test_live_execution.py
+- [[dot-test_midpoint_no_side()]] - code - tests/test_live_execution.py
+- [[dot-test_midpoint_yes_side()]] - code - tests/test_live_execution.py
+- [[dot-test_order_younger_than_blanket_gate_is_untouched()]] - code - tests/test_live_execution.py
+- [[dot-test_price_moved_reprices_as_new_maker_order()]] - code - tests/test_live_execution.py
+- [[dot-test_price_unchanged_leaves_order_resting()]] - code - tests/test_live_execution.py
+- [[dot-test_rested_past_blanket_gate_but_not_taker_gate_reprices_not_crosses()]] - code - tests/test_live_execution.py
+- [[dot-test_strong_edge_and_rested_crosses_as_taker()]] - code - tests/test_live_execution.py
+- [[dot-test_ticker_not_in_scan_leaves_order_untouched()]] - code - tests/test_live_execution.py
+- [[dot-test_validation_failure_cancels_without_replacing()]] - code - tests/test_live_execution.py
+- [[AMEND ORDER (V2) superseded the old cancel+verify-then-replace fill-race…]] - rationale - tests/test_live_execution.py
+- [[AMEND ORDER (V2) reprice-improve amends in place -- see…]] - rationale - tests/test_live_execution.py
+- [[If amend_order() raises, the old row must NOT be marked 'amended' -- the…]] - rationale - tests/test_live_execution.py
+- [[If the exchange call succeeds but a SUBSEQUENT execution_log write raises (e.g.…]] - rationale - tests/test_live_execution.py
+- [[Reprice-or-cancel resting live orders based on this cycle's fresh market…]] - rationale - order_executor.py
+- [[Return midpoint of current bidask for the given side, rounded to 2dp. Handles…]] - rationale - order_executor.py
+- [[TestMidpointPrice]] - code - tests/test_live_execution.py
+- [[TestRepriceOrCancelPendingOrders]] - code - tests/test_live_execution.py
+- [[The _MIN_REST_MINUTES_BEFORE_REPRICE, _MIN_REST_MINUTES_BEFORE_TAKER_CROSS)…]] - rationale - tests/test_live_execution.py
+- [[The core reprice-or-cancel policy cancel on edge decay, cancel+ replace as…]] - rationale - tests/test_live_execution.py
+- [[Younger than _MIN_REST_MINUTES_BEFORE_REPRICE (2 min) - left resting…]] - rationale - tests/test_live_execution.py
+- [[_midpoint_price is still used for live order placementrepricing…]] - rationale - tests/test_live_execution.py
+- [[_midpoint_price()]] - code - order_executor.py
+- [[_reprice_or_cancel_pending_orders()]] - code - order_executor.py
+- [[execution_log bookkeeping for a successful amend a NEW row is logged (chained…]] - rationale - tests/test_live_execution.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -51,13 +51,20 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Community 40]]
-- 2 edges to [[_COMMUNITY_Community 52]]
-- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Community 228]]
+- 8 edges to [[_COMMUNITY_Community 12]]
+- 5 edges to [[_COMMUNITY_Community 1]]
+- 3 edges to [[_COMMUNITY_Community 3]]
+- 2 edges to [[_COMMUNITY_Community 20]]
+- 2 edges to [[_COMMUNITY_Community 73]]
+- 1 edge to [[_COMMUNITY_Community 219]]
+- 1 edge to [[_COMMUNITY_Community 406]]
+- 1 edge to [[_COMMUNITY_Community 407]]
+- 1 edge to [[_COMMUNITY_Community 76]]
+- 1 edge to [[_COMMUNITY_Community 0]]
 
 ## Top bridge nodes
-- [[_sameday_effective_cap()]] - degree 21, connects to 6 communities
-- [[test_sameday_reserve.py]] - degree 19, connects to 2 communities
+- [[_reprice_or_cancel_pending_orders()]] - degree 27, connects to 10 communities
+- [[_midpoint_price()]] - degree 8, connects to 3 communities
+- [[TestRepriceOrCancelPendingOrders]] - degree 19, connects to 1 community
+- [[TestMidpointPrice]] - degree 6, connects to 1 community
+- [[dot-test_amend_exchange_success_survives_bookkeeping_failure()]] - degree 4, connects to 1 community

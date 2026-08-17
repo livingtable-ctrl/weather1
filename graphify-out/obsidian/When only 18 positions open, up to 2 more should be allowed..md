@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_improvements.py"
 type: "rationale"
-community: "Community 444"
+community: "Community 477"
 location: "L84"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_444
+  - community/Community_477
 ---
 
 # When only 18 positions open, up to 2 more should be allowed.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_trades_placed_below_cap()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_444
+#graphify/rationale #graphify/EXTRACTED #community/Community_477

@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Community 86"
+community: "Community 13"
 location: "L346"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_86
+  - community/Community_13
 ---
 
 # .get_orderbook()
@@ -16,4 +16,4 @@ tags:
 - [[dot-_validate()]] - `calls` [EXTRACTED]
 - [[KalshiClient]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_86
+#graphify/code #graphify/EXTRACTED #community/Community_13

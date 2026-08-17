@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "rationale"
-community: "Community 282"
+community: "Community 77"
 location: "L32"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_282
+  - community/Community_77
 ---
 
 # With ens_std=0.5 (scale=4/0.5=8, clamped to 1.5), w_clim/w_nws stay >= 0.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_no_negative_weights_tight_spread()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_282
+#graphify/rationale #graphify/EXTRACTED #community/Community_77

@@ -1,18 +1,17 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 201"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_201
 ---
 
 # kalshi_ws.KalshiWebSocket
 
 ## Connections
-- [[Phase 2 Batch E Regression Tests]] - `calls` [EXTRACTED]
-- [[cmd_cron()]] - `calls` [INFERRED]
-- [[test_cron_integration.py_1]] - `references` [EXTRACTED]
+- [[test_cron_integration.py]] - `references` [EXTRACTED]
+- [[test_phase2_batch_e.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_201

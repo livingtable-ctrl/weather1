@@ -1,11 +1,11 @@
 ---
 source_file: "templates/dashboard.html"
 type: "code"
-community: "Community 104"
+community: "Community 172"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_104
+  - community/Community_172
 ---
 
 # Dashboard Template Page
@@ -16,4 +16,4 @@ tags:
 - [[Dashboard Page Spec ()]] - `implements` [EXTRACTED]
 - [[staticdashboard.js_1]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_104
+#graphify/code #graphify/EXTRACTED #community/Community_172

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_trade_updates.py"
 type: "rationale"
-community: "Community 253"
+community: "Community 251"
 location: "L90"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_253
+  - community/Community_251
 ---
 
 # cmd_cron must emit output describing scan results and any placement activity.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_cron_prints_signal_count_when_markets_found()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_253
+#graphify/rationale #graphify/EXTRACTED #community/Community_251

@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_tracker.py"
+source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Tracker SQLite Storage Tests"
-location: "L7217"
+community: "Community 656"
+location: "L4803"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_SQLite_Storage_Tests
+  - community/Community_656
 ---
 
 # Opus review finding on the GENERALIZED PER-MODEL ACCURACY TRACKING Pass 2 diff:…
 
 ## Connections
-- [[TestGetModelWeightsExcludesTrackingOnlyModels]] - `rationale_for` [EXTRACTED]
+- [[TestWeightsFromMaeExcludesTrackingOnlyModels]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_SQLite_Storage_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_656

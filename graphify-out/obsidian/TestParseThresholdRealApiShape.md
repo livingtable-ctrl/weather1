@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_consistency.py"
 type: "code"
-community: "Community 35"
+community: "Community 363"
 location: "L459"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_35
+  - community/Community_363
 ---
 
 # TestParseThresholdRealApiShape
@@ -18,4 +18,4 @@ tags:
 - [[_parse_threshold() with market.get(series_ticker) absent -- the real Kalshi…]] - `rationale_for` [EXTRACTED]
 - [[test_consistency.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_35
+#graphify/code #graphify/EXTRACTED #community/Community_363

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 487"
+community: "Community 10"
 location: "L1322"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_487
+  - community/Community_10
 ---
 
 # .test_returns_dict_with_correct_keys()
@@ -16,4 +16,4 @@ tags:
 - [[Returns dict with threshold_f1 and best_f1.]] - `rationale_for` [EXTRACTED]
 - [[TestGetOptimalThreshold]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_487
+#graphify/code #graphify/EXTRACTED #community/Community_10

@@ -1,12 +1,12 @@
 ---
 source_file: "hurricane_climatology.py"
 type: "code"
-community: "Community 55"
+community: "Community 43"
 location: "L532"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_55
+  - community/Community_43
 ---
 
 # next_event_outcomes()
@@ -20,4 +20,4 @@ tags:
 - [[season_end_total_distribution()]] - `shares_data_with` [INFERRED]
 - [[test_hurricane_climatology.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_55
+#graphify/code #graphify/EXTRACTED #community/Community_43

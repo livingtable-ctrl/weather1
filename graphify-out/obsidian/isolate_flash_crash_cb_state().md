@@ -1,12 +1,12 @@
 ---
 source_file: "tests/conftest.py"
 type: "code"
-community: "Test Fixture Cache Clearing (conftest)"
+community: "Community 18"
 location: "L49"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Test_Fixture_Cache_Clearing_conftest
+  - community/Community_18
 ---
 
 # isolate_flash_crash_cb_state()
@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[Redirect circuit_breaker's flash-crash historycooldown paths to per-test temp…]] - `rationale_for` [EXTRACTED]
 - [[conftest.py]] - `contains` [EXTRACTED]
-- [[fixture]] - `references` [EXTRACTED]
+- [[fixture_5]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Test_Fixture_Cache_Clearing_conftest
+#graphify/code #graphify/EXTRACTED #community/Community_18

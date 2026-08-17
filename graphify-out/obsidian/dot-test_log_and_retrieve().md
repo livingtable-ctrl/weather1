@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker Brier Score & Outcome Logging"
+community: "Community 27"
 location: "L54"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Brier_Score__Outcome_Logging
+  - community/Community_27
 ---
 
 # .test_log_and_retrieve()
@@ -16,4 +16,4 @@ tags:
 - [[Logged prediction should appear in get_history().]] - `rationale_for` [EXTRACTED]
 - [[TestTracker]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Brier_Score__Outcome_Logging
+#graphify/code #graphify/EXTRACTED #community/Community_27

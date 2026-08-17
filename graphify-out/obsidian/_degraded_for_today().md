@@ -1,12 +1,12 @@
 ---
 source_file: "execution_log.py"
 type: "code"
-community: "Execution Log Live-Loss Tracking"
+community: "Community 404"
 location: "L383"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Execution_Log_Live-Loss_Tracking
+  - community/Community_404
 ---
 
 # _degraded_for_today()
@@ -17,4 +17,4 @@ tags:
 - [[execution_log.py]] - `contains` [EXTRACTED]
 - [[get_today_live_loss()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking
+#graphify/code #graphify/EXTRACTED #community/Community_404

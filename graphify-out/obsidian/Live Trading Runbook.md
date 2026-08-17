@@ -1,17 +1,16 @@
 ---
 source_file: "LIVE_TRADING_RUNBOOK.md"
 type: "document"
-community: "Community 40"
+community: "Community 17"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_40
+  - community/Community_17
 ---
 
 # Live Trading Runbook
 
 ## Connections
 - [[LiveTradingGate]] - `references` [EXTRACTED]
-- [[cron.py_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_40
+#graphify/document #graphify/EXTRACTED #community/Community_17

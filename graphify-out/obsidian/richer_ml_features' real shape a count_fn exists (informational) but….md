@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Community 170"
+community: "Community 178"
 location: "L1879"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_170
+  - community/Community_178
 ---
 
 # richer_ml_features' real shape: a count_fn exists (informational) but…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_no_fixed_floor_reports_count_but_no_floor_cleared_verdict()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_170
+#graphify/rationale #graphify/EXTRACTED #community/Community_178

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 620"
+community: "Community 711"
 location: "L4720"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_620
+  - community/Community_711
 ---
 
 # .test_get_multiday_calibration_cli_excludes_storm_order()
@@ -17,4 +17,4 @@ tags:
 - [[Opus-review-caught (2026-08-07, LOW) the rainsnow exclusion tests above have…]] - `rationale_for` [EXTRACTED]
 - [[TestDisputedOutcomeTracking]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_620
+#graphify/code #graphify/EXTRACTED #community/Community_711

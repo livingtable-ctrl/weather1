@@ -1,12 +1,12 @@
 ---
 source_file: "settlement_monitor.py"
 type: "rationale"
-community: "METAR Settlement Monitoring"
+community: "Community 8"
 location: "L108"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_8
 ---
 
 # Build a settlement lag signal dict.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[build_settlement_signal()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/rationale #graphify/EXTRACTED #community/Community_8

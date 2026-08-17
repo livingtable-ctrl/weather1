@@ -1,23 +1,24 @@
 ---
-source_file: "tests/test_web_app.py"
+source_file: "tests/test_paper_metrics.py"
 type: "code"
-community: "Community 693"
-location: "L379"
+community: "Community 427"
+location: "L88"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_427
 ---
 
 # ._open_trade()
 
 ## Connections
-- [[dot-test_falls_back_to_sse_cache_when_live_fetch_raises()]] - `calls` [EXTRACTED]
-- [[dot-test_live_batch_fetch_is_used_when_it_succeeds()]] - `calls` [EXTRACTED]
-- [[dot-test_live_quote_takes_precedence_over_a_different_sse_value_for_the_same_ticker()]] - `calls` [EXTRACTED]
-- [[dot-test_malformed_live_price_degrades_to_no_quote_not_a_crash()]] - `calls` [EXTRACTED]
-- [[dot-test_multiple_open_positions_batch_into_one_call()]] - `calls` [EXTRACTED]
-- [[dot-test_ticker_missing_from_live_batch_falls_back_to_sse_cache()]] - `calls` [EXTRACTED]
-- [[TestApiTradesLiveQuoteEnrichment]] - `method` [EXTRACTED]
+- [[dot-test_no_peak_no_exit()]] - `calls` [EXTRACTED]
+- [[dot-test_peak_below_trigger_no_exit()]] - `calls` [EXTRACTED]
+- [[dot-test_peak_hit_price_at_entry_triggers()]] - `calls` [EXTRACTED]
+- [[dot-test_peak_hit_price_below_entry_triggers()]] - `calls` [EXTRACTED]
+- [[dot-test_peak_hit_still_in_profit_no_exit()]] - `calls` [EXTRACTED]
+- [[dot-test_update_peak_profits_no_change_when_lower()]] - `calls` [EXTRACTED]
+- [[dot-test_update_peak_profits_sets_new_high()]] - `calls` [EXTRACTED]
+- [[TestBreakEvenStop]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_427

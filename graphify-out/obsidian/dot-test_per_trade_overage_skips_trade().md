@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 693"
+community: "Community 186"
 location: "L168"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_186
 ---
 
 # .test_per_trade_overage_skips_trade()
@@ -14,8 +14,7 @@ tags:
 ## Connections
 - [[A single trade whose cost would breach MAX_DAILY_SPEND must be skipped.]] - `rationale_for` [EXTRACTED]
 - [[TestAutoPlaceTradeGuards]] - `method` [EXTRACTED]
-- [[_make_opp()_2]] - `calls` [EXTRACTED]
+- [[_make_opp()_1]] - `calls` [EXTRACTED]
 - [[_patch_paper_guards()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_186

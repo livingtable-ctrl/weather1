@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 599
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-__getattr__()]] - code - colors.py
-- [[_Stub]] - code - colors.py
+- [[75.1 Add `get_cme_implied_prob(city, target_period, threshold)` to a new `cme_reference.py`]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[75.2 Wire as a signal source with high weight when available]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[75.3 Write tests and commit]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Background_25]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Task 75 (P12.O) — CME Weather Futures Cross-Reference]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,7 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
+- 1 edge to [[_COMMUNITY_Community 451]]
 
 ## Top bridge nodes
-- [[_Stub]] - degree 2, connects to 1 community
+- [[Task 75 (P12.O) — CME Weather Futures Cross-Reference]] - degree 5, connects to 1 community

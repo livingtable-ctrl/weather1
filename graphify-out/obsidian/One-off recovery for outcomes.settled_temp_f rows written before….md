@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L6433"
+community: "Community 0"
+location: "L6684"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_0
 ---
 
 # One-off recovery for outcomes.settled_temp_f rows written before…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_backfill_daily_temp_settlement()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

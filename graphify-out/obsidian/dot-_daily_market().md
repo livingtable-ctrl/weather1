@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 139"
+community: "Community 16"
 location: "L1459"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_139
+  - community/Community_16
 ---
 
 # ._daily_market()
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_rain_key_used_even_if_parse_city_date_were_patched()]] - `calls` [EXTRACTED]
 - [[TestComputeMarketImpliedGroupsMonthlyRain]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_139
+#graphify/code #graphify/EXTRACTED #community/Community_16

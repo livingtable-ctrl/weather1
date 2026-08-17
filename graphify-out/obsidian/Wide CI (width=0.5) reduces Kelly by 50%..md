@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Community 323"
+community: "Community 330"
 location: "L429"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_323
+  - community/Community_330
 ---
 
 # Wide CI (width=0.5) reduces Kelly by 50%.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_ci_adjusted_kelly_reduces_on_wide_ci()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_323
+#graphify/rationale #graphify/EXTRACTED #community/Community_330

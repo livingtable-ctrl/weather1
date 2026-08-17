@@ -1,12 +1,12 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-g-architecture.md"
 type: "document"
-community: "Community 156"
+community: "Community 160"
 location: "G5"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_156
+  - community/Community_160
 ---
 
 # G5: Config Consolidation (BotConfig)
@@ -17,4 +17,4 @@ tags:
 - [[main.py Module]] - `references` [EXTRACTED]
 - [[paper.py Module]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_156
+#graphify/document #graphify/EXTRACTED #community/Community_160

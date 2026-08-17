@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L454"
+community: "Community 3"
+location: "L455"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_3
 ---
 
 # Persist the set of seen tickers so the next run knows what's new.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_save_watch_state()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

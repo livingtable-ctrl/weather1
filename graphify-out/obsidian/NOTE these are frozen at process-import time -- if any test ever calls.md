@@ -1,17 +1,17 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L109"
+community: "Community 0"
+location: "L110"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_0
 ---
 
 # # NOTE: these are frozen at process-import time -- if any test ever calls
 
 ## Connections
-- [[main.py_1]] - `rationale_for` [EXTRACTED]
+- [[main.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

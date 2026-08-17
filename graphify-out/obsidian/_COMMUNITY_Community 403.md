@@ -10,15 +10,15 @@ members: 9
 **Members:** 9 nodes
 
 ## Members
-- [[dot-test_checksum_changes_when_data_changes()]] - code - tests/test_phase2_batch_b.py
-- [[dot-test_save_checksum_is_verifiable()]] - code - tests/test_phase2_batch_b.py
-- [[dot-test_save_strips_old_crc32_field()]] - code - tests/test_phase2_batch_b.py
-- [[dot-test_save_writes_checksum_field()]] - code - tests/test_phase2_batch_b.py
-- [[Different data must produce a different checksum.]] - rationale - tests/test_phase2_batch_b.py
-- [[P2-14 _save must embed a 64-char SHA-256 _checksum field in every write.]] - rationale - tests/test_phase2_batch_b.py
-- [[Round-trip _load after _save must succeed without CorruptionError.]] - rationale - tests/test_phase2_batch_b.py
-- [[TestSaveEmbedsSHA256]] - code - tests/test_phase2_batch_b.py
-- [[_save must not carry forward the legacy _crc32 field.]] - rationale - tests/test_phase2_batch_b.py
+- [[Part 4 — Strategies]] - document - docs/RESEARCH-FINDINGS.md
+- [[S1. METAR Lock-In (Same-Day Trades)]] - document - docs/RESEARCH-FINDINGS.md
+- [[S2. Per-City Systematic Bias Correction]] - document - docs/RESEARCH-FINDINGS.md
+- [[S3. Confidence-Tiered Edge Thresholds]] - document - docs/RESEARCH-FINDINGS.md
+- [[S4. Ensemble Spread as Timing Signal]] - document - docs/RESEARCH-FINDINGS.md
+- [[S5. Settlement Lag Exploitation]] - document - docs/RESEARCH-FINDINGS.md
+- [[S6. Statistical Arbitrage — Correlated City Pairs]] - document - docs/RESEARCH-FINDINGS.md
+- [[S7. Cross-Platform Arbitrage (Kalshi ↔ Polymarket)]] - document - docs/RESEARCH-FINDINGS.md
+- [[S8. Gaussian Distribution Method]] - document - docs/RESEARCH-FINDINGS.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,7 +28,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 248]]
+- 1 edge to [[_COMMUNITY_Community 645]]
 
 ## Top bridge nodes
-- [[TestSaveEmbedsSHA256]] - degree 6, connects to 1 community
+- [[Part 4 — Strategies]] - degree 9, connects to 1 community

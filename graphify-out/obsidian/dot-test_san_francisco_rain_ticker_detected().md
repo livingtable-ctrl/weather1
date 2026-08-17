@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 102"
-location: "L2820"
+community: "Community 123"
+location: "L3189"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_102
+  - community/Community_123
 ---
 
 # .test_san_francisco_rain_ticker_detected()
 
 ## Connections
-- [[dot-_city()]] - `calls` [EXTRACTED]
+- [[dot-_city()_1]] - `calls` [EXTRACTED]
 - [[TestMonthlyRainCityDetection]] - `method` [EXTRACTED]
 - [[Would return None without the explicit fix -- KXRAINSFOM doesn't contain…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_102
+#graphify/code #graphify/EXTRACTED #community/Community_123

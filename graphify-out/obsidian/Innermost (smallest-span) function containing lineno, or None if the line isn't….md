@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_disputed_row_guard.py"
 type: "rationale"
-community: "Community 162"
+community: "Community 33"
 location: "L193"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_162
+  - community/Community_33
 ---
 
 # Innermost (smallest-span) function containing lineno, or None if the line isn't…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_func_for_line()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_162
+#graphify/rationale #graphify/EXTRACTED #community/Community_33

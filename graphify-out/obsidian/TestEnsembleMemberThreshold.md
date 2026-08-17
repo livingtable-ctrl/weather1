@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_improvements.py"
 type: "code"
-community: "Community 526"
+community: "Community 585"
 location: "L200"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_526
+  - community/Community_585
 ---
 
 # TestEnsembleMemberThreshold
@@ -17,4 +17,4 @@ tags:
 - [[_score_ensemble_members must run once at least 2 temp samples exist.]] - `rationale_for` [EXTRACTED]
 - [[test_trade_improvements.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_526
+#graphify/code #graphify/EXTRACTED #community/Community_585

@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L5551"
+community: "Community 0"
+location: "L5553"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_0
 ---
 
 # View and edit configurable settings.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_settings()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_acis_precip.py"
 type: "code"
-community: "Community 390"
+community: "Community 410"
 location: "L80"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_390
+  - community/Community_410
 ---
 
 # TestHistoricalRemainingAndFullMonthSums
@@ -20,4 +20,4 @@ tags:
 - [[dot-test_year_included_at_missing_fraction_boundary()]] - `method` [EXTRACTED]
 - [[test_acis_precip.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_390
+#graphify/code #graphify/EXTRACTED #community/Community_410

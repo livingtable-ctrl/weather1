@@ -70,7 +70,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 90]]
+- 3 edges to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
 - [[TestParseHurricaneCountCondition]] - degree 14, connects to 1 community

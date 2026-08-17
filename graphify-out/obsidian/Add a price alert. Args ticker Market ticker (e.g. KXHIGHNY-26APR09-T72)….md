@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "rationale"
-community: "Community 94"
+community: "Community 32"
 location: "L45"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_94
+  - community/Community_32
 ---
 
 # Add a price alert. Args: ticker: Market ticker (e.g. "KXHIGHNY-26APR09-T72")…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[add_alert()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_94
+#graphify/rationale #graphify/EXTRACTED #community/Community_32

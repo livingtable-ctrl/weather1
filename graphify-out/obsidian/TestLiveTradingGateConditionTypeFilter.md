@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker Settlement Sigma & Disputed Rows"
+community: "Community 29"
 location: "L5470"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Settlement_Sigma__Disputed_Rows
+  - community/Community_29
 ---
 
 # TestLiveTradingGateConditionTypeFilter
@@ -14,8 +14,8 @@ tags:
 ## Connections
 - [[dot-_log_settled()_1]] - `method` [EXTRACTED]
 - [[dot-_seed_baseline()]] - `method` [EXTRACTED]
-- [[dot-setUp()_19]] - `method` [EXTRACTED]
-- [[dot-tearDown()_18]] - `method` [EXTRACTED]
+- [[dot-setUp()_16]] - `method` [EXTRACTED]
+- [[dot-tearDown()_16]] - `method` [EXTRACTED]
 - [[dot-test_count_settled_predictions_counts_raw_rows_not_distinct_events()]] - `method` [EXTRACTED]
 - [[dot-test_count_settled_predictions_excludes_between()]] - `method` [EXTRACTED]
 - [[dot-test_count_settled_predictions_excludes_hurricane_count()]] - `method` [EXTRACTED]
@@ -32,4 +32,4 @@ tags:
 - [[backlog.txt COUNT_SETTLED_PREDICTIONS() HAS NO CONDITION_TYPE FILTER every…]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Settlement_Sigma__Disputed_Rows
+#graphify/code #graphify/EXTRACTED #community/Community_29

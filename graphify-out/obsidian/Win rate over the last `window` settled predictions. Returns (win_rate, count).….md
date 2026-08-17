@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Community 582"
+community: "Community 2"
 location: "L2085"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_582
+  - community/Community_2
 ---
 
 # Win rate over the last `window` settled predictions. Returns (win_rate, count).…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_rolling_win_rate()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_582
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

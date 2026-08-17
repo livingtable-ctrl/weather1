@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 128"
+community: "Community 133"
 location: "L7269"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_128
+  - community/Community_133
 ---
 
 # TestSignalGraduationCounters
@@ -14,8 +14,8 @@ tags:
 ## Connections
 - [[dot-_analysis()_1]] - `method` [EXTRACTED]
 - [[dot-_log_settled()_2]] - `method` [EXTRACTED]
-- [[dot-setUp()_2]] - `method` [EXTRACTED]
-- [[dot-tearDown()_2]] - `method` [EXTRACTED]
+- [[dot-setUp()_3]] - `method` [EXTRACTED]
+- [[dot-tearDown()_3]] - `method` [EXTRACTED]
 - [[dot-test_count_model_observations_counts_settled_rows_for_model_only()]] - `method` [EXTRACTED]
 - [[dot-test_count_model_observations_excludes_unsettled_rows()]] - `method` [EXTRACTED]
 - [[dot-test_count_model_observations_zero_for_unknown_model()]] - `method` [EXTRACTED]
@@ -36,4 +36,4 @@ tags:
 - [[New generic counters backing backlog.txt's SIGNAL GRADUATION IS A CONVENTION…]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_128
+#graphify/code #graphify/EXTRACTED #community/Community_133

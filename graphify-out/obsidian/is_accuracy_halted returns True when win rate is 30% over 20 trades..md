@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 338"
 location: "L329"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_338
 ---
 
 # is_accuracy_halted returns True when win rate is 30% over 20 trades.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_halted_when_win_rate_below_threshold()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_338

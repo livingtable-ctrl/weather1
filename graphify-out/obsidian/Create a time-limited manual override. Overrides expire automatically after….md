@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L3235"
+community: "Community 0"
+location: "L3237"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_0
 ---
 
 # Create a time-limited manual override. Overrides expire automatically after…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_override()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

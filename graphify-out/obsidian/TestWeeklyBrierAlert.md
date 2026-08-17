@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "code"
-community: "Community 475"
+community: "Community 512"
 location: "L697"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_475
+  - community/Community_512
 ---
 
 # TestWeeklyBrierAlert
@@ -17,4 +17,4 @@ tags:
 - [[dot-test_two_bad_weeks_triggers_alert()]] - `method` [EXTRACTED]
 - [[test_p9_p10.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_475
+#graphify/code #graphify/EXTRACTED #community/Community_512

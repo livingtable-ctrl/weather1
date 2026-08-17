@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 100"
+community: "Community 106"
 location: "L685"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_100
+  - community/Community_106
 ---
 
 # TestGetTrades
 
 ## Connections
-- [[dot-_make_client()_1]] - `method` [EXTRACTED]
+- [[dot-_make_client()]] - `method` [EXTRACTED]
 - [[dot-test_calls_correct_path_and_params()]] - `method` [EXTRACTED]
 - [[dot-test_cursor_passed_on_second_call()]] - `method` [EXTRACTED]
 - [[dot-test_cursor_present_but_next_page_empty_stops_pagination()]] - `method` [EXTRACTED]
@@ -24,4 +24,4 @@ tags:
 - [[PUBLIC TRADES REST BACKFILL backlog item -- GET marketstrades fetch.]] - `rationale_for` [EXTRACTED]
 - [[test_kalshi_client.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_100
+#graphify/code #graphify/EXTRACTED #community/Community_106

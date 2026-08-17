@@ -1,25 +1,27 @@
 ---
 type: community
-cohesion: 0.11
-members: 10
+cohesion: 0.17
+members: 12
 ---
 
 # Community 301
 
-**Cohesion:** 0.11 - loosely connected
-**Members:** 10 nodes
+**Cohesion:** 0.17 - loosely connected
+**Members:** 12 nodes
 
 ## Members
-- [[P1-5 1-char checksum must raise CorruptionError (was passing 116 of…]] - rationale - tests/test_safe_io.py
-- [[P1-5 16-char checksums (prior format) must still pass validation.]] - rationale - tests/test_safe_io.py
-- [[P1-5 empty checksum string must raise CorruptionError (was silently passing).]] - rationale - tests/test_safe_io.py
-- [[P1-5 no _checksum field means no validation (legacy files without checksum).]] - rationale - tests/test_safe_io.py
-- [[P1-5 tampered data must raise CorruptionError.]] - rationale - tests/test_safe_io.py
-- [[test_validate_checksum_accepts_legacy_16char()]] - code - tests/test_safe_io.py
-- [[test_validate_checksum_rejects_empty_string()]] - code - tests/test_safe_io.py
-- [[test_validate_checksum_rejects_mismatch()]] - code - tests/test_safe_io.py
-- [[test_validate_checksum_rejects_one_char()]] - code - tests/test_safe_io.py
-- [[test_validate_checksum_skips_when_absent()]] - code - tests/test_safe_io.py
+- [[2026-04-10-group-f-infrastructure]] - document - docs/superpowers/plans/2026-04-10-group-f-infrastructure.md
+- [[Final Verification]] - document - docs/superpowers/plans/2026-04-10-group-f-infrastructure.md
+- [[Group F — Infrastructure Hardening Implementation Plan]] - document - docs/superpowers/plans/2026-04-10-group-f-infrastructure.md
+- [[Task 1 Circuit Breaker for Failing Data Sources (3)]] - document - docs/superpowers/plans/2026-04-10-group-f-infrastructure.md
+- [[Task 2 Disk-Write Failure Resilience (8)]] - document - docs/superpowers/plans/2026-04-10-group-f-infrastructure.md
+- [[Task 3 Replace Manual Retry Loop with HTTPAdapter (67)]] - document - docs/superpowers/plans/2026-04-10-group-f-infrastructure.md
+- [[Task 4 API Request Audit Logging (69)]] - document - docs/superpowers/plans/2026-04-10-group-f-infrastructure.md
+- [[Task 5 Schema Migrations via PRAGMA user_version (99)]] - document - docs/superpowers/plans/2026-04-10-group-f-infrastructure.md
+- [[Task 6 Data Corruption Detection via SHA-256 Checksum (102)]] - document - docs/superpowers/plans/2026-04-10-group-f-infrastructure.md
+- [[Task 7 Automated Backup Verification (104)]] - document - docs/superpowers/plans/2026-04-10-group-f-infrastructure.md
+- [[Task 8 Cloud Backup to S3 (105)]] - document - docs/superpowers/plans/2026-04-10-group-f-infrastructure.md
+- [[Task 9 Parallel Market Analysis with ThreadPoolExecutor (127)]] - document - docs/superpowers/plans/2026-04-10-group-f-infrastructure.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,13 +29,3 @@ members: 10
 TABLE source_file, type FROM #community/Community_301
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 5 edges to [[_COMMUNITY_Safe IO CRC Validation Tests]]
-
-## Top bridge nodes
-- [[test_validate_checksum_accepts_legacy_16char()]] - degree 2, connects to 1 community
-- [[test_validate_checksum_rejects_empty_string()]] - degree 2, connects to 1 community
-- [[test_validate_checksum_rejects_mismatch()]] - degree 2, connects to 1 community
-- [[test_validate_checksum_rejects_one_char()]] - degree 2, connects to 1 community
-- [[test_validate_checksum_skips_when_absent()]] - degree 2, connects to 1 community

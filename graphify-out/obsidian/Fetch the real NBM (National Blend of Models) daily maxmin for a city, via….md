@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "ML Bias Correction & Audit Plans"
-location: "L2137"
+community: "Community 5"
+location: "L2239"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_5
 ---
 
 # Fetch the real NBM (National Blend of Models) daily max/min for a city, via…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[fetch_temperature_nbm()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

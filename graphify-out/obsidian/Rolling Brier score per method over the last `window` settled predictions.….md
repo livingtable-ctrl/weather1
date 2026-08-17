@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Tracker P&L Attribution Tests"
+community: "Community 2"
 location: "L1712"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_2
 ---
 
 # Rolling Brier score per method over the last `window` settled predictions.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[brier_score_by_method_rolling()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

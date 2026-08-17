@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 336"
+community: "Community 344"
 location: "L517"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_336
+  - community/Community_344
 ---
 
 # TestGetMarketsPagination
@@ -20,4 +20,4 @@ tags:
 - [[P1-19 get_markets must follow cursor pagination until exhausted.]] - `rationale_for` [EXTRACTED]
 - [[test_kalshi_client.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_336
+#graphify/code #graphify/EXTRACTED #community/Community_344

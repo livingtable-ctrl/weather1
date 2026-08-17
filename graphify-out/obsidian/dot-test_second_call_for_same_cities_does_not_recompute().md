@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climatology.py"
 type: "code"
-community: "Community 251"
+community: "Community 250"
 location: "L645"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_251
+  - community/Community_250
 ---
 
 # .test_second_call_for_same_cities_does_not_recompute()
@@ -16,4 +16,4 @@ tags:
 - [[Once a city is already in the fresh cache, a later preload_all() call for that…]] - `rationale_for` [EXTRACTED]
 - [[TestPreloadAllSigmaGate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_251
+#graphify/code #graphify/EXTRACTED #community/Community_250

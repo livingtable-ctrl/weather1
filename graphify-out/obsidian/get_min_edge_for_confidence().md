@@ -1,12 +1,12 @@
 ---
 source_file: "utils.py"
 type: "code"
-community: "Community 252"
+community: "Community 305"
 location: "L221"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_252
+  - community/Community_305
 ---
 
 # get_min_edge_for_confidence()
@@ -28,4 +28,4 @@ tags:
 - [[trade_cycle.py]] - `imports` [EXTRACTED]
 - [[utils.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_252
+#graphify/code #graphify/EXTRACTED #community/Community_305

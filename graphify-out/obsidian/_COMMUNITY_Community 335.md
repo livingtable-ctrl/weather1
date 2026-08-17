@@ -1,26 +1,26 @@
 ---
 type: community
-cohesion: 0.18
+cohesion: 0.31
 members: 11
 ---
 
 # Community 335
 
-**Cohesion:** 0.18 - loosely connected
+**Cohesion:** 0.31 - loosely connected
 **Members:** 11 nodes
 
 ## Members
-- [[dot-test_atl_series_map_to_correct_basin_and_count_type()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_kxhurricane_resolves_basin_and_maj_suffix_from_event_middle()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_kxnamedstorm_is_always_tropical_storm_count_type()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_returns_none_for_malformed_ticker()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_returns_none_for_missing_basin_infix()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_returns_none_for_unexpected_count_type_suffix()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_returns_none_for_unrelated_ticker()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_season_year_derived_from_2_digit_prefix()]] - code - tests/test_hurricane_markets.py
-- [[KXHURRICANEKXNAMEDSTORM without a real EPACCPAC infix in the event-ticker…]] - rationale - tests/test_hurricane_markets.py
-- [[Opus-review-caught (2026-08-03) the original `else hurricane` fallback…]] - rationale - tests/test_hurricane_markets.py
-- [[TestHurricaneCountKeyFromTicker]] - code - tests/test_hurricane_markets.py
+- [[dot-_trade()]] - code - tests/test_signal_quality.py
+- [[dot-test_empty_portfolio_returns_zero()]] - code - tests/test_signal_quality.py
+- [[dot-test_max_var_dollars_in_utils()]] - code - tests/test_signal_quality.py
+- [[dot-test_returns_float()]] - code - tests/test_signal_quality.py
+- [[dot-test_simulate_portfolio_includes_p5_pnl()]] - code - tests/test_signal_quality.py
+- [[dot-test_var_improves_with_higher_win_prob()]] - code - tests/test_signal_quality.py
+- [[dot-test_var_is_negative_for_loss_scenario()]] - code - tests/test_signal_quality.py
+- [[Return the dollar loss at the given confidence level (VaR). confidence=0.05 →…]] - rationale - monte_carlo.py
+- [[Return the dollar loss at the given confidence level (VaR). confidence=0.05 →…_1]] - rationale - monte_carlo.py
+- [[TestPortfolioVar]] - code - tests/test_signal_quality.py
+- [[portfolio_var()]] - code - monte_carlo.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,7 +30,16 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 90]]
+- 2 edges to [[_COMMUNITY_Community 238]]
+- 2 edges to [[_COMMUNITY_Community 303]]
+- 1 edge to [[_COMMUNITY_Community 188]]
+- 1 edge to [[_COMMUNITY_Community 44]]
+- 1 edge to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 148]]
+- 1 edge to [[_COMMUNITY_Community 12]]
 
 ## Top bridge nodes
-- [[TestHurricaneCountKeyFromTicker]] - degree 9, connects to 1 community
+- [[portfolio_var()]] - degree 14, connects to 8 communities
+- [[TestPortfolioVar]] - degree 8, connects to 1 community
+- [[dot-test_simulate_portfolio_includes_p5_pnl()]] - degree 3, connects to 1 community

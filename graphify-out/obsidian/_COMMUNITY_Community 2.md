@@ -1,0 +1,292 @@
+---
+type: community
+cohesion: 0.02
+members: 231
+---
+
+# Community 2
+
+**Cohesion:** 0.02 - loosely connected
+**Members:** 231 nodes
+
+## Members
+- [[110 Write a row to the audit_log table for any manual user action (e.g.…]] - rationale - tracker.py
+- [[55 Log every analyzed market (traded or not) for bias detection.]] - rationale - tracker.py
+- [[65 Record the difference between the desired price and the actual fill price.…]] - rationale - tracker.py
+- [[65 Return aggregate price improvement statistics. Returns None if fewer than…]] - rationale - tracker.py
+- [[84 Brier score broken down by dominant blend source. For each settled…]] - rationale - tracker.py
+- [[perf Bulk-insert analysis attempts in a single transaction (much faster than…]] - rationale - tracker.py
+- [[A real client.get_market() response has no series_ticker field at all…]] - rationale - tracker.py
+- [[Apply any pending schema migrations and update schema_version (99).]] - rationale - tracker.py
+- [[Audit stop-loss exits did they save money vs. holding to actual settlement…]] - rationale - tracker.py
+- [[Audit whether stop-loss exits actually saved money vs. holding to settlement.…]] - rationale - paper.py
+- [[Average edge and Brier score grouped by forecast horizon (days_out) (14).…]] - rationale - tracker.py
+- [[Backfill EMOS training data for all settled predictions. Part 1 —…]] - rationale - tracker.py
+- [[Bayesian credible interval for a proportion using Beta(1+s, 1+f) posterior…]] - rationale - tracker.py
+- [[Brier Skill Score (BSS) vs market baseline (11). BSS = 1 - (BS_model …]] - rationale - tracker.py
+- [[Brier score = mean((our_prob - outcome)²). Lower is better. 0.25 = random, 0.0…]] - rationale - tracker.py
+- [[Brier score and bias broken down by meteorological season (59). Returns…]] - rationale - tracker.py
+- [[Brier score broken down by method string (e.g. 'ensemble', 'normal_dist').…]] - rationale - tracker.py
+- [[Brier score over the most recent `weeks` weeks of settled multi-day predictions.]] - rationale - tracker.py
+- [[Brier score segmented by forecast horizon. Returns {same_day brier, 1-2d…]] - rationale - tracker.py
+- [[Brier score split by signal tier based on abs(edge) at prediction time. Tiers…]] - rationale - tracker.py
+- [[Bucket (predicted_prob, settled_yes) pairs into 5 equal-width calibration bins.…]] - rationale - tracker.py
+- [[Bug C fix (backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2)…]] - rationale - tests/test_tracker.py
+- [[Bulk-insert OHLC candlesticks for a market. Idempotent — re-running for the…]] - rationale - tracker.py
+- [[Bulk-insert public trade-flow history for a market. Idempotent -- re-running…]] - rationale - tracker.py
+- [[Calibration analytics for multi-day (days_out IS NULL OR =1) predictions,…]] - rationale - tracker.py
+- [[Calibration analytics for same-day (days_out=0) METAR-locked predictions.…]] - rationale - tracker.py
+- [[Clamp a `.last_calibration_count` sentinel value against today's live…]] - rationale - tracker.py
+- [[Clear a ticker's disputed flag (opus-review-caught, 2026-08-10)…]] - rationale - tracker.py
+- [[Compare today's forecast for target_date against the last few runs. lead=N (N =…]] - rationale - tracker.py
+- [[Compute Brier score and win rate grouped by signal_source. Reveals which signal…]] - rationale - tracker.py
+- [[Compute pairwise city temperature correlations from recent settled outcomes.…]] - rationale - tracker.py
+- [[Compute systematic bias for a citymonth weighted mean(our_prob -…]] - rationale - tracker.py
+- [[Compute the run-to-run trend signal from an analyze_trade() result dict.…]] - rationale - tracker.py
+- [[Connection_1]] - code
+- [[Connection]] - code
+- [[Correlation-check for the PUBLIC TRADE-FLOW SIGNAL backlog entry's did…]] - rationale - tracker.py
+- [[Correlation-weighted mean forecast error of CORRELATED cities' recent…]] - rationale - tracker.py
+- [[Count DISTINCT settled hurricane-season-count events -- (basin, count_type,…]] - rationale - tracker.py
+- [[Count DISTINCT settled monthly-snow accrual events (ticker prefix, year,…]] - rationale - tracker.py
+- [[Count DISTINCT settled storm-order tickers -- backlog.txt HURRICANE MARKETS…]] - rationale - tracker.py
+- [[Count DISTINCT settled time-to-next-event tickers -- backlog.txt HURRICANE…]] - rationale - tracker.py
+- [[Count multi-day below-type predictions with a known outcome.]] - rationale - tracker.py
+- [[Count multi-day predictions whose outcome settled within the last `weeks`…]] - rationale - tracker.py
+- [[Count same-day (days_out=0) predictions with a known outcome.]] - rationale - tracker.py
+- [[Count settled (predicted_temp AND actual_temp populated) rows in…]] - rationale - tracker.py
+- [[Count settled KXRAINM monthly-rain predictions (backlog.txt RAIN  SNOW …]] - rationale - tracker.py
+- [[Count settled KXTEMPxxxH hourly predictions (backlog.txt HOURLY- DIRECTIONAL…]] - rationale - tracker.py
+- [[Extract the local hour from a KXTEMPxxxH hourly ticker (e.g.…]] - rationale - weather_markets.py
+- [[Fetch daily high (var='max') or low (var='min') from IEM ASOS archive. Uses…]] - rationale - tracker.py
+- [[Fetch every IEM ASOS METAR reading on `target_date`'s LOCAL calendar day for…]] - rationale - tracker.py
+- [[Fetch observed daily high (var='max') or low (var='min') from Open-Meteo…]] - rationale - tracker.py
+- [[Fetch one model's daily max or min from the Previous Runs API. Requests…]] - rationale - tracker.py
+- [[Fetch several lead offsets for one model in a single Previous Runs API call.…]] - rationale - tracker.py
+- [[Fetch the ASOS reading nearest local `hour` on `target_date`, for KXTEMPxxxH…]] - rationale - tracker.py
+- [[How well-calibrated are the MARKET PRICES (not our model) Groups settled…]] - rationale - tracker.py
+- [[How well-calibrated is OUR MODEL (not market prices) Groups settled…]] - rationale - tracker.py
+- [[Lazily build a KalshiClient from env vars, mirroring main.py's build_client()…]] - rationale - tracker.py
+- [[Log an API call for audit trail and latency monitoring (69).]] - rationale - tracker.py
+- [[Log an ensemble member's temperature prediction vs actuals for accuracy…]] - rationale - tracker.py
+- [[Mark an outcome row as disputed (archiveKalshi settlement mismatch). Disputed…]] - rationale - tracker.py
+- [[Mean(forecast_prob - settled_yes) across ALL analyzed markets (55). Returns…]] - rationale - tracker.py
+- [[One-off recovery pass for ensemble_member_scores rows logged before…]] - rationale - tracker.py
+- [[One-off recovery pass for outcomes.settled_temp_f rows written by…]] - rationale - tracker.py
+- [[One-off recovery pass for price_history rows lost to the real series_ticker bug…]] - rationale - tracker.py
+- [[P9.1 Brier score and sample count grouped by edge_calc_version. Returns…]] - rationale - tracker.py
+- [[Parse a FixedPointCount string (e.g. 10.00 contracts) into a float.]] - rationale - tracker.py
+- [[Parse a nullable fixed-point-dollar string (e.g. 0.55) from a candlestick…]] - rationale - tracker.py
+- [[Per condition-type Brier score, bias, and sample count. Returns…]] - rationale - tracker.py
+- [[Per-city Brier score and sample count (54, 56). Returns {city {brier, n,…]] - rationale - tracker.py
+- [[Per-model MAE filtered to recent predictions, used by learn_seasonal_weights().…]] - rationale - tracker.py
+- [[Per-model MAE from ensemble_member_scores, stratified by city and season (18).…]] - rationale - tracker.py
+- [[Per-model SIGNED bias (mean predicted - actual), split by var (max min),…]] - rationale - tracker.py
+- [[Prediction tracker — SQLite-backed log of every prediction we make. After…]] - rationale - tracker.py
+- [[Query the last `window` settled predictions and count wins. A win is (our_prob…]] - rationale - tracker.py
+- [[ROC curve and AUC score for the model. Returns {auc, n, points {fpr, tpr}}…]] - rationale - tracker.py
+- [[Rational approximation of the inverse normal CDF (Abramowitz & Stegun 26.2.17).]] - rationale - tracker.py
+- [[Read a single T value from datatemperature_scale.json (None if…]] - rationale - tracker.py
+- [[Record a micro live fill for slippage tracking (P10.4).]] - rationale - tracker.py
+- [[Record the outcome for a settled trade. F4 Uses append-only writes to avoid…]] - rationale - feature_importance.py
+- [[Record whether a forecast source returned usable data for a city today. Uses…]] - rationale - tracker.py
+- [[Record whether a market settled YES or NO. Returns True if newly recorded,…]] - rationale - tracker.py
+- [[Return all logged candlesticks for a ticker, oldest first.]] - rationale - tracker.py
+- [[Return all logged public trades for a ticker, oldest first.]] - rationale - tracker.py
+- [[Return average blend-source weights per city from settled predictions.]] - rationale - tracker.py
+- [[Return count of settled multi-day predictions per west-coast city. Uses the…]] - rationale - tracker.py
+- [[Return mean signed temperature error (predicted - actual) per city from the…]] - rationale - tracker.py
+- [[Return per-model mean absolute error from ensemble_member_scores over the last…]] - rationale - tracker.py
+- [[Return rows for EMOS fitting {ens_mean, ens_var, settled_temp_f}. Excludes…]] - rationale - tracker.py
+- [[Return rows for ml_bias.fit_metar_calibration() {our_prob, settled_yes} for…]] - rationale - tracker.py
+- [[Return the METARASOS station for a city (matches Kalshi settlement).]] - rationale - weather_markets.py
+- [[Return the number of outcomes flagged as disputed (settlement audit mismatch).]] - rationale - tracker.py
+- [[Return the number of settled multi-day predictions counted toward the live-…]] - rationale - tracker.py
+- [[Return the recorded outcome for a ticker (True=YES, False=NO), or None if no…]] - rationale - tracker.py
+- [[Rolling Brier score AND directional accuracy per condition_type, for one…]] - rationale - tracker.py
+- [[Rolling Brier score over a retired method's PROBATION-only predictions…]] - rationale - tracker.py
+- [[Rolling Brier score per method over the last `window` settled predictions.…]] - rationale - tracker.py
+- [[Rolling win rate (see get_rolling_win_rate) with a Bayesian credible interval,…]] - rationale - tracker.py
+- [[Row_1]] - code
+- [[Row]] - code
+- [[Run SPRT on the last `window` settled trades. Sequential Probability Ratio Test…]] - rationale - tracker.py
+- [[Same population as get_sameday_calibration() but excludes…]] - rationale - tracker.py
+- [[Save a prediction to the database. Stores both the raw (pre-bias-correction)…]] - rationale - tracker.py
+- [[Softmax-normalised inverse-MAE weights for each ensemble model. Uses…]] - rationale - tracker.py
+- [[Sweep thresholds 0.05..0.95 (step 0.05) and find the one maximizing F1 (60).…]] - rationale - tracker.py
+- [[TPFPTNFN classification of model predictions. Positive = model predicted YES…]] - rationale - tracker.py
+- [[Win rate over the last `window` settled predictions. Returns (win_rate, count).…]] - rationale - tracker.py
+- [[Write outcomes.settled_temp_f  settled_value from Kalshi's own settlement data…]] - rationale - tracker.py
+- [[_calibration_curve()]] - code - tracker.py
+- [[_candle_dollars()]] - code - tracker.py
+- [[_conn()]] - code - tracker.py
+- [[_derive_series_ticker()]] - code - tracker.py
+- [[_fetch_actual_daily_temp()]] - code - tracker.py
+- [[_fetch_asos_daily_temp()]] - code - tracker.py
+- [[_fetch_asos_hour_temp()]] - code - tracker.py
+- [[_fetch_asos_observations()]] - code - tracker.py
+- [[_fetch_previous_run_daily()]] - code - tracker.py
+- [[_fetch_previous_run_leads()]] - code - tracker.py
+- [[_fp_count()]] - code - tracker.py
+- [[_get_recent_win_loss()]] - code - tracker.py
+- [[_get_settlement_kalshi_client()]] - code - tracker.py
+- [[_inv_normal_cdf()]] - code - tracker.py
+- [[_metar_station_for_city()]] - code - weather_markets.py
+- [[_read_temperature_scale_key()]] - code - tracker.py
+- [[_run_migrations()]] - code - tracker.py
+- [[audit_settlement()]] - code - tracker.py
+- [[backfill_daily_temp_settlement()]] - code - tracker.py
+- [[backfill_emos_data()]] - code - tracker.py
+- [[backfill_ensemble_member_scores_var()]] - code - tracker.py
+- [[backfill_price_history()]] - code - tracker.py
+- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 (review-caught) KXRAINM…]] - rationale - tests/test_tracker.py
+- [[backlog.txt Snow Step 2 (review-caught, the identical gap rain's own Step 2…]] - rationale - tests/test_tracker.py
+- [[batch_log_analysis_attempts()]] - code - tracker.py
+- [[bayesian_confidence_interval()]] - code - tracker.py
+- [[brier_by_condition_type_rolling()]] - code - tracker.py
+- [[brier_score()]] - code - tracker.py
+- [[brier_score_by_method()]] - code - tracker.py
+- [[brier_score_by_method_rolling()]] - code - tracker.py
+- [[brier_score_probation_rolling()]] - code - tracker.py
+- [[brier_score_rolling()]] - code - tracker.py
+- [[brier_skill_score()]] - code - tracker.py
+- [[clamp_last_calibration_count()]] - code - tracker.py
+- [[collections]] - concept
+- [[count_model_observations()]] - code - tracker.py
+- [[count_settled_below_predictions()]] - code - tracker.py
+- [[count_settled_hourly_predictions()]] - code - tracker.py
+- [[count_settled_hurricane_next_event_predictions()]] - code - tracker.py
+- [[count_settled_hurricane_predictions()]] - code - tracker.py
+- [[count_settled_predictions()]] - code - tracker.py
+- [[count_settled_predictions_rolling()]] - code - tracker.py
+- [[count_settled_rain_predictions()]] - code - tracker.py
+- [[count_settled_sameday_predictions()]] - code - tracker.py
+- [[count_settled_snow_predictions()]] - code - tracker.py
+- [[count_settled_storm_order_predictions()]] - code - tracker.py
+- [[count_settled_west_coast_multiday()]] - code - tracker.py
+- [[cron.py periodic-task gate sentinel paths]] - code - paths.py
+- [[date_4]] - code
+- [[datetime]] - code
+- [[get_analysis_bias()]] - code - tracker.py
+- [[get_bias()]] - code - tracker.py
+- [[get_brier_by_days_out()]] - code - tracker.py
+- [[get_brier_by_tier()]] - code - tracker.py
+- [[get_brier_by_version()]] - code - tracker.py
+- [[get_calibration_by_city()]] - code - tracker.py
+- [[get_calibration_by_season()]] - code - tracker.py
+- [[get_calibration_by_type()]] - code - tracker.py
+- [[get_component_attribution returns Brier score by dominant source.]] - rationale - tests/test_tracker.py
+- [[get_component_attribution()]] - code - tracker.py
+- [[get_confusion_matrix()]] - code - tracker.py
+- [[get_disputed_count()]] - code - tracker.py
+- [[get_dynamic_station_bias()]] - code - tracker.py
+- [[get_edge_decay_curve()]] - code - tracker.py
+- [[get_edge_realization_by_city()]] - code - tracker.py
+- [[get_emos_training_data()]] - code - tracker.py
+- [[get_ensemble_member_accuracy()]] - code - tracker.py
+- [[get_forecast_run_trend()]] - code - tracker.py
+- [[get_forecast_run_trend_from_analysis()]] - code - tracker.py
+- [[get_market_calibration()]] - code - tracker.py
+- [[get_member_accuracy()]] - code - tracker.py
+- [[get_member_bias()]] - code - tracker.py
+- [[get_metar_lockout_calibration_data()]] - code - tracker.py
+- [[get_model_attribution_by_city()]] - code - tracker.py
+- [[get_model_brier_scores()]] - code - tracker.py
+- [[get_model_calibration_buckets()]] - code - tracker.py
+- [[get_model_weights()]] - code - tracker.py
+- [[get_multiday_calibration_cli()]] - code - tracker.py
+- [[get_optimal_threshold()]] - code - tracker.py
+- [[get_outcome_for_ticker()]] - code - tracker.py
+- [[get_pnl_by_signal_source()]] - code - tracker.py
+- [[get_price_history()]] - code - tracker.py
+- [[get_price_improvement_stats()]] - code - tracker.py
+- [[get_recent_city_correlations()]] - code - tracker.py
+- [[get_regional_recent_bias()]] - code - tracker.py
+- [[get_roc_auc()]] - code - tracker.py
+- [[get_rolling_win_rate()]] - code - tracker.py
+- [[get_rolling_win_rate_ci()]] - code - tracker.py
+- [[get_sameday_calibration()]] - code - tracker.py
+- [[get_sameday_calibration_cli()]] - code - tracker.py
+- [[get_stop_loss_accuracy()]] - code - tracker.py
+- [[get_trade_flow_settlement_correlation()]] - code - tracker.py
+- [[get_trade_history()]] - code - tracker.py
+- [[init_db()]] - code - tracker.py
+- [[itertools]] - concept
+- [[log_analysis_attempt()]] - code - tracker.py
+- [[log_api_request()]] - code - tracker.py
+- [[log_audit()]] - code - tracker.py
+- [[log_live_fill()]] - code - tracker.py
+- [[log_member_score()]] - code - tracker.py
+- [[log_outcome()]] - code - tracker.py
+- [[log_prediction()]] - code - tracker.py
+- [[log_price_candles()]] - code - tracker.py
+- [[log_price_improvement()]] - code - tracker.py
+- [[log_source_attempt()]] - code - tracker.py
+- [[log_trades()]] - code - tracker.py
+- [[mark_outcome_disputed()]] - code - tracker.py
+- [[mark_outcome_undisputed()]] - code - tracker.py
+- [[paper._CITY_PAIR_CORR]] - code - paper.py
+- [[paper._CORRELATED_CITY_GROUPS]] - code - paper.py
+- [[paper.get_stop_loss_accuracy]] - code - paper.py
+- [[parse_ticker_hour()]] - code - weather_markets.py
+- [[sprt_model_health()]] - code - tracker.py
+- [[test_backfill_emos_data_excludes_rain_from_non_force_part1()]] - code - tests/test_tracker.py
+- [[test_backfill_emos_data_excludes_snow_from_non_force_part1()]] - code - tests/test_tracker.py
+- [[test_batch_log_analysis_attempts_none_target_date_writes_null()]] - code - tests/test_tracker.py
+- [[test_composite_indexes_exist()]] - code - tests/test_tracker.py
+- [[test_get_component_attribution_returns_per_source_brier()]] - code - tests/test_tracker.py
+- [[test_get_component_attribution_works()]] - code - tests/test_tracker.py
+- [[test_get_stop_loss_accuracy_filters_to_stop_loss_reason]] - code - tests/test_paper.py
+- [[test_log_analysis_attempt_none_target_date_writes_null_not_string()]] - code - tests/test_tracker.py
+- [[test_log_analysis_attempt_stores_all_markets()]] - code - tests/test_tracker.py
+- [[tracker.py]] - code - tracker.py
+- [[update_outcome()]] - code - feature_importance.py
+
+## Live Query (requires Dataview plugin)
+
+```dataview
+TABLE source_file, type FROM #community/Community_2
+SORT file.name ASC
+```
+
+## Connections to other communities
+- 70 edges to [[_COMMUNITY_Community 0]]
+- 42 edges to [[_COMMUNITY_Community 5]]
+- 41 edges to [[_COMMUNITY_Community 3]]
+- 26 edges to [[_COMMUNITY_Community 1]]
+- 24 edges to [[_COMMUNITY_Community 35]]
+- 7 edges to [[_COMMUNITY_Community 4]]
+- 6 edges to [[_COMMUNITY_Community 269]]
+- 5 edges to [[_COMMUNITY_Community 13]]
+- 5 edges to [[_COMMUNITY_Community 8]]
+- 5 edges to [[_COMMUNITY_Community 245]]
+- 5 edges to [[_COMMUNITY_Community 44]]
+- 5 edges to [[_COMMUNITY_Community 23]]
+- 4 edges to [[_COMMUNITY_Community 127]]
+- 4 edges to [[_COMMUNITY_Community 303]]
+- 4 edges to [[_COMMUNITY_Community 6]]
+- 3 edges to [[_COMMUNITY_Community 329]]
+- 2 edges to [[_COMMUNITY_Community 170]]
+- 2 edges to [[_COMMUNITY_Community 398]]
+- 2 edges to [[_COMMUNITY_Community 53]]
+- 2 edges to [[_COMMUNITY_Community 238]]
+- 2 edges to [[_COMMUNITY_Community 561]]
+- 1 edge to [[_COMMUNITY_Community 9]]
+- 1 edge to [[_COMMUNITY_Community 96]]
+- 1 edge to [[_COMMUNITY_Community 227]]
+- 1 edge to [[_COMMUNITY_Community 75]]
+- 1 edge to [[_COMMUNITY_Community 438]]
+- 1 edge to [[_COMMUNITY_Community 230]]
+- 1 edge to [[_COMMUNITY_Community 82]]
+- 1 edge to [[_COMMUNITY_Community 89]]
+- 1 edge to [[_COMMUNITY_Community 148]]
+- 1 edge to [[_COMMUNITY_Community 41]]
+- 1 edge to [[_COMMUNITY_Community 671]]
+- 1 edge to [[_COMMUNITY_Community 459]]
+
+## Top bridge nodes
+- [[tracker.py]] - degree 161, connects to 19 communities
+- [[_conn()]] - degree 112, connects to 7 communities
+- [[log_prediction()]] - degree 18, connects to 7 communities
+- [[init_db()]] - degree 108, connects to 6 communities
+- [[brier_score()]] - degree 12, connects to 6 communities

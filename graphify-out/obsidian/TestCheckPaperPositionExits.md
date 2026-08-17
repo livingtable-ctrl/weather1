@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 258"
-location: "L1926"
+community: "Community 180"
+location: "L2067"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_258
+  - community/Community_180
 ---
 
 # TestCheckPaperPositionExits
@@ -21,7 +21,8 @@ tags:
 - [[dot-test_stop_loss_close_excludes_position_from_same_cycle_breakeven_check()]] - `method` [EXTRACTED]
 - [[dot-test_stop_loss_closes_position()]] - `method` [EXTRACTED]
 - [[Position]] - `uses` [INFERRED]
+- [[paper.check_paper_position_exits() -- the shared price-based stop-loss…_1]] - `rationale_for` [EXTRACTED]
 - [[paper.check_paper_position_exits() -- the shared price-based stop-loss…]] - `rationale_for` [EXTRACTED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_258
+#graphify/code #graphify/EXTRACTED #community/Community_180

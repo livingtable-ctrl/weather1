@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 153"
+community: "Community 157"
 location: "L5981"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_153
+  - community/Community_157
 ---
 
 # close_time with +00:00 offset must not raise TypeError.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_sync_outcomes_does_not_raise_on_offset_close_time()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_153
+#graphify/rationale #graphify/EXTRACTED #community/Community_157

@@ -1,12 +1,12 @@
 ---
 source_file: "frontend/package.json"
 type: "concept"
-community: "Community 185"
-location: "L15"
+community: "Community 149"
+location: "L16"
 tags:
   - graphify/concept
   - graphify/EXTRACTED
-  - community/Community_185
+  - community/Community_149
 ---
 
 # @vitejs/plugin-react
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[@vitejsplugin-react]] - `imports` [EXTRACTED]
 
-#graphify/concept #graphify/EXTRACTED #community/Community_185
+#graphify/concept #graphify/EXTRACTED #community/Community_149

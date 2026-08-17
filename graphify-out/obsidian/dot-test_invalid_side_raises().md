@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_debug_fixes.py"
 type: "code"
-community: "Community 361"
+community: "Community 375"
 location: "L272"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_361
+  - community/Community_375
 ---
 
 # .test_invalid_side_raises()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPlacePaperOrderValidation]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_361
+#graphify/code #graphify/EXTRACTED #community/Community_375

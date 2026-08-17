@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 455"
 location: "L858"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_455
 ---
 
 # Deep-review followup: /api/paper-order used to take city/target_date straight…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPaperOrderCityDateServerDerived]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_455

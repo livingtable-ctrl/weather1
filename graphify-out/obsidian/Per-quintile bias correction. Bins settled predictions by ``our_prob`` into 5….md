@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Community 36"
+community: "Community 5"
 location: "L1561"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_36
+  - community/Community_5
 ---
 
 # Per-quintile bias correction. Bins settled predictions by ``our_prob`` into 5…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_quintile_bias()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_36
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

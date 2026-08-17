@@ -10,14 +10,14 @@ members: 8
 **Members:** 8 nodes
 
 ## Members
-- [[dot-test_city_weights_override_hardcoded()]] - code - tests/test_weather_markets.py
-- [[dot-test_fallback_to_hardcoded_when_no_calibration()]] - code - tests/test_weather_markets.py
-- [[dot-test_seasonal_weights_used_when_no_city_weights()]] - code - tests/test_weather_markets.py
-- [[If city weights loaded, _blend_weights uses them (days_out=1 = neutral NWS…]] - rationale - tests/test_weather_markets.py
-- [[If no city weights but seasonal weights loaded, use seasonal (days_out=1 =…]] - rationale - tests/test_weather_markets.py
-- [[TestBlendWeightCalibrationPriority]] - code - tests/test_weather_markets.py
-- [[With empty dicts, result should match original hardcoded schedule.]] - rationale - tests/test_weather_markets.py
-- [[_blend_weights() must use city weights  seasonal weights  hardcoded.]] - rationale - tests/test_weather_markets.py
+- [[P0 Additions — Fix Before Next Live Trade]] - document - docs/audit_findings.md
+- [[P1 Additions — Fix Within 24 Hours]] - document - docs/audit_findings.md
+- [[P2 Additions — Fix Within 1 Week]] - document - docs/audit_findings.md
+- [[P3 Additions — Scheduled Cleanup]] - document - docs/audit_findings.md
+- [[Phase 2 Audit — Additional Files]] - document - docs/audit_findings.md
+- [[Phase 2 Production Readiness Scores]] - document - docs/audit_findings.md
+- [[Phase 2 Remediation Plan]] - document - docs/audit_findings.md
+- [[audit_findings]] - document - docs/audit_findings.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,7 +27,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 247]]
+- 1 edge to [[_COMMUNITY_Community 298]]
+- 1 edge to [[_COMMUNITY_Community 299]]
+- 1 edge to [[_COMMUNITY_Community 300]]
+- 1 edge to [[_COMMUNITY_Community 364]]
+- 1 edge to [[_COMMUNITY_Community 365]]
 
 ## Top bridge nodes
-- [[TestBlendWeightCalibrationPriority]] - degree 5, connects to 1 community
+- [[Phase 2 Audit — Additional Files]] - degree 8, connects to 5 communities
+- [[audit_findings]] - degree 2, connects to 1 community

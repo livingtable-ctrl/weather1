@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_pnl_attribution.py"
 type: "rationale"
-community: "Tracker P&L Attribution Tests"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_4
 ---
 
 # Tests for strategy P&L attribution by signal source.
 
 ## Connections
-- [[P&L Attribution Tests]] - `rationale_for` [EXTRACTED]
+- [[test_pnl_attribution.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

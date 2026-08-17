@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cmd_schedule_settlement_monitor.py"
 type: "code"
-community: "Community 64"
+community: "Community 53"
 location: "L61"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_64
+  - community/Community_53
 ---
 
 # _capturing_run()
@@ -18,4 +18,4 @@ tags:
 - [[subprocess.run replacement that records the command and reports success -- a…]] - `rationale_for` [EXTRACTED]
 - [[test_cmd_schedule_settlement_monitor.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_64
+#graphify/code #graphify/EXTRACTED #community/Community_53

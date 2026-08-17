@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 239"
+community: "Community 241"
 location: "L2437"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_239
+  - community/Community_241
 ---
 
 # .test_signed_bias_not_absolute_error()
@@ -15,4 +15,4 @@ tags:
 - [[A model that consistently over-predicts must show a POSITIVE bias (not the MAE,…]] - `rationale_for` [EXTRACTED]
 - [[TestGetMemberBias]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_239
+#graphify/code #graphify/EXTRACTED #community/Community_241

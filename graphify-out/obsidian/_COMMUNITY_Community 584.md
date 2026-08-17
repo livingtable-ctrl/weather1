@@ -1,19 +1,21 @@
 ---
 type: community
-cohesion: 0.50
-members: 4
+cohesion: 0.33
+members: 6
 ---
 
 # Community 584
 
-**Cohesion:** 0.50 - moderately connected
-**Members:** 4 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-constructor()_1]] - code - weather app site V_3 (3)/src/App.jsx
-- [[dot-getDerivedStateFromError()_1]] - code - weather app site V_3 (3)/src/App.jsx
-- [[dot-render()_1]] - code - weather app site V_3 (3)/src/App.jsx
-- [[ErrorBoundary_1]] - code - weather app site V_3 (3)/src/App.jsx
+- [[dot-test_signal_values_absent_stores_null()]] - code - tests/test_tracker.py
+- [[dot-test_signal_values_empty_dict_stores_valid_empty_json_not_null()]] - code - tests/test_tracker.py
+- [[dot-test_signal_values_round_trip_through_upsert()]] - code - tests/test_tracker.py
+- [[dot-test_signal_values_updates_on_reupsert()]] - code - tests/test_tracker.py
+- [[TestLogPredictionSignalValues]] - code - tests/test_tracker.py
+- [[log_prediction() must persist `signals` (backlog.txt SIGNAL GRADUATION IS A…]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -23,7 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 93]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[ErrorBoundary_1]] - degree 4, connects to 1 community
+- [[TestLogPredictionSignalValues]] - degree 6, connects to 1 community

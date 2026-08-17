@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "code"
-community: "Community 136"
+community: "Community 25"
 location: "L556"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_136
+  - community/Community_25
 ---
 
 # TestCmdWatchDisplayScanUnification
@@ -28,4 +28,4 @@ tags:
 - [[cmd_watch's auto-trading display must source from run_trade_cycle()'s own…]] - `rationale_for` [EXTRACTED]
 - [[test_trade_cycle_engine.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_136
+#graphify/code #graphify/EXTRACTED #community/Community_25

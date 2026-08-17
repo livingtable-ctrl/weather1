@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "rationale"
-community: "Community 80"
+community: "Community 20"
 location: "L48"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_80
+  - community/Community_20
 ---
 
 # yes_ask=100 (= 1.0) means no resting sell order below par — normal.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_ask_100_cents_accepted()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_80
+#graphify/rationale #graphify/EXTRACTED #community/Community_20

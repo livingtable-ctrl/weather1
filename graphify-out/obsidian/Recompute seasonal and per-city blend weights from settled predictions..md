@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L6103"
+community: "Community 3"
+location: "L6105"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_3
 ---
 
 # Recompute seasonal and per-city blend weights from settled predictions.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_calibrate()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

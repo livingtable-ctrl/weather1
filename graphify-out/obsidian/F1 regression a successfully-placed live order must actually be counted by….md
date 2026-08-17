@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_prelog.py"
 type: "rationale"
-community: "Community 219"
+community: "Community 224"
 location: "L110"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_219
+  - community/Community_224
 ---
 
 # F1 regression: a successfully-placed live order must actually be counted by…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_placed_order_counts_toward_open_positions()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_219
+#graphify/rationale #graphify/EXTRACTED #community/Community_224

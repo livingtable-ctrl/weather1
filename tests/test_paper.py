@@ -1623,13 +1623,21 @@ class TestMonteCarloCholesky:
         from monte_carlo import simulate_portfolio
         from utils import utc_today
 
-        # simulate_portfolio compares target_date against utils.utc_today(),
-        # not local wall-clock date — using local date.today() here can
-        # silently disagree with it (e.g. local date already a day ahead of
-        # UTC makes "yesterday, local" equal today in UTC, so the skip never
-        # fires and the trade wrongly falls through to the clamping path).
+        # simulate_portfolio compares target_date against a CITY-LOCAL
+        # "today" (ZoneInfo, keyed off each trade's own "city" field, with a
+        # UTC fallback if construction fails) — not utils.utc_today() and not
+        # local wall-clock date.today() either. Every US timezone this repo
+        # trades lags UTC (never ahead), so a city's local-today is always
+        # either utc_today() or utc_today()-1 — a 1-day-past offset can
+        # therefore coincide with a lagging city's local-today during the
+        # window right after UTC midnight and wrongly NOT count as past, so
+        # "past" needs a 2-day offset to stay unambiguous regardless of
+        # city/run time; "future" stays a safe 1-day offset (utc_today()+1
+        # is always >= any city's local-today+1). See
+        # test_target_date_excluded_uses_city_local_today_not_utc below for
+        # the regression case that actually exercises the rollover window.
         today = utc_today()
-        past = (today - timedelta(days=1)).isoformat()
+        past = (today - timedelta(days=2)).isoformat()
         future = (today + timedelta(days=1)).isoformat()
 
         stale_trade = {
@@ -1663,6 +1671,138 @@ class TestMonteCarloCholesky:
         # Result should reflect only the future trade (non-trivial distribution)
         assert result["p10_pnl"] < result["p90_pnl"]
 
+    def test_target_date_excluded_uses_city_local_today_not_utc(self):
+        """Regression for backlog.txt L569: simulate_portfolio's past-date
+        check must compare a trade's CITY-LOCAL target_date against that
+        city's own local "today" (ZoneInfo, keyed off t["city"]), not
+        utils.utc_today(). At 2026-07-10 05:00 UTC, UTC and NYC (UTC-4,
+        EDT) have both already rolled over to 2026-07-10, but LA (UTC-7,
+        PDT) is still 2026-07-09 -- using "LA" (a zone genuinely different
+        from both UTC and the fix's own America/New_York fallback default)
+        proves a real per-city lookup, not just "some non-UTC zone" or a
+        lookup that silently always resolves to the fallback.
+
+        A trade dated LA's local "today" must be KEPT in the simulation --
+        n_clamped==1 is the positive control proving it actually reached
+        the clamping path (entry_prob=0.929 only clamps if processed), not
+        just that no exception was raised. A trade dated one day earlier
+        (genuinely past even in LA-local terms) must still be excluded."""
+        from datetime import datetime as _real_datetime
+
+        from monte_carlo import simulate_portfolio
+
+        fixed_instant = _real_datetime(2026, 7, 10, 5, 0, tzinfo=UTC)
+
+        class _FixedDatetime(_real_datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return fixed_instant.replace(tzinfo=None)
+                return fixed_instant.astimezone(tz)
+
+        still_open_trade = {
+            "ticker": "KXLA-ROLLOVER",
+            "side": "yes",
+            "entry_price": 0.50,
+            "cost": 5.00,
+            "quantity": 10,
+            "city": "LA",
+            "target_date": "2026-07-09",  # LA-local "today" at fixed_instant
+            "entry_prob": 0.929,  # would trigger clamp warning if reached
+        }
+        genuinely_past_trade = {
+            "ticker": "KXLA-PAST",
+            "side": "yes",
+            "entry_price": 0.50,
+            "cost": 5.00,
+            "quantity": 10,
+            "city": "LA",
+            "target_date": "2026-07-08",  # yesterday even in LA-local terms
+            "entry_prob": 0.55,
+        }
+
+        with patch("datetime.datetime", _FixedDatetime):
+            result = simulate_portfolio(
+                [still_open_trade, genuinely_past_trade], n_simulations=200
+            )
+
+        assert result["n_clamped"] == 1, (
+            f"LA-local-today trade should reach the clamping path (proving "
+            f"it wasn't wrongly excluded) while the genuinely-past trade "
+            f"stays excluded, got n_clamped={result['n_clamped']}"
+        )
+
+    def test_unparseable_target_date_fallback_uses_city_local_today(self):
+        """The unparseable-date string-compare fallback (`_tdate <
+        _today_mc.isoformat()`) must also use the city-local today, not
+        UTC -- the fix must not leave this second branch using a stale UTC
+        reference while only the parsed-date branch above it gets fixed.
+        A malformed (non-ISO) target_date string-compares as "before" the
+        UTC/NYC date (2026-07-10) but "at or after" the LA date
+        (2026-07-09), since a longer string sharing a common prefix with a
+        shorter one sorts as greater."""
+        from datetime import datetime as _real_datetime
+
+        from monte_carlo import simulate_portfolio
+
+        fixed_instant = _real_datetime(2026, 7, 10, 5, 0, tzinfo=UTC)
+
+        class _FixedDatetime(_real_datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return fixed_instant.replace(tzinfo=None)
+                return fixed_instant.astimezone(tz)
+
+        trade = {
+            "ticker": "KXLA-MALFORMED-ROLLOVER",
+            "side": "yes",
+            "entry_price": 0.50,
+            "cost": 5.00,
+            "quantity": 10,
+            "city": "LA",
+            "target_date": "2026-07-09-malformed",  # not a valid ISO date
+            "entry_prob": 0.929,
+        }
+
+        with patch("datetime.datetime", _FixedDatetime):
+            result = simulate_portfolio([trade], n_simulations=200)
+
+        assert result["n_clamped"] == 1, (
+            f"Malformed-date trade at LA-local 'today' should reach the "
+            f"clamping path via the string-compare fallback, got "
+            f"n_clamped={result['n_clamped']}"
+        )
+
+    def test_zoneinfo_failure_falls_back_to_utc_in_simulation(self):
+        """If ZoneInfo construction raises for any reason, simulate_portfolio
+        must fall back to UTC's today rather than propagate the exception
+        or silently misbehave -- mirrors analyze_trade's own fallback."""
+        from monte_carlo import simulate_portfolio
+        from utils import utc_today
+
+        today = utc_today()
+        future_trade = {
+            "ticker": "KXZI-FALLBACK",
+            "side": "yes",
+            "entry_price": 0.50,
+            "cost": 5.00,
+            "quantity": 10,
+            "city": "LA",
+            "target_date": (today + timedelta(days=1)).isoformat(),
+            "entry_prob": 0.55,
+        }
+
+        with patch("zoneinfo.ZoneInfo", side_effect=RuntimeError("boom")):
+            result = simulate_portfolio([future_trade], n_simulations=200)
+
+        # Must not raise, and the future trade (UTC-future too) must still
+        # be kept -- all_past_date/n_simulations==0 is what an all-excluded
+        # portfolio looks like, proving the fallback path doesn't crash or
+        # wrongly exclude when ZoneInfo is unavailable.
+        assert result.get("all_past_date") is not True
+        assert result["n_simulations"] == 200
+
     def test_past_date_only_portfolio_returns_empty_result(self):
         """All-stale portfolio skips every trade and returns the zero-position result."""
         from datetime import timedelta
@@ -1671,7 +1811,8 @@ class TestMonteCarloCholesky:
         from utils import utc_today
 
         # See test_past_date_trade_excluded_from_simulation's comment above —
-        # must compare against the same UTC reference simulate_portfolio uses.
+        # a 2-day offset stays unambiguous regardless of the city-local vs.
+        # UTC "today" distinction.
         past = (utc_today() - timedelta(days=2)).isoformat()
         stale = {
             "ticker": "KXSTALE",

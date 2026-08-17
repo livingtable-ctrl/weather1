@@ -1,17 +1,17 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 189"
 location: "L1867"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_189
 ---
 
 # Scale Kelly fraction down based on max pairwise correlation with existing…
 
 ## Connections
-- [[corr_kelly_scale()]] - `rationale_for` [EXTRACTED]
+- [[paper.corr_kelly_scale]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_189

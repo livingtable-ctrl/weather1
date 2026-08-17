@@ -1,12 +1,12 @@
 ---
 source_file: "nws.py"
 type: "rationale"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 3"
 location: "L142"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_3
 ---
 
 # _get with a hard wall-clock deadline for observation endpoints. Windows SSL can…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_get_obs()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

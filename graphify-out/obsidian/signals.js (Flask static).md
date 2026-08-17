@@ -1,11 +1,11 @@
 ---
 source_file: "static/signals.js"
 type: "code"
-community: "Community 147"
+community: "Community 204"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_147
+  - community/Community_204
 ---
 
 # signals.js (Flask static)
@@ -14,4 +14,4 @@ tags:
 - [[Signals Page Template (reference)]] - `references` [EXTRACTED]
 - [[Signals Page Template (templates)]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_147
+#graphify/code #graphify/EXTRACTED #community/Community_204

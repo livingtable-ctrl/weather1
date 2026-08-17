@@ -1,42 +1,44 @@
 ---
 type: community
-cohesion: 0.10
-members: 27
+cohesion: 0.07
+members: 29
 ---
 
 # Community 95
 
-**Cohesion:** 0.10 - loosely connected
-**Members:** 27 nodes
+**Cohesion:** 0.07 - loosely connected
+**Members:** 29 nodes
 
 ## Members
-- [[dot-__init__()_10]] - code - circuit_breaker.py
-- [[dot-__init__()_11]] - code - circuit_breaker.py
-- [[dot-_load_cooldowns()]] - code - circuit_breaker.py
-- [[dot-_load_history()]] - code - circuit_breaker.py
-- [[dot-_save_cooldowns()]] - code - circuit_breaker.py
-- [[dot-_save_history()]] - code - circuit_breaker.py
-- [[dot-check()_1]] - code - circuit_breaker.py
-- [[dot-is_in_cooldown()]] - code - circuit_breaker.py
-- [[dot-test_rapid_successive_calls_skip_disk_save_but_still_detect_crash()]] - code - tests/test_flash_crash_cb.py
-- [[dot-test_save_resumes_once_interval_elapses()]] - code - tests/test_flash_crash_cb.py
-- [[dot-test_second_instance_does_not_false_positive_on_small_move()]] - code - tests/test_flash_crash_cb.py
-- [[dot-test_second_instance_on_same_path_detects_crash_from_first()]] - code - tests/test_flash_crash_cb.py
-- [[2026-07-12 check() now fires on every live WS tick (kalshi_ws.py's…]] - rationale - tests/test_flash_crash_cb.py
-- [[FlashCrashCB]] - code - circuit_breaker.py
-- [[Load persisted cooldowns from disk, discarding any that have already expired.]] - rationale - circuit_breaker.py
-- [[Load persisted price history from disk, discarding any observations already…]] - rationale - circuit_breaker.py
-- [[Per-market flash crash detection. Trips when price moves  threshold_pct within…]] - rationale - circuit_breaker.py
-- [[Persist current (non-expired) cooldowns to disk atomically.]] - rationale - circuit_breaker.py
-- [[Persist current (non-expired) price history to disk atomically.]] - rationale - circuit_breaker.py
-- [[Proves the actual point of persisting _history to disk two SEPARATE…]] - rationale - tests/test_flash_crash_cb.py
-- [[Record price and return True if this observation triggered a crash. Called from…]] - rationale - circuit_breaker.py
-- [[TestFlashCrashCBHistoryPersistence]] - code - tests/test_flash_crash_cb.py
-- [[TestFlashCrashCBHistorySaveThrottle]] - code - tests/test_flash_crash_cb.py
-- [[Tests for per-market flash crash circuit breaker.]] - rationale - tests/test_flash_crash_cb.py
-- [[flash_crash_cb (singleton)]] - code - circuit_breaker.py
-- [[test_flash_crash_cb.py]] - code - tests/test_flash_crash_cb.py
-- [[test_flash_crash_cb.py_1]] - code - tests/test_flash_crash_cb.py
+- [[dot-test_celsius_converted_to_fahrenheit()]] - code - tests/test_metar.py
+- [[dot-test_dew_point_f_parsed_from_real_dewp_celsius_field()]] - code - tests/test_metar.py
+- [[dot-test_max_min_temp_f_parsed_from_real_api_field_names()]] - code - tests/test_metar.py
+- [[dot-test_max_min_temp_f_prefers_fahrenheit_field_if_ever_present()]] - code - tests/test_metar.py
+- [[dot-test_negative_caches_failure()_2]] - code - tests/test_metar.py
+- [[dot-test_returns_current_temp_f()]] - code - tests/test_metar.py
+- [[dot-test_returns_none_for_implausible_high_temp()]] - code - tests/test_metar.py
+- [[dot-test_returns_none_for_implausible_low_temp()]] - code - tests/test_metar.py
+- [[dot-test_returns_none_on_empty_response()]] - code - tests/test_metar.py
+- [[dot-test_returns_none_on_failure()]] - code - tests/test_metar.py
+- [[dot-test_returns_none_when_observation_stale()]] - code - tests/test_metar.py
+- [[dot-test_returns_none_when_obstime_missing()]] - code - tests/test_metar.py
+- [[dot-test_returns_none_when_obstime_unparseable()]] - code - tests/test_metar.py
+- [[dot-test_returns_result_when_observation_fresh()]] - code - tests/test_metar.py
+- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_4]] - rationale - tests/test_metar.py
+- [[Defensive if the API ever adds a Fahrenheit extreme field, prefer it over…]] - rationale - tests/test_metar.py
+- [[If only Celsius provided, convert to Fahrenheit.]] - rationale - tests/test_metar.py
+- [[P1-2 observation 30 minutes old → accepted.]] - rationale - tests/test_metar.py
+- [[P1-2 observation older than 90 minutes → None.]] - rationale - tests/test_metar.py
+- [[P1-2 response with invalid obsTime string → None.]] - rationale - tests/test_metar.py
+- [[P1-2 response with no obsTime key → None (no fabricated timestamp).]] - rationale - tests/test_metar.py
+- [[P1-2 temperature above 140°F → None (physically impossible).]] - rationale - tests/test_metar.py
+- [[P1-2 temperature below -80°F → None (physically impossible).]] - rationale - tests/test_metar.py
+- [[Regression for the field-name bug found by opus review of backlog.txt BETWEEN-…]] - rationale - tests/test_metar.py
+- [[Regression for the same field-name bug the real payload's dew point field is…]] - rationale - tests/test_metar.py
+- [[Return an obsTime string 15 minutes in the past (always within the 90-min…]] - rationale - tests/test_metar.py
+- [[TestFetchMetar]] - code - tests/test_metar.py
+- [[_fresh_obs_time()]] - code - tests/test_metar.py
+- [[fetch_metar returns current_temp_f in Fahrenheit.]] - rationale - tests/test_metar.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -46,18 +48,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 365]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 84]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Community 227]]
-- 1 edge to [[_COMMUNITY_Community 85]]
-- 1 edge to [[_COMMUNITY_Community 167]]
-- 1 edge to [[_COMMUNITY_Community 293]]
+- 2 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 9]]
 
 ## Top bridge nodes
-- [[FlashCrashCB]] - degree 24, connects to 5 communities
-- [[test_flash_crash_cb.py]] - degree 6, connects to 2 communities
-- [[dot-_save_cooldowns()]] - degree 4, connects to 1 community
-- [[dot-_save_history()]] - degree 4, connects to 1 community
-- [[dot-__init__()_10]] - degree 2, connects to 1 community
+- [[TestFetchMetar]] - degree 16, connects to 2 communities
+- [[_fresh_obs_time()]] - degree 3, connects to 1 community

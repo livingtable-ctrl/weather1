@@ -1,25 +1,25 @@
 ---
 type: community
-cohesion: 0.29
+cohesion: 0.20
 members: 10
 ---
 
 # Community 381
 
-**Cohesion:** 0.29 - loosely connected
+**Cohesion:** 0.20 - loosely connected
 **Members:** 10 nodes
 
 ## Members
-- [[dot-_make_attempt()]] - code - tests/test_tracker.py
-- [[dot-setUp()_27]] - code - tests/test_tracker.py
-- [[dot-tearDown()_26]] - code - tests/test_tracker.py
-- [[dot-test_batch_log_empty_list_is_noop()]] - code - tests/test_tracker.py
-- [[dot-test_batch_log_logs_all_items()]] - code - tests/test_tracker.py
-- [[dot-test_batch_log_stores_correct_probs()]] - code - tests/test_tracker.py
-- [[dot-test_get_analysis_bias_computes_mean_bias()]] - code - tests/test_tracker.py
-- [[dot-test_get_analysis_bias_returns_none_with_no_outcomes()]] - code - tests/test_tracker.py
-- [[TestGetAnalysisBias]] - code - tests/test_tracker.py
-- [[Tests for get_analysis_bias() (55). Rewritten 2026-07-12 previously populated…]] - rationale - tests/test_tracker.py
+- [[dot-test_confidence_increases_with_clearance()]] - code - tests/test_metar.py
+- [[dot-test_confidence_increases_with_hour()]] - code - tests/test_metar.py
+- [[dot-test_large_clearance_late_evening_gets_high_confidence()]] - code - tests/test_metar.py
+- [[dot-test_near_threshold_early_afternoon_confidence_below_old_hardcoded()]] - code - tests/test_metar.py
+- [[Confidence must be strictly higher for a later observation time with the same…]] - rationale - tests/test_metar.py
+- [[Confidence must be strictly higher for larger temperature clearance at the same…]] - rationale - tests/test_metar.py
+- [[Regression for L6-D 15°F clearance at 10 PM must yield confidence = 0.90.…]] - rationale - tests/test_metar.py
+- [[Regression for L6-D 3°F clearance at 2 PM must yield confidence  0.90. Before…]] - rationale - tests/test_metar.py
+- [[Regression tests for L6-D METAR lock-in confidence must scale with temperature…]] - rationale - tests/test_metar.py
+- [[TestDynamicLockInConfidence]] - code - tests/test_metar.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,7 +29,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 9]]
 
 ## Top bridge nodes
-- [[TestGetAnalysisBias]] - degree 10, connects to 1 community
+- [[TestDynamicLockInConfidence]] - degree 7, connects to 2 communities

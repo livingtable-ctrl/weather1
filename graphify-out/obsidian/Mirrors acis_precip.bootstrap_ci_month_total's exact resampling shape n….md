@@ -1,12 +1,12 @@
 ---
 source_file: "hurricane_climatology.py"
 type: "rationale"
-community: "Community 55"
+community: "Community 43"
 location: "L474"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_55
+  - community/Community_43
 ---
 
 # Mirrors acis_precip.bootstrap_ci_month_total's exact resampling shape: n…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[bootstrap_ci()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_55
+#graphify/rationale #graphify/EXTRACTED #community/Community_43

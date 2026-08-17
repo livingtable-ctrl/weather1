@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "ML Bias Correction & Audit Plans"
-location: "L3710"
+community: "Community 5"
+location: "L3812"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_5
 ---
 
 # Return True if the ensemble spread (p90-p10) is unusually wide — a sign the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[is_forecast_anomalous()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

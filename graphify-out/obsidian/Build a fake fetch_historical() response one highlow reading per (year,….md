@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climatology.py"
 type: "rationale"
-community: "Community 302"
+community: "Community 413"
 location: "L16"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_302
+  - community/Community_413
 ---
 
 # Build a fake fetch_historical() response: one high/low reading per (year,…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_synthetic_climate_data()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_302
+#graphify/rationale #graphify/EXTRACTED #community/Community_413

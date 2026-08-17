@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.39
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 444
 
-**Cohesion:** 0.39 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-_make_open_trades()]] - code - tests/test_trade_improvements.py
-- [[dot-_make_opp()]] - code - tests/test_trade_improvements.py
-- [[dot-test_no_trades_placed_when_at_cap()]] - code - tests/test_trade_improvements.py
-- [[dot-test_trades_placed_below_cap()]] - code - tests/test_trade_improvements.py
-- [[TestMaxConcurrentPositions]] - code - tests/test_trade_improvements.py
-- [[When 20 positions already open, _auto_place_trades should place 0 new trades.]] - rationale - tests/test_trade_improvements.py
-- [[When only 18 positions open, up to 2 more should be allowed.]] - rationale - tests/test_trade_improvements.py
-- [[_auto_place_trades must refuse new trades once 20 open positions exist.]] - rationale - tests/test_trade_improvements.py
+- [[dot-test_all_above_threshold_gives_high_prob()]] - code - tests/test_weather.py
+- [[dot-test_half_above_gives_straddling_ci()]] - code - tests/test_weather.py
+- [[dot-test_none_above_threshold_gives_low_prob()]] - code - tests/test_weather.py
+- [[dot-test_small_sample_returns_full_range()]] - code - tests/test_weather.py
+- [[All members above 0.01in → precip_any CI should be near (1, 1).]] - rationale - tests/test_weather.py
+- [[Fewer than 5 members → returns (0.0, 1.0) as uninformative CI.]] - rationale - tests/test_weather.py
+- [[Half members above 0.10in → CI should straddle 0.5.]] - rationale - tests/test_weather.py
+- [[No members above threshold → CI near (0, 0).]] - rationale - tests/test_weather.py
+- [[TestBootstrapCIPrecip]] - code - tests/test_weather.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,7 +28,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 4 edges to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 396]]
 
 ## Top bridge nodes
-- [[TestMaxConcurrentPositions]] - degree 6, connects to 1 community
+- [[TestBootstrapCIPrecip]] - degree 5, connects to 1 community
+- [[dot-test_all_above_threshold_gives_high_prob()]] - degree 3, connects to 1 community
+- [[dot-test_half_above_gives_straddling_ci()]] - degree 3, connects to 1 community
+- [[dot-test_none_above_threshold_gives_low_prob()]] - degree 3, connects to 1 community
+- [[dot-test_small_sample_returns_full_range()]] - degree 3, connects to 1 community

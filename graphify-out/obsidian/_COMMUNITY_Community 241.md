@@ -1,30 +1,30 @@
 ---
 type: community
-cohesion: 0.19
+cohesion: 0.13
 members: 15
 ---
 
 # Community 241
 
-**Cohesion:** 0.19 - loosely connected
+**Cohesion:** 0.13 - loosely connected
 **Members:** 15 nodes
 
 ## Members
-- [[dot-_condition()_3]] - code - tests/test_weather_markets.py
-- [[dot-test_below_condition_widens_sigma_in_gaussian_branch()]] - code - tests/test_weather_markets.py
-- [[dot-test_below_ten_members_uses_gaussian_not_emos()]] - code - tests/test_weather_markets.py
-- [[dot-test_emos_falls_back_to_raw_fraction_when_untrained()]] - code - tests/test_weather_markets.py
-- [[dot-test_emos_used_when_params_trained()]] - code - tests/test_weather_markets.py
-- [[dot-test_exactly_ten_members_uses_emos_or_ensemble_not_gaussian()]] - code - tests/test_weather_markets.py
-- [[dot-test_nine_members_uses_gaussian()]] - code - tests/test_weather_markets.py
-- [[10 members must take the Gaussian branch (_forecast_probability), never EMOS…]] - rationale - tests/test_weather_markets.py
-- [[=10 members with EMOS params available must use method='emos', not the raw-…]] - rationale - tests/test_weather_markets.py
-- [[=10 members with no EMOS params must use the raw exceedance fraction fallback,…]] - rationale - tests/test_weather_markets.py
-- [[Dedicated unit tests for _compute_ensemble_prob(), extracted from…]] - rationale - tests/test_weather_markets.py
-- [[One below the boundary must still take the Gaussian branch.]] - rationale - tests/test_weather_markets.py
-- [[TestComputeEnsembleProbRefactorSafetyNet]] - code - tests/test_weather_markets.py
-- [[The =10 boundary is inclusive -- exactly 10 members must take the EMOSraw-…]] - rationale - tests/test_weather_markets.py
-- [[below' condition type widens sigma by 1.5x in the Gaussian branch (empirical…]] - rationale - tests/test_weather_markets.py
+- [[dot-setUp()_11]] - code - tests/test_tracker.py
+- [[dot-tearDown()_11]] - code - tests/test_tracker.py
+- [[dot-test_city_breakdown()]] - code - tests/test_tracker.py
+- [[dot-test_days_back_filters_old_rows()]] - code - tests/test_tracker.py
+- [[dot-test_max_and_min_never_pooled()]] - code - tests/test_tracker.py
+- [[dot-test_null_var_rows_excluded()]] - code - tests/test_tracker.py
+- [[dot-test_returns_empty_when_no_data()]] - code - tests/test_tracker.py
+- [[dot-test_signed_bias_not_absolute_error()]] - code - tests/test_tracker.py
+- [[dot-test_under_prediction_gives_negative_bias()]] - code - tests/test_tracker.py
+- [[A model that consistently over-predicts must show a POSITIVE bias (not the MAE,…]] - rationale - tests/test_tracker.py
+- [[A row logged without var= (legacy, pre-backfill) must not be attributed to…]] - rationale - tests/test_tracker.py
+- [[A row older than days_back must be excluded, same convention as…]] - rationale - tests/test_tracker.py
+- [[Same model, opposite-signed error on each var -- each bucket must keep its own…]] - rationale - tests/test_tracker.py
+- [[TestGetMemberBias]] - code - tests/test_tracker.py
+- [[get_member_bias() -- signed per-model bias split by var, feeding…]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,7 +34,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[TestComputeEnsembleProbRefactorSafetyNet]] - degree 9, connects to 1 community
+- [[TestGetMemberBias]] - degree 11, connects to 1 community

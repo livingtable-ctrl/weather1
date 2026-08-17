@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_h.py"
 type: "rationale"
-community: "Community 517"
+community: "Community 575"
 location: "L166"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_517
+  - community/Community_575
 ---
 
 # P2-25: monte_carlo skips past-date trades using UTC date.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMonteCarloUtcDate]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_517
+#graphify/rationale #graphify/EXTRACTED #community/Community_575

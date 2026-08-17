@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 349"
-location: "L4959"
+community: "Community 354"
+location: "L5328"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_349
+  - community/Community_354
 ---
 
 # low below 60', running min=65 (>= 60+3 margin): NOT monotone-safe for the NO…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_low_market_below_still_above_margin_is_not_locked()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_349
+#graphify/rationale #graphify/EXTRACTED #community/Community_354

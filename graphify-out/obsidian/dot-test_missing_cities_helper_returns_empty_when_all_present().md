@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climatology.py"
 type: "code"
-community: "Community 251"
+community: "Community 250"
 location: "L680"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_251
+  - community/Community_250
 ---
 
 # .test_missing_cities_helper_returns_empty_when_all_present()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPreloadAllSigmaGate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_251
+#graphify/code #graphify/EXTRACTED #community/Community_250

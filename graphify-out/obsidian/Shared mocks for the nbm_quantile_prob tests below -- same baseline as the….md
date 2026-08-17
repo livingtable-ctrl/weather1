@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 131"
+community: "Community 326"
 location: "L1472"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_131
+  - community/Community_326
 ---
 
 # Shared mocks for the nbm_quantile_prob tests below -- same baseline as the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_analyze_trade_base_mocks()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_131
+#graphify/rationale #graphify/EXTRACTED #community/Community_326

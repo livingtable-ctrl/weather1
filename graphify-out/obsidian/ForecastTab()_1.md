@@ -1,19 +1,18 @@
 ---
-source_file: "weather app site V_3 (3)/src/tabs/ForecastTab.jsx"
+source_file: "frontend/src/App.jsx"
 type: "code"
-community: "Community 93"
-location: "L5"
+community: "Community 98"
+location: "L1219"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_93
+  - community/Community_98
 ---
 
 # ForecastTab()
 
 ## Connections
-- [[ForecastTab.jsx]] - `contains` [EXTRACTED]
+- [[frontendsrcApp.jsx]] - `indirect_call` [INFERRED]
 - [[normCity()_1]] - `calls` [EXTRACTED]
-- [[weather app site V_3 (3)srcApp.jsx]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_93
+#graphify/code #graphify/EXTRACTED #community/Community_98

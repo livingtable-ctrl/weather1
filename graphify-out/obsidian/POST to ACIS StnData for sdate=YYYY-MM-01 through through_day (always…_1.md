@@ -1,12 +1,12 @@
 ---
 source_file: "acis_snow.py"
 type: "rationale"
-community: "Community 62"
+community: "Community 23"
 location: "L122"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_62
+  - community/Community_23
 ---
 
 # POST to ACIS StnData for sdate=YYYY-MM-01 through through_day (always…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[fetch_month_to_date_actual_snow()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_62
+#graphify/rationale #graphify/EXTRACTED #community/Community_23

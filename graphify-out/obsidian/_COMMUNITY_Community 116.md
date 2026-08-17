@@ -1,40 +1,40 @@
 ---
 type: community
-cohesion: 0.08
+cohesion: 0.11
 members: 25
 ---
 
 # Community 116
 
-**Cohesion:** 0.08 - loosely connected
+**Cohesion:** 0.11 - loosely connected
 **Members:** 25 nodes
 
 ## Members
-- [[dot-_city()_1]] - code - tests/test_weather_markets.py
-- [[dot-test_boston_renamed_high_ticker()]] - code - tests/test_weather_markets.py
-- [[dot-test_dallas_full_name_in_ticker_not_la()]] - code - tests/test_weather_markets.py
-- [[dot-test_la_as_hyphen_segment_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_la_low_temp_series_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_la_title_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_las_vegas_low_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_las_vegas_title_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_new_orleans_low_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_philadelphia_full_name_in_ticker_not_la()]] - code - tests/test_weather_markets.py
-- [[dot-test_philadelphia_low_ticker_still_has_t()]] - code - tests/test_weather_markets.py
-- [[dot-test_philadelphia_renamed_high_ticker_without_t()]] - code - tests/test_weather_markets.py
-- [[Call enrich_with_forecast with a mocked forecast and return _city.]] - rationale - tests/test_weather_markets.py
-- [[KXHIGHPHIL (renamed from KXHIGHTPHIL, dropped the 'T') → Philadelphia.]] - rationale - tests/test_weather_markets.py
-- [[KXHIGHTBOS (renamed from KXHIGHBOS) → Boston.]] - rationale - tests/test_weather_markets.py
-- [[KXLOWLA temperature series → city == 'LA'.]] - rationale - tests/test_weather_markets.py
-- [[KXLOWTNOLA → NewOrleans.]] - rationale - tests/test_weather_markets.py
-- [[KXLOWTPHIL (unrenamed, still has 'T') → Philadelphia.]] - rationale - tests/test_weather_markets.py
-- [[KXRAIN-DALLAS ticker 'DALLAS' contains 'LA' — must be Dallas, not LA.]] - rationale - tests/test_weather_markets.py
-- [[KXRAIN-PHILADELPHIA ticker 'PHILA' contains 'LA' — must be Philadelphia.]] - rationale - tests/test_weather_markets.py
-- [[L5-B bare 'LA' in ticker_up substring must not misfire on city names that…]] - rationale - tests/test_weather_markets.py
-- [[Rain market with '-LA-' segment (KXRAIN-LA-...) → city == 'LA'.]] - rationale - tests/test_weather_markets.py
-- [[TestCityDetection]] - code - tests/test_weather_markets.py
-- [[las vegas' in title → LasVegas even with a generic ticker.]] - rationale - tests/test_weather_markets.py
-- [[los angeles' in title → city == 'LA' even with generic ticker.]] - rationale - tests/test_weather_markets.py
+- [[dot-summary()]] - code - ab_test.py
+- [[dot-test_auto_disable_low_performer()]] - code - tests/test_ab_test.py
+- [[dot-test_get_active_variant_returns_least_traded()]] - code - tests/test_ab_test.py
+- [[dot-test_list_all_summaries_includes_saved_test()]] - code - tests/test_ab_test.py
+- [[dot-test_list_all_summaries_returns_dict()]] - code - tests/test_ab_test.py
+- [[dot-test_pick_variant_all_exhausted_falls_back_to_control()]] - code - tests/test_ab_test.py
+- [[dot-test_pick_variant_returns_valid_variant()]] - code - tests/test_ab_test.py
+- [[dot-test_pick_variant_round_robins_to_least_traded()]] - code - tests/test_ab_test.py
+- [[dot-test_record_outcome_increments_trades_and_wins()]] - code - tests/test_ab_test.py
+- [[dot-test_record_outcome_unknown_variant_is_noop()]] - code - tests/test_ab_test.py
+- [[dot-test_summary_has_required_keys()]] - code - tests/test_ab_test.py
+- [[ABTest]] - code - ab_test.py
+- [[Return summary statistics for all variants.]] - rationale - ab_test.py
+- [[Simple bandit-style AB test across strategy parameter variants. Tracks wins,…]] - rationale - ab_test.py
+- [[TestABTest]] - code - tests/test_ab_test.py
+- [[Variant with win_rate 20pp below best is auto-disabled after max_trades.]] - rationale - tests/test_ab_test.py
+- [[When all variants are exhausted, pick_variant falls back to 'control'.]] - rationale - tests/test_ab_test.py
+- [[get_active_variant picks the least-traded active variant from disk state.]] - rationale - tests/test_ab_test.py
+- [[list_all_summaries includes tests that have been persisted to disk.]] - rationale - tests/test_ab_test.py
+- [[list_all_summaries returns a dict (empty if no tests on disk).]] - rationale - tests/test_ab_test.py
+- [[pick_variant favours the variant with fewest trades.]] - rationale - tests/test_ab_test.py
+- [[pick_variant returns a name that is in the variants dict.]] - rationale - tests/test_ab_test.py
+- [[record_outcome increments trades count; wins only on won=True.]] - rationale - tests/test_ab_test.py
+- [[record_outcome with an unknown variant name does nothing (no crash).]] - rationale - tests/test_ab_test.py
+- [[summary() returns win_rate, avg_edge, trades, disabled per variant.]] - rationale - tests/test_ab_test.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -44,19 +44,20 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 12 edges to [[_COMMUNITY_Community 102]]
-- 2 edges to [[_COMMUNITY_Community 578]]
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 1 edge to [[_COMMUNITY_Community 632]]
-- 1 edge to [[_COMMUNITY_Community 633]]
-- 1 edge to [[_COMMUNITY_Community 634]]
-- 1 edge to [[_COMMUNITY_Community 635]]
-- 1 edge to [[_COMMUNITY_Community 636]]
-- 1 edge to [[_COMMUNITY_Community 637]]
+- 9 edges to [[_COMMUNITY_Community 140]]
+- 2 edges to [[_COMMUNITY_Community 1]]
+- 2 edges to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 6]]
+- 1 edge to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 336]]
+- 1 edge to [[_COMMUNITY_Community 368]]
+- 1 edge to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 9]]
+- 1 edge to [[_COMMUNITY_Community 312]]
 
 ## Top bridge nodes
-- [[TestCityDetection]] - degree 23, connects to 9 communities
-- [[dot-test_boston_renamed_high_ticker()]] - degree 3, connects to 1 community
-- [[dot-test_dallas_full_name_in_ticker_not_la()]] - degree 3, connects to 1 community
-- [[dot-test_la_as_hyphen_segment_detected()]] - degree 3, connects to 1 community
-- [[dot-test_la_low_temp_series_detected()]] - degree 3, connects to 1 community
+- [[ABTest]] - degree 27, connects to 9 communities
+- [[TestABTest]] - degree 13, connects to 1 community
+- [[dot-test_get_active_variant_returns_least_traded()]] - degree 4, connects to 1 community
+- [[dot-test_list_all_summaries_includes_saved_test()]] - degree 4, connects to 1 community
+- [[dot-test_list_all_summaries_returns_dict()]] - degree 3, connects to 1 community

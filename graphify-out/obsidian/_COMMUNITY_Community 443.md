@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 443
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-test_low_spread_tier_at_boundary_still_clears_gate()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_low_spread_tier_untiers_when_net_edge_below_confidence_threshold()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_missing_ensemble_spread_falls_back_to_flat_paper_min_edge()]] - code - tests/test_trade_cycle_engine.py
-- [[LOW-confidence tier (spread=0.15) requires paper edge = 0.10. net_edge=0.08…]] - rationale - tests/test_trade_cycle_engine.py
-- [[No ensemble_spread key -- matches validate()'s own fallback to…]] - rationale - tests/test_trade_cycle_engine.py
-- [[Sibling of the Kelly floor gate above, same backlog.txt entry -- validate()'s…]] - rationale - tests/test_trade_cycle_engine.py
-- [[TestPlacementConfidenceTierGateTierClassification]] - code - tests/test_trade_cycle_engine.py
-- [[validate() rejects strictly-below min_edge, so net_edge exactly at the LOW-tier…]] - rationale - tests/test_trade_cycle_engine.py
+- [[dot-test_days_out_above_two_returns_none()]] - code - tests/test_weather_markets.py
+- [[dot-test_exception_in_lookup_returns_none_not_raises()]] - code - tests/test_weather_markets.py
+- [[dot-test_no_live_observation_returns_none()]] - code - tests/test_weather_markets.py
+- [[dot-test_uses_daily_max_for_max_var_at_days_out_zero()]] - code - tests/test_weather_markets.py
+- [[dot-test_uses_instantaneous_temp_for_min_var()]] - code - tests/test_weather_markets.py
+- [[Dedicated unit tests for _compute_persistence_prob(), the second function…]] - rationale - tests/test_weather_markets.py
+- [[TestComputePersistenceProbRefactorSafetyNet]] - code - tests/test_weather_markets.py
+- [[var='max' at days_out=0 must prefer the observed running daily max over the…]] - rationale - tests/test_weather_markets.py
+- [[var='min' must use the instantaneous current temp, not max_temp_f (the daily-…]] - rationale - tests/test_weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,11 +28,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 3 edges to [[_COMMUNITY_Community 42]]
+- 1 edge to [[_COMMUNITY_Community 11]]
 
 ## Top bridge nodes
-- [[TestPlacementConfidenceTierGateTierClassification]] - degree 7, connects to 1 community
-- [[dot-test_low_spread_tier_at_boundary_still_clears_gate()]] - degree 3, connects to 1 community
-- [[dot-test_low_spread_tier_untiers_when_net_edge_below_confidence_threshold()]] - degree 3, connects to 1 community
-- [[dot-test_missing_ensemble_spread_falls_back_to_flat_paper_min_edge()]] - degree 3, connects to 1 community
+- [[TestComputePersistenceProbRefactorSafetyNet]] - degree 7, connects to 1 community

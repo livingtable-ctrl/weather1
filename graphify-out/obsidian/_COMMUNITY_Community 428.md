@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.31
+members: 9
 ---
 
 # Community 428
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.31 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-test_get_cached_storms_named_returns_none_for_non_int()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_get_cached_storms_named_returns_none_when_missing()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_get_cached_storms_named_round_trips_through_real_refresh()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_get_cached_storms_named_shares_staleness_guard_with_count()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_refresh_writes_storms_named_per_basin()]] - code - tests/test_hurricane_markets.py
-- [[Both readers delegate to the same _get_cached_hurricane_names_ entry helper --…]] - rationale - tests/test_hurricane_markets.py
-- [[TestStormsNamedToDateCache]] - code - tests/test_hurricane_markets.py
-- [[The real end-to-end path refresh_hurricane_count_to_date's actual write, read…]] - rationale - tests/test_hurricane_markets.py
+- [[73 place_paper_order simulates random Gaussian fill slippage.]] - rationale - tests/test_paper.py
+- [[dot-_place()]] - code - tests/test_paper.py
+- [[dot-test_actual_fill_price_deviates_from_entry()]] - code - tests/test_paper.py
+- [[dot-test_actual_fill_price_in_valid_range()]] - code - tests/test_paper.py
+- [[dot-test_entry_price_unchanged()]] - code - tests/test_paper.py
+- [[Over many fills, actual_fill_price should vary around entry_price.]] - rationale - tests/test_paper.py
+- [[TestGaussianFillSlippage]] - code - tests/test_paper.py
+- [[actual_fill_price must always be in 0.01, 0.99.]] - rationale - tests/test_paper.py
+- [[entry_price on the trade record must equal the requested price.]] - rationale - tests/test_paper.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,7 +28,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 90]]
+- 1 edge to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 21]]
+- 1 edge to [[_COMMUNITY_Community 0]]
 
 ## Top bridge nodes
-- [[TestStormsNamedToDateCache]] - degree 6, connects to 1 community
+- [[TestGaussianFillSlippage]] - degree 7, connects to 2 communities
+- [[dot-_place()]] - degree 5, connects to 1 community

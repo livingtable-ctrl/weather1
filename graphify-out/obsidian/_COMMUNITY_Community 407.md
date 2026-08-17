@@ -1,24 +1,24 @@
 ---
 type: community
-cohesion: 0.22
+cohesion: 0.31
 members: 9
 ---
 
 # Community 407
 
-**Cohesion:** 0.22 - loosely connected
+**Cohesion:** 0.31 - loosely connected
 **Members:** 9 nodes
 
 ## Members
-- [[dot-test_all_cities_have_station()]] - code - tests/test_phase4.py
-- [[dot-test_chicago_coords_closer_to_kmdw_than_kord()]] - code - tests/test_phase4.py
-- [[dot-test_chicago_station_is_kmdw()]] - code - tests/test_phase4.py
-- [[dot-test_station_ids_are_icao_format()]] - code - tests/test_phase4.py
-- [[All station IDs are 4-character ICAO codes starting with K.]] - rationale - tests/test_phase4.py
-- [[CITY_COORDS Chicago must be near Midway (KMDW), not O'Hare (KORD). Kalshi…]] - rationale - tests/test_phase4.py
-- [[Chicago must map to Midway (KMDW) — confirmed from Kalshi series API…]] - rationale - tests/test_phase4.py
-- [[Every city in CITY_COORDS has a station mapping.]] - rationale - tests/test_phase4.py
-- [[TestMarketStationMap]] - code - tests/test_phase4.py
+- [[dot-setup_method()_25]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_17]] - code - tests/test_live_execution.py
+- [[dot-test_gate_blocked_returns_false_and_places_nothing()_1]] - code - tests/test_live_execution.py
+- [[dot-test_place_order_failure_logs_failed_status()]] - code - tests/test_live_execution.py
+- [[dot-test_success_logs_replaces_order_id()]] - code - tests/test_live_execution.py
+- [[dot-test_taker_cross_logged_as_market_order_type()]] - code - tests/test_live_execution.py
+- [[Place a replacement order for a just-canceled resting order (reprice or taker-…]] - rationale - order_executor.py
+- [[TestReplaceLiveOrder]] - code - tests/test_live_execution.py
+- [[_replace_live_order()]] - code - order_executor.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,7 +28,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
+- 4 edges to [[_COMMUNITY_Community 12]]
+- 3 edges to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 42]]
+- 1 edge to [[_COMMUNITY_Community 74]]
 
 ## Top bridge nodes
-- [[TestMarketStationMap]] - degree 5, connects to 1 community
+- [[_replace_live_order()]] - degree 11, connects to 4 communities
+- [[TestReplaceLiveOrder]] - degree 9, connects to 1 community

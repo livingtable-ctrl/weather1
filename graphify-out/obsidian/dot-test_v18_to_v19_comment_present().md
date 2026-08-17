@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_g.py"
 type: "code"
-community: "Community 516"
+community: "Community 574"
 location: "L283"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_516
+  - community/Community_574
 ---
 
 # .test_v18_to_v19_comment_present()
@@ -15,4 +15,4 @@ tags:
 - [[Last migration must be labeled v18→v19 matching _SCHEMA_VERSION=19.]] - `rationale_for` [EXTRACTED]
 - [[TestTrackerMigrationComments]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_516
+#graphify/code #graphify/EXTRACTED #community/Community_574

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_nws.py"
 type: "code"
-community: "Community 82"
+community: "Community 38"
 location: "L18"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_82
+  - community/Community_38
 ---
 
 # .test_days_out_uses_city_local_today_not_utc()
@@ -16,4 +16,4 @@ tags:
 - [[normal_cdf()]] - `calls` [EXTRACTED]
 - [[nws_prob's days_out (and thus sigma) must be computed against the city's own…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_82
+#graphify/code #graphify/EXTRACTED #community/Community_38

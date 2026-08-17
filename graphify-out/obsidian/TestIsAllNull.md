@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "code"
-community: "Community 356"
+community: "Community 187"
 location: "L415"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_356
+  - community/Community_187
 ---
 
 # TestIsAllNull
@@ -19,6 +19,6 @@ tags:
 - [[dot-test_none_input_is_false()]] - `method` [EXTRACTED]
 - [[Detects the 'dead model' signature Open-Meteo returns HTTP 200 with a well-…]] - `rationale_for` [EXTRACTED]
 - [[KalshiClient]] - `uses` [INFERRED]
-- [[Phase 2 Batch L Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_l.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_356
+#graphify/code #graphify/EXTRACTED #community/Community_187

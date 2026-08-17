@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cleanup_data_dir.py"
 type: "code"
-community: "Community 47"
+community: "Community 150"
 location: "L53"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_47
+  - community/Community_150
 ---
 
 # TestCleanupDataDir
@@ -20,4 +20,4 @@ tags:
 - [[dot-test_stale_ephemeral_file_is_deleted()]] - `method` [EXTRACTED]
 - [[test_cleanup_data_dir.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_47
+#graphify/code #graphify/EXTRACTED #community/Community_150

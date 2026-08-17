@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "code"
-community: "Community 158"
+community: "Community 161"
 location: "L170"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_158
+  - community/Community_161
 ---
 
 # TestPassesExitGates
@@ -27,4 +27,4 @@ tags:
 - [[Tests for paper._passes_exit_gates, the shared timing-gate helper extracted…]] - `rationale_for` [EXTRACTED]
 - [[test_early_exits.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_158
+#graphify/code #graphify/EXTRACTED #community/Community_161

@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Tracker P&L Attribution Tests"
-location: "L4211"
+community: "Community 2"
+location: "L4266"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_2
 ---
 
 # Fetch several lead offsets for one model in a single Previous Runs API call.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_fetch_previous_run_leads()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

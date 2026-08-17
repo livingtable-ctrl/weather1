@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "rationale"
-community: "Community 113"
-location: "L196"
+community: "Community 101"
+location: "L407"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_113
+  - community/Community_101
 ---
 
 # Falls back to global T when condition_type is not in the table.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_falls_back_to_global_when_condition_absent()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_113
+#graphify/rationale #graphify/EXTRACTED #community/Community_101

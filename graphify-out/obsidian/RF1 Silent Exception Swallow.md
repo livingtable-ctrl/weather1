@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/outputs"
 type: "document"
-community: "Community 195"
+community: "Community 171"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_195
+  - community/Community_171
 ---
 
 # RF1: Silent Exception Swallow
@@ -33,4 +33,4 @@ tags:
 - [[send_system_alert() RF1 Promotion (610)]] - `references` [EXTRACTED]
 - [[update_orderbook_cache() RF1 DEBUG on Disk Write Failure (510)]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_195
+#graphify/document #graphify/EXTRACTED #community/Community_171

@@ -1,12 +1,12 @@
 ---
 source_file: "safe_io.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 8"
 location: "L107"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_8
 ---
 
 # Write data to path atomically (write temp → fsync → rename). Retries up to…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[atomic_write_json()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_8

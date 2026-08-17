@@ -1,19 +1,18 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "code"
-community: "Trade Cycle Engine & Arbitrage Gates"
+community: "Community 17"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Trade_Cycle_Engine__Arbitrage_Gates
+  - community/Community_17
 ---
 
 # test_trade_cycle_engine.py
 
 ## Connections
 - [[LiveTradingGate]] - `imports` [EXTRACTED]
-- [[LiveTradingGate class]] - `references` [EXTRACTED]
 - [[TestAnalysisAttemptDataLoss]] - `contains` [EXTRACTED]
 - [[TestBannerReflectsActualPlacementCount]] - `contains` [EXTRACTED]
 - [[TestCmdWatchDisplayScanUnification]] - `contains` [EXTRACTED]
@@ -43,10 +42,12 @@ tags:
 - [[_illiquid_strong_market_analysis()]] - `contains` [EXTRACTED]
 - [[_med_market_analysis()]] - `contains` [EXTRACTED]
 - [[_strong_market_analysis()]] - `contains` [EXTRACTED]
-- [[consistency.py (arbitrageconsistency checks)]] - `references` [EXTRACTED]
+- [[dataclasses]] - `imports` [EXTRACTED]
 - [[engine_env()]] - `contains` [EXTRACTED]
 - [[get_paper_min_edge()]] - `imports` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[run_trade_cycle()]] - `references` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 - [[utils.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Trade_Cycle_Engine__Arbitrage_Gates
+#graphify/code #graphify/EXTRACTED #community/Community_17

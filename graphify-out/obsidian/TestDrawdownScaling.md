@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 188"
+community: "Community 194"
 location: "L855"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_188
+  - community/Community_194
 ---
 
 # TestDrawdownScaling
 
 ## Connections
-- [[dot-setUp()_9]] - `method` [EXTRACTED]
-- [[dot-tearDown()_9]] - `method` [EXTRACTED]
+- [[dot-setUp()_10]] - `method` [EXTRACTED]
+- [[dot-tearDown()_10]] - `method` [EXTRACTED]
 - [[dot-test_full_scaling_at_peak()]] - `method` [EXTRACTED]
 - [[dot-test_kelly_scaled_at_partial_recovery()]] - `method` [EXTRACTED]
 - [[dot-test_kelly_zero_below_20_pct()]] - `method` [EXTRACTED]
@@ -25,4 +25,4 @@ tags:
 - [[Tests for the gradual drawdown recovery sizing feature.]] - `rationale_for` [EXTRACTED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_188
+#graphify/code #graphify/EXTRACTED #community/Community_194

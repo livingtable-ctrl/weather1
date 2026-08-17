@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_integration.py"
 type: "rationale"
-community: "Cron Integration Tests"
+community: "Community 31"
 location: "L608"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Cron_Integration_Tests
+  - community/Community_31
 ---
 
 # P1-15: when run_anomaly_check returns anomalies, cron must halt before…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_p1_15_anomaly_check_halts_cron()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Cron_Integration_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_31

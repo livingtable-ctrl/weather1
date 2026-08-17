@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "rationale"
-community: "Community 245"
+community: "Community 227"
 location: "L422"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_245
+  - community/Community_227
 ---
 
 # Stop the WebSocket listener. Cancels the running task (rather than just…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-stop()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_245
+#graphify/rationale #graphify/EXTRACTED #community/Community_227

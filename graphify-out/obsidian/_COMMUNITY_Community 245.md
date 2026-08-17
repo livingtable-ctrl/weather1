@@ -1,27 +1,29 @@
 ---
 type: community
-cohesion: 0.15
-members: 12
+cohesion: 0.22
+members: 14
 ---
 
 # Community 245
 
-**Cohesion:** 0.15 - loosely connected
-**Members:** 12 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 14 nodes
 
 ## Members
-- [[dot-__init__()_2]] - code - kalshi_ws.py
-- [[dot-_run()_1]] - code - kalshi_ws.py
-- [[dot-start()]] - code - kalshi_ws.py
-- [[dot-stop()]] - code - kalshi_ws.py
-- [[dot-subscribe()]] - code - kalshi_ws.py
-- [[Add tickers to subscribe to. Must be called before start().]] - rationale - kalshi_ws.py
-- [[Background WebSocket thread for real-time Kalshi order book data. Usage ws =…]] - rationale - kalshi_ws.py
-- [[Formal overfitting guard compare in-sample vs out-of-sample Brier scores.…]] - rationale - backtest.py
-- [[KalshiWebSocket]] - code - kalshi_ws.py
-- [[Start the WebSocket listener in a background thread.]] - rationale - kalshi_ws.py
-- [[Stop the WebSocket listener. Cancels the running task (rather than just…]] - rationale - kalshi_ws.py
-- [[check_overfitting()]] - code - backtest.py
+- [[Check CPU, memory, API failure rate, and Platt model sanity. Returns…]] - rationale - system_health.py
+- [[HealthStatus]] - code - system_health.py
+- [[Load platt_models.json, reloading whenever the file's mtime changes. mtime-…]] - rationale - weather_markets.py
+- [[NamedTuple]] - code
+- [[Return unhealthy if any loaded Platt model has A = 0 (signal inversion).]] - rationale - system_health.py
+- [[Return unhealthy if recent Kalshi API calls are failing at a high rate.]] - rationale - system_health.py
+- [[_check_api_failure_rate()]] - code - system_health.py
+- [[_check_platt_sanity()]] - code - system_health.py
+- [[_load_platt_models()]] - code - weather_markets.py
+- [[check_system_health()]] - code - system_health.py
+- [[math]] - concept
+- [[system_health.py_1]] - code - system_health.py
+- [[system_health.py]] - code - system_health.py
+- [[system_health.py — lightweight health checks before trade execution.]] - rationale - system_health.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,12 +33,22 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Community 198]]
-- 1 edge to [[_COMMUNITY_Community 261]]
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
+- 5 edges to [[_COMMUNITY_Community 2]]
+- 5 edges to [[_COMMUNITY_Community 6]]
+- 2 edges to [[_COMMUNITY_Community 1]]
+- 2 edges to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 76]]
+- 1 edge to [[_COMMUNITY_Community 111]]
+- 1 edge to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 148]]
+- 1 edge to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 409]]
+- 1 edge to [[_COMMUNITY_Community 82]]
 
 ## Top bridge nodes
-- [[KalshiWebSocket]] - degree 12, connects to 3 communities
-- [[check_overfitting()]] - degree 2, connects to 1 community
-- [[dot-_run()_1]] - degree 2, connects to 1 community
+- [[math]] - degree 9, connects to 8 communities
+- [[system_health.py]] - degree 13, connects to 3 communities
+- [[check_system_health()]] - degree 8, connects to 3 communities
+- [[_check_api_failure_rate()]] - degree 7, connects to 1 community
+- [[_load_platt_models()]] - degree 5, connects to 1 community

@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/modules/alerts.md"
 type: "document"
-community: "Community 565"
+community: "Community 142"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_565
+  - community/Community_142
 ---
 
 # alerts.py Grade Rubric
@@ -17,4 +17,4 @@ tags:
 - [[check_black_swan_conditions()]] - `references` [EXTRACTED]
 - [[run_anomaly_check()]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_565
+#graphify/document #graphify/EXTRACTED #community/Community_142

@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-c-position-management.md"
 type: "document"
-community: "Community 210"
+community: "Community 217"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_210
+  - community/Community_217
 ---
 
 # C3: Re-entry After Early Exit (deferred)
@@ -14,4 +14,4 @@ tags:
 - [[Category C Position Management Plan]] - `references` [EXTRACTED]
 - [[check_model_exits Threshold + Hold Time Fix]] - `semantically_similar_to` [INFERRED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_210
+#graphify/document #graphify/EXTRACTED #community/Community_217

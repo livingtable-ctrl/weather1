@@ -1,16 +1,16 @@
 ---
 source_file: "utils.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 31"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_31
 ---
 
 # utils.DRIFT_TIGHTEN_EDGE
 
 ## Connections
-- [[test_cron_integration.py_1]] - `references` [EXTRACTED]
+- [[test_cron_integration.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_31

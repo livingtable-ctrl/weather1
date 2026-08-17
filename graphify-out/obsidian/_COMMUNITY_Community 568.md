@@ -1,19 +1,21 @@
 ---
 type: community
-cohesion: 0.50
-members: 4
+cohesion: 0.33
+members: 6
 ---
 
 # Community 568
 
-**Cohesion:** 0.50 - moderately connected
-**Members:** 4 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[count_as_of_day Function]] - code - hurricane_climatology.py
-- [[season_end_counts Function]] - code - hurricane_climatology.py
-- [[season_end_total_distribution Function]] - code - hurricane_climatology.py
-- [[simulate_portfolio Function]] - code - monte_carlo.py
+- [[dot-test_does_not_block_when_gate_active()_4]] - code - tests/test_hurricane_markets.py
+- [[dot-test_other_hurricane_shapes_still_unconditionally_blocked()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_still_blocks_when_gate_inactive()_4]] - code - tests/test_hurricane_markets.py
+- [[KXHURCAT (per-storm category, still unsupported) must stay blocked regardless…]] - rationale - tests/test_hurricane_markets.py
+- [[Mutation-test proof flipping _hurricane_count_gates_active() to True makes the…]] - rationale - tests/test_hurricane_markets.py
+- [[TestCheckPositionLimitsHurricaneCountConditional]] - code - tests/test_hurricane_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -23,8 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Community 500]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
-- [[simulate_portfolio Function]] - degree 3, connects to 2 communities
+- [[TestCheckPositionLimitsHurricaneCountConditional]] - degree 4, connects to 1 community

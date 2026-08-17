@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_edge_threshold.py"
 type: "rationale"
-community: "Community 217"
+community: "Community 163"
 location: "L49"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_217
+  - community/Community_163
 ---
 
 # Miami requires 20pp probability-edge conviction (vs 8pp default), per the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_city_min_prob_edge_miami_override()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_217
+#graphify/rationale #graphify/EXTRACTED #community/Community_163

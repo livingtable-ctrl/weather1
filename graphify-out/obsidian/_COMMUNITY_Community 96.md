@@ -1,42 +1,44 @@
 ---
 type: community
-cohesion: 0.11
-members: 27
+cohesion: 0.09
+members: 29
 ---
 
 # Community 96
 
-**Cohesion:** 0.11 - loosely connected
-**Members:** 27 nodes
+**Cohesion:** 0.09 - loosely connected
+**Members:** 29 nodes
 
 ## Members
-- [[92 Send to all configured Discord webhooks (comma-separated…]] - rationale - notify.py
-- [[Check send_system_alert()'s persisted cooldown for `cooldown_key` and, if…]] - rationale - notify.py
-- [[Desktop toast notifications for strong trade signals. Uses plyer for cross-…]] - rationale - notify.py
-- [[Halt Dependency Inversion Check PASS (no suppression)]] - document - docs/grade_audit/outputs/notify.py.md
-- [[NOTIFY_COOLDOWN_STATE_PATH Constant]] - code - paths.py
-- [[Send a STRONG BUY notification through all configured backends. Tries desktop…]] - rationale - notify.py
-- [[Send a system-level alert (not trade-specific) through all configured backends.…]] - rationale - notify.py
-- [[Send an email notification via SMTP (STARTTLS). Reads SMTP_HOST, SMTP_PORT,…]] - rationale - notify.py
-- [[Send via Pushover API. Requires PUSHOVER_TOKEN and PUSHOVER_USER in env.…]] - rationale - notify.py
-- [[Send via ntfy.sh. Requires NTFY_TOPIC in env (or pass topic explicitly).…]] - rationale - notify.py
-- [[Standing report replacing backlog.txt's per-entry prose ENABLEMENT TRIGGER text…]] - rationale - weather_markets.py
-- [[Tests for P1-3, P1-4, P1-7, P1-8, P1-10, P1-18 fixes.]] - rationale - tests/test_p1_remaining.py
-- [[Tests for notify.py's system-alert cooldown persistence. backlog.txt…]] - rationale - tests/test_notify.py
-- [[_send_discord()]] - code - notify.py
-- [[_send_email()]] - code - notify.py
-- [[_send_ntfy()]] - code - notify.py
-- [[_send_pushover()]] - code - notify.py
-- [[_system_cooldown_elapsed()]] - code - notify.py
-- [[alert_strong_signal()]] - code - notify.py
-- [[get_signal_graduation_report()]] - code - weather_markets.py
-- [[notify.py]] - code - notify.py
-- [[notify.py File Grade median 610, zero test coverage]] - document - docs/grade_audit/outputs/notify.py.md
-- [[notify.py Grade Audit]] - document - docs/grade_audit/outputs/notify.py.md
-- [[send_system_alert()]] - code - notify.py
-- [[test_notify.py]] - code - tests/test_notify.py
-- [[test_p1_remaining.py]] - code - tests/test_p1_remaining.py
-- [[teststest_regression.py baseline gate]] - code - tests/test_regression.py
+- [[dot-_seed()_6]] - code - tests/test_ml_bias.py
+- [[dot-_seed()_7]] - code - tests/test_ml_bias.py
+- [[dot-_seed()_8]] - code - tests/test_ml_bias.py
+- [[dot-test_directional_bias_warning_labels_global_and_condition()]] - code - tests/test_ml_bias.py
+- [[dot-test_directional_bias_warning_labels_sameday_and_hourly()]] - code - tests/test_ml_bias.py
+- [[dot-test_hourly_pool_below_min_samples_not_trained()]] - code - tests/test_ml_bias.py
+- [[dot-test_hourly_rows_excluded_from_sameday_pool()]] - code - tests/test_ml_bias.py
+- [[dot-test_hurricane_rows_excluded_from_global_pool()]] - code - tests/test_ml_bias.py
+- [[dot-test_rain_rows_excluded_from_global_pool()]] - code - tests/test_ml_bias.py
+- [[dot-test_sameday_fit_excludes_metar_lockout_rows()]] - code - tests/test_ml_bias.py
+- [[dot-test_skips_emos_covered_keys_while_emos_is_active()]] - code - tests/test_ml_bias.py
+- [[dot-test_snow_rows_excluded_from_global_pool()]] - code - tests/test_ml_bias.py
+- [[dot-test_snow_rows_excluded_from_sameday_pool()]] - code - tests/test_ml_bias.py
+- [[dot-test_sql_paren_regression_multiday_hourly_row_excluded_from_sameday()]] - code - tests/test_ml_bias.py
+- [[24 rows all predicting 0.4 while the actual settle rate is 0.75 -- unfixable by…]] - rationale - tests/test_ml_bias.py
+- [[Opus-review-caught (2026-08-07) this exclusion list was never extended for…]] - rationale - tests/test_ml_bias.py
+- [[Opus-review-caught gap the global pool's exclusion above (line ~604 in…]] - rationale - tests/test_ml_bias.py
+- [[Regression test _fit_T's callers used to log a generic T fit no better than…]] - rationale - tests/test_ml_bias.py
+- [[Same directional-bias shape as above, seeded into the sameday and hourly pools…]] - rationale - tests/test_ml_bias.py
+- [[Targets the exact SQL operator-precedence risk directly SQL's AND binds…]] - rationale - tests/test_ml_bias.py
+- [[TestTrainAllTemperatureScalingHourlyPool]] - code - tests/test_ml_bias.py
+- [[TestTrainAllTemperatureScalingRainExclusion]] - code - tests/test_ml_bias.py
+- [[TestTrainAllTemperatureScalingSkipLogging]] - code - tests/test_ml_bias.py
+- [[While EMOS is live, globalabovebelowbetween must not be refit -- overwriting…]] - rationale - tests/test_ml_bias.py
+- [[_KXTEMP_HOURLY_CITY]] - code - weather_markets.py
+- [[backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 2 handoff item 4…]] - rationale - tests/test_ml_bias.py
+- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 handoff item (ml_bias.py…]] - rationale - tests/test_ml_bias.py
+- [[backlog.txt Snow Step 2 the identical leak-prevention check, mirrored for…]] - rationale - tests/test_ml_bias.py
+- [[train_all_temperature_scaling's sameday T fit must not train on…]] - rationale - tests/test_ml_bias.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -46,34 +48,16 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 9 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 4 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 4 edges to [[_COMMUNITY_Community 37]]
-- 3 edges to [[_COMMUNITY_Community 38]]
-- 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 3 edges to [[_COMMUNITY_Community 195]]
-- 2 edges to [[_COMMUNITY_Community 368]]
-- 2 edges to [[_COMMUNITY_Community 32]]
-- 1 edge to [[_COMMUNITY_Community 149]]
-- 1 edge to [[_COMMUNITY_Community 204]]
-- 1 edge to [[_COMMUNITY_Community 400]]
-- 1 edge to [[_COMMUNITY_Community 472]]
-- 1 edge to [[_COMMUNITY_Community 473]]
-- 1 edge to [[_COMMUNITY_Community 474]]
-- 1 edge to [[_COMMUNITY_Community 553]]
-- 1 edge to [[_COMMUNITY_Community 574]]
-- 1 edge to [[_COMMUNITY_Community 164]]
-- 1 edge to [[_COMMUNITY_Community 184]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Community 569]]
-- 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
+- 3 edges to [[_COMMUNITY_Community 99]]
+- 3 edges to [[_COMMUNITY_Community 3]]
+- 3 edges to [[_COMMUNITY_Community 226]]
+- 2 edges to [[_COMMUNITY_Community 101]]
+- 1 edge to [[_COMMUNITY_Community 2]]
+- 1 edge to [[_COMMUNITY_Community 23]]
 
 ## Top bridge nodes
-- [[test_p1_remaining.py]] - degree 30, connects to 17 communities
-- [[notify.py]] - degree 19, connects to 5 communities
-- [[test_notify.py]] - degree 8, connects to 3 communities
-- [[_system_cooldown_elapsed()]] - degree 7, connects to 2 communities
-- [[send_system_alert()]] - degree 12, connects to 1 community
+- [[TestTrainAllTemperatureScalingRainExclusion]] - degree 10, connects to 4 communities
+- [[TestTrainAllTemperatureScalingHourlyPool]] - degree 10, connects to 3 communities
+- [[dot-_seed()_8]] - degree 13, connects to 1 community
+- [[TestTrainAllTemperatureScalingSkipLogging]] - degree 7, connects to 1 community
+- [[dot-test_snow_rows_excluded_from_sameday_pool()]] - degree 4, connects to 1 community

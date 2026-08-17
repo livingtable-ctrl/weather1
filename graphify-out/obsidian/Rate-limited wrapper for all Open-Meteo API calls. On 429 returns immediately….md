@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "ML Bias Correction & Audit Plans"
-location: "L584"
+community: "Community 5"
+location: "L585"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_5
 ---
 
 # Rate-limited wrapper for all Open-Meteo API calls. On 429: returns immediately…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_om_request()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

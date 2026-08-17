@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_b.py"
 type: "code"
-community: "Community 403"
+community: "Community 429"
 location: "L231"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_403
+  - community/Community_429
 ---
 
 # .test_save_strips_old_crc32_field()
@@ -15,4 +15,4 @@ tags:
 - [[TestSaveEmbedsSHA256]] - `method` [EXTRACTED]
 - [[_save must not carry forward the legacy _crc32 field.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_403
+#graphify/code #graphify/EXTRACTED #community/Community_429

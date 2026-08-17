@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_analytics.py"
 type: "rationale"
-community: "Community 71"
+community: "Community 534"
 location: "L41"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_71
+  - community/Community_534
 ---
 
 # api_analytics must return model_calibration_buckets with a .buckets array whose…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_model_calibration_buckets_has_buckets_key()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_71
+#graphify/rationale #graphify/EXTRACTED #community/Community_534

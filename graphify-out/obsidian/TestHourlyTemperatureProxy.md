@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 278"
+community: "Community 279"
 location: "L552"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_278
+  - community/Community_279
 ---
 
 # TestHourlyTemperatureProxy
@@ -21,4 +21,4 @@ tags:
 - [[compute_hourly_temperature_proxy  determine_hourly_target_hours -- empirical…]] - `rationale_for` [EXTRACTED]
 - [[test_hourly_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_278
+#graphify/code #graphify/EXTRACTED #community/Community_279

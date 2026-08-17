@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 288"
+community: "Community 292"
 location: "L7379"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_288
+  - community/Community_292
 ---
 
 # .test_count_settled_signal_rows_multiday_excludes_sameday_rows()
@@ -16,4 +16,4 @@ tags:
 - [[TestSignalGraduationCounters]] - `method` [EXTRACTED]
 - [[utc_today()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_288
+#graphify/code #graphify/EXTRACTED #community/Community_292

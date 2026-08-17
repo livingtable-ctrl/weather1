@@ -1,24 +1,25 @@
 ---
 type: community
-cohesion: 0.22
-members: 9
+cohesion: 0.24
+members: 10
 ---
 
 # Community 396
 
-**Cohesion:** 0.22 - loosely connected
-**Members:** 9 nodes
+**Cohesion:** 0.24 - loosely connected
+**Members:** 10 nodes
 
 ## Members
-- [[dot-test_cmd_order_does_not_refuse_when_gate_active()]] - code - tests/test_hourly_markets.py
-- [[dot-test_cmd_order_refuses_when_gate_inactive()]] - code - tests/test_hourly_markets.py
-- [[dot-test_cmd_paper_does_not_refuse_when_gate_active()]] - code - tests/test_hourly_markets.py
-- [[dot-test_cmd_paper_refuses_when_gate_inactive()]] - code - tests/test_hourly_markets.py
-- [[dot-test_quick_paper_buy_refuses_when_gate_inactive()]] - code - tests/test_hourly_markets.py
-- [[Mutation-test proof the conditional is real -- once active, this guard no…]] - rationale - tests/test_hourly_markets.py
-- [[Mutation-test proof proceeds past THIS guard once the gate is active._1]] - rationale - tests/test_hourly_markets.py
-- [[Same gap as above, at the explicit refuse-outright guards in main.py's…]] - rationale - tests/test_hourly_markets.py
-- [[TestManualPlacementPathsHourlyGuard]] - code - tests/test_hourly_markets.py
+- [[dot-test_above_uses_prob_threshold()]] - code - tests/test_weather.py
+- [[dot-test_below_uses_prob_threshold()]] - code - tests/test_weather.py
+- [[dot-test_falls_back_to_default_for_between_and_precip()]] - code - tests/test_weather.py
+- [[dot-test_prefers_prob_threshold_when_present()]] - code - tests/test_weather.py
+- [[Compute P(outcome  condition) from raw ensemble members via empirical CDF.…]] - rationale - weather_markets.py
+- [[TestEnsembleCdfProbThresholdShift]] - code - tests/test_weather.py
+- [[TestProbThresholdHelper]] - code - tests/test_weather.py
+- [[Unit tests for weather_markets.py — probability math, condition parsing, fee-…]] - rationale - tests/test_weather.py
+- [[ensemble_cdf_prob()]] - code - weather_markets.py
+- [[test_weather.py]] - code - tests/test_weather.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,7 +29,22 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 233]]
+- 5 edges to [[_COMMUNITY_Community 5]]
+- 3 edges to [[_COMMUNITY_Community 203]]
+- 3 edges to [[_COMMUNITY_Community 6]]
+- 2 edges to [[_COMMUNITY_Community 126]]
+- 2 edges to [[_COMMUNITY_Community 183]]
+- 2 edges to [[_COMMUNITY_Community 26]]
+- 2 edges to [[_COMMUNITY_Community 329]]
+- 2 edges to [[_COMMUNITY_Community 356]]
+- 2 edges to [[_COMMUNITY_Community 397]]
+- 2 edges to [[_COMMUNITY_Community 398]]
+- 1 edge to [[_COMMUNITY_Community 330]]
+- 1 edge to [[_COMMUNITY_Community 355]]
+- 1 edge to [[_COMMUNITY_Community 444]]
+- 1 edge to [[_COMMUNITY_Community 533]]
+- 1 edge to [[_COMMUNITY_Community 38]]
 
 ## Top bridge nodes
-- [[TestManualPlacementPathsHourlyGuard]] - degree 7, connects to 1 community
+- [[test_weather.py]] - degree 31, connects to 15 communities
+- [[ensemble_cdf_prob()]] - degree 7, connects to 2 communities

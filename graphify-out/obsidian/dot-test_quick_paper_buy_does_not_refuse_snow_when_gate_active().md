@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 379"
+community: "Community 393"
 location: "L520"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_379
+  - community/Community_393
 ---
 
 # .test_quick_paper_buy_does_not_refuse_snow_when_gate_active()
@@ -15,4 +15,4 @@ tags:
 - [[Mutation-test proof proceeds past THIS guard once the gate is active (may…]] - `rationale_for` [EXTRACTED]
 - [[TestQuickPaperBuyAndCmdPaperSnowGuards]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_379
+#graphify/code #graphify/EXTRACTED #community/Community_393

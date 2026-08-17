@@ -2,7 +2,7 @@
 source_file: "tests/test_tracker.py"
 type: "code"
 community: "Community 46"
-location: "L707"
+location: "L794"
 tags:
   - graphify/code
   - graphify/EXTRACTED
@@ -12,6 +12,6 @@ tags:
 # .tearDown()
 
 ## Connections
-- [[TestBrierByConditionTypeRolling]] - `method` [EXTRACTED]
+- [[TestCheckConditionTypeWeakness]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_46

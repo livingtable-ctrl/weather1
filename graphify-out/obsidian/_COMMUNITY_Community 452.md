@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.33
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 452
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[Brier Alert Actionable Guidance]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
-- [[Cross-Platform Arbitrage Scanner (stretch goal)]] - document - docs/superpowers/plans/2026-04-16-phase-g-long-term.md
-- [[Per-City Per-Season Brier Segmentation]] - document - docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md
-- [[Phase G Long-Term Features Plan]] - document - docs/superpowers/plans/2026-04-16-phase-g-long-term.md
-- [[Strategy P&amp;L Attribution]] - document - docs/superpowers/plans/2026-04-16-phase-g-long-term.md
-- [[Tracker DB Retention Policy (purge_old_predictions)]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[tracker.py module_1]] - code - docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md
+- [[Live Order Executor Module]] - code - order_executor.py
+- [[_auto_place_trades Function]] - code - order_executor.py
+- [[count_as_of_day Function]] - code - hurricane_climatology.py
+- [[portfolio_var Function]] - code - monte_carlo.py
+- [[season_end_counts Function]] - code - hurricane_climatology.py
+- [[season_end_total_distribution Function]] - code - hurricane_climatology.py
+- [[simulate_portfolio Function]] - code - monte_carlo.py
+- [[update_orderbook_cache Function]] - code - kalshi_ws.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,15 +25,3 @@ members: 7
 TABLE source_file, type FROM #community/Community_452
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 117]]
-- 2 edges to [[_COMMUNITY_Community 294]]
-- 1 edge to [[_COMMUNITY_Community 224]]
-
-## Top bridge nodes
-- [[tracker.py module_1]] - degree 6, connects to 1 community
-- [[Brier Alert Actionable Guidance]] - degree 3, connects to 1 community
-- [[Per-City Per-Season Brier Segmentation]] - degree 3, connects to 1 community
-- [[Phase G Long-Term Features Plan]] - degree 3, connects to 1 community
-- [[Tracker DB Retention Policy (purge_old_predictions)]] - degree 2, connects to 1 community

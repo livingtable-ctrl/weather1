@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_gating.py"
 type: "rationale"
-community: "Community 425"
+community: "Community 462"
 location: "L352"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_425
+  - community/Community_462
 ---
 
 # paper.check_position_limits() is one of several call paths reachable without…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCheckPositionLimitsBlocksHurricane]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_425
+#graphify/rationale #graphify/EXTRACTED #community/Community_462

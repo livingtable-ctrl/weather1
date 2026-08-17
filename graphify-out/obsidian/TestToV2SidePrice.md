@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 225"
+community: "Community 229"
 location: "L8"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_225
+  - community/Community_229
 ---
 
 # TestToV2SidePrice
@@ -20,4 +20,4 @@ tags:
 - [[V2 order-endpoint migration Kalshi's legacy POST portfolioorders (side…]] - `rationale_for` [EXTRACTED]
 - [[test_kalshi_client.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_225
+#graphify/code #graphify/EXTRACTED #community/Community_229

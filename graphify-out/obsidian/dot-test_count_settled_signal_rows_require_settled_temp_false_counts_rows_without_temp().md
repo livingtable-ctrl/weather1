@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 128"
+community: "Community 133"
 location: "L7347"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_128
+  - community/Community_133
 ---
 
 # .test_count_settled_signal_rows_require_settled_temp_false_counts_rows_without_temp()
@@ -16,4 +16,4 @@ tags:
 - [[Opus-review-caught bug (2026-07-28) the default require_settled_temp=True…]] - `rationale_for` [EXTRACTED]
 - [[TestSignalGraduationCounters]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_128
+#graphify/code #graphify/EXTRACTED #community/Community_133

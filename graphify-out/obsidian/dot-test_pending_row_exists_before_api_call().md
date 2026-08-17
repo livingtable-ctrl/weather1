@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_prelog.py"
 type: "code"
-community: "Community 219"
+community: "Community 224"
 location: "L52"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_219
+  - community/Community_224
 ---
 
 # .test_pending_row_exists_before_api_call()
@@ -15,4 +15,4 @@ tags:
 - [[A 'pending' log row must exist in the DB before place_order is called.]] - `rationale_for` [EXTRACTED]
 - [[TestPreLogPattern]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_219
+#graphify/code #graphify/EXTRACTED #community/Community_224

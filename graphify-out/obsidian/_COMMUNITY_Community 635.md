@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 635
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_las_vegas_high_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[KXHIGHTLV → LasVegas (previously untracked city).]] - rationale - tests/test_weather_markets.py
+- [[dot-test_ecmwf_consensus_gap_prob_absent_stores_null()]] - code - tests/test_tracker.py
+- [[dot-test_ecmwf_consensus_gap_prob_round_trips_through_upsert()]] - code - tests/test_tracker.py
+- [[dot-test_ecmwf_consensus_gap_prob_updates_on_reupsert()]] - code - tests/test_tracker.py
+- [[TestLogPredictionEcmwfConsensusGap]] - code - tests/test_tracker.py
+- [[log_prediction() must persist ecmwf_consensus_gap_prob (backlog.txt 3-WAY…]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 116]]
-- 1 edge to [[_COMMUNITY_Community 102]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[dot-test_las_vegas_high_ticker_detected()]] - degree 3, connects to 2 communities
+- [[TestLogPredictionEcmwfConsensusGap]] - degree 5, connects to 1 community

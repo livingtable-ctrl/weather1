@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 547"
+community: "Community 616"
 location: "L482"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_547
+  - community/Community_616
 ---
 
 # TestNextEventProbability
@@ -18,4 +18,4 @@ tags:
 - [[dot-test_matches_hand_computed_fraction()]] - `method` [EXTRACTED]
 - [[test_hurricane_climatology.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_547
+#graphify/code #graphify/EXTRACTED #community/Community_616

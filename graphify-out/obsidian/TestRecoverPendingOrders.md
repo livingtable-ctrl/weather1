@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 338"
+community: "Community 346"
 location: "L441"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_338
+  - community/Community_346
 ---
 
 # TestRecoverPendingOrders
 
 ## Connections
-- [[dot-setup_method()_21]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_14]] - `method` [EXTRACTED]
+- [[dot-setup_method()_23]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_15]] - `method` [EXTRACTED]
 - [[dot-test_canceled_order_resolves_to_canceled()]] - `method` [EXTRACTED]
 - [[dot-test_executed_order_resolves_to_internal_filled_status()]] - `method` [EXTRACTED]
 - [[dot-test_partial_fill_then_cancel_resolves_to_filled()]] - `method` [EXTRACTED]
@@ -24,4 +24,4 @@ tags:
 - [[Position]] - `uses` [INFERRED]
 - [[test_live_execution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_338
+#graphify/code #graphify/EXTRACTED #community/Community_346

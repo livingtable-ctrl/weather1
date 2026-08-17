@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "ML Bias Correction & Audit Plans"
-location: "L5996"
+community: "Community 5"
+location: "L6098"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_5
 ---
 
 # Same-day/near-term persistence baseline, extracted from analyze_ trade()'s non-…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_compute_persistence_prob()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

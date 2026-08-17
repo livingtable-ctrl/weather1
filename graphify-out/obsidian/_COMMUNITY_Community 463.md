@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 463
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_check_breakeven_stops_fires_when_peak_met_and_price_falls()]] - code - tests/test_early_exits.py
-- [[dot-test_check_breakeven_stops_silent_before_peak_is_met()]] - code - tests/test_early_exits.py
-- [[dot-test_update_peak_profits_sets_peak_on_new_high()]] - code - tests/test_early_exits.py
-- [[TestBreakevenStops]] - code - tests/test_early_exits.py
-- [[check_breakeven_stops must NOT fire when peak_profit_pct is below the trigger.]] - rationale - tests/test_early_exits.py
-- [[check_breakeven_stops must return the ticker when peak was met and price fell…]] - rationale - tests/test_early_exits.py
-- [[update_peak_profits must record a new peak when unrealized profit exceeds…]] - rationale - tests/test_early_exits.py
+- [[dot-test_false_when_env_var_set_but_below_sample_floor()_3]] - code - tests/test_hurricane_markets.py
+- [[dot-test_false_when_env_var_unset()_3]] - code - tests/test_hurricane_markets.py
+- [[dot-test_independent_of_hurricane_count_gate()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_never_raises_on_count_failure()_3]] - code - tests/test_hurricane_markets.py
+- [[dot-test_true_when_env_var_set_and_sample_floor_met()_3]] - code - tests/test_hurricane_markets.py
+- [[Mirrors TestHurricaneCountGatesActive's exact test shape -- own env var, own…]] - rationale - tests/test_hurricane_markets.py
+- [[TestHurricaneNextEventGatesActive]] - code - tests/test_hurricane_markets.py
+- [[The two gates must not share state -- flipping the count model's gateenv var…]] - rationale - tests/test_hurricane_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,9 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 272]]
 - 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
-- [[TestBreakevenStops]] - degree 4, connects to 1 community
-- [[dot-test_update_peak_profits_sets_peak_on_new_high()]] - degree 3, connects to 1 community
+- [[TestHurricaneNextEventGatesActive]] - degree 7, connects to 1 community

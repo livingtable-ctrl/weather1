@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_p0_11_retired_strategy.py"
 type: "rationale"
-community: "Community 124"
+community: "Community 138"
 location: "L13"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_124
+  - community/Community_138
 ---
 
 # Minimal enriched market dict that passes all pre-Kelly gates.
 
 ## Connections
-- [[_make_enriched()]] - `rationale_for` [EXTRACTED]
+- [[_make_enriched()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_124
+#graphify/rationale #graphify/EXTRACTED #community/Community_138

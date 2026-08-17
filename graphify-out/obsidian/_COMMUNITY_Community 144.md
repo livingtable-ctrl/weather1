@@ -1,36 +1,37 @@
 ---
 type: community
-cohesion: 0.16
-members: 21
+cohesion: 0.09
+members: 22
 ---
 
 # Community 144
 
-**Cohesion:** 0.16 - loosely connected
-**Members:** 21 nodes
+**Cohesion:** 0.09 - loosely connected
+**Members:** 22 nodes
 
 ## Members
-- [[dot-_open_position_row()]] - code - tests/test_live_execution.py
-- [[dot-_open_position_row()_1]] - code - tests/test_live_execution.py
-- [[dot-test_healthy_position_is_left_alone()]] - code - tests/test_live_execution.py
-- [[dot-test_missing_entry_prob_is_skipped()]] - code - tests/test_live_execution.py
-- [[dot-test_model_flip_beyond_threshold_triggers_exit()]] - code - tests/test_live_execution.py
-- [[dot-test_no_client_returns_zero()]] - code - tests/test_live_execution.py
-- [[dot-test_no_open_positions_is_a_no_op()]] - code - tests/test_live_execution.py
-- [[dot-test_stop_loss_and_breakeven_are_mutually_exclusive_same_cycle()]] - code - tests/test_live_execution.py
-- [[dot-test_stop_loss_breach_triggers_immediate_exit()]] - code - tests/test_live_execution.py
-- [[dot-test_stop_loss_fires_on_rest_fallback_integer_cents_book()]] - code - tests/test_live_execution.py
-- [[dot-test_two_positions_on_same_ticker_both_get_exited()]] - code - tests/test_live_execution.py
-- [[dot-test_two_positions_same_ticker_only_one_individually_breaches_both_exit()]] - code - tests/test_live_execution.py
-- [[dot-test_within_settlement_gate_skips_exit()]] - code - tests/test_live_execution.py
-- [[A ticker that stop-loss-exits must not also be evaluated for a breakeven exit…]] - rationale - tests/test_live_execution.py
-- [[Protect open live positions with stop-loss and breakeven-stop checks, reusing…]] - rationale - order_executor.py
-- [[Regression _get_current_book's REST fallback returns the raw…]] - rationale - tests/test_live_execution.py
-- [[Regression two separate open live positions sharing a ticker (two distinct…]] - rationale - tests/test_live_execution.py
-- [[TestCheckLiveModelExits]] - code - tests/test_live_execution.py
-- [[TestCheckLivePositionExits]] - code - tests/test_live_execution.py
-- [[The fan-out safety property this ticket-level by_ticker grouping exists for…]] - rationale - tests/test_live_execution.py
-- [[_check_live_position_exits()]] - code - order_executor.py
+- [[dot-test_empty_string_returns_zero()]] - code - tests/test_feature_importance_days_out.py
+- [[dot-test_malformed_string_returns_zero_not_raise()]] - code - tests/test_feature_importance_days_out.py
+- [[dot-test_none_returns_zero()]] - code - tests/test_feature_importance_days_out.py
+- [[dot-test_parses_iso_string_and_subtracts_local_today()]] - code - tests/test_feature_importance_days_out.py
+- [[dot-test_parses_iso_string_and_subtracts_utc_today()]] - code - tests/test_feature_importance_days_out.py
+- [[dot-test_regression_string_minus_date_would_have_raised()]] - code - tests/test_feature_importance_days_out.py
+- [[dot-test_target_date_in_past_gives_negative_days_out()]] - code - tests/test_feature_importance_days_out.py
+- [[dot-test_unknown_city_falls_back_to_america_new_york()]] - code - tests/test_feature_importance_days_out.py
+- [[dot-test_utc_rollover_window_matches_analyze_trade_local_today()]] - code - tests/test_feature_importance_days_out.py
+- [[dot-test_utc_rollover_window_uses_city_local_today()]] - code - tests/test_feature_importance_days_out.py
+- [[dot-test_zoneinfo_failure_falls_back_to_utc()]] - code - tests/test_feature_importance_days_out.py
+- [[A city missing from _CITY_TZ (e.g. None, for the hurricane storm_order tickers…]] - rationale - tests/test_feature_importance_days_out.py
+- [[A malformedunexpected target_date value must not raise --…]] - rationale - tests/test_feature_importance_days_out.py
+- [[A malformedunexpected target_date value must not raise --…_1]] - rationale - tests/test_feature_importance_days_out.py
+- [[Cross-check against weather_markets.py's own post-fix local-today computation…]] - rationale - tests/test_feature_importance_days_out.py
+- [[Documents the exact bug this replaces subtracting a date from a raw ISO string…]] - rationale - tests/test_feature_importance_days_out.py
+- [[Documents the exact bug this replaces subtracting a date from a raw ISO string…_1]] - rationale - tests/test_feature_importance_days_out.py
+- [[If ZoneInfo construction raises for any reason, the helper must fall back to…]] - rationale - tests/test_feature_importance_days_out.py
+- [[Regression for the real bug (backlog.txt L569). At 2026-07-10 0500 UTC UTC…]] - rationale - tests/test_feature_importance_days_out.py
+- [[TestFeatureImportanceDaysOut]] - code - tests/test_feature_importance_days_out.py
+- [[The core bug fix target_date_str must be parsed to a date before arithmetic,…]] - rationale - tests/test_feature_importance_days_out.py
+- [[The core bug fix target_date_str must be parsed to a date before arithmetic,…_1]] - rationale - tests/test_feature_importance_days_out.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -40,18 +41,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 8 edges to [[_COMMUNITY_Community 45]]
-- 6 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 4 edges to [[_COMMUNITY_Community 111]]
-- 2 edges to [[_COMMUNITY_Community 145]]
-- 1 edge to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Community 164]]
-- 1 edge to [[_COMMUNITY_Community 159]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 2 edges to [[_COMMUNITY_Community 303]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[_check_live_position_exits()]] - degree 20, connects to 8 communities
-- [[TestCheckLivePositionExits]] - degree 12, connects to 2 communities
-- [[TestCheckLiveModelExits]] - degree 9, connects to 2 communities
-- [[dot-test_missing_entry_prob_is_skipped()]] - degree 3, connects to 1 community
-- [[dot-test_model_flip_beyond_threshold_triggers_exit()]] - degree 3, connects to 1 community
+- [[TestFeatureImportanceDaysOut]] - degree 14, connects to 2 communities

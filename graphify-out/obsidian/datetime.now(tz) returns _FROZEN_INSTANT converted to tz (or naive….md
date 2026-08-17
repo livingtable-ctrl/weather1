@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 206"
-location: "L3153"
+community: "Community 213"
+location: "L3522"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_206
+  - community/Community_213
 ---
 
 # datetime.now(tz) returns _FROZEN_INSTANT converted to tz (or naive…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_FrozenDatetime]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_206
+#graphify/rationale #graphify/EXTRACTED #community/Community_213

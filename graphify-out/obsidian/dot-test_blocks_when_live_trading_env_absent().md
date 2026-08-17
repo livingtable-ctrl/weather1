@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading_gates.py"
 type: "code"
-community: "Community 54"
+community: "Community 49"
 location: "L72"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_54
+  - community/Community_49
 ---
 
 # .test_blocks_when_live_trading_env_absent()
@@ -16,4 +16,4 @@ tags:
 - [[Gate must block when LIVE_TRADING_ENABLED is not set at all. See…]] - `rationale_for` [EXTRACTED]
 - [[TestLiveTradingGate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_54
+#graphify/code #graphify/EXTRACTED #community/Community_49

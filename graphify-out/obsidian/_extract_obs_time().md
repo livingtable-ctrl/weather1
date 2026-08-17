@@ -1,12 +1,12 @@
 ---
 source_file: "metar.py"
 type: "code"
-community: "Community 211"
+community: "Community 51"
 location: "L289"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_211
+  - community/Community_51
 ---
 
 # _extract_obs_time()
@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Parse a raw METAR obs dict's obsTime (Unix epoch intfloat, or an ISO-8601…]] - `rationale_for` [EXTRACTED]
 - [[_fetch_daily_temps_f()]] - `calls` [EXTRACTED]
-- [[datetime_1]] - `references` [EXTRACTED]
+- [[datetime_3]] - `references` [EXTRACTED]
 - [[metar.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_211
+#graphify/code #graphify/EXTRACTED #community/Community_51

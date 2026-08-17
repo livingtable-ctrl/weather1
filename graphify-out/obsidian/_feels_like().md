@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 70"
-location: "L3171"
+community: "Community 65"
+location: "L3273"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_70
+  - community/Community_65
 ---
 
 # _feels_like()
@@ -27,10 +27,12 @@ tags:
 - [[dot-test_moist_cold_wind_chill_humidity_penalty()]] - `calls` [EXTRACTED]
 - [[dot-test_wind_chill_only()]] - `calls` [EXTRACTED]
 - [[Compute apparent (feels-like) temperature from actual temp, wind, and humidity.…]] - `rationale_for` [EXTRACTED]
-- [[Phase 4 Improvement Tests]] - `imports` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
+- [[cmd_market()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[test_forecasting.py]] - `imports` [EXTRACTED]
+- [[test_phase4.py]] - `imports` [EXTRACTED]
 - [[test_weather_markets.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_70
+#graphify/code #graphify/EXTRACTED #community/Community_65

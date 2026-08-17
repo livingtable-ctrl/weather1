@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_auth.py"
 type: "code"
-community: "Community 242"
+community: "Community 243"
 location: "L91"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_242
+  - community/Community_243
 ---
 
 # .test_no_password_allows_open_access()
@@ -16,4 +16,4 @@ tags:
 - [[When DASHBOARD_PASSWORD is empty, mutation endpoints are open (dev mode).]] - `rationale_for` [EXTRACTED]
 - [[_make_app()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_242
+#graphify/code #graphify/EXTRACTED #community/Community_243

@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Tracker P&L Attribution Tests"
-location: "L6067"
+community: "Community 2"
+location: "L6122"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_2
 ---
 
 # Compute Brier score and win rate grouped by signal_source. Reveals which signal…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_pnl_by_signal_source()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

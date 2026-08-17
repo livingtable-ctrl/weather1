@@ -1,12 +1,12 @@
 ---
 source_file: "hurricane_climatology.py"
 type: "code"
-community: "Community 55"
+community: "Community 43"
 location: "L371"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_55
+  - community/Community_43
 ---
 
 # count_as_of_day()
@@ -16,4 +16,4 @@ tags:
 - [[hurricane_climatology.py]] - `contains` [EXTRACTED]
 - [[season_end_total_distribution()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_55
+#graphify/code #graphify/EXTRACTED #community/Community_43

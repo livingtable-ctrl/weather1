@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Community 56"
+community: "Community 21"
 location: "L2202"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_56
+  - community/Community_21
 ---
 
 # #9: undo_last_trade's peak_balance recompute replayed each trade's entry AND…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestUndoLastTradePeakBalance]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_56
+#graphify/rationale #graphify/EXTRACTED #community/Community_21

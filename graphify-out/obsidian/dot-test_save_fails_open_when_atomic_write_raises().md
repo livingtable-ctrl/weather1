@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 267"
-location: "L2994"
+community: "Community 262"
+location: "L3363"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_267
+  - community/Community_262
 ---
 
 # .test_save_fails_open_when_atomic_write_raises()
@@ -15,4 +15,4 @@ tags:
 - [[Regression coverage for the OTHER bare os.replace() CALL SITES backlog entry…]] - `rationale_for` [EXTRACTED]
 - [[TestLearnedWeightsValidation]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_267
+#graphify/code #graphify/EXTRACTED #community/Community_262

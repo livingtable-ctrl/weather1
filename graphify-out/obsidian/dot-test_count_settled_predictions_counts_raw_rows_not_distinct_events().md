@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker Settlement Sigma & Disputed Rows"
+community: "Community 29"
 location: "L5628"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Settlement_Sigma__Disputed_Rows
+  - community/Community_29
 ---
 
 # .test_count_settled_predictions_counts_raw_rows_not_distinct_events()
@@ -17,4 +17,4 @@ tags:
 - [[TestLiveTradingGateConditionTypeFilter]] - `method` [EXTRACTED]
 - [[backlog.txt COUNT_SETTLED_PREDICTIONS() COUNTS RAW ROWS, NOT DISTINCT…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Settlement_Sigma__Disputed_Rows
+#graphify/code #graphify/EXTRACTED #community/Community_29

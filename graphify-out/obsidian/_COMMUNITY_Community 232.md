@@ -10,21 +10,21 @@ members: 15
 **Members:** 15 nodes
 
 ## Members
-- [[dot-test_forecast_gracefully_handles_api_failure()]] - code - tests/test_forecast_accuracy.py
-- [[dot-test_forecast_returns_required_keys()]] - code - tests/test_forecast_accuracy.py
-- [[dot-test_forecast_within_tolerance()]] - code - tests/test_forecast_accuracy.py
-- [[Build a minimal Open-Meteo daily forecast JSON for the target date. Values are…]] - rationale - tests/test_forecast_accuracy.py
-- [[Forecast accuracy regression tests. Uses saved fixture responses to verify…]] - rationale - tests/test_forecast_accuracy.py
-- [[Mocked forecast returns a high_f within ±5°F of the archived observation.]] - rationale - tests/test_forecast_accuracy.py
-- [[Register mocked Open-Meteo responses for all three models (GFS, ECMWF, ICON) so…]] - rationale - tests/test_forecast_accuracy.py
-- [[TestForecastAccuracyFixtures]] - code - tests/test_forecast_accuracy.py
-- [[When all sources fail, get_weather_forecast() returns None without raising.]] - rationale - tests/test_forecast_accuracy.py
-- [[_build_mock_forecast()]] - code - tests/test_forecast_accuracy.py
-- [[_open_meteo_response()]] - code - tests/test_forecast_accuracy.py
-- [[activate_1]] - code
-- [[get_weather_forecast() always returns the expected schema keys.]] - rationale - tests/test_forecast_accuracy.py
-- [[parametrize_1]] - code
-- [[test_forecast_accuracy.py]] - code - tests/test_forecast_accuracy.py
+- [[dot-_make_trades()]] - code - tests/test_phase2_batch_m.py
+- [[dot-test_fewer_than_20_returns_error()]] - code - tests/test_phase2_batch_m.py
+- [[dot-test_results_not_saved_when_holdout_fails()]] - code - tests/test_phase2_batch_m.py
+- [[dot-test_sweep_parameter_unchanged()]] - code - tests/test_phase2_batch_m.py
+- [[dot-test_sweep_source_has_split()]] - code - tests/test_phase2_batch_m.py
+- [[dot-test_too_few_trades_returns_error()]] - code - tests/test_phase2_batch_m.py
+- [[For each value in `values`, simulate applying that parameter value to the…]] - rationale - param_sweep.py
+- [[If holdout win rate  baseline, results must NOT be saved.]] - rationale - tests/test_phase2_batch_m.py
+- [[Run a sweep across key parameters using historical paper trades. Uses a 7030…]] - rationale - param_sweep.py
+- [[TestParamSweepTemporalSplit]] - code - tests/test_phase2_batch_m.py
+- [[run_sweep must split data 7030 and only save when holdout passes.]] - rationale - tests/test_phase2_batch_m.py
+- [[run_sweep source must contain 7030 split logic.]] - rationale - tests/test_phase2_batch_m.py
+- [[run_sweep()]] - code - param_sweep.py
+- [[sweep_parameter itself must still work on arbitrary lists.]] - rationale - tests/test_phase2_batch_m.py
+- [[sweep_parameter()]] - code - param_sweep.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,7 +34,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 4 edges to [[_COMMUNITY_Community 9]]
+- 3 edges to [[_COMMUNITY_Community 6]]
+- 2 edges to [[_COMMUNITY_Community 0]]
+- 2 edges to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 1]]
 
 ## Top bridge nodes
-- [[test_forecast_accuracy.py]] - degree 5, connects to 1 community
+- [[run_sweep()]] - degree 14, connects to 5 communities
+- [[sweep_parameter()]] - degree 5, connects to 2 communities
+- [[TestParamSweepTemporalSplit]] - degree 9, connects to 1 community

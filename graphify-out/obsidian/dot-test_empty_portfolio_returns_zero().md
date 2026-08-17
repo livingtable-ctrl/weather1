@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 328"
+community: "Community 335"
 location: "L483"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_328
+  - community/Community_335
 ---
 
 # .test_empty_portfolio_returns_zero()
@@ -15,4 +15,4 @@ tags:
 - [[TestPortfolioVar]] - `method` [EXTRACTED]
 - [[portfolio_var()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_328
+#graphify/code #graphify/EXTRACTED #community/Community_335

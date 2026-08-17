@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backtest.py"
 type: "code"
-community: "Community 540"
+community: "Community 604"
 location: "L189"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_540
+  - community/Community_604
 ---
 
 # .test_simulate_uses_series_fetch_not_get_markets()
@@ -15,4 +15,4 @@ tags:
 - [[TestCmdSimulateStatusParam]] - `method` [EXTRACTED]
 - [[cmd_simulate must use _fetch_settled_markets (series-based), not get_markets.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_540
+#graphify/code #graphify/EXTRACTED #community/Community_604

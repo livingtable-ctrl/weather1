@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "rationale"
-community: "Community 194"
+community: "Community 108"
 location: "L223"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_194
+  - community/Community_108
 ---
 
 # Return True if the trade was a net loss (pnl < 0). Breakeven (pnl == 0) is…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_trade_lost()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_194
+#graphify/rationale #graphify/EXTRACTED #community/Community_108

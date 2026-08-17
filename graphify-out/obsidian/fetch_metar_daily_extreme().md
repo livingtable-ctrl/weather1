@@ -1,12 +1,12 @@
 ---
 source_file: "metar.py"
 type: "code"
-community: "METAR Settlement Monitoring"
+community: "Community 51"
 location: "L374"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_51
 ---
 
 # fetch_metar_daily_extreme()
@@ -18,9 +18,9 @@ tags:
 - [[_fetch_daily_temps_f()]] - `calls` [EXTRACTED]
 - [[_metar_lock_in()]] - `calls` [EXTRACTED]
 - [[check_city_settlement()]] - `calls` [EXTRACTED]
-- [[date_1]] - `references` [EXTRACTED]
+- [[date_10]] - `references` [EXTRACTED]
 - [[metar.py]] - `contains` [EXTRACTED]
 - [[settlement_monitor.py]] - `imports` [EXTRACTED]
 - [[test_metar.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/code #graphify/EXTRACTED #community/Community_51

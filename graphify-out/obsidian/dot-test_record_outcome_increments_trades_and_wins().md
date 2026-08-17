@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ab_test.py"
 type: "code"
-community: "Community 33"
+community: "Community 116"
 location: "L47"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_33
+  - community/Community_116
 ---
 
 # .test_record_outcome_increments_trades_and_wins()
@@ -16,4 +16,4 @@ tags:
 - [[TestABTest]] - `method` [EXTRACTED]
 - [[record_outcome increments trades count; wins only on won=True.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_33
+#graphify/code #graphify/EXTRACTED #community/Community_116

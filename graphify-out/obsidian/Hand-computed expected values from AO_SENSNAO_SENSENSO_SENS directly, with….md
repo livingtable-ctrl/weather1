@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climate_indices.py"
 type: "rationale"
-community: "Community 31"
+community: "Community 61"
 location: "L100"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_31
+  - community/Community_61
 ---
 
 # Hand-computed expected values from AO_SENS/NAO_SENS/ENSO_SENS directly, with…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestTemperatureAdjustmentComputedValues]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_31
+#graphify/rationale #graphify/EXTRACTED #community/Community_61

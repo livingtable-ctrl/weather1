@@ -10,58 +10,58 @@ members: 52
 **Members:** 52 nodes
 
 ## Members
-- [[dot-_adjustment()]] - code - tests/test_climate_indices.py
-- [[dot-_adjustment()_1]] - code - tests/test_climate_indices.py
-- [[dot-_adjustment()_2]] - code - tests/test_climate_indices.py
-- [[dot-test_all_three_tables_cover_the_same_city_set()]] - code - tests/test_climate_indices.py
-- [[dot-test_ao_and_nao_entries_have_all_three_seasons()]] - code - tests/test_climate_indices.py
-- [[dot-test_ao_sens_covers_exactly_twenty_cities()]] - code - tests/test_climate_indices.py
-- [[dot-test_austin_winter_is_entirely_default_despite_being_a_covered_city()]] - code - tests/test_climate_indices.py
-- [[dot-test_covered_city_other_season()]] - code - tests/test_climate_indices.py
-- [[dot-test_covered_city_spring()]] - code - tests/test_climate_indices.py
-- [[dot-test_covered_city_spring_isolates_ao_and_nao_separately()]] - code - tests/test_climate_indices.py
-- [[dot-test_covered_city_winter()]] - code - tests/test_climate_indices.py
-- [[dot-test_december_january_february_are_winter()]] - code - tests/test_climate_indices.py
-- [[dot-test_denver_negative_enso_other_reverses_the_hand_set_sign()]] - code - tests/test_climate_indices.py
-- [[dot-test_enso_entries_have_only_two_seasons()]] - code - tests/test_climate_indices.py
-- [[dot-test_enso_sens_covers_exactly_twenty_cities()]] - code - tests/test_climate_indices.py
-- [[dot-test_gulf_coast_negative_enso_other_reduces_total_adjustment()]] - code - tests/test_climate_indices.py
-- [[dot-test_june_through_november_are_other()]] - code - tests/test_climate_indices.py
-- [[dot-test_march_april_may_are_spring()]] - code - tests/test_climate_indices.py
-- [[dot-test_mutation_flipping_a_sensitivity_value_changes_the_result()]] - code - tests/test_climate_indices.py
-- [[dot-test_nao_sens_covers_exactly_twenty_cities()]] - code - tests/test_climate_indices.py
-- [[dot-test_san_francisco_ao_nao_and_enso_winter_default_but_enso_other_fitted()]] - code - tests/test_climate_indices.py
-- [[dot-test_seattle_positive_enso_other_fitted_spring_and_other_share_it()]] - code - tests/test_climate_indices.py
-- [[dot-test_seven_of_ten_original_cities_are_entirely_default()]] - code - tests/test_climate_indices.py
-- [[dot-test_six_of_ten_researched_cities_are_entirely_default()]] - code - tests/test_climate_indices.py
-- [[dot-test_total_adjustment_capped_at_negative_six()]] - code - tests/test_climate_indices.py
-- [[dot-test_total_adjustment_capped_at_positive_six()]] - code - tests/test_climate_indices.py
-- [[dot-test_uncovered_city_uses_flat_default_regardless_of_season()]] - code - tests/test_climate_indices.py
-- [[dot-test_zero_indices_give_zero_adjustment()]] - code - tests/test_climate_indices.py
-- [[A city present in one table but not another would silently mix a real…]] - rationale - tests/test_climate_indices.py
-- [[A city with no entry in any of the 3 tables (all 20 real traded cities are…]] - rationale - tests/test_climate_indices.py
-- [[Austin has a real fitted cell (ENSO-other), but winter is 100% default -- a…]] - rationale - tests/test_climate_indices.py
-- [[Denver's fitted ENSO-other (-1.0) is the OPPOSITE sign from its removed hand-…]] - rationale - tests/test_climate_indices.py
-- [[Direct proof the module-level tables are actually what temperature_adjustment()…]] - rationale - tests/test_climate_indices.py
-- [[ENSO's original ternary never had a spring-specific branch -- must stay 2…]] - rationale - tests/test_climate_indices.py
-- [[Hand-computed expected values from AO_SENSNAO_SENSENSO_SENS directly, with…]] - rationale - tests/test_climate_indices.py
-- [[Hand-computed regression-locking tests for the 10 cities researched 2026-07-25…]] - rationale - tests/test_climate_indices.py
-- [[Hand-computed regression-locking tests for the ORIGINAL 10 cities, re-derived…]] - rationale - tests/test_climate_indices.py
-- [[Miami spring is the only cityseason with TWO fitted cells (AO=0.6, NAO=0.6) --…]] - rationale - tests/test_climate_indices.py
-- [[NYCBostonChicagoLADallasPhoenixAtlanta nothing survived lag-1 + BH-FDR…]] - rationale - tests/test_climate_indices.py
-- [[Seattle's only real cell (ENSO-other, fitted positive) -- winter stays default,…]] - rationale - tests/test_climate_indices.py
-- [[TestRegressionFittedGapCities]] - code - tests/test_climate_indices.py
-- [[TestRegressionFittedOriginalTen]] - code - tests/test_climate_indices.py
-- [[TestSeasonBucket]] - code - tests/test_climate_indices.py
-- [[TestSensitivityTablesCoverage]] - code - tests/test_climate_indices.py
-- [[TestTemperatureAdjustmentComputedValues]] - code - tests/test_climate_indices.py
-- [[Tests for climate_indices.py's per-city AONAOENSO sensitivity tables.…]] - rationale - tests/test_climate_indices.py
-- [[The 3 cities with a fitted negative ENSO other coefficient -- confirm it…]] - rationale - tests/test_climate_indices.py
-- [[WashingtonPhiladelphiaMinneapolisHoustonLasVegasNewOrleans nothing…]] - rationale - tests/test_climate_indices.py
-- [[West Coast city no AONAO cell survives BH-FDR at any season (AO-other is raw-…]] - rationale - tests/test_climate_indices.py
-- [[Which cities have a table entry (key membership) -- the exact fact the…]] - rationale - tests/test_climate_indices.py
-- [[climate_indices.py_1]] - code - climate_indices.py
-- [[test_climate_indices.py]] - code - tests/test_climate_indices.py
+- [[2026-07-12 a KalshiWebSocket started this cycle must be stopped before…]] - rationale - tests/test_cron_integration.py
+- [[A market whose adjusted_edge clears STRONG_EDGE must be auto-placed (L2-E).]] - rationale - tests/test_cron_integration.py
+- [[A market whose net_edge clears STRONG_EDGE but adjusted_edge does not must NOT…]] - rationale - tests/test_cron_integration.py
+- [[A market with zero volumeopen-interest closing within 60 minutes must never…]] - rationale - tests/test_cron_integration.py
+- [[An accuracy halt must not skip settlement — the halt is computed from settled…]] - rationale - tests/test_cron_integration.py
+- [[An anomaly halt (declined in non-interactiveloop mode) must still settle.]] - rationale - tests/test_cron_integration.py
+- [[Deep-review followup when an earlier soft-halt (accuracy halt here) already…]] - rationale - tests/test_cron_integration.py
+- [[End-to-end regression for near_settlement_log being silently broken since it…]] - rationale - tests/test_cron_integration.py
+- [[End-to-end version of the test above exercises the REAL _cmd_cron_body…]] - rationale - tests/test_cron_integration.py
+- [[If kill switch file exists, cmd_cron must return without calling…]] - rationale - tests/test_cron_integration.py
+- [[Integration tests for cmd_cron() orchestration layer. All external calls…]] - rationale - tests/test_cron_integration.py
+- [[Isolate cmd_cron from real data, networks, and alerts.]] - rationale - tests/test_cron_integration.py
+- [[Lock must be cleaned up even if cron is interrupted mid-run.]] - rationale - tests/test_cron_integration.py
+- [[P1-12 kill switch created during scan must break the analysis loop.]] - rationale - tests/test_cron_integration.py
+- [[P1-15 empty anomaly list must not halt — cron continues normally.]] - rationale - tests/test_cron_integration.py
+- [[P1-15 when run_anomaly_check returns anomalies, cron must halt before…]] - rationale - tests/test_cron_integration.py
+- [[The WS cleanup must run via the existing finally block even when _cmd_cron_body…]] - rationale - tests/test_cron_integration.py
+- [[Unlike the soft halts, the kill switch remains a full stop by design — it's the…]] - rationale - tests/test_cron_integration.py
+- [[When Brier drift is detected, cmd_cron logs the tightened STRONG_EDGE threshold.]] - rationale - tests/test_cron_integration.py
+- [[When drawdown guard is active, _auto_place_trades returns 0 and places nothing.]] - rationale - tests/test_cron_integration.py
+- [[check_market_anomalies returns only signals with drift  0.12.]] - rationale - tests/test_cron_integration.py
+- [[cmd_cron must call paper.check_paper_position_exits() and actually close a…]] - rationale - tests/test_cron_integration.py
+- [[cmd_cron()'s settlement-lag-signal consumer (~cron.py1396) must pass a…]] - rationale - tests/test_cron_integration.py
+- [[cron_env()]] - code - tests/test_cron_integration.py
+- [[fixture_9]] - code
+- [[integration_1]] - code
+- [[report_anomalies prints ticker and drift for markets 12pp from model.]] - rationale - tests/test_cron_integration.py
+- [[test_accuracy_halt_still_runs_settlement()]] - code - tests/test_cron_integration.py
+- [[test_anomaly_halt_still_runs_settlement()]] - code - tests/test_cron_integration.py
+- [[test_anomaly_override_prompt_skipped_when_already_halted()]] - code - tests/test_cron_integration.py
+- [[test_check_market_anomalies_filters_by_threshold()]] - code - tests/test_cron_integration.py
+- [[test_cmd_cron_body_registers_real_websocket_before_cleanup()]] - code - tests/test_cron_integration.py
+- [[test_cmd_cron_stops_active_websocket_on_exit()]] - code - tests/test_cron_integration.py
+- [[test_cmd_cron_stops_websocket_even_on_body_exception()]] - code - tests/test_cron_integration.py
+- [[test_cron_closes_position_via_check_paper_position_exits()]] - code - tests/test_cron_integration.py
+- [[test_cron_drawdown_guard_blocks_auto_trades()]] - code - tests/test_cron_integration.py
+- [[test_cron_drift_tightens_effective_edge()]] - code - tests/test_cron_integration.py
+- [[test_cron_gate_allows_when_adjusted_edge_above_threshold()]] - code - tests/test_cron_integration.py
+- [[test_cron_gate_blocks_when_adjusted_edge_below_threshold()]] - code - tests/test_cron_integration.py
+- [[test_cron_integration.py]] - code - tests/test_cron_integration.py
+- [[test_cron_kill_switch_halts_before_scan()]] - code - tests/test_cron_integration.py
+- [[test_cron_lock_released_on_keyboard_interrupt()]] - code - tests/test_cron_integration.py
+- [[test_cron_logs_near_settlement_row_with_real_trade_fields()]] - code - tests/test_cron_integration.py
+- [[test_cron_reads_settlement_signals_with_generous_staleness_window()]] - code - tests/test_cron_integration.py
+- [[test_cron_skips_stale_markets_before_analysis()]] - code - tests/test_cron_integration.py
+- [[test_kill_switch_still_skips_settlement()]] - code - tests/test_cron_integration.py
+- [[test_p1_12_kill_switch_mid_scan_breaks_loop()]] - code - tests/test_cron_integration.py
+- [[test_p1_15_anomaly_check_halts_cron()]] - code - tests/test_cron_integration.py
+- [[test_p1_15_empty_anomaly_list_does_not_halt()]] - code - tests/test_cron_integration.py
+- [[test_report_anomalies_prints_drifted_markets()]] - code - tests/test_cron_integration.py
+- [[utils.DRIFT_TIGHTEN_EDGE]] - code - utils.py
+- [[utils.STRONG_EDGE]] - code - utils.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -71,8 +71,17 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 302]]
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
+- 5 edges to [[_COMMUNITY_Community 563]]
+- 2 edges to [[_COMMUNITY_Community 3]]
+- 2 edges to [[_COMMUNITY_Community 8]]
+- 2 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 142]]
+- 1 edge to [[_COMMUNITY_Community 111]]
+- 1 edge to [[_COMMUNITY_Community 251]]
+- 1 edge to [[_COMMUNITY_Community 6]]
+- 1 edge to [[_COMMUNITY_Community 33]]
+- 1 edge to [[_COMMUNITY_Community 201]]
 
 ## Top bridge nodes
-- [[test_climate_indices.py]] - degree 9, connects to 2 communities
+- [[test_cron_integration.py]] - degree 41, connects to 10 communities
+- [[integration_1]] - degree 21, connects to 1 community

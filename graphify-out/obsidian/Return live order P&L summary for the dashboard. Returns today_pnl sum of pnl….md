@@ -1,12 +1,12 @@
 ---
 source_file: "execution_log.py"
 type: "rationale"
-community: "Execution Log Live-Loss Tracking"
+community: "Community 42"
 location: "L738"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Execution_Log_Live-Loss_Tracking
+  - community/Community_42
 ---
 
 # Return live order P&L summary for the dashboard. Returns: today_pnl: sum of pnl…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_live_pnl_summary()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking
+#graphify/rationale #graphify/EXTRACTED #community/Community_42

@@ -1,12 +1,12 @@
 ---
 source_file: "nws.py"
 type: "rationale"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 3"
 location: "L114"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_3
 ---
 
 # Return (creating if needed) the per-city observation lock.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_get_obs_lock()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

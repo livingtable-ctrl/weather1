@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "rationale"
-community: "Community 214"
-location: "L388"
+community: "Community 218"
+location: "L599"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_214
+  - community/Community_218
 ---
 
 # Return True if a trained GBM correction model exists for this city.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[has_ml_model()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_214
+#graphify/rationale #graphify/EXTRACTED #community/Community_218

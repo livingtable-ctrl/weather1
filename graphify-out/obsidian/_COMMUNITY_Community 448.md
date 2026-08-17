@@ -1,23 +1,23 @@
 ---
 type: community
-cohesion: 0.32
+cohesion: 0.25
 members: 8
 ---
 
 # Community 448
 
-**Cohesion:** 0.32 - loosely connected
+**Cohesion:** 0.25 - loosely connected
 **Members:** 8 nodes
 
 ## Members
-- [[loadAnalytics()_1]] - code - updated frontend/reference/analytics.js
-- [[loadBrierHistory()_1]] - code - updated frontend/reference/analytics.js
-- [[loadModelAccuracy()_1]] - code - updated frontend/reference/analytics.js
-- [[loadModelAttribution()_1]] - code - updated frontend/reference/analytics.js
-- [[loadPriceImprovement()_1]] - code - updated frontend/reference/analytics.js
-- [[loadSourceReliability()_1]] - code - updated frontend/reference/analytics.js
-- [[makeLayout()_3]] - code - updated frontend/reference/analytics.js
-- [[referenceanalytics.js]] - code - updated frontend/reference/analytics.js
+- [[2026-04-10-live-order-lifecycle]] - document - docs/superpowers/plans/2026-04-10-live-order-lifecycle.md
+- [[Live Order Lifecycle Implementation Plan]] - document - docs/superpowers/plans/2026-04-10-live-order-lifecycle.md
+- [[Task 1 Add daily_live_loss table and functions to execution_log.py]] - document - docs/superpowers/plans/2026-04-10-live-order-lifecycle.md
+- [[Task 2 Replace _SESSION_LOSS with DB-backed daily loss in main.py]] - document - docs/superpowers/plans/2026-04-10-live-order-lifecycle.md
+- [[Task 3 Add settlement columns and functions to execution_log.py]] - document - docs/superpowers/plans/2026-04-10-live-order-lifecycle.md
+- [[Task 4 Extend _poll_pending_orders for GTC cancellation and settlement]] - document - docs/superpowers/plans/2026-04-10-live-order-lifecycle.md
+- [[Task 5 Live taxaudit export]] - document - docs/superpowers/plans/2026-04-10-live-order-lifecycle.md
+- [[Task 6 Live P&L dashboard]] - document - docs/superpowers/plans/2026-04-10-live-order-lifecycle.md
 
 ## Live Query (requires Dataview plugin)
 

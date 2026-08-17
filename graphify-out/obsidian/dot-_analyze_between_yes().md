@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "code"
-community: "Community 163"
+community: "Community 164"
 location: "L554"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_163
+  - community/Community_164
 ---
 
 # ._analyze_between_yes()
@@ -20,4 +20,4 @@ tags:
 - [[Drive analyze_trade with a mocked YES METAR lock so the downstream…]] - `rationale_for` [EXTRACTED]
 - [[TestBetweenMarketGaussian]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_163
+#graphify/code #graphify/EXTRACTED #community/Community_164

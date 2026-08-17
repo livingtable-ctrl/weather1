@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "rationale"
-community: "METAR Settlement Monitoring"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_4
 ---
 
 # Phase 2 Batch D regression tests: P2-6, P2-15.
 
 ## Connections
-- [[Phase 2 Batch D Regression Tests]] - `rationale_for` [EXTRACTED]
+- [[test_phase2_batch_d.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

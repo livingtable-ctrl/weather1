@@ -1,12 +1,12 @@
 ---
 source_file: "calibration.py"
 type: "rationale"
-community: "Community 118"
+community: "Community 4"
 location: "L388"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_118
+  - community/Community_4
 ---
 
 # Run all three blend-weight calibrations and write results atomically to disk.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[calibrate_and_save()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_118
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

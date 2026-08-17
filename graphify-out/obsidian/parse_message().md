@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 352"
+community: "Community 30"
 location: "L72"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_352
+  - community/Community_30
 ---
 
 # parse_message()
@@ -19,6 +19,6 @@ tags:
 - [[Parse a Kalshi WebSocket message into a normalized dict. Returns None for…]] - `rationale_for` [EXTRACTED]
 - [[_ws_listener()]] - `calls` [EXTRACTED]
 - [[kalshi_ws.py]] - `contains` [EXTRACTED]
-- [[test_kalshi_ws.py]] - `references` [EXTRACTED]
+- [[test_kalshi_ws.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_352
+#graphify/code #graphify/EXTRACTED #community/Community_30

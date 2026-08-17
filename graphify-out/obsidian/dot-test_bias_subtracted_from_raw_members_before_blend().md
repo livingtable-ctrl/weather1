@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 531"
-location: "L4695"
+community: "Community 589"
+location: "L5064"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_531
+  - community/Community_589
 ---
 
 # .test_bias_subtracted_from_raw_members_before_blend()
@@ -15,4 +15,4 @@ tags:
 - [[dot-_patch_common()]] - `calls` [EXTRACTED]
 - [[TestGetEnsembleTempsBiasCorrection]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_531
+#graphify/code #graphify/EXTRACTED #community/Community_589

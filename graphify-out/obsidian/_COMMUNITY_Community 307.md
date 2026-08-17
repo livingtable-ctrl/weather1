@@ -10,18 +10,18 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[-10°F threshold must also pass the gate.]] - rationale - tests/test_phase2_batch_j.py
-- [[dot-test_above_below_are_the_only_gated_types()]] - code - tests/test_phase2_batch_j.py
-- [[dot-test_condition_missing_threshold_is_none()]] - code - tests/test_phase2_batch_j.py
-- [[dot-test_condition_zero_is_not_none()]] - code - tests/test_phase2_batch_j.py
-- [[dot-test_negative_threshold_is_not_none()]] - code - tests/test_phase2_batch_j.py
-- [[dot-test_source_uses_is_not_none()]] - code - tests/test_phase2_batch_j.py
-- [[Freeze markets (threshold=0°F) must not silently skip METAR lock-in.]] - rationale - tests/test_phase2_batch_j.py
-- [[Missing threshold must be None — the gate correctly blocks it.]] - rationale - tests/test_phase2_batch_j.py
-- [[Only 'above' and 'between' types are gated — 'range' with threshold=0 works.]] - rationale - tests/test_phase2_batch_j.py
-- [[Source code must use 'is not None', not a bare truthiness check.]] - rationale - tests/test_phase2_batch_j.py
-- [[TestMetarLockInZeroThreshold]] - code - tests/test_phase2_batch_j.py
-- [[threshold=0.0 must pass the 'is not None' gate.]] - rationale - tests/test_phase2_batch_j.py
+- [[No exception when ENABLE_MICRO_LIVE is not 'true' (gate is skipped entirely).]] - rationale - tests/test_graduation_gate.py
+- [[No exception when ENABLE_MICRO_LIVE='false'.]] - rationale - tests/test_graduation_gate.py
+- [[No exception when ENABLE_MICRO_LIVE=true and count = MIN_BRIER_SAMPLES.]] - rationale - tests/test_graduation_gate.py
+- [[P2-D Gate must fail-closed when the tracker DB is unavailable. If…]] - rationale - tests/test_graduation_gate.py
+- [[RuntimeError raised when ENABLE_MICRO_LIVE=true and count  MIN_BRIER_SAMPLES.]] - rationale - tests/test_graduation_gate.py
+- [[Tests for the graduation gate in main.py (_check_graduation_gate).]] - rationale - tests/test_graduation_gate.py
+- [[test_gate_fails_closed_when_db_unavailable()]] - code - tests/test_graduation_gate.py
+- [[test_gate_passes_when_micro_live_and_sufficient_samples()]] - code - tests/test_graduation_gate.py
+- [[test_gate_raises_when_micro_live_and_insufficient_samples()]] - code - tests/test_graduation_gate.py
+- [[test_gate_skipped_when_micro_live_explicitly_false()]] - code - tests/test_graduation_gate.py
+- [[test_gate_skipped_when_micro_live_false()]] - code - tests/test_graduation_gate.py
+- [[test_graduation_gate.py]] - code - tests/test_graduation_gate.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,7 +31,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
+- 1 edge to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 41]]
 
 ## Top bridge nodes
-- [[TestMetarLockInZeroThreshold]] - degree 7, connects to 1 community
+- [[test_graduation_gate.py]] - degree 8, connects to 2 communities

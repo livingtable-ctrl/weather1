@@ -1,24 +1,23 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Tracker P&L Attribution Tests"
+community: "Community 2"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_2
 ---
 
 # tracker.py
 
 ## Connections
 - [[ForecastCache]] - `imports` [EXTRACTED]
-- [[Grade Audit Module Doc tracker.py]] - `references` [EXTRACTED]
 - [[KalshiClient]] - `imports` [EXTRACTED]
 - [[Prediction tracker — SQLite-backed log of every prediction we make. After…]] - `rationale_for` [EXTRACTED]
 - [[_calibration_curve()]] - `contains` [EXTRACTED]
 - [[_candle_dollars()]] - `contains` [EXTRACTED]
-- [[_conn()_1]] - `contains` [EXTRACTED]
+- [[_conn()]] - `contains` [EXTRACTED]
 - [[_derive_series_ticker()]] - `contains` [EXTRACTED]
 - [[_fetch_actual_daily_temp()]] - `contains` [EXTRACTED]
 - [[_fetch_asos_daily_temp()]] - `contains` [EXTRACTED]
@@ -37,7 +36,7 @@ tags:
 - [[_parse_market_condition()]] - `imports` [EXTRACTED]
 - [[_parse_monthly_ticker_month()]] - `imports` [EXTRACTED]
 - [[_read_temperature_scale_key()]] - `contains` [EXTRACTED]
-- [[_run_migrations()_1]] - `contains` [EXTRACTED]
+- [[_run_migrations()]] - `contains` [EXTRACTED]
 - [[_save_retired_strategies()]] - `contains` [EXTRACTED]
 - [[_save_strategy_pins()]] - `contains` [EXTRACTED]
 - [[_var_from_ticker_prefix()]] - `imports` [EXTRACTED]
@@ -59,7 +58,9 @@ tags:
 - [[brier_skill_score()]] - `contains` [EXTRACTED]
 - [[check_condition_type_weakness()]] - `contains` [EXTRACTED]
 - [[clamp_last_calibration_count()]] - `contains` [EXTRACTED]
+- [[collections]] - `imports_from` [EXTRACTED]
 - [[count_emos_ready_predictions()]] - `contains` [EXTRACTED]
+- [[count_emos_variance_ready_predictions()]] - `contains` [EXTRACTED]
 - [[count_model_observations()]] - `contains` [EXTRACTED]
 - [[count_settled_below_predictions()]] - `contains` [EXTRACTED]
 - [[count_settled_hourly_predictions()]] - `contains` [EXTRACTED]
@@ -74,11 +75,12 @@ tags:
 - [[count_settled_snow_predictions()]] - `contains` [EXTRACTED]
 - [[count_settled_storm_order_predictions()]] - `contains` [EXTRACTED]
 - [[count_settled_west_coast_multiday()]] - `contains` [EXTRACTED]
-- [[datetime_3]] - `imports_from` [EXTRACTED]
+- [[datetime]] - `imports_from` [EXTRACTED]
 - [[detect_brier_drift()]] - `contains` [EXTRACTED]
 - [[export_predictions_csv()]] - `contains` [EXTRACTED]
 - [[forecast_cache.py]] - `imports_from` [EXTRACTED]
 - [[format_brier_alert()]] - `contains` [EXTRACTED]
+- [[get_all_trades()]] - `imports` [EXTRACTED]
 - [[get_analysis_bias()]] - `contains` [EXTRACTED]
 - [[get_bias()]] - `contains` [EXTRACTED]
 - [[get_brier_by_days_out()]] - `contains` [EXTRACTED]
@@ -104,6 +106,7 @@ tags:
 - [[get_mean_slippage()]] - `contains` [EXTRACTED]
 - [[get_member_accuracy()]] - `contains` [EXTRACTED]
 - [[get_member_bias()]] - `contains` [EXTRACTED]
+- [[get_metar_lockout_calibration_data()]] - `contains` [EXTRACTED]
 - [[get_model_attribution_by_city()]] - `contains` [EXTRACTED]
 - [[get_model_brier_scores()]] - `contains` [EXTRACTED]
 - [[get_model_calibration_buckets()]] - `contains` [EXTRACTED]
@@ -130,6 +133,7 @@ tags:
 - [[get_unselected_bias()]] - `contains` [EXTRACTED]
 - [[init_db()]] - `contains` [EXTRACTED]
 - [[is_strategy_pinned()]] - `contains` [EXTRACTED]
+- [[itertools]] - `imports` [EXTRACTED]
 - [[log_analysis_attempt()]] - `contains` [EXTRACTED]
 - [[log_api_request()]] - `contains` [EXTRACTED]
 - [[log_audit()]] - `contains` [EXTRACTED]
@@ -141,8 +145,11 @@ tags:
 - [[log_price_improvement()]] - `contains` [EXTRACTED]
 - [[log_source_attempt()]] - `contains` [EXTRACTED]
 - [[log_trades()]] - `contains` [EXTRACTED]
+- [[logging]] - `imports` [EXTRACTED]
+- [[main.py]] - `imports_from` [EXTRACTED]
 - [[mark_outcome_disputed()]] - `contains` [EXTRACTED]
 - [[mark_outcome_undisputed()]] - `contains` [EXTRACTED]
+- [[math]] - `imports` [EXTRACTED]
 - [[output_formatters.py]] - `imports_from` [EXTRACTED]
 - [[parse_city_date()]] - `imports` [EXTRACTED]
 - [[parse_ticker_hour()]] - `imports` [EXTRACTED]
@@ -155,14 +162,8 @@ tags:
 - [[settle_analysis_attempt()]] - `contains` [EXTRACTED]
 - [[sprt_model_health()]] - `contains` [EXTRACTED]
 - [[sql_normalize_iso_column()]] - `imports` [EXTRACTED]
+- [[sqlite3]] - `imports` [EXTRACTED]
 - [[sync_outcomes()]] - `contains` [EXTRACTED]
-- [[test_alerts_side.py]] - `calls` [EXTRACTED]
-- [[test_backlog_batch.py]] - `references` [EXTRACTED]
-- [[test_backtest.py]] - `references` [EXTRACTED]
-- [[test_bare_os_replace_guard.py]] - `references` [EXTRACTED]
-- [[test_calibration.py]] - `references` [EXTRACTED]
-- [[test_cleanup_data_dir.py]] - `calls` [EXTRACTED]
-- [[test_cron_group_c.py]] - `calls` [EXTRACTED]
 - [[test_regression.py]] - `imports` [EXTRACTED]
 - [[test_shadow_predictions.py]] - `imports` [EXTRACTED]
 - [[test_signal_quality.py]] - `imports` [EXTRACTED]
@@ -173,4 +174,4 @@ tags:
 - [[utils.py]] - `imports_from` [EXTRACTED]
 - [[vacuum_database()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_2

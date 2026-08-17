@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_kalshi_ws.py"
 type: "code"
-community: "Community 130"
+community: "Community 30"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_130
+  - community/Community_30
 ---
 
 # test_kalshi_ws.py
@@ -21,8 +22,12 @@ tags:
 - [[Tests for Kalshi WebSocket client.]] - `rationale_for` [EXTRACTED]
 - [[build_subscribe_message()]] - `imports` [EXTRACTED]
 - [[flash_crash_cb (FlashCrashCB instance)]] - `references` [EXTRACTED]
-- [[parse_message()]] - `references` [EXTRACTED]
+- [[parse_message()]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[read_orderbook_cache()]] - `imports` [EXTRACTED]
-- [[update_orderbook_cache()]] - `references` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
+- [[time]] - `imports` [EXTRACTED]
+- [[update_orderbook_cache()]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_130
+#graphify/code #graphify/EXTRACTED #community/Community_30

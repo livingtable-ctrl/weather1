@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climatology.py"
 type: "code"
-community: "Community 302"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_302
+  - community/Community_4
 ---
 
 # test_climatology.py
@@ -22,9 +22,12 @@ tags:
 - [[_FakeResponse]] - `contains` [EXTRACTED]
 - [[_fake_daily()]] - `contains` [EXTRACTED]
 - [[_synthetic_climate_data()]] - `contains` [EXTRACTED]
-- [[climatology.py]] - `imports` [EXTRACTED]
-- [[climatology.py_1]] - `calls` [EXTRACTED]
+- [[climatology.py]] - `calls` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
 - [[load_all_sigmas()]] - `calls` [EXTRACTED]
 - [[test_climate_indices.py]] - `semantically_similar_to` [INFERRED]
+- [[threading]] - `imports` [EXTRACTED]
+- [[time]] - `imports` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_302
+#graphify/code #graphify/EXTRACTED #community/Community_4

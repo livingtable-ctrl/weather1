@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecast_cache.py"
 type: "code"
-community: "Community 51"
+community: "Community 14"
 location: "L195"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_51
+  - community/Community_14
 ---
 
 # test_prune_expired_empty_cache()
@@ -16,4 +16,4 @@ tags:
 - [[prune_expired() on an empty cache returns 0 without error.]] - `rationale_for` [EXTRACTED]
 - [[test_forecast_cache.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_51
+#graphify/code #graphify/EXTRACTED #community/Community_14

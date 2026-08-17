@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Community 527"
+community: "Community 86"
 location: "L1083"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_527
+  - community/Community_86
 ---
 
 # _l7b_common_patches()
@@ -18,4 +18,4 @@ tags:
 - [[test_auto_place_uses_yes_ask_not_mid_for_yes_trades()]] - `calls` [EXTRACTED]
 - [[test_trading.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_527
+#graphify/code #graphify/EXTRACTED #community/Community_86

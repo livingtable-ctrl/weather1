@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker SQLite Storage Tests"
+community: "Community 634"
 location: "L6929"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_SQLite_Storage_Tests
+  - community/Community_634
 ---
 
 # TestLogPredictionCalibrationCovariateFields
@@ -18,4 +18,4 @@ tags:
 - [[log_prediction() must persist ensemble_spread_fmodel_disagreement_f…]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_SQLite_Storage_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_634

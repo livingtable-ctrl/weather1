@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Forecasting Persistence Model Tests"
-location: "L3361"
+community: "Community 89"
+location: "L3463"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_89
 ---
 
 # _dynamic_model_weights()
@@ -20,12 +20,12 @@ tags:
 - [[dot-test_returns_softmax_weights_from_tracker()]] - `calls` [EXTRACTED]
 - [[Derive per-model blend weights from tracker softmax-MAE data via…]] - `rationale_for` [EXTRACTED]
 - [[Phase 4 Forecasting Plan]] - `implements` [EXTRACTED]
-- [[Phase 4 Improvement Tests]] - `imports` [EXTRACTED]
 - [[Weather Markets Grade Audit]] - `references` [EXTRACTED]
 - [[_forecast_model_weights()]] - `calls` [EXTRACTED]
 - [[get_model_weights()]] - `calls` [EXTRACTED]
 - [[test_forecasting.py]] - `imports` [EXTRACTED]
+- [[test_phase4.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
-- [[weather_markets.py_2]] - `implements` [EXTRACTED]
+- [[weather_markets.py_1]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_89

@@ -1,29 +1,29 @@
 ---
 type: community
-cohesion: 0.23
+cohesion: 0.14
 members: 14
 ---
 
 # Community 252
 
-**Cohesion:** 0.23 - loosely connected
+**Cohesion:** 0.14 - loosely connected
 **Members:** 14 nodes
 
 ## Members
-- [[dot-test_boundary_005_is_moderate()]] - code - tests/test_confidence_tiers.py
-- [[dot-test_classify_confidence_returns_string()]] - code - tests/test_confidence_tiers.py
-- [[dot-test_high_confidence_low_spread()]] - code - tests/test_confidence_tiers.py
-- [[dot-test_live_thresholds_higher()]] - code - tests/test_confidence_tiers.py
-- [[dot-test_low_confidence_wide_spread()]] - code - tests/test_confidence_tiers.py
-- [[dot-test_moderate_confidence_medium_spread()]] - code - tests/test_confidence_tiers.py
-- [[dot-test_zero_spread_is_high()]] - code - tests/test_confidence_tiers.py
-- [[Classify ensemble spread into HIGH, MODERATE, or LOW confidence tier.]] - rationale - utils.py
-- [[Return minimum edge required given ensemble spread and trading mode.]] - rationale - utils.py
-- [[TestGetMinEdgeForConfidence]] - code - tests/test_confidence_tiers.py
-- [[Tests for confidence-tiered edge thresholds.]] - rationale - tests/test_confidence_tiers.py
-- [[classify_confidence_tier()]] - code - utils.py
-- [[get_min_edge_for_confidence()]] - code - utils.py
-- [[test_confidence_tiers.py]] - code - tests/test_confidence_tiers.py
+- [[dot-test_ecmwf_in_extended_ensemble()]] - code - tests/test_ecmwf.py
+- [[dot-test_ecmwf_spread_computation()]] - code - tests/test_ecmwf.py
+- [[dot-test_fetch_temperature_ecmwf_all_null_treated_as_failure()]] - code - tests/test_ecmwf.py
+- [[dot-test_fetch_temperature_ecmwf_negative_caches_failure()]] - code - tests/test_ecmwf.py
+- [[dot-test_fetch_temperature_ecmwf_none_on_failure()]] - code - tests/test_ecmwf.py
+- [[dot-test_fetch_temperature_ecmwf_returns_float_or_none()]] - code - tests/test_ecmwf.py
+- [[dot-test_spread_single_valid_member_returns_zero()]] - code - tests/test_ecmwf.py
+- [[A dead model returns HTTP 200 with every hourly value null — this must be…]] - rationale - tests/test_ecmwf.py
+- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_1]] - rationale - tests/test_ecmwf.py
+- [[ENSEMBLE_MODELS_EXTENDED includes an ecmwf entry.]] - rationale - tests/test_ecmwf.py
+- [[TestECMWFAIFS]] - code - tests/test_ecmwf.py
+- [[_compute_ensemble_spread returns 0.0 when only one member is valid.]] - rationale - tests/test_ecmwf.py
+- [[ensemble_spread computed when ECMWF included raises no error.]] - rationale - tests/test_ecmwf.py
+- [[fetch_temperature_ecmwf returns a float or None.]] - rationale - tests/test_ecmwf.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,13 +33,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 215]]
-- 1 edge to [[_COMMUNITY_Community 85]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 5 edges to [[_COMMUNITY_Community 9]]
+- 3 edges to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[get_min_edge_for_confidence()]] - degree 15, connects to 5 communities
-- [[classify_confidence_tier()]] - degree 5, connects to 1 community
-- [[test_confidence_tiers.py]] - degree 5, connects to 1 community
+- [[TestECMWFAIFS]] - degree 9, connects to 2 communities
+- [[dot-test_fetch_temperature_ecmwf_returns_float_or_none()]] - degree 4, connects to 2 communities
+- [[dot-test_ecmwf_spread_computation()]] - degree 3, connects to 1 community
+- [[dot-test_fetch_temperature_ecmwf_all_null_treated_as_failure()]] - degree 3, connects to 1 community
+- [[dot-test_fetch_temperature_ecmwf_negative_caches_failure()]] - degree 3, connects to 1 community

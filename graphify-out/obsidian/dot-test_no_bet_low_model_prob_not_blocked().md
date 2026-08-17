@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 268"
-location: "L4779"
+community: "Community 263"
+location: "L5148"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_268
+  - community/Community_263
 ---
 
 # .test_no_bet_low_model_prob_not_blocked()
@@ -16,4 +16,4 @@ tags:
 - [[TestBetweenFloorGate]] - `method` [EXTRACTED]
 - [[blended=8%, market=45% → we'd bet NO → gate must NOT fire.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_268
+#graphify/code #graphify/EXTRACTED #community/Community_263

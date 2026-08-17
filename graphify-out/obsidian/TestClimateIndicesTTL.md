@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_c.py"
 type: "code"
-community: "Community 344"
+community: "Community 350"
 location: "L156"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_344
+  - community/Community_350
 ---
 
 # TestClimateIndicesTTL
@@ -19,6 +19,6 @@ tags:
 - [[dot-test_ttl_constant_is_24_hours()]] - `method` [EXTRACTED]
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[P2-12 get_indices must refresh after TTL expires, not cache forever.]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Batch C Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_c.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_344
+#graphify/code #graphify/EXTRACTED #community/Community_350

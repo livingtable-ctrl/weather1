@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_live_execution.py"
+source_file: "tests/test_calibration.py"
 type: "code"
-community: "Community 469"
-location: "L2075"
+community: "Community 58"
+location: "L312"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_469
+  - community/Community_58
 ---
 
 # .teardown_method()
 
 ## Connections
-- [[TestGetTodayLiveSpendExcludesExitOrders]] - `method` [EXTRACTED]
+- [[TestCalibrateCLI]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_469
+#graphify/code #graphify/EXTRACTED #community/Community_58

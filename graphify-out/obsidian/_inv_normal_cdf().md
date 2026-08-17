@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Community 36"
-location: "L5824"
+community: "Community 2"
+location: "L5879"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_36
+  - community/Community_2
 ---
 
 # _inv_normal_cdf()
@@ -16,4 +16,4 @@ tags:
 - [[bayesian_confidence_interval()]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_36
+#graphify/code #graphify/EXTRACTED #community/Community_2

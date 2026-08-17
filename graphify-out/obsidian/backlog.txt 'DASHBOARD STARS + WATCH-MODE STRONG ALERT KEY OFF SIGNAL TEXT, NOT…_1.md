@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "rationale"
-community: "Community 382"
-location: "L1368"
+community: "Community 25"
+location: "L768"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_382
+  - community/Community_25
 ---
 
 # backlog.txt 'DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF SIGNAL TEXT, NOT…
 
 ## Connections
-- [[TestDashboardStarsKeyOffTier]] - `rationale_for` [EXTRACTED]
+- [[dot-test_auto_watch_cycle_result_does_not_alert_untiered_strong_text()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_382
+#graphify/rationale #graphify/EXTRACTED #community/Community_25

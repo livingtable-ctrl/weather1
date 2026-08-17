@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_series_drift.py"
 type: "code"
-community: "Community 126"
+community: "Community 131"
 location: "L61"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_126
+  - community/Community_131
 ---
 
 # test_missing_ticker_counter_increments_and_warns_at_three()
@@ -16,4 +16,4 @@ tags:
 - [[_today()_1]] - `calls` [EXTRACTED]
 - [[test_series_drift.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_126
+#graphify/code #graphify/EXTRACTED #community/Community_131

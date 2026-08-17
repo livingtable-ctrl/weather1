@@ -1,31 +1,31 @@
 ---
 type: community
-cohesion: 0.12
+cohesion: 0.18
 members: 16
 ---
 
 # Community 217
 
-**Cohesion:** 0.12 - loosely connected
+**Cohesion:** 0.18 - loosely connected
 **Members:** 16 nodes
 
 ## Members
-- [[A 5.5% edge (above PAPER_MIN_EDGE, below old MIN_EDGE) must not be filtered.]] - rationale - tests/test_edge_threshold.py
-- [[Confirm 5.5% edge is below the old MIN_EDGE (7%) so the distinction matters.]] - rationale - tests/test_edge_threshold.py
-- [[Miami requires 20pp probability-edge conviction (vs 8pp default), per the…]] - rationale - tests/test_edge_threshold.py
-- [[Mirrors cron.py's `_city_min = CITY_MIN_PROB_EDGE.get(_city_key,…]] - rationale - tests/test_edge_threshold.py
-- [[Paper threshold must be lower than the displaylive threshold.]] - rationale - tests/test_edge_threshold.py
-- [[Tests for P1.3 — PAPER_MIN_EDGE (via get_paper_min_edge()) and cmd_cron filter.]] - rationale - tests/test_edge_threshold.py
-- [[get_paper_min_edge() must be = 5% per system requirements.]] - rationale - tests/test_edge_threshold.py
-- [[get_paper_min_edge() must be  0 — zero threshold would trade everything.]] - rationale - tests/test_edge_threshold.py
-- [[test_city_min_prob_edge_gate_mirrors_cron_lookup()]] - code - tests/test_edge_threshold.py
-- [[test_city_min_prob_edge_miami_override()]] - code - tests/test_edge_threshold.py
-- [[test_edge_threshold.py]] - code - tests/test_edge_threshold.py
-- [[test_old_min_edge_would_have_blocked_5pct()]] - code - tests/test_edge_threshold.py
-- [[test_paper_min_edge_5pct_passes_filter()]] - code - tests/test_edge_threshold.py
-- [[test_paper_min_edge_is_at_most_5_pct()]] - code - tests/test_edge_threshold.py
-- [[test_paper_min_edge_is_lower_than_min_edge()]] - code - tests/test_edge_threshold.py
-- [[test_paper_min_edge_is_positive()]] - code - tests/test_edge_threshold.py
+- [[B2 Dynamic Correlation Matrix in Monte Carlo]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
+- [[B4 Marginal Kelly (deferred)]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
+- [[B6 Tail-Risk Stress Testing]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
+- [[B7 Overnight GFS Gap Protection]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
+- [[C1 Partial Exit (50% Close)]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
+- [[C2 Take-Profit Ladder]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
+- [[C3 Re-entry After Early Exit (deferred)]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
+- [[C4 Position Building (post-graduation)]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
+- [[C5 Settlement Countdown (Frontend)]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
+- [[C6 Auto-Execute Monotonicity Violations]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
+- [[Category B Risk Management Plan]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
+- [[Category C Position Management Plan]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
+- [[Fix High Early Exit Rate Plan]] - document - docs/superpowers/plans/2026-04-25-fix-early-exits.md
+- [[_check_early_exits Hold Time Fix]] - document - docs/superpowers/plans/2026-04-25-fix-early-exits.md
+- [[check_model_exits Threshold + Hold Time Fix]] - document - docs/superpowers/plans/2026-04-25-fix-early-exits.md
+- [[order_executor.py module]] - code - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -35,12 +35,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 5 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 26]]
+- 4 edges to [[_COMMUNITY_Community 360]]
+- 3 edges to [[_COMMUNITY_Community 216]]
+- 2 edges to [[_COMMUNITY_Community 297]]
+- 1 edge to [[_COMMUNITY_Community 484]]
 
 ## Top bridge nodes
-- [[test_edge_threshold.py]] - degree 10, connects to 2 communities
-- [[test_paper_min_edge_5pct_passes_filter()]] - degree 3, connects to 1 community
-- [[test_paper_min_edge_is_at_most_5_pct()]] - degree 3, connects to 1 community
-- [[test_paper_min_edge_is_lower_than_min_edge()]] - degree 3, connects to 1 community
-- [[test_paper_min_edge_is_positive()]] - degree 3, connects to 1 community
+- [[Category B Risk Management Plan]] - degree 9, connects to 4 communities
+- [[C1 Partial Exit (50% Close)]] - degree 5, connects to 1 community
+- [[order_executor.py module]] - degree 4, connects to 1 community
+- [[B6 Tail-Risk Stress Testing]] - degree 3, connects to 1 community
+- [[C6 Auto-Execute Monotonicity Violations]] - degree 3, connects to 1 community

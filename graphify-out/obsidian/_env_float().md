@@ -1,25 +1,17 @@
 ---
-source_file: "config.py"
+source_file: "paper.py"
 type: "code"
-community: "Community 129"
-location: "L20"
+community: "Community 1"
+location: "L256"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_129
+  - community/Community_1
 ---
 
 # _env_float()
 
 ## Connections
-- [[H-11 parse a float env var with a clear error message on bad input.]] - `rationale_for` [EXTRACTED]
-- [[ValueError]] - `calls` [INFERRED]
-- [[_live_breakeven_trigger_pct()]] - `calls` [EXTRACTED]
-- [[_live_kelly_cap()]] - `calls` [EXTRACTED]
-- [[_live_max_city_date_exposure()]] - `calls` [EXTRACTED]
-- [[_live_max_same_day_spend()]] - `calls` [EXTRACTED]
-- [[_live_method_kelly_gate()]] - `calls` [EXTRACTED]
-- [[_live_min_arb_edge()]] - `calls` [EXTRACTED]
-- [[config.py]] - `contains` [EXTRACTED]
+- [[paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_129
+#graphify/code #graphify/EXTRACTED #community/Community_1

@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L8793"
+community: "Community 0"
+location: "L9044"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_0
 ---
 
 # Reverse the most recently placed (unsettled) paper trade if it was placed…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_undo()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ab_test.py"
 type: "rationale"
-community: "Community 33"
+community: "Community 140"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_33
+  - community/Community_140
 ---
 
 # Tests for ab_test.py — A/B experiment framework.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_ab_test.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_33
+#graphify/rationale #graphify/EXTRACTED #community/Community_140

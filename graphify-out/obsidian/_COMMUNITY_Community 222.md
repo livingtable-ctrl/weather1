@@ -10,22 +10,22 @@ members: 16
 **Members:** 16 nodes
 
 ## Members
-- [[dot-test_at_illiquid_ceiling_returns_1_5()]] - code - tests/test_weather_markets.py
-- [[dot-test_at_liquid_floor_returns_1_0()]] - code - tests/test_weather_markets.py
-- [[dot-test_illiquid_market_returns_1_5()]] - code - tests/test_weather_markets.py
-- [[dot-test_liquid_market_returns_1_0()]] - code - tests/test_weather_markets.py
-- [[dot-test_midpoint_interpolates_linearly()]] - code - tests/test_weather_markets.py
-- [[dot-test_never_returns_below_1_0()]] - code - tests/test_weather_markets.py
-- [[dot-test_none_inputs_treated_as_zero_not_typeerror()]] - code - tests/test_weather_markets.py
-- [[dot-test_string_inputs_do_not_crash_via_concatenation()]] - code - tests/test_weather_markets.py
-- [[dot-test_string_zero_still_illiquid_not_truthy_string()]] - code - tests/test_weather_markets.py
-- [[dot-test_volume_and_open_interest_are_summed()]] - code - tests/test_weather_markets.py
-- [[A non-empty string 0.00 is truthy in Python -- proves the float() conversion…]] - rationale - tests/test_weather_markets.py
-- [[Dynamic edge-threshold divisor by market liquidity (backlog.txt LIQUIDITY-…]] - rationale - weather_markets.py
-- [[Real bug found live 2026-07-19, same day and root cause as the…]] - rationale - tests/test_weather_markets.py
-- [[TestLiquidityEdgeScale]] - code - tests/test_weather_markets.py
-- [[_liquidity_edge_scale()]] - code - weather_markets.py
-- [[backlog.txt LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD -- the log-only…]] - rationale - tests/test_weather_markets.py
+- [[dot-_mock_network()]] - code - tests/test_climatology.py
+- [[dot-_mock_network_failure()]] - code - tests/test_climatology.py
+- [[dot-test_force_true_bypasses_mem_cache()]] - code - tests/test_climatology.py
+- [[dot-test_fresh_disk_cache_read_also_populates_mem_cache()]] - code - tests/test_climatology.py
+- [[dot-test_fresh_disk_cache_serves_without_network_call()]] - code - tests/test_climatology.py
+- [[dot-test_network_failure_fallback_also_populates_mem_cache()]] - code - tests/test_climatology.py
+- [[dot-test_network_failure_falls_back_to_existing_disk_cache()]] - code - tests/test_climatology.py
+- [[dot-test_network_failure_with_no_disk_cache_returns_none()]] - code - tests/test_climatology.py
+- [[dot-test_network_fetch_populates_mem_cache_and_writes_disk()]] - code - tests/test_climatology.py
+- [[dot-test_second_call_same_city_serves_from_mem_cache_not_network()]] - code - tests/test_climatology.py
+- [[dot-test_stale_disk_cache_triggers_network_refetch()]] - code - tests/test_climatology.py
+- [[Deletes the disk cache file between calls so the second call can ONLY succeed…]] - rationale - tests/test_climatology.py
+- [[Targets _MEM_CACHE.set() on the fresh-disk-read branch specifically…]] - rationale - tests/test_climatology.py
+- [[Targets _MEM_CACHE.set() on the network-failure-fallback branch specifically…]] - rationale - tests/test_climatology.py
+- [[TestFetchHistoricalCaching]] - code - tests/test_climatology.py
+- [[fetch_historical()'s _MEM_CACHE memoization -- previously zero direct coverage…]] - rationale - tests/test_climatology.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -35,10 +35,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[_liquidity_edge_scale()]] - degree 15, connects to 3 communities
-- [[TestLiquidityEdgeScale]] - degree 12, connects to 1 community
+- [[TestFetchHistoricalCaching]] - degree 13, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "nws.py"
 type: "code"
-community: "Weather Probability Math Tests"
+community: "Community 203"
 location: "L535"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_203
 ---
 
 # obs_prob()
@@ -25,4 +25,4 @@ tags:
 - [[test_weather.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_203

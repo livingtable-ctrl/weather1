@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 370"
-location: "L1739"
+community: "Community 283"
+location: "L1880"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_370
+  - community/Community_283
 ---
 
 # .test_no_zero_ask_returns_none_not_one()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestLiquidationPriceZeroSide]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_370
+#graphify/code #graphify/EXTRACTED #community/Community_283

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climatology.py"
 type: "rationale"
-community: "Community 360"
+community: "Community 374"
 location: "L796"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_360
+  - community/Community_374
 ---
 
 # opus-review-caught: a city that failed to compute (empty result, e.g.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_second_preload_all_call_retries_after_a_failed_compute()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_360
+#graphify/rationale #graphify/EXTRACTED #community/Community_374

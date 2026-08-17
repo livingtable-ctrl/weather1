@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-18-remediation.md"
 type: "code"
-community: "Community 294"
+community: "Community 216"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_294
+  - community/Community_216
 ---
 
 # cron.py module
@@ -20,4 +20,4 @@ tags:
 - [[Fix Signals Page Plan]] - `references` [INFERRED]
 - [[auto_settle_paper_trades Cron Call]] - `references` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_294
+#graphify/code #graphify/EXTRACTED #community/Community_216

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 525"
+community: "Community 584"
 location: "L7130"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_525
+  - community/Community_584
 ---
 
 # TestLogPredictionSignalValues
@@ -19,4 +19,4 @@ tags:
 - [[log_prediction() must persist `signals` (backlog.txt SIGNAL GRADUATION IS A…]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_525
+#graphify/code #graphify/EXTRACTED #community/Community_584

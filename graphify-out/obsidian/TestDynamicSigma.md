@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "code"
-community: "Community 277"
+community: "Community 278"
 location: "L149"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_277
+  - community/Community_278
 ---
 
 # TestDynamicSigma
@@ -23,4 +23,4 @@ tags:
 - [[Climate-derived sigma restored 2026-07-12 (silently lost in the 24559a7…]] - `rationale_for` [EXTRACTED]
 - [[test_gaussian_prob.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_277
+#graphify/code #graphify/EXTRACTED #community/Community_278

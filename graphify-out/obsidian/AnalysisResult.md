@@ -1,12 +1,12 @@
 ---
 source_file: "market_types.py"
 type: "code"
-community: "Community 456"
+community: "Community 497"
 location: "L30"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_456
+  - community/Community_497
 ---
 
 # AnalysisResult
@@ -15,4 +15,4 @@ tags:
 - [[TypedDict]] - `inherits` [EXTRACTED]
 - [[market_types.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_456
+#graphify/code #graphify/EXTRACTED #community/Community_497

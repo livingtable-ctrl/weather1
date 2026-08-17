@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Tracker P&L Attribution Tests"
+community: "Community 3"
 location: "L1799"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_3
 ---
 
 # Warn (never halt) when a (method, condition_type) pair's rolling directional…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[check_condition_type_weakness()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

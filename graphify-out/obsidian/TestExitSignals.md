@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_menu_ux.py"
 type: "code"
-community: "Community 305"
+community: "Community 309"
 location: "L109"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_305
+  - community/Community_309
 ---
 
 # TestExitSignals
@@ -20,4 +20,4 @@ tags:
 - [[Tests for the paper submenu 'Exit signals' branch (sub == '4').]] - `rationale_for` [EXTRACTED]
 - [[test_menu_ux.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_305
+#graphify/code #graphify/EXTRACTED #community/Community_309

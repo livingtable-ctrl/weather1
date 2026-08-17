@@ -1,11 +1,11 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 458"
+community: "Community 20"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_458
+  - community/Community_20
 ---
 
 # order_executor.py live reprice loop
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[_safe_price()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_458
+#graphify/code #graphify/EXTRACTED #community/Community_20

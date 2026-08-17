@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_positions.py"
 type: "code"
-community: "Community 45"
+community: "Community 57"
 location: "L23"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Community_57
 ---
 
 # TestSharedAcrossPaperAndLive
@@ -20,4 +20,4 @@ tags:
 - [[The whole point of this module paper.py and order_executor.py must be calling…]] - `rationale_for` [EXTRACTED]
 - [[test_positions.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_45
+#graphify/code #graphify/EXTRACTED #community/Community_57

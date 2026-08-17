@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.14
-members: 8
+cohesion: 0.28
+members: 9
 ---
 
 # Community 442
 
-**Cohesion:** 0.14 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.28 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-test_audit_settlement_hourly_passes_correct_hour_and_uses_hour_fetch()]] - code - tests/test_tracker.py
-- [[dot-test_count_settled_hurricane_predictions_counts_events_not_ladder_rows()]] - code - tests/test_tracker.py
-- [[dot-test_count_settled_rain_predictions_counts_only_rain_tickers()]] - code - tests/test_tracker.py
-- [[dot-test_log_prediction_upsert_already_prevents_raw_duplication()]] - code - tests/test_tracker.py
-- [[Documents the real, confirmed-live behavior the test above's docstring relies…]] - rationale - tests/test_tracker.py
-- [[Must call the hour-specific fetch (_fetch_asos_hour_temp) with the ticker's…]] - rationale - tests/test_tracker.py
-- [[Same raw-row-vs-distinct-event risk count_settled_snow_ predictions() was fixed…]] - rationale - tests/test_tracker.py
-- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 handoff item 7 must count…]] - rationale - tests/test_tracker.py
+- [[Shared enriched-market fixture for the ecmwf_consensus_gap_prob tests below --…]] - rationale - tests/test_weather_markets.py
+- [[_ecmwf_gap_test_enriched()]] - code - tests/test_weather_markets.py
+- [[_get_ecmwf_aifs_prob failing must not abort the trade -- mirrors the existing…]] - rationale - tests/test_weather_markets.py
+- [[_stub_ecmwf_gap_common()]] - code - tests/test_weather_markets.py
+- [[backlog.txt '3-WAY MODEL_CONSENSUS CHECK' analyze_trade must compute…]] - rationale - tests/test_weather_markets.py
+- [[ecmwf_aifs_prob going None (e.g. below the 5-member floor) must leave…]] - rationale - tests/test_weather_markets.py
+- [[test_analyze_trade_computes_ecmwf_consensus_gap_prob()]] - code - tests/test_weather_markets.py
+- [[test_analyze_trade_ecmwf_consensus_gap_prob_none_when_ecmwf_prob_missing()]] - code - tests/test_weather_markets.py
+- [[test_analyze_trade_survives_ecmwf_aifs_prob_fetch_exception()]] - code - tests/test_weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,11 +28,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
-- 2 edges to [[_COMMUNITY_Tracker Settlement Sigma & Disputed Rows]]
+- 5 edges to [[_COMMUNITY_Community 11]]
+- 3 edges to [[_COMMUNITY_Community 5]]
 
 ## Top bridge nodes
-- [[dot-test_count_settled_hurricane_predictions_counts_events_not_ladder_rows()]] - degree 3, connects to 2 communities
-- [[dot-test_count_settled_rain_predictions_counts_only_rain_tickers()]] - degree 3, connects to 2 communities
-- [[dot-test_audit_settlement_hourly_passes_correct_hour_and_uses_hour_fetch()]] - degree 2, connects to 1 community
-- [[dot-test_log_prediction_upsert_already_prevents_raw_duplication()]] - degree 2, connects to 1 community
+- [[test_analyze_trade_computes_ecmwf_consensus_gap_prob()]] - degree 5, connects to 2 communities
+- [[test_analyze_trade_ecmwf_consensus_gap_prob_none_when_ecmwf_prob_missing()]] - degree 5, connects to 2 communities
+- [[test_analyze_trade_survives_ecmwf_aifs_prob_fetch_exception()]] - degree 5, connects to 2 communities
+- [[_ecmwf_gap_test_enriched()]] - degree 5, connects to 1 community
+- [[_stub_ecmwf_gap_common()]] - degree 4, connects to 1 community

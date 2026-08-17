@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "rationale"
-community: "Community 42"
+community: "Community 441"
 location: "L137"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_42
+  - community/Community_441
 ---
 
 # The unified gate set must block placement identically for both…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestGateUnification]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_42
+#graphify/rationale #graphify/EXTRACTED #community/Community_441

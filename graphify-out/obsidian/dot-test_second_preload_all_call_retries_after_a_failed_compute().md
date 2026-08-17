@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climatology.py"
 type: "code"
-community: "Community 360"
+community: "Community 374"
 location: "L793"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_360
+  - community/Community_374
 ---
 
 # .test_second_preload_all_call_retries_after_a_failed_compute()
@@ -15,4 +15,4 @@ tags:
 - [[TestSigmaCacheRobustness]] - `method` [EXTRACTED]
 - [[opus-review-caught a city that failed to compute (empty result, e.g.…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_360
+#graphify/code #graphify/EXTRACTED #community/Community_374

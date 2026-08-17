@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_notify.py"
 type: "code"
-community: "Community 574"
+community: "Community 650"
 location: "L233"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_574
+  - community/Community_650
 ---
 
 # TestSendSystemAlertUsesPersistedCooldown
@@ -17,4 +17,4 @@ tags:
 - [[Integration-level send_system_alert() itself (not just the helper) respects…]] - `rationale_for` [EXTRACTED]
 - [[test_notify.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_574
+#graphify/code #graphify/EXTRACTED #community/Community_650

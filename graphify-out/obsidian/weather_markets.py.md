@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "ML Bias Correction & Audit Plans"
+community: "Community 5"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_5
 ---
 
 # weather_markets.py
@@ -30,6 +30,7 @@ tags:
 - [[_analyze_precip_trade()]] - `contains` [EXTRACTED]
 - [[_analyze_snow_trade()]] - `contains` [EXTRACTED]
 - [[_analyze_storm_order_trade()]] - `contains` [EXTRACTED]
+- [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[_below_gates_active()]] - `contains` [EXTRACTED]
 - [[_blend_weights()]] - `contains` [EXTRACTED]
 - [[_bootstrap_ci()]] - `contains` [EXTRACTED]
@@ -79,6 +80,7 @@ tags:
 - [[_load_emos_params()]] - `imports` [EXTRACTED]
 - [[_load_ensemble_disk_cache()]] - `contains` [EXTRACTED]
 - [[_load_forecast_disk_cache()]] - `contains` [EXTRACTED]
+- [[_load_metar_calibration()]] - `contains` [EXTRACTED]
 - [[_load_platt_models()]] - `contains` [EXTRACTED]
 - [[_maybe_refresh_calibration_weights()]] - `contains` [EXTRACTED]
 - [[_metar_lock_in()]] - `contains` [EXTRACTED]
@@ -86,7 +88,7 @@ tags:
 - [[_model_bias()]] - `contains` [EXTRACTED]
 - [[_model_prob_and_mean()]] - `contains` [EXTRACTED]
 - [[_model_weights()]] - `contains` [EXTRACTED]
-- [[_month_to_season()]] - `contains` [EXTRACTED]
+- [[_month_to_season()_1]] - `contains` [EXTRACTED]
 - [[_notify_feature_activation()]] - `contains` [EXTRACTED]
 - [[_nws_days_out_scale()]] - `contains` [EXTRACTED]
 - [[_om_rate_limit()]] - `contains` [EXTRACTED]
@@ -115,6 +117,7 @@ tags:
 - [[_var_from_ticker_prefix()]] - `contains` [EXTRACTED]
 - [[_weights_from_mae()]] - `contains` [EXTRACTED]
 - [[analyze_trade()]] - `contains` [EXTRACTED]
+- [[apply_metar_calibration()]] - `imports` [EXTRACTED]
 - [[apply_ml_prob_correction()]] - `imports` [EXTRACTED]
 - [[apply_pdo_pna_correction()]] - `imports` [EXTRACTED]
 - [[apply_platt_per_city()]] - `imports` [EXTRACTED]
@@ -134,6 +137,7 @@ tags:
 - [[climatological_prob()]] - `imports` [EXTRACTED]
 - [[climatology.py]] - `imports_from` [EXTRACTED]
 - [[coalesce_market_price()]] - `imports` [EXTRACTED]
+- [[collections_abc]] - `imports_from` [EXTRACTED]
 - [[compute_hourly_temperature_proxy()]] - `contains` [EXTRACTED]
 - [[compute_market_implied_distributions()]] - `contains` [EXTRACTED]
 - [[consistency.py]] - `imports_from` [EXTRACTED]
@@ -150,6 +154,7 @@ tags:
 - [[count_settled_snow_predictions()]] - `imports` [EXTRACTED]
 - [[count_settled_storm_order_predictions()]] - `imports` [EXTRACTED]
 - [[count_settled_west_coast_multiday()]] - `imports` [EXTRACTED]
+- [[dataclasses]] - `imports_from` [EXTRACTED]
 - [[datetime_2]] - `imports_from` [EXTRACTED]
 - [[detect_hedge_opportunity()]] - `contains` [EXTRACTED]
 - [[detect_regime()]] - `imports` [EXTRACTED]
@@ -197,6 +202,7 @@ tags:
 - [[is_liquid()]] - `contains` [EXTRACTED]
 - [[is_stale()]] - `contains` [EXTRACTED]
 - [[is_storm_order_ticker()]] - `contains` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
 - [[kalshi_client.py]] - `imports_from` [EXTRACTED]
 - [[kelly_fraction()]] - `contains` [EXTRACTED]
 - [[learn_seasonal_weights()]] - `contains` [EXTRACTED]
@@ -208,6 +214,8 @@ tags:
 - [[load_seasonal_weights()]] - `imports` [EXTRACTED]
 - [[log_city_registry_report()]] - `contains` [EXTRACTED]
 - [[log_source_attempt()]] - `imports` [EXTRACTED]
+- [[logging]] - `imports` [EXTRACTED]
+- [[main.py]] - `imports_from` [EXTRACTED]
 - [[market_implied_rain_event_key()]] - `contains` [EXTRACTED]
 - [[metar.py]] - `imports` [EXTRACTED]
 - [[normal_cdf()]] - `imports` [EXTRACTED]
@@ -217,6 +225,7 @@ tags:
 - [[nws_prob_from_quantiles()]] - `imports` [EXTRACTED]
 - [[obs_prob()]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `imports_from` [EXTRACTED]
+- [[os]] - `imports` [EXTRACTED]
 - [[output_formatters.py]] - `imports_from` [EXTRACTED]
 - [[parse_city_date()]] - `contains` [EXTRACTED]
 - [[parse_market_price()]] - `contains` [EXTRACTED]
@@ -226,6 +235,7 @@ tags:
 - [[prob_threshold()]] - `imports` [EXTRACTED]
 - [[refresh_hourly_target_hours()]] - `contains` [EXTRACTED]
 - [[refresh_hurricane_count_to_date()]] - `contains` [EXTRACTED]
+- [[requests_1]] - `imports` [EXTRACTED]
 - [[reset_gate_counts()]] - `contains` [EXTRACTED]
 - [[resolve_market_implied_for_analysis()]] - `contains` [EXTRACTED]
 - [[safe_io.py]] - `imports` [EXTRACTED]
@@ -238,21 +248,27 @@ tags:
 - [[test_backtest.py]] - `calls` [EXTRACTED]
 - [[test_bare_os_replace_guard.py]] - `references` [EXTRACTED]
 - [[test_calibration.py]] - `references` [EXTRACTED]
-- [[test_city_registry_manifest.py]] - `calls` [EXTRACTED]
+- [[test_city_registry_manifest.py]] - `imports_from` [EXTRACTED]
 - [[test_city_registry_report_logging.py]] - `calls` [EXTRACTED]
 - [[test_cmd_schedule_settlement_monitor.py]] - `references` [EXTRACTED]
 - [[test_data_freshness.py]] - `imports_from` [EXTRACTED]
 - [[test_edge_version.py]] - `imports_from` [EXTRACTED]
 - [[test_gaussian_prob.py]] - `imports` [EXTRACTED]
 - [[test_http.py]] - `imports_from` [EXTRACTED]
+- [[test_infrastructure.py]] - `references` [EXTRACTED]
 - [[test_market_implied_distribution.py]] - `imports` [EXTRACTED]
 - [[test_price_and_size.py]] - `imports_from` [EXTRACTED]
-- [[test_weather.py]] - `imports_from` [EXTRACTED]
+- [[test_regression.py]] - `calls` [EXTRACTED]
+- [[test_signal_quality.py]] - `calls` [EXTRACTED]
+- [[test_station_bias.py]] - `references` [EXTRACTED]
+- [[test_weather.py]] - `references` [EXTRACTED]
 - [[test_weather_markets.py]] - `imports_from` [EXTRACTED]
+- [[threading]] - `imports` [EXTRACTED]
+- [[time]] - `imports` [EXTRACTED]
 - [[time_decay_edge()]] - `contains` [EXTRACTED]
 - [[update_learned_weights_from_tracker()]] - `contains` [EXTRACTED]
 - [[utils.py]] - `imports_from` [EXTRACTED]
 - [[validate_forecast()]] - `imports` [EXTRACTED]
 - [[wet_bulb_temp()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/code #graphify/EXTRACTED #community/Community_5

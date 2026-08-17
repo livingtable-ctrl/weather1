@@ -1,17 +1,16 @@
 ---
 source_file: "docs/grade_audit/outputs/cron.py.md"
 type: "document"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 679"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_679
 ---
 
 # cron.py Grade Audit
 
 ## Connections
-- [[cron.py]] - `references` [EXTRACTED]
 - [[cron.py File Grade median 7.510]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/document #graphify/EXTRACTED #community/Community_679

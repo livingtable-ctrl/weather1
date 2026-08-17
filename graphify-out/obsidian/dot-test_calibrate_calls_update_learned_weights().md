@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_calibration.py"
 type: "code"
-community: "Community 69"
+community: "Community 58"
 location: "L344"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_69
+  - community/Community_58
 ---
 
 # .test_calibrate_calls_update_learned_weights()
@@ -17,4 +17,4 @@ tags:
 - [[_make_winter_rows()]] - `calls` [EXTRACTED]
 - [[_seed_db()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_69
+#graphify/code #graphify/EXTRACTED #community/Community_58

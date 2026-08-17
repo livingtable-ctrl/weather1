@@ -1,26 +1,27 @@
 ---
 type: community
-cohesion: 0.27
-members: 11
+cohesion: 0.21
+members: 12
 ---
 
 # Community 326
 
-**Cohesion:** 0.27 - loosely connected
-**Members:** 11 nodes
+**Cohesion:** 0.21 - loosely connected
+**Members:** 12 nodes
 
 ## Members
-- [[Copy files from sync_folderKalshiBotdata back into local data. Use this…]] - rationale - cloud_backup.py
-- [[Find the Google Drive sync folder on Windows. Checks (in order) 1.…]] - rationale - cloud_backup.py
-- [[Path_14]] - code
-- [[Return the best available cloud sync folder, in priority order 1.…]] - rationale - cloud_backup.py
-- [[Upload local_path to S3 at s3{bucket}{key}. Returns TrueFalseNone.]] - rationale - cloud_backup.py
-- [[_find_google_drive()]] - code - cloud_backup.py
-- [[_find_sync_folder()]] - code - cloud_backup.py
-- [[backup_to_s3()]] - code - cloud_backup.py
-- [[cloud_backup.py]] - code - cloud_backup.py
-- [[cloud_backup.py — sync data to OneDrive, Google Drive, or a custom path.]] - rationale - cloud_backup.py
-- [[restore_data()]] - code - cloud_backup.py
+- [[A live-network exception inside the NBM-quantile fetch must not take down the…]] - rationale - tests/test_weather_markets.py
+- [[No NBP coverage for this stationdate (mos.fetch_nbm_quantiles returns None)…]] - rationale - tests/test_weather_markets.py
+- [[Regression guard for backlog.txt SEVERAL test_weather_markets.py analyze_trade…]] - rationale - tests/test_weather_markets.py
+- [[Shared enriched-market fixture for the nbm_quantile_prob tests below (paired…]] - rationale - tests/test_weather_markets.py
+- [[Shared mocks for the nbm_quantile_prob tests below -- same baseline as the…]] - rationale - tests/test_weather_markets.py
+- [[_analyze_trade_base_mocks()]] - code - tests/test_weather_markets.py
+- [[_analyze_trade_enriched_fixture()]] - code - tests/test_weather_markets.py
+- [[backlog.txt NBM PROBABILISTIC QUANTILES when mos.fetch_nbm_quantiles returns…]] - rationale - tests/test_weather_markets.py
+- [[test_analyze_trade_makes_no_real_nws_mos_or_climate_indices_calls()]] - code - tests/test_weather_markets.py
+- [[test_analyze_trade_nbm_quantile_fetch_exception_does_not_break_analysis()]] - code - tests/test_weather_markets.py
+- [[test_analyze_trade_result_nbm_quantile_prob_none_when_no_coverage()]] - code - tests/test_weather_markets.py
+- [[test_analyze_trade_result_surfaces_nbm_quantile_prob()]] - code - tests/test_weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,13 +31,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Community 59]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
+- 6 edges to [[_COMMUNITY_Community 11]]
+- 4 edges to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 15]]
 
 ## Top bridge nodes
-- [[cloud_backup.py]] - degree 9, connects to 3 communities
-- [[_find_sync_folder()]] - degree 6, connects to 1 community
-- [[restore_data()]] - degree 5, connects to 1 community
-- [[Path_14]] - degree 5, connects to 1 community
+- [[test_analyze_trade_result_surfaces_nbm_quantile_prob()]] - degree 6, connects to 3 communities
+- [[test_analyze_trade_makes_no_real_nws_mos_or_climate_indices_calls()]] - degree 5, connects to 2 communities
+- [[test_analyze_trade_nbm_quantile_fetch_exception_does_not_break_analysis()]] - degree 5, connects to 2 communities
+- [[test_analyze_trade_result_nbm_quantile_prob_none_when_no_coverage()]] - degree 5, connects to 2 communities
+- [[_analyze_trade_base_mocks()]] - degree 6, connects to 1 community

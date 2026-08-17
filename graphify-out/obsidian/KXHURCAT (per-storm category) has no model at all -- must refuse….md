@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "rationale"
-community: "Community 38"
+community: "Community 36"
 location: "L1209"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_38
+  - community/Community_36
 ---
 
 # KXHURCAT (per-storm category) has no model at all -- must refuse…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_other_hurricane_shapes_always_refused_regardless_of_gate()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_38
+#graphify/rationale #graphify/EXTRACTED #community/Community_36

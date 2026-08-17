@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L657"
+community: "Community 3"
+location: "L658"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # Write all pending forecast entries to disk in one atomic operation. Call this…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[flush_forecast_disk_cache()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

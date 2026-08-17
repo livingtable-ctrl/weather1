@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 89"
-location: "L5058"
+community: "Community 176"
+location: "L5160"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_89
+  - community/Community_176
 ---
 
 # city_registry_report()
@@ -15,7 +15,7 @@ tags:
 - [[Per-city completeness manifest across the per-city registries a tradeable city…]] - `rationale_for` [EXTRACTED]
 - [[_parse_city_from_ticker()]] - `calls` [EXTRACTED]
 - [[log_city_registry_report()]] - `calls` [EXTRACTED]
-- [[test_city_registry_manifest.py]] - `calls` [EXTRACTED]
+- [[test_city_registry_manifest.py]] - `imports` [EXTRACTED]
 - [[test_city_registry_report_logging.py]] - `calls` [EXTRACTED]
 - [[test_known_gaps_are_still_actually_gaps()]] - `calls` [EXTRACTED]
 - [[test_metar_station_fully_covered()]] - `calls` [EXTRACTED]
@@ -27,4 +27,4 @@ tags:
 - [[test_wfo_office_fully_covered()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_89
+#graphify/code #graphify/EXTRACTED #community/Community_176

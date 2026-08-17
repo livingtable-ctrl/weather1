@@ -1,12 +1,12 @@
 ---
 source_file: "hurricane_climatology.py"
 type: "rationale"
-community: "Community 55"
+community: "Community 43"
 location: "L657"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_55
+  - community/Community_43
 ---
 
 # Returns `year`'s storms that received a real NHC name (excludes…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_named_storms_in_naming_order()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_55
+#graphify/rationale #graphify/EXTRACTED #community/Community_43

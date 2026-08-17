@@ -1,12 +1,12 @@
 ---
 source_file: "circuit_breaker.py"
 type: "code"
-community: "Community 44"
+community: "Community 7"
 location: "L122"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_44
+  - community/Community_7
 ---
 
 # ._save_state()
@@ -17,4 +17,4 @@ tags:
 - [[dot-record_success()]] - `calls` [EXTRACTED]
 - [[CircuitBreaker]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_44
+#graphify/code #graphify/EXTRACTED #community/Community_7

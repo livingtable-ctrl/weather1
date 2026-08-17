@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_dead_code_scan.py"
 type: "code"
-community: "Community 146"
+community: "Community 83"
 location: "L82"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_146
+  - community/Community_83
 ---
 
 # _strip_full_comment_lines()
@@ -17,4 +17,4 @@ tags:
 - [[_bare_called_in()]] - `calls` [EXTRACTED]
 - [[test_dead_code_scan.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_146
+#graphify/code #graphify/EXTRACTED #community/Community_83

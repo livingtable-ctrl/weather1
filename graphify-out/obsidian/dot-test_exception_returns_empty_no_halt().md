@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "code"
-community: "Community 223"
+community: "Community 142"
 location: "L228"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_223
+  - community/Community_142
 ---
 
 # .test_exception_returns_empty_no_halt()
@@ -16,4 +16,4 @@ tags:
 - [[TestRunAnomalyCheckReturnsTuple]] - `method` [EXTRACTED]
 - [[run_anomaly_check()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_223
+#graphify/code #graphify/EXTRACTED #community/Community_142

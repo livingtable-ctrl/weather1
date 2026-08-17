@@ -1,20 +1,17 @@
 ---
-source_file: "ab_test.py"
+source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 33"
-location: "L63"
+community: "Community 227"
+location: "L397"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_33
+  - community/Community_227
 ---
 
 # .__init__()
 
 ## Connections
-- [[ABTest]] - `method` [EXTRACTED]
-- [[Any_1]] - `references` [EXTRACTED]
-- [[_load_test_state()]] - `calls` [EXTRACTED]
-- [[_save_test_state()]] - `calls` [EXTRACTED]
+- [[KalshiWebSocket]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_33
+#graphify/code #graphify/EXTRACTED #community/Community_227

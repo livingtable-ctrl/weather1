@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 87"
+community: "Community 303"
 location: "L1619"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_87
+  - community/Community_303
 ---
 
 # .test_past_date_trade_excluded_from_simulation()
@@ -17,4 +17,4 @@ tags:
 - [[simulate_portfolio()]] - `calls` [EXTRACTED]
 - [[utc_today()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_87
+#graphify/code #graphify/EXTRACTED #community/Community_303

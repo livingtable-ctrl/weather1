@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 528"
+community: "Community 586"
 location: "L157"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_528
+  - community/Community_586
 ---
 
 # .test_yes_entry_side_edge_uses_yes_ask()
@@ -16,4 +16,4 @@ tags:
 - [[YES trades entry_side_edge = blended_prob - yes_ask (smaller than mid-edge).]] - `rationale_for` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_528
+#graphify/code #graphify/EXTRACTED #community/Community_586

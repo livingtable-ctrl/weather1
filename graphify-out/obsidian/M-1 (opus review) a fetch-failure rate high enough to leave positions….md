@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Community 258"
+community: "Community 180"
 location: "L2049"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_258
+  - community/Community_180
 ---
 
 # M-1 (opus review): a fetch-failure rate high enough to leave positions…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_partial_quote_coverage_logs_warning()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_258
+#graphify/rationale #graphify/EXTRACTED #community/Community_180

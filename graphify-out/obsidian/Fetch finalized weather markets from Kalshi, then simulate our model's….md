@@ -1,12 +1,12 @@
 ---
 source_file: "backtest.py"
 type: "rationale"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 8"
 location: "L341"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_8
 ---
 
 # Fetch finalized weather markets from Kalshi, then simulate our model's…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[run_backtest()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/rationale #graphify/EXTRACTED #community/Community_8

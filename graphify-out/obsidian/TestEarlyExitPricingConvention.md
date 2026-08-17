@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "code"
-community: "Community 333"
+community: "Community 340"
 location: "L410"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_333
+  - community/Community_340
 ---
 
 # TestEarlyExitPricingConvention
@@ -20,4 +20,4 @@ tags:
 - [[_check_early_exits must price a model-exit at the realizable bidask…]] - `rationale_for` [EXTRACTED]
 - [[test_early_exits.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_333
+#graphify/code #graphify/EXTRACTED #community/Community_340

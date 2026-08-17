@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_notify.py"
 type: "rationale"
-community: "Community 149"
+community: "Community 153"
 location: "L31"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_149
+  - community/Community_153
 ---
 
 # Direct tests of the new disk-persisted cooldown check. Each test redirects…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestSystemCooldownElapsed]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_149
+#graphify/rationale #graphify/EXTRACTED #community/Community_153

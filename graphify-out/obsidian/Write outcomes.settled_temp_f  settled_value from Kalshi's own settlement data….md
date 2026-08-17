@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Tracker P&L Attribution Tests"
-location: "L3749"
+community: "Community 2"
+location: "L3804"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_2
 ---
 
 # Write outcomes.settled_temp_f / settled_value from Kalshi's own settlement data…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[audit_settlement()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

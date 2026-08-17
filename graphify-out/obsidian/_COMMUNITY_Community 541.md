@@ -1,20 +1,21 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.33
+members: 6
 ---
 
 # Community 541
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_survives_write_failure()]] - code - tests/test_backtest.py
-- [[dot-test_writes_via_atomic_helper()]] - code - tests/test_backtest.py
-- [[A failed write (e.g. AtomicWriteError) must be caught, not propagate — this…]] - rationale - tests/test_backtest.py
-- [[TestSaveWalkForwardParams]] - code - tests/test_backtest.py
-- [[save_walk_forward_params must use safe_io's atomic write, not a plain…]] - rationale - tests/test_backtest.py
+- [[Cross-Platform Prices (Polymarket)]] - document - docs/RESEARCH-FINDINGS.md
+- [[Currently in the Bot]] - document - docs/RESEARCH-FINDINGS.md
+- [[MEDIUM PRIORITY]] - document - docs/RESEARCH-FINDINGS.md
+- [[Part 2 — Data Sources]] - document - docs/RESEARCH-FINDINGS.md
+- [[Tomorrow.io  ClimaCell]] - document - docs/RESEARCH-FINDINGS.md
+- [[minuteTemp.com]] - document - docs/RESEARCH-FINDINGS.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,7 +25,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
+- 1 edge to [[_COMMUNITY_Community 486]]
+- 1 edge to [[_COMMUNITY_Community 645]]
 
 ## Top bridge nodes
-- [[TestSaveWalkForwardParams]] - degree 3, connects to 1 community
+- [[Part 2 — Data Sources]] - degree 5, connects to 2 communities

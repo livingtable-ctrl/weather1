@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 221"
-location: "L6491"
+community: "Community 198"
+location: "L6593"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_221
+  - community/Community_198
 ---
 
 # _edge_label()
@@ -23,6 +23,7 @@ tags:
 - [[dot-test_weak_no()]] - `calls` [EXTRACTED]
 - [[dot-test_weak_yes()]] - `calls` [EXTRACTED]
 - [[Convert an edge magnitude to a human-readable signal. `side` (the caller's…]] - `rationale_for` [EXTRACTED]
+- [[TestEdgeLabel]] - `calls` [EXTRACTED]
 - [[_analyze_hourly_trade()]] - `calls` [EXTRACTED]
 - [[_analyze_hurricane_count_trade()]] - `calls` [EXTRACTED]
 - [[_analyze_hurricane_next_event_trade()]] - `calls` [EXTRACTED]
@@ -35,4 +36,4 @@ tags:
 - [[test_weather_markets.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_221
+#graphify/code #graphify/EXTRACTED #community/Community_198

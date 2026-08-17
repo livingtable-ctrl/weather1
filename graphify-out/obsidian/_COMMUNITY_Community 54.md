@@ -1,54 +1,55 @@
 ---
 type: community
-cohesion: 0.07
-members: 39
+cohesion: 0.06
+members: 40
 ---
 
 # Community 54
 
-**Cohesion:** 0.07 - loosely connected
-**Members:** 39 nodes
+**Cohesion:** 0.06 - loosely connected
+**Members:** 40 nodes
 
 ## Members
-- [[dot-_gate()]] - code - tests/test_trading_gates.py
-- [[dot-test_allows_when_all_gates_pass()]] - code - tests/test_trading_gates.py
-- [[dot-test_blocks_when_accuracy_halted()]] - code - tests/test_trading_gates.py
-- [[dot-test_blocks_when_daily_loss_halted()]] - code - tests/test_trading_gates.py
-- [[dot-test_blocks_when_drawdown_halt()]] - code - tests/test_trading_gates.py
-- [[dot-test_blocks_when_graduation_not_met()]] - code - tests/test_trading_gates.py
-- [[dot-test_blocks_when_kill_switch_active()]] - code - tests/test_trading_gates.py
-- [[dot-test_blocks_when_live_trading_env_absent()]] - code - tests/test_trading_gates.py
-- [[dot-test_blocks_when_live_trading_not_enabled()]] - code - tests/test_trading_gates.py
-- [[dot-test_blocks_when_not_prod()]] - code - tests/test_trading_gates.py
-- [[dot-test_blocks_when_streak_paused()]] - code - tests/test_trading_gates.py
-- [[dot-test_check_or_raise_raises_when_blocked()]] - code - tests/test_trading_gates.py
-- [[dot-test_client_base_url_wins_over_stale_kalshi_env_demo_direction()]] - code - tests/test_trading_gates.py
-- [[dot-test_client_base_url_wins_over_stale_kalshi_env_prod_direction()]] - code - tests/test_trading_gates.py
-- [[dot-test_client_prod_base_url_reaches_full_gate()]] - code - tests/test_trading_gates.py
-- [[dot-test_cmd_order_blocked_by_gate()]] - code - tests/test_trading_gates.py
-- [[dot-test_cmd_order_gates_client_missing_base_url()]] - code - tests/test_trading_gates.py
-- [[dot-test_daily_loss_check_receives_the_client()]] - code - tests/test_trading_gates.py
-- [[dot-test_micro_live_blocked_by_gate()]] - code - tests/test_trading_gates.py
-- [[dot-test_micro_live_gate_ok_uses_the_client_it_is_passed()]] - code - tests/test_trading_gates.py
-- [[dot-test_place_live_order_blocked_by_gate()]] - code - tests/test_trading_gates.py
-- [[dot-test_quick_paper_buy_gates_client_missing_base_url()]] - code - tests/test_trading_gates.py
-- [[dot-test_quick_paper_buy_maker_order_blocked_by_gate()]] - code - tests/test_trading_gates.py
-- [[2026-07-09 follow-up the outer guard must REQUIRE the gate for a client it…]] - rationale - tests/test_trading_gates.py
-- [[2026-07-09 `import main` inside check() re-executes main.py as a second module…]] - rationale - tests/test_trading_gates.py
-- [[2026-07-09 check() previously called is_daily_loss_halted() with no args, so…]] - rationale - tests/test_trading_gates.py
-- [[A genuine prod client with everything else passing is allowed — confirms the…]] - rationale - tests/test_trading_gates.py
-- [[Gate must block when LIVE_TRADING_ENABLED is not set at all. See…]] - rationale - tests/test_trading_gates.py
-- [[LIVE_TRADING_ENABLED must be explicitly 'true' — KALSHI_ENV=prod alone is not…]] - rationale - tests/test_trading_gates.py
-- [[Mirror of test_cmd_order_gates_client_missing_base_url for the maker-order…]] - rationale - tests/test_trading_gates.py
-- [[Mirror of the above in the safety-critical direction a prod client must still…]] - rationale - tests/test_trading_gates.py
-- [[No-client fallback now reads os.getenv(KALSHI_ENV) directly (not `import…]] - rationale - tests/test_trading_gates.py
-- [[TestLiveTradingGate]] - code - tests/test_trading_gates.py
-- [[The kill switch must block every live-order path through this shared gate, not…]] - rationale - tests/test_trading_gates.py
-- [[The real call site (order_executor.py1741) passes its own client through —…]] - rationale - tests/test_trading_gates.py
-- [[_micro_live_gate_ok() must return False when the live trading gate blocks.]] - rationale - tests/test_trading_gates.py
-- [[_place_live_order must return (False, 0.0) when gate blocks.]] - rationale - tests/test_trading_gates.py
-- [[_quick_paper_buy's maker-order branch places a REAL order — despite the…]] - rationale - tests/test_trading_gates.py
-- [[cmd_order (manual CLI order) must not bypass the live trading gate.]] - rationale - tests/test_trading_gates.py
+- [[dot-test_save_retired_strategies_propagates_atomic_write_failure()]] - code - tests/test_p9_p10.py
+- [[dot-test_save_strategy_pins_propagates_atomic_write_failure()]] - code - tests/test_p9_p10.py
+- [[A LOW-market ticker from a correlated city must not leak into a var='max'…]] - rationale - tests/test_p9_p10.py
+- [[A correlated city's settlement outside the lookback window is excluded.]] - rationale - tests/test_p9_p10.py
+- [[A disputed correlated-city settlement must not pollute the pooled bias (same…]] - rationale - tests/test_p9_p10.py
+- [[A disputed settlement must not pollute the correlation computation (backlog.txt…]] - rationale - tests/test_p9_p10.py
+- [[A ticker re-logged across multiple cron cycles (one predictions row per day…]] - rationale - tests/test_p9_p10.py
+- [[Boston (corr 0.85) and Washington (corr 0.75) both ran 2F warm on NYC's HIGH…]] - rationale - tests/test_p9_p10.py
+- [[Boston (corr 0.85, error +4F) and Philadelphia (corr 0.80, error -2F) disagree…]] - rationale - tests/test_p9_p10.py
+- [[Helper log a prediction with forecast_temp_f + a matching settled outcome,…]] - rationale - tests/test_p9_p10.py
+- [[NYC has a correlated group but the DB is empty — (0.0, 0).]] - rationale - tests/test_p9_p10.py
+- [[Regression coverage for the OTHER bare os.replace() CALL SITES backlog entry…_2]] - rationale - tests/test_p9_p10.py
+- [[Seattle has no _CORRELATED_CITY_GROUPS entry (deliberately standalone) — must…]] - rationale - tests/test_p9_p10.py
+- [[TestPersistenceRoutesThroughSafeIO]] - code - tests/test_p9_p10.py
+- [[Tests for P9P10 features - P9.1 Strategy versioning (get_brier_by_version,…]] - rationale - tests/test_p9_p10.py
+- [[_log_settled()]] - code - tests/test_p9_p10.py
+- [[as_of lets a caller ask 'what would this have returned at time T' without a…]] - rationale - tests/test_p9_p10.py
+- [[get_recent_city_correlations returns city-pair correlations when enough data…]] - rationale - tests/test_p9_p10.py
+- [[get_recent_city_correlations returns {} when DB has no settled multiday trades.]] - rationale - tests/test_p9_p10.py
+- [[get_recent_city_correlations skips pairs with fewer than min_pairs common dates.]] - rationale - tests/test_p9_p10.py
+- [[heat_wave_failure scenario only counts DallasHoustonPhoenixAtlantaAustin…]] - rationale - tests/test_p9_p10.py
+- [[run_stress_test returns an error dict for unknown scenario names.]] - rationale - tests/test_p9_p10.py
+- [[test_get_recent_city_correlations_computes_correlation()]] - code - tests/test_p9_p10.py
+- [[test_get_recent_city_correlations_excludes_disputed()]] - code - tests/test_p9_p10.py
+- [[test_get_recent_city_correlations_returns_empty_when_no_data()]] - code - tests/test_p9_p10.py
+- [[test_get_recent_city_correlations_skips_below_min_pairs()]] - code - tests/test_p9_p10.py
+- [[test_get_regional_recent_bias_as_of_avoids_lookahead()]] - code - tests/test_p9_p10.py
+- [[test_get_regional_recent_bias_computes_weighted_mean()]] - code - tests/test_p9_p10.py
+- [[test_get_regional_recent_bias_dedups_to_latest_prediction_per_ticker()]] - code - tests/test_p9_p10.py
+- [[test_get_regional_recent_bias_excludes_disputed()]] - code - tests/test_p9_p10.py
+- [[test_get_regional_recent_bias_no_correlated_group()]] - code - tests/test_p9_p10.py
+- [[test_get_regional_recent_bias_no_data()]] - code - tests/test_p9_p10.py
+- [[test_get_regional_recent_bias_respects_hours_window()]] - code - tests/test_p9_p10.py
+- [[test_get_regional_recent_bias_var_filters_high_low()]] - code - tests/test_p9_p10.py
+- [[test_get_regional_recent_bias_weights_by_pair_correlation()]] - code - tests/test_p9_p10.py
+- [[test_p9_p10.py]] - code - tests/test_p9_p10.py
+- [[test_run_stress_test_heat_wave_filters_southern_cities()]] - code - tests/test_p9_p10.py
+- [[test_run_stress_test_total_model_failure_includes_all_cities()]] - code - tests/test_p9_p10.py
+- [[test_run_stress_test_unknown_scenario_returns_error()]] - code - tests/test_p9_p10.py
+- [[total_model_failure scenario counts all open positions regardless of city.]] - rationale - tests/test_p9_p10.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -58,11 +59,20 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 40]]
-- 2 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
+- 5 edges to [[_COMMUNITY_Community 4]]
+- 3 edges to [[_COMMUNITY_Community 426]]
+- 3 edges to [[_COMMUNITY_Community 62]]
+- 2 edges to [[_COMMUNITY_Community 170]]
+- 2 edges to [[_COMMUNITY_Community 20]]
+- 2 edges to [[_COMMUNITY_Community 348]]
+- 1 edge to [[_COMMUNITY_Community 282]]
+- 1 edge to [[_COMMUNITY_Community 384]]
+- 1 edge to [[_COMMUNITY_Community 467]]
+- 1 edge to [[_COMMUNITY_Community 512]]
+- 1 edge to [[_COMMUNITY_Community 513]]
+- 1 edge to [[_COMMUNITY_Community 148]]
+- 1 edge to [[_COMMUNITY_Community 8]]
+- 1 edge to [[_COMMUNITY_Community 1]]
 
 ## Top bridge nodes
-- [[TestLiveTradingGate]] - degree 25, connects to 2 communities
-- [[dot-_gate()]] - degree 17, connects to 1 community
-- [[dot-test_micro_live_blocked_by_gate()]] - degree 3, connects to 1 community
-- [[dot-test_micro_live_gate_ok_uses_the_client_it_is_passed()]] - degree 3, connects to 1 community
+- [[test_p9_p10.py]] - degree 44, connects to 14 communities

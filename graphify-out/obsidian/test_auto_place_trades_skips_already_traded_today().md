@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_dedup.py"
 type: "code"
-community: "Community 97"
+community: "Community 110"
 location: "L131"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_97
+  - community/Community_110
 ---
 
 # test_auto_place_trades_skips_already_traded_today()
@@ -15,4 +15,4 @@ tags:
 - [[_auto_place_trades must skip an opp if was_traded_today returns True.]] - `rationale_for` [EXTRACTED]
 - [[test_dedup.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_97
+#graphify/code #graphify/EXTRACTED #community/Community_110

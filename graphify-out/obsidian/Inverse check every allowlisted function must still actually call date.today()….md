@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_date_today_guard.py"
 type: "rationale"
-community: "Community 202"
+community: "Community 33"
 location: "L159"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_202
+  - community/Community_33
 ---
 
 # Inverse check: every allowlisted function must still actually call date.today()…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_date_today_allowlist_has_no_stale_entries()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_202
+#graphify/rationale #graphify/EXTRACTED #community/Community_33

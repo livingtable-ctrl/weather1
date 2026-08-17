@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 513"
-location: "L2402"
+community: "Community 468"
+location: "L2543"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_513
+  - community/Community_468
 ---
 
 # TestGetRollingSharpe
@@ -18,4 +18,4 @@ tags:
 - [[Position]] - `uses` [INFERRED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_513
+#graphify/code #graphify/EXTRACTED #community/Community_468

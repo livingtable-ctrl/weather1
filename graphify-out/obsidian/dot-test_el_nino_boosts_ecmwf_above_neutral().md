@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "code"
-community: "Forecasting Persistence Model Tests"
+community: "Community 26"
 location: "L89"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_26
 ---
 
 # .test_el_nino_boosts_ecmwf_above_neutral()
@@ -16,4 +16,4 @@ tags:
 - [[TestEnsoPhase_1]] - `method` [EXTRACTED]
 - [[_forecast_model_weights()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_26

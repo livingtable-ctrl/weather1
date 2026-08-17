@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "rationale"
-community: "ML Bias Multiday-Predictions Filter"
+community: "Community 99"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_99
 ---
 
 # Tests for ML-based bias correction.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_ml_bias.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/rationale #graphify/EXTRACTED #community/Community_99

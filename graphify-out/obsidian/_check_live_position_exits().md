@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 144"
+community: "Community 3"
 location: "L1331"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_144
+  - community/Community_3
 ---
 
 # _check_live_position_exits()
@@ -26,11 +26,13 @@ tags:
 - [[_get_current_book()]] - `calls` [EXTRACTED]
 - [[check_breakeven_stops()]] - `calls` [EXTRACTED]
 - [[check_stop_losses()]] - `calls` [EXTRACTED]
+- [[cmd_watch()]] - `calls` [EXTRACTED]
 - [[coalesce_market_price()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[liquidation_price()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[test_live_execution.py]] - `imports` [EXTRACTED]
 - [[update_peak_profits()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_144
+#graphify/code #graphify/EXTRACTED #community/Community_3

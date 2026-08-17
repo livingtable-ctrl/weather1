@@ -1,12 +1,12 @@
 ---
 source_file: "climate_indices.py"
 type: "code"
-community: "Climatology & Climate Index Fetching"
+community: "Community 361"
 location: "L532"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_361
 ---
 
 # get_pdo_pna()
@@ -17,4 +17,4 @@ tags:
 - [[climate_indices.py]] - `contains` [EXTRACTED]
 - [[fetch_pdo_pna()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_361

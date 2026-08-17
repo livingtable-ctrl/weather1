@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_b.py"
 type: "code"
-community: "Community 260"
+community: "Community 257"
 location: "L90"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_260
+  - community/Community_257
 ---
 
 # .test_scaling_at_tier_boundaries()
@@ -15,4 +15,4 @@ tags:
 - [[Spot-check the step function at each canonical boundary.]] - `rationale_for` [EXTRACTED]
 - [[TestDrawdownTierAbsolute]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_260
+#graphify/code #graphify/EXTRACTED #community/Community_257

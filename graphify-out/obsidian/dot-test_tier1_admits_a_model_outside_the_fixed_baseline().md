@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 137"
+community: "Community 127"
 location: "L508"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_137
+  - community/Community_127
 ---
 
 # .test_tier1_admits_a_model_outside_the_fixed_baseline()
@@ -16,4 +16,4 @@ tags:
 - [[TestModelWeights]] - `method` [EXTRACTED]
 - [[_model_weights()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_137
+#graphify/code #graphify/EXTRACTED #community/Community_127

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_c.py"
 type: "code"
-community: "Community 406"
+community: "Community 266"
 location: "L319"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_406
+  - community/Community_266
 ---
 
 # .test_cutoff_date_with_min_samples()
@@ -16,4 +16,4 @@ tags:
 - [[TestTemporalIsolationCondition]] - `method` [EXTRACTED]
 - [[calibrate_condition_weights()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_406
+#graphify/code #graphify/EXTRACTED #community/Community_266

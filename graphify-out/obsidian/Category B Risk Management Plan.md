@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-b-risk-management.md"
 type: "document"
-community: "Community 210"
+community: "Community 217"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_210
+  - community/Community_217
 ---
 
 # Category B: Risk Management Plan
@@ -21,4 +21,4 @@ tags:
 - [[Category C Position Management Plan]] - `conceptually_related_to` [INFERRED]
 - [[Phase B Risk Engine Plan]] - `conceptually_related_to` [INFERRED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_210
+#graphify/document #graphify/EXTRACTED #community/Community_217

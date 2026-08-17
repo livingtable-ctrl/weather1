@@ -10,19 +10,19 @@ members: 13
 **Members:** 13 nodes
 
 ## Members
-- [[dot-_model_response()]] - code - tests/test_tracker.py
-- [[dot-setUp()_17]] - code - tests/test_tracker.py
-- [[dot-test_computes_weighted_delta_and_jumpiness_exactly()]] - code - tests/test_tracker.py
-- [[dot-test_days_out_seven_has_only_one_valid_lead_returns_none()]] - code - tests/test_tracker.py
-- [[dot-test_days_out_zero_returns_none_without_network_call()]] - code - tests/test_tracker.py
-- [[dot-test_never_raises_on_total_network_failure()]] - code - tests/test_tracker.py
-- [[dot-test_second_call_hits_cache_not_network()]] - code - tests/test_tracker.py
-- [[dot-test_unknown_city_returns_none()_2]] - code - tests/test_tracker.py
-- [[Known per-model values at 4 leads, known (unequal) model weights -- assert the…]] - rationale - tests/test_tracker.py
-- [[Same-day markets use the METAR pipeline, not this signal (matches the existing…]] - rationale - tests/test_tracker.py
-- [[TestGetForecastRunTrend]] - code - tests/test_tracker.py
-- [[get_forecast_run_trend() combines all 3 _PREVIOUS_RUN_MODEL_MAP models,…]] - rationale - tests/test_tracker.py
-- [[lead0 = min(days_out, 7) = 7; leads 8-10 are all clamped out by the API's valid…]] - rationale - tests/test_tracker.py
+- [[dot-test_default_is_1000()]] - code - tests/test_starting_balance.py
+- [[dot-test_env_var_float_parsing()]] - code - tests/test_starting_balance.py
+- [[dot-test_env_var_overrides_default()]] - code - tests/test_starting_balance.py
+- [[dot-test_reset_paper_uses_starting_balance()]] - code - tests/test_starting_balance.py
+- [[dot-test_utils_exports_starting_balance()]] - code - tests/test_starting_balance.py
+- [[P0-7 STARTING_BALANCE must be configurable via environment variable.]] - rationale - tests/test_starting_balance.py
+- [[STARTING_BALANCE env var must be respected.]] - rationale - tests/test_starting_balance.py
+- [[STARTING_BALANCE must parse non-integer values correctly.]] - rationale - tests/test_starting_balance.py
+- [[TestStartingBalanceEnvVar]] - code - tests/test_starting_balance.py
+- [[Without env var, STARTING_BALANCE defaults to 1000.0.]] - rationale - tests/test_starting_balance.py
+- [[reset_paper_account must initialise balance from STARTING_BALANCE.]] - rationale - tests/test_starting_balance.py
+- [[test_starting_balance.py]] - code - tests/test_starting_balance.py
+- [[utils.py must also expose STARTING_BALANCE from env var.]] - rationale - tests/test_starting_balance.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -32,7 +32,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 71]]
 
 ## Top bridge nodes
-- [[TestGetForecastRunTrend]] - degree 10, connects to 1 community
+- [[test_starting_balance.py]] - degree 3, connects to 1 community

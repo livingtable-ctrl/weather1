@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 152"
+community: "Community 16"
 location: "L807"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_152
+  - community/Community_16
 ---
 
 # TestRainForecastBlendSignal
 
 ## Connections
-- [[dot-_history_all_years_value()_2]] - `method` [EXTRACTED]
+- [[dot-_history_all_years_value()_1]] - `method` [EXTRACTED]
 - [[dot-_mock_acis()]] - `method` [EXTRACTED]
 - [[dot-_pin_today()]] - `method` [EXTRACTED]
 - [[dot-test_after_month_end_any_missing_day_fails_closed()]] - `method` [EXTRACTED]
@@ -27,4 +27,4 @@ tags:
 - [[backlog.txt RAIN MARKETS -- MONTHLY MODEL HAS NO DAY-SPECIFIC FORECAST…]] - `rationale_for` [EXTRACTED]
 - [[test_rain_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_152
+#graphify/code #graphify/EXTRACTED #community/Community_16

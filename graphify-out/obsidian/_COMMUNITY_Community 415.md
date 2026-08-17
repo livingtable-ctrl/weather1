@@ -10,15 +10,15 @@ members: 9
 **Members:** 9 nodes
 
 ## Members
-- [[dot-test_all_above_threshold_gives_high_prob()]] - code - tests/test_weather.py
-- [[dot-test_half_above_gives_straddling_ci()]] - code - tests/test_weather.py
-- [[dot-test_none_above_threshold_gives_low_prob()]] - code - tests/test_weather.py
-- [[dot-test_small_sample_returns_full_range()]] - code - tests/test_weather.py
-- [[All members above 0.01in → precip_any CI should be near (1, 1).]] - rationale - tests/test_weather.py
-- [[Fewer than 5 members → returns (0.0, 1.0) as uninformative CI.]] - rationale - tests/test_weather.py
-- [[Half members above 0.10in → CI should straddle 0.5.]] - rationale - tests/test_weather.py
-- [[No members above threshold → CI near (0, 0).]] - rationale - tests/test_weather.py
-- [[TestBootstrapCIPrecip]] - code - tests/test_weather.py
+- [[dot-test_12pct_drawdown_conservative()]] - code - tests/test_drawdown_tiers.py
+- [[dot-test_17pct_drawdown_survival()]] - code - tests/test_drawdown_tiers.py
+- [[dot-test_20pct_drawdown_paused()]] - code - tests/test_drawdown_tiers.py
+- [[dot-test_3pct_drawdown_full_kelly()]] - code - tests/test_drawdown_tiers.py
+- [[dot-test_50pct_drawdown_paused()]] - code - tests/test_drawdown_tiers.py
+- [[dot-test_7pct_drawdown_reduced()]] - code - tests/test_drawdown_tiers.py
+- [[dot-test_no_drawdown_full_kelly()]] - code - tests/test_drawdown_tiers.py
+- [[dot-test_zero_peak_balance_returns_one()]] - code - tests/test_drawdown_tiers.py
+- [[TestDrawdownScalingFactor]] - code - tests/test_drawdown_tiers.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,12 +28,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Weather Probability Math Tests]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestBootstrapCIPrecip]] - degree 5, connects to 1 community
-- [[dot-test_all_above_threshold_gives_high_prob()]] - degree 3, connects to 1 community
-- [[dot-test_half_above_gives_straddling_ci()]] - degree 3, connects to 1 community
-- [[dot-test_none_above_threshold_gives_low_prob()]] - degree 3, connects to 1 community
-- [[dot-test_small_sample_returns_full_range()]] - degree 3, connects to 1 community
+- [[TestDrawdownScalingFactor]] - degree 9, connects to 1 community

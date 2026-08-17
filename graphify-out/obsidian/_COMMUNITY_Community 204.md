@@ -1,32 +1,32 @@
 ---
 type: community
-cohesion: 0.12
+cohesion: 0.13
 members: 17
 ---
 
 # Community 204
 
-**Cohesion:** 0.12 - loosely connected
+**Cohesion:** 0.13 - loosely connected
 **Members:** 17 nodes
 
 ## Members
-- [[dot-_make_cb()]] - code - tests/test_p1_remaining.py
-- [[dot-setup_method()_15]] - code - tests/test_p1_remaining.py
-- [[dot-teardown_cb()]] - code - tests/test_p1_remaining.py
-- [[dot-teardown_method()_8]] - code - tests/test_p1_remaining.py
-- [[dot-test_expired_open_state_clears_on_reload()]] - code - tests/test_p1_remaining.py
-- [[dot-test_failure_count_persists_across_instances()]] - code - tests/test_p1_remaining.py
-- [[dot-test_load_state_blocks_on_save_lock()]] - code - tests/test_p1_remaining.py
-- [[dot-test_multiple_breakers_share_one_file()]] - code - tests/test_p1_remaining.py
-- [[dot-test_open_state_persists_across_instances()]] - code - tests/test_p1_remaining.py
-- [[dot-test_persist_false_does_not_write_state()]] - code - tests/test_p1_remaining.py
-- [[An open circuit stays open after process restart.]] - rationale - tests/test_p1_remaining.py
-- [[Different circuit breaker names coexist in a single state file.]] - rationale - tests/test_p1_remaining.py
-- [[Failure count survives process restart (simulated by creating a new instance).]] - rationale - tests/test_p1_remaining.py
-- [[If recovery timeout has elapsed since last open, new instance starts closed.]] - rationale - tests/test_p1_remaining.py
-- [[TestCircuitBreakerPersistence]] - code - tests/test_p1_remaining.py
-- [[_load_state() must serialize on _CB_STATE_FILE_LOCK like _save_state().…]] - rationale - tests/test_p1_remaining.py
-- [[persist=False circuit breaker never writes state file.]] - rationale - tests/test_p1_remaining.py
+- [[Base Page Template (reference)]] - code - updated frontend/reference/base.html
+- [[Dashboard Page Template (reference)]] - code - updated frontend/reference/dashboard.html
+- [[Forecast Page Spec (forecast)]] - document - docs/superpowers/specs/2026-04-10-dashboard-modernization-design.md
+- [[Forecast Page Template (reference)]] - code - updated frontend/reference/forecast.html
+- [[Forecast Template Page]] - code - templates/forecast.html
+- [[Risk Page Spec (risk)]] - document - docs/superpowers/specs/2026-04-10-dashboard-modernization-design.md
+- [[Risk Page Template (reference)]] - code - updated frontend/reference/risk.html
+- [[Risk Template Page]] - code - templates/risk.html
+- [[Signals Page Template (reference)]] - code - updated frontend/reference/signals.html
+- [[Signals Page Template (templates)]] - code - templates/signals.html
+- [[Trades Page Template (reference)]] - code - updated frontend/reference/trades.html
+- [[Trades Page Template (templates)]] - code - templates/trades.html
+- [[signals.js (Flask static)]] - code - static/signals.js
+- [[staticforecast.js_1]] - code - templates/forecast.html
+- [[staticrisk.js_1]] - code - templates/risk.html
+- [[style.css (Flask static)]] - code - static/style.css
+- [[trades.js (Flask static)]] - code - static/trades.js
 
 ## Live Query (requires Dataview plugin)
 
@@ -36,8 +36,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 1 edge to [[_COMMUNITY_Community 96]]
+- 1 edge to [[_COMMUNITY_Community 334]]
 
 ## Top bridge nodes
-- [[TestCircuitBreakerPersistence]] - degree 13, connects to 2 communities
+- [[Base Page Template (reference)]] - degree 7, connects to 1 community

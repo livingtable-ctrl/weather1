@@ -1,11 +1,11 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Forecast Persistent Cache"
+community: "Community 14"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecast_Persistent_Cache
+  - community/Community_14
 ---
 
 # module-level _forecast_cache/_ensemble_cache singletons
@@ -15,4 +15,4 @@ tags:
 - [[get_weather_forecast()]] - `calls` [EXTRACTED]
 - [[test_forecasting.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecast_Persistent_Cache
+#graphify/code #graphify/EXTRACTED #community/Community_14

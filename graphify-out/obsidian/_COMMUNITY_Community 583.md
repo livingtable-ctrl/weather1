@@ -1,19 +1,21 @@
 ---
 type: community
-cohesion: 0.50
-members: 4
+cohesion: 0.33
+members: 6
 ---
 
 # Community 583
 
-**Cohesion:** 0.50 - moderately connected
-**Members:** 4 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[Return True if method has an active retirement-immunity pin.]] - rationale - tracker.py
-- [[Return {method pinned_until_iso} for currently active (non-expired) pins.…]] - rationale - tracker.py
-- [[_get_strategy_pins()]] - code - tracker.py
-- [[is_strategy_pinned()]] - code - tracker.py
+- [[dot-test_past_days_computed_from_utc_today_not_local_date()]] - code - tests/test_tracker.py
+- [[dot-test_past_days_ge_5_proceeds_past_the_guard()]] - code - tests/test_tracker.py
+- [[Mock utc_today() to a date BEFORE target_date, so the fixed function's own…]] - rationale - tests/test_tracker.py
+- [[Sanity check the guard's positive case still works when utc_today() is well…]] - rationale - tests/test_tracker.py
+- [[TestFetchPreviousRunDailyUsesUtcToday]] - code - tests/test_tracker.py
+- [[backlog.txt utils.utc_today() SAYS 'USE EVERYWHERE INSTEAD OF date.today()' --…]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -23,9 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 384]]
-- 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[_get_strategy_pins()]] - degree 4, connects to 2 communities
-- [[is_strategy_pinned()]] - degree 4, connects to 2 communities
+- [[TestFetchPreviousRunDailyUsesUtcToday]] - degree 4, connects to 1 community

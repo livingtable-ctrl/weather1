@@ -1,12 +1,12 @@
 ---
 source_file: "nws.py"
 type: "rationale"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 405"
 location: "L271"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_405
 ---
 
 # Return NBM high/low for a specific date via the NWS gridpoints API. NBM…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[fetch_nbm_forecast()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/rationale #graphify/EXTRACTED #community/Community_405

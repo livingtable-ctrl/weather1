@@ -1,12 +1,12 @@
 ---
 source_file: "colors.py"
 type: "code"
-community: "Community 599"
+community: "Community 0"
 location: "L18"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_599
+  - community/Community_0
 ---
 
 # _Stub
@@ -15,4 +15,4 @@ tags:
 - [[dot-__getattr__()]] - `method` [EXTRACTED]
 - [[colors.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_599
+#graphify/code #graphify/EXTRACTED #community/Community_0

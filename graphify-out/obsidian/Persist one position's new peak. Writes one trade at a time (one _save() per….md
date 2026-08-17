@@ -1,17 +1,17 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 1"
 location: "L1389"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_1
 ---
 
 # Persist one position's new peak. Writes one trade at a time (one _save() per…
 
 ## Connections
-- [[dot-save_peak()_2]] - `rationale_for` [EXTRACTED]
+- [[dot-save_peak()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_1

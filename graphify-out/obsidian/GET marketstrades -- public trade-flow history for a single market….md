@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "rationale"
-community: "Community 86"
+community: "Community 13"
 location: "L379"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_86
+  - community/Community_13
 ---
 
 # GET /markets/trades -- public trade-flow history for a single market…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-get_trades()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_86
+#graphify/rationale #graphify/EXTRACTED #community/Community_13

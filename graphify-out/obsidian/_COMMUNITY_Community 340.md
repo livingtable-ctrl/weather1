@@ -10,17 +10,17 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-setup_method()_22]] - code - tests/test_p0_10_paper_prelog.py
-- [[dot-teardown_method()_15]] - code - tests/test_p0_10_paper_prelog.py
-- [[dot-test_failure_updates_entry_to_failed()]] - code - tests/test_p0_10_paper_prelog.py
-- [[dot-test_pending_entry_exists_before_place_paper_order()]] - code - tests/test_p0_10_paper_prelog.py
-- [[dot-test_success_updates_entry_to_filled()]] - code - tests/test_p0_10_paper_prelog.py
-- [[A 'pending' row must be in execution_log before place_paper_order is called.]] - rationale - tests/test_p0_10_paper_prelog.py
-- [[After a successful paper order, the pre-logged row must be updated to 'filled'.]] - rationale - tests/test_p0_10_paper_prelog.py
-- [[If place_paper_order raises, the pre-logged row must be updated to 'failed'.]] - rationale - tests/test_p0_10_paper_prelog.py
-- [[TestPaperPreLog]] - code - tests/test_p0_10_paper_prelog.py
-- [[_make_opp()_1]] - code - tests/test_p0_10_paper_prelog.py
-- [[_stub_prereqs()]] - code - tests/test_p0_10_paper_prelog.py
+- [[dot-_shifted_trade_and_analysis()]] - code - tests/test_early_exits.py
+- [[dot-test_exit_price_uses_liquidation_not_midpoint_no_side()]] - code - tests/test_early_exits.py
+- [[dot-test_exit_price_uses_liquidation_not_midpoint_yes_side()]] - code - tests/test_early_exits.py
+- [[dot-test_skips_cycle_on_missing_quote_not_fallback_to_entry_price()]] - code - tests/test_early_exits.py
+- [[dot-test_skips_cycle_when_no_side_liquidation_is_exactly_zero()]] - code - tests/test_early_exits.py
+- [[A missinginvalid quote must skip this cycle (matching _check_live_model_exits'…]] - rationale - tests/test_early_exits.py
+- [[TestEarlyExitPricingConvention]] - code - tests/test_early_exits.py
+- [[_check_early_exits must price a model-exit at the realizable bidask…]] - rationale - tests/test_early_exits.py
+- [[liquidation_price() returns 0.0 (NOT None) for a NO position when yes_ask=100c…]] - rationale - tests/test_early_exits.py
+- [[yes_bid=20cyes_ask=40c liquidation (realizable) = 0.20 (the bid). The old…]] - rationale - tests/test_early_exits.py
+- [[yes_bid=60cyes_ask=80c, held side NO liquidation (realizable) = 1 - yes_ask =…]] - rationale - tests/test_early_exits.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,9 +30,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 40]]
+- 2 edges to [[_COMMUNITY_Community 104]]
 
 ## Top bridge nodes
-- [[TestPaperPreLog]] - degree 6, connects to 1 community
-- [[_make_opp()_1]] - degree 4, connects to 1 community
-- [[_stub_prereqs()]] - degree 4, connects to 1 community
+- [[TestEarlyExitPricingConvention]] - degree 7, connects to 1 community
+- [[dot-_shifted_trade_and_analysis()]] - degree 6, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 3"
 location: "L53"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # Return WS thread health info for monitoring.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_ws_health()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

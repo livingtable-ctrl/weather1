@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_walk_forward.py"
 type: "rationale"
-community: "Community 37"
+community: "Community 40"
 location: "L13"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_37
+  - community/Community_40
 ---
 
 # Make a minimal trade record for backtesting.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_make_trade()_4]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_37
+#graphify/rationale #graphify/EXTRACTED #community/Community_40

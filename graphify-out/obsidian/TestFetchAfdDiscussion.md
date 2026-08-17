@@ -1,23 +1,23 @@
 ---
 source_file: "tests/test_nws_afd.py"
 type: "code"
-community: "Community 68"
+community: "Community 129"
 location: "L194"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_68
+  - community/Community_129
 ---
 
 # TestFetchAfdDiscussion
 
 ## Connections
-- [[dot-setup_method()_38]] - `method` [EXTRACTED]
+- [[dot-setup_method()_6]] - `method` [EXTRACTED]
 - [[dot-test_caches_per_office_not_per_city()]] - `method` [EXTRACTED]
 - [[dot-test_empty_present_section_returns_none()]] - `method` [EXTRACTED]
 - [[dot-test_extracts_bare_discussion_section()]] - `method` [EXTRACTED]
 - [[dot-test_extracts_qualifier_discussion_section()]] - `method` [EXTRACTED]
-- [[dot-test_fetch_exception_returns_none()_1]] - `method` [EXTRACTED]
+- [[dot-test_fetch_exception_returns_none()]] - `method` [EXTRACTED]
 - [[dot-test_negative_result_is_cached_not_refetched_every_call()]] - `method` [EXTRACTED]
 - [[dot-test_no_narrative_section_returns_none()]] - `method` [EXTRACTED]
 - [[dot-test_pil_built_from_office_code()]] - `method` [EXTRACTED]
@@ -29,4 +29,4 @@ tags:
 - [[dot-test_unknown_city_returns_none_without_network_call()]] - `method` [EXTRACTED]
 - [[test_nws_afd.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_68
+#graphify/code #graphify/EXTRACTED #community/Community_129

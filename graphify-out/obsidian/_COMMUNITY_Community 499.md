@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 499
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-constructor()]] - code - frontend/src/App.jsx
-- [[dot-getDerivedStateFromError()]] - code - frontend/src/App.jsx
-- [[dot-render()]] - code - frontend/src/App.jsx
-- [[ErrorBoundary]] - code - frontend/src/App.jsx
-- [[kalshi-dashboard package.json]] - code - frontend/package.json
-- [[main.jsx entry point]] - code - frontend/src/main.jsx
+- [[dot-test_default_min_edge_is_none_not_the_display_constant()]] - code - tests/test_cron_group_c.py
+- [[dot-test_min_edge_param_raises_the_net_edge_gate()]] - code - tests/test_cron_group_c.py
+- [[dot-test_no_edge_override_gates_on_paper_min_edge_alone()]] - code - tests/test_cron_group_c.py
+- [[Deep-review followup _cmd_cron_bodycmd_cron used to default min_edge to the…]] - rationale - tests/test_cron_group_c.py
+- [[F4 cron.py's min_edge parameter (the --edge N CLI override) was accepted but…]] - rationale - tests/test_cron_group_c.py
+- [[TestEdgeFlagWired]] - code - tests/test_cron_group_c.py
+- [[When min_edge is None (no --edge passed), the effective gate must be…]] - rationale - tests/test_cron_group_c.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 155]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[ErrorBoundary]] - degree 5, connects to 1 community
+- [[TestEdgeFlagWired]] - degree 4, connects to 1 community

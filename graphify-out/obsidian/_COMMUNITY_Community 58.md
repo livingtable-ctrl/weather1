@@ -1,53 +1,51 @@
 ---
 type: community
-cohesion: 0.10
-members: 38
+cohesion: 0.08
+members: 36
 ---
 
 # Community 58
 
-**Cohesion:** 0.10 - loosely connected
-**Members:** 38 nodes
+**Cohesion:** 0.08 - loosely connected
+**Members:** 36 nodes
 
 ## Members
-- [[dot-test_condition_type_scale_reduces_precip_relative_to_temperature()]] - code - tests/test_price_and_size.py
-- [[dot-test_consensus_flag_actually_changes_cap_behavior()]] - code - tests/test_price_and_size.py
-- [[dot-test_consensus_raises_cap_to_kelly_cap_times_mult()]] - code - tests/test_price_and_size.py
-- [[dot-test_default_consensus_cap_matches_hardcoded_033_at_default_env()]] - code - tests/test_price_and_size.py
-- [[dot-test_default_false_has_no_fallback_empty_ask_book()]] - code - tests/test_price_and_size.py
-- [[dot-test_empty_bid_book_entry_price_fallback()]] - code - tests/test_price_and_size.py
-- [[dot-test_empty_bid_book_entry_side_edge_fallback_uses_1_minus_market_prob()]] - code - tests/test_price_and_size.py
-- [[dot-test_entry_price_is_yes_ask()]] - code - tests/test_price_and_size.py
-- [[dot-test_entry_price_uses_no_ask_not_no_bid()]] - code - tests/test_price_and_size.py
-- [[dot-test_extra_kelly_scales_applied_multiplicatively()]] - code - tests/test_price_and_size.py
-- [[dot-test_net_edge_capped_at_3()]] - code - tests/test_price_and_size.py
-- [[dot-test_net_ev_and_net_edge_hand_computed()]] - code - tests/test_price_and_size.py
-- [[dot-test_no_consensus_capped_at_kelly_cap()]] - code - tests/test_price_and_size.py
-- [[dot-test_no_side_empty_bid_book_entry_side_edge_bugfix()]] - code - tests/test_price_and_size.py
-- [[dot-test_removing_ci_scale_effect_changes_output()]] - code - tests/test_price_and_size.py
-- [[dot-test_time_decay_applies_before_the_net_edge_3_cap_not_after()]] - code - tests/test_price_and_size.py
-- [[dot-test_time_decay_shrinks_edge_metrics_but_not_entry_price()]] - code - tests/test_price_and_size.py
-- [[dot-test_true_falls_back_to_market_prob_empty_ask_book()]] - code - tests/test_price_and_size.py
-- [[dot-test_yes_side_normal_book()_2]] - code - tests/test_price_and_size.py
-- [[Mutation-style checks strip a factor, confirm the output actually changes.]] - rationale - tests/test_price_and_size.py
-- [[Precipsnow's original behavior no fallback when yes_ask==0 on a YES-side…]] - rationale - tests/test_price_and_size.py
-- [[Regression for a bug the opus review caught in this consolidation the original…]] - rationale - tests/test_price_and_size.py
-- [[Shared entry-price  EV  Kelly tail for precip, snow, and temperature trade…]] - rationale - weather_markets.py
-- [[Temperature's original guard, restored via yes_side_ask_fallback=True…]] - rationale - tests/test_price_and_size.py
-- [[TestPriceAndSizeCiAdjustedKelly]] - code - tests/test_price_and_size.py
-- [[TestPriceAndSizeMutation]] - code - tests/test_price_and_size.py
-- [[TestPriceAndSizeNoSide]] - code - tests/test_price_and_size.py
-- [[TestPriceAndSizeYesSide]] - code - tests/test_price_and_size.py
-- [[TestPriceAndSizeYesSideAskFallback]] - code - tests/test_price_and_size.py
-- [[TestTemperatureTradeWiring]] - code - tests/test_price_and_size.py
-- [[Tests for weather_markets._price_and_size — the shared entry-priceEVKelly…]] - rationale - tests/test_price_and_size.py
-- [[The bug this consolidation fixed the NO-side entry_side_edge fallback (empty…]] - rationale - tests/test_price_and_size.py
-- [[The consolidation's one deliberate behavior change temperature's NO-side…]] - rationale - tests/test_price_and_size.py
-- [[Uses the METAR-locked branch to put blended_prob under direct control,…]] - rationale - tests/test_price_and_size.py
-- [[_metar_locked_temp_result()]] - code - tests/test_price_and_size.py
-- [[_price_and_size()]] - code - weather_markets.py
-- [[_prices()]] - code - tests/test_price_and_size.py
-- [[test_price_and_size.py]] - code - tests/test_price_and_size.py
+- [[dot-setup_method()_32]] - code - tests/test_calibration.py
+- [[dot-setup_method()_33]] - code - tests/test_calibration.py
+- [[dot-setup_method()_34]] - code - tests/test_calibration.py
+- [[dot-teardown_method()_24]] - code - tests/test_calibration.py
+- [[dot-teardown_method()_25]] - code - tests/test_calibration.py
+- [[dot-teardown_method()_26]] - code - tests/test_calibration.py
+- [[dot-test_below_threshold_omits_city()]] - code - tests/test_calibration.py
+- [[dot-test_below_threshold_omits_season()]] - code - tests/test_calibration.py
+- [[dot-test_calibrate_calls_update_learned_weights()]] - code - tests/test_calibration.py
+- [[dot-test_calibrate_platt_excludes_rain_only_city()]] - code - tests/test_calibration.py
+- [[dot-test_calibrate_platt_excludes_snow_only_city()]] - code - tests/test_calibration.py
+- [[dot-test_calibrate_writes_seasonal_json()]] - code - tests/test_calibration.py
+- [[dot-test_monthly_rain_rows_not_counted()]] - code - tests/test_calibration.py
+- [[dot-test_monthly_snow_rows_not_counted()]] - code - tests/test_calibration.py
+- [[dot-test_returns_weights_for_qualifying_city()]] - code - tests/test_calibration.py
+- [[dot-test_returns_weights_summing_to_one()]] - code - tests/test_calibration.py
+- [[dot-test_rows_without_source_probs_not_counted()]] - code - tests/test_calibration.py
+- [[10 predictions ( 20) → season returned with neutral uncalibrated defaults.]] - rationale - tests/test_calibration.py
+- [[10 predictions ( 50) → city absent.]] - rationale - tests/test_calibration.py
+- [[55 NYC predictions (= 50) → NYC weights present and valid.]] - rationale - tests/test_calibration.py
+- [[60 winter predictions → winter weights present and sum to 1.0.]] - rationale - tests/test_calibration.py
+- [[Generate n rows with a winter market_date (January).]] - rationale - tests/test_calibration.py
+- [[P1-9 cmd_calibrate() must call update_learned_weights_from_tracker().]] - rationale - tests/test_calibration.py
+- [[Rows missing ensemble_probnws_probclim_prob must not count toward threshold.]] - rationale - tests/test_calibration.py
+- [[Seed a minimal predictions + outcomes DB for calibration tests.]] - rationale - tests/test_calibration.py
+- [[TestCalibrateCLI]] - code - tests/test_calibration.py
+- [[TestCalibrateCityWeights]] - code - tests/test_calibration.py
+- [[TestCalibrateSeasonalWeights]] - code - tests/test_calibration.py
+- [[_make_winter_rows()]] - code - tests/test_calibration.py
+- [[_seed_db()]] - code - tests/test_calibration.py
+- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Snow Step 2 the identical…]] - rationale - tests/test_calibration.py
+- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 (review- caught, MEDIUM…]] - rationale - tests/test_calibration.py
+- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 (review- caught, defense-…]] - rationale - tests/test_calibration.py
+- [[backlog.txt Snow Step 2 the identical defense-in-depth check, mirrored for…]] - rationale - tests/test_calibration.py
+- [[cmd_calibrate writes JSON files to data when enough data exists.]] - rationale - tests/test_calibration.py
+- [[cmd_calibrate() writes dataseasonal_weights.json with calibrated weights.]] - rationale - tests/test_calibration.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -57,16 +55,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 15 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 3 edges to [[_COMMUNITY_Community 309]]
-- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
-- 1 edge to [[_COMMUNITY_Kelly Sizing Property-Based Tests]]
-- 1 edge to [[_COMMUNITY_Community 59]]
-- 1 edge to [[_COMMUNITY_Community 228]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
+- 5 edges to [[_COMMUNITY_Community 4]]
+- 5 edges to [[_COMMUNITY_Community 400]]
+- 4 edges to [[_COMMUNITY_Community 109]]
+- 2 edges to [[_COMMUNITY_Community 125]]
 
 ## Top bridge nodes
-- [[_price_and_size()]] - degree 32, connects to 4 communities
-- [[test_price_and_size.py]] - degree 17, connects to 4 communities
-- [[_prices()]] - degree 18, connects to 1 community
-- [[_metar_locked_temp_result()]] - degree 4, connects to 1 community
+- [[_seed_db()]] - degree 14, connects to 2 communities
+- [[_make_winter_rows()]] - degree 13, connects to 1 community
+- [[TestCalibrateCLI]] - degree 8, connects to 1 community
+- [[TestCalibrateSeasonalWeights]] - degree 8, connects to 1 community
+- [[TestCalibrateCityWeights]] - degree 5, connects to 1 community

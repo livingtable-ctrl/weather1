@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "code"
-community: "Community 94"
+community: "Community 32"
 location: "L39"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_94
+  - community/Community_32
 ---
 
 # add_alert()
@@ -26,9 +26,11 @@ tags:
 - [[dot-test_untriggered_alert_is_active()]] - `calls` [EXTRACTED]
 - [[Add a price alert. Args ticker Market ticker (e.g. KXHIGHNY-26APR09-T72)…]] - `rationale_for` [EXTRACTED]
 - [[ValueError]] - `calls` [INFERRED]
-- [[_load()]] - `calls` [EXTRACTED]
-- [[_save()]] - `calls` [EXTRACTED]
+- [[_cmd_alerts()]] - `calls` [EXTRACTED]
+- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_save()_1]] - `calls` [EXTRACTED]
 - [[alerts.py]] - `contains` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[test_alerts.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_94
+#graphify/code #graphify/EXTRACTED #community/Community_32

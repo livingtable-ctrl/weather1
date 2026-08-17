@@ -1,24 +1,25 @@
 ---
 type: community
-cohesion: 0.33
-members: 9
+cohesion: 0.20
+members: 10
 ---
 
 # Community 387
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 9 nodes
+**Cohesion:** 0.20 - loosely connected
+**Members:** 10 nodes
 
 ## Members
-- [[dot-test_all_none_returns_inf()]] - code - tests/test_phase3_batch_c.py
-- [[dot-test_empty_rows_returns_inf()]] - code - tests/test_phase3_batch_c.py
-- [[dot-test_none_settled_skipped()]] - code - tests/test_phase3_batch_c.py
-- [[dot-test_partial_none_skipped()]] - code - tests/test_phase3_batch_c.py
-- [[dot-test_valid_rows_computes_correctly()]] - code - tests/test_phase3_batch_c.py
-- [[Compute weighted Brier score. Rows are (e, c, n, s, weight). Skips None…]] - rationale - calibration.py
-- [[P3-17 _brier must skip rows with any None component.]] - rationale - tests/test_phase3_batch_c.py
-- [[TestBrierNoneFiltering]] - code - tests/test_phase3_batch_c.py
-- [[_brier()]] - code - calibration.py
+- [[dot-test_precip_fallback_on_exception()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_precip_uses_clim_prob_when_available()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_snow_fallback_uses_seasonal_default()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_snow_uses_clim_prob_when_available()]] - code - tests/test_phase2_batch_k.py
+- [[TestClimPriorUseClimatologicalProb]] - code - tests/test_phase2_batch_k.py
+- [[When climatological_prob raises in snow, fallback is seasonal (0.200.05).]] - rationale - tests/test_phase2_batch_k.py
+- [[When climatological_prob raises, clim_prior falls back to 0.30.]] - rationale - tests/test_phase2_batch_k.py
+- [[_analyze_precip_trade and _analyze_snow_trade must call climatological_prob.]] - rationale - tests/test_phase2_batch_k.py
+- [[_analyze_snow_trade must call climatological_prob.]] - rationale - tests/test_phase2_batch_k.py
+- [[clim_prior in precip blend should be 0.50 when climatological_prob returns 0.50.]] - rationale - tests/test_phase2_batch_k.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,9 +29,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 72]]
-- 2 edges to [[_COMMUNITY_Community 118]]
+- 1 edge to [[_COMMUNITY_Community 68]]
 
 ## Top bridge nodes
-- [[_brier()]] - degree 9, connects to 2 communities
-- [[TestBrierNoneFiltering]] - degree 7, connects to 1 community
+- [[TestClimPriorUseClimatologicalProb]] - degree 6, connects to 1 community

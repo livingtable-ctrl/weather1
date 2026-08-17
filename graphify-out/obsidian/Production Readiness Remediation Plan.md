@@ -1,11 +1,11 @@
 ---
 source_file: "AUDIT_PLAN.md"
 type: "document"
-community: "ML Bias Correction & Audit Plans"
+community: "Community 5"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_5
 ---
 
 # Production Readiness Remediation Plan
@@ -15,4 +15,4 @@ tags:
 - [[analyze_trade()]] - `references` [EXTRACTED]
 - [[weather_markets.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/document #graphify/EXTRACTED #community/Community_5

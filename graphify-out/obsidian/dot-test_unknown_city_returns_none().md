@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_http.py"
 type: "code"
-community: "Community 142"
+community: "Community 165"
 location: "L144"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_142
+  - community/Community_165
 ---
 
 # .test_unknown_city_returns_none()
@@ -16,4 +16,4 @@ tags:
 - [[Unknown city should return None without making any HTTP calls.]] - `rationale_for` [EXTRACTED]
 - [[get_weather_forecast()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_142
+#graphify/code #graphify/EXTRACTED #community/Community_165

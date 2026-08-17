@@ -1,17 +1,18 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 459"
+community: "Community 189"
 location: "L1429"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_459
+  - community/Community_189
 ---
 
 # .test_same_city_same_date_reduces_to_0_25()
 
 ## Connections
 - [[TestCorrKellyScale]] - `method` [EXTRACTED]
+- [[paper.corr_kelly_scale]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_459
+#graphify/code #graphify/EXTRACTED #community/Community_189

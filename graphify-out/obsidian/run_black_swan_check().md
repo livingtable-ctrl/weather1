@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 3"
 location: "L642"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # run_black_swan_check()
@@ -18,6 +18,8 @@ tags:
 - [[alerts.py]] - `contains` [EXTRACTED]
 - [[check_black_swan_conditions()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
-- [[test_cron_integration.py_1]] - `calls` [EXTRACTED]
+- [[get_state_snapshot()]] - `calls` [EXTRACTED]
+- [[load_paper_trades()]] - `calls` [EXTRACTED]
+- [[test_cron_integration.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_3

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_http.py"
 type: "rationale"
-community: "Community 142"
+community: "Community 165"
 location: "L129"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_142
+  - community/Community_165
 ---
 
 # A dead model returns HTTP 200 with every value null — this must be treated…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_dead_model_all_null_response_treated_as_failure()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_142
+#graphify/rationale #graphify/EXTRACTED #community/Community_165

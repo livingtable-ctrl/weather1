@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L1557"
+community: "Community 5"
+location: "L1659"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_5
 ---
 
 # batch_prewarm_forecasts()
@@ -19,8 +19,11 @@ tags:
 - [[_run_batch_prewarm_for_pairs()]] - `calls` [EXTRACTED]
 - [[_save_forecast_disk_entry()]] - `calls` [EXTRACTED]
 - [[_ttl_until_next_cycle()]] - `calls` [EXTRACTED]
+- [[cmd_brief()]] - `calls` [EXTRACTED]
+- [[cmd_today()]] - `calls` [EXTRACTED]
 - [[is_all_null()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[trade_cycle.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_5

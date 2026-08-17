@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/reference/trades.js"
 type: "code"
-community: "Community 495"
+community: "Community 536"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_495
+  - community/Community_536
 ---
 
 # reference/trades.js
@@ -19,4 +19,4 @@ tags:
 - [[renderPagination()_1]] - `contains` [EXTRACTED]
 - [[renderSummary()_3]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_495
+#graphify/code #graphify/EXTRACTED #community/Community_536

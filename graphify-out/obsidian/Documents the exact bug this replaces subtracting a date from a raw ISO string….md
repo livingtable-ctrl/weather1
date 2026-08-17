@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_feature_importance_days_out.py"
 type: "rationale"
-community: "Community 364"
+community: "Community 144"
 location: "L59"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_364
+  - community/Community_144
 ---
 
 # Documents the exact bug this replaces: subtracting a date from a raw ISO string…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_regression_string_minus_date_would_have_raised()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_364
+#graphify/rationale #graphify/EXTRACTED #community/Community_144

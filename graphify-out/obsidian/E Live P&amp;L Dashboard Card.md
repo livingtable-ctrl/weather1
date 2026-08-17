@@ -1,12 +1,12 @@
 ---
 source_file: "docs/superpowers/specs/2026-04-10-live-order-lifecycle-design.md"
 type: "document"
-community: "Community 104"
+community: "Community 172"
 location: "Design 5"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_104
+  - community/Community_172
 ---
 
 # #E Live P&amp;L Dashboard Card
@@ -16,4 +16,4 @@ tags:
 - [[staticdashboard.js_1]] - `references` [EXTRACTED]
 - [[web_app.py Module]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_104
+#graphify/document #graphify/EXTRACTED #community/Community_172

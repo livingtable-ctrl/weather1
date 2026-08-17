@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_menu_ux.py"
 type: "code"
-community: "Community 305"
+community: "Community 309"
 location: "L183"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_305
+  - community/Community_309
 ---
 
 # .test_exit_signals_closes_when_user_says_yes()
@@ -16,4 +16,4 @@ tags:
 - [[TestExitSignals]] - `method` [EXTRACTED]
 - [[When user says y, close_paper_early must be called with (trade_id,…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_305
+#graphify/code #graphify/EXTRACTED #community/Community_309

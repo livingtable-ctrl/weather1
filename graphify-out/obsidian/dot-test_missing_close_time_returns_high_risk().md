@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Community 350"
+community: "Community 355"
 location: "L314"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_350
+  - community/Community_355
 ---
 
 # .test_missing_close_time_returns_high_risk()
@@ -16,4 +16,4 @@ tags:
 - [[TestTimeRisk]] - `method` [EXTRACTED]
 - [[_time_risk()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_350
+#graphify/code #graphify/EXTRACTED #community/Community_355

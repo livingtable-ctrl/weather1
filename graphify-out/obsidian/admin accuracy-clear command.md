@@ -1,11 +1,11 @@
 ---
 source_file: "COMMANDS.md"
 type: "document"
-community: "Community 693"
+community: "Community 117"
 tags:
   - graphify/document
-  - graphify/INFERRED
-  - community/Community_693
+  - graphify/EXTRACTED
+  - community/Community_117
 ---
 
 # admin accuracy-clear command
@@ -14,4 +14,4 @@ tags:
 - [[TestAccuracyHaltOverride]] - `references` [INFERRED]
 - [[admin accuracy-override command]] - `conceptually_related_to` [EXTRACTED]
 
-#graphify/document #graphify/INFERRED #community/Community_693
+#graphify/document #graphify/EXTRACTED #community/Community_117

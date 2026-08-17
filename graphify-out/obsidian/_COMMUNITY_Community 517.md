@@ -1,21 +1,22 @@
 ---
 type: community
 cohesion: 0.33
-members: 6
+members: 7
 ---
 
 # Community 517
 
 **Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_future_trade_not_skipped()]] - code - tests/test_phase2_batch_h.py
-- [[dot-test_past_date_skip_uses_utc()]] - code - tests/test_phase2_batch_h.py
-- [[A trade dated in the future must NOT be skipped.]] - rationale - tests/test_phase2_batch_h.py
-- [[A trade dated yesterday UTC must be skipped.]] - rationale - tests/test_phase2_batch_h.py
-- [[P2-25 monte_carlo skips past-date trades using UTC date.]] - rationale - tests/test_phase2_batch_h.py
-- [[TestMonteCarloUtcDate]] - code - tests/test_phase2_batch_h.py
+- [[dot-_make_trade()_1]] - code - tests/test_phase2_batch_a.py
+- [[dot-test_is_streak_paused_uses_settled_at_for_magnitude_check()]] - code - tests/test_phase2_batch_a.py
+- [[dot-test_sort_key_falls_back_to_entered_at_when_no_settled_at()]] - code - tests/test_phase2_batch_a.py
+- [[P2-3 is_streak_paused must sort by settled_at when computing streak PnL.…]] - rationale - tests/test_phase2_batch_a.py
+- [[P2-3 is_streak_paused must sort trades by settled_at, not entered_at.]] - rationale - tests/test_phase2_batch_a.py
+- [[TestStreakPausedSortOrder]] - code - tests/test_phase2_batch_a.py
+- [[Trades without settled_at fall back to entered_at without crashing.]] - rationale - tests/test_phase2_batch_a.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
+- 1 edge to [[_COMMUNITY_Community 15]]
 
 ## Top bridge nodes
-- [[TestMonteCarloUtcDate]] - degree 4, connects to 1 community
+- [[TestStreakPausedSortOrder]] - degree 5, connects to 1 community

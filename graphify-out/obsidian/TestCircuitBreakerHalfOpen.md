@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_b.py"
 type: "code"
-community: "Community 84"
+community: "Community 139"
 location: "L173"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_84
+  - community/Community_139
 ---
 
 # TestCircuitBreakerHalfOpen
@@ -23,6 +23,6 @@ tags:
 - [[CircuitBreaker]] - `uses` [INFERRED]
 - [[CircuitOpenError]] - `uses` [INFERRED]
 - [[P3-6 HALF-OPEN must allow exactly one probe and reopen on probe failure.]] - `rationale_for` [EXTRACTED]
-- [[Phase 3 Batch B Circuit Breaker Tests]] - `contains` [EXTRACTED]
+- [[test_phase3_batch_b.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_84
+#graphify/code #graphify/EXTRACTED #community/Community_139

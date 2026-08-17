@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_b.py"
 type: "code"
-community: "Community 226"
+community: "Community 7"
 location: "L112"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_226
+  - community/Community_7
 ---
 
 # .test_get_uses_read_cb()
@@ -16,4 +16,4 @@ tags:
 - [[TestKalshiCircuitBreakerSplit]] - `method` [EXTRACTED]
 - [[_request_with_retry()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_226
+#graphify/code #graphify/EXTRACTED #community/Community_7

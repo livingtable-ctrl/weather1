@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_positions.py"
 type: "code"
-community: "Community 45"
+community: "Community 57"
 location: "L46"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Community_57
 ---
 
 # .test_update_peak_profits_is_the_same_object_everywhere()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestSharedAcrossPaperAndLive]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_45
+#graphify/code #graphify/EXTRACTED #community/Community_57

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_g.py"
 type: "code"
-community: "Community 248"
+community: "Community 626"
 location: "L18"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_248
+  - community/Community_626
 ---
 
 # TestProdStartupWarning
@@ -16,6 +16,6 @@ tags:
 - [[dot-test_main_logs_prod_warning()]] - `method` [EXTRACTED]
 - [[dot-test_no_warning_in_demo()]] - `method` [EXTRACTED]
 - [[P2-16 KALSHI_ENV=prod must log a loud WARNING banner.]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Batch G Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_g.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_248
+#graphify/code #graphify/EXTRACTED #community/Community_626

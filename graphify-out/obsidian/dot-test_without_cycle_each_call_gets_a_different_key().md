@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 511"
+community: "Community 570"
 location: "L463"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_511
+  - community/Community_570
 ---
 
 # .test_without_cycle_each_call_gets_a_different_key()
 
 ## Connections
-- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
+- [[dot-_make_client()]] - `calls` [EXTRACTED]
 - [[Documents the pre-existing (and still correct for a genuinely distinct manual…]] - `rationale_for` [EXTRACTED]
 - [[TestPlaceMakerOrderIdempotency]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_511
+#graphify/code #graphify/EXTRACTED #community/Community_570

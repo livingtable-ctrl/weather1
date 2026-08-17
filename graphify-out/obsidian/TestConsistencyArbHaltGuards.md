@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Trade Cycle Engine & Arbitrage Gates"
+community: "Community 17"
 location: "L508"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Trade_Cycle_Engine__Arbitrage_Gates
+  - community/Community_17
 ---
 
 # TestConsistencyArbHaltGuards
@@ -19,4 +19,4 @@ tags:
 - [[Violation]] - `uses` [INFERRED]
 - [[test_p1_remaining.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Trade_Cycle_Engine__Arbitrage_Gates
+#graphify/code #graphify/EXTRACTED #community/Community_17

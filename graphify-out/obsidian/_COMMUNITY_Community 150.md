@@ -1,36 +1,36 @@
 ---
 type: community
-cohesion: 0.10
+cohesion: 0.13
 members: 21
 ---
 
 # Community 150
 
-**Cohesion:** 0.10 - loosely connected
+**Cohesion:** 0.13 - loosely connected
 **Members:** 21 nodes
 
 ## Members
-- [[dot-_reload()]] - code - tests/test_paper.py
-- [[dot-setUp()_4]] - code - tests/test_paper.py
-- [[dot-tearDown()_4]] - code - tests/test_paper.py
-- [[dot-test_balance_decreases_after_loss()]] - code - tests/test_paper.py
-- [[dot-test_balance_decreases_after_order()]] - code - tests/test_paper.py
-- [[dot-test_get_performance_empty()]] - code - tests/test_paper.py
-- [[dot-test_get_performance_with_win()]] - code - tests/test_paper.py
-- [[dot-test_initial_balance_is_1000()]] - code - tests/test_paper.py
-- [[dot-test_insufficient_balance_raises()]] - code - tests/test_paper.py
-- [[dot-test_kelly_bet_compounds_after_win()]] - code - tests/test_paper.py
-- [[dot-test_kelly_bet_dollars_caps_at_50_dollars()]] - code - tests/test_paper.py
-- [[dot-test_kelly_bet_dollars_floors_at_zero()]] - code - tests/test_paper.py
-- [[dot-test_kelly_bet_dollars_scales_with_balance()]] - code - tests/test_paper.py
-- [[dot-test_kelly_quantity_basic()]] - code - tests/test_paper.py
-- [[dot-test_kelly_quantity_no_truncation_to_zero()]] - code - tests/test_paper.py
-- [[dot-test_kelly_quantity_zero_fraction_returns_zero()]] - code - tests/test_paper.py
-- [[dot-test_kelly_quantity_zero_price_returns_zero()]] - code - tests/test_paper.py
-- [[dot-test_reset_restores_starting_balance()]] - code - tests/test_paper.py
-- [[dot-test_settle_nonexistent_trade_raises()]] - code - tests/test_paper.py
-- [[L8-B int() truncation silently gave 0 when dollars  price. Scenario cap…]] - rationale - tests/test_paper.py
-- [[TestKellyCompounding]] - code - tests/test_paper.py
+- [[dot-test_climate_files_are_never_deleted()]] - code - tests/test_cleanup_data_dir.py
+- [[dot-test_dot_files_are_never_deleted()]] - code - tests/test_cleanup_data_dir.py
+- [[dot-test_fresh_ephemeral_file_is_kept()]] - code - tests/test_cleanup_data_dir.py
+- [[dot-test_permanent_file_set_covers_expected_names()]] - code - tests/test_cleanup_data_dir.py
+- [[dot-test_permanent_files_are_never_deleted()]] - code - tests/test_cleanup_data_dir.py
+- [[dot-test_stale_ephemeral_file_is_deleted()]] - code - tests/test_cleanup_data_dir.py
+- [[A stale non-permanent JSON file older than 2 days must be removed.]] - rationale - tests/test_cleanup_data_dir.py
+- [[An ephemeral file modified within 2 days must not be deleted.]] - rationale - tests/test_cleanup_data_dir.py
+- [[Every file in _PERMANENT_DATA_FILES must survive cleanup even if stale.]] - rationale - tests/test_cleanup_data_dir.py
+- [[Files starting with '.' must survive cleanup.]] - rationale - tests/test_cleanup_data_dir.py
+- [[Files starting with climate_ must survive cleanup.]] - rationale - tests/test_cleanup_data_dir.py
+- [[Path_5]] - code
+- [[Redirect main.DATA_DIR (via __file__ resolution) to a temp directory.]] - rationale - tests/test_cleanup_data_dir.py
+- [[Same logic as main.cleanup_data_dir but using the supplied data_dir.]] - rationale - tests/test_cleanup_data_dir.py
+- [[TestCleanupDataDir]] - code - tests/test_cleanup_data_dir.py
+- [[Write a JSON file and backdate its mtime by 3 days.]] - rationale - tests/test_cleanup_data_dir.py
+- [[_PERMANENT_DATA_FILES must include the key calibration files.]] - rationale - tests/test_cleanup_data_dir.py
+- [[_patched_cleanup()]] - code - tests/test_cleanup_data_dir.py
+- [[_write_stale()]] - code - tests/test_cleanup_data_dir.py
+- [[data_dir()]] - code - tests/test_cleanup_data_dir.py
+- [[fixture_3]] - code
 
 ## Live Query (requires Dataview plugin)
 
@@ -40,8 +40,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 56]]
-- 1 edge to [[_COMMUNITY_Community 45]]
+- 4 edges to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestKellyCompounding]] - degree 21, connects to 2 communities
+- [[_patched_cleanup()]] - degree 9, connects to 1 community
+- [[TestCleanupDataDir]] - degree 7, connects to 1 community
+- [[_write_stale()]] - degree 7, connects to 1 community
+- [[data_dir()]] - degree 4, connects to 1 community

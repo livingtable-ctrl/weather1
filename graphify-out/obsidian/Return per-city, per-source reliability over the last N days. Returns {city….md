@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Black Swan Halt State"
-location: "L3445"
+community: "Community 0"
+location: "L3500"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_0
 ---
 
 # Return per-city, per-source reliability over the last N days. Returns {city:…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_source_reliability()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

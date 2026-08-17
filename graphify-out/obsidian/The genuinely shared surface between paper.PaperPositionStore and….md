@@ -1,12 +1,12 @@
 ---
 source_file: "positions.py"
 type: "rationale"
-community: "Community 145"
+community: "Community 12"
 location: "L65"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_145
+  - community/Community_12
 ---
 
 # The genuinely shared surface between paper.PaperPositionStore and…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[PositionStore]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_145
+#graphify/rationale #graphify/EXTRACTED #community/Community_12

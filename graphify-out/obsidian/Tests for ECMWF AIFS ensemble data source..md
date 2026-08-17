@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ecmwf.py"
 type: "rationale"
-community: "ML Bias Correction & Audit Plans"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_4
 ---
 
 # Tests for ECMWF AIFS ensemble data source.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_ecmwf.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

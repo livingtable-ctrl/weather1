@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "code"
-community: "Community 113"
-location: "L129"
+community: "Community 101"
+location: "L340"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_113
+  - community/Community_101
 ---
 
 # TestApplyTemperatureScaling
@@ -24,7 +24,11 @@ tags:
 - [[dot-test_per_condition_T_used_when_available()]] - `method` [EXTRACTED]
 - [[dot-test_sameday_no_fallback_to_global()]] - `method` [EXTRACTED]
 - [[dot-test_sameday_uses_sameday_T()]] - `method` [EXTRACTED]
+- [[TestTrainAllTemperatureScalingHourlyPool]] - `conceptually_related_to` [INFERRED]
 - [[Tests for apply_temperature_scaling — the per-condition calibration step. Each…]] - `rationale_for` [EXTRACTED]
+- [[apply_temperature_scaling()]] - `calls` [EXTRACTED]
+- [[backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 2 handoff]] - `references` [EXTRACTED]
+- [[temperature_scale.json (production T-scaling table)]] - `shares_data_with` [INFERRED]
 - [[test_ml_bias.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_113
+#graphify/code #graphify/EXTRACTED #community/Community_101

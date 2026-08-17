@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_integration.py"
 type: "rationale"
-community: "Cron Integration Tests"
+community: "Community 31"
 location: "L689"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Cron_Integration_Tests
+  - community/Community_31
 ---
 
 # An anomaly halt (declined in non-interactive/loop mode) must still settle.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_anomaly_halt_still_runs_settlement()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Cron_Integration_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_31

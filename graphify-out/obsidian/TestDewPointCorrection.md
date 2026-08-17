@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "code"
-community: "Community 339"
+community: "Community 280"
 location: "L852"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_339
+  - community/Community_280
 ---
 
 # TestDewPointCorrection
@@ -20,4 +20,4 @@ tags:
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[test_metar.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_339
+#graphify/code #graphify/EXTRACTED #community/Community_280

@@ -1,11 +1,11 @@
 ---
 source_file: "COMMANDS.md"
 type: "document"
-community: "Community 693"
+community: "Community 186"
 tags:
   - graphify/document
   - graphify/INFERRED
-  - community/Community_693
+  - community/Community_186
 ---
 
 # watch command
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[TestAutoPlaceTradeGuards]] - `conceptually_related_to` [INFERRED]
 
-#graphify/document #graphify/INFERRED #community/Community_693
+#graphify/document #graphify/INFERRED #community/Community_186

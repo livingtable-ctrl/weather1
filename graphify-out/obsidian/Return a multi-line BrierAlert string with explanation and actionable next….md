@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L6336"
+community: "Community 3"
+location: "L6391"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # Return a multi-line BrierAlert string with explanation and actionable next…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[format_brier_alert()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

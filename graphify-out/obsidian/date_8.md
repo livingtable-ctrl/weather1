@@ -1,16 +1,17 @@
 ---
 source_file: ""
 type: "code"
-community: "Climatology & Climate Index Fetching"
+community: "Community 405"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_405
 ---
 
 # date
 
 ## Connections
-- [[temperature_adjustment()]] - `references` [EXTRACTED]
+- [[fetch_nbm_forecast()]] - `references` [EXTRACTED]
+- [[nws_prob()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_405

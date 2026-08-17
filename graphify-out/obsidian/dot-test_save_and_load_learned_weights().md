@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 276"
+community: "Community 277"
 location: "L681"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_276
+  - community/Community_277
 ---
 
 # .test_save_and_load_learned_weights()
@@ -15,4 +15,4 @@ tags:
 - [[Round-trip save then load returns identical dict.]] - `rationale_for` [EXTRACTED]
 - [[TestLearnedWeights]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_276
+#graphify/code #graphify/EXTRACTED #community/Community_277

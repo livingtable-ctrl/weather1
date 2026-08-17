@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_regression.py"
 type: "code"
-community: "Community 284"
+community: "Community 287"
 location: "L130"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_284
+  - community/Community_287
 ---
 
 # .test_brier_score_no_data_returns_none()
@@ -15,4 +15,4 @@ tags:
 - [[TestBrierScoreComputation]] - `method` [EXTRACTED]
 - [[brier_score() on empty DB returns None (not 0.0, not error).]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_284
+#graphify/code #graphify/EXTRACTED #community/Community_287

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "rationale"
-community: "METAR Lock-In Confidence Tests"
+community: "Community 22"
 location: "L34"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/METAR_Lock-In_Confidence_Tests
+  - community/Community_22
 ---
 
 # Drive _metar_lock_in with fully mocked dependencies.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-_call_metar_lock_in()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/METAR_Lock-In_Confidence_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_22

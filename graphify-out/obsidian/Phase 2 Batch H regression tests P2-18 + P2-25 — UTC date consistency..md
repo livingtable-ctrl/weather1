@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_h.py"
 type: "rationale"
-community: "Climatology & Climate Index Fetching"
+community: "Community 23"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_23
 ---
 
 # Phase 2 Batch H regression tests: P2-18 + P2-25 — UTC date consistency.
 
 ## Connections
-- [[Phase 2 Batch H Regression Tests]] - `rationale_for` [EXTRACTED]
+- [[test_phase2_batch_h.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/rationale #graphify/EXTRACTED #community/Community_23

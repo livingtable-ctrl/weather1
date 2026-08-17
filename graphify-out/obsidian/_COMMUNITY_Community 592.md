@@ -1,18 +1,20 @@
 ---
 type: community
-cohesion: 0.67
-members: 3
+cohesion: 0.40
+members: 5
 ---
 
 # Community 592
 
-**Cohesion:** 0.67 - moderately connected
-**Members:** 3 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_keyboard_interrupt_in_analyze_returns_to_menu()]] - code - tests/test_menu_ux.py
-- [[KeyboardInterrupt inside cmd_analyze must not kill the menu.]] - rationale - tests/test_menu_ux.py
-- [[TestCancelAnalyze]] - code - tests/test_menu_ux.py
+- [[Grade Audit Module Doc tracker.py]] - document - docs/grade_audit/modules/tracker.md
+- [[Mock market in conftest must include every field production code reads.]] - rationale - tests/test_schema_drift.py
+- [[Schema drift detection ensure mock market data used in conftest matches the…]] - rationale - tests/test_schema_drift.py
+- [[test_conftest_mock_market_has_all_required_fields()]] - code - tests/test_schema_drift.py
+- [[test_schema_drift.py]] - code - tests/test_schema_drift.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -22,7 +24,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
+- 1 edge to [[_COMMUNITY_Community 35]]
+- 1 edge to [[_COMMUNITY_Community 41]]
 
 ## Top bridge nodes
-- [[TestCancelAnalyze]] - degree 2, connects to 1 community
+- [[Grade Audit Module Doc tracker.py]] - degree 3, connects to 2 communities

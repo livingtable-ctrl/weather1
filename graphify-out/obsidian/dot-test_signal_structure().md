@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_settlement_monitor.py"
 type: "code"
-community: "METAR Settlement Monitoring"
+community: "Community 8"
 location: "L49"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_8
 ---
 
 # .test_signal_structure()
@@ -16,4 +16,4 @@ tags:
 - [[build_settlement_signal returns dict with required keys.]] - `rationale_for` [EXTRACTED]
 - [[build_settlement_signal()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/code #graphify/EXTRACTED #community/Community_8

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Ensemble Weight Blending Tests"
-location: "L2511"
+community: "Community 11"
+location: "L2880"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_11
 ---
 
 # get_weather_forecast() should try NBM + weatherapi before Pirate Weather.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestGetWeatherForecastFallbackChain]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_11

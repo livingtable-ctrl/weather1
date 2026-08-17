@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 207"
+community: "Community 81"
 location: "L77"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_207
+  - community/Community_81
 ---
 
 # TestParseMarketPrice
@@ -18,8 +18,9 @@ tags:
 - [[dot-test_l2d_zero_bid_not_bypassed_by_or()]] - `method` [EXTRACTED]
 - [[dot-test_mid_falls_back_to_yes_bid_when_no_ask()]] - `method` [EXTRACTED]
 - [[dot-test_missing_fields_fall_back_to_zero()]] - `method` [EXTRACTED]
-- [[dot-test_returns_dict_with_expected_keys()]] - `method` [EXTRACTED]
+- [[dot-test_returns_dict_with_expected_keys()_1]] - `method` [EXTRACTED]
 - [[dot-test_string_prices_parsed()]] - `method` [EXTRACTED]
+- [[parse_market_price()]] - `calls` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_207
+#graphify/code #graphify/EXTRACTED #community/Community_81

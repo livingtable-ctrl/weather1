@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 198"
+community: "Community 30"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_198
+  - community/Community_30
 ---
 
 # kalshi_ws.py
@@ -27,13 +27,17 @@ tags:
 - [[get_cached_book()]] - `contains` [EXTRACTED]
 - [[get_cached_mid_price()]] - `contains` [EXTRACTED]
 - [[get_ws_health()]] - `contains` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
 - [[kalshi_ws.py File Grade median 710, 3 RF1 violations]] - `references` [EXTRACTED]
 - [[kalshi_ws.py Grade Audit]] - `references` [EXTRACTED]
+- [[logging]] - `imports` [EXTRACTED]
 - [[parse_message()]] - `contains` [EXTRACTED]
 - [[paths.py]] - `imports_from` [EXTRACTED]
 - [[read_orderbook_cache()]] - `contains` [EXTRACTED]
 - [[read_orderbook_cache() RF1 Zero Log on Exception (510)]] - `references` [EXTRACTED]
+- [[threading]] - `imports` [EXTRACTED]
+- [[time]] - `imports` [EXTRACTED]
 - [[update_orderbook_cache()]] - `contains` [EXTRACTED]
 - [[update_orderbook_cache() RF1 DEBUG on Disk Write Failure (510)]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_198
+#graphify/code #graphify/EXTRACTED #community/Community_30

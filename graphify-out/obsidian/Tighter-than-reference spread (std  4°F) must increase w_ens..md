@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "rationale"
-community: "Community 282"
+community: "Community 77"
 location: "L47"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_282
+  - community/Community_77
 ---
 
 # Tighter-than-reference spread (std < 4°F) must increase w_ens.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_tight_spread_boosts_ensemble()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_282
+#graphify/rationale #graphify/EXTRACTED #community/Community_77

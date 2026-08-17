@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "code"
-community: "Community 576"
+community: "Community 426"
 location: "L684"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_576
+  - community/Community_426
 ---
 
 # .test_brier_alert_threshold_default()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPhase10ConfigKeys]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_576
+#graphify/code #graphify/EXTRACTED #community/Community_426

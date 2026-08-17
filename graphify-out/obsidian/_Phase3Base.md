@@ -1,20 +1,20 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 313"
+community: "Community 10"
 location: "L979"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_313
+  - community/Community_10
 ---
 
 # _Phase3Base
 
 ## Connections
 - [[dot-_add()]] - `method` [EXTRACTED]
-- [[dot-setUp()_20]] - `method` [EXTRACTED]
-- [[dot-tearDown()_19]] - `method` [EXTRACTED]
+- [[dot-setUp()]] - `method` [EXTRACTED]
+- [[dot-tearDown()]] - `method` [EXTRACTED]
 - [[Shared setUptearDown for Phase 3 test classes.]] - `rationale_for` [EXTRACTED]
 - [[TestBrierSkillScore]] - `inherits` [EXTRACTED]
 - [[TestCalibrationByCityConditionType]] - `inherits` [EXTRACTED]
@@ -29,4 +29,4 @@ tags:
 - [[TestOptimalThresholdGuard20]] - `inherits` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_313
+#graphify/code #graphify/EXTRACTED #community/Community_10

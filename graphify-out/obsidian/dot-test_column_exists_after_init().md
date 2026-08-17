@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 287"
+community: "Community 291"
 location: "L2855"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_287
+  - community/Community_291
 ---
 
 # .test_column_exists_after_init()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestIsProbationColumn]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_287
+#graphify/code #graphify/EXTRACTED #community/Community_291

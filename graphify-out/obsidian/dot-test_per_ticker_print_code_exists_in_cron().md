@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_trade_updates.py"
 type: "code"
-community: "Community 253"
+community: "Community 251"
 location: "L110"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_253
+  - community/Community_251
 ---
 
 # .test_per_ticker_print_code_exists_in_cron()
@@ -15,4 +15,4 @@ tags:
 - [[TestCronPrintPlacedTrades]] - `method` [EXTRACTED]
 - [[cron.py must track placement count and include it in the run summary.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_253
+#graphify/code #graphify/EXTRACTED #community/Community_251

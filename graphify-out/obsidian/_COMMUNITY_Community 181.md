@@ -1,32 +1,34 @@
 ---
 type: community
-cohesion: 0.13
-members: 17
+cohesion: 0.11
+members: 19
 ---
 
 # Community 181
 
-**Cohesion:** 0.13 - loosely connected
-**Members:** 17 nodes
+**Cohesion:** 0.11 - loosely connected
+**Members:** 19 nodes
 
 ## Members
-- [[49 Load city-pair correlations from datacorrelations.json. Returns a…]] - rationale - monte_carlo.py
-- [[49 Persist city-pair correlations to datacorrelations.json. Keys may be…]] - rationale - monte_carlo.py
-- [[49 Read datalearned_correlations.json and return a frozenset-keyed dict.…]] - rationale - monte_carlo.py
-- [[49 Return the pairwise correlation for two cities. Tries dynamic correlations…]] - rationale - monte_carlo.py
-- [[Grade Audit Module Doc monte_carlo.py]] - document - docs/grade_audit/modules/monte_carlo.md
-- [[I9 days_out Thread-Through]] - document - docs/grade_audit/outputs
-- [[Monte Carlo simulation for paper trading portfolio. Simulates N random outcome…]] - rationale - monte_carlo.py
-- [[_load_dynamic_correlations()]] - code - monte_carlo.py
-- [[_load_dynamic_correlations() RF1 Bare Except (610)]] - document - docs/grade_audit/outputs/monte_carlo.py.md
-- [[get_city_correlation()]] - code - monte_carlo.py
-- [[load_correlations_from_backtest()]] - code - monte_carlo.py
-- [[load_correlations_from_backtest() RF1 Bare Except (610)]] - document - docs/grade_audit/outputs/monte_carlo.py.md
-- [[monte_carlo.py]] - code - monte_carlo.py
-- [[monte_carlo.py File Grade mixed, 4 functions flagged fix-before-live]] - document - docs/grade_audit/outputs/monte_carlo.py.md
-- [[monte_carlo.py Grade Audit]] - document - docs/grade_audit/outputs/monte_carlo.py.md
-- [[save_correlations()]] - code - monte_carlo.py
-- [[simulate_portfolio() AC3 FAIL days_out Never Read (610)]] - document - docs/grade_audit/outputs/monte_carlo.py.md
+- [[dot-setup_method()_15]] - code - tests/test_phase2_batch_d.py
+- [[dot-test_6h_fallback_converts_correctly()]] - code - tests/test_phase2_batch_d.py
+- [[dot-test_cache_expires_after_obs_ttl()]] - code - tests/test_phase2_batch_d.py
+- [[dot-test_circuit_breaker_open_returns_none()]] - code - tests/test_phase2_batch_d.py
+- [[dot-test_exception_triggers_circuit_breaker_failure()]] - code - tests/test_phase2_batch_d.py
+- [[dot-test_precip_cache_exported()]] - code - tests/test_phase2_batch_d.py
+- [[dot-test_result_cached_within_obs_ttl()]] - code - tests/test_phase2_batch_d.py
+- [[dot-test_thread_safe_no_errors()]] - code - tests/test_phase2_batch_d.py
+- [[A fetch exception must call record_failure on the circuit breaker.]] - rationale - tests/test_phase2_batch_d.py
+- [[After OBS_TTL the function must re-fetch.]] - rationale - tests/test_phase2_batch_d.py
+- [[Concurrent calls for different cities must not raise.]] - rationale - tests/test_phase2_batch_d.py
+- [[P2-15 get_live_precip_obs must have caching, thread safety, and circuit…]] - rationale - tests/test_phase2_batch_d.py
+- [[Reset nws circuit breaker and precip cache to clean state.]] - rationale - tests/test_phase2_batch_d.py
+- [[Second call within OBS_TTL must not fetch from network.]] - rationale - tests/test_phase2_batch_d.py
+- [[TestGetLivePrecipObs]] - code - tests/test_phase2_batch_d.py
+- [[When circuit is open, must return None without fetching.]] - rationale - tests/test_phase2_batch_d.py
+- [[_precip_cache must exist as a module-level ForecastCache in nws.]] - rationale - tests/test_phase2_batch_d.py
+- [[_reset_nws_cb()]] - code - tests/test_phase2_batch_d.py
+- [[precipitationLast6Hours must divide by 6 and convert mm→inches.]] - rationale - tests/test_phase2_batch_d.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -36,18 +38,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 195]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Community 87]]
-- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 328]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
+- 2 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 9]]
 
 ## Top bridge nodes
-- [[monte_carlo.py]] - degree 22, connects to 8 communities
-- [[save_correlations()]] - degree 3, connects to 1 community
-- [[load_correlations_from_backtest() RF1 Bare Except (610)]] - degree 2, connects to 1 community
-- [[_load_dynamic_correlations() RF1 Bare Except (610)]] - degree 2, connects to 1 community
+- [[TestGetLivePrecipObs]] - degree 11, connects to 2 communities
+- [[_reset_nws_cb()]] - degree 3, connects to 1 community

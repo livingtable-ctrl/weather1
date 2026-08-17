@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 291"
-location: "L4575"
+community: "Community 295"
+location: "L4944"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_291
+  - community/Community_295
 ---
 
 # .test_model_absent_when_both_city_and_global_too_thin()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestModelBias]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_291
+#graphify/code #graphify/EXTRACTED #community/Community_295

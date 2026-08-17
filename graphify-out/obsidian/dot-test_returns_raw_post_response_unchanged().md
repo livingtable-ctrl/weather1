@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 100"
+community: "Community 106"
 location: "L339"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_100
+  - community/Community_106
 ---
 
 # .test_returns_raw_post_response_unchanged()
 
 ## Connections
-- [[dot-_make_client()_1]] - `calls` [EXTRACTED]
+- [[dot-_make_client()]] - `calls` [EXTRACTED]
 - [[No get_order() follow-up (unlike place_order) -- the amend response already…]] - `rationale_for` [EXTRACTED]
 - [[TestAmendOrder]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_100
+#graphify/code #graphify/EXTRACTED #community/Community_106

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 693"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_4
 ---
 
 # test_risk_control.py
@@ -21,8 +21,11 @@ tags:
 - [[TestKellyScalesWithBalance]] - `contains` [EXTRACTED]
 - [[TestPaperLiveSeparation]] - `contains` [EXTRACTED]
 - [[TestParseAccuracyOverrideArgs]] - `contains` [EXTRACTED]
-- [[_make_opp()_2]] - `contains` [EXTRACTED]
+- [[_make_opp()_1]] - `contains` [EXTRACTED]
 - [[_patch_paper_guards()]] - `contains` [EXTRACTED]
 - [[_write_paper_json()]] - `contains` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[time]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_4

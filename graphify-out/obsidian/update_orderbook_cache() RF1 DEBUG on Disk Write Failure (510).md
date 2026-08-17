@@ -1,12 +1,12 @@
 ---
 source_file: "docs/grade_audit/outputs/kalshi_ws.py.md"
 type: "document"
-community: "Community 195"
+community: "Community 148"
 location: "L:136-161"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_195
+  - community/Community_148
 ---
 
 # update_orderbook_cache() RF1: DEBUG on Disk Write Failure (5/10)
@@ -16,4 +16,4 @@ tags:
 - [[RF1 Silent Exception Swallow]] - `references` [EXTRACTED]
 - [[kalshi_ws.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_195
+#graphify/document #graphify/EXTRACTED #community/Community_148

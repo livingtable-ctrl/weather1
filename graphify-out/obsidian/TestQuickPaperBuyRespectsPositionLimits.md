@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_i.py"
 type: "code"
-community: "Community 520"
+community: "Community 578"
 location: "L481"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_520
+  - community/Community_578
 ---
 
 # TestQuickPaperBuyRespectsPositionLimits
@@ -16,6 +16,6 @@ tags:
 - [[dot-test_check_position_limits_failure_is_logged_not_silent()]] - `method` [EXTRACTED]
 - [[dot-test_within_limits_order_proceeds()]] - `method` [EXTRACTED]
 - [[2026-07-09 main.py's two check_position_limits call sites checked…]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Batch I Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_i.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_520
+#graphify/code #graphify/EXTRACTED #community/Community_578

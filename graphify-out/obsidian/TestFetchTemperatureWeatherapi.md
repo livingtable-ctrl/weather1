@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 447"
-location: "L2351"
+community: "Community 479"
+location: "L2720"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_447
+  - community/Community_479
 ---
 
 # TestFetchTemperatureWeatherapi
@@ -20,4 +20,4 @@ tags:
 - [[fetch_temperature_weatherapi() requires WEATHERAPI_KEY to be set.]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_447
+#graphify/code #graphify/EXTRACTED #community/Community_479

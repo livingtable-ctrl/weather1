@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 233"
+community: "Community 235"
 location: "L704"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_233
+  - community/Community_235
 ---
 
 # .test_daily_ticker_unaffected()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCheckPositionLimitsHourlyGuard]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_233
+#graphify/code #graphify/EXTRACTED #community/Community_235

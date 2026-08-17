@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_acis_precip.py"
 type: "code"
-community: "Community 271"
+community: "Community 141"
 location: "L199"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_271
+  - community/Community_141
 ---
 
 # .test_ci_contains_point_estimate()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestBootstrapCiMonthTotal]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_271
+#graphify/code #graphify/EXTRACTED #community/Community_141

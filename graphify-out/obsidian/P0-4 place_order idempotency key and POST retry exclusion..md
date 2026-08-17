@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_idempotency.py"
 type: "rationale"
-community: "Community 143"
+community: "Community 248"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_143
+  - community/Community_248
 ---
 
 # P0-4: place_order idempotency key and POST retry exclusion.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_idempotency.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_143
+#graphify/rationale #graphify/EXTRACTED #community/Community_248

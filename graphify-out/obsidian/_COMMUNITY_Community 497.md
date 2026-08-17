@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.40
-members: 6
+cohesion: 0.43
+members: 7
 ---
 
 # Community 497
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 6 nodes
+**Cohesion:** 0.43 - moderately connected
+**Members:** 7 nodes
 
 ## Members
-- [[BACKLOG_OPEN]] - document - BACKLOG_OPEN.md
-- [[Backlog L12939 — Position read-model divergence]] - document - BACKLOG_OPEN.md
-- [[Backlog L17703 — React dashboard 4th paper-close site]] - document - BACKLOG_OPEN.md
-- [[Tests for main.py's _feature_importance_days_out helper. Extracted from…]] - rationale - tests/test_feature_importance_days_out.py
-- [[backlog.txt]] - document - backlog.txt
-- [[test_feature_importance_days_out.py]] - code - tests/test_feature_importance_days_out.py
+- [[AnalysisResult]] - code - market_types.py
+- [[ForecastResult]] - code - market_types.py
+- [[MarketCondition]] - code - market_types.py
+- [[MarketDict]] - code - market_types.py
+- [[Shared TypedDicts for the Kalshi weather markets bot. Import these instead of…]] - rationale - market_types.py
+- [[TypedDict]] - code
+- [[market_types.py]] - code - market_types.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,17 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 364]]
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Community 146]]
-- 1 edge to [[_COMMUNITY_Community 162]]
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 1 edge to [[_COMMUNITY_Community 202]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 26]]
-- 1 edge to [[_COMMUNITY_Community 327]]
+- 1 edge to [[_COMMUNITY_Community 3]]
 
 ## Top bridge nodes
-- [[backlog.txt]] - degree 8, connects to 6 communities
-- [[test_feature_importance_days_out.py]] - degree 4, connects to 2 communities
-- [[Backlog L17703 — React dashboard 4th paper-close site]] - degree 3, connects to 1 community
+- [[market_types.py]] - degree 6, connects to 1 community

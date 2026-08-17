@@ -10,33 +10,33 @@ members: 27
 **Members:** 27 nodes
 
 ## Members
-- [[dot-test_already_retired_not_duplicated()]] - code - tests/test_p9_p10.py
-- [[dot-test_auto_retire_does_not_retire_good_method()]] - code - tests/test_p9_p10.py
-- [[dot-test_auto_retire_skips_insufficient_samples()]] - code - tests/test_p9_p10.py
-- [[dot-test_auto_retire_strategies_retires_bad_method()]] - code - tests/test_p9_p10.py
-- [[dot-test_brier_score_by_method_rolling_returns_last_n()]] - code - tests/test_p9_p10.py
-- [[dot-test_dir_accuracy_guard_allows_retirement_when_direction_bad()]] - code - tests/test_p9_p10.py
-- [[dot-test_dir_accuracy_guard_blocks_retirement()]] - code - tests/test_p9_p10.py
-- [[dot-test_dir_accuracy_guard_inactive_when_accuracy_none()]] - code - tests/test_p9_p10.py
-- [[dot-test_get_retired_strategies_empty()]] - code - tests/test_p9_p10.py
-- [[dot-test_rolling_guard_allows_retirement_when_recent_still_bad()]] - code - tests/test_p9_p10.py
-- [[dot-test_rolling_guard_blocks_retirement_when_recent_recovered()]] - code - tests/test_p9_p10.py
-- [[dot-test_unretire_nonexistent_returns_false()]] - code - tests/test_p9_p10.py
-- [[dot-test_unretire_strategy()]] - code - tests/test_p9_p10.py
-- [[A method with Brier  0.25 over 20+ predictions should be auto-retired.]] - rationale - tests/test_p9_p10.py
-- [[A well-performing method (Brier  0.25) must NOT be retired.]] - rationale - tests/test_p9_p10.py
-- [[Both lifetime and rolling Brier are bad — method IS retired (guard doesn't…]] - rationale - tests/test_p9_p10.py
-- [[Guard is skipped when directional accuracy is not available — retire normally.]] - rationale - tests/test_p9_p10.py
-- [[Helper log a prediction + outcome in the temp tracker DB.]] - rationale - tests/test_p9_p10.py
-- [[Lifetime Brier  threshold from old bad trades, but the last 20 settled…]] - rationale - tests/test_p9_p10.py
-- [[Method IS retired when directional accuracy is below the guard.]] - rationale - tests/test_p9_p10.py
-- [[Method with Brier  0.25 is NOT retired when directional accuracy = guard.…]] - rationale - tests/test_p9_p10.py
-- [[Methods with fewer than min_samples predictions are not evaluated.]] - rationale - tests/test_p9_p10.py
-- [[Re-running auto_retire on an already-retired method doesn't duplicate it.]] - rationale - tests/test_p9_p10.py
-- [[TestStrategyRetirement]] - code - tests/test_p9_p10.py
-- [[_log_and_settle()]] - code - tests/test_p9_p10.py
-- [[brier_score_by_method_rolling only reflects the most recent `window` rows.]] - rationale - tests/test_p9_p10.py
-- [[unretire_strategy removes a retired entry.]] - rationale - tests/test_p9_p10.py
+- [[dot-_load_table()]] - code - tests/test_ml_bias.py
+- [[dot-test_falls_back_to_global_when_condition_absent()]] - code - tests/test_ml_bias.py
+- [[dot-test_global_T_compresses_toward_0p5()]] - code - tests/test_ml_bias.py
+- [[dot-test_hourly_pool_ignored_when_days_out_passed_alongside()]] - code - tests/test_ml_bias.py
+- [[dot-test_hourly_pool_no_fallback_to_sameday_or_global()]] - code - tests/test_ml_bias.py
+- [[dot-test_hourly_pool_uses_hourly_T()]] - code - tests/test_ml_bias.py
+- [[dot-test_multiday_unaffected_by_sameday_key()]] - code - tests/test_ml_bias.py
+- [[dot-test_no_file_returns_prob_unchanged()]] - code - tests/test_ml_bias.py
+- [[dot-test_ordinary_sameday_call_unaffected_by_hourly_key_presence()]] - code - tests/test_ml_bias.py
+- [[dot-test_per_condition_T_used_when_available()]] - code - tests/test_ml_bias.py
+- [[dot-test_sameday_no_fallback_to_global()]] - code - tests/test_ml_bias.py
+- [[dot-test_sameday_uses_sameday_T()]] - code - tests/test_ml_bias.py
+- [[Existing callers (no pool arg) must be completely unaffected by an 'hourly' key…]] - rationale - tests/test_ml_bias.py
+- [[Falls back to global T when condition_type is not in the table.]] - rationale - tests/test_ml_bias.py
+- [[No 'hourly' key yet (fewer than 20 settled hourly predictions) must return prob…]] - rationale - tests/test_ml_bias.py
+- [[Returns prob unchanged when temperature_scale.json does not exist.]] - rationale - tests/test_ml_bias.py
+- [[TestApplyTemperatureScaling]] - code - tests/test_ml_bias.py
+- [[Tests for apply_temperature_scaling — the per-condition calibration step. Each…]] - rationale - tests/test_ml_bias.py
+- [[With a global T  1, output is compressed toward 0.5 from both sides.]] - rationale - tests/test_ml_bias.py
+- [[Write content to a temp file and wire ml_bias to read it.]] - rationale - tests/test_ml_bias.py
+- [[backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 2 handoff]] - document - backlog.txt
+- [[condition_type='between' uses the between T, not the global T.]] - rationale - tests/test_ml_bias.py
+- [[days_out=0 returns prob unchanged when 'sameday' key absent — no global…]] - rationale - tests/test_ml_bias.py
+- [[days_out=0 uses 'sameday' T, not the global T.]] - rationale - tests/test_ml_bias.py
+- [[days_out=1 still uses per-conditionglobal T even when sameday key is present.]] - rationale - tests/test_ml_bias.py
+- [[pool='hourly' must win over days_out=0's sameday branch -- callers pass both,…]] - rationale - tests/test_ml_bias.py
+- [[temperature_scale.json (production T-scaling table)]] - document - data/temperature_scale.json
 
 ## Live Query (requires Dataview plugin)
 
@@ -46,9 +46,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 50]]
-- 2 edges to [[_COMMUNITY_Community 430]]
+- 2 edges to [[_COMMUNITY_Community 96]]
+- 1 edge to [[_COMMUNITY_Community 99]]
+- 1 edge to [[_COMMUNITY_Community 82]]
 
 ## Top bridge nodes
-- [[_log_and_settle()]] - degree 15, connects to 2 communities
-- [[TestStrategyRetirement]] - degree 14, connects to 1 community
+- [[TestApplyTemperatureScaling]] - degree 18, connects to 3 communities
+- [[backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 2 handoff]] - degree 2, connects to 1 community

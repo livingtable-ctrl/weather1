@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 480"
 location: "L729"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_480
 ---
 
 # L2-B: kelly_fraction must always be called with an explicit fee_rate, never…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestKellyFeeRate]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_480

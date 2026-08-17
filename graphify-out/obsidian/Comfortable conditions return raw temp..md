@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Community 70"
+community: "Community 65"
 location: "L251"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_70
+  - community/Community_65
 ---
 
 # Comfortable conditions return raw temp.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_comfortable_no_adjustment()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_70
+#graphify/rationale #graphify/EXTRACTED #community/Community_65

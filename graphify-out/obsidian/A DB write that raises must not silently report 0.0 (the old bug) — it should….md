@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "rationale"
-community: "Community 274"
+community: "Community 275"
 location: "L244"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_274
+  - community/Community_275
 ---
 
 # A DB write that raises must not silently report 0.0 (the old bug) — it should…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_add_live_loss_write_failure_fails_closed()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_274
+#graphify/rationale #graphify/EXTRACTED #community/Community_275

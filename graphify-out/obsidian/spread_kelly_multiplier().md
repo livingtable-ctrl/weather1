@@ -1,20 +1,20 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 693"
+community: "Community 1"
 location: "L790"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_1
 ---
 
 # spread_kelly_multiplier()
 
 ## Connections
 - [[Scale Kelly down when the bid-ask spread eats a significant fraction of edge.…]] - `rationale_for` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
-- [[paper.py_1]] - `contains` [EXTRACTED]
-- [[web_app.py_1]] - `imports` [EXTRACTED]
+- [[_auto_place_trades()]] - `calls` [EXTRACTED]
+- [[order_executor.py]] - `imports` [EXTRACTED]
+- [[paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_1

@@ -1,16 +1,19 @@
 ---
 type: community
-cohesion: 1.00
-members: 1
+cohesion: 0.50
+members: 4
 ---
 
 # Community 660
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Cohesion:** 0.50 - moderately connected
+**Members:** 4 nodes
 
 ## Members
-- [[_to_v2_side_price Function]] - code - kalshi_client.py
+- [[dot-constructor()_1]] - code - weather app site V_3 (3)/src/App.jsx
+- [[dot-getDerivedStateFromError()_1]] - code - weather app site V_3 (3)/src/App.jsx
+- [[dot-render()_1]] - code - weather app site V_3 (3)/src/App.jsx
+- [[ErrorBoundary_1]] - code - weather app site V_3 (3)/src/App.jsx
 
 ## Live Query (requires Dataview plugin)
 
@@ -18,3 +21,9 @@ members: 1
 TABLE source_file, type FROM #community/Community_660
 SORT file.name ASC
 ```
+
+## Connections to other communities
+- 1 edge to [[_COMMUNITY_Community 158]]
+
+## Top bridge nodes
+- [[ErrorBoundary_1]] - degree 4, connects to 1 community

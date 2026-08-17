@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 98"
+community: "Community 43"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_98
+  - community/Community_43
 ---
 
 # test_hurricane_climatology.py
@@ -34,7 +35,8 @@ tags:
 - [[hurricane_climatology.py]] - `imports` [EXTRACTED]
 - [[next_event_outcomes()]] - `references` [EXTRACTED]
 - [[parse_hurdat2()]] - `references` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[season_end_total_distribution()]] - `references` [EXTRACTED]
 - [[test_hurricane_markets.py]] - `cites` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_98
+#graphify/code #graphify/EXTRACTED #community/Community_43

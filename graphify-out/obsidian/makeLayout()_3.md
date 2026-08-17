@@ -1,19 +1,19 @@
 ---
-source_file: "updated frontend/reference/analytics.js"
+source_file: "updated frontend/reference/forecast.js"
 type: "code"
-community: "Community 448"
-location: "L23"
+community: "Community 483"
+location: "L16"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_448
+  - community/Community_483
 ---
 
 # makeLayout()
 
 ## Connections
-- [[loadAnalytics()_1]] - `calls` [EXTRACTED]
-- [[loadBrierHistory()_1]] - `calls` [EXTRACTED]
-- [[referenceanalytics.js]] - `contains` [EXTRACTED]
+- [[referenceforecast.js]] - `contains` [EXTRACTED]
+- [[renderCityHeatmap()_1]] - `calls` [EXTRACTED]
+- [[renderEnsembleChart()_1]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_448
+#graphify/code #graphify/EXTRACTED #community/Community_483

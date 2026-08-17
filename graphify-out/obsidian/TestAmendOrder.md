@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 100"
+community: "Community 106"
 location: "L176"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_100
+  - community/Community_106
 ---
 
 # TestAmendOrder
 
 ## Connections
-- [[dot-_make_client()]] - `method` [EXTRACTED]
+- [[dot-_make_client()_1]] - `method` [EXTRACTED]
 - [[dot-test_client_order_id_included_when_provided()]] - `method` [EXTRACTED]
 - [[dot-test_client_order_id_omitted_when_not_provided()]] - `method` [EXTRACTED]
 - [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()]] - `method` [EXTRACTED]
@@ -23,4 +23,4 @@ tags:
 - [[AMEND ORDER (V2) kalshi_client.amend_order() -- POST…]] - `rationale_for` [EXTRACTED]
 - [[test_kalshi_client.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_100
+#graphify/code #graphify/EXTRACTED #community/Community_106

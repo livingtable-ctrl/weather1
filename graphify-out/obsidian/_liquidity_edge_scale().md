@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 222"
-location: "L6066"
+community: "Community 185"
+location: "L6168"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_222
+  - community/Community_185
 ---
 
 # _liquidity_edge_scale()
@@ -23,9 +23,12 @@ tags:
 - [[dot-test_string_zero_still_illiquid_not_truthy_string()]] - `calls` [EXTRACTED]
 - [[dot-test_volume_and_open_interest_are_summed()]] - `calls` [EXTRACTED]
 - [[Dynamic edge-threshold divisor by market liquidity (backlog.txt LIQUIDITY-…]] - `rationale_for` [EXTRACTED]
+- [[TestLiquidityEdgeScale]] - `calls` [EXTRACTED]
+- [[_analyze_once()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[run_trade_cycle()]] - `calls` [EXTRACTED]
 - [[test_weather_markets.py]] - `imports` [EXTRACTED]
 - [[trade_cycle.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_222
+#graphify/code #graphify/EXTRACTED #community/Community_185

@@ -1,12 +1,12 @@
 ---
 source_file: "nws.py"
 type: "code"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 3"
 location: "L141"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_3
 ---
 
 # _get_obs()
@@ -18,4 +18,4 @@ tags:
 - [[get_live_precip_obs()]] - `calls` [EXTRACTED]
 - [[nws.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/code #graphify/EXTRACTED #community/Community_3

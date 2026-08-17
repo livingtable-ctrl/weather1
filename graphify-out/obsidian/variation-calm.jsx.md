@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/variation-calm.jsx"
 type: "code"
-community: "Community 643"
+community: "Community 751"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_643
+  - community/Community_751
 ---
 
 # variation-calm.jsx
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[CalmVar]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_643
+#graphify/code #graphify/EXTRACTED #community/Community_751

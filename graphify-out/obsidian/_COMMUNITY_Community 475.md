@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.14
+members: 8
 ---
 
 # Community 475
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.14 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_insufficient_weeks_no_alert()]] - code - tests/test_p9_p10.py
-- [[dot-test_one_bad_week_does_not_trigger()]] - code - tests/test_p9_p10.py
-- [[dot-test_two_bad_weeks_triggers_alert()]] - code - tests/test_p9_p10.py
-- [[Both recent weeks above threshold → alert should fire.]] - rationale - tests/test_p9_p10.py
-- [[Fewer than 2 weeks → no alert check.]] - rationale - tests/test_p9_p10.py
-- [[Only one of the two recent weeks above threshold → no alert.]] - rationale - tests/test_p9_p10.py
-- [[TestWeeklyBrierAlert]] - code - tests/test_p9_p10.py
+- [[dot-test_audit_settlement_hourly_passes_correct_hour_and_uses_hour_fetch()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_hurricane_predictions_counts_events_not_ladder_rows()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_rain_predictions_counts_only_rain_tickers()]] - code - tests/test_tracker.py
+- [[dot-test_log_prediction_upsert_already_prevents_raw_duplication()]] - code - tests/test_tracker.py
+- [[Documents the real, confirmed-live behavior the test above's docstring relies…]] - rationale - tests/test_tracker.py
+- [[Must call the hour-specific fetch (_fetch_asos_hour_temp) with the ticker's…]] - rationale - tests/test_tracker.py
+- [[Same raw-row-vs-distinct-event risk count_settled_snow_ predictions() was fixed…]] - rationale - tests/test_tracker.py
+- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 handoff item 7 must count…]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,7 +27,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 50]]
+- 4 edges to [[_COMMUNITY_Community 28]]
+- 2 edges to [[_COMMUNITY_Community 29]]
 
 ## Top bridge nodes
-- [[TestWeeklyBrierAlert]] - degree 4, connects to 1 community
+- [[dot-test_count_settled_hurricane_predictions_counts_events_not_ladder_rows()]] - degree 3, connects to 2 communities
+- [[dot-test_count_settled_rain_predictions_counts_only_rain_tickers()]] - degree 3, connects to 2 communities
+- [[dot-test_audit_settlement_hourly_passes_correct_hour_and_uses_hour_fetch()]] - degree 2, connects to 1 community
+- [[dot-test_log_prediction_upsert_already_prevents_raw_duplication()]] - degree 2, connects to 1 community

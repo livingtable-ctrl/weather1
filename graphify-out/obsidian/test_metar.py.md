@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "code"
-community: "Community 73"
+community: "Community 4"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_73
+  - community/Community_4
 ---
 
 # test_metar.py
@@ -26,6 +27,10 @@ tags:
 - [[fetch_metar()]] - `imports` [EXTRACTED]
 - [[fetch_metar_daily_extreme()]] - `calls` [EXTRACTED]
 - [[forecast_cache.py]] - `imports_from` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[test_mos.py]] - `semantically_similar_to` [INFERRED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_73
+#graphify/code #graphify/EXTRACTED #community/Community_4

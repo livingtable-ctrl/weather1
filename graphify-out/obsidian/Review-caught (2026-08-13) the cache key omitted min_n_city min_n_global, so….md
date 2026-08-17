@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 291"
-location: "L4653"
+community: "Community 295"
+location: "L5022"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_291
+  - community/Community_295
 ---
 
 # Review-caught (2026-08-13): the cache key omitted min_n_city/ min_n_global, so…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_cache_key_includes_floors()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_291
+#graphify/rationale #graphify/EXTRACTED #community/Community_295

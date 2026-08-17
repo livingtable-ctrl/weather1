@@ -1,12 +1,12 @@
 ---
 source_file: "config.py"
 type: "code"
-community: "Community 212"
+community: "Community 47"
 location: "L385"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_212
+  - community/Community_47
 ---
 
 # reset_config()
@@ -18,4 +18,4 @@ tags:
 - [[test_bot_config_loads_from_env()]] - `calls` [EXTRACTED]
 - [[test_config_validation.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_212
+#graphify/code #graphify/EXTRACTED #community/Community_47

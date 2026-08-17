@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_calibration.py"
 type: "rationale"
-community: "Community 69"
+community: "Community 58"
 location: "L197"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_69
+  - community/Community_58
 ---
 
 # 55 NYC predictions (>= 50) → NYC weights present and valid.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_returns_weights_for_qualifying_city()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_69
+#graphify/rationale #graphify/EXTRACTED #community/Community_58

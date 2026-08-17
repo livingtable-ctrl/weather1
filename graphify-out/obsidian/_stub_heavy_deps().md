@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p0_11_retired_strategy.py"
 type: "code"
-community: "Community 124"
+community: "Community 138"
 location: "L41"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_124
+  - community/Community_138
 ---
 
 # _stub_heavy_deps()
@@ -22,4 +22,4 @@ tags:
 - [[Stub networkdisk calls so analyze_trade reaches the Kelly section.]] - `rationale_for` [EXTRACTED]
 - [[test_p0_11_retired_strategy.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_124
+#graphify/code #graphify/EXTRACTED #community/Community_138

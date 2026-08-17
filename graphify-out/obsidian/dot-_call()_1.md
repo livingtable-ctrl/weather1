@@ -1,18 +1,22 @@
 ---
-source_file: "tests/test_phase2_batch_k.py"
+source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 282"
-location: "L18"
+community: "Community 354"
+location: "L5265"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_282
+  - community/Community_354
 ---
 
 # ._call()
 
 ## Connections
-- [[TestConfidenceScaledBlendWeightsNoNegative]] - `method` [EXTRACTED]
-- [[_confidence_scaled_blend_weights()]] - `calls` [EXTRACTED]
+- [[dot-test_low_market_above_already_below_margin_is_locked()]] - `calls` [EXTRACTED]
+- [[dot-test_low_market_above_still_above_margin_is_not_locked()]] - `calls` [EXTRACTED]
+- [[dot-test_low_market_below_already_below_margin_is_locked()]] - `calls` [EXTRACTED]
+- [[dot-test_low_market_below_still_above_margin_is_not_locked()]] - `calls` [EXTRACTED]
+- [[TestMetarLockInLowMarketAsymmetry]] - `method` [EXTRACTED]
+- [[ZoneInfo]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_282
+#graphify/code #graphify/EXTRACTED #community/Community_354

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 379"
+community: "Community 393"
 location: "L478"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_379
+  - community/Community_393
 ---
 
 # TestQuickPaperBuyAndCmdPaperSnowGuards
@@ -21,4 +21,4 @@ tags:
 - [[Opus-review-caught gap (round 2) _quick_paper_buy() and cmd_paper() got the…]] - `rationale_for` [EXTRACTED]
 - [[test_snow_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_379
+#graphify/code #graphify/EXTRACTED #community/Community_393

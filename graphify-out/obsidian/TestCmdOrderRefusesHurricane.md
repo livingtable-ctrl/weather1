@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_gating.py"
 type: "code"
-community: "Community 397"
+community: "Community 421"
 location: "L411"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_397
+  - community/Community_421
 ---
 
 # TestCmdOrderRefusesHurricane
@@ -19,4 +19,4 @@ tags:
 - [[main.py cmd_order is a confirmed, real bypass of analyze_trade()'s gates for…]] - `rationale_for` [EXTRACTED]
 - [[test_hurricane_gating.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_397
+#graphify/code #graphify/EXTRACTED #community/Community_421

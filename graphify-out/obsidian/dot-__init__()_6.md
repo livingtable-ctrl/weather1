@@ -1,18 +1,17 @@
 ---
-source_file: "circuit_breaker.py"
+source_file: "paper.py"
 type: "code"
-community: "Community 44"
-location: "L43"
+community: "Community 368"
+location: "L142"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_44
+  - community/Community_368
 ---
 
 # .__init__()
 
 ## Connections
-- [[dot-_load_state()]] - `calls` [EXTRACTED]
-- [[CircuitBreaker]] - `method` [EXTRACTED]
+- [[_CrossProcessDataLock]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_44
+#graphify/code #graphify/EXTRACTED #community/Community_368

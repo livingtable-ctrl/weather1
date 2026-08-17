@@ -1,12 +1,12 @@
 ---
 source_file: "system_audit_prompt.txt"
 type: "document"
-community: "Community 154"
+community: "Community 184"
 location: "RELIABILITY / SILENT FAILURES"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_154
+  - community/Community_184
 ---
 
 # Reliability / Silent Failures Audit Scope
@@ -21,4 +21,4 @@ tags:
 - [[kalshi_client.py Module]] - `references` [EXTRACTED]
 - [[notify.py Module]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_154
+#graphify/document #graphify/EXTRACTED #community/Community_184

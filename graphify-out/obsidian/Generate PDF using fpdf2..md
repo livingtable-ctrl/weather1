@@ -1,12 +1,12 @@
 ---
 source_file: "pdf_report.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 1"
 location: "L67"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_1
 ---
 
 # Generate PDF using fpdf2.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_generate_pdf()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_1

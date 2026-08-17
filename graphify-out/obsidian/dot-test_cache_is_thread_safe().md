@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_c.py"
 type: "code"
-community: "Community 344"
+community: "Community 350"
 location: "L228"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_344
+  - community/Community_350
 ---
 
 # .test_cache_is_thread_safe()
@@ -15,4 +15,4 @@ tags:
 - [[Concurrent calls must not raise and must each return a dict.]] - `rationale_for` [EXTRACTED]
 - [[TestClimateIndicesTTL]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_344
+#graphify/code #graphify/EXTRACTED #community/Community_350

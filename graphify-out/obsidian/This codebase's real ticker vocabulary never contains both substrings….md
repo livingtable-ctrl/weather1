@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Weather Probability Math Tests"
+community: "Community 329"
 location: "L381"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_329
 ---
 
 # This codebase's real ticker vocabulary never contains both substrings…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_high_checked_before_low()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_329

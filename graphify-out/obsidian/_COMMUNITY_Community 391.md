@@ -1,24 +1,25 @@
 ---
 type: community
-cohesion: 0.22
-members: 9
+cohesion: 0.20
+members: 10
 ---
 
 # Community 391
 
-**Cohesion:** 0.22 - loosely connected
-**Members:** 9 nodes
+**Cohesion:** 0.20 - loosely connected
+**Members:** 10 nodes
 
 ## Members
-- [[dot-test_api_error_skips_series_and_continues()]] - code - tests/test_backtest.py
-- [[dot-test_min_close_time_forwarded_to_api()]] - code - tests/test_backtest.py
-- [[dot-test_min_close_time_omitted_when_none()]] - code - tests/test_backtest.py
-- [[dot-test_pagination_follows_cursor_within_series()]] - code - tests/test_backtest.py
-- [[TestFetchSettledMarkets]] - code - tests/test_backtest.py
-- [[When min_close_time is None the param must not appear in the API call.]] - rationale - tests/test_backtest.py
-- [[_fetch_settled_markets follows cursor pages within a single series.]] - rationale - tests/test_backtest.py
-- [[_fetch_settled_markets must pass min_close_time to every API call. Root cause…]] - rationale - tests/test_backtest.py
-- [[_fetch_settled_markets silently skips a series that errors and continues.]] - rationale - tests/test_backtest.py
+- [[dot-test_floor_strike_happy_path()]] - code - tests/test_snow_markets.py
+- [[dot-test_missing_floor_strike_returns_none()_1]] - code - tests/test_snow_markets.py
+- [[dot-test_non_numeric_floor_strike_returns_none()_1]] - code - tests/test_snow_markets.py
+- [[dot-test_ordinary_temperature_ticker_unaffected()]] - code - tests/test_snow_markets.py
+- [[dot-test_rain_ticker_unaffected()_1]] - code - tests/test_snow_markets.py
+- [[dot-test_unexpected_strike_type_returns_none()]] - code - tests/test_snow_markets.py
+- [[Regression control branch ordering must not swallow a normal temperature…]] - rationale - tests/test_snow_markets.py
+- [[Regression control the snow branch must not swallow a rain ticker (both are…]] - rationale - tests/test_snow_markets.py
+- [[TestParseMarketConditionMonthlySnow]] - code - tests/test_snow_markets.py
+- [[backlog.txt Snow Step 2 the real per-bracket threshold, read from…]] - rationale - tests/test_snow_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,7 +29,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestFetchSettledMarkets]] - degree 5, connects to 1 community
+- [[TestParseMarketConditionMonthlySnow]] - degree 8, connects to 1 community

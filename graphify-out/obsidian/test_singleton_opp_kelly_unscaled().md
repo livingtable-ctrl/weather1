@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Community 347"
+community: "Community 86"
 location: "L1307"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_347
+  - community/Community_86
 ---
 
 # test_singleton_opp_kelly_unscaled()
@@ -17,4 +17,4 @@ tags:
 - [[_sibling_opp()]] - `calls` [EXTRACTED]
 - [[test_trading.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_347
+#graphify/code #graphify/EXTRACTED #community/Community_86

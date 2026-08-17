@@ -10,16 +10,16 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[49 load_correlations_from_backtest  save_correlations round-trip.]] - rationale - tests/test_trading.py
-- [[dot-test_fallback_to_hardcoded_when_file_missing()]] - code - tests/test_trading.py
-- [[dot-test_save_and_reload()]] - code - tests/test_trading.py
-- [[dot-test_save_correlations_valid_json()]] - code - tests/test_trading.py
-- [[dot-test_unknown_pair_returns_zero_after_load()]] - code - tests/test_trading.py
-- [[After loading, unknown city pairs return 0.0.]] - rationale - tests/test_trading.py
-- [[TestCorrelationPersistence]] - code - tests/test_trading.py
-- [[When correlations.json is absent, returns _HARDCODED_CORR.]] - rationale - tests/test_trading.py
-- [[save_correlations produces valid JSON with pipe-separated keys.]] - rationale - tests/test_trading.py
-- [[save_correlations writes JSON; load_correlations_from_backtest reads it back.]] - rationale - tests/test_trading.py
+- [[(backlog.txt THE ONLY LIVE-ORDER PATH...) cron.py trades days_out==0 markets…]] - rationale - tests/test_p1_remaining.py
+- [[dot-_base_analysis()]] - code - tests/test_p1_remaining.py
+- [[dot-test_prints_error_and_reraises_on_failure()]] - code - tests/test_p1_remaining.py
+- [[dot-test_prints_failed_count_when_nonzero()]] - code - tests/test_p1_remaining.py
+- [[dot-test_prints_filled_count()]] - code - tests/test_p1_remaining.py
+- [[dot-test_same_day_market_reaches_liquid_opps_out()]] - code - tests/test_p1_remaining.py
+- [[A days_out == 0 market with a real qualifying edge must reach _liquid_opps_out…]] - rationale - tests/test_p1_remaining.py
+- [[TestAnalyzeOnceSameDayParity]] - code - tests/test_p1_remaining.py
+- [[TestCmdBackfillPriceHistory]] - code - tests/test_p1_remaining.py
+- [[main.cmd_backfill_price_history -- the `backfill-price-history` CLI command,…]] - rationale - tests/test_p1_remaining.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,7 +29,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 92]]
+- 4 edges to [[_COMMUNITY_Community 17]]
+- 2 edges to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestCorrelationPersistence]] - degree 6, connects to 1 community
+- [[TestCmdBackfillPriceHistory]] - degree 7, connects to 2 communities
+- [[TestAnalyzeOnceSameDayParity]] - degree 6, connects to 2 communities

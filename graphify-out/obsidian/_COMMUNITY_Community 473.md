@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 473
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-setup_method()_34]] - code - tests/test_p1_remaining.py
-- [[dot-teardown_method()_26]] - code - tests/test_p1_remaining.py
-- [[dot-test_settlement_pnl_consistent_with_entry_deduction()]] - code - tests/test_p1_remaining.py
-- [[dot-test_settlement_uses_entry_price_not_actual_fill()]] - code - tests/test_p1_remaining.py
-- [[P&L on a won YES trade reflects only the cost paid at entry_price.]] - rationale - tests/test_p1_remaining.py
-- [[TestSettlementCostBasis]] - code - tests/test_p1_remaining.py
-- [[settle_paper_trade uses entry_price (what was deducted at entry) for P&L.]] - rationale - tests/test_p1_remaining.py
+- [[dot-setUp()_36]] - code - tests/test_tracker.py
+- [[dot-tearDown()_35]] - code - tests/test_tracker.py
+- [[dot-test_columns_exist_after_init()]] - code - tests/test_tracker.py
+- [[dot-test_log_prediction_stores_source_probs()]] - code - tests/test_tracker.py
+- [[After init_db(), predictions table must have ensemble_prob, nws_prob, clim_prob.]] - rationale - tests/test_tracker.py
+- [[Schema v9 must add ensemble_prob, nws_prob, clim_prob to predictions.]] - rationale - tests/test_tracker.py
+- [[TestPerSourceProbColumns]] - code - tests/test_tracker.py
+- [[log_prediction with source probs stores them retrievable from DB.]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,8 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 1 edge to [[_COMMUNITY_Community 96]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[TestSettlementCostBasis]] - degree 7, connects to 2 communities
+- [[TestPerSourceProbColumns]] - degree 6, connects to 1 community

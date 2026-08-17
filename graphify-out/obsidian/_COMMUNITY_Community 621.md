@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.60
+members: 5
 ---
 
 # Community 621
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.60 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_count_settled_hourly_predictions_counts_only_hourly_tickers()]] - code - tests/test_tracker.py
-- [[backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 2 handoff item 5…_1]] - rationale - tests/test_tracker.py
+- [[dot-_seed_rows()]] - code - tests/test_ml_bias.py
+- [[dot-test_returns_none_and_writes_nothing_below_floor()]] - code - tests/test_ml_bias.py
+- [[dot-test_writes_file_with_history_backup_and_invalidates_cache()]] - code - tests/test_ml_bias.py
+- [[Direct unit tests for ml_bias.fit_and_save_metar_calibration() -- the single…]] - rationale - tests/test_ml_bias.py
+- [[TestFitAndSaveMetarCalibration]] - code - tests/test_ml_bias.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
-- 1 edge to [[_COMMUNITY_Tracker Settlement Sigma & Disputed Rows]]
+- 1 edge to [[_COMMUNITY_Community 99]]
 
 ## Top bridge nodes
-- [[dot-test_count_settled_hourly_predictions_counts_only_hourly_tickers()]] - degree 3, connects to 2 communities
+- [[TestFitAndSaveMetarCalibration]] - degree 5, connects to 1 community

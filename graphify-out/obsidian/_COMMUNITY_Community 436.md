@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 436
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-test_market_level_model_near_zero()]] - code - tests/test_tracker.py
-- [[dot-test_perfect_model_positive_bss()]] - code - tests/test_tracker.py
-- [[dot-test_returns_none_below_10_samples()]] - code - tests/test_tracker.py
-- [[BSS returns None with  10 samples.]] - rationale - tests/test_tracker.py
-- [[Model matching market_prob exactly gives BSS ≈ 0.]] - rationale - tests/test_tracker.py
-- [[Perfect model (our_prob=1.0, settled YES) gives BSS  0.]] - rationale - tests/test_tracker.py
-- [[TestBrierSkillScore]] - code - tests/test_tracker.py
-- [[Tests for brier_skill_score() (11).]] - rationale - tests/test_tracker.py
+- [[dot-test_floor_strike_happy_path()_1]] - code - tests/test_rain_markets.py
+- [[dot-test_missing_floor_strike_returns_none()_2]] - code - tests/test_rain_markets.py
+- [[dot-test_non_numeric_floor_strike_returns_none()_2]] - code - tests/test_rain_markets.py
+- [[dot-test_nyc_four_bracket_ladder_all_parse()]] - code - tests/test_rain_markets.py
+- [[dot-test_ordinary_temperature_ticker_unaffected()_1]] - code - tests/test_rain_markets.py
+- [[dot-test_unexpected_strike_type_returns_none()_1]] - code - tests/test_rain_markets.py
+- [[Regression control branch ordering must not swallow a normal temperature…_1]] - rationale - tests/test_rain_markets.py
+- [[TestParseMarketConditionMonthlyRain]] - code - tests/test_rain_markets.py
+- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 handoff item 2 the real…]] - rationale - tests/test_rain_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,12 +28,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 135]]
-- 1 edge to [[_COMMUNITY_Community 313]]
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestBrierSkillScore]] - degree 6, connects to 2 communities
-- [[dot-test_market_level_model_near_zero()]] - degree 3, connects to 1 community
-- [[dot-test_perfect_model_positive_bss()]] - degree 3, connects to 1 community
-- [[dot-test_returns_none_below_10_samples()]] - degree 3, connects to 1 community
+- [[TestParseMarketConditionMonthlyRain]] - degree 8, connects to 1 community

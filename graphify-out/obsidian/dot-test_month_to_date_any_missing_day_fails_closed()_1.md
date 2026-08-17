@@ -1,20 +1,20 @@
 ---
-source_file: "tests/test_rain_markets.py"
+source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 165"
-location: "L655"
+community: "Community 239"
+location: "L1078"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_165
+  - community/Community_239
 ---
 
 # .test_month_to_date_any_missing_day_fails_closed()
 
 ## Connections
 - [[dot-_history_all_years_value()_2]] - `calls` [EXTRACTED]
-- [[dot-_rain_market()]] - `calls` [EXTRACTED]
-- [[Opus-review-caught HIGH finding (Snow Step 2 review, identical gap in this…]] - `rationale_for` [EXTRACTED]
-- [[TestAnalyzeMonthlyRainTradeEndToEnd]] - `method` [EXTRACTED]
+- [[Opus-review-caught HIGH finding fetch_month_to_date_actual_snow returns (sum,…]] - `rationale_for` [EXTRACTED]
+- [[TestAnalyzeMonthlySnowTradeEndToEnd]] - `method` [EXTRACTED]
+- [[_snow_market()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_165
+#graphify/code #graphify/EXTRACTED #community/Community_239

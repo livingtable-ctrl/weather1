@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 74"
+community: "Community 75"
 location: "L1694"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_74
+  - community/Community_75
 ---
 
 # _sameday_effective_cap()
@@ -16,8 +16,8 @@ tags:
 - [[Paper Trading Ledger Module]] - `calls` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[count_settled_sameday_predictions()]] - `calls` [EXTRACTED]
-- [[order_executor.py]] - `contains` [EXTRACTED]
-- [[order_executor.py_1]] - `implements` [EXTRACTED]
+- [[get_sameday_band_stats()]] - `calls` [EXTRACTED]
+- [[order_executor.py]] - `implements` [EXTRACTED]
 - [[test_db_error_fails_open()]] - `calls` [EXTRACTED]
 - [[test_dynamic_gate_ignores_tracker_prediction_count()]] - `calls` [EXTRACTED]
 - [[test_dynamic_insufficient_samples()]] - `calls` [EXTRACTED]
@@ -31,7 +31,6 @@ tags:
 - [[test_reservation_released_at_cutoff()]] - `calls` [EXTRACTED]
 - [[test_sameday_reserve.py]] - `calls` [EXTRACTED]
 - [[test_threshold_not_met_returns_max()]] - `calls` [EXTRACTED]
-- [[tracker.py_2]] - `calls` [EXTRACTED]
-- [[utils.py_1]] - `calls` [EXTRACTED]
+- [[utils.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_74
+#graphify/code #graphify/EXTRACTED #community/Community_75

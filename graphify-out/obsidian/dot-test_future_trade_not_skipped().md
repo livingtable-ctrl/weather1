@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_h.py"
 type: "code"
-community: "Community 517"
+community: "Community 575"
 location: "L192"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_517
+  - community/Community_575
 ---
 
 # .test_future_trade_not_skipped()
@@ -15,4 +15,4 @@ tags:
 - [[A trade dated in the future must NOT be skipped.]] - `rationale_for` [EXTRACTED]
 - [[TestMonteCarloUtcDate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_517
+#graphify/code #graphify/EXTRACTED #community/Community_575

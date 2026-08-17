@@ -1,12 +1,12 @@
 ---
 source_file: "feature_importance.py"
 type: "rationale"
-community: "Community 184"
+community: "Community 2"
 location: "L50"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_184
+  - community/Community_2
 ---
 
 # Record the outcome for a settled trade. F4: Uses append-only writes to avoid…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[update_outcome()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_184
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

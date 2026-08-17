@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 693"
+community: "Community 117"
 location: "L411"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_117
 ---
 
 # .test_expired_override_no_longer_applies()
@@ -15,4 +15,4 @@ tags:
 - [[An override with expires_at in the past must NOT bypass the real check -- this…]] - `rationale_for` [EXTRACTED]
 - [[TestAccuracyHaltOverride]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_117

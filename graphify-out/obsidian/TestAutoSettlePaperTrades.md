@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 259"
+community: "Community 256"
 location: "L926"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_259
+  - community/Community_256
 ---
 
 # TestAutoSettlePaperTrades
 
 ## Connections
-- [[dot-setUp()_11]] - `method` [EXTRACTED]
-- [[dot-tearDown()_11]] - `method` [EXTRACTED]
+- [[dot-setUp()_12]] - `method` [EXTRACTED]
+- [[dot-tearDown()_12]] - `method` [EXTRACTED]
 - [[dot-test_auto_settle_settles_matching_trade()]] - `method` [EXTRACTED]
 - [[dot-test_auto_settle_skips_no_outcome()]] - `method` [EXTRACTED]
 - [[dot-test_get_outcome_for_ticker_returns_correct_value()]] - `method` [EXTRACTED]
@@ -24,4 +24,4 @@ tags:
 - [[Tests for auto-settling paper trades when tracker outcomes are recorded.]] - `rationale_for` [EXTRACTED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_259
+#graphify/code #graphify/EXTRACTED #community/Community_256

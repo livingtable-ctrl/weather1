@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_b.py"
 type: "rationale"
-community: "Community 514"
+community: "Community 572"
 location: "L160"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_514
+  - community/Community_572
 ---
 
 # The denominator used in place_paper_order must match get_ticker_exposure.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_exposure_consistency_with_get_ticker_exposure()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_514
+#graphify/rationale #graphify/EXTRACTED #community/Community_572

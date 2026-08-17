@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 269"
+community: "Community 264"
 location: "L902"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_269
+  - community/Community_264
 ---
 
 # .test_too_few_members_returns_wide_ci()
@@ -16,4 +16,4 @@ tags:
 - [[TestBootstrapCI]] - `method` [EXTRACTED]
 - [[_bootstrap_ci()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_269
+#graphify/code #graphify/EXTRACTED #community/Community_264

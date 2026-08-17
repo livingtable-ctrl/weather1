@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 40"
+community: "Community 1"
 location: "L1494"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_40
+  - community/Community_1
 ---
 
 # _micro_live_gate_ok()
@@ -20,4 +20,4 @@ tags:
 - [[pre_live_trade_check()]] - `calls` [EXTRACTED]
 - [[test_trading_gates.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_40
+#graphify/code #graphify/EXTRACTED #community/Community_1

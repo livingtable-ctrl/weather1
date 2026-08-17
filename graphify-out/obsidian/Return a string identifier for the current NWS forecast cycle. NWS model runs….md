@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "rationale"
-community: "Community 40"
+community: "Community 3"
 location: "L80"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_40
+  - community/Community_3
 ---
 
 # Return a string identifier for the current NWS forecast cycle. NWS model runs…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_current_forecast_cycle()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_40
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

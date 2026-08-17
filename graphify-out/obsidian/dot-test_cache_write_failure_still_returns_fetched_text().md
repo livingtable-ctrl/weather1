@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 466"
+community: "Community 505"
 location: "L797"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_466
+  - community/Community_505
 ---
 
 # .test_cache_write_failure_still_returns_fetched_text()
@@ -16,4 +16,4 @@ tags:
 - [[A cache-write failure (disk full, permissions, or -- the actual motivating…]] - `rationale_for` [EXTRACTED]
 - [[TestFetchHurdat2RawCacheWrite]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_466
+#graphify/code #graphify/EXTRACTED #community/Community_505

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_bare_os_replace_guard.py"
 type: "rationale"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 8"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_8
 ---
 
 # r"""Automated guard against the bare-os.replace() anti-pattern reappearing…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_bare_os_replace_guard.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/rationale #graphify/EXTRACTED #community/Community_8

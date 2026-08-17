@@ -1,17 +1,17 @@
 ---
 source_file: "tests/conftest.py"
 type: "rationale"
-community: "Test Fixture Cache Clearing (conftest)"
+community: "Community 18"
 location: "L36"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Test_Fixture_Cache_Clearing_conftest
+  - community/Community_18
 ---
 
 # Redirect circuit_breaker._CB_STATE_PATH to a per-test temp file.…
 
 ## Connections
-- [[isolate_circuit_breaker_state fixture]] - `rationale_for` [EXTRACTED]
+- [[isolate_circuit_breaker_state()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Test_Fixture_Cache_Clearing_conftest
+#graphify/rationale #graphify/EXTRACTED #community/Community_18

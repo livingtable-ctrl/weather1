@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.46
+members: 8
 ---
 
 # Community 483
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.46 - moderately connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_get_pnl_by_signal_source_groups_correctly()]] - code - tests/test_pnl_attribution.py
-- [[dot-test_get_pnl_by_signal_source_has_required_keys()]] - code - tests/test_pnl_attribution.py
-- [[dot-test_log_prediction_accepts_signal_source()]] - code - tests/test_pnl_attribution.py
-- [[Each entry has brier, n, win_rate keys.]] - rationale - tests/test_pnl_attribution.py
-- [[TestPnLAttribution]] - code - tests/test_pnl_attribution.py
-- [[get_pnl_by_signal_source returns per-source stats.]] - rationale - tests/test_pnl_attribution.py
-- [[log_prediction stores signal_source kwarg.]] - rationale - tests/test_pnl_attribution.py
+- [[loadForecast()_1]] - code - updated frontend/reference/forecast.js
+- [[loadTodayForecasts()_1]] - code - updated frontend/reference/forecast.js
+- [[makeLayout()_3]] - code - updated frontend/reference/forecast.js
+- [[referenceforecast.js]] - code - updated frontend/reference/forecast.js
+- [[renderCityHeatmap()_1]] - code - updated frontend/reference/forecast.js
+- [[renderEnsembleChart()_1]] - code - updated frontend/reference/forecast.js
+- [[renderForecastTable()_1]] - code - updated frontend/reference/forecast.js
+- [[renderSourceReliability()_1]] - code - updated frontend/reference/forecast.js
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,9 +25,3 @@ members: 7
 TABLE source_file, type FROM #community/Community_483
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-
-## Top bridge nodes
-- [[TestPnLAttribution]] - degree 4, connects to 1 community

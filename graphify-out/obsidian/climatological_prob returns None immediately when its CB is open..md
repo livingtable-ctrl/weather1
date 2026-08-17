@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_infrastructure.py"
 type: "rationale"
-community: "Community 44"
+community: "Community 7"
 location: "L184"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_44
+  - community/Community_7
 ---
 
 # climatological_prob returns None immediately when its CB is open.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_climatology_cb_skips_when_open()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_44
+#graphify/rationale #graphify/EXTRACTED #community/Community_7

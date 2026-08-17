@@ -1,18 +1,17 @@
 ---
-source_file: "tests/test_phase2_batch_d.py"
+source_file: "tests/test_mos_nbp.py"
 type: "code"
-community: "Community 172"
-location: "L638"
+community: "Community 145"
+location: "L331"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_172
+  - community/Community_145
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestGetLivePrecipObs]] - `method` [EXTRACTED]
-- [[_reset_nws_cb()]] - `calls` [EXTRACTED]
+- [[TestNbpFeedsNwsProbFromQuantiles]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_172
+#graphify/code #graphify/EXTRACTED #community/Community_145

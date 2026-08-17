@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L443"
+community: "Community 3"
+location: "L444"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_3
 ---
 
 # Load the set of previously-seen tickers from disk (survives restarts).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_load_watch_state()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

@@ -1,27 +1,27 @@
 ---
 type: community
-cohesion: 0.21
+cohesion: 0.26
 members: 12
 ---
 
 # Community 305
 
-**Cohesion:** 0.21 - loosely connected
+**Cohesion:** 0.26 - loosely connected
 **Members:** 12 nodes
 
 ## Members
-- [[dot-_run_paper_sub4()]] - code - tests/test_menu_ux.py
-- [[dot-test_exit_signals_closes_when_user_says_yes()]] - code - tests/test_menu_ux.py
-- [[dot-test_exit_signals_keyboard_interrupt_returns_to_menu()]] - code - tests/test_menu_ux.py
-- [[dot-test_exit_signals_skipped_when_user_says_no()]] - code - tests/test_menu_ux.py
-- [[dot-test_exit_signals_uses_realizable_price_not_midpoint()]] - code - tests/test_menu_ux.py
-- [[Ctrl+C on the close prompt must not crash — menu should continue.]] - rationale - tests/test_menu_ux.py
-- [[Helper drive cmd_menu → P(aper) → 4(exit signals), capturing stdout.…]] - rationale - tests/test_menu_ux.py
-- [[Real beforeafter for a NO position with yes_bid=60yes_ask=62 (cents), the…]] - rationale - tests/test_menu_ux.py
-- [[TestExitSignals]] - code - tests/test_menu_ux.py
-- [[Tests for the paper submenu 'Exit signals' branch (sub == '4').]] - rationale - tests/test_menu_ux.py
-- [[When user says n, should print 'skipped' confirmation and NOT call…]] - rationale - tests/test_menu_ux.py
-- [[When user says y, close_paper_early must be called with (trade_id,…]] - rationale - tests/test_menu_ux.py
+- [[dot-test_boundary_005_is_moderate()]] - code - tests/test_confidence_tiers.py
+- [[dot-test_classify_confidence_returns_string()]] - code - tests/test_confidence_tiers.py
+- [[dot-test_high_confidence_low_spread()]] - code - tests/test_confidence_tiers.py
+- [[dot-test_live_thresholds_higher()]] - code - tests/test_confidence_tiers.py
+- [[dot-test_low_confidence_wide_spread()]] - code - tests/test_confidence_tiers.py
+- [[dot-test_moderate_confidence_medium_spread()]] - code - tests/test_confidence_tiers.py
+- [[dot-test_zero_spread_is_high()]] - code - tests/test_confidence_tiers.py
+- [[Classify ensemble spread into HIGH, MODERATE, or LOW confidence tier.]] - rationale - utils.py
+- [[Return minimum edge required given ensemble spread and trading mode.]] - rationale - utils.py
+- [[TestGetMinEdgeForConfidence]] - code - tests/test_confidence_tiers.py
+- [[classify_confidence_tier()]] - code - utils.py
+- [[get_min_edge_for_confidence()]] - code - utils.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,7 +31,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
+- 3 edges to [[_COMMUNITY_Community 4]]
+- 2 edges to [[_COMMUNITY_Community 3]]
+- 2 edges to [[_COMMUNITY_Community 6]]
+- 1 edge to [[_COMMUNITY_Community 219]]
+- 1 edge to [[_COMMUNITY_Community 76]]
+- 1 edge to [[_COMMUNITY_Community 1]]
 
 ## Top bridge nodes
-- [[TestExitSignals]] - degree 7, connects to 1 community
+- [[get_min_edge_for_confidence()]] - degree 15, connects to 6 communities
+- [[classify_confidence_tier()]] - degree 5, connects to 2 communities
+- [[TestGetMinEdgeForConfidence]] - degree 8, connects to 1 community

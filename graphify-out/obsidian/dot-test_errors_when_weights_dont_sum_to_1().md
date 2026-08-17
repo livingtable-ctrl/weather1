@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_c.py"
 type: "code"
-community: "Community 119"
+community: "Community 109"
 location: "L107"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_119
+  - community/Community_109
 ---
 
 # .test_errors_when_weights_dont_sum_to_1()
@@ -15,4 +15,4 @@ tags:
 - [[TestValidateWeightFiles]] - `method` [EXTRACTED]
 - [[validate_weight_files()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_119
+#graphify/code #graphify/EXTRACTED #community/Community_109

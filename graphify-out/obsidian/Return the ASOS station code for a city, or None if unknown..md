@@ -1,12 +1,12 @@
 ---
 source_file: "mos.py"
 type: "rationale"
-community: "Community 457"
+community: "Community 15"
 location: "L72"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_457
+  - community/Community_15
 ---
 
 # Return the ASOS station code for a city, or None if unknown.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_mos_station()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_457
+#graphify/rationale #graphify/EXTRACTED #community/Community_15

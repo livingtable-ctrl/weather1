@@ -1,30 +1,30 @@
 ---
 type: community
-cohesion: 0.16
+cohesion: 0.18
 members: 15
 ---
 
 # Community 231
 
-**Cohesion:** 0.16 - loosely connected
+**Cohesion:** 0.18 - loosely connected
 **Members:** 15 nodes
 
 ## Members
-- [[dot-test_default_threshold_does_not_trigger_same_shift()]] - code - tests/test_early_exits.py
-- [[dot-test_edge_gone_threshold_is_negative()]] - code - tests/test_early_exits.py
-- [[dot-test_get_weather_markets_called_once_for_multiple_trades()]] - code - tests/test_early_exits.py
-- [[dot-test_lowering_threshold_triggers_previously_subthreshold_shift()]] - code - tests/test_early_exits.py
-- [[dot-test_minimum_hold_time_prevents_early_exit()]] - code - tests/test_early_exits.py
-- [[dot-test_model_flipped_requires_10pct_net_edge()]] - code - tests/test_early_exits.py
-- [[MODEL_EXIT_SHIFT_PP replaced a hardcoded 0.25 literal in both…]] - rationale - tests/test_early_exits.py
-- [[P1-20 get_weather_markets must be called once regardless of N open trades.]] - rationale - tests/test_early_exits.py
-- [[Sanity companion to the above the same 0.23 shift must NOT exit under the real…]] - rationale - tests/test_early_exits.py
-- [[TestCheckModelExitsThresholds]] - code - tests/test_early_exits.py
-- [[TestModelExitShiftPpIsConfigurable]] - code - tests/test_early_exits.py
-- [[_make_trade()_2]] - code - tests/test_early_exits.py
-- [[check_model_exits model_flipped must require net_edge  -0.10 (not -0.05).]] - rationale - tests/test_early_exits.py
-- [[check_model_exits must NOT exit a trade whose edge merely dropped from 8% to…]] - rationale - tests/test_early_exits.py
-- [[check_model_exits must not exit a trade entered less than 12 hours ago.]] - rationale - tests/test_early_exits.py
+- [[10 Bias Correction by Condition Type]] - document - docs/superpowers/specs/2026-04-10-signal-quality-design.md
+- [[14 Edge Decay by Condition Type]] - document - docs/superpowers/specs/2026-04-10-signal-quality-design.md
+- [[39 Kelly Sizing by Condition Type]] - document - docs/superpowers/specs/2026-04-10-signal-quality-design.md
+- [[1c Split weather_markets.py (3,700 lines)]] - document - docs/superpowers/plans/do-after-graduation.md
+- [[3b Near-Threshold Detection]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
+- [[3c Blend Weight Review]] - document - docs/superpowers/plans/do-after-graduation.md
+- [[3d analyze_trade Refactor]] - document - docs/superpowers/plans/do-after-graduation.md
+- [[4b Ensemble Blend Math Unit Tests]] - document - docs/superpowers/plans/do-after-graduation.md
+- [[G2 Split weather_markets.py]] - document - docs/superpowers/plans/2026-06-27-category-g-architecture.md
+- [[LV1 Settlement-Time Temperature Model]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
+- [[LV4 Market Microstructure Scoring]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
+- [[LV5 Ensemble Member Clustering]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
+- [[_blend_weights() Priority Logic]] - document - docs/superpowers/specs/2026-04-10-model-signal-calibration-design.md
+- [[edge_confidence(days_out) Function]] - document - docs/superpowers/specs/2026-04-10-model-signal-calibration-design.md
+- [[weather_markets.py Module_1]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,11 +34,16 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 5 edges to [[_COMMUNITY_Community 272]]
-- 1 edge to [[_COMMUNITY_Community 333]]
+- 4 edges to [[_COMMUNITY_Community 246]]
+- 4 edges to [[_COMMUNITY_Community 94]]
+- 2 edges to [[_COMMUNITY_Community 202]]
+- 1 edge to [[_COMMUNITY_Community 160]]
+- 1 edge to [[_COMMUNITY_Community 184]]
+- 1 edge to [[_COMMUNITY_Community 271]]
 
 ## Top bridge nodes
-- [[_make_trade()_2]] - degree 9, connects to 2 communities
-- [[TestCheckModelExitsThresholds]] - degree 4, connects to 1 community
-- [[TestModelExitShiftPpIsConfigurable]] - degree 4, connects to 1 community
-- [[dot-test_get_weather_markets_called_once_for_multiple_trades()]] - degree 3, connects to 1 community
+- [[weather_markets.py Module_1]] - degree 22, connects to 6 communities
+- [[_blend_weights() Priority Logic]] - degree 4, connects to 1 community
+- [[1c Split weather_markets.py (3,700 lines)]] - degree 3, connects to 1 community
+- [[LV4 Market Microstructure Scoring]] - degree 2, connects to 1 community
+- [[10 Bias Correction by Condition Type]] - degree 2, connects to 1 community

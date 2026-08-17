@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 1"
 location: "L3308"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_1
 ---
 
 # Directional bias across open positions. Returns YES/NO counts, costs, and which…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_factor_exposure()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_1

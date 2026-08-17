@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 436"
+community: "Community 10"
 location: "L1272"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_436
+  - community/Community_10
 ---
 
 # Model matching market_prob exactly gives BSS ≈ 0.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_market_level_model_near_zero()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_436
+#graphify/rationale #graphify/EXTRACTED #community/Community_10

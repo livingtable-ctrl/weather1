@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 693"
+community: "Community 1"
 location: "L3383"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_1
 ---
 
 # get_unrealized_pnl_paper()
@@ -16,8 +16,9 @@ tags:
 - [[cmd_dashboard()]] - `calls` [EXTRACTED]
 - [[cmd_paper()]] - `calls` [EXTRACTED]
 - [[get_daily_pnl()]] - `calls` [EXTRACTED]
-- [[get_open_trades()]] - `calls` [EXTRACTED]
-- [[main.py_1]] - `imports` [EXTRACTED]
-- [[paper.py_1]] - `contains` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
+- [[paper.get_open_trades]] - `calls` [EXTRACTED]
+- [[paper.py]] - `contains` [EXTRACTED]
+- [[parse_market_price()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_1

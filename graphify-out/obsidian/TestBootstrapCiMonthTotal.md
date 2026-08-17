@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_acis_precip.py"
 type: "code"
-community: "Community 271"
+community: "Community 141"
 location: "L193"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_271
+  - community/Community_141
 ---
 
 # TestBootstrapCiMonthTotal
@@ -17,4 +17,4 @@ tags:
 - [[dot-test_too_few_years_returns_wide_ci()]] - `method` [EXTRACTED]
 - [[test_acis_precip.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_271
+#graphify/code #graphify/EXTRACTED #community/Community_141

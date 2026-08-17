@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_starting_balance.py"
 type: "code"
-community: "Community 228"
+community: "Community 289"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_228
+  - community/Community_289
 ---
 
 # test_starting_balance.py
@@ -16,4 +16,4 @@ tags:
 - [[STARTING_BALANCE]] - `calls` [EXTRACTED]
 - [[TestStartingBalanceEnvVar]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_228
+#graphify/code #graphify/EXTRACTED #community/Community_289

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_nws_afd.py"
 type: "code"
-community: "Community 68"
+community: "Community 382"
 location: "L417"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_68
+  - community/Community_382
 ---
 
 # test_city_wfo_office_matches_live_api()
@@ -16,4 +16,4 @@ tags:
 - [[integration_2]] - `references` [EXTRACTED]
 - [[test_nws_afd.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_68
+#graphify/code #graphify/EXTRACTED #community/Community_382

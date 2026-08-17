@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_consistency.py"
 type: "rationale"
-community: "Community 35"
+community: "Community 48"
 location: "L247"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_35
+  - community/Community_48
 ---
 
 # Same city, different accrual months must never be pooled -- rain-specific case…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_monthly_rain_different_months_not_compared()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_35
+#graphify/rationale #graphify/EXTRACTED #community/Community_48

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_gating.py"
 type: "rationale"
-community: "Community 61"
+community: "Community 70"
 location: "L100"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_61
+  - community/Community_70
 ---
 
 # Regression control: an ordinary daily HIGH ticker must still reach its normal…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_daily_high_ticker_unaffected()_2]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_61
+#graphify/rationale #graphify/EXTRACTED #community/Community_70

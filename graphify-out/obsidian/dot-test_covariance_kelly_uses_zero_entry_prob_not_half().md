@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_debug_fixes.py"
 type: "code"
-community: "Community 78"
+community: "Community 613"
 location: "L199"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_78
+  - community/Community_613
 ---
 
 # .test_covariance_kelly_uses_zero_entry_prob_not_half()
@@ -15,4 +15,4 @@ tags:
 - [[TestEntryProbFalsyZero]] - `method` [EXTRACTED]
 - [[entry_prob=0.0 on an open trade must not be replaced by 0.5 in covariance math.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_78
+#graphify/code #graphify/EXTRACTED #community/Community_613

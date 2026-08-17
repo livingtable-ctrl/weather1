@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 3"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # cron.py — Background cron runner extracted from main.py. Contains cmd_cron and…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cron.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

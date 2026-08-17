@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_stability.py"
 type: "rationale"
-community: "Community 49"
+community: "Community 342"
 location: "L84"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_49
+  - community/Community_342
 ---
 
 # A flag younger than 600 s must trigger a WARNING.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_fresh_flag_triggers_warning()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_49
+#graphify/rationale #graphify/EXTRACTED #community/Community_342

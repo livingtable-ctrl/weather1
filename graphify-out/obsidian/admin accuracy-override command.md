@@ -1,11 +1,11 @@
 ---
 source_file: "COMMANDS.md"
 type: "document"
-community: "Community 693"
+community: "Community 117"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_117
 ---
 
 # admin accuracy-override command
@@ -18,4 +18,4 @@ tags:
 - [[admin reset-loss command]] - `conceptually_related_to` [INFERRED]
 - [[override subcommand group]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_693
+#graphify/document #graphify/EXTRACTED #community/Community_117

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Community 280"
+community: "Community 284"
 location: "L270"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_280
+  - community/Community_284
 ---
 
 # A genuinely-zero string volume_fp ("0.00") must still correctly report stale --…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_string_zero_volume_fp_still_stale_when_closing_soon()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_280
+#graphify/rationale #graphify/EXTRACTED #community/Community_284

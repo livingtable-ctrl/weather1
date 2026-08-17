@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "rationale"
-community: "Community 98"
+community: "Community 166"
 location: "L404"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_98
+  - community/Community_166
 ---
 
 # No as_of_month_day -- every window year contributes, True iff that year's first…
 
 ## Connections
-- [[dot-test_unconditional_mode_hand_computed()_1]] - `rationale_for` [EXTRACTED]
+- [[dot-test_unconditional_mode_hand_computed()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_98
+#graphify/rationale #graphify/EXTRACTED #community/Community_166

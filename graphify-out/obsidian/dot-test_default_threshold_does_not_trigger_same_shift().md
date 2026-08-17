@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "code"
-community: "Community 231"
+community: "Community 104"
 location: "L382"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_231
+  - community/Community_104
 ---
 
 # .test_default_threshold_does_not_trigger_same_shift()
@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[Sanity companion to the above the same 0.23 shift must NOT exit under the real…]] - `rationale_for` [EXTRACTED]
 - [[TestModelExitShiftPpIsConfigurable]] - `method` [EXTRACTED]
-- [[_make_trade()_2]] - `calls` [EXTRACTED]
+- [[_make_trade()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_231
+#graphify/code #graphify/EXTRACTED #community/Community_104

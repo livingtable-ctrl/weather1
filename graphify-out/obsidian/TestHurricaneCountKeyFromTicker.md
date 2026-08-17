@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Community 335"
+community: "Community 343"
 location: "L66"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_335
+  - community/Community_343
 ---
 
 # TestHurricaneCountKeyFromTicker
@@ -22,4 +22,4 @@ tags:
 - [[dot-test_season_year_derived_from_2_digit_prefix()]] - `method` [EXTRACTED]
 - [[test_hurricane_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_335
+#graphify/code #graphify/EXTRACTED #community/Community_343

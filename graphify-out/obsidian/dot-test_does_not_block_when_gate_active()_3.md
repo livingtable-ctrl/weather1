@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Community 506"
+community: "Community 567"
 location: "L1633"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_506
+  - community/Community_567
 ---
 
 # .test_does_not_block_when_gate_active()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCheckPositionLimitsHurricaneNextEventConditional]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_506
+#graphify/code #graphify/EXTRACTED #community/Community_567

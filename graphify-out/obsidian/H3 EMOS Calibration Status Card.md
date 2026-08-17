@@ -1,12 +1,12 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md"
 type: "document"
-community: "Community 104"
+community: "Community 334"
 location: "H3"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_104
+  - community/Community_334
 ---
 
 # H3: EMOS Calibration Status Card
@@ -17,4 +17,4 @@ tags:
 - [[paths.py Module]] - `references` [EXTRACTED]
 - [[web_app.py Module]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_104
+#graphify/document #graphify/EXTRACTED #community/Community_334

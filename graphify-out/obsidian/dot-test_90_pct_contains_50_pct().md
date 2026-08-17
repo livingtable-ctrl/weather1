@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 314"
+community: "Community 319"
 location: "L1514"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_314
+  - community/Community_319
 ---
 
 # .test_90_pct_contains_50_pct()
@@ -15,4 +15,4 @@ tags:
 - [[510 successes 90% CI should straddle 0.5.]] - `rationale_for` [EXTRACTED]
 - [[TestBayesianConfidenceInterval]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_314
+#graphify/code #graphify/EXTRACTED #community/Community_319

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "rationale"
-community: "ML Bias Multiday-Predictions Filter"
-location: "L1006"
+community: "Community 230"
+location: "L1217"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_230
 ---
 
 # P(T>threshold) + P(low<T<threshold) should equal P(T>low).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_emos_interval_and_exceedance_consistent()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/rationale #graphify/EXTRACTED #community/Community_230

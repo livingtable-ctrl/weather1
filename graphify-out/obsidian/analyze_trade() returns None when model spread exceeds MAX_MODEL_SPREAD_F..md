@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "rationale"
-community: "Community 52"
+community: "Community 238"
 location: "L220"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_52
+  - community/Community_238
 ---
 
 # analyze_trade() returns None when model spread exceeds MAX_MODEL_SPREAD_F.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMaxModelSpreadGate]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_52
+#graphify/rationale #graphify/EXTRACTED #community/Community_238

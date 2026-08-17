@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_lock.py"
 type: "code"
-community: "Community 121"
+community: "Community 500"
 location: "L11"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_121
+  - community/Community_500
 ---
 
 # _acquire()
@@ -17,4 +17,4 @@ tags:
 - [[Helper point LOCK_PATH at tmp_path and call _acquire_cron_lock.]] - `rationale_for` [EXTRACTED]
 - [[test_cron_lock.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_121
+#graphify/code #graphify/EXTRACTED #community/Community_500

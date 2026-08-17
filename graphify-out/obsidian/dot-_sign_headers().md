@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Community 298"
+community: "Community 13"
 location: "L228"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_298
+  - community/Community_13
 ---
 
 # ._sign_headers()
@@ -19,4 +19,4 @@ tags:
 - [[KalshiClient]] - `method` [EXTRACTED]
 - [[ValueError]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_298
+#graphify/code #graphify/EXTRACTED #community/Community_13

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_target_hours.py"
 type: "rationale"
-community: "Community 112"
+community: "Community 120"
 location: "L40"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_112
+  - community/Community_120
 ---
 
 # One finalized ladder whose close_time, converted to `city_tz`, lands on…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_ladder_at_local_hour()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_112
+#graphify/rationale #graphify/EXTRACTED #community/Community_120

@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/outputs/paper.py.md"
 type: "document"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 682"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_682
 ---
 
 # paper.py Grade Audit
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[paper.py File Grade median 7.510]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/document #graphify/EXTRACTED #community/Community_682

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "rationale"
-community: "METAR Lock-In Confidence Tests"
+community: "Community 22"
 location: "L230"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/METAR_Lock-In_Confidence_Tests
+  - community/Community_22
 ---
 
 # A "between" condition missing lower/upper (a malformed/synthetic caller --…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_between_malformed_condition_missing_bounds_fails_closed()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/METAR_Lock-In_Confidence_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_22

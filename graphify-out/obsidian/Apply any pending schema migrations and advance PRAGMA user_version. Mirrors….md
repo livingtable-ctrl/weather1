@@ -1,17 +1,17 @@
 ---
 source_file: "execution_log.py"
 type: "rationale"
-community: "Execution Log Live-Loss Tracking"
+community: "Community 42"
 location: "L75"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Execution_Log_Live-Loss_Tracking
+  - community/Community_42
 ---
 
 # Apply any pending schema migrations and advance PRAGMA user_version. Mirrors…
 
 ## Connections
-- [[_run_migrations()]] - `rationale_for` [EXTRACTED]
+- [[_run_migrations()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking
+#graphify/rationale #graphify/EXTRACTED #community/Community_42

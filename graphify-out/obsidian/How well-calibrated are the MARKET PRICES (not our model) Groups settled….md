@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Community 36"
-location: "L5453"
+community: "Community 2"
+location: "L5508"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_36
+  - community/Community_2
 ---
 
 # How well-calibrated are the MARKET PRICES (not our model)? Groups settled…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_market_calibration()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_36
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "code"
-community: "Community 113"
-location: "L138"
+community: "Community 101"
+location: "L349"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_113
+  - community/Community_101
 ---
 
 # ._load_table()
@@ -25,4 +25,4 @@ tags:
 - [[TestApplyTemperatureScaling]] - `method` [EXTRACTED]
 - [[Write content to a temp file and wire ml_bias to read it.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_113
+#graphify/code #graphify/EXTRACTED #community/Community_101

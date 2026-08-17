@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_settlement_monitor.py"
 type: "code"
-community: "METAR Settlement Monitoring"
+community: "Community 88"
 location: "L125"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_88
 ---
 
 # TestCheckBetweenSettlement
@@ -26,4 +26,4 @@ tags:
 - [[Unit tests for _check_between_settlement (between-bucket lockout logic).…]] - `rationale_for` [EXTRACTED]
 - [[test_settlement_monitor.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/code #graphify/EXTRACTED #community/Community_88

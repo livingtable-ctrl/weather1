@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_suggested_bets.py"
 type: "code"
-community: "Community 176"
+community: "Community 225"
 location: "L56"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_176
+  - community/Community_225
 ---
 
 # TestSuggestedBetsEndpoint
@@ -18,4 +18,4 @@ tags:
 - [[Tests for apisuggested_bets.]] - `rationale_for` [EXTRACTED]
 - [[test_suggested_bets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_176
+#graphify/code #graphify/EXTRACTED #community/Community_225

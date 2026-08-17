@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "code"
-community: "METAR Lock-In Confidence Tests"
+community: "Community 22"
 location: "L517"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Lock-In_Confidence_Tests
+  - community/Community_22
 ---
 
 # .test_between_hour_boundary_13_vs_14()
@@ -16,4 +16,4 @@ tags:
 - [[Mutation-test the 1400 hour boundary directly hour 13 must not lock, hour 14…]] - `rationale_for` [EXTRACTED]
 - [[TestBetweenLockInDynamicConfidence]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Lock-In_Confidence_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_22

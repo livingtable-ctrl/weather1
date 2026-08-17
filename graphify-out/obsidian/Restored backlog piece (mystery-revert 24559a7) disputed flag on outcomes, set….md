@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Tracker Disputed Outcome Restoration"
+community: "Community 28"
 location: "L3978"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_Disputed_Outcome_Restoration
+  - community/Community_28
 ---
 
 # Restored backlog piece (mystery-revert 24559a7): disputed flag on outcomes, set…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestDisputedOutcomeTracking]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_Disputed_Outcome_Restoration
+#graphify/rationale #graphify/EXTRACTED #community/Community_28

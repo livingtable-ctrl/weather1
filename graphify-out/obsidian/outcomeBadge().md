@@ -1,18 +1,19 @@
 ---
-source_file: "frontend/src/App.jsx"
+source_file: "weather app site V_3 (3)/src/shared.jsx"
 type: "code"
-community: "Community 155"
-location: "L1566"
+community: "Community 265"
+location: "L31"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_155
+  - community/Community_265
 ---
 
 # outcomeBadge()
 
 ## Connections
 - [[TradesTab()]] - `calls` [EXTRACTED]
-- [[frontendsrcApp.jsx]] - `contains` [EXTRACTED]
+- [[TradesTab.jsx]] - `imports` [EXTRACTED]
+- [[shared.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_155
+#graphify/code #graphify/EXTRACTED #community/Community_265

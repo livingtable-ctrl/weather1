@@ -1,19 +1,18 @@
 ---
 source_file: "static/analytics.js"
 type: "code"
-community: "Legacy Static Dashboard JS Pages"
+community: "Community 454"
 location: "L27"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Legacy_Static_Dashboard_JS_Pages
+  - community/Community_454
 ---
 
 # loadAnalytics()
 
 ## Connections
-- [[makeLayout()]] - `calls` [EXTRACTED]
+- [[makeLayout()_1]] - `calls` [EXTRACTED]
 - [[staticanalytics.js]] - `contains` [EXTRACTED]
-- [[web_app.py api endpoints]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_454

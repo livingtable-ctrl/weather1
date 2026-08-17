@@ -1,29 +1,29 @@
 ---
 type: community
-cohesion: 0.14
+cohesion: 0.20
 members: 14
 ---
 
 # Community 260
 
-**Cohesion:** 0.14 - loosely connected
+**Cohesion:** 0.20 - loosely connected
 **Members:** 14 nodes
 
 ## Members
-- [[dot-test_default_halt_no_warning()]] - code - tests/test_phase2_batch_b.py
-- [[dot-test_non_default_halt_emits_warning()]] - code - tests/test_phase2_batch_b.py
-- [[dot-test_scaling_at_tier_boundaries()]] - code - tests/test_phase2_batch_b.py
-- [[dot-test_tier1_is_0_80()]] - code - tests/test_phase2_batch_b.py
-- [[dot-test_tier2_is_0_85()]] - code - tests/test_phase2_batch_b.py
-- [[dot-test_tier3_is_0_90()]] - code - tests/test_phase2_batch_b.py
-- [[dot-test_tier4_is_0_95()]] - code - tests/test_phase2_batch_b.py
-- [[dot-test_tiers_unchanged_with_non_default_halt()]] - code - tests/test_phase2_batch_b.py
-- [[Default DRAWDOWN_HALT_PCT=0.20 must NOT emit the tier warning.]] - rationale - tests/test_phase2_batch_b.py
-- [[Non-default DRAWDOWN_HALT_PCT must log a warning about tier misalignment.]] - rationale - tests/test_phase2_batch_b.py
-- [[P2-2 root cause old code shifted all boundaries when halt% changed.]] - rationale - tests/test_phase2_batch_b.py
-- [[P2-2 _DRAWDOWN_TIER_ constants must be hardcoded absolute values.]] - rationale - tests/test_phase2_batch_b.py
-- [[Spot-check the step function at each canonical boundary.]] - rationale - tests/test_phase2_batch_b.py
-- [[TestDrawdownTierAbsolute]] - code - tests/test_phase2_batch_b.py
+- [[dot-_add_member()]] - code - tests/test_tracker.py
+- [[dot-test_basic_accuracy()]] - code - tests/test_tracker.py
+- [[dot-test_city_filter()]] - code - tests/test_tracker.py
+- [[dot-test_returns_none_when_empty()]] - code - tests/test_tracker.py
+- [[dot-test_season_filter_summer()]] - code - tests/test_tracker.py
+- [[dot-test_season_filter_winter()]] - code - tests/test_tracker.py
+- [[dot-test_season_filter_winter_vs_summer_different_mae()]] - code - tests/test_tracker.py
+- [[City filter returns only data for that city.]] - rationale - tests/test_tracker.py
+- [[Returns model MAE dict for available data.]] - rationale - tests/test_tracker.py
+- [[Summer filter returns only Apr-Sep data.]] - rationale - tests/test_tracker.py
+- [[TestEnsembleMemberAccuracy]] - code - tests/test_tracker.py
+- [[Tests for get_ensemble_member_accuracy() (18).]] - rationale - tests/test_tracker.py
+- [[Winter and summer MAEs differ for the same model.]] - rationale - tests/test_tracker.py
+- [[Winter filter returns only Oct-Mar data.]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,7 +33,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 248]]
+- 1 edge to [[_COMMUNITY_Community 10]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[TestDrawdownTierAbsolute]] - degree 10, connects to 1 community
+- [[TestEnsembleMemberAccuracy]] - degree 10, connects to 2 communities

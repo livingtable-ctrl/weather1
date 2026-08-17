@@ -1,12 +1,12 @@
 ---
 source_file: "static/forecast.js"
 type: "code"
-community: "Legacy Static Dashboard JS Pages"
+community: "Community 369"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Legacy_Static_Dashboard_JS_Pages
+  - community/Community_369
 ---
 
 # static/forecast.js
@@ -14,10 +14,10 @@ tags:
 ## Connections
 - [[loadForecast()]] - `contains` [EXTRACTED]
 - [[loadTodayForecasts()]] - `contains` [EXTRACTED]
-- [[makeLayout()_1]] - `contains` [EXTRACTED]
+- [[makeLayout()]] - `contains` [EXTRACTED]
 - [[renderCityHeatmap()]] - `contains` [EXTRACTED]
 - [[renderEnsembleChart()]] - `contains` [EXTRACTED]
 - [[renderForecastTable()]] - `contains` [EXTRACTED]
 - [[renderSourceReliability()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_369

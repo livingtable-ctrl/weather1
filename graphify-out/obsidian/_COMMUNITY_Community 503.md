@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.38
+members: 7
 ---
 
 # Community 503
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.38 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[Dead man's switch — run manually to check bot health py watchdog.py If the…]] - rationale - watchdog.py
-- [[is_heartbeat_stale()]] - code - watchdog.py
-- [[send_alert()]] - code - watchdog.py
-- [[test_dead_man.py]] - code - tests/test_dead_man.py
-- [[test_heartbeat_stale_detection()]] - code - tests/test_dead_man.py
-- [[watchdog.py]] - code - watchdog.py
+- [[dot-_enriched()_7]] - code - tests/test_forecasting.py
+- [[dot-test_gaussian_lifts_zero_ensemble_when_forecast_is_high()]] - code - tests/test_forecasting.py
+- [[dot-test_gaussian_pulls_down_ceiling_ensemble()]] - code - tests/test_forecasting.py
+- [[E2 Gaussian probability is blended into ensemble fraction, not only used as…]] - rationale - tests/test_forecasting.py
+- [[E2 when all ensemble members are below threshold but forecast is well above,…]] - rationale - tests/test_forecasting.py
+- [[E2 when all ensemble members exceed threshold but forecast is close to it,…]] - rationale - tests/test_forecasting.py
+- [[TestGaussianEnsembleBlend]] - code - tests/test_forecasting.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,8 +26,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
+- 1 edge to [[_COMMUNITY_Community 38]]
+- 1 edge to [[_COMMUNITY_Community 9]]
 
 ## Top bridge nodes
-- [[watchdog.py]] - degree 5, connects to 2 communities
+- [[TestGaussianEnsembleBlend]] - degree 6, connects to 2 communities

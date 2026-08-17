@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 289"
+community: "Community 293"
 location: "L6577"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_289
+  - community/Community_293
 ---
 
 # .test_unknown_city_returns_none()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestGetForecastRunTrend]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_289
+#graphify/code #graphify/EXTRACTED #community/Community_293

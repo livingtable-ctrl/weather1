@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/full-prototype.jsx"
 type: "code"
-community: "Community 642"
+community: "Community 750"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_642
+  - community/Community_750
 ---
 
 # full-prototype.jsx
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[FullProto_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_642
+#graphify/code #graphify/EXTRACTED #community/Community_750

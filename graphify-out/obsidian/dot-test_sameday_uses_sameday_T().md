@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "code"
-community: "Community 113"
-location: "L208"
+community: "Community 101"
+location: "L419"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_113
+  - community/Community_101
 ---
 
 # .test_sameday_uses_sameday_T()
@@ -16,4 +16,4 @@ tags:
 - [[TestApplyTemperatureScaling]] - `method` [EXTRACTED]
 - [[days_out=0 uses 'sameday' T, not the global T.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_113
+#graphify/code #graphify/EXTRACTED #community/Community_101

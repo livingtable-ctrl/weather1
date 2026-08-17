@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_b.py"
 type: "code"
-community: "Community 403"
+community: "Community 429"
 location: "L195"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_403
+  - community/Community_429
 ---
 
 # TestSaveEmbedsSHA256
@@ -17,6 +17,6 @@ tags:
 - [[dot-test_save_strips_old_crc32_field()]] - `method` [EXTRACTED]
 - [[dot-test_save_writes_checksum_field()]] - `method` [EXTRACTED]
 - [[P2-14 _save must embed a 64-char SHA-256 _checksum field in every write.]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Batch B Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_b.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_403
+#graphify/code #graphify/EXTRACTED #community/Community_429

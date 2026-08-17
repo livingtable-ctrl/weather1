@@ -1,27 +1,37 @@
 ---
 type: community
-cohesion: 0.17
-members: 12
+cohesion: 0.11
+members: 22
 ---
 
 # Community 145
 
-**Cohesion:** 0.17 - loosely connected
-**Members:** 12 nodes
+**Cohesion:** 0.11 - loosely connected
+**Members:** 22 nodes
 
 ## Members
-- [[AtomicWriteError]] - code - safe_io.py
-- [[Exception]] - code
-- [[PositionStore]] - code - positions.py
-- [[Protocol]] - code
-- [[Return positions whose break-even stop has triggered. Fires when…]] - rationale - positions.py
-- [[Return what closing this position right now would actually realize. A YES…]] - rationale - positions.py
-- [[Shared position read-model for paper and live trading. Both paper.py (JSON-…]] - rationale - positions.py
-- [[The genuinely shared surface between paper.PaperPositionStore and…]] - rationale - positions.py
-- [[_midpoint_price Function]] - code - order_executor.py
-- [[check_breakeven_stops()]] - code - positions.py
-- [[liquidation_price()]] - code - positions.py
-- [[positions.py]] - code - positions.py
+- [[dot-setup_method()_11]] - code - tests/test_mos_nbp.py
+- [[dot-setup_method()_12]] - code - tests/test_mos_nbp.py
+- [[dot-setup_method()_13]] - code - tests/test_mos_nbp.py
+- [[dot-test_bad_station_suffix_length_returns_none_without_network_call()]] - code - tests/test_mos_nbp.py
+- [[dot-test_min_var_does_not_return_the_max_quantiles()]] - code - tests/test_mos_nbp.py
+- [[dot-test_network_failure_returns_none_and_caches_the_miss()_1]] - code - tests/test_mos_nbp.py
+- [[dot-test_parses_real_shaped_html_response()]] - code - tests/test_mos_nbp.py
+- [[dot-test_pil_derived_from_station_suffix()]] - code - tests/test_mos_nbp.py
+- [[dot-test_quantiles_produce_a_sane_probability()]] - code - tests/test_mos_nbp.py
+- [[dot-test_repeat_calls_within_ttl_hit_cache_not_network()]] - code - tests/test_mos_nbp.py
+- [[dot-test_returns_none_for_uncovered_date()_1]] - code - tests/test_mos_nbp.py
+- [[dot-test_returns_quantiles_for_covered_max_date()]] - code - tests/test_mos_nbp.py
+- [[dot-test_unknown_station_pil_returns_none()]] - code - tests/test_mos_nbp.py
+- [[End-to-end the fetcher's output shape must be directly consumable by…]] - rationale - tests/test_mos_nbp.py
+- [[Every station this bot uses is K + 3 letters; a station that doesn't fit must…]] - rationale - tests/test_mos_nbp.py
+- [[IEM's error page for an unmatched PIL has no pre class=afos-pre block --…]] - rationale - tests/test_mos_nbp.py
+- [[KMDW - pil=NBPMDW, matching NBS's own K-prefix-stripped station-suffix…]] - rationale - tests/test_mos_nbp.py
+- [[Mutation-proof requesting var='min' on a date that only has a max entry must…_1]] - rationale - tests/test_mos_nbp.py
+- [[TestFetchNbmQuantiles]] - code - tests/test_mos_nbp.py
+- [[TestFetchNbpPercentiles]] - code - tests/test_mos_nbp.py
+- [[TestNbpFeedsNwsProbFromQuantiles]] - code - tests/test_mos_nbp.py
+- [[_wrap_html()_1]] - code - tests/test_mos_nbp.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,23 +41,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 9 edges to [[_COMMUNITY_Community 45]]
-- 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Community 144]]
-- 2 edges to [[_COMMUNITY_Community 158]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Community 159]]
-- 1 edge to [[_COMMUNITY_Community 47]]
-- 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
-- 1 edge to [[_COMMUNITY_Safe IO CRC Validation Tests]]
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
-- 1 edge to [[_COMMUNITY_Community 94]]
-- 1 edge to [[_COMMUNITY_Community 370]]
-- 1 edge to [[_COMMUNITY_Community 272]]
+- 5 edges to [[_COMMUNITY_Community 15]]
 
 ## Top bridge nodes
-- [[liquidation_price()]] - degree 11, connects to 6 communities
-- [[check_breakeven_stops()]] - degree 9, connects to 5 communities
-- [[AtomicWriteError]] - degree 6, connects to 5 communities
-- [[positions.py]] - degree 10, connects to 4 communities
-- [[PositionStore]] - degree 7, connects to 2 communities
+- [[TestFetchNbpPercentiles]] - degree 8, connects to 1 community
+- [[_wrap_html()_1]] - degree 8, connects to 1 community
+- [[TestFetchNbmQuantiles]] - degree 5, connects to 1 community
+- [[TestNbpFeedsNwsProbFromQuantiles]] - degree 4, connects to 1 community
+- [[dot-test_quantiles_produce_a_sane_probability()]] - degree 3, connects to 1 community

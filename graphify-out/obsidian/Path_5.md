@@ -1,16 +1,17 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 162"
+community: "Community 150"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_162
+  - community/Community_150
 ---
 
 # Path
 
 ## Connections
-- [[_production_py_files()]] - `references` [EXTRACTED]
+- [[_patched_cleanup()]] - `references` [EXTRACTED]
+- [[_write_stale()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_162
+#graphify/code #graphify/EXTRACTED #community/Community_150

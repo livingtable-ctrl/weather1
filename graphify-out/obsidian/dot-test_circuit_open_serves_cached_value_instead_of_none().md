@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_acis_precip.py"
 type: "code"
-community: "Community 161"
+community: "Community 162"
 location: "L559"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_161
+  - community/Community_162
 ---
 
 # .test_circuit_open_serves_cached_value_instead_of_none()
@@ -15,4 +15,4 @@ tags:
 - [[TestFetchSeasonalPrecipMeanMm]] - `method` [EXTRACTED]
 - [[While the circuit breaker is open, a cache hit must still win -- matches…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_161
+#graphify/code #graphify/EXTRACTED #community/Community_162

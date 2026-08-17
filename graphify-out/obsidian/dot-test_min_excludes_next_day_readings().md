@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 65"
+community: "Community 63"
 location: "L6120"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_65
+  - community/Community_63
 ---
 
 # .test_min_excludes_next_day_readings()
@@ -16,4 +16,4 @@ tags:
 - [[A colder reading on the following local day must NOT be picked up as the target…]] - `rationale_for` [EXTRACTED]
 - [[TestFetchAsosDailyTemp]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_65
+#graphify/code #graphify/EXTRACTED #community/Community_63

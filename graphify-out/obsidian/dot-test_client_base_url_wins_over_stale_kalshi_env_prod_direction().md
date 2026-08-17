@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading_gates.py"
 type: "code"
-community: "Community 54"
+community: "Community 49"
 location: "L411"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_54
+  - community/Community_49
 ---
 
 # .test_client_base_url_wins_over_stale_kalshi_env_prod_direction()
@@ -16,4 +16,4 @@ tags:
 - [[Mirror of the above in the safety-critical direction a prod client must still…]] - `rationale_for` [EXTRACTED]
 - [[TestLiveTradingGate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_54
+#graphify/code #graphify/EXTRACTED #community/Community_49

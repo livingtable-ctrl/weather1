@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Hurricane Market Season Signals"
+community: "Community 19"
 location: "L1200"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Hurricane_Market_Season_Signals
+  - community/Community_19
 ---
 
 # TestAnalyzeHurricaneNextEventTrade
@@ -29,4 +29,4 @@ tags:
 - [[dot-test_unknown_cache_state_uses_unconditional_mode_not_assumed_false()]] - `method` [EXTRACTED]
 - [[test_hurricane_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Hurricane_Market_Season_Signals
+#graphify/code #graphify/EXTRACTED #community/Community_19

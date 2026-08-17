@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climatology.py"
 type: "code"
-community: "Community 302"
+community: "Community 413"
 location: "L327"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_302
+  - community/Community_413
 ---
 
 # .test_ignores_null_values()
@@ -15,4 +15,4 @@ tags:
 - [[TestComputeSigmaFromClimate]] - `method` [EXTRACTED]
 - [[_synthetic_climate_data()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_302
+#graphify/code #graphify/EXTRACTED #community/Community_413

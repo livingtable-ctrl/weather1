@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "rationale"
-community: "Community 290"
+community: "Community 294"
 location: "L2110"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_290
+  - community/Community_294
 ---
 
 # Boundary case for the pre-existing (not newly introduced) `> 5` threshold:…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_banner_not_suppressed_at_exactly_five_real_violations()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_290
+#graphify/rationale #graphify/EXTRACTED #community/Community_294

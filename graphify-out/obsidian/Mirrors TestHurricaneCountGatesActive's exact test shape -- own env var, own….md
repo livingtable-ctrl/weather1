@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "rationale"
-community: "Community 426"
+community: "Community 463"
 location: "L1142"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_426
+  - community/Community_463
 ---
 
 # Mirrors TestHurricaneCountGatesActive's exact test shape -- own env var, own…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestHurricaneNextEventGatesActive]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_426
+#graphify/rationale #graphify/EXTRACTED #community/Community_463

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "rationale"
-community: "Community 52"
+community: "Community 438"
 location: "L105"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_52
+  - community/Community_438
 ---
 
 # _CONDITION_CONFIDENCE values correctly rank: precip_snow < precip_any < above.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_condition_type_scale_in_kelly()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_52
+#graphify/rationale #graphify/EXTRACTED #community/Community_438

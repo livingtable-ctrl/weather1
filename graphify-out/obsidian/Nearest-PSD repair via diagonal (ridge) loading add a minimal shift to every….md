@@ -1,12 +1,12 @@
 ---
 source_file: "monte_carlo.py"
 type: "rationale"
-community: "Community 87"
+community: "Community 188"
 location: "L46"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_87
+  - community/Community_188
 ---
 
 # Nearest-PSD repair via diagonal (ridge) loading: add a minimal shift to every…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_repair_psd()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_87
+#graphify/rationale #graphify/EXTRACTED #community/Community_188

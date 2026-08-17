@@ -1,21 +1,21 @@
 ---
 source_file: "execution_log.py"
 type: "code"
-community: "Execution Log Live-Loss Tracking"
+community: "Community 404"
 location: "L806"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Execution_Log_Live-Loss_Tracking
+  - community/Community_404
 ---
 
 # append_entry()
 
 ## Connections
 - [[Append a single entry dict as a JSONL line to the entries log.]] - `rationale_for` [EXTRACTED]
-- [[Path_8]] - `references` [EXTRACTED]
-- [[Phase 2 Batch G Regression Tests]] - `calls` [EXTRACTED]
+- [[Path_17]] - `references` [EXTRACTED]
 - [[execution_log.py]] - `contains` [EXTRACTED]
 - [[test_infrastructure.py]] - `references` [EXTRACTED]
+- [[test_phase2_batch_g.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking
+#graphify/code #graphify/EXTRACTED #community/Community_404

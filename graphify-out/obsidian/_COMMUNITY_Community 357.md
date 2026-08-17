@@ -1,25 +1,26 @@
 ---
 type: community
-cohesion: 0.20
-members: 10
+cohesion: 0.18
+members: 11
 ---
 
 # Community 357
 
-**Cohesion:** 0.20 - loosely connected
-**Members:** 10 nodes
+**Cohesion:** 0.18 - loosely connected
+**Members:** 11 nodes
 
 ## Members
-- [[dot-test_accumulated_sentinel_is_none()]] - code - tests/test_acis_precip.py
-- [[dot-test_empty_string_is_none()]] - code - tests/test_acis_precip.py
-- [[dot-test_float_passthrough()]] - code - tests/test_acis_precip.py
-- [[dot-test_garbage_string_is_none_not_a_crash()]] - code - tests/test_acis_precip.py
-- [[dot-test_int_passthrough()]] - code - tests/test_acis_precip.py
-- [[dot-test_missing_is_none()]] - code - tests/test_acis_precip.py
-- [[dot-test_none_is_none()]] - code - tests/test_acis_precip.py
-- [[dot-test_numeric_string()]] - code - tests/test_acis_precip.py
-- [[dot-test_trace_is_zero()]] - code - tests/test_acis_precip.py
-- [[TestParsePcpnValue]] - code - tests/test_acis_precip.py
+- [[Architecture notes]] - document - updated frontend/HANDOFF.md
+- [[Backend modules added since this prototype was designed]] - document - updated frontend/HANDOFF.md
+- [[Data contracts]] - document - updated frontend/HANDOFF.md
+- [[File map_1]] - document - updated frontend/HANDOFF.md
+- [[HANDOFF]] - document - updated frontend/HANDOFF.md
+- [[Kalshi Weather Bot — Frontend Handoff]] - document - updated frontend/HANDOFF.md
+- [[Known gaps the design did NOT address]] - document - updated frontend/HANDOFF.md
+- [[Questions for the user before starting]] - document - updated frontend/HANDOFF.md
+- [[Settings page — now more important]] - document - updated frontend/HANDOFF.md
+- [[TL;DR for Claude Code]] - document - updated frontend/HANDOFF.md
+- [[Wiring strategy]] - document - updated frontend/HANDOFF.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,9 +28,3 @@ members: 10
 TABLE source_file, type FROM #community/Community_357
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 271]]
-
-## Top bridge nodes
-- [[TestParsePcpnValue]] - degree 10, connects to 1 community

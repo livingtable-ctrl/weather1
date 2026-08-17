@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts.py"
 type: "code"
-community: "Community 325"
+community: "Community 32"
 location: "L229"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_325
+  - community/Community_32
 ---
 
 # .test_below_direction_does_not_fire_when_price_above_target()
@@ -17,4 +17,4 @@ tags:
 - [[add_alert()]] - `calls` [EXTRACTED]
 - [[check_alerts()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_325
+#graphify/code #graphify/EXTRACTED #community/Community_32

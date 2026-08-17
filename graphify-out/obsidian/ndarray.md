@@ -1,11 +1,11 @@
 ---
 source_file: ""
 type: "code"
-community: "ML Bias Multiday-Predictions Filter"
+community: "Community 230"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_230
 ---
 
 # ndarray
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[fit_emos()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/code #graphify/EXTRACTED #community/Community_230

@@ -1,11 +1,11 @@
 ---
 source_file: "system_audit_prompt.txt"
 type: "code"
-community: "Community 154"
+community: "Community 184"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_154
+  - community/Community_184
 ---
 
 # alerts.py Module
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[Reliability  Silent Failures Audit Scope]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_154
+#graphify/code #graphify/EXTRACTED #community/Community_184

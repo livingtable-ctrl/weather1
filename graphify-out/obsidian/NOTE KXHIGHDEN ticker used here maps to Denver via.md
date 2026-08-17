@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_market_implied_distribution.py"
 type: "rationale"
-community: "Community 41"
+community: "Community 4"
 location: "L312"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_41
+  - community/Community_4
 ---
 
 # # NOTE: KXHIGHDEN ticker used here maps to Denver via
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_market_implied_distribution.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_41
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

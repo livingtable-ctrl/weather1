@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "code"
-community: "Community 42"
+community: "Community 17"
 location: "L1118"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_42
+  - community/Community_17
 ---
 
 # .test_tightened_threshold_demotes_to_med()
@@ -15,4 +15,4 @@ tags:
 - [[TestEffectiveStrongEdgeThreading]] - `method` [EXTRACTED]
 - [[_strong_market_analysis()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_42
+#graphify/code #graphify/EXTRACTED #community/Community_17

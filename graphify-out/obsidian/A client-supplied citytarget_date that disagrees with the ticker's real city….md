@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 455"
 location: "L906"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_455
 ---
 
 # A client-supplied city/target_date that disagrees with the ticker's real city…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_client_supplied_city_is_ignored_server_value_used()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_455

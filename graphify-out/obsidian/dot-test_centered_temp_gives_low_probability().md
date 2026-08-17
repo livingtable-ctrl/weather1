@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Weather Probability Math Tests"
+community: "Community 203"
 location: "L463"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_203
 ---
 
 # .test_centered_temp_gives_low_probability()
@@ -17,4 +17,4 @@ tags:
 - [[TestObsProbBetweenSigma]] - `method` [EXTRACTED]
 - [[obs_prob()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_203

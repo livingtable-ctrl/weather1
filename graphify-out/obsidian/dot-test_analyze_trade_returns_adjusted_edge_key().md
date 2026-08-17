@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Ensemble Weight Blending Tests"
+community: "Community 653"
 location: "L1149"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_653
 ---
 
 # .test_analyze_trade_returns_adjusted_edge_key()
@@ -15,4 +15,4 @@ tags:
 - [[Result dict must contain adjusted_edge and edge_confidence_factor.]] - `rationale_for` [EXTRACTED]
 - [[TestAdjustedEdgeInAnalyzeTrade]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_653

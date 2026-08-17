@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_prelog.py"
 type: "code"
-community: "Community 183"
+community: "Community 220"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_183
+  - community/Community_220
 ---
 
 # test_prelog.py
@@ -17,9 +17,10 @@ tags:
 - [[TestResolveLiveBalance]] - `contains` [EXTRACTED]
 - [[TestResolveMicroLiveConfig]] - `contains` [EXTRACTED]
 - [[_count_open_live_orders()]] - `imports` [EXTRACTED]
-- [[_place_live_order()_poll_pending_orders()_auto_place_trades()]] - `calls` [EXTRACTED]
-- [[_resolve_live_balance()]] - `calls` [EXTRACTED]
-- [[_resolve_micro_live_config()]] - `calls` [EXTRACTED]
-- [[execution_log.py_1]] - `calls` [EXTRACTED]
+- [[_resolve_live_balance()]] - `imports` [EXTRACTED]
+- [[_resolve_micro_live_config()]] - `imports` [EXTRACTED]
+- [[execution_log.py]] - `calls` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_183
+#graphify/code #graphify/EXTRACTED #community/Community_220

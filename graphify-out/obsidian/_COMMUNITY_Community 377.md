@@ -10,16 +10,16 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-test_floor_strike_happy_path()]] - code - tests/test_snow_markets.py
-- [[dot-test_missing_floor_strike_returns_none()_1]] - code - tests/test_snow_markets.py
-- [[dot-test_non_numeric_floor_strike_returns_none()_1]] - code - tests/test_snow_markets.py
-- [[dot-test_ordinary_temperature_ticker_unaffected()]] - code - tests/test_snow_markets.py
-- [[dot-test_rain_ticker_unaffected()_1]] - code - tests/test_snow_markets.py
-- [[dot-test_unexpected_strike_type_returns_none()]] - code - tests/test_snow_markets.py
-- [[Regression control branch ordering must not swallow a normal temperature…]] - rationale - tests/test_snow_markets.py
-- [[Regression control the snow branch must not swallow a rain ticker (both are…]] - rationale - tests/test_snow_markets.py
-- [[TestParseMarketConditionMonthlySnow]] - code - tests/test_snow_markets.py
-- [[backlog.txt Snow Step 2 the real per-bracket threshold, read from…]] - rationale - tests/test_snow_markets.py
+- [[dot-setup_method()_24]] - code - tests/test_execution_log.py
+- [[dot-teardown_method()_16]] - code - tests/test_execution_log.py
+- [[dot-test_forecast_cycle_and_live_columns_exist()]] - code - tests/test_execution_log.py
+- [[dot-test_log_order_stores_cycle_and_live_flag()]] - code - tests/test_execution_log.py
+- [[dot-test_was_ordered_this_cycle_false_different_cycle()]] - code - tests/test_execution_log.py
+- [[dot-test_was_ordered_this_cycle_true()]] - code - tests/test_execution_log.py
+- [[dot-test_was_ordered_this_cycle_true_for_cancelled()]] - code - tests/test_execution_log.py
+- [[Cancelled orders still block the cycle (same as was_recently_ordered behaviour).]] - rationale - tests/test_execution_log.py
+- [[Point execution_log at a fresh temp DB for each test.]] - rationale - tests/test_execution_log.py
+- [[TestExecutionLogMigration]] - code - tests/test_execution_log.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,7 +29,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 174]]
+- 1 edge to [[_COMMUNITY_Community 42]]
 
 ## Top bridge nodes
-- [[TestParseMarketConditionMonthlySnow]] - degree 8, connects to 1 community
+- [[TestExecutionLogMigration]] - degree 8, connects to 1 community

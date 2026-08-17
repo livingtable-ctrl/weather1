@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_i.py"
 type: "code"
-community: "Community 405"
+community: "Community 431"
 location: "L364"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_405
+  - community/Community_431
 ---
 
 # TestCheckPositionLimitsExposureCaps
@@ -19,6 +19,6 @@ tags:
 - [[dot-test_city_date_cap_triggers_when_exceeded()]] - `method` [EXTRACTED]
 - [[dot-test_correlated_cap_triggers_when_exceeded()]] - `method` [EXTRACTED]
 - [[dot-test_directional_cap_triggers_when_exceeded()]] - `method` [EXTRACTED]
-- [[Phase 2 Batch I Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_i.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_405
+#graphify/code #graphify/EXTRACTED #community/Community_431

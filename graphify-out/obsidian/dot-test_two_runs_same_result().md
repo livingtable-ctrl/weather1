@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_a.py"
 type: "code"
-community: "Community 57"
+community: "Community 521"
 location: "L191"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_57
+  - community/Community_521
 ---
 
 # .test_two_runs_same_result()
@@ -15,4 +15,4 @@ tags:
 - [[TestFetchArchiveTempsDeterministicSeed]] - `method` [EXTRACTED]
 - [[Two invocations of fetch_archive_temps with same args produce same list.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_57
+#graphify/code #graphify/EXTRACTED #community/Community_521

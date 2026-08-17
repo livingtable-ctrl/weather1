@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 269"
+community: "Community 264"
 location: "L899"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_269
+  - community/Community_264
 ---
 
 # TestBootstrapCI
@@ -18,6 +18,7 @@ tags:
 - [[dot-test_small_n_under_30_returns_wide_ci()]] - `method` [EXTRACTED]
 - [[dot-test_too_few_members_returns_wide_ci()]] - `method` [EXTRACTED]
 - [[Tests for _bootstrap_ci — bootstrap 90% CI on ensemble probability.]] - `rationale_for` [EXTRACTED]
+- [[_bootstrap_ci()]] - `calls` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_269
+#graphify/code #graphify/EXTRACTED #community/Community_264

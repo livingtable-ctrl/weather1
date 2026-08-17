@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "code"
-community: "Community 443"
+community: "Community 476"
 location: "L1568"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_443
+  - community/Community_476
 ---
 
 # TestPlacementConfidenceTierGateTierClassification
@@ -20,4 +20,4 @@ tags:
 - [[Violation]] - `uses` [INFERRED]
 - [[test_trade_cycle_engine.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_443
+#graphify/code #graphify/EXTRACTED #community/Community_476

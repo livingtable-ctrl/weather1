@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "rationale"
-community: "Community 231"
+community: "Community 104"
 location: "L50"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_231
+  - community/Community_104
 ---
 
 # check_model_exits model_flipped must require net_edge < -0.10 (not -0.05).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_model_flipped_requires_10pct_net_edge()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_231
+#graphify/rationale #graphify/EXTRACTED #community/Community_104

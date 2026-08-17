@@ -1,11 +1,11 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 296"
+community: "Community 245"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_296
+  - community/Community_245
 ---
 
 # NamedTuple
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[HealthStatus]] - `inherits` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_296
+#graphify/code #graphify/EXTRACTED #community/Community_245

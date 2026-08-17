@@ -1,25 +1,26 @@
 ---
 type: community
-cohesion: 0.22
-members: 10
+cohesion: 0.18
+members: 11
 ---
 
 # Community 351
 
-**Cohesion:** 0.22 - loosely connected
-**Members:** 10 nodes
+**Cohesion:** 0.18 - loosely connected
+**Members:** 11 nodes
 
 ## Members
-- [[dot-__init__()_5]] - code - kalshi_client.py
-- [[Kalshi API client with RSA-PSS authentication.]] - rationale - kalshi_client.py
-- [[Warn if the private key file is readable by groupothers (Unix) or by accounts…]] - rationale - kalshi_client.py
-- [[_check_key_permissions()]] - code - kalshi_client.py
-- [[_check_key_permissions() Windows icacls Untested Gap (710)]] - document - docs/grade_audit/outputs/kalshi_client.py.md
-- [[_find_order_by_client_id() RF1 Bare Except (710)]] - document - docs/grade_audit/outputs/kalshi_client.py.md
-- [[kalshi_client.py]] - code - kalshi_client.py
-- [[kalshi_client.py File Grade median 810, no active bugs]] - document - docs/grade_audit/outputs/kalshi_client.py.md
-- [[kalshi_client.py Grade Audit]] - document - docs/grade_audit/outputs/kalshi_client.py.md
-- [[place_order() client_order_id Idempotency Design (810)]] - document - docs/grade_audit/outputs/kalshi_client.py.md
+- [[dot-test_drawdown_halt_default_is_20pct()]] - code - tests/test_risk_control.py
+- [[dot-test_threshold_at_starting_balance_unchanged()]] - code - tests/test_risk_control.py
+- [[dot-test_threshold_grows_with_balance()]] - code - tests/test_risk_control.py
+- [[dot-test_threshold_never_below_starting_balance()]] - code - tests/test_risk_control.py
+- [[DRAWDOWN_HALT_PCT default must be 0.20, not 0.50.]] - rationale - tests/test_risk_control.py
+- [[If balance somehow drops below STARTING_BALANCE, threshold uses…]] - rationale - tests/test_risk_control.py
+- [[TestDailyLossThresholdScalesWithBalance]] - code - tests/test_risk_control.py
+- [[TestDrawdownHaltDefault]] - code - tests/test_risk_control.py
+- [[When balance equals STARTING_BALANCE, behavior matches the old threshold.]] - rationale - tests/test_risk_control.py
+- [[When balance has grown 2x, the halt threshold doubles (3% of 2x = 6% of start).]] - rationale - tests/test_risk_control.py
+- [[is_daily_loss_halted uses current balance, not STARTING_BALANCE.]] - rationale - tests/test_risk_control.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,24 +30,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 2 edges to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
-- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 44]]
-- 1 edge to [[_COMMUNITY_Community 84]]
-- 1 edge to [[_COMMUNITY_Community 225]]
-- 1 edge to [[_COMMUNITY_Community 226]]
-- 1 edge to [[_COMMUNITY_Community 36]]
-- 1 edge to [[_COMMUNITY_Community 86]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 142]]
-- 1 edge to [[_COMMUNITY_Community 180]]
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 1 edge to [[_COMMUNITY_Community 195]]
+- 2 edges to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[kalshi_client.py]] - degree 24, connects to 13 communities
-- [[dot-__init__()_5]] - degree 2, connects to 1 community
-- [[_find_order_by_client_id() RF1 Bare Except (710)]] - degree 2, connects to 1 community
-- [[place_order() client_order_id Idempotency Design (810)]] - degree 2, connects to 1 community
+- [[TestDailyLossThresholdScalesWithBalance]] - degree 6, connects to 1 community
+- [[TestDrawdownHaltDefault]] - degree 3, connects to 1 community

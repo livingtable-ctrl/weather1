@@ -1,18 +1,18 @@
 ---
-source_file: "weather app site V_3 (3)/src/tabs/SettingsTab.jsx"
+source_file: "frontend/src/App.jsx"
 type: "code"
-community: "Community 534"
-location: "L5"
+community: "Community 98"
+location: "L1796"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_534
+  - community/Community_98
 ---
 
 # SettingsTab()
 
 ## Connections
-- [[SettingsTab.jsx]] - `contains` [EXTRACTED]
-- [[weather app site V_3 (3)srcApp.jsx]] - `indirect_call` [INFERRED]
+- [[authHeader()_1]] - `calls` [EXTRACTED]
+- [[frontendsrcApp.jsx]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_534
+#graphify/code #graphify/EXTRACTED #community/Community_98

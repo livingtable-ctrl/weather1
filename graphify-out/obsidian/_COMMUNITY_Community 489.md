@@ -10,13 +10,13 @@ members: 7
 **Members:** 7 nodes
 
 ## Members
-- [[dot-test_falls_back_to_hardcoded_when_none()]] - code - tests/test_trading.py
-- [[dot-test_unknown_pair_returns_zero()]] - code - tests/test_trading.py
-- [[dot-test_uses_dynamic_when_available()]] - code - tests/test_trading.py
-- [[TestDynamicCorrelationMatrix]] - code - tests/test_trading.py
-- [[Unknown city pairs should return 0.0.]] - rationale - tests/test_trading.py
-- [[When _load_dynamic_correlations returns None, use _HARDCODED_CORR.]] - rationale - tests/test_trading.py
-- [[When learned_correlations.json exists, get_city_correlation uses it.]] - rationale - tests/test_trading.py
+- [[2026-04-10-signal-quality]] - document - docs/superpowers/plans/2026-04-10-signal-quality.md
+- [[File Structure]] - document - docs/superpowers/plans/2026-04-10-signal-quality.md
+- [[Signal Quality Implementation Plan]] - document - docs/superpowers/plans/2026-04-10-signal-quality.md
+- [[Task 1 `get_member_accuracy(days_back=60)` in tracker.py]] - document - docs/superpowers/plans/2026-04-10-signal-quality.md
+- [[Task 2 `_CONDITION_CONFIDENCE` + `edge_confidence(condition_type)` in weather_markets.py]] - document - docs/superpowers/plans/2026-04-10-signal-quality.md
+- [[Task 3 Wire `condition_type` into bias correction and Kelly in `analyze_trade()`]] - document - docs/superpowers/plans/2026-04-10-signal-quality.md
+- [[Task 4 Wire `days_back=60` into `_weights_from_mae()` and fix cache key]] - document - docs/superpowers/plans/2026-04-10-signal-quality.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,9 +24,3 @@ members: 7
 TABLE source_file, type FROM #community/Community_489
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 92]]
-
-## Top bridge nodes
-- [[TestDynamicCorrelationMatrix]] - degree 4, connects to 1 community

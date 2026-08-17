@@ -10,16 +10,16 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-test_cmd_paper_does_not_refuse_snow_when_gate_active()]] - code - tests/test_snow_markets.py
-- [[dot-test_cmd_paper_refuses_hurricane_unconditionally()]] - code - tests/test_snow_markets.py
-- [[dot-test_cmd_paper_refuses_snow_when_gate_inactive()]] - code - tests/test_snow_markets.py
-- [[dot-test_quick_paper_buy_does_not_refuse_snow_when_gate_active()]] - code - tests/test_snow_markets.py
-- [[dot-test_quick_paper_buy_refuses_hurricane_unconditionally()]] - code - tests/test_snow_markets.py
-- [[dot-test_quick_paper_buy_refuses_snow_when_gate_inactive()]] - code - tests/test_snow_markets.py
-- [[Mutation-test proof proceeds past THIS guard once the gate is active (may…]] - rationale - tests/test_snow_markets.py
-- [[Mutation-test proof proceeds past THIS guard once the gate is active.]] - rationale - tests/test_snow_markets.py
-- [[Opus-review-caught gap (round 2) _quick_paper_buy() and cmd_paper() got the…]] - rationale - tests/test_snow_markets.py
-- [[TestQuickPaperBuyAndCmdPaperSnowGuards]] - code - tests/test_snow_markets.py
+- [[dot-_make_client()_6]] - code - tests/test_kalshi_client.py
+- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()_1]] - code - tests/test_kalshi_client.py
+- [[dot-test_no_side_place_live_order_calls_buy_not_sell_yes()]] - code - tests/test_kalshi_client.py
+- [[dot-test_yes_side_buy_maps_to_bid_at_same_price()]] - code - tests/test_kalshi_client.py
+- [[L1-A Verify side='no' action='buy' API semantics are correct via the full…]] - rationale - tests/test_kalshi_client.py
+- [[Return a KalshiClient with no auth (we only test body construction).]] - rationale - tests/test_kalshi_client.py
+- [[TestPlaceOrderApiSemantics]] - code - tests/test_kalshi_client.py
+- [[_place_live_order with side='no' must call client.place_order(side='no',…]] - rationale - tests/test_kalshi_client.py
+- [[side='no' action='buy' must send V2 side='ask' at price=1-price.]] - rationale - tests/test_kalshi_client.py
+- [[side='yes' action='buy' must send V2 side='bid' at the same price.]] - rationale - tests/test_kalshi_client.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,7 +29,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 174]]
+- 2 edges to [[_COMMUNITY_Community 106]]
+- 1 edge to [[_COMMUNITY_Community 229]]
 
 ## Top bridge nodes
-- [[TestQuickPaperBuyAndCmdPaperSnowGuards]] - degree 8, connects to 1 community
+- [[TestPlaceOrderApiSemantics]] - degree 6, connects to 1 community
+- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()_1]] - degree 3, connects to 1 community
+- [[dot-test_yes_side_buy_maps_to_bid_at_same_price()]] - degree 3, connects to 1 community

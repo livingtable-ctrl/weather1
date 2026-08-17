@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Community 335"
+community: "Community 343"
 location: "L132"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_335
+  - community/Community_343
 ---
 
 # .test_returns_none_for_missing_basin_infix()
@@ -15,4 +15,4 @@ tags:
 - [[KXHURRICANEKXNAMEDSTORM without a real EPACCPAC infix in the event-ticker…]] - `rationale_for` [EXTRACTED]
 - [[TestHurricaneCountKeyFromTicker]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_335
+#graphify/code #graphify/EXTRACTED #community/Community_343

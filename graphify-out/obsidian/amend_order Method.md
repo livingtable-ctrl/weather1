@@ -1,11 +1,11 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Community 588"
+community: "Community 664"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_588
+  - community/Community_664
 ---
 
 # amend_order Method
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[place_order Method]] - `conceptually_related_to` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_588
+#graphify/code #graphify/EXTRACTED #community/Community_664

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_dedup.py"
 type: "code"
-community: "Community 97"
+community: "Community 110"
 location: "L68"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_97
+  - community/Community_110
 ---
 
 # test_was_traded_today_ignores_failed_orders()
@@ -16,4 +16,4 @@ tags:
 - [[test_dedup.py]] - `contains` [EXTRACTED]
 - [[was_traded_today()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_97
+#graphify/code #graphify/EXTRACTED #community/Community_110

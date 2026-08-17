@@ -1,22 +1,24 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Black Swan Halt State"
-location: "L3444"
+community: "Community 0"
+location: "L3499"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_0
 ---
 
 # get_source_reliability()
 
 ## Connections
 - [[Return per-city, per-source reliability over the last N days. Returns {city…]] - `rationale_for` [EXTRACTED]
-- [[_conn()_1]] - `calls` [EXTRACTED]
+- [[_conn()]] - `calls` [EXTRACTED]
 - [[cmd_history()]] - `calls` [EXTRACTED]
+- [[cmd_weekly_summary()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[output_formatters.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_0

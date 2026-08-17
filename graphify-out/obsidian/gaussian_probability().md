@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 26"
-location: "L2753"
+community: "Community 5"
+location: "L2855"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_26
+  - community/Community_5
 ---
 
 # gaussian_probability()
@@ -21,7 +21,7 @@ tags:
 - [[ValueError]] - `calls` [INFERRED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[normal_cdf()]] - `calls` [EXTRACTED]
-- [[test_gaussian_prob.py]] - `references` [EXTRACTED]
+- [[test_gaussian_prob.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_26
+#graphify/code #graphify/EXTRACTED #community/Community_5

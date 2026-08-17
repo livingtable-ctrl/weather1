@@ -1,0 +1,235 @@
+---
+type: community
+cohesion: 0.02
+members: 137
+---
+
+# Community 6
+
+**Cohesion:** 0.02 - loosely connected
+**Members:** 137 nodes
+
+## Members
+- [[106107 Configure structured logging. Each module should use…]] - rationale - utils.py
+- [[(mtime, size) for a file, or None if it doesn't exist. A single .stat() call —…]] - rationale - config.py
+- [[Accuracy Improvement Plan]] - document - docs/plans/2026-04-19-accuracy-improvements.md
+- [[Accuracy Improvement Plan v2]] - document - docs/plans/2026-04-19-accuracy-improvements-v2.md
+- [[BREAKEVEN_TRIGGER_PCT is actually enforced from utils.py, not this dataclass…]] - rationale - config.py
+- [[Backtesting engine — replays historical Kalshi weather markets using Open-Meteo…]] - rationale - backtest.py
+- [[BotConfig.validate() Missing Threshold Guards (510)]] - document - docs/grade_audit/outputs/config.py.md
+- [[Build a header-matching regex for one AFD section name (matches just the header…]] - rationale - nws_afd.py
+- [[Central configuration dataclass. Parses and validates all environment…]] - rationale - config.py
+- [[Continuous-space decision boundary for probability math (Gaussian CDF, ensemble…]] - rationale - utils.py
+- [[Convert NWS forecast temperature to a probability using a narrow normal…]] - rationale - nws.py
+- [[Copy important files from data into sync_folderKalshiBotdata. Returns…]] - rationale - cloud_backup.py
+- [[Cross-Cutting DEBUG-Only Exception Suppression (4 fns)]] - document - docs/grade_audit/outputs/feature_importance.py.md
+- [[D4A5 Env var takes precedence; fall back to walk-forward optimal, then param-…]] - rationale - config.py
+- [[D4 Persist walk-forward results so config.py can use optimal_min_edge as a…]] - rationale - backtest.py
+- [[Dead man's switch — run manually to check bot health py watchdog.py If the…]] - rationale - watchdog.py
+- [[Desktop toast notifications for strong trade signals. Uses plyer for cross-…]] - rationale - notify.py
+- [[Fetch NWS official daily highlow forecast for a city. Returns dict keyed by…]] - rationale - nws.py
+- [[Find the Google Drive sync folder on Windows. Checks (in order) 1.…]] - rationale - cloud_backup.py
+- [[Grade Audit Final Report]] - document - docs/grade_audit/report.md
+- [[Grade Audit Module Doc TIER 2 Files]] - document - docs/grade_audit/modules/tier2.md
+- [[Grade Audit Output ab_test.py]] - document - docs/grade_audit/outputs/ab_test.py.md
+- [[Grade Audit Output cloud_backup.py]] - document - docs/grade_audit/outputs/cloud_backup.py.md
+- [[Grade Audit Preamble]] - document - docs/grade_audit/preamble.md
+- [[Grade Audit Synthesis Prompt]] - document - docs/grade_audit/synthesis.md
+- [[H-11 parse a float env var with a clear error message on bad input.]] - rationale - config.py
+- [[H-11 parse an int env var with a clear error message on bad input.]] - rationale - config.py
+- [[Halt Dependency Inversion Check PASS (no suppression)]] - document - docs/grade_audit/outputs/notify.py.md
+- [[I5 Kelly FiniteRange Guard]] - document - docs/grade_audit/outputs
+- [[KELLY_CAP is actually enforced from utils.py, not this dataclass…]] - rationale - config.py
+- [[Load persisted station cache from disk into _station_cache (best-effort).]] - rationale - nws.py
+- [[Logger]] - code
+- [[MAX_CITY_DATE_EXPOSURE is actually enforced from utils.py, not this dataclass…]] - rationale - config.py
+- [[MAX_DAYS_OUT is actually enforced from utils.py, not this dataclass…]] - rationale - config.py
+- [[MAX_SAME_DAY_SPEND is actually enforced from utils.py, not this dataclass…]] - rationale - config.py
+- [[METHOD_KELLY_GATE is actually enforced from utils.py, not this dataclass…]] - rationale - config.py
+- [[MIN_ARB_EDGE is actually enforced from utils.py, not this dataclass (main.py…]] - rationale - config.py
+- [[NOAA National Weather Service API integration. Provides - Official calibrated…]] - rationale - nws.py
+- [[Path_24]] - code
+- [[Path_23]] - code
+- [[Path_22]] - code
+- [[Pattern]] - code
+- [[Persist station cache to disk (best-effort, never raises).]] - rationale - nws.py
+- [[Return one section's body text, or None if the section (or a real closing…]] - rationale - nws_afd.py
+- [[Return the best available cloud sync folder, in priority order 1.…]] - rationale - cloud_backup.py
+- [[Safe IO Grade Audit]] - document - docs/grade_audit/outputs/safe_io.py.md
+- [[Schema Validator Grade Audit]] - document - docs/grade_audit/outputs/schema_validator.py.md
+- [[Shared utilities used across the Kalshi weather trading modules.]] - rationale - utils.py
+- [[Single source of truth for all data and state file paths. Import from here…]] - rationale - paths.py
+- [[Soft-override chain for _paper_min_edge_default, given the walk-forward params…]] - rationale - config.py
+- [[System Health Grade Audit]] - document - docs/grade_audit/outputs/system_health.py.md
+- [[Tests for SPRT model degradation detection in tracker.py and paper.py.]] - rationale - tests/test_sprt.py
+- [[Tracker Grade Audit]] - document - docs/grade_audit/outputs/tracker.py.md
+- [[Upload local_path to S3 at s3{bucket}{key}. Returns TrueFalseNone.]] - rationale - cloud_backup.py
+- [[Validate NWS API point forecast response.]] - rationale - schema_validator.py
+- [[Validate a Kalshi market dict has required fields and sane prices. Returns True…]] - rationale - schema_validator.py
+- [[_compute_paper_min_edge_from_files()]] - code - config.py
+- [[_env_float()_1]] - code - config.py
+- [[_env_int()_1]] - code - config.py
+- [[_file_fingerprint()]] - code - config.py
+- [[_find_google_drive()]] - code - cloud_backup.py
+- [[_find_google_drive() RF1 Silent Registry Failure]] - document - docs/grade_audit/outputs/cloud_backup.py.md
+- [[_find_sync_folder()]] - code - cloud_backup.py
+- [[_get()]] - code - nws.py
+- [[_get_gridpoint()]] - code - nws.py
+- [[_get_obs_station()]] - code - nws.py
+- [[_live_breakeven_trigger_pct()]] - code - config.py
+- [[_live_kelly_cap()]] - code - config.py
+- [[_live_max_city_date_exposure()]] - code - config.py
+- [[_live_max_days_out()]] - code - config.py
+- [[_live_max_same_day_spend()]] - code - config.py
+- [[_live_method_kelly_gate()]] - code - config.py
+- [[_live_min_arb_edge()]] - code - config.py
+- [[_load_station_cache()]] - code - nws.py
+- [[_paper_min_edge_default()]] - code - config.py
+- [[_place_live_order() KeyError Risk max_open_positions (710)]] - document - docs/grade_audit/outputs/order_executor.py.md
+- [[_save_station_cache()]] - code - nws.py
+- [[_section_body()]] - code - nws_afd.py
+- [[_section_header_re()]] - code - nws_afd.py
+- [[_setup_logging()_1]] - code - utils.py
+- [[_station_key_to_str()]] - code - nws.py
+- [[_station_str_to_key()]] - code - nws.py
+- [[ab_test.py]] - code - ab_test.py
+- [[ab_test.py — Simple AB testing framework for strategy parameter variants.…]] - rationale - ab_test.py
+- [[backtest.py]] - code - backtest.py
+- [[backup_data()]] - code - cloud_backup.py
+- [[backup_to_s3()]] - code - cloud_backup.py
+- [[check_edge.py]] - code - check_edge.py
+- [[cloud_backup.py]] - code - cloud_backup.py
+- [[cloud_backup.py — sync data to OneDrive, Google Drive, or a custom path.]] - rationale - cloud_backup.py
+- [[config.py]] - code - config.py
+- [[config.py File Grade median T2 ~710, one T1 RF1 promotion]] - document - docs/grade_audit/outputs/config.py.md
+- [[config.py Grade Audit]] - document - docs/grade_audit/outputs/config.py.md
+- [[feature_importance.py]] - code - feature_importance.py
+- [[feature_importance.py File Grade 6-710, no TIER1 (analytics side-car)]] - document - docs/grade_audit/outputs/feature_importance.py.md
+- [[feature_importance.py Grade Audit]] - document - docs/grade_audit/outputs/feature_importance.py.md
+- [[feature_importance.py — Track which forecast signals contribute most to correct…]] - rationale - feature_importance.py
+- [[get_active_variant() RF1 Silent Exception Swallow]] - document - docs/grade_audit/outputs/ab_test.py.md
+- [[get_nws_daily_forecast()]] - code - nws.py
+- [[is_heartbeat_stale()]] - code - watchdog.py
+- [[kalshi_ws.py_1]] - code - kalshi_ws.py
+- [[load_and_validate() Bypasses lru_cache Clear (610)]] - document - docs/grade_audit/outputs/config.py.md
+- [[logging]] - concept
+- [[notify.py]] - code - notify.py
+- [[notify.py File Grade median 610, zero test coverage]] - document - docs/grade_audit/outputs/notify.py.md
+- [[notify.py Grade Audit]] - document - docs/grade_audit/outputs/notify.py.md
+- [[nws.py]] - code - nws.py
+- [[nws.py File Grade well-structured, 1 RF1 finding]] - document - docs/grade_audit/outputs/nws.py.md
+- [[nws.py Grade Audit]] - document - docs/grade_audit/outputs/nws.py.md
+- [[nws_afd.py]] - code - nws_afd.py
+- [[nws_afd.py — NWS Area Forecast Discussion (AFD) fetchparse. backlog.txt NWS…]] - rationale - nws_afd.py
+- [[nws_prob()]] - code - nws.py
+- [[nws_prob() Zero Test Coverage, Unguarded Exception (710)]] - document - docs/grade_audit/outputs/nws.py.md
+- [[nws_prob_from_quantiles() Upper-Tail Can Exceed 1.0 (710)]] - document - docs/grade_audit/outputs/nws.py.md
+- [[os]] - concept
+- [[param_sweep.py]] - code - param_sweep.py
+- [[param_sweep.py Called Dead-Code Candidate (contested)]] - document - docs/grade_audit/outputs/config.py.md
+- [[param_sweep.py File Grade not dead code, 1 RF1 promotion]] - document - docs/grade_audit/outputs/param_sweep.py.md
+- [[param_sweep.py Grade Audit]] - document - docs/grade_audit/outputs/param_sweep.py.md
+- [[param_sweep.py — Auto-test threshold ranges against historical outcomes. Usage…]] - rationale - param_sweep.py
+- [[paths.py]] - code - paths.py
+- [[prob_threshold()]] - code - utils.py
+- [[regime.py_1]] - code - regime.py
+- [[requests_1]] - concept
+- [[save_walk_forward_params()]] - code - backtest.py
+- [[schema_validator.py]] - code - schema_validator.py
+- [[schema_validator.py — Lightweight schema validation for external API responses.…]] - rationale - schema_validator.py
+- [[send_alert()]] - code - watchdog.py
+- [[test_dead_man.py]] - code - tests/test_dead_man.py
+- [[test_heartbeat_stale_detection()]] - code - tests/test_dead_man.py
+- [[test_log_rotation.py]] - code - tests/test_log_rotation.py
+- [[test_setup_logging_installs_rotating_handler()]] - code - tests/test_log_rotation.py
+- [[test_sprt.py]] - code - tests/test_sprt.py
+- [[utils.py]] - code - utils.py
+- [[validate_market()]] - code - schema_validator.py
+- [[validate_nws_response()]] - code - schema_validator.py
+- [[watchdog.py]] - code - watchdog.py
+
+## Live Query (requires Dataview plugin)
+
+```dataview
+TABLE source_file, type FROM #community/Community_6
+SORT file.name ASC
+```
+
+## Connections to other communities
+- 42 edges to [[_COMMUNITY_Community 4]]
+- 30 edges to [[_COMMUNITY_Community 3]]
+- 27 edges to [[_COMMUNITY_Community 8]]
+- 21 edges to [[_COMMUNITY_Community 5]]
+- 20 edges to [[_COMMUNITY_Community 1]]
+- 18 edges to [[_COMMUNITY_Community 0]]
+- 14 edges to [[_COMMUNITY_Community 23]]
+- 14 edges to [[_COMMUNITY_Community 89]]
+- 9 edges to [[_COMMUNITY_Community 47]]
+- 9 edges to [[_COMMUNITY_Community 102]]
+- 9 edges to [[_COMMUNITY_Community 41]]
+- 8 edges to [[_COMMUNITY_Community 13]]
+- 8 edges to [[_COMMUNITY_Community 15]]
+- 7 edges to [[_COMMUNITY_Community 81]]
+- 7 edges to [[_COMMUNITY_Community 171]]
+- 5 edges to [[_COMMUNITY_Community 140]]
+- 5 edges to [[_COMMUNITY_Community 20]]
+- 5 edges to [[_COMMUNITY_Community 40]]
+- 5 edges to [[_COMMUNITY_Community 245]]
+- 4 edges to [[_COMMUNITY_Community 9]]
+- 4 edges to [[_COMMUNITY_Community 2]]
+- 4 edges to [[_COMMUNITY_Community 42]]
+- 4 edges to [[_COMMUNITY_Community 71]]
+- 3 edges to [[_COMMUNITY_Community 7]]
+- 3 edges to [[_COMMUNITY_Community 190]]
+- 3 edges to [[_COMMUNITY_Community 232]]
+- 3 edges to [[_COMMUNITY_Community 38]]
+- 3 edges to [[_COMMUNITY_Community 396]]
+- 3 edges to [[_COMMUNITY_Community 405]]
+- 3 edges to [[_COMMUNITY_Community 426]]
+- 3 edges to [[_COMMUNITY_Community 148]]
+- 3 edges to [[_COMMUNITY_Community 30]]
+- 3 edges to [[_COMMUNITY_Community 43]]
+- 3 edges to [[_COMMUNITY_Community 51]]
+- 3 edges to [[_COMMUNITY_Community 82]]
+- 2 edges to [[_COMMUNITY_Community 14]]
+- 2 edges to [[_COMMUNITY_Community 163]]
+- 2 edges to [[_COMMUNITY_Community 187]]
+- 2 edges to [[_COMMUNITY_Community 203]]
+- 2 edges to [[_COMMUNITY_Community 305]]
+- 2 edges to [[_COMMUNITY_Community 78]]
+- 2 edges to [[_COMMUNITY_Community 445]]
+- 1 edge to [[_COMMUNITY_Community 116]]
+- 1 edge to [[_COMMUNITY_Community 167]]
+- 1 edge to [[_COMMUNITY_Community 472]]
+- 1 edge to [[_COMMUNITY_Community 126]]
+- 1 edge to [[_COMMUNITY_Community 227]]
+- 1 edge to [[_COMMUNITY_Community 264]]
+- 1 edge to [[_COMMUNITY_Community 329]]
+- 1 edge to [[_COMMUNITY_Community 356]]
+- 1 edge to [[_COMMUNITY_Community 398]]
+- 1 edge to [[_COMMUNITY_Community 459]]
+- 1 edge to [[_COMMUNITY_Community 75]]
+- 1 edge to [[_COMMUNITY_Community 11]]
+- 1 edge to [[_COMMUNITY_Community 111]]
+- 1 edge to [[_COMMUNITY_Community 115]]
+- 1 edge to [[_COMMUNITY_Community 17]]
+- 1 edge to [[_COMMUNITY_Community 176]]
+- 1 edge to [[_COMMUNITY_Community 221]]
+- 1 edge to [[_COMMUNITY_Community 238]]
+- 1 edge to [[_COMMUNITY_Community 24]]
+- 1 edge to [[_COMMUNITY_Community 31]]
+- 1 edge to [[_COMMUNITY_Community 372]]
+- 1 edge to [[_COMMUNITY_Community 382]]
+- 1 edge to [[_COMMUNITY_Community 409]]
+- 1 edge to [[_COMMUNITY_Community 45]]
+- 1 edge to [[_COMMUNITY_Community 49]]
+- 1 edge to [[_COMMUNITY_Community 408]]
+- 1 edge to [[_COMMUNITY_Community 539]]
+- 1 edge to [[_COMMUNITY_Community 33]]
+
+## Top bridge nodes
+- [[utils.py]] - degree 51, connects to 27 communities
+- [[logging]] - degree 54, connects to 23 communities
+- [[backtest.py]] - degree 39, connects to 16 communities
+- [[paths.py]] - degree 35, connects to 16 communities
+- [[nws.py]] - degree 46, connects to 15 communities

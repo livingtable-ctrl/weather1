@@ -10,15 +10,15 @@ members: 9
 **Members:** 9 nodes
 
 ## Members
-- [[dot-_insert_raw()]] - code - tests/test_tracker.py
-- [[dot-setUp()_30]] - code - tests/test_tracker.py
-- [[dot-tearDown()_29]] - code - tests/test_tracker.py
-- [[dot-test_trend_bucket_uses_market_date_week()]] - code - tests/test_tracker.py
-- [[dot-test_trend_returns_list_of_dicts_with_week_brier_n()]] - code - tests/test_tracker.py
-- [[Each trend entry must have week, brier, and n keys.]] - rationale - tests/test_tracker.py
-- [[TestCalibrationTrendUsesMarketDate]] - code - tests/test_tracker.py
-- [[Two predictions made in same analysis week but different market-date weeks must…]] - rationale - tests/test_tracker.py
-- [[Verify get_calibration_trend groups by market_date, not predicted_at (54).]] - rationale - tests/test_tracker.py
+- [[Same isolation contract as check_series_drift -- a corrupted state file must…]] - rationale - tests/test_city_registry_report_logging.py
+- [[Second call the same day must be a no-op -- proven by checking the state file's…]] - rationale - tests/test_city_registry_report_logging.py
+- [[Tests for log_city_registry_report() — once-per-day logging wrapper around…]] - rationale - tests/test_city_registry_report_logging.py
+- [[_today()_3]] - code - tests/test_city_registry_report_logging.py
+- [[test_city_registry_report_logging.py]] - code - tests/test_city_registry_report_logging.py
+- [[test_first_run_creates_state_file()_1]] - code - tests/test_city_registry_report_logging.py
+- [[test_gated_to_run_once_per_day()_2]] - code - tests/test_city_registry_report_logging.py
+- [[test_never_raises_on_a_broken_state_file()]] - code - tests/test_city_registry_report_logging.py
+- [[test_runs_again_on_a_new_day()_1]] - code - tests/test_city_registry_report_logging.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,7 +28,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 3 edges to [[_COMMUNITY_Community 4]]
+- 2 edges to [[_COMMUNITY_Community 176]]
+- 1 edge to [[_COMMUNITY_Community 5]]
 
 ## Top bridge nodes
-- [[TestCalibrationTrendUsesMarketDate]] - degree 7, connects to 1 community
+- [[test_city_registry_report_logging.py]] - degree 12, connects to 3 communities

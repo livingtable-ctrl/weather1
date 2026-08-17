@@ -10,13 +10,13 @@ members: 7
 **Members:** 7 nodes
 
 ## Members
-- [[dot-test_empty_dict_passes()]] - code - tests/test_weather_markets.py
-- [[dot-test_gem_ukmo_keys_pass()]] - code - tests/test_weather_markets.py
-- [[dot-test_known_keys_pass()]] - code - tests/test_weather_markets.py
-- [[dot-test_unknown_key_raises()]] - code - tests/test_weather_markets.py
-- [[TestValidateForecastModelKeys]] - code - tests/test_weather_markets.py
-- [[backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' Pass 2 GEMUKMO added as…]] - rationale - tests/test_weather_markets.py
-- [[backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' a typo'd model name in…]] - rationale - tests/test_weather_markets.py
+- [[52.1 Add `scan_same_day_certainty(cities)` to `main.py`]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[52.2 Integrate with `_auto_place_trades`]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[52.3 Add `cmd_certaintyscan` CLI command]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[52.4 Write tests]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[52.5 Verify & Commit]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[Background_2]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[Task 52 (P11.C) — Same-day certainty scanner ⭐ HIGHEST EV]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 543]]
 
 ## Top bridge nodes
-- [[TestValidateForecastModelKeys]] - degree 6, connects to 1 community
+- [[Task 52 (P11.C) — Same-day certainty scanner ⭐ HIGHEST EV]] - degree 7, connects to 1 community

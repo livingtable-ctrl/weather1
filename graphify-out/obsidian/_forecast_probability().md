@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Weather Probability Math Tests"
-location: "L5844"
+community: "Community 356"
+location: "L5946"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_356
 ---
 
 # _forecast_probability()
@@ -26,4 +26,4 @@ tags:
 - [[test_weather.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_356

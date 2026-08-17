@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts.py"
 type: "code"
-community: "Community 419"
+community: "Community 32"
 location: "L87"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_419
+  - community/Community_32
 ---
 
 # TestGetAlertsCooldownRearm
@@ -18,4 +18,4 @@ tags:
 - [[dot-test_untriggered_alert_is_active()]] - `method` [EXTRACTED]
 - [[test_alerts.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_419
+#graphify/code #graphify/EXTRACTED #community/Community_32

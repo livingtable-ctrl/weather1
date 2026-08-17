@@ -1,26 +1,22 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Community 36"
+community: "Community 2"
 location: "L668"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_36
+  - community/Community_2
 ---
 
 # log_api_request()
 
 ## Connections
 - [[Log an API call for audit trail and latency monitoring (69).]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Infrastructure Plan]] - `implements` [EXTRACTED]
-- [[Tracker Grade Audit]] - `references` [EXTRACTED]
-- [[_conn()_1]] - `calls` [EXTRACTED]
-- [[_request_with_retry Function]] - `calls` [EXTRACTED]
+- [[_conn()]] - `calls` [EXTRACTED]
 - [[_request_with_retry()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
 - [[kalshi_client.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
-- [[tracker.py_1]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_36
+#graphify/code #graphify/EXTRACTED #community/Community_2

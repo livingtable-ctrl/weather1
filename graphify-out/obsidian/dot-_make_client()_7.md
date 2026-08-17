@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 467"
+community: "Community 506"
 location: "L631"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_467
+  - community/Community_506
 ---
 
 # ._make_client()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestGetCandlesticks]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_467
+#graphify/code #graphify/EXTRACTED #community/Community_506

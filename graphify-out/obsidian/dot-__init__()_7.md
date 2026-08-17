@@ -1,17 +1,18 @@
 ---
-source_file: "order_executor.py"
+source_file: "kalshi_client.py"
 type: "code"
-community: "Community 45"
-location: "L1151"
+community: "Community 41"
+location: "L211"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Community_41
 ---
 
 # .__init__()
 
 ## Connections
-- [[LivePositionStore]] - `method` [EXTRACTED]
+- [[KalshiClient]] - `method` [EXTRACTED]
+- [[_check_key_permissions()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_45
+#graphify/code #graphify/EXTRACTED #community/Community_41

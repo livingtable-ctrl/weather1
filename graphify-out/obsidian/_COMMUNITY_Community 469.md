@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 469
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-setup_method()_33]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_25]] - code - tests/test_live_execution.py
-- [[dot-test_exit_order_row_excluded_entry_row_counted()]] - code - tests/test_live_execution.py
-- [[dot-test_repeated_partial_exit_retries_do_not_compound_spend()]] - code - tests/test_live_execution.py
-- [[A position whose IOC exit partial-fills every cycle logs a fresh exit-order row…]] - rationale - tests/test_live_execution.py
-- [[A protective exit (SELL) order reduces existing exposure, it isn't new capital…]] - rationale - tests/test_live_execution.py
-- [[TestGetTodayLiveSpendExcludesExitOrders]] - code - tests/test_live_execution.py
+- [[dot-_make_db()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_prune_api_requests_exported()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_prune_deletes_old_rows()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_prune_returns_zero_when_nothing_old()]] - code - tests/test_phase2_batch_c.py
+- [[P2-13 prune_api_requests must delete old rows and leave recent ones.]] - rationale - tests/test_phase2_batch_c.py
+- [[Path_20]] - code
+- [[TestPruneApiRequests]] - code - tests/test_phase2_batch_c.py
+- [[prune_api_requests must be importable from tracker.]] - rationale - tests/test_phase2_batch_c.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,8 +27,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 111]]
+- 1 edge to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 9]]
+- 1 edge to [[_COMMUNITY_Community 3]]
 
 ## Top bridge nodes
-- [[TestGetTodayLiveSpendExcludesExitOrders]] - degree 8, connects to 2 communities
+- [[TestPruneApiRequests]] - degree 7, connects to 2 communities
+- [[dot-test_prune_api_requests_exported()]] - degree 3, connects to 1 community

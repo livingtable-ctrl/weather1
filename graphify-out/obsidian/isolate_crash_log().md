@@ -1,12 +1,12 @@
 ---
 source_file: "tests/conftest.py"
 type: "code"
-community: "Test Fixture Cache Clearing (conftest)"
+community: "Community 18"
 location: "L606"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Test_Fixture_Cache_Clearing_conftest
+  - community/Community_18
 ---
 
 # isolate_crash_log()
@@ -14,7 +14,6 @@ tags:
 ## Connections
 - [[Redirect main._CRASH_LOG to a per-test temp file. main.py installs…]] - `rationale_for` [EXTRACTED]
 - [[conftest.py]] - `contains` [EXTRACTED]
-- [[fixture]] - `references` [EXTRACTED]
-- [[main()_1]] - `indirect_call` [INFERRED]
+- [[fixture_5]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Test_Fixture_Cache_Clearing_conftest
+#graphify/code #graphify/EXTRACTED #community/Community_18

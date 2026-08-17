@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "rationale"
-community: "Community 60"
+community: "Community 59"
 location: "L288"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_60
+  - community/Community_59
 ---
 
 # count_as_of_day is always <= season_end_counts by construction, so remaining =…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_remaining_is_never_negative()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_60
+#graphify/rationale #graphify/EXTRACTED #community/Community_59

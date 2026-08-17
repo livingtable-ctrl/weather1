@@ -1,11 +1,11 @@
 ---
 source_file: "hurricane_climatology.py"
 type: "code"
-community: "Community 99"
+community: "Community 15"
 tags:
   - graphify/code
-  - graphify/INFERRED
-  - community/Community_99
+  - graphify/EXTRACTED
+  - community/Community_15
 ---
 
 # parse_hurdat2 Function
@@ -14,4 +14,4 @@ tags:
 - [[_parse_nbp_bulletin()]] - `semantically_similar_to` [INFERRED]
 - [[load_basin_storms Function]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Community_99
+#graphify/code #graphify/EXTRACTED #community/Community_15

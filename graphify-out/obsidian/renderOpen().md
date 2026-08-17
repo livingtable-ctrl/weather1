@@ -1,12 +1,12 @@
 ---
 source_file: "static/trades.js"
 type: "code"
-community: "Legacy Static Dashboard JS Pages"
+community: "Community 233"
 location: "L57"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Legacy_Static_Dashboard_JS_Pages
+  - community/Community_233
 ---
 
 # renderOpen()
@@ -15,4 +15,4 @@ tags:
 - [[loadTrades()]] - `calls` [EXTRACTED]
 - [[statictrades.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_233

@@ -10,16 +10,16 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-test_real_med_tier_shows_two_stars()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_real_strong_tier_at_low_time_risk_still_shows_three_stars()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_real_strong_tier_at_non_low_time_risk_shows_two_stars()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_signals_cache_entry_carries_tier_for_downstream_summaries()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_untiered_strong_text_no_longer_shows_multiple_stars()]] - code - tests/test_trade_cycle_engine.py
-- [[Same shape as test_raw_edge_below_min_edge_untiers_an_otherwise_…]] - rationale - tests/test_trade_cycle_engine.py
-- [[TestDashboardStarsKeyOffTier]] - code - tests/test_trade_cycle_engine.py
-- [[The one branch where the ladder's two conditions actually interact tier ==…]] - rationale - tests/test_trade_cycle_engine.py
-- [[backlog.txt 'DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF SIGNAL TEXT, NOT…_1]] - rationale - tests/test_trade_cycle_engine.py
-- [[cron.py's own signals_cache summary (stronglow_risk counts) reads this same…]] - rationale - tests/test_trade_cycle_engine.py
+- [[dot-test_every_city_coords_city_has_an_entry()]] - code - tests/test_nws_afd.py
+- [[dot-test_no_extra_entries_beyond_city_coords()]] - code - tests/test_nws_afd.py
+- [[dot-test_office_codes_are_three_uppercase_letters()]] - code - tests/test_nws_afd.py
+- [[Live check (run with `-m integration`, matches test_integration_live.py's…]] - rationale - tests/test_nws_afd.py
+- [[TestCityWfoOffice]] - code - tests/test_nws_afd.py
+- [[Tests for nws_afd.py -- backlog.txt NWS AFD (AREA FORECAST DISCUSSION)…]] - rationale - tests/test_nws_afd.py
+- [[integration_2]] - code
+- [[test_city_wfo_office_matches_live_api()]] - code - tests/test_nws_afd.py
+- [[test_nws_afd.py]] - code - tests/test_nws_afd.py
+- [[weather_markets.CITY_COORDS]] - code - weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,13 +29,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 42]]
-- 3 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 1 edge to [[_COMMUNITY_Community 266]]
+- 2 edges to [[_COMMUNITY_Community 129]]
+- 2 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 15]]
+- 1 edge to [[_COMMUNITY_Community 6]]
 
 ## Top bridge nodes
-- [[TestDashboardStarsKeyOffTier]] - degree 9, connects to 1 community
-- [[dot-test_real_strong_tier_at_non_low_time_risk_shows_two_stars()]] - degree 3, connects to 1 community
-- [[dot-test_signals_cache_entry_carries_tier_for_downstream_summaries()]] - degree 3, connects to 1 community
-- [[dot-test_untiered_strong_text_no_longer_shows_multiple_stars()]] - degree 3, connects to 1 community
-- [[dot-test_real_med_tier_shows_two_stars()]] - degree 2, connects to 1 community
+- [[test_nws_afd.py]] - degree 11, connects to 5 communities

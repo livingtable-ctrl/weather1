@@ -1,12 +1,12 @@
 ---
 source_file: "hurricane_climatology.py"
 type: "code"
-community: "Community 55"
+community: "Community 43"
 location: "L298"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_55
+  - community/Community_43
 ---
 
 # load_basin_storms()
@@ -19,4 +19,4 @@ tags:
 - [[hurricane_climatology.py]] - `contains` [EXTRACTED]
 - [[parse_hurdat2()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_55
+#graphify/code #graphify/EXTRACTED #community/Community_43

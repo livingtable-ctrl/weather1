@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 336"
 location: "L61"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_336
 ---
 
 # Raised when a file's CRC32 checksum does not match its content.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[CorruptionError]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_336

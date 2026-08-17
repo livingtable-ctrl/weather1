@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 474
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_brier_test_fails_not_skips_on_none_baseline()]] - code - tests/test_p1_remaining.py
-- [[dot-test_brier_test_fails_not_skips_when_file_missing()]] - code - tests/test_p1_remaining.py
-- [[dot-test_roc_test_fails_not_skips_on_none_baseline()]] - code - tests/test_p1_remaining.py
-- [[TestRegressionBaselineFail]] - code - tests/test_p1_remaining.py
-- [[test_brier_score_not_degraded must pytest.fail when baseline file is absent.]] - rationale - tests/test_p1_remaining.py
-- [[test_brier_score_not_degraded must pytest.fail when baseline value is None.]] - rationale - tests/test_p1_remaining.py
-- [[test_roc_auc_not_degraded must pytest.fail when baseline value is None.]] - rationale - tests/test_p1_remaining.py
+- [[dot-setUp()_37]] - code - tests/test_tracker.py
+- [[dot-tearDown()_36]] - code - tests/test_tracker.py
+- [[dot-test_columns_exist_after_init()_1]] - code - tests/test_tracker.py
+- [[dot-test_round_trip_write_and_read()]] - code - tests/test_tracker.py
+- [[dot-test_settled_temp_f_write_path_unaffected()]] - code - tests/test_tracker.py
+- [[A pre-existing daily-market row using settled_temp_f only must be unaffected --…]] - rationale - tests/test_tracker.py
+- [[Schema v51v52 must add settled_valuesettled_var to outcomes, purely additive…]] - rationale - tests/test_tracker.py
+- [[TestSettledValueVarColumns]] - code - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,8 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 1 edge to [[_COMMUNITY_Community 96]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[TestRegressionBaselineFail]] - degree 6, connects to 2 communities
+- [[TestSettledValueVarColumns]] - degree 7, connects to 1 community

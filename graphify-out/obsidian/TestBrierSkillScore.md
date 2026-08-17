@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 436"
+community: "Community 10"
 location: "L1252"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_436
+  - community/Community_10
 ---
 
 # TestBrierSkillScore
@@ -19,4 +19,4 @@ tags:
 - [[_Phase3Base]] - `inherits` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_436
+#graphify/code #graphify/EXTRACTED #community/Community_10

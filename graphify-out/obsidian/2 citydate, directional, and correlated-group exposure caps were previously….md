@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_i.py"
 type: "rationale"
-community: "Community 405"
+community: "Community 431"
 location: "L365"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_405
+  - community/Community_431
 ---
 
 # #2: city/date, directional, and correlated-group exposure caps were previously…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCheckPositionLimitsExposureCaps]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_405
+#graphify/rationale #graphify/EXTRACTED #community/Community_431

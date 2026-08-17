@@ -1,12 +1,12 @@
 ---
 source_file: "colors.py"
 type: "code"
-community: "Black Swan Halt State"
+community: "Community 0"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_0
 ---
 
 # colors.py
@@ -25,6 +25,8 @@ tags:
 - [[edge_color() Dead Branch Bug (610)]] - `references` [EXTRACTED]
 - [[green()]] - `contains` [EXTRACTED]
 - [[liquidity_color()]] - `contains` [EXTRACTED]
+- [[main.py]] - `imports_from` [EXTRACTED]
+- [[math]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `imports_from` [EXTRACTED]
 - [[output_formatters.py]] - `imports_from` [EXTRACTED]
 - [[prob_color()]] - `contains` [EXTRACTED]
@@ -34,4 +36,4 @@ tags:
 - [[white()]] - `contains` [EXTRACTED]
 - [[yellow()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_0

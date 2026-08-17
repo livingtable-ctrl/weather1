@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 625"
+community: "Community 716"
 location: "L5122"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_625
+  - community/Community_716
 ---
 
 # An unparseable settled hurricane-count ticker must at least log a warning, not…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_count_settled_hurricane_predictions_warns_on_unparseable_ticker()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_625
+#graphify/rationale #graphify/EXTRACTED #community/Community_716

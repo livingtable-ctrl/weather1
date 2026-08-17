@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_sameday_reserve.py"
 type: "rationale"
-community: "Community 74"
+community: "Community 75"
 location: "L42"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_74
+  - community/Community_75
 ---
 
 # Slots > 0 but settled < threshold → full cap (not enough data).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_threshold_not_met_returns_max()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_74
+#graphify/rationale #graphify/EXTRACTED #community/Community_75

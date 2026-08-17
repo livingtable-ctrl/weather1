@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_retirement_probation.py"
 type: "code"
-community: "Community 140"
+community: "Community 146"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_140
+  - community/Community_146
 ---
 
 # test_retirement_probation.py
@@ -17,6 +17,10 @@ tags:
 - [[_mock_client()_2]] - `contains` [EXTRACTED]
 - [[_today()_2]] - `contains` [EXTRACTED]
 - [[check_retirement_probation()]] - `calls` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[test_auto_unretires_when_probation_brier_clears_threshold()]] - `contains` [EXTRACTED]
 - [[test_does_not_unretire_when_insufficient_probation_samples()]] - `contains` [EXTRACTED]
 - [[test_does_not_unretire_when_probation_brier_still_bad()]] - `contains` [EXTRACTED]
@@ -27,5 +31,6 @@ tags:
 - [[test_runs_again_on_a_new_day()]] - `contains` [EXTRACTED]
 - [[test_skips_market_whose_method_is_not_retired()]] - `contains` [EXTRACTED]
 - [[tmp_retirement_state()]] - `contains` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_140
+#graphify/code #graphify/EXTRACTED #community/Community_146

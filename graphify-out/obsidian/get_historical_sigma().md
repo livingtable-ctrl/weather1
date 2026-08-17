@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 26"
-location: "L2731"
+community: "Community 69"
+location: "L2833"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_26
+  - community/Community_69
 ---
 
 # get_historical_sigma()
@@ -21,11 +21,11 @@ tags:
 - [[dot-test_miami_returns_calibrated_not_default()]] - `calls` [EXTRACTED]
 - [[Return forecast RMSE sigma (°F) for a citymonth. Prefers dynamic values…]] - `rationale_for` [EXTRACTED]
 - [[_load_dynamic_sigma()]] - `calls` [EXTRACTED]
-- [[_month_to_season()]] - `calls` [EXTRACTED]
+- [[_month_to_season()_1]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[load_all_sigmas()]] - `calls` [EXTRACTED]
 - [[test_forecasting.py]] - `references` [EXTRACTED]
-- [[test_gaussian_prob.py]] - `references` [EXTRACTED]
+- [[test_gaussian_prob.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_26
+#graphify/code #graphify/EXTRACTED #community/Community_69

@@ -1,19 +1,20 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 693"
+community: "Community 1"
 location: "L1676"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_1
 ---
 
 # portfolio_kelly_fraction()
 
 ## Connections
+- [[dot-test_applied_in_portfolio_kelly_fraction()]] - `calls` [EXTRACTED]
 - [[Scale down base_fraction based on existing open exposure to this citydate.…]] - `rationale_for` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
+- [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[_city_kelly_multiplier()]] - `calls` [EXTRACTED]
 - [[_quick_paper_buy()]] - `calls` [EXTRACTED]
 - [[cmd_paper()]] - `calls` [EXTRACTED]
@@ -22,9 +23,10 @@ tags:
 - [[get_correlated_exposure()]] - `calls` [EXTRACTED]
 - [[get_directional_exposure()]] - `calls` [EXTRACTED]
 - [[get_total_exposure()]] - `calls` [EXTRACTED]
-- [[main.py_1]] - `imports` [EXTRACTED]
-- [[paper.py_1]] - `contains` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
+- [[order_executor.py]] - `imports` [EXTRACTED]
+- [[paper.py]] - `contains` [EXTRACTED]
 - [[position_age_kelly_scale()]] - `calls` [EXTRACTED]
-- [[web_app.py_1]] - `imports` [EXTRACTED]
+- [[test_backlog_batch.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_1

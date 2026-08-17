@@ -1,18 +1,19 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Shadow Predictions Auto-Place Trades"
+community: "Community 44"
 location: "L2249"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Shadow_Predictions_Auto-Place_Trades
+  - community/Community_44
 ---
 
 # _auto_place_trades()
 
 ## Connections
 - [[Auto-place paper or live trades for signals not already held. Called from…]] - `rationale_for` [EXTRACTED]
+- [[_build_cron_context()]] - `indirect_call` [INFERRED]
 - [[_current_forecast_cycle()]] - `calls` [EXTRACTED]
 - [[_daily_paper_spend()]] - `calls` [EXTRACTED]
 - [[_daily_sameday_spend()]] - `calls` [EXTRACTED]
@@ -32,28 +33,37 @@ tags:
 - [[_validate_trade_opportunity()]] - `calls` [EXTRACTED]
 - [[_var_from_ticker_prefix()]] - `calls` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
+- [[drawdown_scaling_factor()]] - `calls` [EXTRACTED]
+- [[get_daily_pnl()]] - `calls` [EXTRACTED]
 - [[get_today_live_loss()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
+- [[is_daily_loss_halted()]] - `calls` [EXTRACTED]
 - [[is_hurricane_count_ticker()]] - `calls` [EXTRACTED]
 - [[is_hurricane_next_event_ticker()]] - `calls` [EXTRACTED]
+- [[is_paused_drawdown()]] - `calls` [EXTRACTED]
 - [[is_storm_order_ticker()]] - `calls` [EXTRACTED]
+- [[is_streak_paused()]] - `calls` [EXTRACTED]
 - [[is_trading_paused()]] - `calls` [EXTRACTED]
+- [[kelly_quantity()]] - `calls` [EXTRACTED]
 - [[log_analysis_attempt()]] - `calls` [EXTRACTED]
 - [[log_live_fill()]] - `calls` [EXTRACTED]
 - [[log_order()]] - `calls` [EXTRACTED]
 - [[log_order_result()]] - `calls` [EXTRACTED]
 - [[log_prediction()]] - `calls` [EXTRACTED]
-- [[main._auto_place_trades]] - `calls` [INFERRED]
-- [[main.py CLI Entrypoint]] - `shares_data_with` [INFERRED]
-- [[order_executor.py]] - `contains` [EXTRACTED]
-- [[order_executor.py_1]] - `implements` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
+- [[order_executor.py]] - `implements` [EXTRACTED]
+- [[paper.corr_kelly_scale]] - `calls` [EXTRACTED]
+- [[paper.get_open_trades]] - `calls` [EXTRACTED]
+- [[paper.liquidity_kelly_scale]] - `calls` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 - [[place_paper_order()]] - `calls` [EXTRACTED]
+- [[portfolio_kelly_fraction()]] - `calls` [EXTRACTED]
 - [[portfolio_var()]] - `calls` [EXTRACTED]
 - [[red()]] - `calls` [EXTRACTED]
+- [[spread_kelly_multiplier()]] - `calls` [EXTRACTED]
 - [[test_auto_place_trades_stops_at_daily_spend_cap()]] - `calls` [INFERRED]
 - [[test_drawdown_halt_also_logs_shadow_prediction()]] - `calls` [EXTRACTED]
-- [[test_drawdown_tiers.py_1]] - `calls` [EXTRACTED]
+- [[test_drawdown_tiers.py]] - `calls` [EXTRACTED]
 - [[test_hourly_ticker_places_normally_when_gate_active()]] - `calls` [EXTRACTED]
 - [[test_hourly_ticker_shadow_only_when_gate_inactive()]] - `calls` [EXTRACTED]
 - [[test_hurricane_count_gate_evaluated_once_per_batch()]] - `calls` [EXTRACTED]
@@ -82,11 +92,10 @@ tags:
 - [[test_trading_paused_logs_shadow_prediction_tuple_format()]] - `calls` [EXTRACTED]
 - [[test_trading_paused_skips_already_open_ticker()]] - `calls` [EXTRACTED]
 - [[test_trading_paused_skips_invalid_opp()]] - `calls` [EXTRACTED]
-- [[tracker.py_2]] - `calls` [EXTRACTED]
 - [[was_ordered_recently()]] - `calls` [EXTRACTED]
 - [[was_ordered_this_cycle()]] - `calls` [EXTRACTED]
 - [[was_traded_today()]] - `calls` [EXTRACTED]
-- [[weather_markets.py_1]] - `calls` [EXTRACTED]
+- [[weather_markets.py]] - `calls` [EXTRACTED]
 - [[yellow()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Shadow_Predictions_Auto-Place_Trades
+#graphify/code #graphify/EXTRACTED #community/Community_44

@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Forecasting Persistence Model Tests"
+community: "Community 38"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_38
 ---
 
 # test_forecasting.py
@@ -35,30 +36,30 @@ tags:
 - [[TestSignalGraduationRegistry]] - `contains` [EXTRACTED]
 - [[TestSnowLiquidRatio]] - `contains` [EXTRACTED]
 - [[TestTimeDecayEdge_1]] - `contains` [EXTRACTED]
-- [[_blend_weights()]] - `references` [EXTRACTED]
+- [[_blend_weights()]] - `imports` [EXTRACTED]
 - [[_confidence_scaled_blend_weights()]] - `imports` [EXTRACTED]
-- [[_current_forecast_cycle()]] - `references` [EXTRACTED]
+- [[_current_forecast_cycle()]] - `imports` [EXTRACTED]
 - [[_detect_bimodal_ensemble()]] - `imports` [EXTRACTED]
 - [[_dynamic_model_weights()]] - `imports` [EXTRACTED]
 - [[_feels_like()]] - `imports` [EXTRACTED]
 - [[_fetch_hrrr_temp()]] - `imports` [EXTRACTED]
-- [[_forecast_model_weights()]] - `references` [EXTRACTED]
+- [[_forecast_model_weights()]] - `imports` [EXTRACTED]
 - [[_get_enso_phase()]] - `imports` [EXTRACTED]
 - [[_ttl_until_next_cycle()]] - `imports` [EXTRACTED]
 - [[analyze_trade()]] - `references` [EXTRACTED]
 - [[apply_pdo_pna_correction()]] - `imports` [EXTRACTED]
-- [[apply_temperature_scaling()]] - `references` [EXTRACTED]
 - [[get_ensemble_members()]] - `references` [EXTRACTED]
 - [[get_historical_sigma()]] - `references` [EXTRACTED]
-- [[get_model_weights()]] - `references` [EXTRACTED]
 - [[liquid_equiv_of_snow_threshold()]] - `imports` [EXTRACTED]
 - [[module-level _forecast_cache_ensemble_cache singletons]] - `references` [EXTRACTED]
-- [[normal_cdf()]] - `references` [EXTRACTED]
-- [[persistence_prob()]] - `references` [EXTRACTED]
+- [[normal_cdf()]] - `imports` [EXTRACTED]
+- [[persistence_prob()]] - `imports` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[snow_liquid_ratio()]] - `imports` [EXTRACTED]
 - [[test_data_freshness.py (referenced, not in this chunk)]] - `cites` [EXTRACTED]
 - [[test_kelly_property.py]] - `semantically_similar_to` [INFERRED]
 - [[time_decay_edge()]] - `imports` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 - [[wet_bulb_temp()]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_38

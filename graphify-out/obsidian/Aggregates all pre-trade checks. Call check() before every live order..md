@@ -1,12 +1,12 @@
 ---
 source_file: "trading_gates.py"
 type: "rationale"
-community: "Trade Cycle Engine & Arbitrage Gates"
+community: "Community 17"
 location: "L15"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Trade_Cycle_Engine__Arbitrage_Gates
+  - community/Community_17
 ---
 
 # Aggregates all pre-trade checks. Call check() before every live order.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[LiveTradingGate]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Trade_Cycle_Engine__Arbitrage_Gates
+#graphify/rationale #graphify/EXTRACTED #community/Community_17

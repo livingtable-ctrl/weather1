@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_isoformat_cutoff_guard.py"
 type: "code"
-community: "Community 75"
+community: "Community 66"
 location: "L278"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_75
+  - community/Community_66
 ---
 
 # test_real_cutoff_expression_is_caught()
@@ -15,4 +15,4 @@ tags:
 - [[Positive-case regression the exact bug shape must still be caught, including…]] - `rationale_for` [EXTRACTED]
 - [[test_isoformat_cutoff_guard.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_75
+#graphify/code #graphify/EXTRACTED #community/Community_66

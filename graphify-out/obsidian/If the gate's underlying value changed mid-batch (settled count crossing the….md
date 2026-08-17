@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_shadow_predictions.py"
 type: "rationale"
-community: "Shadow Predictions Auto-Place Trades"
+community: "Community 44"
 location: "L567"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Shadow_Predictions_Auto-Place_Trades
+  - community/Community_44
 ---
 
 # If the gate's underlying value changed mid-batch (settled count crossing the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_hurricane_count_gate_stable_within_batch_despite_stateful_mock()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Shadow_Predictions_Auto-Place_Trades
+#graphify/rationale #graphify/EXTRACTED #community/Community_44

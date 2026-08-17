@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "rationale"
-community: "Community 396"
+community: "Community 420"
 location: "L727"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_396
+  - community/Community_420
 ---
 
 # Same gap as above, at the explicit refuse-outright guards in main.py's…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestManualPlacementPathsHourlyGuard]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_396
+#graphify/rationale #graphify/EXTRACTED #community/Community_420

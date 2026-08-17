@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_config_divergence_guard.py"
 type: "rationale"
-community: "Community 243"
+community: "Community 47"
 location: "L62"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_243
+  - community/Community_47
 ---
 
 # Fails if the same env var is read via _env_float()/_env_int()/…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_no_env_var_has_conflicting_hardcoded_defaults()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_243
+#graphify/rationale #graphify/EXTRACTED #community/Community_47

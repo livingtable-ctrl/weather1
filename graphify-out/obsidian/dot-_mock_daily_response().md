@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backtest.py"
 type: "code"
-community: "Community 358"
+community: "Community 371"
 location: "L64"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_358
+  - community/Community_371
 ---
 
 # ._mock_daily_response()
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_fetch_archive_temps_writes_via_atomic_helper()]] - `calls` [EXTRACTED]
 - [[TestFetchArchiveTempsCacheWrite]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_358
+#graphify/code #graphify/EXTRACTED #community/Community_371

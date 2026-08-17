@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 117"
 location: "L364"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_117
 ---
 
 # override_accuracy_halt()/clear_accuracy_halt_override()/…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestAccuracyHaltOverride]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_117

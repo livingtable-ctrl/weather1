@@ -1,22 +1,29 @@
 ---
 source_file: "tests/test_safe_io.py"
 type: "code"
-community: "Safe I/O CRC Validation Tests"
+community: "Community 85"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Safe_I/O_CRC_Validation_Tests
+  - community/Community_85
 ---
 
 # test_safe_io.py
 
 ## Connections
 - [[AtomicWriteError]] - `imports` [EXTRACTED]
+- [[CorruptionError]] - `imports` [EXTRACTED]
+- [[Grade Audit Module Doc safe_io.py]] - `references` [EXTRACTED]
 - [[Paper Trading Ledger Module]] - `calls` [EXTRACTED]
 - [[_replace_with_retry()]] - `calls` [EXTRACTED]
+- [[_validate_checksum()]] - `imports` [EXTRACTED]
+- [[_validate_crc()]] - `imports` [EXTRACTED]
 - [[_write_with_crc()]] - `contains` [EXTRACTED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[test_atomic_write_concurrent_threads_same_target_no_collision()]] - `contains` [EXTRACTED]
 - [[test_atomic_write_default_fallback_does_not_clobber_original()]] - `contains` [EXTRACTED]
 - [[test_atomic_write_emergency_copy_written_on_failure()]] - `contains` [EXTRACTED]
@@ -58,5 +65,6 @@ tags:
 - [[test_verify_backup_fails_on_invalid_json()]] - `contains` [EXTRACTED]
 - [[test_verify_backup_logs_checksum_on_success()]] - `contains` [EXTRACTED]
 - [[test_verify_backup_passes_on_good_file()]] - `contains` [EXTRACTED]
+- [[verify_backup()]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Safe_I/O_CRC_Validation_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_85

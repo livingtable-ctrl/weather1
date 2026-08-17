@@ -1,32 +1,32 @@
 ---
 type: community
-cohesion: 0.12
+cohesion: 0.14
 members: 17
 ---
 
 # Community 207
 
-**Cohesion:** 0.12 - loosely connected
+**Cohesion:** 0.14 - loosely connected
 **Members:** 17 nodes
 
 ## Members
-- [[dot-test_cents_converted_to_decimal()]] - code - tests/test_weather_markets.py
-- [[dot-test_implied_prob_is_midpoint()]] - code - tests/test_weather_markets.py
-- [[dot-test_l2d_integer_1_converted_to_1_cent()]] - code - tests/test_weather_markets.py
-- [[dot-test_l2d_zero_bid_not_bypassed_by_or()]] - code - tests/test_weather_markets.py
-- [[dot-test_mid_falls_back_to_yes_bid_when_no_ask()]] - code - tests/test_weather_markets.py
-- [[dot-test_missing_fields_fall_back_to_zero()]] - code - tests/test_weather_markets.py
-- [[dot-test_returns_dict_with_expected_keys()]] - code - tests/test_weather_markets.py
-- [[dot-test_string_prices_parsed()]] - code - tests/test_weather_markets.py
-- [[Integer values  1 are treated as cents and divided by 100.]] - rationale - tests/test_weather_markets.py
-- [[L2-D a valid 0¢ bid must not be bypassed by the or-fallback. When yes_bid=0…]] - rationale - tests/test_weather_markets.py
-- [[L2-D integer value 1 (= 1¢) must be divided by 100, not returned as 1.0. The…]] - rationale - tests/test_weather_markets.py
-- [[Missing price fields default to 0.0 without raising.]] - rationale - tests/test_weather_markets.py
-- [[Result must be a dict containing the standard price keys.]] - rationale - tests/test_weather_markets.py
-- [[String-format prices (e.g. '0.55') are parsed correctly.]] - rationale - tests/test_weather_markets.py
-- [[TestParseMarketPrice]] - code - tests/test_weather_markets.py
-- [[When yes_ask is 0 the mid falls back to yes_bid.]] - rationale - tests/test_weather_markets.py
-- [[implied_prob equals the mid-price of yes_bid and yes_ask.]] - rationale - tests/test_weather_markets.py
+- [[dot-test_nothing_to_undo_prints_message()]] - code - tests/test_main_cron_smoke.py
+- [[dot-test_undone_trade_prints_ticker_and_refund()]] - code - tests/test_main_cron_smoke.py
+- [[40 rows with real ens_var -- clears the =40 activation floor (main.py's…]] - rationale - tests/test_main_cron_smoke.py
+- [[Only 12 rows with real ens_var -- below the =40 activation floor, for testing…]] - rationale - tests/test_main_cron_smoke.py
+- [[Patch every external call cmd_cron makes so it can run without network.]] - rationale - tests/test_main_cron_smoke.py
+- [[Redirect ml_bias's emos_params.json, temperature_scale.json, and…]] - rationale - tests/test_main_cron_smoke.py
+- [[Smoke tests for cmd_cron — the main production execution path. Tests the guards…]] - rationale - tests/test_main_cron_smoke.py
+- [[TestCmdUndo]] - code - tests/test_main_cron_smoke.py
+- [[cmd_undo (main.py) wraps paper.undo_last_trade for the `undo` CLI command --…]] - rationale - tests/test_main_cron_smoke.py
+- [[emos_training_rows()]] - code - tests/test_main_cron_smoke.py
+- [[emos_training_rows_thin()]] - code - tests/test_main_cron_smoke.py
+- [[fixture_6]] - code
+- [[format_brier_alert() output should include actionable next steps.]] - rationale - tests/test_main_cron_smoke.py
+- [[isolated_emos_paths()]] - code - tests/test_main_cron_smoke.py
+- [[minimal_mocks()]] - code - tests/test_main_cron_smoke.py
+- [[test_brier_alert_includes_guidance()]] - code - tests/test_main_cron_smoke.py
+- [[test_main_cron_smoke.py]] - code - tests/test_main_cron_smoke.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -36,12 +36,16 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 8 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 2 edges to [[_COMMUNITY_Community 0]]
+- 2 edges to [[_COMMUNITY_Community 3]]
+- 2 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 192]]
+- 1 edge to [[_COMMUNITY_Community 255]]
+- 1 edge to [[_COMMUNITY_Community 337]]
+- 1 edge to [[_COMMUNITY_Community 619]]
 
 ## Top bridge nodes
-- [[TestParseMarketPrice]] - degree 9, connects to 1 community
-- [[dot-test_cents_converted_to_decimal()]] - degree 3, connects to 1 community
-- [[dot-test_implied_prob_is_midpoint()]] - degree 3, connects to 1 community
-- [[dot-test_l2d_integer_1_converted_to_1_cent()]] - degree 3, connects to 1 community
-- [[dot-test_l2d_zero_bid_not_bypassed_by_or()]] - degree 3, connects to 1 community
+- [[test_main_cron_smoke.py]] - degree 14, connects to 6 communities
+- [[TestCmdUndo]] - degree 5, connects to 1 community
+- [[minimal_mocks()]] - degree 4, connects to 1 community
+- [[test_brier_alert_includes_guidance()]] - degree 3, connects to 1 community

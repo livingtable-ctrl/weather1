@@ -1,12 +1,12 @@
 ---
 source_file: "COMMANDS.md"
 type: "document"
-community: "Community 693"
+community: "Community 362"
 location: "L1"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_362
 ---
 
 # Kalshi Weather Bot — Command Reference
@@ -22,4 +22,4 @@ tags:
 - [[System & Safety]] - `contains` [EXTRACTED]
 - [[Trading]] - `contains` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_693
+#graphify/document #graphify/EXTRACTED #community/Community_362

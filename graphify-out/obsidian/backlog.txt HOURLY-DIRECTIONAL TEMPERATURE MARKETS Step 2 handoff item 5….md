@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "rationale"
-community: "Community 395"
+community: "Community 419"
 location: "L433"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_395
+  - community/Community_419
 ---
 
 # backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item 5:…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestHourlyGatesActive]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_395
+#graphify/rationale #graphify/EXTRACTED #community/Community_419

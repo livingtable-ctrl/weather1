@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 190"
+community: "Community 174"
 location: "L1026"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_190
+  - community/Community_174
 ---
 
 # .test_day_0_returns_one()
@@ -15,4 +15,4 @@ tags:
 - [[TestEdgeConfidence]] - `method` [EXTRACTED]
 - [[edge_confidence()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_190
+#graphify/code #graphify/EXTRACTED #community/Community_174

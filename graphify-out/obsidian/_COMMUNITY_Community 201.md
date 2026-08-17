@@ -1,32 +1,32 @@
 ---
 type: community
-cohesion: 0.14
+cohesion: 0.12
 members: 17
 ---
 
 # Community 201
 
-**Cohesion:** 0.14 - loosely connected
+**Cohesion:** 0.12 - loosely connected
 **Members:** 17 nodes
 
 ## Members
-- [[Context manager stack that patches all network calls inside analyze_trade.]] - rationale - tests/test_data_freshness.py
-- [[Enriched dict with correct keys; fetched_at controls freshness.]] - rationale - tests/test_data_freshness.py
-- [[FORECAST_MAX_AGE_SECS must be a positive integer.]] - rationale - tests/test_data_freshness.py
-- [[If data_fetched_at is absent, analyze_trade must not reject the data.]] - rationale - tests/test_data_freshness.py
-- [[Tests for P0.3 — FORECAST_MAX_AGE_SECS and stale data rejection in…]] - rationale - tests/test_data_freshness.py
-- [[_enriched()]] - code - tests/test_data_freshness.py
-- [[_mock_externals()]] - code - tests/test_data_freshness.py
-- [[analyze_trade must not reject data when data_fetched_at is recent.]] - rationale - tests/test_data_freshness.py
-- [[analyze_trade must return None when data_fetched_at is beyond…]] - rationale - tests/test_data_freshness.py
-- [[enrich_with_forecast must add data_fetched_at to the returned dict.]] - rationale - tests/test_data_freshness.py
-- [[test_analyze_trade_accepts_fresh_data()]] - code - tests/test_data_freshness.py
-- [[test_analyze_trade_no_fetched_at_is_treated_as_fresh()]] - code - tests/test_data_freshness.py
-- [[test_analyze_trade_rejects_stale_data()]] - code - tests/test_data_freshness.py
-- [[test_data_freshness.py]] - code - tests/test_data_freshness.py
-- [[test_enrich_with_forecast_stamps_data_fetched_at()]] - code - tests/test_data_freshness.py
-- [[test_forecast_max_age_secs_is_positive_int()]] - code - tests/test_data_freshness.py
-- [[weather_markets.FORECAST_MAX_AGE_SECS]] - code - weather_markets.py
+- [[dot-test_dead_comment_subscribe_variable_never_existed()]] - code - tests/test_phase2_batch_e.py
+- [[dot-test_no_hardcoded_subscribe_comment_in_cron()]] - code - tests/test_phase2_batch_e.py
+- [[dot-test_no_start_with_empty_market_list()]] - code - tests/test_phase2_batch_e.py
+- [[dot-test_subscribe_after_start_raises()]] - code - tests/test_phase2_batch_e.py
+- [[dot-test_subscribe_called_before_start()]] - code - tests/test_phase2_batch_e.py
+- [[dot-test_subscribe_receives_market_tickers()]] - code - tests/test_phase2_batch_e.py
+- [[If the market list is empty, subscribe is skipped but start still fires.]] - rationale - tests/test_phase2_batch_e.py
+- [[P2-5 subscribe() must be called before start(), with real market tickers.]] - rationale - tests/test_phase2_batch_e.py
+- [[Phase 2 Batch E regression tests P2-5 (WebSocket dead-code fix).]] - rationale - tests/test_phase2_batch_e.py
+- [[TestWebSocketSubscribeOrder]] - code - tests/test_phase2_batch_e.py
+- [[The dead ' _ws.subscribe(active_tickers)' comment must be gone.]] - rationale - tests/test_phase2_batch_e.py
+- [[The subscribe call in cron must pass tickers from the market list, not an empty…]] - rationale - tests/test_phase2_batch_e.py
+- [[active_tickers was never defined in cron — the old commented line could not…]] - rationale - tests/test_phase2_batch_e.py
+- [[kalshi_ws.KalshiWebSocket]] - code - kalshi_ws.py
+- [[subscribe() must precede start() — reversed order raises RuntimeError.]] - rationale - tests/test_phase2_batch_e.py
+- [[subscribe() raises RuntimeError if called after start() — validates ordering…]] - rationale - tests/test_phase2_batch_e.py
+- [[test_phase2_batch_e.py]] - code - tests/test_phase2_batch_e.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -36,12 +36,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 5 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 2 edges to [[_COMMUNITY_Community 227]]
+- 2 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 31]]
 
 ## Top bridge nodes
-- [[test_data_freshness.py]] - degree 12, connects to 2 communities
-- [[test_analyze_trade_accepts_fresh_data()]] - degree 4, connects to 1 community
-- [[test_analyze_trade_no_fetched_at_is_treated_as_fresh()]] - degree 4, connects to 1 community
-- [[test_analyze_trade_rejects_stale_data()]] - degree 4, connects to 1 community
-- [[test_enrich_with_forecast_stamps_data_fetched_at()]] - degree 3, connects to 1 community
+- [[test_phase2_batch_e.py]] - degree 6, connects to 2 communities
+- [[TestWebSocketSubscribeOrder]] - degree 9, connects to 1 community
+- [[kalshi_ws.KalshiWebSocket]] - degree 2, connects to 1 community

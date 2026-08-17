@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "code"
-community: "Community 356"
+community: "Community 187"
 location: "L435"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_356
+  - community/Community_187
 ---
 
 # .test_empty_list_is_false()
@@ -16,4 +16,4 @@ tags:
 - [[TestIsAllNull]] - `method` [EXTRACTED]
 - [[is_all_null()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_356
+#graphify/code #graphify/EXTRACTED #community/Community_187

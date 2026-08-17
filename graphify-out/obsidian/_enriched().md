@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_data_freshness.py"
 type: "code"
-community: "Community 201"
+community: "Community 205"
 location: "L11"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_201
+  - community/Community_205
 ---
 
 # _enriched()
@@ -18,4 +18,4 @@ tags:
 - [[test_analyze_trade_rejects_stale_data()]] - `calls` [EXTRACTED]
 - [[test_data_freshness.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_201
+#graphify/code #graphify/EXTRACTED #community/Community_205

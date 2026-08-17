@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 139"
+community: "Community 16"
 location: "L1521"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_139
+  - community/Community_16
 ---
 
 # .test_rain_only_list_produces_a_real_distribution()
@@ -16,4 +16,4 @@ tags:
 - [[TestComputeMarketImpliedGroupsMonthlyRain]] - `method` [EXTRACTED]
 - [[The actual regression this backlog entry fixes a rain-only ladder must now be…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_139
+#graphify/code #graphify/EXTRACTED #community/Community_16

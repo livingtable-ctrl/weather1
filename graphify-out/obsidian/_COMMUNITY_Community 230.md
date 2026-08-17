@@ -1,30 +1,30 @@
 ---
 type: community
-cohesion: 0.28
+cohesion: 0.14
 members: 15
 ---
 
 # Community 230
 
-**Cohesion:** 0.28 - loosely connected
+**Cohesion:** 0.14 - loosely connected
 **Members:** 15 nodes
 
 ## Members
-- [[Confidence boost at days_out=15 should be lower than at days_out=1.]] - rationale - tests/test_regime.py
-- [[Detect the current weather regime for a city based on ensemble statistics.…]] - rationale - regime.py
-- [[Tests for regime.detect_regime() — RF6 gap closure.]] - rationale - tests/test_regime.py
-- [[_stats()]] - code - tests/test_regime.py
-- [[detect_regime()]] - code - regime.py
-- [[regime.py_1]] - code - regime.py
-- [[test_blocking_high_detected()]] - code - tests/test_regime.py
-- [[test_cold_snap_detected()]] - code - tests/test_regime.py
-- [[test_days_out_none_does_not_raise()]] - code - tests/test_regime.py
-- [[test_empty_ensemble_stats_returns_normal()]] - code - tests/test_regime.py
-- [[test_far_horizon_reduces_boost()]] - code - tests/test_regime.py
-- [[test_heat_dome_detected()]] - code - tests/test_regime.py
-- [[test_normal_detected()]] - code - tests/test_regime.py
-- [[test_regime.py]] - code - tests/test_regime.py
-- [[test_volatile_detected()]] - code - tests/test_regime.py
+- [[dot-test_emos_exceedance_prob_in_bounds()]] - code - tests/test_ml_bias.py
+- [[dot-test_emos_exceedance_prob_monotone()]] - code - tests/test_ml_bias.py
+- [[dot-test_emos_interval_and_exceedance_consistent()]] - code - tests/test_ml_bias.py
+- [[dot-test_emos_interval_prob_in_bounds()]] - code - tests/test_ml_bias.py
+- [[dot-test_fit_emos_returns_four_floats()]] - code - tests/test_ml_bias.py
+- [[Fit EMOS parameters (a, b, c, d) minimising mean CRPS. Model T ~ N(mu,…]] - rationale - ml_bias.py
+- [[Higher threshold → lower exceedance probability.]] - rationale - tests/test_ml_bias.py
+- [[P(T  threshold) from a fitted EMOS Gaussian distribution. CRITICAL pass…]] - rationale - ml_bias.py
+- [[P(Tthreshold) + P(lowTthreshold) should equal P(Tlow).]] - rationale - tests/test_ml_bias.py
+- [[P(low  T  high) from a fitted EMOS Gaussian — for 'between' markets.…]] - rationale - ml_bias.py
+- [[TestEmos (EMOS fitexceedanceintervalpersistence)]] - code - tests/test_ml_bias.py
+- [[emos_exceedance_prob()]] - code - ml_bias.py
+- [[emos_interval_prob()]] - code - ml_bias.py
+- [[fit_emos()]] - code - ml_bias.py
+- [[ndarray]] - code
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,10 +34,17 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_Community 567]]
-- 1 edge to [[_COMMUNITY_Community 160]]
+- 6 edges to [[_COMMUNITY_Community 55]]
+- 4 edges to [[_COMMUNITY_Community 5]]
+- 3 edges to [[_COMMUNITY_Community 99]]
+- 3 edges to [[_COMMUNITY_Community 82]]
+- 2 edges to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 2]]
+- 1 edge to [[_COMMUNITY_Community 3]]
 
 ## Top bridge nodes
-- [[detect_regime()]] - degree 15, connects to 3 communities
-- [[test_regime.py]] - degree 12, connects to 1 community
+- [[emos_exceedance_prob()]] - degree 9, connects to 3 communities
+- [[emos_interval_prob()]] - degree 8, connects to 3 communities
+- [[fit_emos()]] - degree 8, connects to 3 communities
+- [[TestEmos (EMOS fitexceedanceintervalpersistence)]] - degree 6, connects to 3 communities
+- [[dot-test_emos_interval_and_exceedance_consistent()]] - degree 4, connects to 1 community

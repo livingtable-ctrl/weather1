@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Weather Probability Math Tests"
+community: "Community 397"
 location: "L329"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_397
 ---
 
 # backlog.txt "NO MARKET-TYPE SEAM" -- single source of truth for the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestDailyVarFromSeries]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_397

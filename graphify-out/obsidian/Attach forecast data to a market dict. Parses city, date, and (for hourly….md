@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L5384"
+community: "Community 0"
+location: "L5486"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_0
 ---
 
 # Attach forecast data to a market dict. Parses city, date, and (for hourly…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[enrich_with_forecast()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

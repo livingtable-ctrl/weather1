@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "code"
-community: "Community 79"
-location: "L365"
+community: "Community 96"
+location: "L999"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_79
+  - community/Community_96
 ---
 
 # ._seed()
 
 ## Connections
-- [[TestTrainAllTemperatureScalingRainExclusion]] - `method` [EXTRACTED]
+- [[TestTrainAllTemperatureScalingHourlyPool]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_79
+#graphify/code #graphify/EXTRACTED #community/Community_96

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 60"
+community: "Community 59"
 location: "L264"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_60
+  - community/Community_59
 ---
 
 # .test_tilted_mode_adds_current_count_to_historical_remaining()
@@ -16,4 +16,4 @@ tags:
 - [[TestSeasonEndTotalDistribution]] - `method` [EXTRACTED]
 - [[_fixture_storms()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_60
+#graphify/code #graphify/EXTRACTED #community/Community_59

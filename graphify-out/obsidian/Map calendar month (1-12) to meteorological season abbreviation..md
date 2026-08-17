@@ -1,17 +1,17 @@
 ---
 source_file: "climate_indices.py"
 type: "rationale"
-community: "Climatology & Climate Index Fetching"
+community: "Community 361"
 location: "L596"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_361
 ---
 
 # Map calendar month (1-12) to meteorological season abbreviation.
 
 ## Connections
-- [[_month_to_season()_1]] - `rationale_for` [EXTRACTED]
+- [[_month_to_season()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/rationale #graphify/EXTRACTED #community/Community_361

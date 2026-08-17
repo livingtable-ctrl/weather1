@@ -1,12 +1,12 @@
 ---
 source_file: "nws.py"
 type: "code"
-community: "Community 131"
+community: "Community 15"
 location: "L374"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_131
+  - community/Community_15
 ---
 
 # nws_prob_from_quantiles()
@@ -28,4 +28,4 @@ tags:
 - [[test_weather_markets.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_131
+#graphify/code #graphify/EXTRACTED #community/Community_15

@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-c-position-management.md"
 type: "document"
-community: "Community 210"
+community: "Community 217"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_210
+  - community/Community_217
 ---
 
 # Category C: Position Management Plan
@@ -19,4 +19,4 @@ tags:
 - [[C6 Auto-Execute Monotonicity Violations]] - `implements` [EXTRACTED]
 - [[Category B Risk Management Plan]] - `conceptually_related_to` [INFERRED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_210
+#graphify/document #graphify/EXTRACTED #community/Community_217

@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 634
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_boston_renamed_low_ticker()]] - code - tests/test_weather_markets.py
-- [[KXLOWTBOS (renamed from KXLOWBOS) → Boston.]] - rationale - tests/test_weather_markets.py
+- [[dot-test_calibration_covariate_fields_absent_stores_null_columns()]] - code - tests/test_tracker.py
+- [[dot-test_calibration_covariate_fields_round_trip_through_upsert()]] - code - tests/test_tracker.py
+- [[dot-test_calibration_covariate_fields_update_on_reupsert()]] - code - tests/test_tracker.py
+- [[TestLogPredictionCalibrationCovariateFields]] - code - tests/test_tracker.py
+- [[log_prediction() must persist ensemble_spread_fmodel_disagreement_f…]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 116]]
-- 1 edge to [[_COMMUNITY_Community 102]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[dot-test_boston_renamed_low_ticker()]] - degree 3, connects to 2 communities
+- [[TestLogPredictionCalibrationCovariateFields]] - degree 5, connects to 1 community

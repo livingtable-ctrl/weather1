@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_station_bias.py"
 type: "rationale"
-community: "Community 175"
+community: "Community 211"
 location: "L61"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_175
+  - community/Community_211
 ---
 
 # Las Vegas has no settled-observation history yet — uses Phoenix's desert-…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_las_vegas_bias_matches_phoenix()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_175
+#graphify/rationale #graphify/EXTRACTED #community/Community_211

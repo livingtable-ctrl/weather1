@@ -1,12 +1,12 @@
 ---
 source_file: "acis_precip.py"
 type: "rationale"
-community: "Community 62"
+community: "Community 23"
 location: "L445"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_62
+  - community/Community_23
 ---
 
 # Mirrors weather_markets._bootstrap_ci_precip's exact resampling shape: n…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[bootstrap_ci_month_total()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_62
+#graphify/rationale #graphify/EXTRACTED #community/Community_23

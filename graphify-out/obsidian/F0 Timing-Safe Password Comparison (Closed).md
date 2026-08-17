@@ -1,12 +1,12 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-f-security.md"
 type: "document"
-community: "Community 104"
+community: "Community 172"
 location: "Closed F0"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_104
+  - community/Community_172
 ---
 
 # F0: Timing-Safe Password Comparison (Closed)
@@ -15,4 +15,4 @@ tags:
 - [[2a Timing-Safe Dashboard Password Comparison]] - `implements` [EXTRACTED]
 - [[web_app.py Module]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_104
+#graphify/document #graphify/EXTRACTED #community/Community_172

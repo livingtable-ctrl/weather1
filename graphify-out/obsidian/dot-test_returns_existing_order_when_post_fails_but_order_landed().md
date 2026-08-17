@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_idempotency.py"
 type: "code"
-community: "Community 143"
+community: "Community 191"
 location: "L118"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_143
+  - community/Community_191
 ---
 
 # .test_returns_existing_order_when_post_fails_but_order_landed()
@@ -16,4 +16,4 @@ tags:
 - [[If _post raises but the order exists on exchange, return it without re-raising.…]] - `rationale_for` [EXTRACTED]
 - [[TestPostFailureDedup]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_143
+#graphify/code #graphify/EXTRACTED #community/Community_191

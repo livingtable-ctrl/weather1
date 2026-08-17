@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "rationale"
-community: "Community 469"
+community: "Community 12"
 location: "L2058"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_469
+  - community/Community_12
 ---
 
 # A protective exit (SELL) order reduces existing exposure, it isn't new capital…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestGetTodayLiveSpendExcludesExitOrders]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_469
+#graphify/rationale #graphify/EXTRACTED #community/Community_12

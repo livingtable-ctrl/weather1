@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backtest.py"
 type: "code"
-community: "Community 358"
+community: "Community 371"
 location: "L115"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_358
+  - community/Community_371
 ---
 
 # .test_fetch_archive_temps_survives_write_failure()
@@ -17,4 +17,4 @@ tags:
 - [[A failed cache write (e.g. AtomicWriteError) must not crash the fetch or lose…]] - `rationale_for` [EXTRACTED]
 - [[TestFetchArchiveTempsCacheWrite]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_358
+#graphify/code #graphify/EXTRACTED #community/Community_371

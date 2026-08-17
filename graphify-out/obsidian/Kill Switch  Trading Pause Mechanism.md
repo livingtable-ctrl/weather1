@@ -1,11 +1,11 @@
 ---
 source_file: "trading_gates.py"
 type: "code"
-community: "Community 192"
+community: "Community 197"
 tags:
   - graphify/code
   - graphify/AMBIGUOUS
-  - community/Community_192
+  - community/Community_197
 ---
 
 # Kill Switch / Trading Pause Mechanism
@@ -14,4 +14,4 @@ tags:
 - [[DemoPaper and Live Status Badges]] - `conceptually_related_to` [AMBIGUOUS]
 - [[Kill Switch Button]] - `shares_data_with` [INFERRED]
 
-#graphify/code #graphify/AMBIGUOUS #community/Community_192
+#graphify/code #graphify/AMBIGUOUS #community/Community_197

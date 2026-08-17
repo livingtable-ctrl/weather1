@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "code"
-community: "Community 693"
+community: "Community 643"
 location: "L954"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_643
 ---
 
 # ._trade()
@@ -15,4 +15,4 @@ tags:
 - [[dot-test_early_exit_trades_are_counted_in_the_window()]] - `calls` [EXTRACTED]
 - [[TestAnomalyStatusMatchesRealCheck]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_643

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 511"
+community: "Community 570"
 location: "L434"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_511
+  - community/Community_570
 ---
 
 # ._make_client()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPlaceMakerOrderIdempotency]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_511
+#graphify/code #graphify/EXTRACTED #community/Community_570

@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Community 86"
+community: "Community 13"
 location: "L297"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_86
+  - community/Community_13
 ---
 
 # ._validate()
@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[dot-get_candlesticks()]] - `calls` [EXTRACTED]
 - [[dot-get_events()]] - `calls` [EXTRACTED]
-- [[dot-get_market()_3]] - `calls` [EXTRACTED]
+- [[dot-get_market()_2]] - `calls` [EXTRACTED]
 - [[dot-get_markets()]] - `calls` [EXTRACTED]
 - [[dot-get_open_orders()]] - `calls` [EXTRACTED]
 - [[dot-get_orderbook()]] - `calls` [EXTRACTED]
@@ -26,4 +26,4 @@ tags:
 - [[KalshiClient]] - `method` [EXTRACTED]
 - [[Warn (don't crash) if the API response shape has changed.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_86
+#graphify/code #graphify/EXTRACTED #community/Community_13

@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_nws_afd.py"
+source_file: "tests/test_acis_precip.py"
 type: "code"
-community: "Community 68"
-location: "L408"
+community: "Community 162"
+location: "L357"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_68
+  - community/Community_162
 ---
 
 # .test_fetch_exception_returns_none()
 
 ## Connections
-- [[TestFetchAfdDiscussion]] - `method` [EXTRACTED]
+- [[TestFetchSeasonalPrecipMeanMm]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_68
+#graphify/code #graphify/EXTRACTED #community/Community_162

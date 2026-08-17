@@ -10,19 +10,19 @@ members: 13
 **Members:** 13 nodes
 
 ## Members
-- [[dot-_mixed_violations()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_banner_not_suppressed_at_exactly_five_real_violations()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_banner_not_suppressed_when_violations_are_all_shadow()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_banner_not_suppressed_with_few_real_violations_and_many_shadow()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_banner_suppressed_when_consistency_skipped()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_banner_suppressed_when_trading_paused()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_banner_suppressed_with_many_real_violations_despite_shadow_present()]] - code - tests/test_trade_cycle_engine.py
-- [[Boundary case for the pre-existing (not newly introduced) ` 5` threshold…]] - rationale - tests/test_trade_cycle_engine.py
-- [[Mirror of the above enough REAL violations to trip the breaker must still trip…]] - rationale - tests/test_trade_cycle_engine.py
-- [[TestPlacementAttemptedBannerAllConditions]] - code - tests/test_trade_cycle_engine.py
-- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…_1]] - rationale - tests/test_trade_cycle_engine.py
-- [[cron.py's _placement_was_attempted gate has three independent conditions…]] - rationale - tests/test_trade_cycle_engine.py
-- [[opus-review-caught only the all-shadow (0 real) and all-real (6 real) shapes…]] - rationale - tests/test_trade_cycle_engine.py
+- [[14 - get_edge_decay_curve() must segment by condition_type when provided.]] - rationale - tests/test_tracker.py
+- [[dot-_log_with_days_out()]] - code - tests/test_tracker.py
+- [[dot-setUp()_17]] - code - tests/test_tracker.py
+- [[dot-tearDown()_17]] - code - tests/test_tracker.py
+- [[dot-test_grpb_edge_decay_condition_type_filters()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_edge_decay_no_filter_returns_all()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_edge_decay_returns_list()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_edge_decay_unknown_condition_type_returns_empty()]] - code - tests/test_tracker.py
+- [[Filtering by a condition_type with no data returns empty list.]] - rationale - tests/test_tracker.py
+- [[Filtering by above should exclude precip_any rows.]] - rationale - tests/test_tracker.py
+- [[No filter should return rows from all condition types.]] - rationale - tests/test_tracker.py
+- [[Return value is always a list (never None).]] - rationale - tests/test_tracker.py
+- [[TestEdgeDecayCurveConditionTypeGrpB]] - code - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -32,13 +32,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 6 edges to [[_COMMUNITY_Community 42]]
-- 3 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 1 edge to [[_COMMUNITY_Community 266]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[TestPlacementAttemptedBannerAllConditions]] - degree 12, connects to 2 communities
-- [[dot-test_banner_not_suppressed_at_exactly_five_real_violations()]] - degree 4, connects to 1 community
-- [[dot-test_banner_not_suppressed_with_few_real_violations_and_many_shadow()]] - degree 4, connects to 1 community
-- [[dot-test_banner_suppressed_with_many_real_violations_despite_shadow_present()]] - degree 4, connects to 1 community
-- [[dot-test_banner_not_suppressed_when_violations_are_all_shadow()]] - degree 3, connects to 1 community
+- [[TestEdgeDecayCurveConditionTypeGrpB]] - degree 9, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "climate_indices.py"
 type: "rationale"
-community: "Climatology & Climate Index Fetching"
+community: "Community 4"
 location: "L199"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_4
 ---
 
 # #28: Return the current ONI (ENSO) index value, or None if unavailable.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_enso_index()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

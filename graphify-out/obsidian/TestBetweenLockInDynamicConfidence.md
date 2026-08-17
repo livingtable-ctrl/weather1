@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "code"
-community: "METAR Lock-In Confidence Tests"
+community: "Community 22"
 location: "L20"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Lock-In_Confidence_Tests
+  - community/Community_22
 ---
 
 # TestBetweenLockInDynamicConfidence
@@ -41,6 +41,6 @@ tags:
 - [[dot-test_yes_lock_confidence_matches_dynamic()]] - `method` [EXTRACTED]
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[P2-6 between-market METAR lock-in must call _dynamic_lock_in_confidence.]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Batch D Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_d.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Lock-In_Confidence_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_22

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_drawdown_tiers.py"
 type: "code"
-community: "Community 273"
+community: "Community 415"
 location: "L14"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_273
+  - community/Community_415
 ---
 
 # TestDrawdownScalingFactor
@@ -22,4 +22,4 @@ tags:
 - [[dot-test_zero_peak_balance_returns_one()]] - `method` [EXTRACTED]
 - [[test_drawdown_tiers.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_273
+#graphify/code #graphify/EXTRACTED #community/Community_415

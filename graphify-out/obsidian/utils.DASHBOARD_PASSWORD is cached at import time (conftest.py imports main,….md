@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_suggested_bets.py"
 type: "rationale"
-community: "Community 176"
+community: "Community 225"
 location: "L19"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_176
+  - community/Community_225
 ---
 
 # utils.DASHBOARD_PASSWORD is cached at import time (conftest.py imports main,…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_no_dashboard_password()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_176
+#graphify/rationale #graphify/EXTRACTED #community/Community_225

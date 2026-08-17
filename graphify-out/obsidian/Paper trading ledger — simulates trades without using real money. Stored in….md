@@ -1,17 +1,17 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 1"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_1
 ---
 
 # Paper trading ledger — simulates trades without using real money. Stored in…
 
 ## Connections
-- [[paper.py_1]] - `rationale_for` [EXTRACTED]
+- [[paper.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_1

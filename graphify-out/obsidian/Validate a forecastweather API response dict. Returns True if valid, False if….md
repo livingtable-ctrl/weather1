@@ -1,12 +1,12 @@
 ---
 source_file: "schema_validator.py"
 type: "rationale"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 5"
 location: "L126"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_5
 ---
 
 # Validate a forecast/weather API response dict. Returns True if valid, False if…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[validate_forecast()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts.py"
 type: "code"
-community: "Community 325"
+community: "Community 32"
 location: "L219"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_325
+  - community/Community_32
 ---
 
 # TestCheckAlerts
@@ -19,4 +19,4 @@ tags:
 - [[dot-test_no_active_alerts_returns_empty_without_fetching()]] - `method` [EXTRACTED]
 - [[test_alerts.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_325
+#graphify/code #graphify/EXTRACTED #community/Community_32

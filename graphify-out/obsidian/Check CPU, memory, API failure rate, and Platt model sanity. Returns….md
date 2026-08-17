@@ -1,12 +1,12 @@
 ---
 source_file: "system_health.py"
 type: "rationale"
-community: "Community 296"
+community: "Community 245"
 location: "L87"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_296
+  - community/Community_245
 ---
 
 # Check CPU, memory, API failure rate, and Platt model sanity. Returns…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[check_system_health()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_296
+#graphify/rationale #graphify/EXTRACTED #community/Community_245

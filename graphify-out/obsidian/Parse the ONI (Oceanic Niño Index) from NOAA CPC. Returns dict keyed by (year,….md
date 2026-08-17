@@ -1,12 +1,12 @@
 ---
 source_file: "climate_indices.py"
 type: "rationale"
-community: "Climatology & Climate Index Fetching"
+community: "Community 4"
 location: "L88"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_4
 ---
 
 # Parse the ONI (Oceanic Niño Index) from NOAA CPC. Returns dict keyed by (year,…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_fetch_enso()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

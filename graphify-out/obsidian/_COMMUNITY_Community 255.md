@@ -10,20 +10,20 @@ members: 14
 **Members:** 14 nodes
 
 ## Members
-- [[dot-test_ecmwf_in_extended_ensemble()]] - code - tests/test_ecmwf.py
-- [[dot-test_ecmwf_spread_computation()]] - code - tests/test_ecmwf.py
-- [[dot-test_fetch_temperature_ecmwf_all_null_treated_as_failure()]] - code - tests/test_ecmwf.py
-- [[dot-test_fetch_temperature_ecmwf_negative_caches_failure()]] - code - tests/test_ecmwf.py
-- [[dot-test_fetch_temperature_ecmwf_none_on_failure()]] - code - tests/test_ecmwf.py
-- [[dot-test_fetch_temperature_ecmwf_returns_float_or_none()]] - code - tests/test_ecmwf.py
-- [[dot-test_spread_single_valid_member_returns_zero()]] - code - tests/test_ecmwf.py
-- [[A dead model returns HTTP 200 with every hourly value null — this must be…]] - rationale - tests/test_ecmwf.py
-- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_1]] - rationale - tests/test_ecmwf.py
-- [[ENSEMBLE_MODELS_EXTENDED includes an ecmwf entry.]] - rationale - tests/test_ecmwf.py
-- [[TestECMWFAIFS]] - code - tests/test_ecmwf.py
-- [[_compute_ensemble_spread returns 0.0 when only one member is valid.]] - rationale - tests/test_ecmwf.py
-- [[ensemble_spread computed when ECMWF included raises no error.]] - rationale - tests/test_ecmwf.py
-- [[fetch_temperature_ecmwf returns a float or None.]] - rationale - tests/test_ecmwf.py
+- [[dot-test_deactivate_already_inactive_does_not_prompt()]] - code - tests/test_main_cron_smoke.py
+- [[dot-test_deactivate_archives_params_to_history_before_removing()]] - code - tests/test_main_cron_smoke.py
+- [[dot-test_deactivate_confirmed_removes_params_file()]] - code - tests/test_main_cron_smoke.py
+- [[dot-test_deactivate_declined_keeps_corrupt_file()]] - code - tests/test_main_cron_smoke.py
+- [[dot-test_deactivate_declined_keeps_params_file()]] - code - tests/test_main_cron_smoke.py
+- [[dot-test_deactivate_offers_to_remove_corrupt_file()]] - code - tests/test_main_cron_smoke.py
+- [[dot-test_deactivate_refuses_while_cron_is_running()]] - code - tests/test_main_cron_smoke.py
+- [[dot-test_deactivate_restores_pre_activation_temperature_scale()]] - code - tests/test_main_cron_smoke.py
+- [[dot-test_status_reports_active_with_fitted_values()]] - code - tests/test_main_cron_smoke.py
+- [[dot-test_status_reports_corrupt_file_distinctly()]] - code - tests/test_main_cron_smoke.py
+- [[dot-test_status_reports_inactive_when_no_params_file()]] - code - tests/test_main_cron_smoke.py
+- [[A bare unlink would make the very first activation's exact fitted parameters…]] - rationale - tests/test_main_cron_smoke.py
+- [[TestEmosStatusAndDeactivate]] - code - tests/test_main_cron_smoke.py
+- [[The end-to-end round trip activate (snapshots + resets T), deactivate…]] - rationale - tests/test_main_cron_smoke.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,12 +33,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 5 edges to [[_COMMUNITY_Community 51]]
-- 4 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 2 edges to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 207]]
+- 1 edge to [[_COMMUNITY_Community 55]]
 
 ## Top bridge nodes
-- [[TestECMWFAIFS]] - degree 9, connects to 2 communities
-- [[dot-test_fetch_temperature_ecmwf_returns_float_or_none()]] - degree 4, connects to 2 communities
-- [[dot-test_ecmwf_spread_computation()]] - degree 3, connects to 1 community
-- [[dot-test_fetch_temperature_ecmwf_all_null_treated_as_failure()]] - degree 3, connects to 1 community
-- [[dot-test_fetch_temperature_ecmwf_negative_caches_failure()]] - degree 3, connects to 1 community
+- [[TestEmosStatusAndDeactivate]] - degree 15, connects to 3 communities

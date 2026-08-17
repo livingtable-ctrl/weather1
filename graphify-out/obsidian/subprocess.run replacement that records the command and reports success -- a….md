@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cmd_schedule_settlement_monitor.py"
 type: "rationale"
-community: "Community 64"
+community: "Community 53"
 location: "L62"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_64
+  - community/Community_53
 ---
 
 # subprocess.run replacement that records the command and reports success -- a…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_capturing_run()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_64
+#graphify/rationale #graphify/EXTRACTED #community/Community_53

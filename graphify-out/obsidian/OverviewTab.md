@@ -1,20 +1,19 @@
 ---
-source_file: "frontend/src/App.jsx"
+source_file: "weather app site V_3 (3)/src/tabs/OverviewTab.jsx"
 type: "code"
-community: "Community 155"
+community: "Community 168"
+location: "54"
 tags:
   - graphify/code
-  - graphify/EXTRACTED
-  - community/Community_155
+  - graphify/INFERRED
+  - community/Community_168
 ---
 
 # OverviewTab
 
 ## Connections
-- [[BalanceSparkline]] - `calls` [EXTRACTED]
-- [[DataContext]] - `shares_data_with` [EXTRACTED]
-- [[StatCard]] - `calls` [EXTRACTED]
-- [[SystemEventsCard]] - `calls` [EXTRACTED]
-- [[frontendsrcApp.jsx]] - `indirect_call` [INFERRED]
+- [[authHeader (V3)]] - `calls` [EXTRACTED]
+- [[mapStats (V3)]] - `shares_data_with` [INFERRED]
+- [[mapTrades (V3)]] - `shares_data_with` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_155
+#graphify/code #graphify/INFERRED #community/Community_168

@@ -1,12 +1,12 @@
 ---
 source_file: "docs/grade_audit/outputs/config.py.md"
 type: "document"
-community: "Community 195"
+community: "Community 171"
 location: "L:43-84"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_195
+  - community/Community_171
 ---
 
 # _paper_min_edge_default() RF1 Promotion (4/10)
@@ -16,4 +16,4 @@ tags:
 - [[config.py]] - `references` [EXTRACTED]
 - [[load_swept_min_edge() RF1 Corrupt Results Silently Discarded (510)]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_195
+#graphify/document #graphify/EXTRACTED #community/Community_171

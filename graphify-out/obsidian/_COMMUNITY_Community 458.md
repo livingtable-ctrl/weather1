@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 458
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_price_to_decimal_helper()]] - code - tests/test_phase2_batch_l.py
-- [[dot-test_price_to_decimal_one_cent_bug_fixed()]] - code - tests/test_phase2_batch_l.py
-- [[KALSHI CENTSDOLLARS PRICE NORMALIZATION consolidation bug fix the old…]] - rationale - tests/test_phase2_batch_l.py
-- [[Normalize a price value to decimal (0-1) via utils.coalesce_market_price,…]] - rationale - schema_validator.py
-- [[_safe_price (utils.coalesce_market_price, wrapped fail-soft) normalises int…]] - rationale - tests/test_phase2_batch_l.py
-- [[_safe_price()]] - code - schema_validator.py
-- [[order_executor.py live reprice loop]] - code - order_executor.py
+- [[dot-setup_method()_29]] - code - tests/test_execution_log.py
+- [[dot-teardown_method()_21]] - code - tests/test_execution_log.py
+- [[dot-test_api_canceled_order_does_not_block_reentry()]] - code - tests/test_execution_log.py
+- [[dot-test_filled_order_still_blocks_reentry()]] - code - tests/test_execution_log.py
+- [[dot-test_legacy_british_cancelled_spelling_does_not_block_reentry()]] - code - tests/test_execution_log.py
+- [[Deep-review followup rows written before the F8 spelling fix deployed (with…]] - rationale - tests/test_execution_log.py
+- [[F8 was_ordered_recently() must exclude API-canceled orders.…]] - rationale - tests/test_execution_log.py
+- [[TestWasOrderedRecentlyCanceledSpelling]] - code - tests/test_execution_log.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,14 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 80]]
-- 1 edge to [[_COMMUNITY_Community 164]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 86]]
-- 1 edge to [[_COMMUNITY_Community 417]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
+- 1 edge to [[_COMMUNITY_Community 42]]
 
 ## Top bridge nodes
-- [[_safe_price()]] - degree 9, connects to 5 communities
-- [[dot-test_price_to_decimal_helper()]] - degree 3, connects to 1 community
-- [[dot-test_price_to_decimal_one_cent_bug_fixed()]] - degree 3, connects to 1 community
+- [[TestWasOrderedRecentlyCanceledSpelling]] - degree 7, connects to 1 community

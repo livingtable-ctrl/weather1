@@ -1,16 +1,17 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 118"
+community: "Community 2"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_118
+  - community/Community_2
 ---
 
 # Row
 
 ## Connections
-- [[_load_rows()]] - `references` [EXTRACTED]
+- [[get_price_history()]] - `references` [EXTRACTED]
+- [[get_trade_history()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_118
+#graphify/code #graphify/EXTRACTED #community/Community_2

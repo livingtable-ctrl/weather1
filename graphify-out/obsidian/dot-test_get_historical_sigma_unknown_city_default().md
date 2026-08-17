@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "code"
-community: "Community 26"
+community: "Community 69"
 location: "L75"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_26
+  - community/Community_69
 ---
 
 # .test_get_historical_sigma_unknown_city_default()
@@ -16,4 +16,4 @@ tags:
 - [[Unknown city returns the default sigma in the NWS RMSE range.]] - `rationale_for` [EXTRACTED]
 - [[get_historical_sigma()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_26
+#graphify/code #graphify/EXTRACTED #community/Community_69

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_improvements.py"
 type: "rationale"
-community: "Community 444"
+community: "Community 477"
 location: "L25"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_444
+  - community/Community_477
 ---
 
 # _auto_place_trades must refuse new trades once 20 open positions exist.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMaxConcurrentPositions]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_444
+#graphify/rationale #graphify/EXTRACTED #community/Community_477

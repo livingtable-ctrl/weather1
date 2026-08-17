@@ -1,13 +1,13 @@
 ---
 source_file: "output_formatters.py"
 type: "code"
-community: "Community 682"
+community: "Community 826"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_682
+  - community/Community_826
 ---
 
 # Output Formatters Module
 
-#graphify/code #graphify/EXTRACTED #community/Community_682
+#graphify/code #graphify/EXTRACTED #community/Community_826

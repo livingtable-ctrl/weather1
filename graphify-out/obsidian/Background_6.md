@@ -1,0 +1,17 @@
+---
+source_file: "docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md"
+type: "document"
+community: "Community 495"
+location: "L809"
+tags:
+  - graphify/document
+  - graphify/EXTRACTED
+  - community/Community_495
+---
+
+# Background
+
+## Connections
+- [[Task 65 (P12.E) — ECMWF Open Data Integration (Days 4–7 Edge)]] - `contains` [EXTRACTED]
+
+#graphify/document #graphify/EXTRACTED #community/Community_495

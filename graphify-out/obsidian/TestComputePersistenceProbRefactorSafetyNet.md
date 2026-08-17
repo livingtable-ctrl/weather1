@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 414"
-location: "L5233"
+community: "Community 443"
+location: "L5602"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_414
+  - community/Community_443
 ---
 
 # TestComputePersistenceProbRefactorSafetyNet
@@ -20,4 +20,4 @@ tags:
 - [[Dedicated unit tests for _compute_persistence_prob(), the second function…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_414
+#graphify/code #graphify/EXTRACTED #community/Community_443

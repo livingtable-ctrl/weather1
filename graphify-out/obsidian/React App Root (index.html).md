@@ -1,11 +1,11 @@
 ---
 source_file: "frontend/index.html"
 type: "code"
-community: "Community 104"
+community: "Community 172"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_104
+  - community/Community_172
 ---
 
 # React App Root (index.html)
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[srcmain.jsx Entry Point]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_104
+#graphify/code #graphify/EXTRACTED #community/Community_172

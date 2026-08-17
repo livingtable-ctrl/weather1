@@ -1,23 +1,23 @@
 ---
 type: community
-cohesion: 0.29
+cohesion: 0.25
 members: 8
 ---
 
 # Community 449
 
-**Cohesion:** 0.29 - loosely connected
+**Cohesion:** 0.25 - loosely connected
 **Members:** 8 nodes
 
 ## Members
-- [[loadBalanceChart()_1]] - code - updated frontend/reference/dashboard.js
-- [[loadCircuitStatus()_1]] - code - updated frontend/reference/dashboard.js
-- [[loadGraduation()_1]] - code - updated frontend/reference/dashboard.js
-- [[loadLivePnl()_1]] - code - updated frontend/reference/dashboard.js
-- [[loadOpenPositions()_1]] - code - updated frontend/reference/dashboard.js
-- [[referencedashboard.js]] - code - updated frontend/reference/dashboard.js
-- [[renderFearGreed()_1]] - code - updated frontend/reference/dashboard.js
-- [[renderMarketsStrip()_1]] - code - updated frontend/reference/dashboard.js
+- [[2026-04-10-suggested-bets]] - document - docs/superpowers/plans/2026-04-10-suggested-bets.md
+- [[File map_2]] - document - docs/superpowers/plans/2026-04-10-suggested-bets.md
+- [[Self-review_1]] - document - docs/superpowers/plans/2026-04-10-suggested-bets.md
+- [[Suggested Bets + Risk Tolerance Implementation Plan]] - document - docs/superpowers/plans/2026-04-10-suggested-bets.md
+- [[Task 1 Raise Kelly cap to 33%]] - document - docs/superpowers/plans/2026-04-10-suggested-bets.md
+- [[Task 2 Lower MIN_EDGE default to 7%]] - document - docs/superpowers/plans/2026-04-10-suggested-bets.md
+- [[Task 3 Add `apisuggested_bets` endpoint]] - document - docs/superpowers/plans/2026-04-10-suggested-bets.md
+- [[Task 4 Update `analyze` page with pinned card + Bet $ column]] - document - docs/superpowers/plans/2026-04-10-suggested-bets.md
 
 ## Live Query (requires Dataview plugin)
 

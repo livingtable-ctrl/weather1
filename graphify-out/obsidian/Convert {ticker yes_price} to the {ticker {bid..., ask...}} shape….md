@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Community 159"
+community: "Community 57"
 location: "L1717"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_159
+  - community/Community_57
 ---
 
 # Convert {ticker: yes_price} to the {ticker: {"bid":..., "ask":...}} shape…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_flat_prices()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_159
+#graphify/rationale #graphify/EXTRACTED #community/Community_57

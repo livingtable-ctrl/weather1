@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "code"
-community: "Community 42"
+community: "Community 25"
 location: "L76"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_42
+  - community/Community_25
 ---
 
 # _strong_market_analysis()
@@ -69,4 +69,4 @@ tags:
 - [[_med_market_analysis()]] - `calls` [EXTRACTED]
 - [[test_trade_cycle_engine.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_42
+#graphify/code #graphify/EXTRACTED #community/Community_25

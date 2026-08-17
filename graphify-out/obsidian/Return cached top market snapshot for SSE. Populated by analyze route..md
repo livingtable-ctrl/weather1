@@ -1,12 +1,12 @@
 ---
 source_file: "web_app.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 658"
 location: "L109"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_658
 ---
 
 # Return cached top market snapshot for SSE. Populated by analyze route.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_get_live_market_snapshot()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_658

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 190"
+community: "Community 174"
 location: "L51"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_190
+  - community/Community_174
 ---
 
 # .test_precip_snow_lower_than_temp()
@@ -16,4 +16,4 @@ tags:
 - [[TestEdgeConfidenceConditionType]] - `method` [EXTRACTED]
 - [[edge_confidence()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_190
+#graphify/code #graphify/EXTRACTED #community/Community_174

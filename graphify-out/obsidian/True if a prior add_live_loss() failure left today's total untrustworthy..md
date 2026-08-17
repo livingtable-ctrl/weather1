@@ -1,12 +1,12 @@
 ---
 source_file: "execution_log.py"
 type: "rationale"
-community: "Execution Log Live-Loss Tracking"
+community: "Community 404"
 location: "L384"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Execution_Log_Live-Loss_Tracking
+  - community/Community_404
 ---
 
 # True if a prior add_live_loss() failure left today's total untrustworthy.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_degraded_for_today()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking
+#graphify/rationale #graphify/EXTRACTED #community/Community_404

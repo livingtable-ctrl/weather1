@@ -1,17 +1,17 @@
 ---
-source_file: "weather app site V_3 (3)/src/shared.jsx"
+source_file: "frontend/src/App.jsx"
 type: "code"
-community: "Community 270"
-location: "L338"
+community: "Community 98"
+location: "L1301"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_270
+  - community/Community_98
 ---
 
 # BrierTrendChart()
 
 ## Connections
-- [[shared.jsx]] - `contains` [EXTRACTED]
+- [[frontendsrcApp.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_270
+#graphify/code #graphify/EXTRACTED #community/Community_98

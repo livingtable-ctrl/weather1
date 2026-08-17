@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/prototype.jsx"
 type: "code"
-community: "Community 564"
+community: "Community 659"
 tags:
   - graphify/code
   - graphify/AMBIGUOUS
-  - community/Community_564
+  - community/Community_659
 ---
 
 # Proto (prototype.jsx dashboard)
@@ -13,6 +13,5 @@ tags:
 ## Connections
 - [[DesignCanvas (panzoom review tool)]] - `conceptually_related_to` [AMBIGUOUS]
 - [[FullProto (full-prototype.jsx dashboard)]] - `semantically_similar_to` [INFERRED]
-- [[mock-data.js (dashboard mock data)]] - `shares_data_with` [EXTRACTED]
 
-#graphify/code #graphify/AMBIGUOUS #community/Community_564
+#graphify/code #graphify/AMBIGUOUS #community/Community_659

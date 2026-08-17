@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_validation.py"
 type: "rationale"
-community: "Community 85"
+community: "Community 76"
 location: "L104"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_85
+  - community/Community_76
 ---
 
 # Without ensemble_spread key, fall back to flat PAPER_MIN_EDGE threshold (0.05).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_validate_missing_ensemble_spread_uses_flat_threshold()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_85
+#graphify/rationale #graphify/EXTRACTED #community/Community_76

@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Community 385"
-location: "L3173"
+community: "Community 2"
+location: "L3228"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_385
+  - community/Community_2
 ---
 
 # _calibration_curve()
@@ -18,4 +18,4 @@ tags:
 - [[get_sameday_calibration_cli()]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_385
+#graphify/code #graphify/EXTRACTED #community/Community_2

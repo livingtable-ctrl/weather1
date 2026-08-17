@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_edge_version.py"
 type: "code"
-community: "Community 334"
+community: "Community 341"
 location: "L40"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_334
+  - community/Community_341
 ---
 
 # test_edge_calc_version_is_string()
@@ -15,4 +15,4 @@ tags:
 - [[EDGE_CALC_VERSION must be a non-empty string constant.]] - `rationale_for` [EXTRACTED]
 - [[test_edge_version.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_334
+#graphify/code #graphify/EXTRACTED #community/Community_341

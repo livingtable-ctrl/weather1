@@ -1,12 +1,12 @@
 ---
 source_file: "calibration.py"
 type: "code"
-community: "Community 72"
+community: "Community 125"
 location: "L221"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_72
+  - community/Community_125
 ---
 
 # calibrate_city_weights()
@@ -20,11 +20,10 @@ tags:
 - [[dot-test_city_accepts_cutoff_date_kwarg()]] - `calls` [EXTRACTED]
 - [[dot-test_cutoff_excludes_future_rows_from_training()]] - `calls` [EXTRACTED]
 - [[dot-test_returns_weights_for_qualifying_city()]] - `calls` [EXTRACTED]
-- [[dot-test_weights_sum_to_one()_5]] - `calls` [EXTRACTED]
+- [[dot-test_weights_sum_to_one()]] - `calls` [EXTRACTED]
 - [[dot-test_weights_with_explicit_cutoff_sum_to_one()]] - `calls` [EXTRACTED]
 - [[Grid-search optimal blend weights per city. Returns {city {ensemble,…]] - `rationale_for` [EXTRACTED]
-- [[Path_2]] - `references` [EXTRACTED]
-- [[Phase 3 Batch C Calibration Tests]] - `imports` [EXTRACTED]
+- [[Path_16]] - `references` [EXTRACTED]
 - [[_best_weights()]] - `calls` [EXTRACTED]
 - [[_compute_recency_weight()]] - `calls` [EXTRACTED]
 - [[_load_rows()]] - `calls` [EXTRACTED]
@@ -32,5 +31,6 @@ tags:
 - [[calibrate_and_save()]] - `calls` [EXTRACTED]
 - [[calibration.py]] - `contains` [EXTRACTED]
 - [[test_calibration.py]] - `imports` [EXTRACTED]
+- [[test_phase3_batch_c.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_72
+#graphify/code #graphify/EXTRACTED #community/Community_125

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "rationale"
-community: "Community 164"
+community: "Community 20"
 location: "L1489"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_164
+  - community/Community_20
 ---
 
 # Regression guard for the consolidation itself: order_executor.py must no longer…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_order_executor_uses_the_shared_helper_not_a_local_copy()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_164
+#graphify/rationale #graphify/EXTRACTED #community/Community_20

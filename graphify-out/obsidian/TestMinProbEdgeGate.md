@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_improvements.py"
 type: "code"
-community: "Community 346"
+community: "Community 352"
 location: "L135"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_346
+  - community/Community_352
 ---
 
 # TestMinProbEdgeGate
@@ -20,4 +20,4 @@ tags:
 - [[cron.py must skip signals where probability edge  MIN_PROB_EDGE (0.08).]] - `rationale_for` [EXTRACTED]
 - [[test_trade_improvements.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_346
+#graphify/code #graphify/EXTRACTED #community/Community_352

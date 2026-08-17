@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 152"
+community: "Community 16"
 location: "L1168"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_152
+  - community/Community_16
 ---
 
 # .test_thin_member_count_fails_open()
@@ -18,4 +18,4 @@ tags:
 - [[Fewer than 15 members (the bootstrap_ci_month_total-matching trust floor) must…]] - `rationale_for` [EXTRACTED]
 - [[TestRainForecastBlendSignal]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_152
+#graphify/code #graphify/EXTRACTED #community/Community_16

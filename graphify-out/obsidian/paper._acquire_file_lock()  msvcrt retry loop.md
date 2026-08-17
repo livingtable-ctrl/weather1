@@ -1,11 +1,11 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 47"
+community: "Community 8"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_47
+  - community/Community_8
 ---
 
 # paper._acquire_file_lock() / msvcrt retry loop
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[_replace_with_retry()]] - `semantically_similar_to` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_47
+#graphify/code #graphify/INFERRED #community/Community_8

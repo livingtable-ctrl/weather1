@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_prelog.py"
 type: "code"
-community: "Community 183"
+community: "Community 220"
 location: "L183"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_183
+  - community/Community_220
 ---
 
 # TestResolveLiveBalance
@@ -18,4 +18,4 @@ tags:
 - [[F4 live_config never has a balance key, so the CR-4 override for live Kelly…]] - `rationale_for` [EXTRACTED]
 - [[test_prelog.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_183
+#graphify/code #graphify/EXTRACTED #community/Community_220

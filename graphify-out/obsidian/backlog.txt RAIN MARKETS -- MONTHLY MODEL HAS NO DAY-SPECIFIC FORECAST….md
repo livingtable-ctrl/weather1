@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "rationale"
-community: "Community 152"
+community: "Community 16"
 location: "L808"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_152
+  - community/Community_16
 ---
 
 # backlog.txt "RAIN MARKETS -- MONTHLY MODEL HAS NO DAY-SPECIFIC FORECAST…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestRainForecastBlendSignal]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_152
+#graphify/rationale #graphify/EXTRACTED #community/Community_16

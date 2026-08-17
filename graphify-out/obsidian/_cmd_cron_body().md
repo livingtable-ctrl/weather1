@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L578"
+community: "Community 3"
+location: "L579"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # _cmd_cron_body()
@@ -14,11 +14,15 @@ tags:
 ## Connections
 - [[Core scan logic — extracted from cmd_cron so it can be wrapped in tryfinally.]] - `rationale_for` [EXTRACTED]
 - [[CronContext]] - `references` [EXTRACTED]
+- [[KalshiClient_2]] - `references` [EXTRACTED]
 - [[KalshiClient]] - `references` [EXTRACTED]
 - [[KalshiWebSocket]] - `calls` [EXTRACTED]
-- [[Phase 2 Batch L Regression Tests]] - `references` [EXTRACTED]
+- [[_calibrate_metar_settlement_confidence()]] - `conceptually_related_to` [AMBIGUOUS]
+- [[_check_accuracy_halt()]] - `calls` [EXTRACTED]
+- [[_check_graduation_gate()]] - `calls` [EXTRACTED]
 - [[_check_live_model_exits()]] - `calls` [EXTRACTED]
 - [[_check_live_position_exits()]] - `calls` [EXTRACTED]
+- [[_check_manual_override()]] - `calls` [EXTRACTED]
 - [[_check_prod_reminder()]] - `calls` [EXTRACTED]
 - [[_check_spend_cap_vs_balance()]] - `calls` [EXTRACTED]
 - [[_log_near_settlement_trades()]] - `calls` [EXTRACTED]
@@ -27,32 +31,43 @@ tags:
 - [[_send_discord()]] - `calls` [EXTRACTED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]
 - [[auto_retire_strategies()]] - `calls` [EXTRACTED]
+- [[auto_settle_paper_trades()]] - `calls` [EXTRACTED]
 - [[backup_data()]] - `calls` [EXTRACTED]
 - [[batch_log_analysis_attempts()]] - `calls` [EXTRACTED]
 - [[bold()]] - `calls` [EXTRACTED]
 - [[calibrate_and_save()]] - `calls` [EXTRACTED]
 - [[check_condition_type_weakness()]] - `calls` [EXTRACTED]
 - [[check_config_integrity()]] - `calls` [EXTRACTED]
-- [[check_market_anomalies()]] - `calls` [EXTRACTED]
+- [[check_ensemble_circuit_health()]] - `calls` [EXTRACTED]
+- [[check_expiring_trades()]] - `calls` [EXTRACTED]
+- [[check_market_anomalies()]] - `calls` [INFERRED]
 - [[check_retirement_probation()]] - `calls` [EXTRACTED]
 - [[check_series_drift()]] - `calls` [EXTRACTED]
-- [[cmd_cron()]] - `indirect_call` [INFERRED]
+- [[close_paper_early()]] - `calls` [EXTRACTED]
+- [[cmd_cron()_1]] - `indirect_call` [INFERRED]
 - [[count_emos_ready_predictions()]] - `calls` [EXTRACTED]
+- [[count_emos_variance_ready_predictions()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `contains` [EXTRACTED]
 - [[cyan()]] - `calls` [EXTRACTED]
 - [[detect_brier_drift()]] - `calls` [EXTRACTED]
 - [[dim()]] - `calls` [EXTRACTED]
 - [[fetch_pdo_pna()]] - `calls` [EXTRACTED]
+- [[fit_and_save_metar_calibration()]] - `calls` [EXTRACTED]
 - [[flush_ensemble_disk_cache()]] - `calls` [EXTRACTED]
 - [[flush_forecast_disk_cache()]] - `calls` [EXTRACTED]
 - [[format_brier_alert()]] - `calls` [EXTRACTED]
 - [[get_brier_over_time()]] - `calls` [EXTRACTED]
+- [[get_edge_realization_rate()]] - `calls` [EXTRACTED]
 - [[get_gate_counts()]] - `calls` [EXTRACTED]
 - [[get_mean_slippage()]] - `calls` [EXTRACTED]
+- [[get_sameday_band_stats()]] - `calls` [EXTRACTED]
+- [[get_state_snapshot()]] - `calls` [EXTRACTED]
 - [[get_ws_health()]] - `calls` [EXTRACTED]
+- [[graduation_check()]] - `calls` [EXTRACTED]
 - [[green()]] - `calls` [EXTRACTED]
 - [[is_trading_paused()]] - `calls` [EXTRACTED]
 - [[log_city_registry_report()]] - `calls` [EXTRACTED]
+- [[paper.get_open_trades]] - `calls` [EXTRACTED]
 - [[prune_api_requests()]] - `calls` [EXTRACTED]
 - [[prune_feature_log()]] - `calls` [EXTRACTED]
 - [[prune_old_analysis_attempts()]] - `calls` [EXTRACTED]
@@ -69,8 +84,6 @@ tags:
 - [[run_trade_cycle()]] - `calls` [EXTRACTED]
 - [[send_system_alert()]] - `calls` [EXTRACTED]
 - [[simulate_portfolio()]] - `calls` [EXTRACTED]
-- [[test_cron_integration.py_1]] - `calls` [EXTRACTED]
-- [[test_cron_trade_updates.py_1]] - `references` [EXTRACTED]
 - [[train_all_temperature_scaling()]] - `calls` [EXTRACTED]
 - [[train_bias_model()]] - `calls` [EXTRACTED]
 - [[update_heartbeat()]] - `calls` [EXTRACTED]
@@ -78,6 +91,7 @@ tags:
 - [[utc_today()]] - `calls` [EXTRACTED]
 - [[vacuum_database()]] - `calls` [EXTRACTED]
 - [[validate_weight_files()]] - `calls` [EXTRACTED]
+- [[write_settlement_signals()]] - `shares_data_with` [INFERRED]
 - [[yellow()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_3

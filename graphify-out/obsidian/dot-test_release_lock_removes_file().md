@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_stability.py"
 type: "code"
-community: "Community 49"
+community: "Community 105"
 location: "L281"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_49
+  - community/Community_105
 ---
 
 # .test_release_lock_removes_file()
@@ -16,4 +16,4 @@ tags:
 - [[_import_main()]] - `calls` [EXTRACTED]
 - [[_release_cron_lock() deletes the lock file.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_49
+#graphify/code #graphify/EXTRACTED #community/Community_105

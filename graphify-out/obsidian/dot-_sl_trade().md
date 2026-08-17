@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 318"
+community: "Community 323"
 location: "L5858"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_318
+  - community/Community_323
 ---
 
 # ._sl_trade()
@@ -20,4 +20,4 @@ tags:
 - [[dot-test_yes_side_stop_loss_that_saved_money()]] - `calls` [EXTRACTED]
 - [[TestStopLossAccuracy]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_318
+#graphify/code #graphify/EXTRACTED #community/Community_323

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_price_and_size.py"
 type: "code"
-community: "Community 309"
+community: "Community 314"
 location: "L268"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_309
+  - community/Community_314
 ---
 
 # TestPrecipTradeWiring
@@ -17,4 +17,4 @@ tags:
 - [[_analyze_precip_trade calls _blend_weights(days_out, has_nws=False,…]] - `rationale_for` [EXTRACTED]
 - [[test_price_and_size.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_309
+#graphify/code #graphify/EXTRACTED #community/Community_314

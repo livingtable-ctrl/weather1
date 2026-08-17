@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_integration.py"
 type: "rationale"
-community: "Cron Integration Tests"
+community: "Community 31"
 location: "L931"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Cron_Integration_Tests
+  - community/Community_31
 ---
 
 # End-to-end regression for near_settlement_log being silently broken since it…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_cron_logs_near_settlement_row_with_real_trade_fields()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Cron_Integration_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_31

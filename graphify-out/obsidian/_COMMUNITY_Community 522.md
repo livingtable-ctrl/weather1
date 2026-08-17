@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.43
+members: 7
 ---
 
 # Community 522
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.43 - moderately connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-setUp()_39]] - code - tests/test_tracker.py
-- [[dot-tearDown()_38]] - code - tests/test_tracker.py
-- [[dot-test_missing_source_probs_stored_as_null()]] - code - tests/test_tracker.py
-- [[Calling log_prediction without source probs stores NULL (old callers safe).]] - rationale - tests/test_tracker.py
-- [[TestSourceProbsPassthrough]] - code - tests/test_tracker.py
-- [[log_prediction called without source probs must store NULLs (backward compat).]] - rationale - tests/test_tracker.py
+- [[dot-_run_sim()]] - code - tests/test_phase3_batch_a.py
+- [[dot-test_correlation_applied_false_when_cholesky_fails()_1]] - code - tests/test_phase3_batch_a.py
+- [[dot-test_correlation_applied_false_when_no_city()_1]] - code - tests/test_phase3_batch_a.py
+- [[dot-test_correlation_applied_true_when_cholesky_succeeds_with_city()]] - code - tests/test_phase3_batch_a.py
+- [[No city means correlation is a no-op — must be False even if Cholesky succeeds.]] - rationale - tests/test_phase3_batch_a.py
+- [[P3-20 correlation_applied = chol is not None AND any city present. When…]] - rationale - tests/test_phase3_batch_a.py
+- [[TestMonteCarloCorrelationApplied]] - code - tests/test_phase3_batch_a.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 13]]
+- 1 edge to [[_COMMUNITY_Community 41]]
+- 1 edge to [[_COMMUNITY_Community 303]]
 
 ## Top bridge nodes
-- [[TestSourceProbsPassthrough]] - degree 5, connects to 1 community
+- [[TestMonteCarloCorrelationApplied]] - degree 7, connects to 2 communities
+- [[dot-_run_sim()]] - degree 5, connects to 1 community

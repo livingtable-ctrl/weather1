@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/screenshots/dark-v2.png"
 type: "document"
-community: "Community 247"
+community: "Community 244"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_247
+  - community/Community_244
 ---
 
 # Metric Cards Row (Paper balance, Open positions, Win rate, Brier score)
@@ -15,4 +15,4 @@ tags:
 - [[Overview Dashboard (Dark v2 Variant)]] - `references` [EXTRACTED]
 - [[Win Rate Metric (61.2%)]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_247
+#graphify/document #graphify/EXTRACTED #community/Community_244

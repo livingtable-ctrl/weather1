@@ -1,12 +1,12 @@
 ---
 source_file: "tests/conftest.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 18"
 location: "L451"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_18
 ---
 
 # Minimal market dict that passes is_liquid and parse_market_price.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[sample_market()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_18

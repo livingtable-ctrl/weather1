@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 65"
+community: "Community 63"
 location: "L6079"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_65
+  - community/Community_63
 ---
 
 # TestFetchAsosDailyTemp
@@ -22,4 +22,4 @@ tags:
 - [[R-42 _fetch_asos_daily_temp must use precise stsets timestamps, not day1day2…]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_65
+#graphify/code #graphify/EXTRACTED #community/Community_63

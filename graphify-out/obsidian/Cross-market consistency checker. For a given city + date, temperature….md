@@ -1,12 +1,12 @@
 ---
 source_file: "consistency.py"
 type: "rationale"
-community: "Community 32"
+community: "Community 81"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_32
+  - community/Community_81
 ---
 
 # Cross-market consistency checker. For a given city + date, temperature…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[consistency.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_32
+#graphify/rationale #graphify/EXTRACTED #community/Community_81

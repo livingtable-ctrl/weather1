@@ -1,16 +1,17 @@
 ---
 type: community
 cohesion: 1.00
-members: 1
+members: 2
 ---
 
 # Community 682
 
 **Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Members:** 2 nodes
 
 ## Members
-- [[Output Formatters Module]] - code - output_formatters.py
+- [[paper.py File Grade median 7.510]] - document - docs/grade_audit/outputs/paper.py.md
+- [[paper.py Grade Audit]] - document - docs/grade_audit/outputs/paper.py.md
 
 ## Live Query (requires Dataview plugin)
 

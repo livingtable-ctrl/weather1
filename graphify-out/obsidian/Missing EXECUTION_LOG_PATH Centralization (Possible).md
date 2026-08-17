@@ -1,17 +1,16 @@
 ---
 source_file: "docs/grade_audit/outputs/paths.py.md"
 type: "document"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 42"
 tags:
   - graphify/document
-  - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - graphify/AMBIGUOUS
+  - community/Community_42
 ---
 
 # Missing EXECUTION_LOG_PATH Centralization (Possible)
 
 ## Connections
 - [[execution_log.py]] - `conceptually_related_to` [AMBIGUOUS]
-- [[paths.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/document #graphify/AMBIGUOUS #community/Community_42

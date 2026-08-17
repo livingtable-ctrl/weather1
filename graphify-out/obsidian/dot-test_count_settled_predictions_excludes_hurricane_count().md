@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker Settlement Sigma & Disputed Rows"
+community: "Community 29"
 location: "L5567"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Settlement_Sigma__Disputed_Rows
+  - community/Community_29
 ---
 
 # .test_count_settled_predictions_excludes_hurricane_count()
@@ -17,4 +17,4 @@ tags:
 - [[Opus-review-caught (2026-08-07) this exclusion list was never extended when…]] - `rationale_for` [EXTRACTED]
 - [[TestLiveTradingGateConditionTypeFilter]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Settlement_Sigma__Disputed_Rows
+#graphify/code #graphify/EXTRACTED #community/Community_29

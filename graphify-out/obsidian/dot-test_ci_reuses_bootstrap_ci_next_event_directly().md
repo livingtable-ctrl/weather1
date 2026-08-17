@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 83"
+community: "Community 93"
 location: "L722"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_83
+  - community/Community_93
 ---
 
 # .test_ci_reuses_bootstrap_ci_next_event_directly()
@@ -16,4 +16,4 @@ tags:
 - [[TestFirstHurricanePositionOutcomes]] - `method` [EXTRACTED]
 - [[_storm_order_fixture_storms()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_83
+#graphify/code #graphify/EXTRACTED #community/Community_93

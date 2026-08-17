@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Ensemble Weight Blending Tests"
+community: "Community 442"
 location: "L2033"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_442
 ---
 
 # _ecmwf_gap_test_enriched()
@@ -18,4 +18,4 @@ tags:
 - [[test_analyze_trade_survives_ecmwf_aifs_prob_fetch_exception()]] - `calls` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_442

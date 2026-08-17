@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Weather Probability Math Tests"
+community: "Community 203"
 location: "L451"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_203
 ---
 
 # TestObsProbBetweenSigma
@@ -19,4 +19,4 @@ tags:
 - [[Regression obs_prob for 'between' must use sigma=3.5, not sigma=0.25. The old…]] - `rationale_for` [EXTRACTED]
 - [[test_weather.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_203

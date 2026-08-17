@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_c.py"
 type: "rationale"
-community: "Community 72"
+community: "Community 125"
 location: "L253"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_72
+  - community/Community_125
 ---
 
 # Without cutoff_date, function runs without error on enough rows.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_auto_split_80_20()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_72
+#graphify/rationale #graphify/EXTRACTED #community/Community_125

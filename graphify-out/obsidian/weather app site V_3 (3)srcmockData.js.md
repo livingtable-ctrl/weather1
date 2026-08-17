@@ -1,12 +1,12 @@
 ---
 source_file: "weather app site V_3 (3)/src/mockData.js"
 type: "code"
-community: "Community 81"
+community: "Community 87"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_81
+  - community/Community_87
 ---
 
 # weather app site V_3 (3)/src/mockData.js
@@ -42,5 +42,6 @@ tags:
 - [[stats]] - `contains` [EXTRACTED]
 - [[todayForecasts]] - `contains` [EXTRACTED]
 - [[tomorrowForecasts]] - `contains` [EXTRACTED]
+- [[weather app site V_3 (3)srcuseData.js]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_81
+#graphify/code #graphify/EXTRACTED #community/Community_87

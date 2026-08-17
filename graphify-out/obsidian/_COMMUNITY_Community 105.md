@@ -1,41 +1,42 @@
 ---
 type: community
-cohesion: 0.13
-members: 26
+cohesion: 0.11
+members: 27
 ---
 
 # Community 105
 
-**Cohesion:** 0.13 - loosely connected
-**Members:** 26 nodes
+**Cohesion:** 0.11 - loosely connected
+**Members:** 27 nodes
 
 ## Members
-- [[dot-__init__()]] - code - tests/test_execution_proof.py
-- [[dot-get_market()]] - code - tests/test_execution_proof.py
-- [[If log_analysis_attempt fails after a successful trade, it must be logged.]] - rationale - tests/test_execution_proof.py
-- [[If place_paper_order raises a non-ValueError, it must be logged.]] - rationale - tests/test_execution_proof.py
-- [[L1-B if the fresh market price eliminates our edge, trade must be skipped.…]] - rationale - tests/test_execution_proof.py
-- [[L1-B when a client is supplied, entry_price must reflect the re-fetched market…]] - rationale - tests/test_execution_proof.py
-- [[L1-B without a client (paper-only mode), stale analysis price is used. This…]] - rationale - tests/test_execution_proof.py
-- [[L1-D place_paper_order failure must print a visible error — not just log. A…]] - rationale - tests/test_execution_proof.py
-- [[Minimal KalshiClient stand-in for price-refresh tests.]] - rationale - tests/test_execution_proof.py
-- [[Minimal flat opportunity dict accepted by _auto_place_trades.]] - rationale - tests/test_execution_proof.py
-- [[Returns 0 immediately when drawdown guard is active.]] - rationale - tests/test_execution_proof.py
-- [[Stub out all guards so _auto_place_trades reaches the trade loop.]] - rationale - tests/test_execution_proof.py
-- [[Tests for P0.1 — Trade execution proof. _auto_place_trades must return the…]] - rationale - tests/test_execution_proof.py
-- [[_FakeClient]] - code - tests/test_execution_proof.py
-- [[_auto_place_trades must return the count of actually placed trades.]] - rationale - tests/test_execution_proof.py
-- [[_make_opp()]] - code - tests/test_execution_proof.py
-- [[_stub_auto_prereqs()]] - code - tests/test_execution_proof.py
-- [[test_auto_place_trades_logs_analysis_attempt_failure()]] - code - tests/test_execution_proof.py
-- [[test_auto_place_trades_logs_paper_failure()]] - code - tests/test_execution_proof.py
-- [[test_auto_place_trades_returns_placed_count()]] - code - tests/test_execution_proof.py
-- [[test_auto_place_trades_returns_zero_when_halted()]] - code - tests/test_execution_proof.py
-- [[test_execution_proof.py]] - code - tests/test_execution_proof.py
-- [[test_l1b_no_client_uses_stale_price()]] - code - tests/test_execution_proof.py
-- [[test_l1b_price_refresh_skips_when_edge_gone()]] - code - tests/test_execution_proof.py
-- [[test_l1b_price_refresh_uses_fresh_market_prob()]] - code - tests/test_execution_proof.py
-- [[test_l1d_paper_failure_printed_to_console()]] - code - tests/test_execution_proof.py
+- [[dot-_recent_order()]] - code - tests/test_execution_stability.py
+- [[dot-test_cmd_cron_exits_early_when_lock_denied()]] - code - tests/test_execution_stability.py
+- [[dot-test_get_recent_orders_failure_does_not_raise()]] - code - tests/test_execution_stability.py
+- [[dot-test_lock_acquired_when_no_file()]] - code - tests/test_execution_stability.py
+- [[dot-test_lock_denied_when_fresh_file_exists()]] - code - tests/test_execution_stability.py
+- [[dot-test_lock_released_in_finally()]] - code - tests/test_execution_stability.py
+- [[dot-test_no_orders_no_warning()]] - code - tests/test_execution_stability.py
+- [[dot-test_old_order_no_warning()]] - code - tests/test_execution_stability.py
+- [[dot-test_recent_order_triggers_warning()]] - code - tests/test_execution_stability.py
+- [[dot-test_release_lock_removes_file()]] - code - tests/test_execution_stability.py
+- [[dot-test_release_missing_lock_is_noop()]] - code - tests/test_execution_stability.py
+- [[dot-test_stale_lock_overridden()]] - code - tests/test_execution_stability.py
+- [[Empty order list must not trigger any warning.]] - rationale - tests/test_execution_stability.py
+- [[If an order was placed within the last 5 minutes, _check_startup_orders must…]] - rationale - tests/test_execution_stability.py
+- [[If execution_log.get_recent_orders raises, _check_startup_orders must not…]] - rationale - tests/test_execution_stability.py
+- [[Orders older than 5 minutes must not trigger a warning.]] - rationale - tests/test_execution_stability.py
+- [[Return a fake order dict placed `minutes_ago` minutes in the past.]] - rationale - tests/test_execution_stability.py
+- [[TestCheckStartupOrders]] - code - tests/test_execution_stability.py
+- [[TestCronLock]] - code - tests/test_execution_stability.py
+- [[_acquire_cron_lock() returns False when a live PID holds the lock.]] - rationale - tests/test_execution_stability.py
+- [[_acquire_cron_lock() returns True and writes JSON lock when none exists.]] - rationale - tests/test_execution_stability.py
+- [[_acquire_cron_lock() returns True when the locking PID is dead.]] - rationale - tests/test_execution_stability.py
+- [[_import_main()]] - code - tests/test_execution_stability.py
+- [[_release_cron_lock() deletes the lock file.]] - rationale - tests/test_execution_stability.py
+- [[_release_cron_lock() is called even when cmd_cron raises mid-run.]] - rationale - tests/test_execution_stability.py
+- [[_release_cron_lock() must not raise when lock file does not exist.]] - rationale - tests/test_execution_stability.py
+- [[cmd_cron must call sys.exit(1) when _acquire_cron_lock() returns False.]] - rationale - tests/test_execution_stability.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -45,7 +46,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 180]]
+- 3 edges to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[test_execution_proof.py]] - degree 13, connects to 1 community
+- [[_import_main()]] - degree 12, connects to 1 community
+- [[TestCronLock]] - degree 8, connects to 1 community
+- [[TestCheckStartupOrders]] - degree 6, connects to 1 community

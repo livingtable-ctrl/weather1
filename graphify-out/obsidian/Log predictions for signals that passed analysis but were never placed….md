@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "rationale"
-community: "Community 40"
+community: "Community 1"
 location: "L2170"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_40
+  - community/Community_1
 ---
 
 # Log predictions for signals that passed analysis but were never placed…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_log_shadow_predictions()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_40
+#graphify/rationale #graphify/EXTRACTED #community/Community_1

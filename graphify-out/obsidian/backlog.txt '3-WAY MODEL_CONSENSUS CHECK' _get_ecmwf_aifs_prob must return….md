@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Ensemble Weight Blending Tests"
-location: "L3947"
+community: "Community 11"
+location: "L4316"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_11
 ---
 
 # backlog.txt '3-WAY MODEL_CONSENSUS CHECK': _get_ecmwf_aifs_prob must return…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestGetEcmwfAifsProb]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_11

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Weather Probability Math Tests"
+community: "Community 397"
 location: "L339"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_397
 ---
 
 # .test_no_low_substring_defaults_to_max()
@@ -16,4 +16,4 @@ tags:
 - [[TestDailyVarFromSeries]] - `method` [EXTRACTED]
 - [[_daily_var_from_series()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_397

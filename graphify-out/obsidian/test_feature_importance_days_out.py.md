@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_feature_importance_days_out.py"
 type: "code"
-community: "Community 497"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_497
+  - community/Community_4
 ---
 
 # test_feature_importance_days_out.py
@@ -15,6 +15,11 @@ tags:
 - [[TestFeatureImportanceDaysOut]] - `contains` [EXTRACTED]
 - [[Tests for main.py's _feature_importance_days_out helper. Extracted from…]] - `rationale_for` [EXTRACTED]
 - [[backlog.txt]] - `cites` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 - [[utc_today()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_497
+#graphify/code #graphify/EXTRACTED #community/Community_4

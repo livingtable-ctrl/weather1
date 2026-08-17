@@ -1,13 +1,13 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 683"
+community: "Community 827"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_683
+  - community/Community_827
 ---
 
 # paper.PaperPositionStore
 
-#graphify/code #graphify/EXTRACTED #community/Community_683
+#graphify/code #graphify/EXTRACTED #community/Community_827

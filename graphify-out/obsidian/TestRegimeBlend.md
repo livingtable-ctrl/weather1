@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 275"
+community: "Community 276"
 location: "L1441"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_275
+  - community/Community_276
 ---
 
 # TestRegimeBlend
@@ -21,4 +21,4 @@ tags:
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[test_forecasting.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_275
+#graphify/code #graphify/EXTRACTED #community/Community_276

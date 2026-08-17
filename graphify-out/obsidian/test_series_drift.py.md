@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_series_drift.py"
 type: "code"
-community: "Community 126"
+community: "Community 131"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_126
+  - community/Community_131
 ---
 
 # test_series_drift.py
@@ -16,6 +16,9 @@ tags:
 - [[_mock_client()_1]] - `contains` [EXTRACTED]
 - [[_today()_1]] - `contains` [EXTRACTED]
 - [[check_series_drift()]] - `calls` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[test_first_run_creates_state_file()]] - `contains` [EXTRACTED]
 - [[test_gated_to_run_once_per_day()]] - `contains` [EXTRACTED]
 - [[test_hurricane_next_event_series_present_does_not_warn()]] - `contains` [EXTRACTED]
@@ -29,5 +32,6 @@ tags:
 - [[test_unknown_live_ticker_warns_immediately()]] - `contains` [EXTRACTED]
 - [[test_unknown_rain_ticker_warns_immediately()]] - `contains` [EXTRACTED]
 - [[test_unrecognized_hurricane_series_deliberately_not_flagged()]] - `contains` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_126
+#graphify/code #graphify/EXTRACTED #community/Community_131

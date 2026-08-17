@@ -1,12 +1,12 @@
 ---
 source_file: "tests/conftest.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 18"
 location: "L572"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_18
 ---
 
 # Redirect weather_markets' forecast/ensemble disk-cache paths to a per-test temp…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[isolate_forecast_ensemble_disk_cache()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_18

@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_mos_nbs.py"
+source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 114"
-location: "L30"
+community: "Community 12"
+location: "L2065"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_114
+  - community/Community_12
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestFetchNbsDailyExtremes]] - `method` [EXTRACTED]
+- [[TestGetTodayLiveSpendExcludesExitOrders]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_114
+#graphify/code #graphify/EXTRACTED #community/Community_12

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_silent_failures.py"
 type: "rationale"
-community: "Community 220"
+community: "Community 71"
 location: "L255"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_220
+  - community/Community_71
 ---
 
 # If log_api_request raises inside _request_with_retry, it must be logged.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_kalshi_client_api_log_failure_is_logged()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_220
+#graphify/rationale #graphify/EXTRACTED #community/Community_71

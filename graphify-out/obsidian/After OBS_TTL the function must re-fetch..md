@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "rationale"
-community: "Community 172"
+community: "Community 181"
 location: "L661"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_172
+  - community/Community_181
 ---
 
 # After OBS_TTL the function must re-fetch.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_cache_expires_after_obs_ttl()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_172
+#graphify/rationale #graphify/EXTRACTED #community/Community_181

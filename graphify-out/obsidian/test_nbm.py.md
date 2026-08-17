@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_nbm.py"
 type: "code"
-community: "Community 182"
+community: "Community 15"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_182
+  - community/Community_15
 ---
 
 # test_nbm.py
@@ -21,6 +22,10 @@ tags:
 - [[forecast_cache.py]] - `imports_from` [EXTRACTED]
 - [[nws.nws_prob_from_quantiles]] - `calls` [EXTRACTED]
 - [[nws_prob_from_quantiles()]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[test_mos_nbs.py]] - `shares_data_with` [INFERRED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_182
+#graphify/code #graphify/EXTRACTED #community/Community_15

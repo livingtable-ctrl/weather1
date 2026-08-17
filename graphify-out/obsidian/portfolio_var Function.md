@@ -1,11 +1,11 @@
 ---
 source_file: "monte_carlo.py"
 type: "code"
-community: "Community 500"
+community: "Community 452"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_500
+  - community/Community_452
 ---
 
 # portfolio_var Function
@@ -15,4 +15,4 @@ tags:
 - [[_auto_place_trades Function]] - `calls` [EXTRACTED]
 - [[simulate_portfolio Function]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_500
+#graphify/code #graphify/EXTRACTED #community/Community_452

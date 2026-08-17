@@ -1,17 +1,20 @@
 ---
-source_file: "tests/test_p1_remaining.py"
+source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 38"
-location: "L812"
+community: "Community 227"
+location: "L444"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_38
+  - community/Community_227
 ---
 
 # ._run()
 
 ## Connections
-- [[TestAnalyzeOnceDirectionalConsensusGates]] - `method` [EXTRACTED]
+- [[KalshiWebSocket]] - `method` [EXTRACTED]
+- [[_ws_listener()]] - `calls` [EXTRACTED]
+- [[auto_backtest()]] - `indirect_call` [INFERRED]
+- [[auto_settle()]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_38
+#graphify/code #graphify/EXTRACTED #community/Community_227

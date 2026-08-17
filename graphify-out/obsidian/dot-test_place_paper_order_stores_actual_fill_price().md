@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Community 320"
+community: "Community 325"
 location: "L325"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_320
+  - community/Community_325
 ---
 
 # .test_place_paper_order_stores_actual_fill_price()
@@ -15,4 +15,4 @@ tags:
 - [[TestSlippageAdjustedPrice]] - `method` [EXTRACTED]
 - [[place_paper_order records actual_fill_price != entry_price for large orders.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_320
+#graphify/code #graphify/EXTRACTED #community/Community_325

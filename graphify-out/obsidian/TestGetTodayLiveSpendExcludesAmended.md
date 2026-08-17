@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 468"
+community: "Community 12"
 location: "L1962"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_468
+  - community/Community_12
 ---
 
 # TestGetTodayLiveSpendExcludesAmended
 
 ## Connections
-- [[dot-setup_method()_32]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_24]] - `method` [EXTRACTED]
+- [[dot-setup_method()_2]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_2]] - `method` [EXTRACTED]
 - [[dot-test_amended_row_excluded_new_row_counted_once()]] - `method` [EXTRACTED]
 - [[dot-test_mutation_amended_included_would_double_count()]] - `method` [EXTRACTED]
 - [[AMEND ORDER (V2) get_today_live_spend() must exclude 'amended' rows the same…]] - `rationale_for` [EXTRACTED]
@@ -21,4 +21,4 @@ tags:
 - [[Position]] - `uses` [INFERRED]
 - [[test_live_execution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_468
+#graphify/code #graphify/EXTRACTED #community/Community_12

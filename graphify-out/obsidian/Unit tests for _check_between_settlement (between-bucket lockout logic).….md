@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_settlement_monitor.py"
 type: "rationale"
-community: "METAR Settlement Monitoring"
+community: "Community 88"
 location: "L126"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_88
 ---
 
 # Unit tests for _check_between_settlement (between-bucket lockout logic).…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCheckBetweenSettlement]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/rationale #graphify/EXTRACTED #community/Community_88

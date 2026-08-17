@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Forecasting Persistence Model Tests"
+community: "Community 26"
 location: "L389"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_26
 ---
 
 # .test_ecmwf_weight_winter()
@@ -16,4 +16,4 @@ tags:
 - [[TestForecastModelWeights_1]] - `method` [EXTRACTED]
 - [[_forecast_model_weights()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_26

@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "rationale"
-community: "Community 194"
+community: "Community 108"
 location: "L233"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_194
+  - community/Community_108
 ---
 
 # Return the `limit` most recently *settled* trades, sorted by settled_at. Pass…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_recent_settled()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_194
+#graphify/rationale #graphify/EXTRACTED #community/Community_108

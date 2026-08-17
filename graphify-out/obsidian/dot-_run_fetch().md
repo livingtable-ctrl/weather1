@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backtest_stratified.py"
 type: "code"
-community: "Community 420"
+community: "Community 457"
 location: "L9"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_420
+  - community/Community_457
 ---
 
 # ._run_fetch()
@@ -18,4 +18,4 @@ tags:
 - [[TestFetchArchiveTempsEnsembleCenter]] - `method` [EXTRACTED]
 - [[fetch_archive_temps()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_420
+#graphify/code #graphify/EXTRACTED #community/Community_457

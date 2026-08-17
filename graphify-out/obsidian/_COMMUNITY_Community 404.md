@@ -1,24 +1,24 @@
 ---
 type: community
-cohesion: 0.33
+cohesion: 0.25
 members: 9
 ---
 
 # Community 404
 
-**Cohesion:** 0.33 - loosely connected
+**Cohesion:** 0.25 - loosely connected
 **Members:** 9 nodes
 
 ## Members
-- [[dot-_call_with_recovery()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_exactly_tier4_returns_full()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_full_recovery_returns_full()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_just_below_tier4_returns_reduced()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_tier3_boundary()]] - code - tests/test_phase2_batch_g.py
-- [[P2-31 exactly 95% recovery must return 1.0 (full sizing), not 0.70.]] - rationale - tests/test_phase2_batch_g.py
-- [[TestDrawdownTier4Boundary]] - code - tests/test_phase2_batch_g.py
-- [[recovery == 0.949 (just below tier-4) must return 0.70.]] - rationale - tests/test_phase2_batch_g.py
-- [[recovery == 0.95 (exactly at tier-4) must return 1.0, not 0.70.]] - rationale - tests/test_phase2_batch_g.py
+- [[Append a single entry dict as a JSONL line to the entries log.]] - rationale - execution_log.py
+- [[Path_17]] - code
+- [[Return today's accumulated live loss in dollars (UTC date). Fails closed if a…]] - rationale - execution_log.py
+- [[True if a prior add_live_loss() failure left today's total untrustworthy.]] - rationale - execution_log.py
+- [[_degraded_flag_path()]] - code - execution_log.py
+- [[_degraded_for_today()]] - code - execution_log.py
+- [[_set_degraded_flag()]] - code - execution_log.py
+- [[append_entry()]] - code - execution_log.py
+- [[get_today_live_loss()]] - code - execution_log.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,7 +28,16 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 248]]
+- 9 edges to [[_COMMUNITY_Community 42]]
+- 1 edge to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 170]]
+- 1 edge to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 7]]
+- 1 edge to [[_COMMUNITY_Community 44]]
 
 ## Top bridge nodes
-- [[TestDrawdownTier4Boundary]] - degree 7, connects to 1 community
+- [[get_today_live_loss()]] - degree 9, connects to 4 communities
+- [[append_entry()]] - degree 5, connects to 3 communities
+- [[_degraded_flag_path()]] - degree 5, connects to 1 community
+- [[_degraded_for_today()]] - degree 4, connects to 1 community
+- [[_set_degraded_flag()]] - degree 4, connects to 1 community

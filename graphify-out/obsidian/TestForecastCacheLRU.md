@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_m.py"
 type: "code"
-community: "Community 51"
+community: "Community 9"
 location: "L166"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_51
+  - community/Community_9
 ---
 
 # TestForecastCacheLRU
@@ -21,6 +21,6 @@ tags:
 - [[dot-test_set_with_ttl_respects_max_size()]] - `method` [EXTRACTED]
 - [[dot-test_update_existing_does_not_evict()]] - `method` [EXTRACTED]
 - [[ForecastCache]] - `uses` [INFERRED]
-- [[Phase 2 Batch M Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_m.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_51
+#graphify/code #graphify/EXTRACTED #community/Community_9

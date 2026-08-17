@@ -1,18 +1,18 @@
 ---
-source_file: "tests/test_snow_markets.py"
+source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 115"
-location: "L1019"
+community: "Community 16"
+location: "L768"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_115
+  - community/Community_16
 ---
 
 # .test_unmapped_city_station_returns_none()
 
 ## Connections
-- [[TestAnalyzeMonthlySnowTradeEndToEnd]] - `method` [EXTRACTED]
-- [[_snow_market()]] - `calls` [EXTRACTED]
+- [[dot-_rain_market()]] - `calls` [EXTRACTED]
+- [[TestAnalyzeMonthlyRainTradeEndToEnd]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_115
+#graphify/code #graphify/EXTRACTED #community/Community_16

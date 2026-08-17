@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_nws_afd.py"
 type: "code"
-community: "Community 68"
+community: "Community 382"
 location: "L173"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_68
+  - community/Community_382
 ---
 
 # TestCityWfoOffice
@@ -17,4 +17,4 @@ tags:
 - [[dot-test_office_codes_are_three_uppercase_letters()]] - `method` [EXTRACTED]
 - [[test_nws_afd.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_68
+#graphify/code #graphify/EXTRACTED #community/Community_382

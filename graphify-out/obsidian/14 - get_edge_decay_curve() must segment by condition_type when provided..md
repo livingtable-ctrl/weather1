@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 286"
+community: "Community 290"
 location: "L2283"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_286
+  - community/Community_290
 ---
 
 # #14 - get_edge_decay_curve() must segment by condition_type when provided.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestEdgeDecayCurveConditionTypeGrpB]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_286
+#graphify/rationale #graphify/EXTRACTED #community/Community_290

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "code"
-community: "Community 382"
+community: "Community 134"
 location: "L1367"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_382
+  - community/Community_134
 ---
 
 # TestDashboardStarsKeyOffTier
@@ -19,7 +19,7 @@ tags:
 - [[dot-test_untiered_strong_text_no_longer_shows_multiple_stars()]] - `method` [EXTRACTED]
 - [[LiveTradingGate]] - `uses` [INFERRED]
 - [[Violation]] - `uses` [INFERRED]
-- [[backlog.txt 'DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF SIGNAL TEXT, NOT…_1]] - `rationale_for` [EXTRACTED]
+- [[backlog.txt 'DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF SIGNAL TEXT, NOT…]] - `rationale_for` [EXTRACTED]
 - [[test_trade_cycle_engine.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_382
+#graphify/code #graphify/EXTRACTED #community/Community_134

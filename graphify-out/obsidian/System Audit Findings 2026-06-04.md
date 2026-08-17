@@ -1,16 +1,13 @@
 ---
 source_file: "docs/audit_findings_2026-06-04.md"
 type: "document"
-community: "Kelly City Multiplier & Edge Realization"
+community: "Community 786"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Kelly_City_Multiplier__Edge_Realization
+  - community/Community_786
 ---
 
 # System Audit Findings 2026-06-04
 
-## Connections
-- [[cron.py_1]] - `references` [EXTRACTED]
-
-#graphify/document #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization
+#graphify/document #graphify/EXTRACTED #community/Community_786

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 196"
 location: "L365"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_196
 ---
 
 # L18015: /api/trades' live-quote enrichment used to depend solely on the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestApiTradesLiveQuoteEnrichment]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_196

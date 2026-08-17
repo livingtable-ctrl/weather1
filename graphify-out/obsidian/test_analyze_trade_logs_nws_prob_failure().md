@@ -1,20 +1,20 @@
 ---
 source_file: "tests/test_silent_failures.py"
 type: "code"
-community: "Community 220"
+community: "Community 71"
 location: "L108"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_220
+  - community/Community_71
 ---
 
 # test_analyze_trade_logs_nws_prob_failure()
 
 ## Connections
 - [[If nws_prob raises, the failure must be logged.]] - `rationale_for` [EXTRACTED]
-- [[_make_enriched()_1]] - `calls` [EXTRACTED]
+- [[_make_enriched()_2]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[test_silent_failures.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_220
+#graphify/code #graphify/EXTRACTED #community/Community_71

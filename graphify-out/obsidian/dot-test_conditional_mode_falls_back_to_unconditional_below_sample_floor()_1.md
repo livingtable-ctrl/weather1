@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Hurricane Market Season Signals"
+community: "Community 19"
 location: "L2304"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Hurricane_Market_Season_Signals
+  - community/Community_19
 ---
 
 # .test_conditional_mode_falls_back_to_unconditional_below_sample_floor()
@@ -17,4 +17,4 @@ tags:
 - [[Same opus-review-caught pattern next_event's own test documents a known, non-…]] - `rationale_for` [EXTRACTED]
 - [[TestAnalyzeStormOrderTrade]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Hurricane_Market_Season_Signals
+#graphify/code #graphify/EXTRACTED #community/Community_19

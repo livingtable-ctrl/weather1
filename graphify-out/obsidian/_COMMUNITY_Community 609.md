@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 609
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_daily_path_still_calls_metar_lock_in()]] - code - tests/test_hourly_markets.py
-- [[Companion regression an ordinary daily ticker must still reach…]] - rationale - tests/test_hourly_markets.py
+- [[dot-test_other_pins_survive_a_corrupt_pins_file()]] - code - tests/test_cron_group_c.py
+- [[dot-test_renewal_goes_through_tracker_accessors()]] - code - tests/test_cron_group_c.py
+- [[F7 cron.py's ensemble-pin renewal reimplemented tracker.py's pin persistence…]] - rationale - tests/test_cron_group_c.py
+- [[TestEnsemblePinRenewalUsesTrackerAccessors]] - code - tests/test_cron_group_c.py
+- [[The specific bug a corrupt read used to reset _pins to {} entirely, so the…]] - rationale - tests/test_cron_group_c.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,7 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 122]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[dot-test_daily_path_still_calls_metar_lock_in()]] - degree 2, connects to 1 community
+- [[TestEnsemblePinRenewalUsesTrackerAccessors]] - degree 4, connects to 1 community

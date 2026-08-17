@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.43
+members: 7
 ---
 
 # Community 514
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.43 - moderately connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_exposure_check_uses_current_balance_not_starting()]] - code - tests/test_phase2_batch_b.py
-- [[dot-test_exposure_consistency_with_get_ticker_exposure()]] - code - tests/test_phase2_batch_b.py
-- [[After balance grows, the ticker cap should be evaluated against current…]] - rationale - tests/test_phase2_batch_b.py
-- [[P2-4 place_paper_order must use _exposure_denom() for new-cost fraction.]] - rationale - tests/test_phase2_batch_b.py
-- [[TestTickerExposureDenominator]] - code - tests/test_phase2_batch_b.py
-- [[The denominator used in place_paper_order must match get_ticker_exposure.…]] - rationale - tests/test_phase2_batch_b.py
+- [[dot-_make_trades()_1]] - code - tests/test_paper_metrics.py
+- [[dot-test_basic_ratio()]] - code - tests/test_paper_metrics.py
+- [[dot-test_get_performance_includes_profit_factor()]] - code - tests/test_paper_metrics.py
+- [[dot-test_no_losses_returns_none()]] - code - tests/test_paper_metrics.py
+- [[dot-test_no_settled_returns_none()]] - code - tests/test_paper_metrics.py
+- [[TestProfitFactor]] - code - tests/test_paper_metrics.py
+- [[Write a minimal paper_trades.json with given settled trade pnls.]] - rationale - tests/test_paper_metrics.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 248]]
+- 1 edge to [[_COMMUNITY_Community 236]]
 
 ## Top bridge nodes
-- [[TestTickerExposureDenominator]] - degree 4, connects to 1 community
+- [[TestProfitFactor]] - degree 6, connects to 1 community

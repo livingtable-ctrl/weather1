@@ -1,17 +1,18 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 250"
+community: "Community 21"
 location: "L1499"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_250
+  - community/Community_21
 ---
 
 # .test_volume_and_open_interest_are_summed_not_maxed()
 
 ## Connections
 - [[TestLiquidityKellyScale]] - `method` [EXTRACTED]
+- [[paper.liquidity_kelly_scale]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_250
+#graphify/code #graphify/EXTRACTED #community/Community_21

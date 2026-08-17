@@ -1,27 +1,28 @@
 ---
 type: community
-cohesion: 0.18
-members: 12
+cohesion: 0.21
+members: 13
 ---
 
 # Community 295
 
-**Cohesion:** 0.18 - loosely connected
-**Members:** 12 nodes
+**Cohesion:** 0.21 - loosely connected
+**Members:** 13 nodes
 
 ## Members
-- [[A3 Bimodal Ensemble Detection]] - document - docs/superpowers/plans/2026-06-27-category-a-prediction-pipeline.md
-- [[Brief Closeable Fix]] - document - docs/superpowers/plans/2026-04-25-fix-menu-ux.md
-- [[Confidence-Tiered Edge Thresholds]] - document - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
-- [[Ctrl-C Cancel AnalyzeCron]] - document - docs/superpowers/plans/2026-04-25-fix-menu-ux.md
-- [[Extract Cron Runner to cron.py]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[Fix Browse Cities Plan]] - document - docs/superpowers/plans/2026-04-25-fix-browse-cities.md
-- [[FlashCrashCB Circuit Breaker]] - document - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
-- [[Flush stdout Before Cron]] - document - docs/superpowers/plans/2026-04-25-fix-menu-ux.md
-- [[Menu UX Fixes Plan]] - document - docs/superpowers/plans/2026-04-25-fix-menu-ux.md
-- [[Phase B Risk Engine Plan]] - document - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
-- [[main.py module_1]] - code - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
-- [[utils.py module]] - code - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
+- [[dot-_fake_bias_acc()]] - code - tests/test_weather_markets.py
+- [[dot-test_cache_key_includes_floors()]] - code - tests/test_weather_markets.py
+- [[dot-test_empty_when_tracker_call_fails()]] - code - tests/test_weather_markets.py
+- [[dot-test_falls_back_to_global_when_city_thin()]] - code - tests/test_weather_markets.py
+- [[dot-test_model_absent_when_both_city_and_global_too_thin()]] - code - tests/test_weather_markets.py
+- [[dot-test_model_with_no_data_for_requested_var_absent()]] - code - tests/test_weather_markets.py
+- [[dot-test_uses_city_specific_bias_when_above_floor()]] - code - tests/test_weather_markets.py
+- [[dot-test_var_split_never_pools_max_and_min()]] - code - tests/test_weather_markets.py
+- [[A model that only has 'min' data must not appear at all when var='max' is…]] - rationale - tests/test_weather_markets.py
+- [[Review-caught (2026-08-13) the cache key omitted min_n_city min_n_global, so…]] - rationale - tests/test_weather_markets.py
+- [[TestModelBias]] - code - tests/test_weather_markets.py
+- [[_model_bias() must correct each model's raw ensemble members toward its own…]] - rationale - tests/test_weather_markets.py
+- [[gfs_seamless's fixture has max bias=4.4 and min bias=0.4 -- these must never…]] - rationale - tests/test_weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,16 +32,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 117]]
-- 3 edges to [[_COMMUNITY_Community 224]]
-- 2 edges to [[_COMMUNITY_Community 210]]
-- 1 edge to [[_COMMUNITY_Community 294]]
-- 1 edge to [[_COMMUNITY_Community 536]]
-- 1 edge to [[_COMMUNITY_Community 386]]
+- 1 edge to [[_COMMUNITY_Community 11]]
 
 ## Top bridge nodes
-- [[main.py module_1]] - degree 8, connects to 3 communities
-- [[FlashCrashCB Circuit Breaker]] - degree 4, connects to 2 communities
-- [[Phase B Risk Engine Plan]] - degree 4, connects to 2 communities
-- [[Extract Cron Runner to cron.py]] - degree 3, connects to 2 communities
-- [[Confidence-Tiered Edge Thresholds]] - degree 5, connects to 1 community
+- [[TestModelBias]] - degree 10, connects to 1 community

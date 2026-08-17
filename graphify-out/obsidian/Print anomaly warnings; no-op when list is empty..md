@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L537"
+community: "Community 3"
+location: "L538"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # Print anomaly warnings; no-op when list is empty.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[report_anomalies()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

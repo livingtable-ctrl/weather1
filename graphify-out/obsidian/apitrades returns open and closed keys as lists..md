@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 115"
 location: "L308"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_115
 ---
 
 # /api/trades returns open and closed keys as lists.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_api_trades_returns_correct_shape()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_115

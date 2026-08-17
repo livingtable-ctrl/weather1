@@ -1,18 +1,20 @@
 ---
-source_file: "frontend/src/App.jsx"
+source_file: "weather app site V_3 (3)/src/tabs/AnalyticsTab.jsx"
 type: "code"
-community: "Community 155"
-location: "L1351"
+community: "Community 169"
+location: "L1024"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_155
+  - community/Community_169
 ---
 
 # AnalyticsTab()
 
 ## Connections
-- [[frontendsrcApp.jsx]] - `indirect_call` [INFERRED]
+- [[AnalyticsTab.jsx]] - `contains` [EXTRACTED]
+- [[authHeader()]] - `calls` [EXTRACTED]
 - [[normCity()]] - `calls` [EXTRACTED]
+- [[weather app site V_3 (3)srcApp.jsx]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_155
+#graphify/code #graphify/EXTRACTED #community/Community_169

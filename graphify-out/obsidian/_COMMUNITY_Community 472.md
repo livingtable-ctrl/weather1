@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.48
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 472
 
-**Cohesion:** 0.48 - moderately connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-_row()]] - code - tests/test_p1_remaining.py
-- [[dot-test_count_unavailable_does_not_crash()]] - code - tests/test_p1_remaining.py
-- [[dot-test_floor_cleared_shows_cleared_status()]] - code - tests/test_p1_remaining.py
-- [[dot-test_no_fixed_floor_shows_no_floor_status_not_a_ratio()]] - code - tests/test_p1_remaining.py
-- [[dot-test_prints_signal_name_and_backlog_ref()]] - code - tests/test_p1_remaining.py
-- [[TestCmdSignals]] - code - tests/test_p1_remaining.py
-- [[backlog.txt SIGNAL GRADUATION IS A CONVENTION part (b) the `py main.py…]] - rationale - tests/test_p1_remaining.py
+- [[dot-test_is_accuracy_halted_fails_closed_on_sprt_exception()]] - code - tests/test_sprt.py
+- [[dot-test_is_accuracy_halted_not_triggered_when_sprt_ok()]] - code - tests/test_sprt.py
+- [[dot-test_is_accuracy_halted_triggers_on_sprt_degraded()]] - code - tests/test_sprt.py
+- [[2026-07-09 fail closed, not open -- sprt_model_health raising (a Windows…]] - rationale - tests/test_sprt.py
+- [[TestIsAccuracyHaltedSprt]] - code - tests/test_sprt.py
+- [[Tests for SPRT wired into paper.is_accuracy_halted().]] - rationale - tests/test_sprt.py
+- [[is_accuracy_halted returns False when SPRT is ok and rolling rate passes.]] - rationale - tests/test_sprt.py
+- [[is_accuracy_halted returns True when sprt_model_health returns 'degraded'.]] - rationale - tests/test_sprt.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,8 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 1 edge to [[_COMMUNITY_Community 96]]
+- 1 edge to [[_COMMUNITY_Community 6]]
 
 ## Top bridge nodes
-- [[TestCmdSignals]] - degree 9, connects to 2 communities
+- [[TestIsAccuracyHaltedSprt]] - degree 5, connects to 1 community

@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_positions.py"
+source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 45"
-location: "L161"
+community: "Community 510"
+location: "L386"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Community_510
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestLivePositionStore]] - `method` [EXTRACTED]
+- [[TestSettlementCostBasis]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_45
+#graphify/code #graphify/EXTRACTED #community/Community_510

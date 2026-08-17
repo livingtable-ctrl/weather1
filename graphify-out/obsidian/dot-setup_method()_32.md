@@ -1,17 +1,18 @@
 ---
-source_file: "tests/test_live_execution.py"
+source_file: "tests/test_calibration.py"
 type: "code"
-community: "Community 468"
-location: "L1968"
+community: "Community 58"
+location: "L189"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_468
+  - community/Community_58
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestGetTodayLiveSpendExcludesAmended]] - `method` [EXTRACTED]
+- [[Path_3]] - `calls` [EXTRACTED]
+- [[TestCalibrateCityWeights]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_468
+#graphify/code #graphify/EXTRACTED #community/Community_58

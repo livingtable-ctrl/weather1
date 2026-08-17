@@ -10,18 +10,18 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[dot-test_consensus_bonus_actually_raises_ci_adjusted_kelly()]] - code - tests/test_price_and_size.py
-- [[dot-test_no_side_empty_bid_book()]] - code - tests/test_price_and_size.py
-- [[dot-test_no_side_empty_bid_book()_1]] - code - tests/test_price_and_size.py
-- [[dot-test_yes_side_normal_book()]] - code - tests/test_price_and_size.py
-- [[dot-test_yes_side_normal_book()_1]] - code - tests/test_price_and_size.py
-- [[Same reasoning as TestPrecipTradeWiring above -- _analyze_snow_trade's own…]] - rationale - tests/test_price_and_size.py
-- [[TestPrecipTradeWiring]] - code - tests/test_price_and_size.py
-- [[TestSnowTradeWiring]] - code - tests/test_price_and_size.py
-- [[_analyze_precip_trade calls _blend_weights(days_out, has_nws=False,…]] - rationale - tests/test_price_and_size.py
-- [[_analyze_precip_trade computes days_out from datetime.now(ZoneInfo(tz)).date()…]] - rationale - tests/test_price_and_size.py
-- [[_ny_tomorrow()]] - code - tests/test_price_and_size.py
-- [[date_3]] - code
+- [[dot-_run_paper_sub4()]] - code - tests/test_menu_ux.py
+- [[dot-test_exit_signals_closes_when_user_says_yes()]] - code - tests/test_menu_ux.py
+- [[dot-test_exit_signals_keyboard_interrupt_returns_to_menu()]] - code - tests/test_menu_ux.py
+- [[dot-test_exit_signals_skipped_when_user_says_no()]] - code - tests/test_menu_ux.py
+- [[dot-test_exit_signals_uses_realizable_price_not_midpoint()]] - code - tests/test_menu_ux.py
+- [[Ctrl+C on the close prompt must not crash — menu should continue.]] - rationale - tests/test_menu_ux.py
+- [[Helper drive cmd_menu → P(aper) → 4(exit signals), capturing stdout.…]] - rationale - tests/test_menu_ux.py
+- [[Real beforeafter for a NO position with yes_bid=60yes_ask=62 (cents), the…]] - rationale - tests/test_menu_ux.py
+- [[TestExitSignals]] - code - tests/test_menu_ux.py
+- [[Tests for the paper submenu 'Exit signals' branch (sub == '4').]] - rationale - tests/test_menu_ux.py
+- [[When user says n, should print 'skipped' confirmation and NOT call…]] - rationale - tests/test_menu_ux.py
+- [[When user says y, close_paper_early must be called with (trade_id,…]] - rationale - tests/test_menu_ux.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,9 +31,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 58]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestSnowTradeWiring]] - degree 5, connects to 1 community
-- [[_ny_tomorrow()]] - degree 5, connects to 1 community
-- [[TestPrecipTradeWiring]] - degree 4, connects to 1 community
+- [[TestExitSignals]] - degree 7, connects to 1 community

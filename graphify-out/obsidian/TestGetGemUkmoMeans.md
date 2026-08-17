@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 559"
-location: "L3844"
+community: "Community 640"
+location: "L4213"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_559
+  - community/Community_640
 ---
 
 # TestGetGemUkmoMeans
@@ -17,4 +17,4 @@ tags:
 - [[backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' Pass 2…_1]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_559
+#graphify/code #graphify/EXTRACTED #community/Community_640

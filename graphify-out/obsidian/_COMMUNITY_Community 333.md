@@ -1,26 +1,26 @@
 ---
 type: community
-cohesion: 0.25
+cohesion: 0.18
 members: 11
 ---
 
 # Community 333
 
-**Cohesion:** 0.25 - loosely connected
+**Cohesion:** 0.18 - loosely connected
 **Members:** 11 nodes
 
 ## Members
-- [[dot-_shifted_trade_and_analysis()]] - code - tests/test_early_exits.py
-- [[dot-test_exit_price_uses_liquidation_not_midpoint_no_side()]] - code - tests/test_early_exits.py
-- [[dot-test_exit_price_uses_liquidation_not_midpoint_yes_side()]] - code - tests/test_early_exits.py
-- [[dot-test_skips_cycle_on_missing_quote_not_fallback_to_entry_price()]] - code - tests/test_early_exits.py
-- [[dot-test_skips_cycle_when_no_side_liquidation_is_exactly_zero()]] - code - tests/test_early_exits.py
-- [[A missinginvalid quote must skip this cycle (matching _check_live_model_exits'…]] - rationale - tests/test_early_exits.py
-- [[TestEarlyExitPricingConvention]] - code - tests/test_early_exits.py
-- [[_check_early_exits must price a model-exit at the realizable bidask…]] - rationale - tests/test_early_exits.py
-- [[liquidation_price() returns 0.0 (NOT None) for a NO position when yes_ask=100c…]] - rationale - tests/test_early_exits.py
-- [[yes_bid=20cyes_ask=40c liquidation (realizable) = 0.20 (the bid). The old…]] - rationale - tests/test_early_exits.py
-- [[yes_bid=60cyes_ask=80c, held side NO liquidation (realizable) = 1 - yes_ask =…]] - rationale - tests/test_early_exits.py
+- [[2026-04-10-group-d-trading-kelly]] - document - docs/superpowers/plans/2026-04-10-group-d-trading-kelly.md
+- [[Group D Trading Kelly & Execution Realism Implementation Plan]] - document - docs/superpowers/plans/2026-04-10-group-d-trading-kelly.md
+- [[Task 1 Bayesian Kelly with Beta posterior (39)]] - document - docs/superpowers/plans/2026-04-10-group-d-trading-kelly.md
+- [[Task 2 Loadsave correlations from backtest (49)]] - document - docs/superpowers/plans/2026-04-10-group-d-trading-kelly.md
+- [[Task 3 Slippage-adjusted price for large orders (50)]] - document - docs/superpowers/plans/2026-04-10-group-d-trading-kelly.md
+- [[Task 4 Portfolio Kelly with correlation-adjusted covariance (51)]] - document - docs/superpowers/plans/2026-04-10-group-d-trading-kelly.md
+- [[Task 5 Random fill slippage in place_paper_order (73)]] - document - docs/superpowers/plans/2026-04-10-group-d-trading-kelly.md
+- [[Task 6 simulate_partial_fill helper (74)]] - document - docs/superpowers/plans/2026-04-10-group-d-trading-kelly.md
+- [[Task 7 Partial fill simulation in check_exit_targets (78)]] - document - docs/superpowers/plans/2026-04-10-group-d-trading-kelly.md
+- [[Task 8 Maximum order latency enforcement (79)]] - document - docs/superpowers/plans/2026-04-10-group-d-trading-kelly.md
+- [[Task 9 Full regression check]] - document - docs/superpowers/plans/2026-04-10-group-d-trading-kelly.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,11 +28,3 @@ members: 11
 TABLE source_file, type FROM #community/Community_333
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 272]]
-- 1 edge to [[_COMMUNITY_Community 231]]
-
-## Top bridge nodes
-- [[TestEarlyExitPricingConvention]] - degree 7, connects to 1 community
-- [[dot-_shifted_trade_and_analysis()]] - degree 6, connects to 1 community

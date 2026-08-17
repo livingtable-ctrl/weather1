@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Tracker Brier Score & Outcome Logging"
+community: "Community 27"
 location: "L181"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_Brier_Score__Outcome_Logging
+  - community/Community_27
 ---
 
 # sync_outcomes should record YES outcome for a finalized market.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_sync_outcomes_records_finalized()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_Brier_Score__Outcome_Logging
+#graphify/rationale #graphify/EXTRACTED #community/Community_27

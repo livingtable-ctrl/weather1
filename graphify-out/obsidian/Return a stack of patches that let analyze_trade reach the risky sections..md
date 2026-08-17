@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_silent_failures.py"
 type: "rationale"
-community: "Community 220"
+community: "Community 71"
 location: "L29"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_220
+  - community/Community_71
 ---
 
 # Return a stack of patches that let analyze_trade reach the risky sections.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_patch_analyze_prereqs()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_220
+#graphify/rationale #graphify/EXTRACTED #community/Community_71

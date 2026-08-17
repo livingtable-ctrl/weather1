@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/tweaks-panel.jsx"
 type: "code"
-community: "Community 48"
+community: "Community 50"
 location: "L500"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_48
+  - community/Community_50
 ---
 
 # __TwkCheck()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[tweaks-panel.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_48
+#graphify/code #graphify/EXTRACTED #community/Community_50

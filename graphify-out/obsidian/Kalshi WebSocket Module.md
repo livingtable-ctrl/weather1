@@ -1,16 +1,13 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 603"
+community: "Community 803"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_603
+  - community/Community_803
 ---
 
 # Kalshi WebSocket Module
 
-## Connections
-- [[ORDERBOOK_CACHE_PATH Constant]] - `references` [EXTRACTED]
-
-#graphify/code #graphify/EXTRACTED #community/Community_603
+#graphify/code #graphify/EXTRACTED #community/Community_803

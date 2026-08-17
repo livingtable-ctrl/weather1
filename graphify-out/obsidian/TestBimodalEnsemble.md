@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 423"
+community: "Community 378"
 location: "L1178"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_423
+  - community/Community_378
 ---
 
 # TestBimodalEnsemble
@@ -19,4 +19,4 @@ tags:
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[test_forecasting.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_423
+#graphify/code #graphify/EXTRACTED #community/Community_378

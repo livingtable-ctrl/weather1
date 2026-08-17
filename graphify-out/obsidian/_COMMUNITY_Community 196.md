@@ -1,32 +1,33 @@
 ---
 type: community
-cohesion: 0.22
-members: 17
+cohesion: 0.15
+members: 18
 ---
 
 # Community 196
 
-**Cohesion:** 0.22 - loosely connected
-**Members:** 17 nodes
+**Cohesion:** 0.15 - loosely connected
+**Members:** 18 nodes
 
 ## Members
-- [[dot-test_days_out_defaults_to_zero_when_absent()]] - code - tests/test_near_settlement_log.py
-- [[dot-test_dedup_within_same_hour_via_unique_index()]] - code - tests/test_near_settlement_log.py
-- [[dot-test_missing_side_and_entry_prob_reproduces_the_original_silent_failure()]] - code - tests/test_near_settlement_log.py
-- [[dot-test_multiple_trades_all_written()]] - code - tests/test_near_settlement_log.py
-- [[dot-test_writes_row_with_real_trade_field_names()]] - code - tests/test_near_settlement_log.py
-- [[Mutation-style regression a trade record shaped like the analysis dict the old…]] - rationale - tests/test_near_settlement_log.py
-- [[Older trade records (pre-days_out field) must still satisfy the NOT NULL…]] - rationale - tests/test_near_settlement_log.py
-- [[Path_9]] - code
-- [[Regression tests for cron._log_near_settlement_trades. Backstory (backlog.txt…]] - rationale - tests/test_near_settlement_log.py
-- [[Shape of a stored paper-trade record, per paper.place_paper_order.]] - rationale - tests/test_near_settlement_log.py
-- [[Shape of one check_expiring_trades() entry.]] - rationale - tests/test_near_settlement_log.py
-- [[TestLogNearSettlementTrades]] - code - tests/test_near_settlement_log.py
-- [[Write near-settlement snapshot rows for future calibration analysis. `near` is…]] - rationale - cron.py
-- [[_log_near_settlement_trades()]] - code - cron.py
-- [[_near()]] - code - tests/test_near_settlement_log.py
-- [[_real_trade()]] - code - tests/test_near_settlement_log.py
-- [[test_near_settlement_log.py]] - code - tests/test_near_settlement_log.py
+- [[dot-_open_trade()]] - code - tests/test_web_app.py
+- [[dot-test_falls_back_to_sse_cache_when_live_fetch_raises()]] - code - tests/test_web_app.py
+- [[dot-test_live_batch_fetch_is_used_when_it_succeeds()]] - code - tests/test_web_app.py
+- [[dot-test_live_quote_takes_precedence_over_a_different_sse_value_for_the_same_ticker()]] - code - tests/test_web_app.py
+- [[dot-test_malformed_live_price_degrades_to_no_quote_not_a_crash()]] - code - tests/test_web_app.py
+- [[dot-test_multiple_open_positions_batch_into_one_call()]] - code - tests/test_web_app.py
+- [[dot-test_no_open_positions_skips_the_live_call_entirely()]] - code - tests/test_web_app.py
+- [[dot-test_ticker_missing_from_live_batch_falls_back_to_sse_cache()]] - code - tests/test_web_app.py
+- [[A live market with an unparseable price field must not 500 the whole endpoint…]] - rationale - tests/test_web_app.py
+- [[A networkauth failure on the live batch call must not break apitrades --…]] - rationale - tests/test_web_app.py
+- [[A ticker requested in the batch but not returned (e.g. delisted) falls back…]] - rationale - tests/test_web_app.py
+- [[A ticker the SSE cache never saw (e.g. its edge already decayed below zero, so…]] - rationale - tests/test_web_app.py
+- [[L18015 apitrades' live-quote enrichment used to depend solely on the…]] - rationale - tests/test_web_app.py
+- [[N open positions - ONE get_markets(tickers=...) call, not N -- the entire…]] - rationale - tests/test_web_app.py
+- [[No open positions - no tickers to batch - get_markets is never even called…]] - rationale - tests/test_web_app.py
+- [[PositionsTab component]] - code - weather app site V_3 (3)/src/tabs/PositionsTab.jsx
+- [[TestApiTradesLiveQuoteEnrichment]] - code - tests/test_web_app.py
+- [[When BOTH sources have data for the same ticker (not just when one is empty),…]] - rationale - tests/test_web_app.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -36,9 +37,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 2 edges to [[_COMMUNITY_Community 358]]
+- 1 edge to [[_COMMUNITY_Community 115]]
 
 ## Top bridge nodes
-- [[_log_near_settlement_trades()]] - degree 10, connects to 1 community
-- [[test_near_settlement_log.py]] - degree 6, connects to 1 community
+- [[TestApiTradesLiveQuoteEnrichment]] - degree 13, connects to 2 communities

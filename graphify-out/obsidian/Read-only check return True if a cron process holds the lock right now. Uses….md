@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "rationale"
-community: "Community 566"
+community: "Community 0"
 location: "L298"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_566
+  - community/Community_0
 ---
 
 # Read-only check: return True if a cron process holds the lock right now. Uses…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_is_cron_running()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_566
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

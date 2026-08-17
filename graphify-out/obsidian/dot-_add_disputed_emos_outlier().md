@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker Disputed Outcome Restoration"
+community: "Community 28"
 location: "L5427"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Disputed_Outcome_Restoration
+  - community/Community_28
 ---
 
 # ._add_disputed_emos_outlier()
@@ -17,4 +17,4 @@ tags:
 - [[Log an EMOS-trainable disputed row needs ens_mean (predictions) and…]] - `rationale_for` [EXTRACTED]
 - [[TestDisputedOutcomeTracking]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Disputed_Outcome_Restoration
+#graphify/code #graphify/EXTRACTED #community/Community_28

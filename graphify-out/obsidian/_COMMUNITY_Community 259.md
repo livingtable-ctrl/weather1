@@ -10,20 +10,20 @@ members: 14
 **Members:** 14 nodes
 
 ## Members
-- [[dot-setUp()_11]] - code - tests/test_paper.py
-- [[dot-tearDown()_11]] - code - tests/test_paper.py
-- [[dot-test_auto_settle_settles_matching_trade()]] - code - tests/test_paper.py
-- [[dot-test_auto_settle_skips_no_outcome()]] - code - tests/test_paper.py
-- [[dot-test_get_outcome_for_ticker_returns_correct_value()]] - code - tests/test_paper.py
-- [[dot-test_get_outcome_for_ticker_returns_none_when_missing()]] - code - tests/test_paper.py
-- [[dot-test_no_side_loss_recorded_as_loss()]] - code - tests/test_paper.py
-- [[dot-test_no_side_win_recorded_as_win()]] - code - tests/test_paper.py
-- [[NO-side trade that loses (outcome=YES) must have zero payout.]] - rationale - tests/test_paper.py
-- [[NO-side trade that wins (outcome=NO) must be settled as a win, not a loss.]] - rationale - tests/test_paper.py
-- [[TestAutoSettlePaperTrades]] - code - tests/test_paper.py
-- [[Tests for auto-settling paper trades when tracker outcomes are recorded.]] - rationale - tests/test_paper.py
-- [[auto_settle_paper_trades() closes paper trades with recorded outcomes.]] - rationale - tests/test_paper.py
-- [[auto_settle_paper_trades() leaves trades open when no outcome recorded.]] - rationale - tests/test_paper.py
+- [[dot-test_bare_ticker_dict_hits_no_city_not_the_old_guard()_1]] - code - tests/test_snow_markets.py
+- [[dot-test_daily_high_ticker_unaffected()_1]] - code - tests/test_snow_markets.py
+- [[dot-test_days_out_at_snow_max_boundary_passes_days_out_gate()]] - code - tests/test_snow_markets.py
+- [[dot-test_days_out_beyond_snow_max_gates_out()]] - code - tests/test_snow_markets.py
+- [[dot-test_no_forecast_no_date_past_date_gates_never_fire_for_snow()]] - code - tests/test_snow_markets.py
+- [[dot-test_past_close_time_gates_out()_1]] - code - tests/test_snow_markets.py
+- [[dot-test_rain_ticker_unaffected()]] - code - tests/test_snow_markets.py
+- [[Confirms the Step 1 guard is actually gone, not just renamed -- a bare…]] - rationale - tests/test_snow_markets.py
+- [[Off-by-one check exactly SNOW_MAX_DAYS_OUT days out must NOT hit the days_out…]] - rationale - tests/test_snow_markets.py
+- [[Regression control an ordinary daily HIGH ticker with no forecast data must…_1]] - rationale - tests/test_snow_markets.py
+- [[Regression control the new snow gating must not collide with the existing…]] - rationale - tests/test_snow_markets.py
+- [[Snow Step 2 Step 1's unconditional return-None guard is gone. Snow tickers now…]] - rationale - tests/test_snow_markets.py
+- [[TestAnalyzeTradeMonthlySnowGating]] - code - tests/test_snow_markets.py
+- [[The daily-specific gates this ticker family is exempted from must genuinely…_1]] - rationale - tests/test_snow_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,8 +33,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 56]]
-- 1 edge to [[_COMMUNITY_Community 45]]
+- 4 edges to [[_COMMUNITY_Community 317]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestAutoSettlePaperTrades]] - degree 11, connects to 2 communities
+- [[TestAnalyzeTradeMonthlySnowGating]] - degree 9, connects to 1 community
+- [[dot-test_days_out_at_snow_max_boundary_passes_days_out_gate()]] - degree 3, connects to 1 community
+- [[dot-test_no_forecast_no_date_past_date_gates_never_fire_for_snow()]] - degree 3, connects to 1 community
+- [[dot-test_days_out_beyond_snow_max_gates_out()]] - degree 2, connects to 1 community
+- [[dot-test_past_close_time_gates_out()_1]] - degree 2, connects to 1 community

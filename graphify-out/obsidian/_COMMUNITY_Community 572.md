@@ -1,19 +1,21 @@
 ---
 type: community
-cohesion: 0.50
-members: 4
+cohesion: 0.33
+members: 6
 ---
 
 # Community 572
 
-**Cohesion:** 0.50 - moderately connected
-**Members:** 4 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_get_model_brier_scores_empty_when_no_data()]] - code - tests/test_forecasting.py
-- [[dot-test_get_model_brier_scores_excludes_models_with_few_rows()]] - code - tests/test_forecasting.py
-- [[dot-test_get_model_brier_scores_returns_dict()]] - code - tests/test_forecasting.py
-- [[TestModelBrierScores]] - code - tests/test_forecasting.py
+- [[dot-test_exposure_check_uses_current_balance_not_starting()]] - code - tests/test_phase2_batch_b.py
+- [[dot-test_exposure_consistency_with_get_ticker_exposure()]] - code - tests/test_phase2_batch_b.py
+- [[After balance grows, the ticker cap should be evaluated against current…]] - rationale - tests/test_phase2_batch_b.py
+- [[P2-4 place_paper_order must use _exposure_denom() for new-cost fraction.]] - rationale - tests/test_phase2_batch_b.py
+- [[TestTickerExposureDenominator]] - code - tests/test_phase2_batch_b.py
+- [[The denominator used in place_paper_order must match get_ticker_exposure.…]] - rationale - tests/test_phase2_batch_b.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -23,8 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestModelBrierScores]] - degree 5, connects to 2 communities
+- [[TestTickerExposureDenominator]] - degree 4, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Ensemble Weight Blending Tests"
+community: "Community 11"
 location: "L351"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_11
 ---
 
 # .test_28_to_32_range()
@@ -16,4 +16,4 @@ tags:
 - [[TestSnowLiquidRatio]] - `method` [EXTRACTED]
 - [[snow_liquid_ratio()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_11

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "rationale"
-community: "Community 115"
+community: "Community 239"
 location: "L797"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_115
+  - community/Community_239
 ---
 
 # backlog.txt Snow Step 2: the real bootstrap model, exercised end-to- end with…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestAnalyzeMonthlySnowTradeEndToEnd]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_115
+#graphify/rationale #graphify/EXTRACTED #community/Community_239

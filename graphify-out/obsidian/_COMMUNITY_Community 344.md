@@ -10,17 +10,17 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-test_cache_is_thread_safe()]] - code - tests/test_phase2_batch_c.py
-- [[dot-test_cache_refreshes_after_ttl()]] - code - tests/test_phase2_batch_c.py
-- [[dot-test_cache_served_within_ttl()]] - code - tests/test_phase2_batch_c.py
-- [[dot-test_different_target_months_do_not_clobber_each_other()]] - code - tests/test_phase2_batch_c.py
-- [[dot-test_ttl_constant_is_24_hours()]] - code - tests/test_phase2_batch_c.py
-- [[2026-07-19 fix get_indices() must key its cache by (year, month), not a single…]] - rationale - tests/test_phase2_batch_c.py
-- [[A second call within TTL must not hit the network.]] - rationale - tests/test_phase2_batch_c.py
-- [[After TTL expires, the next call must re-fetch.]] - rationale - tests/test_phase2_batch_c.py
-- [[Concurrent calls must not raise and must each return a dict.]] - rationale - tests/test_phase2_batch_c.py
-- [[P2-12 get_indices must refresh after TTL expires, not cache forever.]] - rationale - tests/test_phase2_batch_c.py
-- [[TestClimateIndicesTTL]] - code - tests/test_phase2_batch_c.py
+- [[dot-_make_client()_5]] - code - tests/test_kalshi_client.py
+- [[dot-test_cursor_passed_on_second_call()_1]] - code - tests/test_kalshi_client.py
+- [[dot-test_single_page_returns_all_markets()]] - code - tests/test_kalshi_client.py
+- [[dot-test_three_pages_returns_all()]] - code - tests/test_kalshi_client.py
+- [[dot-test_two_page_pagination_combines_results()_1]] - code - tests/test_kalshi_client.py
+- [[Cursor on first page → second call made, both pages combined.]] - rationale - tests/test_kalshi_client.py
+- [[No cursor in response → single call, all markets returned.]] - rationale - tests/test_kalshi_client.py
+- [[P1-19 get_markets must follow cursor pagination until exhausted.]] - rationale - tests/test_kalshi_client.py
+- [[TestGetMarketsPagination]] - code - tests/test_kalshi_client.py
+- [[The cursor value from page 1 is passed as a param on the page 2 call.]] - rationale - tests/test_kalshi_client.py
+- [[Three pages with cursors → all 3 pages combined.]] - rationale - tests/test_kalshi_client.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,11 +30,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Community 119]]
-- 1 edge to [[_COMMUNITY_Community 51]]
+- 4 edges to [[_COMMUNITY_Community 106]]
+- 1 edge to [[_COMMUNITY_Community 229]]
 
 ## Top bridge nodes
-- [[TestClimateIndicesTTL]] - degree 8, connects to 2 communities
-- [[dot-test_cache_refreshes_after_ttl()]] - degree 3, connects to 1 community
-- [[dot-test_cache_served_within_ttl()]] - degree 3, connects to 1 community
+- [[TestGetMarketsPagination]] - degree 7, connects to 1 community
+- [[dot-test_cursor_passed_on_second_call()_1]] - degree 3, connects to 1 community
+- [[dot-test_single_page_returns_all_markets()]] - degree 3, connects to 1 community
+- [[dot-test_three_pages_returns_all()]] - degree 3, connects to 1 community
+- [[dot-test_two_page_pagination_combines_results()_1]] - degree 3, connects to 1 community

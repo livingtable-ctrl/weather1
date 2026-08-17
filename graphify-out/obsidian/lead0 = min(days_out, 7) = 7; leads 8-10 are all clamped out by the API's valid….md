@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 289"
+community: "Community 293"
 location: "L6587"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_289
+  - community/Community_293
 ---
 
 # lead0 = min(days_out, 7) = 7; leads 8-10 are all clamped out by the API's valid…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_days_out_seven_has_only_one_valid_lead_returns_none()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_289
+#graphify/rationale #graphify/EXTRACTED #community/Community_293

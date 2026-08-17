@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 76"
+community: "Community 79"
 location: "L3212"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_76
+  - community/Community_79
 ---
 
 # TestGetQuintileBias
 
 ## Connections
-- [[dot-_seed()_3]] - `method` [EXTRACTED]
+- [[dot-_seed()_4]] - `method` [EXTRACTED]
 - [[dot-setUp()_40]] - `method` [EXTRACTED]
 - [[dot-tearDown()_39]] - `method` [EXTRACTED]
 - [[dot-test_city_isolation()_1]] - `method` [EXTRACTED]
@@ -24,4 +24,4 @@ tags:
 - [[E1 per-quintile bias correction.]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_76
+#graphify/code #graphify/EXTRACTED #community/Community_79

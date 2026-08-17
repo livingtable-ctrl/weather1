@@ -1,50 +1,49 @@
 ---
 type: community
-cohesion: 0.14
-members: 35
+cohesion: 0.08
+members: 34
 ---
 
 # Community 64
 
-**Cohesion:** 0.14 - loosely connected
-**Members:** 35 nodes
+**Cohesion:** 0.08 - loosely connected
+**Members:** 34 nodes
 
 ## Members
-- [[dot-test_declining_scan_still_registers_settlement_monitor()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[dot-test_fall_back_pre_transition_registration()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[dot-test_non_eastern_host_converts_correctly()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[dot-test_real_clock_produces_plausible_values()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[dot-test_registration_during_eastern_after_midnight_pacific_before()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[dot-test_spring_forward_pre_transition_registration()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[dot-test_stale_series_error_skips_only_settlement_task()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[dot-test_summer_eastern_host()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[dot-test_winter_eastern_host()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[A stand-in for the `datetime` class, injected via `monkeypatch.setattr(main,…]] - rationale - tests/test_cmd_schedule_settlement_monitor.py
-- [[Aug Eastern EDT(-4) through PacificArizona PDTMST(-7) -- a 3-hour spread,…]] - rationale - tests/test_cmd_schedule_settlement_monitor.py
-- [[Host machine's own clock is UTC, not Eastern -- ST must reflect Eastern's…]] - rationale - tests/test_cmd_schedule_settlement_monitor.py
-- [[If settlement_monitor's own module-level _CITY_SERIES_TICKER assertion fires (a…]] - rationale - tests/test_cmd_schedule_settlement_monitor.py
-- [[Jan Eastern EST(-5) through Pacific PST(-8)Arizona MST(-7, unchanged) --…]] - rationale - tests/test_cmd_schedule_settlement_monitor.py
-- [[Lightweight, non-flaky integration check against the real system clock (no time…]] - rationale - tests/test_cmd_schedule_settlement_monitor.py
-- [[Regression coverage for a real bug found in this implementation snapshotting…]] - rationale - tests/test_cmd_schedule_settlement_monitor.py
-- [[Regression coverage for a real bug hit while implementing this an earlier…]] - rationale - tests/test_cmd_schedule_settlement_monitor.py
-- [[Regression coverage answering n to the very first prompt (KalshiWeatherScan)…]] - rationale - tests/test_cmd_schedule_settlement_monitor.py
-- [[TestDstTransitionRegression]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[TestFirstPromptDeclineStillRegistersOthers]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[TestHappyPath]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[TestHostTimezoneIndependence]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[TestRealTimeIntegration]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[TestSettlementMonitorImportFailureIsolated]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[TestZoneDateCrossingRegression]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[ZoneInfo]] - code
-- [[_capturing_run()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[_extract()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[_make_fake_dt()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[_run_cmd_schedule_and_capture()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[_settlement_call()]] - code - tests/test_cmd_schedule_settlement_monitor.py
-- [[cmd_schedule() must register a settlement-monitor task that spans every tracked…]] - rationale - tests/test_cmd_schedule_settlement_monitor.py
-- [[datetime_4]] - code
-- [[subprocess.run replacement that records the command and reports success -- a…]] - rationale - tests/test_cmd_schedule_settlement_monitor.py
-- [[test_cmd_schedule_settlement_monitor.py]] - code - tests/test_cmd_schedule_settlement_monitor.py
+- [[dot-__init__()_9]] - code - circuit_breaker.py
+- [[dot-__init__()_10]] - code - circuit_breaker.py
+- [[dot-_load_cooldowns()]] - code - circuit_breaker.py
+- [[dot-_load_history()]] - code - circuit_breaker.py
+- [[dot-_save_cooldowns()]] - code - circuit_breaker.py
+- [[dot-_save_history()]] - code - circuit_breaker.py
+- [[dot-check()_1]] - code - circuit_breaker.py
+- [[dot-is_in_cooldown()]] - code - circuit_breaker.py
+- [[dot-setup_method()_36]] - code - tests/test_flash_crash_cb.py
+- [[dot-test_cooldown_expires()]] - code - tests/test_flash_crash_cb.py
+- [[dot-test_cooldown_prevents_trading()]] - code - tests/test_flash_crash_cb.py
+- [[dot-test_crash_on_large_move()]] - code - tests/test_flash_crash_cb.py
+- [[dot-test_different_tickers_independent()]] - code - tests/test_flash_crash_cb.py
+- [[dot-test_no_cooldown_on_clean_ticker()]] - code - tests/test_flash_crash_cb.py
+- [[dot-test_no_crash_on_first_observation()]] - code - tests/test_flash_crash_cb.py
+- [[dot-test_no_crash_on_small_move()]] - code - tests/test_flash_crash_cb.py
+- [[dot-test_rapid_successive_calls_skip_disk_save_but_still_detect_crash()]] - code - tests/test_flash_crash_cb.py
+- [[dot-test_save_resumes_once_interval_elapses()]] - code - tests/test_flash_crash_cb.py
+- [[dot-test_second_instance_does_not_false_positive_on_small_move()]] - code - tests/test_flash_crash_cb.py
+- [[dot-test_second_instance_on_same_path_detects_crash_from_first()]] - code - tests/test_flash_crash_cb.py
+- [[dot-test_upward_spike_also_triggers()]] - code - tests/test_flash_crash_cb.py
+- [[2026-07-12 check() now fires on every live WS tick (kalshi_ws.py's…]] - rationale - tests/test_flash_crash_cb.py
+- [[FlashCrashCB]] - code - circuit_breaker.py
+- [[Load persisted cooldowns from disk, discarding any that have already expired.]] - rationale - circuit_breaker.py
+- [[Load persisted price history from disk, discarding any observations already…]] - rationale - circuit_breaker.py
+- [[Per-market flash crash detection. Trips when price moves  threshold_pct within…]] - rationale - circuit_breaker.py
+- [[Persist current (non-expired) cooldowns to disk atomically.]] - rationale - circuit_breaker.py
+- [[Persist current (non-expired) price history to disk atomically.]] - rationale - circuit_breaker.py
+- [[Proves the actual point of persisting _history to disk two SEPARATE…]] - rationale - tests/test_flash_crash_cb.py
+- [[Record price and return True if this observation triggered a crash. Called from…]] - rationale - circuit_breaker.py
+- [[TestFlashCrashCB]] - code - tests/test_flash_crash_cb.py
+- [[TestFlashCrashCBHistoryPersistence]] - code - tests/test_flash_crash_cb.py
+- [[TestFlashCrashCBHistorySaveThrottle]] - code - tests/test_flash_crash_cb.py
+- [[flash_crash_cb (singleton)]] - code - circuit_breaker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -54,20 +53,16 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 9 edges to [[_COMMUNITY_Community 91]]
-- 6 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
-- 4 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 3 edges to [[_COMMUNITY_Community 206]]
-- 3 edges to [[_COMMUNITY_METAR Lock-In Confidence Tests]]
-- 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 3 edges to [[_COMMUNITY_Community 99]]
-- 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Community 112]]
-- 1 edge to [[_COMMUNITY_Community 122]]
-- 1 edge to [[_COMMUNITY_Community 211]]
-- 1 edge to [[_COMMUNITY_Community 349]]
-- 1 edge to [[_COMMUNITY_Community 394]]
+- 5 edges to [[_COMMUNITY_Community 4]]
+- 2 edges to [[_COMMUNITY_Community 8]]
+- 1 edge to [[_COMMUNITY_Community 30]]
+- 1 edge to [[_COMMUNITY_Community 76]]
+- 1 edge to [[_COMMUNITY_Community 170]]
+- 1 edge to [[_COMMUNITY_Community 7]]
 
 ## Top bridge nodes
-- [[ZoneInfo]] - degree 45, connects to 13 communities
-- [[test_cmd_schedule_settlement_monitor.py]] - degree 17, connects to 2 communities
+- [[FlashCrashCB]] - degree 23, connects to 4 communities
+- [[TestFlashCrashCB]] - degree 11, connects to 1 community
+- [[TestFlashCrashCBHistoryPersistence]] - degree 5, connects to 1 community
+- [[TestFlashCrashCBHistorySaveThrottle]] - degree 5, connects to 1 community
+- [[dot-_save_cooldowns()]] - degree 4, connects to 1 community

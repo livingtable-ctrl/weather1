@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_shadow_predictions.py"
 type: "code"
-community: "Shadow Predictions Auto-Place Trades"
+community: "Community 44"
 location: "L106"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Shadow_Predictions_Auto-Place_Trades
+  - community/Community_44
 ---
 
 # test_trading_paused_skips_invalid_opp()
@@ -18,4 +18,4 @@ tags:
 - [[_make_flat_opp()]] - `calls` [EXTRACTED]
 - [[test_shadow_predictions.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Shadow_Predictions_Auto-Place_Trades
+#graphify/code #graphify/EXTRACTED #community/Community_44

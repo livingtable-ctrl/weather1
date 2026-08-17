@@ -1,0 +1,17 @@
+---
+source_file: "docs/superpowers/plans/2026-04-14-p3-execution-stability.md"
+type: "document"
+community: "Community 37"
+location: "L938"
+tags:
+  - graphify/document
+  - graphify/EXTRACTED
+  - community/Community_37
+---
+
+# Production code — main.py
+
+## Connections
+- [[Task 46 (P3.5) — Queue Management  Backlog Overflow Prevention]] - `contains` [EXTRACTED]
+
+#graphify/document #graphify/EXTRACTED #community/Community_37

@@ -1,12 +1,12 @@
 ---
 source_file: "nws.py"
 type: "code"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 6"
 location: "L92"
 tags:
   - graphify/code
-  - graphify/INFERRED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - graphify/EXTRACTED
+  - community/Community_6
 ---
 
 # _station_str_to_key()
@@ -15,4 +15,4 @@ tags:
 - [[_load_station_cache()]] - `indirect_call` [INFERRED]
 - [[nws.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/code #graphify/EXTRACTED #community/Community_6

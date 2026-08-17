@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "rationale"
-community: "Community 225"
+community: "Community 229"
 location: "L9"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_225
+  - community/Community_229
 ---
 
 # V2 order-endpoint migration: Kalshi's legacy POST /portfolio/orders (side:…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestToV2SidePrice]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_225
+#graphify/rationale #graphify/EXTRACTED #community/Community_229

@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "code"
-community: "ML Bias Multiday-Predictions Filter"
-location: "L392"
+community: "Community 82"
+location: "L603"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_82
 ---
 
 # _load_temperature_scale()
@@ -16,4 +16,4 @@ tags:
 - [[apply_temperature_scaling()]] - `calls` [EXTRACTED]
 - [[ml_bias.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/code #graphify/EXTRACTED #community/Community_82

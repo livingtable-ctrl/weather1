@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 110"
+community: "Community 119"
 location: "L2978"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_110
+  - community/Community_119
 ---
 
 # .test_full_fill_exit_order_not_treated_as_new_open_position()
@@ -18,4 +18,4 @@ tags:
 - [[_exit_live_position()]] - `calls` [EXTRACTED]
 - [[_get_live_open_positions()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_110
+#graphify/code #graphify/EXTRACTED #community/Community_119

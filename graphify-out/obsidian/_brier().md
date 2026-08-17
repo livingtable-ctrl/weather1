@@ -1,12 +1,12 @@
 ---
 source_file: "calibration.py"
 type: "code"
-community: "Community 387"
+community: "Community 147"
 location: "L59"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_387
+  - community/Community_147
 ---
 
 # _brier()
@@ -18,8 +18,9 @@ tags:
 - [[dot-test_partial_none_skipped()]] - `calls` [EXTRACTED]
 - [[dot-test_valid_rows_computes_correctly()]] - `calls` [EXTRACTED]
 - [[Compute weighted Brier score. Rows are (e, c, n, s, weight). Skips None…]] - `rationale_for` [EXTRACTED]
-- [[Phase 3 Batch C Calibration Tests]] - `imports` [EXTRACTED]
 - [[_best_weights()]] - `calls` [EXTRACTED]
+- [[_dynamic_kelly_cap()]] - `calls` [INFERRED]
 - [[calibration.py]] - `contains` [EXTRACTED]
+- [[test_phase3_batch_c.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_387
+#graphify/code #graphify/EXTRACTED #community/Community_147

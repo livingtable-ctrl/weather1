@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Community 159"
+community: "Community 57"
 location: "L1847"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_159
+  - community/Community_57
 ---
 
 # NO trade: YES price rises sharply → NO value drops → stop fires.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_stop_triggers_for_no_trade()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_159
+#graphify/rationale #graphify/EXTRACTED #community/Community_57

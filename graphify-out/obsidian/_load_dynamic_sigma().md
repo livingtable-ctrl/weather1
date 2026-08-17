@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 26"
-location: "L2715"
+community: "Community 69"
+location: "L2817"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_26
+  - community/Community_69
 ---
 
 # _load_dynamic_sigma()
@@ -17,4 +17,4 @@ tags:
 - [[load_all_sigmas()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_26
+#graphify/code #graphify/EXTRACTED #community/Community_69

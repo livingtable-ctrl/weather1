@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "code"
-community: "Community 91"
+community: "Community 100"
 location: "L405"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_91
+  - community/Community_100
 ---
 
 # .test_returns_none_on_fetch_failure()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestFetchMetarDailyExtreme]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_91
+#graphify/code #graphify/EXTRACTED #community/Community_100

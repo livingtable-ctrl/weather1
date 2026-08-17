@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/design-canvas.jsx"
 type: "code"
-community: "Community 48"
+community: "Community 50"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_48
+  - community/Community_50
 ---
 
 # design-canvas.jsx
@@ -25,4 +25,4 @@ tags:
 - [[Kalshi Bot Dashboard Explorations Canvas]] - `references` [EXTRACTED]
 - [[dcExport()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_48
+#graphify/code #graphify/EXTRACTED #community/Community_50

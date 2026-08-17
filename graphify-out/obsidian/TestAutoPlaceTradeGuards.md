@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 693"
+community: "Community 186"
+location: "L124"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_186
 ---
 
 # TestAutoPlaceTradeGuards
@@ -18,8 +19,8 @@ tags:
 - [[dot-test_per_trade_overage_skips_trade()]] - `method` [EXTRACTED]
 - [[Guards in _auto_place_trades must block execution and return 0.]] - `rationale_for` [EXTRACTED]
 - [[analyze command]] - `conceptually_related_to` [INFERRED]
-- [[isolate_execution_log fixture]] - `shares_data_with` [INFERRED]
+- [[isolate_execution_log()]] - `shares_data_with` [INFERRED]
 - [[test_risk_control.py]] - `contains` [EXTRACTED]
 - [[watch command]] - `conceptually_related_to` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_186

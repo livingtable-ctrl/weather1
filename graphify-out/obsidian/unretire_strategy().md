@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Community 384"
-location: "L6240"
+community: "Community 269"
+location: "L6295"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_384
+  - community/Community_269
 ---
 
 # unretire_strategy()
@@ -16,7 +16,9 @@ tags:
 - [[_get_strategy_pins()]] - `calls` [EXTRACTED]
 - [[_save_retired_strategies()]] - `calls` [EXTRACTED]
 - [[_save_strategy_pins()]] - `calls` [EXTRACTED]
+- [[cmd_unretire_strategy()]] - `calls` [EXTRACTED]
 - [[get_retired_strategies()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_384
+#graphify/code #graphify/EXTRACTED #community/Community_269

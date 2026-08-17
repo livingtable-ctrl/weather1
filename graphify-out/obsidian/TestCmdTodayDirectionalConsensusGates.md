@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 38"
+community: "Community 36"
 location: "L895"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_38
+  - community/Community_36
 ---
 
 # TestCmdTodayDirectionalConsensusGates
@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[dot-_analysis()_3]] - `method` [EXTRACTED]
 - [[dot-_market()_4]] - `method` [EXTRACTED]
-- [[dot-_run()_3]] - `method` [EXTRACTED]
+- [[dot-_run()_4]] - `method` [EXTRACTED]
 - [[dot-test_allows_market_within_both_thresholds()_1]] - `method` [EXTRACTED]
 - [[dot-test_skips_when_divergence_ratio_exceeded()_1]] - `method` [EXTRACTED]
 - [[dot-test_skips_when_market_gives_our_side_below_min_prob()_1]] - `method` [EXTRACTED]
@@ -23,4 +23,4 @@ tags:
 - [[Violation]] - `uses` [INFERRED]
 - [[test_p1_remaining.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_38
+#graphify/code #graphify/EXTRACTED #community/Community_36

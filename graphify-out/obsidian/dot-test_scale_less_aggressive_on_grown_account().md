@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_i.py"
 type: "code"
-community: "Community 481"
+community: "Community 519"
 location: "L264"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_481
+  - community/Community_519
 ---
 
 # .test_scale_less_aggressive_on_grown_account()
@@ -16,4 +16,4 @@ tags:
 - [[With $5000 balance, $50 position is smaller fraction → less corr penalty.]] - `rationale_for` [EXTRACTED]
 - [[_open_trade()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_481
+#graphify/code #graphify/EXTRACTED #community/Community_519

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_a.py"
 type: "code"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 126"
 location: "L125"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_126
 ---
 
 # .test_default_smaller_than_zero_fee()
@@ -16,4 +16,4 @@ tags:
 - [[TestKellyFractionFeeDefault]] - `method` [EXTRACTED]
 - [[kelly_fraction()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_126

@@ -1,35 +1,36 @@
 ---
 type: community
-cohesion: 0.13
-members: 20
+cohesion: 0.12
+members: 21
 ---
 
 # Community 157
 
-**Cohesion:** 0.13 - loosely connected
-**Members:** 20 nodes
+**Cohesion:** 0.12 - loosely connected
+**Members:** 21 nodes
 
 ## Members
-- [[dot-setup_method()_10]] - code - tests/test_live_execution.py
-- [[dot-setup_method()_11]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_5]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_6]] - code - tests/test_live_execution.py
-- [[dot-test_get_order_failure_falls_back_to_plain_canceled()]] - code - tests/test_live_execution.py
-- [[dot-test_partial_fill_cancel_promotes_to_filled()]] - code - tests/test_live_execution.py
-- [[dot-test_raw_api_status_preserved_when_still_resting()]] - code - tests/test_live_execution.py
-- [[dot-test_returns_canceled_zero_on_clean_cancel()]] - code - tests/test_live_execution.py
-- [[dot-test_returns_filled_with_count_on_partial_fill()]] - code - tests/test_live_execution.py
-- [[dot-test_returns_sentinel_negative_one_when_verification_query_fails()]] - code - tests/test_live_execution.py
-- [[dot-test_zero_fill_cancel_stays_canceled()]] - code - tests/test_live_execution.py
-- [[A cancel that hasn't propagated yet (Kalshi still reports resting) must…]] - rationale - tests/test_live_execution.py
-- [[F9 followup _finalize_cancel() is the shared post-cancel_order() fill-check…]] - rationale - tests/test_live_execution.py
-- [[Fill state genuinely unknown here -- callers must fail closed (never place a…]] - rationale - tests/test_live_execution.py
-- [[Record the outcome of a cancel_order() call this bot just initiated. F9…]] - rationale - order_executor.py
-- [[TestFinalizeCancel]] - code - tests/test_live_execution.py
-- [[TestFinalizeCancelReturnValue]] - code - tests/test_live_execution.py
-- [[The cancel itself already happened -- a failed follow-up query must not leave…]] - rationale - tests/test_live_execution.py
-- [[_finalize_cancel now returns (status, fill_count, raw_api_status) so…]] - rationale - tests/test_live_execution.py
-- [[_finalize_cancel()]] - code - order_executor.py
+- [[56 - get_calibration_by_city() must accept condition_type filter.]] - rationale - tests/test_tracker.py
+- [[dot-_log()]] - code - tests/test_tracker.py
+- [[dot-_log()_1]] - code - tests/test_tracker.py
+- [[dot-setUp()_5]] - code - tests/test_tracker.py
+- [[dot-setUp()_6]] - code - tests/test_tracker.py
+- [[dot-tearDown()_5]] - code - tests/test_tracker.py
+- [[dot-tearDown()_6]] - code - tests/test_tracker.py
+- [[dot-test_grpb_calib_city_empty_returns_empty_dict()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_calib_city_filter_above_only()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_calib_city_filter_changes_brier()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_calib_city_multi_city()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_calib_city_no_filter_includes_all_types()]] - code - tests/test_tracker.py
+- [[dot-test_sync_outcomes_does_not_raise_on_offset_close_time()]] - code - tests/test_tracker.py
+- [[dot-test_sync_outcomes_does_not_raise_on_z_suffix_close_time()]] - code - tests/test_tracker.py
+- [[dot-test_sync_outcomes_skips_market_closed_less_than_1h_ago()]] - code - tests/test_tracker.py
+- [[Markets finalized less than 1 hour ago must be skipped (Kalshi may revise).]] - rationale - tests/test_tracker.py
+- [[P0-13 — sync_outcomes must not crash on awarenaive datetime subtraction.]] - rationale - tests/test_tracker.py
+- [[TestCalibrationByCityConditionTypeGrpB]] - code - tests/test_tracker.py
+- [[TestSyncOutcomesDatetimeFix]] - code - tests/test_tracker.py
+- [[close_time with +0000 offset must not raise TypeError.]] - rationale - tests/test_tracker.py
+- [[close_time with Z suffix must not raise TypeError (aware vs naive mismatch).]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -39,15 +40,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 45]]
-- 3 edges to [[_COMMUNITY_Community 111]]
-- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 1 edge to [[_COMMUNITY_Community 300]]
-- 1 edge to [[_COMMUNITY_Community 67]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 2 edges to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[_finalize_cancel()]] - degree 16, connects to 6 communities
-- [[TestFinalizeCancelReturnValue]] - degree 10, connects to 2 communities
-- [[TestFinalizeCancel]] - degree 9, connects to 2 communities
+- [[TestCalibrationByCityConditionTypeGrpB]] - degree 10, connects to 1 community
+- [[TestSyncOutcomesDatetimeFix]] - degree 8, connects to 1 community

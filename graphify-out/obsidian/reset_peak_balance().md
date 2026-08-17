@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 693"
+community: "Community 1"
 location: "L668"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_1
 ---
 
 # reset_peak_balance()
@@ -14,10 +14,10 @@ tags:
 ## Connections
 - [[Reset the high-water mark to the current settled balance. Use after a rough…]] - `rationale_for` [EXTRACTED]
 - [[ValueError]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
-- [[_save()_1]] - `calls` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
+- [[_save()]] - `calls` [EXTRACTED]
 - [[cmd_admin()]] - `calls` [EXTRACTED]
-- [[main.py_1]] - `imports` [EXTRACTED]
-- [[paper.py_1]] - `contains` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
+- [[paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_1

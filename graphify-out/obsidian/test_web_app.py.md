@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "code"
-community: "Community 693"
+community: "Community 115"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_115
 ---
 
 # test_web_app.py
@@ -18,12 +18,10 @@ tags:
 - [[TestKillSwitchAPI]] - `contains` [EXTRACTED]
 - [[TestPaperOrderCityDateServerDerived]] - `contains` [EXTRACTED]
 - [[Tests for web_app.py dashboard API endpoints.]] - `rationale_for` [EXTRACTED]
-- [[_build_app()]] - `imports` [EXTRACTED]
-- [[_build_stream_data()]] - `imports` [EXTRACTED]
 - [[_force_demo_env()_2]] - `contains` [EXTRACTED]
-- [[_get_live_market_snapshot()]] - `imports` [EXTRACTED]
 - [[client()]] - `contains` [EXTRACTED]
 - [[client_and_kalshi_mock()]] - `contains` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[test_analytics_route_returns_200_with_title()]] - `contains` [EXTRACTED]
 - [[test_api_brier_history_returns_list()]] - `contains` [EXTRACTED]
 - [[test_api_config_includes_both_fee_rates()]] - `contains` [EXTRACTED]
@@ -49,5 +47,7 @@ tags:
 - [[test_status_includes_brier_drift()]] - `contains` [EXTRACTED]
 - [[test_stream_markets_content_type()]] - `contains` [EXTRACTED]
 - [[test_trades_route_returns_200_with_title()]] - `contains` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
+- [[utils.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_115

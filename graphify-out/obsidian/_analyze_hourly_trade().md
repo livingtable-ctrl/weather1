@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "ML Bias Correction & Audit Plans"
-location: "L9853"
+community: "Community 5"
+location: "L9955"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_5
 ---
 
 # _analyze_hourly_trade()
@@ -22,7 +22,7 @@ tags:
 - [[_price_and_size()]] - `calls` [EXTRACTED]
 - [[_time_risk()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[date_2]] - `references` [EXTRACTED]
+- [[date_9]] - `references` [EXTRACTED]
 - [[edge_confidence()]] - `calls` [EXTRACTED]
 - [[ensemble_stats()]] - `calls` [EXTRACTED]
 - [[get_ensemble_temps()]] - `calls` [EXTRACTED]
@@ -30,4 +30,4 @@ tags:
 - [[prob_threshold()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/code #graphify/EXTRACTED #community/Community_5

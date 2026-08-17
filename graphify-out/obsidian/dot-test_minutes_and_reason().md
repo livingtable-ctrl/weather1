@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 693"
+community: "Community 437"
 location: "L564"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_437
 ---
 
 # .test_minutes_and_reason()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestParseAccuracyOverrideArgs]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_437

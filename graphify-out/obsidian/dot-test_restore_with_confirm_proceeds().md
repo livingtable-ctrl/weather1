@@ -1,17 +1,18 @@
 ---
 source_file: "tests/test_phase2_batch_g.py"
 type: "code"
-community: "Community 132"
+community: "Community 518"
 location: "L225"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_132
+  - community/Community_518
 ---
 
 # .test_restore_with_confirm_proceeds()
 
 ## Connections
 - [[TestRestoreDataConfirm]] - `method` [EXTRACTED]
+- [[cloud_backup()]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_132
+#graphify/code #graphify/EXTRACTED #community/Community_518

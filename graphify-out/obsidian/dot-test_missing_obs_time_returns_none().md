@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_j.py"
 type: "code"
-community: "Community 236"
+community: "Community 237"
 location: "L68"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_236
+  - community/Community_237
 ---
 
 # .test_missing_obs_time_returns_none()
@@ -16,4 +16,4 @@ tags:
 - [[TestMetarFetchNoFabricatedTimestamp]] - `method` [EXTRACTED]
 - [[When obsTime key is absent, fetch_metar must return None.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_236
+#graphify/code #graphify/EXTRACTED #community/Community_237

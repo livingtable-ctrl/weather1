@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p0_16_cron_endpoint.py"
 type: "rationale"
-community: "Community 341"
+community: "Community 347"
 location: "L47"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_341
+  - community/Community_347
 ---
 
 # If _is_cron_running() returns False and no rate limit, cron spawns.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_starts_successfully_when_no_cron_running()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_341
+#graphify/rationale #graphify/EXTRACTED #community/Community_347

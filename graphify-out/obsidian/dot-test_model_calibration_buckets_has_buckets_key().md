@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_analytics.py"
 type: "code"
-community: "Community 71"
+community: "Community 534"
 location: "L40"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_71
+  - community/Community_534
 ---
 
 # .test_model_calibration_buckets_has_buckets_key()
@@ -15,4 +15,4 @@ tags:
 - [[TestAnalyticsApiShape]] - `method` [EXTRACTED]
 - [[api_analytics must return model_calibration_buckets with a .buckets array whose…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_71
+#graphify/code #graphify/EXTRACTED #community/Community_534

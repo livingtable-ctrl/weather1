@@ -1,54 +1,55 @@
 ---
 type: community
-cohesion: 0.06
-members: 39
+cohesion: 0.05
+members: 40
 ---
 
 # Community 52
 
-**Cohesion:** 0.06 - loosely connected
-**Members:** 39 nodes
+**Cohesion:** 0.05 - loosely connected
+**Members:** 40 nodes
 
 ## Members
-- [[dot-_enriched()_6]] - code - tests/test_signal_quality.py
-- [[dot-_enriched()_7]] - code - tests/test_signal_quality.py
-- [[dot-setup_method()_35]] - code - tests/test_signal_quality.py
-- [[dot-setup_method()_36]] - code - tests/test_signal_quality.py
-- [[dot-teardown_method()_27]] - code - tests/test_signal_quality.py
-- [[dot-teardown_method()_28]] - code - tests/test_signal_quality.py
-- [[dot-test_bias_correction_condition_type_param_accepted()]] - code - tests/test_signal_quality.py
-- [[dot-test_condition_type_scale_in_kelly()]] - code - tests/test_signal_quality.py
-- [[dot-test_get_member_accuracy_respects_days_back()]] - code - tests/test_signal_quality.py
-- [[dot-test_monthly_rain_and_snow_condition_confidence()]] - code - tests/test_signal_quality.py
-- [[dot-test_narrow_spread_allows_signal()]] - code - tests/test_signal_quality.py
-- [[dot-test_passes_sufficient_volume()]] - code - tests/test_signal_quality.py
-- [[dot-test_skips_low_volume_market()]] - code - tests/test_signal_quality.py
-- [[dot-test_strong_edge_above_med_edge()]] - code - tests/test_signal_quality.py
-- [[dot-test_strong_edge_default_is_0_30()]] - code - tests/test_signal_quality.py
-- [[dot-test_wide_spread_suppresses_signal()]] - code - tests/test_signal_quality.py
-- [[Old scores (90 days ago) are excluded; recent scores (10 days ago) are included.]] - rationale - tests/test_signal_quality.py
-- [[Opus-review-caught gap _CONDITION_CONFIDENCEsnow_month_total had zero test…]] - rationale - tests/test_signal_quality.py
-- [[Query the last `window` settled predictions and count wins. A win is (our_prob…]] - rationale - tracker.py
-- [[Run SPRT on the last `window` settled trades. Sequential Probability Ratio Test…]] - rationale - tracker.py
-- [[Softmax-normalised inverse-MAE weights for each ensemble model. Uses…]] - rationale - tracker.py
-- [[TestAnalyzeTradeConditionType]] - code - tests/test_signal_quality.py
-- [[TestGetMemberAccuracyDaysBack]] - code - tests/test_signal_quality.py
-- [[TestMaxModelSpreadGate]] - code - tests/test_signal_quality.py
-- [[TestMinSignalVolume]] - code - tests/test_signal_quality.py
-- [[TestStrongEdgeThreshold]] - code - tests/test_signal_quality.py
-- [[Tests for Group 2 signal quality improvements.]] - rationale - tests/test_signal_quality.py
-- [[_CONDITION_CONFIDENCE values correctly rank precip_snow  precip_any  above.]] - rationale - tests/test_signal_quality.py
-- [[_get_recent_win_loss()]] - code - tracker.py
-- [[analyze_trade() returns None when model spread exceeds MAX_MODEL_SPREAD_F.]] - rationale - tests/test_signal_quality.py
-- [[analyze_trade() skips markets below MIN_SIGNAL_VOLUME.]] - rationale - tests/test_signal_quality.py
-- [[apply_ml_prob_correction Function]] - code - ml_bias.py
-- [[get_bias accepts condition_type kwarg — confirms the interface exists for…]] - rationale - tests/test_signal_quality.py
-- [[get_model_weights()]] - code - tracker.py
-- [[kalshi_client.py_1]] - code - kalshi_client.py
-- [[sprt_model_health()]] - code - tracker.py
-- [[test_signal_quality.py]] - code - tests/test_signal_quality.py
-- [[tracker.py_2]] - code - tracker.py
-- [[train_bias_model Function]] - code - ml_bias.py
+- [[2026-04-14-p8-monitoring]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[26.1 Add `KILL_SWITCH_PATH` constant to `main.py`]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[26.2 Add guard in `_auto_place_trades`]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[26.3 Add CLI commands `cmd_halt` and `cmd_resume`]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[26.4 Add API endpoints to `web_app.py`]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[26.5 Write tests]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[26.6 Verify Task 26]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[26.7 Commit Task 26]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[27.1 Add `PAUSE_TRADING_PATH` to `main.py`]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[27.2 Add guard in `_auto_place_trades`]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[27.3 Add CLI commands `cmd_pause` and `cmd_unpause`]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[27.4 Add API endpoints to `web_app.py`]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[27.5 Write tests]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[27.6 Verify Task 27]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[27.7 Commit Task 27]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[28.1 Instrument `is_paused_drawdown` in `paper.py`]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[28.2 Write tests]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[28.3 Verify Task 28]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[28.4 Full regression check]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[28.5 Commit Task 28]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[40.1 Add `get_edge_accuracy` to `tracker.py`]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[40.2 Add `get_trade_frequency` to `execution_log.py`]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[40.3 Expose via `apidashboard-metrics` endpoint in `web_app.py`]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[40.4 Write tests]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[40.5 Verify Task 40]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[40.6 Full regression check]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[40.7 Commit Task 40]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[Expected output — Task 48]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[P8 Monitoring & Control System — Implementation Plan]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[Production code — main.py_1]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[Run command — Task 48]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[Summary of changes_2]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[Task 26 (P8.3) — Hard kill switch]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[Task 27 (P8.4) — Soft trading pause]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[Task 28 (P8.2) — Drawdown alert integration]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[Task 40 (P8.1) — Dashboard metrics completeness]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[Task 48 (P8.4) — Time-Limited Manual Overrides]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[Test code — Task 48]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[What is being added_3]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
+- [[Wiring in `_auto_place_trades` (main.py)_1]] - document - docs/superpowers/plans/2026-04-14-p8-monitoring.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -56,32 +57,3 @@ members: 39
 TABLE source_file, type FROM #community/Community_52
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 8 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 4 edges to [[_COMMUNITY_Community 36]]
-- 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 3 edges to [[_COMMUNITY_Community 40]]
-- 2 edges to [[_COMMUNITY_Community 127]]
-- 2 edges to [[_COMMUNITY_Community 190]]
-- 2 edges to [[_COMMUNITY_Community 328]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
-- 2 edges to [[_COMMUNITY_Community 71]]
-- 2 edges to [[_COMMUNITY_Community 74]]
-- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 1 edge to [[_COMMUNITY_Community 184]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 380]]
-- 1 edge to [[_COMMUNITY_Community 53]]
-- 1 edge to [[_COMMUNITY_Community 220]]
-- 1 edge to [[_COMMUNITY_Community 228]]
-- 1 edge to [[_COMMUNITY_Community 92]]
-- 1 edge to [[_COMMUNITY_Community 353]]
-
-## Top bridge nodes
-- [[tracker.py_2]] - degree 18, connects to 10 communities
-- [[test_signal_quality.py]] - degree 20, connects to 9 communities
-- [[get_model_weights()]] - degree 9, connects to 4 communities
-- [[kalshi_client.py_1]] - degree 5, connects to 4 communities
-- [[_get_recent_win_loss()]] - degree 5, connects to 2 communities

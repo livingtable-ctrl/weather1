@@ -1,26 +1,26 @@
 ---
 type: community
-cohesion: 0.22
+cohesion: 0.18
 members: 11
 ---
 
 # Community 346
 
-**Cohesion:** 0.22 - loosely connected
+**Cohesion:** 0.18 - loosely connected
 **Members:** 11 nodes
 
 ## Members
-- [[dot-_make_enriched()_3]] - code - tests/test_trade_improvements.py
-- [[dot-test_cron_imports_min_prob_edge()]] - code - tests/test_trade_improvements.py
-- [[dot-test_low_prob_edge_signal_skipped()]] - code - tests/test_trade_improvements.py
-- [[dot-test_min_prob_edge_constant_exists()]] - code - tests/test_trade_improvements.py
-- [[dot-test_sufficient_prob_edge_signal_passes()]] - code - tests/test_trade_improvements.py
-- [[MIN_PROB_EDGE constant must be defined in utils.py with value 0.08.]] - rationale - tests/test_trade_improvements.py
-- [[Signal with 12pp probability edge must NOT be skipped by the gate.]] - rationale - tests/test_trade_improvements.py
-- [[Signal with only 5pp probability edge must be skipped by the gate.]] - rationale - tests/test_trade_improvements.py
-- [[TestMinProbEdgeGate]] - code - tests/test_trade_improvements.py
-- [[The prob-edge gate (MIN_PROB_EDGE) must be wired into the module that actually…]] - rationale - tests/test_trade_improvements.py
-- [[cron.py must skip signals where probability edge  MIN_PROB_EDGE (0.08).]] - rationale - tests/test_trade_improvements.py
+- [[dot-setup_method()_23]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_15]] - code - tests/test_live_execution.py
+- [[dot-test_canceled_order_resolves_to_canceled()]] - code - tests/test_live_execution.py
+- [[dot-test_executed_order_resolves_to_internal_filled_status()]] - code - tests/test_live_execution.py
+- [[dot-test_partial_fill_then_cancel_resolves_to_filled()]] - code - tests/test_live_execution.py
+- [[dot-test_resting_order_resolves_to_pending()]] - code - tests/test_live_execution.py
+- [[2026-07-09 Kalshi's real order-status enum is restingcanceledexecuted --…]] - rationale - tests/test_live_execution.py
+- [[A pending row whose order actually executed must resolve to this bot's internal…]] - rationale - tests/test_live_execution.py
+- [[A resting order must land on status='pending' — the only status every…]] - rationale - tests/test_live_execution.py
+- [[F9 Kalshi has no distinct 'partially filled' status -- an order that fills…]] - rationale - tests/test_live_execution.py
+- [[TestRecoverPendingOrders]] - code - tests/test_live_execution.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,7 +30,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 5 edges to [[_COMMUNITY_Community 3]]
+- 3 edges to [[_COMMUNITY_Community 12]]
 
 ## Top bridge nodes
-- [[TestMinProbEdgeGate]] - degree 7, connects to 1 community
+- [[TestRecoverPendingOrders]] - degree 11, connects to 2 communities
+- [[dot-test_executed_order_resolves_to_internal_filled_status()]] - degree 3, connects to 1 community
+- [[dot-test_partial_fill_then_cancel_resolves_to_filled()]] - degree 3, connects to 1 community
+- [[dot-test_resting_order_resolves_to_pending()]] - degree 3, connects to 1 community
+- [[dot-test_canceled_order_resolves_to_canceled()]] - degree 2, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "hurricane_climatology.py"
 type: "code"
-community: "Community 55"
+community: "Community 43"
 location: "L778"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_55
+  - community/Community_43
 ---
 
 # bootstrap_ci_next_event()
@@ -15,4 +15,4 @@ tags:
 - [[Mirrors bootstrap_ci's exact resampling shape n resamples-with- replacement of…]] - `rationale_for` [EXTRACTED]
 - [[hurricane_climatology.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_55
+#graphify/code #graphify/EXTRACTED #community/Community_43

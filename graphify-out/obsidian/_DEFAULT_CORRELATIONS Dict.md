@@ -1,11 +1,11 @@
 ---
 source_file: "monte_carlo.py"
 type: "code"
-community: "Community 40"
+community: "Community 71"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_40
+  - community/Community_71
 ---
 
 # _DEFAULT_CORRELATIONS Dict
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[Paper Trading Ledger Module]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_40
+#graphify/code #graphify/EXTRACTED #community/Community_71

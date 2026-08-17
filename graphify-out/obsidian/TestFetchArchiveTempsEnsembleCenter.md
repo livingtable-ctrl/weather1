@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backtest_stratified.py"
 type: "code"
-community: "Community 420"
+community: "Community 457"
 location: "L6"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_420
+  - community/Community_457
 ---
 
 # TestFetchArchiveTempsEnsembleCenter
@@ -18,4 +18,4 @@ tags:
 - [[L6-A synthetic ensemble must be centred on a forecast, not the actual outcome.]] - `rationale_for` [EXTRACTED]
 - [[test_backtest_stratified.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_420
+#graphify/code #graphify/EXTRACTED #community/Community_457

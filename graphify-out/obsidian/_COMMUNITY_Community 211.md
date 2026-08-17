@@ -1,31 +1,32 @@
 ---
 type: community
-cohesion: 0.16
-members: 16
+cohesion: 0.12
+members: 17
 ---
 
 # Community 211
 
-**Cohesion:** 0.16 - loosely connected
-**Members:** 16 nodes
+**Cohesion:** 0.12 - loosely connected
+**Members:** 17 nodes
 
 ## Members
-- [[Between-Market METAR Lock-in Daily-Extreme Bug]] - document - docs/grade_audit/modules/weather_markets.md
-- [[Extract a plausible temp_f from a raw METAR obs dict (prefers tmpf °F, else…]] - rationale - metar.py
-- [[Fetch every METAR temp_f reading for `station` that falls on the LOCAL calendar…]] - rationale - metar.py
-- [[METAR same-day lock-in strategy. After ~2 PM local time, if the daily highlow…]] - rationale - metar.py
-- [[Parse a raw METAR obs dict's obsTime (Unix epoch intfloat, or an ISO-8601…]] - rationale - metar.py
-- [[Systemic DEBUG-vs-WARNING Gap on IO Failures (_load_obs_save_obs)]] - document - docs/grade_audit/outputs/metar.py.md
-- [[_extract_obs_time()]] - code - metar.py
-- [[_extract_temp_f()]] - code - metar.py
-- [[_fetch_daily_temps_f()]] - code - metar.py
-- [[check_metar_lockout() Silent ZoneInfo Fallback (810)]] - document - docs/grade_audit/outputs/metar.py.md
-- [[date_1]] - code
-- [[datetime_1]] - code
-- [[get_station_bias() Unconditional NotImplementedError Stub (710)]] - document - docs/grade_audit/outputs/metar.py.md
-- [[metar.py]] - code - metar.py
-- [[metar.py File Grade median 810 T1, systemic DEBUG gap in T2]] - document - docs/grade_audit/outputs/metar.py.md
-- [[metar.py Grade Audit]] - document - docs/grade_audit/outputs/metar.py.md
+- [[dot-test_bias_table_exists()]] - code - tests/test_station_bias.py
+- [[dot-test_denver_bias_negative()]] - code - tests/test_station_bias.py
+- [[dot-test_las_vegas_bias_matches_phoenix()]] - code - tests/test_station_bias.py
+- [[dot-test_los_angeles_no_bias()]] - code - tests/test_station_bias.py
+- [[dot-test_miami_bias_negative()]] - code - tests/test_station_bias.py
+- [[dot-test_new_orleans_bias_matches_houston()]] - code - tests/test_station_bias.py
+- [[dot-test_nyc_bias_negative()]] - code - tests/test_station_bias.py
+- [[dot-test_unknown_city_no_change()]] - code - tests/test_station_bias.py
+- [[Denver has a -2°F bias correction.]] - rationale - tests/test_station_bias.py
+- [[LA has no known systematic bias.]] - rationale - tests/test_station_bias.py
+- [[Las Vegas has no settled-observation history yet — uses Phoenix's desert-…]] - rationale - tests/test_station_bias.py
+- [[Miami has a -3°F bias correction.]] - rationale - tests/test_station_bias.py
+- [[NYC has a -1°F bias correction (subtract from model).]] - rationale - tests/test_station_bias.py
+- [[New Orleans has no settled-observation history yet — uses Houston's Gulf humid-…]] - rationale - tests/test_station_bias.py
+- [[TestStationBiasTables]] - code - tests/test_station_bias.py
+- [[Unknown cities have no bias table entry -- callers fall back to 0.0.]] - rationale - tests/test_station_bias.py
+- [[_STATION_BIAS (legacy alias for _STATION_BIAS_HIGH) is importable.]] - rationale - tests/test_station_bias.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -35,19 +36,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 8 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
-- 1 edge to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Community 64]]
-- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
-- 1 edge to [[_COMMUNITY_Community 182]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 99]]
-- 1 edge to [[_COMMUNITY_Community 73]]
-- 1 edge to [[_COMMUNITY_Community 26]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[metar.py]] - degree 22, connects to 7 communities
-- [[_fetch_daily_temps_f()]] - degree 7, connects to 2 communities
-- [[datetime_1]] - degree 3, connects to 1 community
-- [[date_1]] - degree 2, connects to 1 community
-- [[Between-Market METAR Lock-in Daily-Extreme Bug]] - degree 2, connects to 1 community
+- [[TestStationBiasTables]] - degree 9, connects to 1 community

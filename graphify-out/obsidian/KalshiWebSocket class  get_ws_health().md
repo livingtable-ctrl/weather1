@@ -1,11 +1,11 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 130"
+community: "Community 30"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_130
+  - community/Community_30
 ---
 
 # KalshiWebSocket class / get_ws_health()
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[test_kalshi_ws.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_130
+#graphify/code #graphify/EXTRACTED #community/Community_30

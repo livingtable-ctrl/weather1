@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_c.py"
 type: "rationale"
-community: "Community 406"
+community: "Community 266"
 location: "L278"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_406
+  - community/Community_266
 ---
 
 # P3-16: calibrate_condition_weights accepts cutoff_date; no look-ahead bias.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestTemporalIsolationCondition]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_406
+#graphify/rationale #graphify/EXTRACTED #community/Community_266

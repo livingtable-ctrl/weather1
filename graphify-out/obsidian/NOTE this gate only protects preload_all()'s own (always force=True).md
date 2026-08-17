@@ -1,12 +1,12 @@
 ---
 source_file: "climatology.py"
 type: "rationale"
-community: "Climatology & Climate Index Fetching"
+community: "Community 102"
 location: "L519"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_102
 ---
 
 # # NOTE: this gate only protects preload_all()'s own (always force=True)
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[climatology.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/rationale #graphify/EXTRACTED #community/Community_102

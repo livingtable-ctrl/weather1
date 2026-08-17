@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 264"
+community: "Community 260"
 location: "L1462"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_264
+  - community/Community_260
 ---
 
 # .test_season_filter_winter_vs_summer_different_mae()
@@ -16,4 +16,4 @@ tags:
 - [[TestEnsembleMemberAccuracy]] - `method` [EXTRACTED]
 - [[Winter and summer MAEs differ for the same model.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_264
+#graphify/code #graphify/EXTRACTED #community/Community_260

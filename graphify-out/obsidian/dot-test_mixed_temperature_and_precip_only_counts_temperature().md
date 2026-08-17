@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_market_implied_distribution.py"
 type: "code"
-community: "Community 41"
+community: "Community 84"
 location: "L142"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_41
+  - community/Community_84
 ---
 
 # .test_mixed_temperature_and_precip_only_counts_temperature()
@@ -16,4 +16,4 @@ tags:
 - [[_market()_2]] - `calls` [EXTRACTED]
 - [[_normal_ladder()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_41
+#graphify/code #graphify/EXTRACTED #community/Community_84

@@ -1,36 +1,36 @@
 ---
 type: community
-cohesion: 0.17
+cohesion: 0.10
 members: 21
 ---
 
 # Community 152
 
-**Cohesion:** 0.17 - loosely connected
+**Cohesion:** 0.10 - loosely connected
 **Members:** 21 nodes
 
 ## Members
-- [[dot-_mock_acis()]] - code - tests/test_rain_markets.py
-- [[dot-_pin_today()]] - code - tests/test_rain_markets.py
-- [[dot-test_boundary_exactly_16_day_horizon_does_fetch()]] - code - tests/test_rain_markets.py
-- [[dot-test_boundary_just_over_16_days_skips_fetch()]] - code - tests/test_rain_markets.py
-- [[dot-test_ensemble_fetch_none_fails_open()]] - code - tests/test_rain_markets.py
-- [[dot-test_fetch_exception_fails_open_not_raised()]] - code - tests/test_rain_markets.py
-- [[dot-test_full_coverage_logs_signal_without_changing_forecast_prob()]] - code - tests/test_rain_markets.py
-- [[dot-test_remaining_window_exceeds_16_days_skips_signal()]] - code - tests/test_rain_markets.py
-- [[dot-test_thin_member_count_fails_open()]] - code - tests/test_rain_markets.py
-- [[dot-test_ticket_checked_after_month_end_does_not_crash()]] - code - tests/test_rain_markets.py
-- [[A raw exception inside the ensemble fetch must be caught by the new block's own…]] - rationale - tests/test_rain_markets.py
-- [[Fetch failure  fully-outside-horizon (returns None) must not affect the trade…]] - rationale - tests/test_rain_markets.py
-- [[Fewer than 15 members (the bootstrap_ci_month_total-matching trust floor) must…]] - rationale - tests/test_rain_markets.py
-- [[Freeze weather_markets.datetime.now() to 2026-07-day 1200, honoring the…]] - rationale - tests/test_rain_markets.py
-- [[Inverse of the above today=Jul 16 - (Jul 31 - Jul 16).days == 15, exactly at…]] - rationale - tests/test_rain_markets.py
-- [[Opus-review-caught gap only two widely-separated points (11 and 30 days via…]] - rationale - tests/test_rain_markets.py
-- [[Opus-review-caught reachability a July-accrual ticket can be analyzed after…]] - rationale - tests/test_rain_markets.py
-- [[Remaining window (Jul 1-31 = 31 days) exceeds the 16-day forecast horizon --…]] - rationale - tests/test_rain_markets.py
-- [[Remaining window (Jul 20-31 = 12 days) fits entirely inside the 16-day forecast…]] - rationale - tests/test_rain_markets.py
-- [[TestRainForecastBlendSignal]] - code - tests/test_rain_markets.py
-- [[backlog.txt RAIN MARKETS -- MONTHLY MODEL HAS NO DAY-SPECIFIC FORECAST…]] - rationale - tests/test_rain_markets.py
+- [[dot-test_all_columns_failing_hour_check_returns_none_and_warns()]] - code - tests/test_mos_nbp.py
+- [[dot-test_bad_timezone_returns_none()]] - code - tests/test_mos_nbp.py
+- [[dot-test_column_with_missing_percentile_value_excluded_from_result()]] - code - tests/test_mos_nbp.py
+- [[dot-test_correct_percentile_mapping_and_dates()]] - code - tests/test_mos_nbp.py
+- [[dot-test_max_min_assignment_is_not_arbitrary()_1]] - code - tests/test_mos_nbp.py
+- [[dot-test_missing_fhr_row_logs_a_format_drift_warning()]] - code - tests/test_mos_nbp.py
+- [[dot-test_missing_fhr_row_returns_none()]] - code - tests/test_mos_nbp.py
+- [[dot-test_missing_header_logs_a_format_drift_warning()]] - code - tests/test_mos_nbp.py
+- [[dot-test_missing_header_returns_none()]] - code - tests/test_mos_nbp.py
+- [[dot-test_missing_percentile_row_returns_none()]] - code - tests/test_mos_nbp.py
+- [[dot-test_no_warning_for_routine_no_data_case()]] - code - tests/test_mos_nbp.py
+- [[dot-test_pacific_timezone_shifts_local_dates()]] - code - tests/test_mos_nbp.py
+- [[A bulletin with a real header but zero day-groups at all (e.g. an FHR row with…]] - rationale - tests/test_mos_nbp.py
+- [[A partial percentile ladder (e.g. TXNP9 row absent) can't feed…]] - rationale - tests/test_mos_nbp.py
+- [[A single blank percentile value within an otherwise-present row must drop just…]] - rationale - tests/test_mos_nbp.py
+- [[HeaderFHRpercentile rows all present but every FHR value produces a valid_utc…]] - rationale - tests/test_mos_nbp.py
+- [[Mutation-proof if the evenodd-index - maxmin assignment were flipped, this…]] - rationale - tests/test_mos_nbp.py
+- [[Opus review finding a header-pattern miss on real bulletin text means IEM…]] - rationale - tests/test_mos_nbp.py
+- [[Same UTC bulletin, different station timezone -- local dates must shift…]] - rationale - tests/test_mos_nbp.py
+- [[TXNP12579 must map to 10th25th50th75th90th respectively (confirmed…]] - rationale - tests/test_mos_nbp.py
+- [[TestParseNbpBulletin]] - code - tests/test_mos_nbp.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -40,13 +40,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 7 edges to [[_COMMUNITY_Community 139]]
-- 3 edges to [[_COMMUNITY_Community 165]]
-- 1 edge to [[_COMMUNITY_Community 237]]
+- 1 edge to [[_COMMUNITY_Community 15]]
 
 ## Top bridge nodes
-- [[TestRainForecastBlendSignal]] - degree 14, connects to 2 communities
-- [[dot-_mock_acis()]] - degree 10, connects to 1 community
-- [[dot-test_boundary_exactly_16_day_horizon_does_fetch()]] - degree 5, connects to 1 community
-- [[dot-test_boundary_just_over_16_days_skips_fetch()]] - degree 5, connects to 1 community
-- [[dot-test_ensemble_fetch_none_fails_open()]] - degree 5, connects to 1 community
+- [[TestParseNbpBulletin]] - degree 13, connects to 1 community

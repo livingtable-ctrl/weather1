@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 693"
+community: "Community 526"
 location: "L292"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_526
 ---
 
 # .test_demo_env_uses_demo_base_url()
@@ -15,4 +15,4 @@ tags:
 - [[TestPaperLiveSeparation]] - `method` [EXTRACTED]
 - [[When KALSHI_ENV=demo the MARKET_BASE_URL must point to demo.kalshi.co.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_526

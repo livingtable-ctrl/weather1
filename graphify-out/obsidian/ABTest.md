@@ -1,18 +1,18 @@
 ---
 source_file: "ab_test.py"
 type: "code"
-community: "Community 33"
+community: "Community 116"
 location: "L56"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_33
+  - community/Community_116
 ---
 
 # ABTest
 
 ## Connections
-- [[dot-__init__()_4]] - `method` [EXTRACTED]
+- [[dot-__init__()_3]] - `method` [EXTRACTED]
 - [[dot-pick_variant()]] - `method` [EXTRACTED]
 - [[dot-record_outcome()]] - `method` [EXTRACTED]
 - [[dot-summary()]] - `method` [EXTRACTED]
@@ -25,15 +25,19 @@ tags:
 - [[dot-test_record_outcome_increments_trades_and_wins()]] - `calls` [EXTRACTED]
 - [[dot-test_record_outcome_unknown_variant_is_noop()]] - `calls` [EXTRACTED]
 - [[dot-test_summary_has_required_keys()]] - `calls` [EXTRACTED]
+- [[CorruptionError]] - `uses` [INFERRED]
 - [[LivePositionStore]] - `uses` [INFERRED]
-- [[Phase 2 Batch M Regression Tests]] - `calls` [EXTRACTED]
-- [[Phase 3 Batch E AB TestConsistency Tests]] - `calls` [EXTRACTED]
+- [[PaperPositionStore]] - `uses` [INFERRED]
 - [[Simple bandit-style AB test across strategy parameter variants. Tracks wins,…]] - `rationale_for` [EXTRACTED]
 - [[TestABTest]] - `uses` [INFERRED]
+- [[_CrossProcessDataLock]] - `uses` [INFERRED]
 - [[ab_test.py]] - `contains` [EXTRACTED]
+- [[auto_settle_paper_trades()]] - `calls` [INFERRED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
 - [[test_ab_test.py]] - `imports` [EXTRACTED]
 - [[test_l4a_get_active_variant_returns_value()]] - `calls` [EXTRACTED]
 - [[test_l4a_get_active_variant_value_survives_reload()]] - `calls` [EXTRACTED]
+- [[test_phase2_batch_m.py]] - `calls` [EXTRACTED]
+- [[test_phase3_batch_e.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_33
+#graphify/code #graphify/EXTRACTED #community/Community_116

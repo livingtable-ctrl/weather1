@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Weather Probability Math Tests"
+community: "Community 329"
 location: "L352"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_329
 ---
 
 # backlog.txt "VAR-CONVENTION LITERAL HAND-COPIED ACROSS 7+ FILES BEYOND…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestVarFromTickerPrefix]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_329

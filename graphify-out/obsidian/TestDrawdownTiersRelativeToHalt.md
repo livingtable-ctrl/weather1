@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_drawdown_tiers.py"
 type: "code"
-community: "Community 362"
+community: "Community 376"
 location: "L70"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_362
+  - community/Community_376
 ---
 
 # TestDrawdownTiersRelativeToHalt
@@ -19,4 +19,4 @@ tags:
 - [[P2-2 Tiers must be absolute constants, not derived from DRAWDOWN_HALT_PCT.]] - `rationale_for` [EXTRACTED]
 - [[test_drawdown_tiers.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_362
+#graphify/code #graphify/EXTRACTED #community/Community_376

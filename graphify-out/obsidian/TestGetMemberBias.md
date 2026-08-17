@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 239"
+community: "Community 241"
 location: "L2418"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_239
+  - community/Community_241
 ---
 
 # TestGetMemberBias
 
 ## Connections
-- [[dot-setUp()_10]] - `method` [EXTRACTED]
-- [[dot-tearDown()_10]] - `method` [EXTRACTED]
+- [[dot-setUp()_11]] - `method` [EXTRACTED]
+- [[dot-tearDown()_11]] - `method` [EXTRACTED]
 - [[dot-test_city_breakdown()]] - `method` [EXTRACTED]
 - [[dot-test_days_back_filters_old_rows()]] - `method` [EXTRACTED]
 - [[dot-test_max_and_min_never_pooled()]] - `method` [EXTRACTED]
@@ -24,4 +24,4 @@ tags:
 - [[get_member_bias() -- signed per-model bias split by var, feeding…]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_239
+#graphify/code #graphify/EXTRACTED #community/Community_241

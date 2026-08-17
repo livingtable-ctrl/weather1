@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "code"
-community: "Community 194"
+community: "Community 108"
 location: "L222"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_194
+  - community/Community_108
 ---
 
 # _trade_lost()
@@ -19,4 +19,4 @@ tags:
 - [[check_black_swan_conditions()]] - `calls` [EXTRACTED]
 - [[get_win_rate_window()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_194
+#graphify/code #graphify/EXTRACTED #community/Community_108

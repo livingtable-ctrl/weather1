@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cmd_schedule_settlement_monitor.py"
 type: "code"
-community: "Community 64"
+community: "Community 53"
 location: "L38"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_64
+  - community/Community_53
 ---
 
 # _run_cmd_schedule_and_capture()
@@ -20,4 +20,4 @@ tags:
 - [[dot-test_winter_eastern_host()]] - `calls` [EXTRACTED]
 - [[test_cmd_schedule_settlement_monitor.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_64
+#graphify/code #graphify/EXTRACTED #community/Community_53

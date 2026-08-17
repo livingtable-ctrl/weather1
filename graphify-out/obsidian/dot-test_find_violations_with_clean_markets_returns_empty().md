@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_e.py"
 type: "code"
-community: "Community 308"
+community: "Community 313"
 location: "L160"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_308
+  - community/Community_313
 ---
 
 # .test_find_violations_with_clean_markets_returns_empty()
@@ -16,4 +16,4 @@ tags:
 - [[TestCronConsistencyCheck]] - `method` [EXTRACTED]
 - [[find_violations()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_308
+#graphify/code #graphify/EXTRACTED #community/Community_313

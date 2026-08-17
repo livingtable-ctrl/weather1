@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_j.py"
 type: "code"
-community: "Community 205"
+community: "Community 210"
 location: "L257"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_205
+  - community/Community_210
 ---
 
 # .test_station_map_matches_metar_module()
@@ -15,4 +15,4 @@ tags:
 - [[TestMetarStationForCityAllCities]] - `method` [EXTRACTED]
 - [[_CITY_METAR_STATION must agree with metar.MARKET_STATION_MAP.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_205
+#graphify/code #graphify/EXTRACTED #community/Community_210

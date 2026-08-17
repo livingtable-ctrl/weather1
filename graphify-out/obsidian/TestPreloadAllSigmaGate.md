@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climatology.py"
 type: "code"
-community: "Community 251"
+community: "Community 250"
 location: "L599"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_251
+  - community/Community_250
 ---
 
 # TestPreloadAllSigmaGate
@@ -23,4 +23,4 @@ tags:
 - [[backlog.txt PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE…]] - `rationale_for` [EXTRACTED]
 - [[test_climatology.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_251
+#graphify/code #graphify/EXTRACTED #community/Community_250

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "code"
-community: "Community 80"
+community: "Community 20"
 location: "L22"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_80
+  - community/Community_20
 ---
 
 # ._valid()
@@ -24,4 +24,4 @@ tags:
 - [[dot-test_zero_bid_zero_ask_accepted()]] - `calls` [EXTRACTED]
 - [[TestValidateMarketPriceRange]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_80
+#graphify/code #graphify/EXTRACTED #community/Community_20

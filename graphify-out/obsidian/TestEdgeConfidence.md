@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 190"
+community: "Community 174"
 location: "L1023"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_190
+  - community/Community_174
 ---
 
 # TestEdgeConfidence
@@ -19,6 +19,7 @@ tags:
 - [[dot-test_floor_at_day_20()]] - `method` [EXTRACTED]
 - [[dot-test_monotonically_decreasing()]] - `method` [EXTRACTED]
 - [[Tests for edge_confidence(days_out) horizon discount factor.]] - `rationale_for` [EXTRACTED]
+- [[edge_confidence()]] - `calls` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_190
+#graphify/code #graphify/EXTRACTED #community/Community_174

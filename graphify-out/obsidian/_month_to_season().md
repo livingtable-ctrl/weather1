@@ -1,19 +1,19 @@
 ---
-source_file: "weather_markets.py"
+source_file: "climate_indices.py"
 type: "code"
-community: "Community 26"
-location: "L2705"
+community: "Community 361"
+location: "L595"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_26
+  - community/Community_361
 ---
 
 # _month_to_season()
 
 ## Connections
-- [[Convert month (1-12) to season index (1=Winter, 2=Spring, 3=Summer, 4=Fall).]] - `rationale_for` [EXTRACTED]
-- [[get_historical_sigma()]] - `calls` [EXTRACTED]
-- [[weather_markets.py]] - `contains` [EXTRACTED]
+- [[Map calendar month (1-12) to meteorological season abbreviation.]] - `rationale_for` [EXTRACTED]
+- [[apply_pdo_pna_correction()]] - `calls` [EXTRACTED]
+- [[climate_indices.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_26
+#graphify/code #graphify/EXTRACTED #community/Community_361

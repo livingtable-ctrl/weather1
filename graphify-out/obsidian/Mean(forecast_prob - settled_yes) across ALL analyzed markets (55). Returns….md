@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Tracker P&L Attribution Tests"
-location: "L6548"
+community: "Community 2"
+location: "L6603"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_2
 ---
 
 # Mean(forecast_prob - settled_yes) across ALL analyzed markets (#55). Returns…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_analysis_bias()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

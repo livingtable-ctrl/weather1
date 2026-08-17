@@ -1,22 +1,22 @@
 ---
 type: community
-cohesion: 0.48
+cohesion: 0.38
 members: 7
 ---
 
 # Community 484
 
-**Cohesion:** 0.48 - moderately connected
+**Cohesion:** 0.38 - loosely connected
 **Members:** 7 nodes
 
 ## Members
-- [[dot-_trade()_4]] - code - tests/test_positions.py
-- [[dot-_write_ledger()]] - code - tests/test_positions.py
-- [[dot-test_exit_wraps_close_paper_early()]] - code - tests/test_positions.py
-- [[dot-test_get_open_converts_every_open_trade_to_a_position()]] - code - tests/test_positions.py
-- [[dot-test_save_peak_writes_only_the_targeted_position()]] - code - tests/test_positions.py
-- [[TestPaperPositionStore]] - code - tests/test_positions.py
-- [[Two open positions on disk; saving one's peak must not touch the other's -- a…]] - rationale - tests/test_positions.py
+- [[B3 Portfolio Expected Value Card]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
+- [[Fix Web Analytics Charts Plan]] - document - docs/superpowers/plans/2026-04-25-fix-web-analytics.md
+- [[Profit Goal Feature Plan]] - document - docs/superpowers/plans/2026-04-25-profit-goal.md
+- [[Reliability Diagram Dashboard]] - document - docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md
+- [[Top 5 Trades of the Day Plan]] - document - docs/superpowers/plans/2026-04-25-top-5-trades.md
+- [[web_app.py XSS Escaping Fix]] - document - docs/superpowers/plans/2026-04-18-remediation.md
+- [[web_app.py module_1]] - code - docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,8 +26,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 45]]
+- 1 edge to [[_COMMUNITY_Community 124]]
+- 1 edge to [[_COMMUNITY_Community 216]]
+- 1 edge to [[_COMMUNITY_Community 217]]
+- 1 edge to [[_COMMUNITY_Community 272]]
 
 ## Top bridge nodes
-- [[TestPaperPositionStore]] - degree 8, connects to 1 community
-- [[dot-test_save_peak_writes_only_the_targeted_position()]] - degree 5, connects to 1 community
+- [[web_app.py module_1]] - degree 7, connects to 1 community
+- [[Reliability Diagram Dashboard]] - degree 3, connects to 1 community
+- [[B3 Portfolio Expected Value Card]] - degree 2, connects to 1 community
+- [[web_app.py XSS Escaping Fix]] - degree 2, connects to 1 community

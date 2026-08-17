@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 303"
+community: "Community 306"
 location: "L796"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_303
+  - community/Community_306
 ---
 
 # .test_cache_hit_returns_ensemble_without_fetch()
@@ -15,4 +15,4 @@ tags:
 - [[TestDynamicCacheTTL]] - `method` [EXTRACTED]
 - [[get_ensemble_temps returns cached data without making API calls.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_303
+#graphify/code #graphify/EXTRACTED #community/Community_306

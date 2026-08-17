@@ -1,17 +1,18 @@
 ---
-source_file: "tests/test_p1_remaining.py"
+source_file: "tests/test_phase2_batch_d.py"
 type: "code"
-community: "Community 204"
-location: "L183"
+community: "Community 181"
+location: "L638"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_204
+  - community/Community_181
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestCircuitBreakerPersistence]] - `method` [EXTRACTED]
+- [[TestGetLivePrecipObs]] - `method` [EXTRACTED]
+- [[_reset_nws_cb()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_204
+#graphify/code #graphify/EXTRACTED #community/Community_181

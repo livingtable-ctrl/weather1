@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.38
+members: 7
 ---
 
 # Community 504
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.38 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_enrich_uses_cache_timestamp_not_current_time()]] - code - tests/test_forecasting.py
-- [[dot-test_enrich_uses_current_time_on_cache_miss()]] - code - tests/test_forecasting.py
-- [[On a cache miss, data_fetched_at must be the current wall-clock time.]] - rationale - tests/test_forecasting.py
-- [[P1-1 data_fetched_at must reflect the cache entry's original fetch time, not…]] - rationale - tests/test_forecasting.py
-- [[TestEnrichWithForecastCacheTimestamp]] - code - tests/test_forecasting.py
-- [[When the forecast is already cached, data_fetched_at must equal the original…]] - rationale - tests/test_forecasting.py
+- [[dot-_make_between_enriched_same_day()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_between_obs_not_in_blend_sources()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_between_obs_suppressed_forecast_prob_is_low()]] - code - tests/test_gaussian_prob.py
+- [[For same-day 'between' markets, blend_sources must NOT contain 'obs' even when…]] - rationale - tests/test_gaussian_prob.py
+- [[Obs suppression is the mechanism keeping 'between' probability calibrated.…]] - rationale - tests/test_gaussian_prob.py
+- [[TestBetweenObsDisabled]] - code - tests/test_gaussian_prob.py
+- [[obs_override is suppressed for 'between' condition markets. Historical…]] - rationale - tests/test_gaussian_prob.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,8 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
-- 1 edge to [[_COMMUNITY_Community 51]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestEnrichWithForecastCacheTimestamp]] - degree 5, connects to 2 communities
+- [[TestBetweenObsDisabled]] - degree 5, connects to 1 community

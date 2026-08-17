@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-b-risk-management.md"
 type: "document"
-community: "Community 210"
+community: "Community 217"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_210
+  - community/Community_217
 ---
 
 # B7: Overnight GFS Gap Protection
@@ -14,4 +14,4 @@ tags:
 - [[Category B Risk Management Plan]] - `implements` [EXTRACTED]
 - [[order_executor.py module]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_210
+#graphify/document #graphify/EXTRACTED #community/Community_217

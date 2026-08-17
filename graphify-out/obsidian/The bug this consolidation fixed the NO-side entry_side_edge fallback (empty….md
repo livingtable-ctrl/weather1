@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_price_and_size.py"
 type: "rationale"
-community: "Community 58"
+community: "Community 78"
 location: "L84"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_58
+  - community/Community_78
 ---
 
 # The bug this consolidation fixed: the NO-side entry_side_edge fallback (empty…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_empty_bid_book_entry_side_edge_fallback_uses_1_minus_market_prob()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_58
+#graphify/rationale #graphify/EXTRACTED #community/Community_78

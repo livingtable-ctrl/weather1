@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_alerts_side.py"
+source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Community 200"
-location: "L218"
+community: "Community 21"
+location: "L2289"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_200
+  - community/Community_21
 ---
 
 # Deep-review followup: t.get("settled_at", "") only covers a MISSING key -- a…
 
 ## Connections
-- [[dot-test_none_settled_at_does_not_crash_daily_loss_condition()]] - `rationale_for` [EXTRACTED]
+- [[TestGetDailyPnlNoneSettledAt]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_200
+#graphify/rationale #graphify/EXTRACTED #community/Community_21

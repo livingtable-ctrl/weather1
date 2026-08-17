@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Weather Probability Math Tests"
+community: "Community 329"
 location: "L368"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_329
 ---
 
 # Real, reachable case (not theoretical) -- e.g. an hourly KXTEMPxxxH ticker or a…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_neither_high_nor_low_returns_none()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_329

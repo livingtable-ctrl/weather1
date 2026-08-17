@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_flash_crash_cb.py"
 type: "code"
-community: "Community 95"
+community: "Community 64"
 location: "L98"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_95
+  - community/Community_64
 ---
 
 # TestFlashCrashCBHistorySaveThrottle
@@ -18,4 +18,4 @@ tags:
 - [[FlashCrashCB]] - `uses` [INFERRED]
 - [[test_flash_crash_cb.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_95
+#graphify/code #graphify/EXTRACTED #community/Community_64

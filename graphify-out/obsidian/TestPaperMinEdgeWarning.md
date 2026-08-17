@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_a.py"
 type: "code"
-community: "Community 281"
+community: "Community 285"
 location: "L147"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_281
+  - community/Community_285
 ---
 
 # TestPaperMinEdgeWarning
@@ -19,6 +19,6 @@ tags:
 - [[dot-test_value_clamped_to_safety_bounds()]] - `method` [EXTRACTED]
 - [[dot-test_warns_when_loaded_from_walk_forward_json()]] - `method` [EXTRACTED]
 - [[P2-9 _paper_min_edge_default must log a warning when loading from file.]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Batch A Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_a.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_281
+#graphify/code #graphify/EXTRACTED #community/Community_285

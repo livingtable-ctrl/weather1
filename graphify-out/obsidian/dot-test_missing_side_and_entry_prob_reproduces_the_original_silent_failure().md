@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_near_settlement_log.py"
 type: "code"
-community: "Community 196"
+community: "Community 199"
 location: "L59"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_196
+  - community/Community_199
 ---
 
 # .test_missing_side_and_entry_prob_reproduces_the_original_silent_failure()
@@ -17,4 +17,4 @@ tags:
 - [[_log_near_settlement_trades()]] - `calls` [EXTRACTED]
 - [[_near()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_196
+#graphify/code #graphify/EXTRACTED #community/Community_199

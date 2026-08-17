@@ -1,11 +1,11 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 388"
+community: "Community 3"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_388
+  - community/Community_3
 ---
 
 # _validate_trade_opportunity Function
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[get_cached_mid_price Function]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_388
+#graphify/code #graphify/EXTRACTED #community/Community_3

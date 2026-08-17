@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/screenshots/dark-v2.png"
 type: "document"
-community: "Community 247"
+community: "Community 244"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_247
+  - community/Community_244
 ---
 
 # Light/Dark Theme Toggle Icon
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[Overview Dashboard (Dark v2 Variant)]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_247
+#graphify/document #graphify/EXTRACTED #community/Community_244

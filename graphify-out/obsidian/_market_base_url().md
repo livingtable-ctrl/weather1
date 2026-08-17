@@ -1,21 +1,22 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Community 693"
-location: "L489"
+community: "Community 0"
+location: "L491"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_0
 ---
 
 # _market_base_url()
 
 ## Connections
 - [[Return the correct Kalshi base URL based on the current env setting.]] - `rationale_for` [EXTRACTED]
+- [[Return the correct Kalshi base URL based on the current env setting._1]] - `rationale_for` [EXTRACTED]
 - [[_kalshi_env()]] - `calls` [EXTRACTED]
 - [[cmd_market()]] - `calls` [EXTRACTED]
 - [[cmd_markets()]] - `calls` [EXTRACTED]
-- [[main.py_1]] - `contains` [EXTRACTED]
+- [[main.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_0

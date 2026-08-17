@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "code"
-community: "Execution Log Live-Loss Tracking"
+community: "Community 42"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Execution_Log_Live-Loss_Tracking
+  - community/Community_42
 ---
 
 # test_execution_log.py
@@ -25,13 +25,17 @@ tags:
 - [[execution_log._MIGRATIONS  _SCHEMA_VERSION]] - `references` [EXTRACTED]
 - [[execution_log.py]] - `imports` [EXTRACTED]
 - [[export_live_tax_csv()]] - `calls` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
 - [[log_order()]] - `calls` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[record_live_early_exit()]] - `calls` [EXTRACTED]
 - [[record_live_partial_exit()]] - `calls` [EXTRACTED]
 - [[record_live_settlement()]] - `calls` [EXTRACTED]
-- [[sql_normalize_iso_column()]] - `calls` [EXTRACTED]
-- [[test_tracker.py_1]] - `references` [EXTRACTED]
+- [[sql_normalize_iso_column()]] - `imports` [EXTRACTED]
+- [[sqlite3]] - `imports` [EXTRACTED]
+- [[test_tracker.py]] - `references` [EXTRACTED]
 - [[was_ordered_recently()]] - `calls` [EXTRACTED]
 - [[was_ordered_this_cycle()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking
+#graphify/code #graphify/EXTRACTED #community/Community_42

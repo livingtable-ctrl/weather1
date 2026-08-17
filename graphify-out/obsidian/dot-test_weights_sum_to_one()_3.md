@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Ensemble Weight Blending Tests"
-location: "L283"
+community: "Community 68"
+location: "L326"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_68
 ---
 
 # .test_weights_sum_to_one()
 
 ## Connections
-- [[TestConfidenceScaledBlendWeights]] - `method` [EXTRACTED]
-- [[_confidence_scaled_blend_weights()]] - `calls` [EXTRACTED]
+- [[TestBlendWeights]] - `method` [EXTRACTED]
+- [[_blend_weights()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_68

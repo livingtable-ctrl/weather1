@@ -1,16 +1,18 @@
 ---
 type: community
-cohesion: 1.00
-members: 1
+cohesion: 0.67
+members: 3
 ---
 
 # Community 662
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Cohesion:** 0.67 - moderately connected
+**Members:** 3 nodes
 
 ## Members
-- [[parse_message Function]] - code - kalshi_ws.py
+- [[_named_storms_in_naming_order Function]] - code - hurricane_climatology.py
+- [[first_hurricane_position Function]] - code - hurricane_climatology.py
+- [[first_hurricane_position_outcomes Function]] - code - hurricane_climatology.py
 
 ## Live Query (requires Dataview plugin)
 

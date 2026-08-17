@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/reference/base.html"
 type: "code"
-community: "Community 147"
+community: "Community 204"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_147
+  - community/Community_204
 ---
 
 # Base Page Template (reference)
@@ -19,4 +19,4 @@ tags:
 - [[Trades Page Template (reference)]] - `implements` [EXTRACTED]
 - [[style.css (Flask static)]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_147
+#graphify/code #graphify/EXTRACTED #community/Community_204

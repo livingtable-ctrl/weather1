@@ -1,12 +1,12 @@
 ---
 source_file: "climatology.py"
 type: "rationale"
-community: "Climatology & Climate Index Fetching"
+community: "Community 102"
 location: "L304"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_102
 ---
 
 # True if a per-city sigma cache entry has at least one real computed month…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_sigma_entry_has_data()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/rationale #graphify/EXTRACTED #community/Community_102

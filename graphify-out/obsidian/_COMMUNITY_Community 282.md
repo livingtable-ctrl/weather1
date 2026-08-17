@@ -1,28 +1,28 @@
 ---
 type: community
-cohesion: 0.15
+cohesion: 0.21
 members: 13
 ---
 
 # Community 282
 
-**Cohesion:** 0.15 - loosely connected
+**Cohesion:** 0.21 - loosely connected
 **Members:** 13 nodes
 
 ## Members
-- [[dot-_call()_1]] - code - tests/test_phase2_batch_k.py
-- [[dot-test_no_negative_weights_no_nws()]] - code - tests/test_phase2_batch_k.py
-- [[dot-test_no_negative_weights_tight_spread()]] - code - tests/test_phase2_batch_k.py
-- [[dot-test_tight_spread_boosts_ensemble()]] - code - tests/test_phase2_batch_k.py
-- [[dot-test_weights_sum_to_one()_1]] - code - tests/test_phase2_batch_k.py
-- [[dot-test_wide_spread_reduces_ensemble()]] - code - tests/test_phase2_batch_k.py
-- [[All weights must sum to 1.0 regardless of scaling.]] - rationale - tests/test_phase2_batch_k.py
-- [[No negative weights when NWS is unavailable and spread is tight.]] - rationale - tests/test_phase2_batch_k.py
-- [[TestConfidenceScaledBlendWeightsNoNegative]] - code - tests/test_phase2_batch_k.py
-- [[Tighter-than-reference spread (std  4°F) must increase w_ens.]] - rationale - tests/test_phase2_batch_k.py
-- [[Weights must stay = 0 when scale  1 (tight spread).]] - rationale - tests/test_phase2_batch_k.py
-- [[Wider-than-reference spread (std  4°F) must decrease w_ens.]] - rationale - tests/test_phase2_batch_k.py
-- [[With ens_std=0.5 (scale=40.5=8, clamped to 1.5), w_climw_nws stay = 0.]] - rationale - tests/test_phase2_batch_k.py
+- [[dot-_mock_perf()]] - code - tests/test_p9_p10.py
+- [[dot-test_fails_at_0_24()]] - code - tests/test_p9_p10.py
+- [[dot-test_max_brier_default_is_0_23()]] - code - tests/test_p9_p10.py
+- [[dot-test_passes_at_0_21()]] - code - tests/test_p9_p10.py
+- [[dot-test_passes_at_0_22()]] - code - tests/test_p9_p10.py
+- [[dot-test_uses_last_50_brier()]] - code - tests/test_p9_p10.py
+- [[Brier=0.21 now passes (previously unreachable under all-time 0.20).]] - rationale - tests/test_p9_p10.py
+- [[TestGraduationBrierGate]] - code - tests/test_p9_p10.py
+- [[graduation_check() default max_brier threshold must be 0.23.]] - rationale - tests/test_p9_p10.py
+- [[graduation_check() must call brier_score(last_n=50), not all-time.]] - rationale - tests/test_p9_p10.py
+- [[graduation_check() returns None when last-50 Brier is 0.24  0.23.]] - rationale - tests/test_p9_p10.py
+- [[graduation_check() returns a result dict when last-50 Brier is 0.22.]] - rationale - tests/test_p9_p10.py
+- [[graduation_check() uses last-50 Brier with threshold 0.23.]] - rationale - tests/test_p9_p10.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -32,12 +32,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 6 edges to [[_COMMUNITY_Community 173]]
-- 2 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 54]]
 
 ## Top bridge nodes
-- [[TestConfidenceScaledBlendWeightsNoNegative]] - degree 9, connects to 2 communities
-- [[dot-test_no_negative_weights_no_nws()]] - degree 3, connects to 1 community
-- [[dot-test_no_negative_weights_tight_spread()]] - degree 3, connects to 1 community
-- [[dot-test_tight_spread_boosts_ensemble()]] - degree 3, connects to 1 community
-- [[dot-test_weights_sum_to_one()_1]] - degree 3, connects to 1 community
+- [[TestGraduationBrierGate]] - degree 8, connects to 1 community

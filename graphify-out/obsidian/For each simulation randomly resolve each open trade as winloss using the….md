@@ -1,12 +1,12 @@
 ---
 source_file: "monte_carlo.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 303"
 location: "L213"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_303
 ---
 
 # For each simulation: randomly resolve each open trade as win/loss using the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[simulate_portfolio()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_303

@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "rationale"
-community: "ML Bias Multiday-Predictions Filter"
-location: "L915"
+community: "Community 55"
+location: "L1176"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_55
 ---
 
 # Persist EMOS parameters and clear the in-process cache.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[save_emos_params()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/rationale #graphify/EXTRACTED #community/Community_55

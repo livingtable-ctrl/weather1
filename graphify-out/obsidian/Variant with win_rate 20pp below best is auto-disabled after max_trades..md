@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ab_test.py"
 type: "rationale"
-community: "Community 33"
+community: "Community 116"
 location: "L65"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_33
+  - community/Community_116
 ---
 
 # Variant with win_rate 20pp below best is auto-disabled after max_trades.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_auto_disable_low_performer()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_33
+#graphify/rationale #graphify/EXTRACTED #community/Community_116

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "rationale"
-community: "Community 37"
+community: "Community 40"
 location: "L112"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_37
+  - community/Community_40
 ---
 
 # _find_optimal_min_edge must be called with per-fold training data, not full…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_find_optimal_min_edge_called_with_training_data_only()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_37
+#graphify/rationale #graphify/EXTRACTED #community/Community_40

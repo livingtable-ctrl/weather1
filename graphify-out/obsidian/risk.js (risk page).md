@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/reference/risk.js"
 type: "code"
-community: "Community 229"
+community: "Community 408"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_229
+  - community/Community_408
 ---
 
 # risk.js (risk page)
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[RiskTab.jsx (V3)]] - `semantically_similar_to` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_229
+#graphify/code #graphify/INFERRED #community/Community_408

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 510"
+community: "Community 569"
 location: "L368"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_510
+  - community/Community_569
 ---
 
 # TestPlaceOrderSurvivesGetOrderFailure
@@ -18,4 +18,4 @@ tags:
 - [[A successful POST already confirms the order is live on the exchange -- if the…]] - `rationale_for` [EXTRACTED]
 - [[test_kalshi_client.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_510
+#graphify/code #graphify/EXTRACTED #community/Community_569

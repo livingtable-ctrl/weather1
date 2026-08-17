@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 38"
+community: "Community 36"
 location: "L976"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_38
+  - community/Community_36
 ---
 
 # ._analysis()
@@ -33,4 +33,4 @@ tags:
 - [[dot-test_trading_paused_takes_precedence_over_limit_check()]] - `calls` [EXTRACTED]
 - [[TestCmdTodayPlacementGates]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_38
+#graphify/code #graphify/EXTRACTED #community/Community_36

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_prelog.py"
 type: "rationale"
-community: "Community 219"
+community: "Community 224"
 location: "L53"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_219
+  - community/Community_224
 ---
 
 # A 'pending' log row must exist in the DB before place_order is called.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_pending_row_exists_before_api_call()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_219
+#graphify/rationale #graphify/EXTRACTED #community/Community_224

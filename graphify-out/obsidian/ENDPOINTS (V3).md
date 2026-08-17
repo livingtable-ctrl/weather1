@@ -1,12 +1,12 @@
 ---
 source_file: "weather app site V_3 (3)/src/useData.js"
 type: "code"
-community: "Community 692"
+community: "Community 168"
 location: "333"
 tags:
   - graphify/code
-  - graphify/INFERRED
-  - community/Community_692
+  - graphify/EXTRACTED
+  - community/Community_168
 ---
 
 # ENDPOINTS (V3)
@@ -15,4 +15,4 @@ tags:
 - [[ENDPOINTS]] - `semantically_similar_to` [INFERRED]
 - [[fetchAll inner (V3)]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Community_692
+#graphify/code #graphify/EXTRACTED #community/Community_168

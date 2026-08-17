@@ -1,34 +1,34 @@
 ---
 type: community
-cohesion: 0.12
+cohesion: 0.15
 members: 19
 ---
 
 # Community 174
 
-**Cohesion:** 0.12 - loosely connected
+**Cohesion:** 0.15 - loosely connected
 **Members:** 19 nodes
 
 ## Members
-- [[dot-test_does_not_refuse_when_gate_active()]] - code - tests/test_snow_markets.py
-- [[dot-test_empty_data_falls_back_to_stale_cache_not_written_as_empty()]] - code - tests/test_snow_markets.py
-- [[dot-test_known_untracked_snow_series_suppressed()]] - code - tests/test_snow_markets.py
-- [[dot-test_missing_kxdensnowm_flagged_after_3_days()]] - code - tests/test_snow_markets.py
-- [[dot-test_refuses_when_gate_inactive()]] - code - tests/test_snow_markets.py
-- [[dot-test_snow_market_excluded_no_warning()]] - code - tests/test_snow_markets.py
-- [[dot-test_unknown_snow_ticker_warns_immediately()]] - code - tests/test_snow_markets.py
-- [[All 32 KNOWN_UNTRACKED_SNOW_SERIES entries must be suppressed, not just the…]] - rationale - tests/test_snow_markets.py
-- [[Mutation-test proof the conditional is real -- once _snow_gates_active() is…]] - rationale - tests/test_snow_markets.py
-- [[Opus-review-caught gap (round 2, identical to acis_precip.py's cloned bug)…]] - rationale - tests/test_snow_markets.py
-- [[Regression control mirroring the pre-existing KXHIGHKXLOW missing-ticker test…]] - rationale - tests/test_snow_markets.py
-- [[TestCheckSeriesDriftSnow]] - code - tests/test_snow_markets.py
-- [[TestCmdOrderSnowGuard]] - code - tests/test_snow_markets.py
-- [[TestFetchHistoricalDailySnowEmptyResponse]] - code - tests/test_snow_markets.py
-- [[TestGroupMarketsExcludesMonthlySnow]] - code - tests/test_snow_markets.py
-- [[Tests for backlog.txt RAIN  SNOW  HURRICANE MARKETS Snow Step 1 (schema +…]] - rationale - tests/test_snow_markets.py
-- [[_mock_client()_3]] - code - tests/test_snow_markets.py
-- [[backlog.txt Snow Step 2 main.py's cmd_order kept its own explicit refuse-…]] - rationale - tests/test_snow_markets.py
-- [[test_snow_markets.py]] - code - tests/test_snow_markets.py
+- [[dot-test_condition_compounds_horizon()]] - code - tests/test_signal_quality.py
+- [[dot-test_day_0_returns_one()]] - code - tests/test_weather_markets.py
+- [[dot-test_day_14_returns_0_60()]] - code - tests/test_weather_markets.py
+- [[dot-test_day_2_returns_one()]] - code - tests/test_weather_markets.py
+- [[dot-test_day_7_in_linear_segment()]] - code - tests/test_weather_markets.py
+- [[dot-test_floor_at_day_20()]] - code - tests/test_weather_markets.py
+- [[dot-test_monotonically_decreasing()]] - code - tests/test_weather_markets.py
+- [[dot-test_precip_snow_lower_than_temp()]] - code - tests/test_signal_quality.py
+- [[dot-test_unknown_condition_defaults_to_one()]] - code - tests/test_signal_quality.py
+- [[Horizon + condition discount factor for edge signal (6314). Combines the…]] - rationale - weather_markets.py
+- [[Same horizon, snow produces lower confidence than temperature.]] - rationale - tests/test_signal_quality.py
+- [[TestAdjustedEdgeInAnalyzeTrade (63)]] - code - tests/test_weather_markets.py
+- [[TestEdgeConfidence]] - code - tests/test_weather_markets.py
+- [[TestEdgeConfidenceConditionType]] - code - tests/test_signal_quality.py
+- [[Tests for edge_confidence(days_out) horizon discount factor.]] - rationale - tests/test_weather_markets.py
+- [[Unknown condition_type uses multiplier 1.0 — no change from no condition.]] - rationale - tests/test_signal_quality.py
+- [[days_out=10, precip_snow horizon≈0.7143, × 0.80 ≈ 0.5714.]] - rationale - tests/test_signal_quality.py
+- [[days_out=7 is at the boundary of segment 2; should be 0.80.]] - rationale - tests/test_weather_markets.py
+- [[edge_confidence()]] - code - weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -38,25 +38,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 115]]
-- 1 edge to [[_COMMUNITY_Community 238]]
-- 1 edge to [[_COMMUNITY_Community 263]]
-- 1 edge to [[_COMMUNITY_Community 285]]
-- 1 edge to [[_COMMUNITY_Community 312]]
-- 1 edge to [[_COMMUNITY_Community 376]]
-- 1 edge to [[_COMMUNITY_Community 377]]
-- 1 edge to [[_COMMUNITY_Community 378]]
-- 1 edge to [[_COMMUNITY_Community 379]]
-- 1 edge to [[_COMMUNITY_Community 485]]
-- 1 edge to [[_COMMUNITY_Community 486]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Community 62]]
-- 1 edge to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Community 237]]
+- 11 edges to [[_COMMUNITY_Community 5]]
+- 2 edges to [[_COMMUNITY_Community 238]]
+- 2 edges to [[_COMMUNITY_Community 11]]
 
 ## Top bridge nodes
-- [[test_snow_markets.py]] - degree 25, connects to 18 communities
-- [[dot-test_snow_market_excluded_no_warning()]] - degree 2, connects to 1 community
+- [[edge_confidence()]] - degree 24, connects to 3 communities
+- [[TestEdgeConfidence]] - degree 9, connects to 1 community
+- [[TestEdgeConfidenceConditionType]] - degree 4, connects to 1 community
+- [[TestAdjustedEdgeInAnalyzeTrade (63)]] - degree 2, connects to 1 community

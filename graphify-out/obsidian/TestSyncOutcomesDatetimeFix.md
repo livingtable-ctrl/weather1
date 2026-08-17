@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 153"
+community: "Community 157"
 location: "L5933"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_153
+  - community/Community_157
 ---
 
 # TestSyncOutcomesDatetimeFix
@@ -21,4 +21,4 @@ tags:
 - [[P0-13 — sync_outcomes must not crash on awarenaive datetime subtraction.]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_153
+#graphify/code #graphify/EXTRACTED #community/Community_157

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Weather Probability Math Tests"
+community: "Community 329"
 location: "L367"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_329
 ---
 
 # .test_neither_high_nor_low_returns_none()
@@ -16,4 +16,4 @@ tags:
 - [[TestVarFromTickerPrefix]] - `method` [EXTRACTED]
 - [[_var_from_ticker_prefix()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_329

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_a.py"
 type: "code"
-community: "Community 57"
+community: "Community 389"
 location: "L40"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_57
+  - community/Community_389
 ---
 
 # ._fake_summary()
@@ -20,4 +20,4 @@ tags:
 - [[TestBacktestBrierKeyNaming]] - `method` [EXTRACTED]
 - [[run_backtest()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_57
+#graphify/code #graphify/EXTRACTED #community/Community_389

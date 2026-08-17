@@ -1,27 +1,27 @@
 ---
 type: community
-cohesion: 0.17
+cohesion: 0.21
 members: 12
 ---
 
 # Community 314
 
-**Cohesion:** 0.17 - loosely connected
+**Cohesion:** 0.21 - loosely connected
 **Members:** 12 nodes
 
 ## Members
-- [[dot-test_90_pct_contains_50_pct()]] - code - tests/test_tracker.py
-- [[dot-test_all_successes()]] - code - tests/test_tracker.py
-- [[dot-test_bounds_are_valid()]] - code - tests/test_tracker.py
-- [[dot-test_ci_shrinks_with_more_data()]] - code - tests/test_tracker.py
-- [[dot-test_zero_successes()]] - code - tests/test_tracker.py
-- [[510 successes 90% CI should straddle 0.5.]] - rationale - tests/test_tracker.py
-- [[All successes upper bound close to 1, lower bound away from 0.]] - rationale - tests/test_tracker.py
-- [[Lower and upper bounds should be in 0, 1 with lower = upper.]] - rationale - tests/test_tracker.py
-- [[TestBayesianConfidenceInterval]] - code - tests/test_tracker.py
-- [[Tests for bayesian_confidence_interval() (57).]] - rationale - tests/test_tracker.py
-- [[Width should shrink as trials increase (same success rate).]] - rationale - tests/test_tracker.py
-- [[Zero successes lower bound near 0, upper bound close to 0.]] - rationale - tests/test_tracker.py
+- [[dot-test_consensus_bonus_actually_raises_ci_adjusted_kelly()]] - code - tests/test_price_and_size.py
+- [[dot-test_no_side_empty_bid_book()]] - code - tests/test_price_and_size.py
+- [[dot-test_no_side_empty_bid_book()_1]] - code - tests/test_price_and_size.py
+- [[dot-test_yes_side_normal_book()]] - code - tests/test_price_and_size.py
+- [[dot-test_yes_side_normal_book()_1]] - code - tests/test_price_and_size.py
+- [[Same reasoning as TestPrecipTradeWiring above -- _analyze_snow_trade's own…]] - rationale - tests/test_price_and_size.py
+- [[TestPrecipTradeWiring]] - code - tests/test_price_and_size.py
+- [[TestSnowTradeWiring]] - code - tests/test_price_and_size.py
+- [[_analyze_precip_trade calls _blend_weights(days_out, has_nws=False,…]] - rationale - tests/test_price_and_size.py
+- [[_analyze_precip_trade computes days_out from datetime.now(ZoneInfo(tz)).date()…]] - rationale - tests/test_price_and_size.py
+- [[_ny_tomorrow()]] - code - tests/test_price_and_size.py
+- [[date_6]] - code
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,7 +31,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 3 edges to [[_COMMUNITY_Community 78]]
 
 ## Top bridge nodes
-- [[TestBayesianConfidenceInterval]] - degree 7, connects to 1 community
+- [[_ny_tomorrow()]] - degree 5, connects to 1 community
+- [[TestSnowTradeWiring]] - degree 5, connects to 1 community
+- [[TestPrecipTradeWiring]] - degree 4, connects to 1 community

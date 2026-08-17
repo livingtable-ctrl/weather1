@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 98"
-location: "L326"
+community: "Community 615"
+location: "L500"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_98
+  - community/Community_615
 ---
 
 # .test_ci_brackets_point_estimate()
 
 ## Connections
-- [[TestBootstrapCi_1]] - `method` [EXTRACTED]
+- [[TestBootstrapCiNextEvent]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_98
+#graphify/code #graphify/EXTRACTED #community/Community_615

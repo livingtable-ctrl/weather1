@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "rationale"
-community: "Community 144"
+community: "Community 137"
 location: "L3402"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_144
+  - community/Community_137
 ---
 
 # Regression: two separate open live positions sharing a ticker (two distinct…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_two_positions_on_same_ticker_both_get_exited()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_144
+#graphify/rationale #graphify/EXTRACTED #community/Community_137

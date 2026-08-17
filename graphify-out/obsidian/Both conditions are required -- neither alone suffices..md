@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "rationale"
-community: "Community 312"
+community: "Community 318"
 location: "L313"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_312
+  - community/Community_318
 ---
 
 # Both conditions are required -- neither alone suffices.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_false_when_sample_floor_met_but_env_var_unset()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_312
+#graphify/rationale #graphify/EXTRACTED #community/Community_318

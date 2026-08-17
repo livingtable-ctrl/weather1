@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "rationale"
-community: "Trade Cycle Engine & Arbitrage Gates"
+community: "Community 17"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Trade_Cycle_Engine__Arbitrage_Gates
+  - community/Community_17
 ---
 
 # Tests for trade_cycle.run_trade_cycle() -- the shared headless engine extracted…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_trade_cycle_engine.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Trade_Cycle_Engine__Arbitrage_Gates
+#graphify/rationale #graphify/EXTRACTED #community/Community_17

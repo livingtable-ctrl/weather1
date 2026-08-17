@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Weather Probability Math Tests"
+community: "Community 396"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_396
 ---
 
 # test_weather.py
@@ -20,7 +20,7 @@ tags:
 - [[TestForecastModelWeights_1]] - `contains` [EXTRACTED]
 - [[TestForecastProbability]] - `contains` [EXTRACTED]
 - [[TestKellyFraction]] - `contains` [EXTRACTED]
-- [[TestNormalCDF]] - `contains` [EXTRACTED]
+- [[TestNormalCDF_1]] - `contains` [EXTRACTED]
 - [[TestObsProbAboveBelowSigma]] - `contains` [EXTRACTED]
 - [[TestObsProbBetweenSigma]] - `contains` [EXTRACTED]
 - [[TestParseMarketCondition]] - `contains` [EXTRACTED]
@@ -42,7 +42,6 @@ tags:
 - [[obs_prob()]] - `imports` [EXTRACTED]
 - [[prob_threshold()]] - `imports` [EXTRACTED]
 - [[utils.py]] - `imports_from` [EXTRACTED]
-- [[weather_markets.py]] - `imports_from` [EXTRACTED]
-- [[weather_markets.py_1]] - `references` [EXTRACTED]
+- [[weather_markets.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_396

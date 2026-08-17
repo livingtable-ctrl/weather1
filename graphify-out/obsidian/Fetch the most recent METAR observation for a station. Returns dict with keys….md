@@ -1,12 +1,12 @@
 ---
 source_file: "metar.py"
 type: "rationale"
-community: "METAR Settlement Monitoring"
+community: "Community 3"
 location: "L87"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_3
 ---
 
 # Fetch the most recent METAR observation for a station. Returns: dict with keys:…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[fetch_metar()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

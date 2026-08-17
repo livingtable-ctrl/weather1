@@ -25,6 +25,12 @@
       "output_tokens": 132800,
       "files": 8,
       "note": "targeted incremental update batch 2 (L18222 + L18015 + accuracy-override feature); AST refresh for all 8 files, semantic layer scoped to the 5 smaller ones (main.py/paper.py/web_app.py semantic layer left untouched -- full re-extraction would have cost far more than proportional value for mostly-unchanged huge files)"
+    },
+    {
+      "date": "2026-08-17T06:29:43.126617+00:00",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "files": 25
     }
   ],
   "total_input_tokens": 0,

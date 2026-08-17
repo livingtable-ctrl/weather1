@@ -1,11 +1,11 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 228"
+community: "Community 71"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_228
+  - community/Community_71
 ---
 
 # STARTING_BALANCE
@@ -13,6 +13,6 @@ tags:
 ## Connections
 - [[Paper Trading Ledger Module]] - `implements` [EXTRACTED]
 - [[test_starting_balance.py]] - `calls` [EXTRACTED]
-- [[utils.py_1]] - `shares_data_with` [EXTRACTED]
+- [[utils.py]] - `shares_data_with` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_228
+#graphify/code #graphify/EXTRACTED #community/Community_71

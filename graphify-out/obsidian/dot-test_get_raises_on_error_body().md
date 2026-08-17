@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "code"
-community: "Community 283"
+community: "Community 286"
 location: "L296"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_283
+  - community/Community_286
 ---
 
 # .test_get_raises_on_error_body()
@@ -16,4 +16,4 @@ tags:
 - [[TestKalshiClientErrorBody]] - `method` [EXTRACTED]
 - [[_get must raise ValueError when response JSON has an error field.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_283
+#graphify/code #graphify/EXTRACTED #community/Community_286

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 317"
+community: "Community 322"
 location: "L3383"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_317
+  - community/Community_322
 ---
 
 # TestPriceHistory
@@ -23,4 +23,4 @@ tags:
 - [[log_price_candles  get_price_history — OHLC candlestick storage.]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_317
+#graphify/code #graphify/EXTRACTED #community/Community_322

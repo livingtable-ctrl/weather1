@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 441
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-setUp()_33]] - code - tests/test_tracker.py
-- [[dot-tearDown()_32]] - code - tests/test_tracker.py
-- [[dot-test_columns_exist_after_init()_1]] - code - tests/test_tracker.py
-- [[dot-test_round_trip_write_and_read()]] - code - tests/test_tracker.py
-- [[dot-test_settled_temp_f_write_path_unaffected()]] - code - tests/test_tracker.py
-- [[A pre-existing daily-market row using settled_temp_f only must be unaffected --…]] - rationale - tests/test_tracker.py
-- [[Schema v51v52 must add settled_valuesettled_var to outcomes, purely additive…]] - rationale - tests/test_tracker.py
-- [[TestSettledValueVarColumns]] - code - tests/test_tracker.py
+- [[dot-test_accuracy_halt_blocks_placement()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_consistency_skip_blocks_placement_with_no_shadow_log()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_external_halted_reason_blocks_placement()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_kill_switch_hard_aborts_before_any_scan()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_manual_override_skips_placement_not_scan()]] - code - tests/test_trade_cycle_engine.py
+- [[Consistency-skip is a stricter halt than the others no shadow logging either…]] - rationale - tests/test_trade_cycle_engine.py
+- [[TestGateUnification]] - code - tests/test_trade_cycle_engine.py
+- [[The unified gate set must block placement identically for both…]] - rationale - tests/test_trade_cycle_engine.py
+- [[cron.py's anomaly-detection  black-swan-check-error halt reason, computed…]] - rationale - tests/test_trade_cycle_engine.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,7 +28,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 4 edges to [[_COMMUNITY_Community 25]]
+- 3 edges to [[_COMMUNITY_Community 17]]
 
 ## Top bridge nodes
-- [[TestSettledValueVarColumns]] - degree 7, connects to 1 community
+- [[TestGateUnification]] - degree 9, connects to 1 community
+- [[dot-test_consistency_skip_blocks_placement_with_no_shadow_log()]] - degree 3, connects to 1 community
+- [[dot-test_external_halted_reason_blocks_placement()]] - degree 3, connects to 1 community
+- [[dot-test_accuracy_halt_blocks_placement()]] - degree 2, connects to 1 community
+- [[dot-test_manual_override_skips_placement_not_scan()]] - degree 2, connects to 1 community

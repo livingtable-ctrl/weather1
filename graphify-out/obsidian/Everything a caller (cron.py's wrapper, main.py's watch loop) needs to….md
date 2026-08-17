@@ -1,12 +1,12 @@
 ---
 source_file: "trade_cycle.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 3"
 location: "L77"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # Everything a caller (cron.py's wrapper, main.py's watch loop) needs to…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TradeCycleResult]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

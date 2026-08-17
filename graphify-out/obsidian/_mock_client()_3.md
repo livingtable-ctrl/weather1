@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 174"
+community: "Community 527"
 location: "L23"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_174
+  - community/Community_527
 ---
 
 # _mock_client()
@@ -17,4 +17,4 @@ tags:
 - [[dot-test_unknown_snow_ticker_warns_immediately()]] - `calls` [EXTRACTED]
 - [[test_snow_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_174
+#graphify/code #graphify/EXTRACTED #community/Community_527

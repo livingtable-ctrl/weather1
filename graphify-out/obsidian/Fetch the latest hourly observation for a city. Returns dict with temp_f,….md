@@ -1,12 +1,12 @@
 ---
 source_file: "nws.py"
 type: "rationale"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 3"
 location: "L433"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_3
 ---
 
 # Fetch the latest hourly observation for a city. Returns dict with temp_f,…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_live_observation()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

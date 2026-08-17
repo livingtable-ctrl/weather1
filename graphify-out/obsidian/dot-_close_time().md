@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Community 350"
+community: "Community 355"
 location: "L290"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_350
+  - community/Community_355
 ---
 
 # ._close_time()
@@ -18,4 +18,4 @@ tags:
 - [[Build an ISO close_time string.]] - `rationale_for` [EXTRACTED]
 - [[TestTimeRisk]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_350
+#graphify/code #graphify/EXTRACTED #community/Community_355

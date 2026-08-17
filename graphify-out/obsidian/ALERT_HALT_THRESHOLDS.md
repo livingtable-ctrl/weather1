@@ -1,11 +1,11 @@
 ---
 source_file: "alerts.py"
 type: "code"
-community: "Community 208"
+community: "Community 108"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_208
+  - community/Community_108
 ---
 
 # ALERT_HALT_THRESHOLDS
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[check_anomalies()]] - `shares_data_with` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_208
+#graphify/code #graphify/EXTRACTED #community/Community_108

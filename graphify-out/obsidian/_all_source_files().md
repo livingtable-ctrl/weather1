@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_paths_bypass_guard.py"
 type: "code"
-community: "Community 355"
+community: "Community 33"
 location: "L73"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_355
+  - community/Community_33
 ---
 
 # _all_source_files()
 
 ## Connections
-- [[Path_15]] - `references` [EXTRACTED]
+- [[Path_14]] - `references` [EXTRACTED]
 - [[test_no_new_paths_py_bypass_sites()]] - `calls` [EXTRACTED]
 - [[test_paths_bypass_guard.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_355
+#graphify/code #graphify/EXTRACTED #community/Community_33

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading_gates.py"
 type: "code"
-community: "Community 54"
+community: "Community 49"
 location: "L16"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_54
+  - community/Community_49
 ---
 
 # .test_blocks_when_kill_switch_active()
@@ -16,4 +16,4 @@ tags:
 - [[TestLiveTradingGate]] - `method` [EXTRACTED]
 - [[The kill switch must block every live-order path through this shared gate, not…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_54
+#graphify/code #graphify/EXTRACTED #community/Community_49

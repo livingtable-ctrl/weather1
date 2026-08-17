@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 434"
+community: "Community 471"
 location: "L142"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_434
+  - community/Community_471
 ---
 
 # TestRainGatesActive
@@ -20,4 +20,4 @@ tags:
 - [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 handoff item 7…]] - `rationale_for` [EXTRACTED]
 - [[test_rain_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_434
+#graphify/code #graphify/EXTRACTED #community/Community_471

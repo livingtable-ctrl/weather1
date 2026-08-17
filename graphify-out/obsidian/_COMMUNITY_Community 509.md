@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.48
+members: 7
 ---
 
 # Community 509
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.48 - moderately connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_does_not_block_when_gate_active()_5]] - code - tests/test_hurricane_markets.py
-- [[dot-test_other_hurricane_shapes_still_unconditionally_blocked()_2]] - code - tests/test_hurricane_markets.py
-- [[dot-test_still_blocks_when_gate_inactive()_5]] - code - tests/test_hurricane_markets.py
-- [[KXHURCAT (per-storm category, still unsupported) must stay blocked regardless…]] - rationale - tests/test_hurricane_markets.py
-- [[Mutation-test proof flipping _hurricane_count_gates_active() to True makes the…]] - rationale - tests/test_hurricane_markets.py
-- [[TestCheckPositionLimitsHurricaneCountConditional]] - code - tests/test_hurricane_markets.py
+- [[dot-_row()]] - code - tests/test_p1_remaining.py
+- [[dot-test_count_unavailable_does_not_crash()]] - code - tests/test_p1_remaining.py
+- [[dot-test_floor_cleared_shows_cleared_status()]] - code - tests/test_p1_remaining.py
+- [[dot-test_no_fixed_floor_shows_no_floor_status_not_a_ratio()]] - code - tests/test_p1_remaining.py
+- [[dot-test_prints_signal_name_and_backlog_ref()]] - code - tests/test_p1_remaining.py
+- [[TestCmdSignals]] - code - tests/test_p1_remaining.py
+- [[backlog.txt SIGNAL GRADUATION IS A CONVENTION part (b) the `py main.py…]] - rationale - tests/test_p1_remaining.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 90]]
+- 2 edges to [[_COMMUNITY_Community 17]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestCheckPositionLimitsHurricaneCountConditional]] - degree 4, connects to 1 community
+- [[TestCmdSignals]] - degree 9, connects to 2 communities

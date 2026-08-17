@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 535"
 location: "L191"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_535
 ---
 
 # Dashboard returns 401 when password is set and no Authorization header sent.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_401_when_password_set_and_no_credentials()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_535

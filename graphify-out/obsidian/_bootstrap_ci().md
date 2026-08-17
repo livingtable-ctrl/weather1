@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 269"
-location: "L7338"
+community: "Community 264"
+location: "L7440"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_269
+  - community/Community_264
 ---
 
 # _bootstrap_ci()
@@ -18,10 +18,11 @@ tags:
 - [[dot-test_small_n_under_30_returns_wide_ci()]] - `calls` [EXTRACTED]
 - [[dot-test_too_few_members_returns_wide_ci()]] - `calls` [EXTRACTED]
 - [[Bootstrap 90% confidence interval on the ensemble probability estimate. 114…]] - `rationale_for` [EXTRACTED]
+- [[TestBootstrapCI]] - `calls` [EXTRACTED]
 - [[_analyze_hourly_trade()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[prob_threshold()]] - `calls` [EXTRACTED]
 - [[test_weather_markets.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_269
+#graphify/code #graphify/EXTRACTED #community/Community_264

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_e.py"
 type: "code"
-community: "Community 308"
+community: "Community 313"
 location: "L108"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_308
+  - community/Community_313
 ---
 
 # TestCronConsistencyCheck
@@ -19,6 +19,6 @@ tags:
 - [[dot-test_find_violations_with_clean_markets_returns_empty()]] - `method` [EXTRACTED]
 - [[dot-test_skip_flag_blocks_auto_trading()]] - `method` [EXTRACTED]
 - [[P3-14 the consistency check must run after market scan and loghalt on excess…]] - `rationale_for` [EXTRACTED]
-- [[Phase 3 Batch E AB TestConsistency Tests]] - `contains` [EXTRACTED]
+- [[test_phase3_batch_e.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_308
+#graphify/code #graphify/EXTRACTED #community/Community_313

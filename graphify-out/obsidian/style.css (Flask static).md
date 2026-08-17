@@ -1,11 +1,11 @@
 ---
 source_file: "static/style.css"
 type: "code"
-community: "Community 147"
+community: "Community 204"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_147
+  - community/Community_204
 ---
 
 # style.css (Flask static)
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[Base Page Template (reference)]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_147
+#graphify/code #graphify/EXTRACTED #community/Community_204

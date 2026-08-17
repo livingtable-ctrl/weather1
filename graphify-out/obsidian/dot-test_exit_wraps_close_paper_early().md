@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_positions.py"
 type: "code"
-community: "Community 484"
+community: "Community 525"
 location: "L144"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_484
+  - community/Community_525
 ---
 
 # .test_exit_wraps_close_paper_early()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPaperPositionStore]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_484
+#graphify/code #graphify/EXTRACTED #community/Community_525

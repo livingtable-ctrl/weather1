@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "rationale"
-community: "METAR Lock-In Confidence Tests"
+community: "Community 22"
 location: "L313"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/METAR_Lock-In_Confidence_Tests
+  - community/Community_22
 ---
 
 # Mutation-test the LOW-side NO margin itself: at min_temp_f=61.0, the real 3.0°F…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_between_no_lock_low_market_boundary_margin_not_shrunk()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/METAR_Lock-In_Confidence_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_22

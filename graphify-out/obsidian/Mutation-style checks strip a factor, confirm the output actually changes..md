@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_price_and_size.py"
 type: "rationale"
-community: "Community 58"
+community: "Community 78"
 location: "L224"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_58
+  - community/Community_78
 ---
 
 # Mutation-style checks: strip a factor, confirm the output actually changes.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPriceAndSizeMutation]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_58
+#graphify/rationale #graphify/EXTRACTED #community/Community_78

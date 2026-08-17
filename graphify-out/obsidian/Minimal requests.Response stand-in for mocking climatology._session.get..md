@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climatology.py"
 type: "rationale"
-community: "Community 542"
+community: "Community 607"
 location: "L32"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_542
+  - community/Community_607
 ---
 
 # Minimal requests.Response stand-in for mocking climatology._session.get.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_FakeResponse]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_542
+#graphify/rationale #graphify/EXTRACTED #community/Community_607

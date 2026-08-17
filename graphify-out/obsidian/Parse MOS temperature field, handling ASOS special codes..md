@@ -1,12 +1,12 @@
 ---
 source_file: "mos.py"
 type: "rationale"
-community: "Community 168"
+community: "Community 15"
 location: "L102"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_168
+  - community/Community_15
 ---
 
 # Parse MOS temperature field, handling ASOS special codes.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_parse_temp()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_168
+#graphify/rationale #graphify/EXTRACTED #community/Community_15

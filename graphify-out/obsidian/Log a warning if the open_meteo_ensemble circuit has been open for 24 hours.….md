@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L3579"
+community: "Community 3"
+location: "L3681"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # Log a warning if the open_meteo_ensemble circuit has been open for >24 hours.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[check_ensemble_circuit_health()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

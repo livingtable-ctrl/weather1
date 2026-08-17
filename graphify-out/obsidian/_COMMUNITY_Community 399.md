@@ -1,24 +1,24 @@
 ---
 type: community
-cohesion: 0.22
+cohesion: 0.25
 members: 9
 ---
 
 # Community 399
 
-**Cohesion:** 0.22 - loosely connected
+**Cohesion:** 0.25 - loosely connected
 **Members:** 9 nodes
 
 ## Members
-- [[dot-test_locked_above_threshold_after_2pm()]] - code - tests/test_metar.py
-- [[dot-test_locked_below_threshold_after_2pm()]] - code - tests/test_metar.py
-- [[dot-test_not_locked_before_2pm()]] - code - tests/test_metar.py
-- [[dot-test_not_locked_within_margin()]] - code - tests/test_metar.py
-- [[At 5 PM local with current temp 80°F, threshold 65°F 'above' → locked IN (it…]] - rationale - tests/test_metar.py
-- [[At 5 PM local with temp 10°C (50°F), threshold 65°F 'above' → locked OUT (it…]] - rationale - tests/test_metar.py
-- [[Before 2 PM local, never lock in regardless of temperature.]] - rationale - tests/test_metar.py
-- [[Temperature within margin_f of threshold is too close to lock in.]] - rationale - tests/test_metar.py
-- [[TestCheckMetarLockout]] - code - tests/test_metar.py
+- [[Fix Backtest Empty Results Diagnostics]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
+- [[Fix BacktestSimulateValidate Plan]] - document - docs/superpowers/plans/2026-04-25-fix-backtest-simulate-validate.md
+- [[Fix Simulate Pagination]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
+- [[Fix cmd_simulate Status Param]] - document - docs/superpowers/plans/2026-04-25-fix-backtest-simulate-validate.md
+- [[Phase E Walk-Forward Backtesting Plan]] - document - docs/superpowers/plans/2026-04-16-phase-e-walk-forward-backtest.md
+- [[Walk-Forward Backtesting Engine]] - document - docs/superpowers/plans/2026-04-16-phase-e-walk-forward-backtest.md
+- [[_fetch_settled_markets Pagination Helper]] - document - docs/superpowers/plans/2026-04-25-fix-backtest-simulate-validate.md
+- [[backtest.py module]] - code - docs/superpowers/plans/2026-04-16-phase-e-walk-forward-backtest.md
+- [[cmd_backtestcmd_walkforward Error Handling]] - document - docs/superpowers/plans/2026-04-25-fix-backtest-simulate-validate.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,8 +28,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 73]]
-- 1 edge to [[_COMMUNITY_Community 51]]
+- 2 edges to [[_COMMUNITY_Community 216]]
+- 1 edge to [[_COMMUNITY_Community 297]]
 
 ## Top bridge nodes
-- [[TestCheckMetarLockout]] - degree 6, connects to 2 communities
+- [[Fix Simulate Pagination]] - degree 3, connects to 1 community
+- [[Fix cmd_simulate Status Param]] - degree 3, connects to 1 community
+- [[Fix Backtest Empty Results Diagnostics]] - degree 2, connects to 1 community

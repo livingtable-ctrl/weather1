@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "code"
-community: "Community 231"
+community: "Community 104"
 location: "L22"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_231
+  - community/Community_104
 ---
 
 # TestCheckModelExitsThresholds
@@ -17,4 +17,4 @@ tags:
 - [[dot-test_model_flipped_requires_10pct_net_edge()]] - `method` [EXTRACTED]
 - [[test_early_exits.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_231
+#graphify/code #graphify/EXTRACTED #community/Community_104

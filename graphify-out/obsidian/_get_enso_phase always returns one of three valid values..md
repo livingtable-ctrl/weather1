@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "rationale"
-community: "Forecasting Persistence Model Tests"
+community: "Community 26"
 location: "L123"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_26
 ---
 
 # _get_enso_phase always returns one of three valid values.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_get_enso_phase_returns_valid_phase()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_26

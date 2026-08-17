@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_validation.py"
 type: "code"
-community: "Community 488"
+community: "Community 76"
 location: "L176"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_488
+  - community/Community_76
 ---
 
 # TestFlashCrashPriceFeed
@@ -18,4 +18,4 @@ tags:
 - [[F3 the flash-crash circuit breaker read opp.get(yes_bid)opp.get(yes_ask)…]] - `rationale_for` [EXTRACTED]
 - [[test_trade_validation.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_488
+#graphify/code #graphify/EXTRACTED #community/Community_76

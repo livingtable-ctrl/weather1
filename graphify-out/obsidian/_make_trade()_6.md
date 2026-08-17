@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_o.py"
 type: "code"
-community: "Community 63"
+community: "Community 60"
 location: "L17"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_63
+  - community/Community_60
 ---
 
 # _make_trade()
@@ -21,6 +21,6 @@ tags:
 - [[dot-test_same_trade_not_counted_in_both()]] - `calls` [EXTRACTED]
 - [[dot-test_sameday_trade_counted()]] - `calls` [EXTRACTED]
 - [[dot-test_yesterday_sameday_not_counted()]] - `calls` [EXTRACTED]
-- [[Phase 2 Batch O Same-Day Spend Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_o.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_63
+#graphify/code #graphify/EXTRACTED #community/Community_60

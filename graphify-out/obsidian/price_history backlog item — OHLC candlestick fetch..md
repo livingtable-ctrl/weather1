@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "rationale"
-community: "Community 467"
+community: "Community 506"
 location: "L629"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_467
+  - community/Community_506
 ---
 
 # price_history backlog item — OHLC candlestick fetch.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestGetCandlesticks]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_467
+#graphify/rationale #graphify/EXTRACTED #community/Community_506

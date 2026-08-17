@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_trade_updates.py"
 type: "code"
-community: "Community 253"
+community: "Community 251"
 location: "L86"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_253
+  - community/Community_251
 ---
 
 # TestCronPrintPlacedTrades
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_per_ticker_print_code_exists_in_cron()]] - `method` [EXTRACTED]
 - [[test_cron_trade_updates.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_253
+#graphify/code #graphify/EXTRACTED #community/Community_251

@@ -1,42 +1,43 @@
 ---
 type: community
-cohesion: 0.11
-members: 27
+cohesion: 0.13
+members: 28
 ---
 
 # Community 98
 
-**Cohesion:** 0.11 - loosely connected
-**Members:** 27 nodes
+**Cohesion:** 0.13 - loosely connected
+**Members:** 28 nodes
 
 ## Members
-- [[dot-test_cat5_kt_later_target_date_flips_2001_to_true()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_cat5_kt_unconditional_hand_computed()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_cat5_threshold_matches_the_cat5_storm_only()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_ci_brackets_point_estimate()_1]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_conditional_mode_boundary_is_strict_not_inclusive()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_conditional_mode_excludes_years_already_resolved_by_as_of()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_earliest_storm_wins_even_when_listed_second()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_earliest_storm_wins_within_a_season()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_no_qualifying_storm_returns_none()_1]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_too_few_years_returns_degenerate_ci()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_unconditional_mode_hand_computed()_1]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_zero_storm_season_contributes_a_real_false_not_dropped()_1]] - code - tests/test_hurricane_climatology.py
-- [[2001 has two storms reaching hurricane strength -- Sep 1 (first) and Oct 1…]] - rationale - tests/test_hurricane_climatology.py
-- [[2004 lists the Cat5 storm (Sep 10) BEFORE the earlier HU-only storm (Aug 20) --…]] - rationale - tests/test_hurricane_climatology.py
-- [[A year whose first occurrence is EXACTLY as_of_month_day is treated as already-…]] - rationale - tests/test_hurricane_climatology.py
-- [[Cat5 (kt=137) only 2001 (Oct1) and 2004 (Sep10) ever reach it. Against target…]] - rationale - tests/test_hurricane_climatology.py
-- [[No as_of_month_day -- every window year contributes, True iff that year's first…]] - rationale - tests/test_hurricane_climatology.py
-- [[Parse HURDAT2 fixed-format text into one compact summary dict per storm {id,…]] - rationale - hurricane_climatology.py
-- [[Same explicit-calendar-range discipline season_end_total_ distribution already…]] - rationale - tests/test_hurricane_climatology.py
-- [[TestBootstrapCi_1]] - code - tests/test_hurricane_climatology.py
-- [[TestFirstOccurrenceDay]] - code - tests/test_hurricane_climatology.py
-- [[TestNextEventOutcomes]] - code - tests/test_hurricane_climatology.py
-- [[Tests for hurricane_climatology.py -- HURDAT2 parsing, season-count…]] - rationale - tests/test_hurricane_climatology.py
-- [[_next_event_fixture_storms()]] - code - tests/test_hurricane_climatology.py
-- [[as_of_month_day=(8,10) -- 2000 (Aug1) and 2003 (Jul15) had ALREADY happened by…]] - rationale - tests/test_hurricane_climatology.py
-- [[parse_hurdat2()]] - code - hurricane_climatology.py
-- [[test_hurricane_climatology.py]] - code - tests/test_hurricane_climatology.py
+- [[AnalyticsTab()_1]] - code - frontend/src/App.jsx
+- [[App()_1]] - code - frontend/src/App.jsx
+- [[BalanceSparkline()_1]] - code - frontend/src/App.jsx
+- [[BrierTrendChart()_1]] - code - frontend/src/App.jsx
+- [[CITY_NAMES_1]] - code - frontend/src/App.jsx
+- [[DataContext]] - code - frontend/src/App.jsx
+- [[ForecastTab()_1]] - code - frontend/src/App.jsx
+- [[InfoIcon()_1]] - code - frontend/src/App.jsx
+- [[Nav()_1]] - code - frontend/src/App.jsx
+- [[OverviewTab()_1]] - code - frontend/src/App.jsx
+- [[PositionsTab()_1]] - code - frontend/src/App.jsx
+- [[RiskTab()_1]] - code - frontend/src/App.jsx
+- [[SettingsTab()_1]] - code - frontend/src/App.jsx
+- [[SignalsTab()_1]] - code - frontend/src/App.jsx
+- [[StatCard()_1]] - code - frontend/src/App.jsx
+- [[SystemEventsCard()_1]] - code - frontend/src/App.jsx
+- [[TABS_1]] - code - frontend/src/App.jsx
+- [[THEMES_1]] - code - frontend/src/App.jsx
+- [[ToastContainer()_1]] - code - frontend/src/App.jsx
+- [[TradesTab()_1]] - code - frontend/src/App.jsx
+- [[applyTheme()_1]] - code - frontend/src/App.jsx
+- [[authHeader()_1]] - code - frontend/src/useData.js
+- [[fmtEdge()_1]] - code - frontend/src/App.jsx
+- [[frontendsrcApp.jsx]] - code - frontend/src/App.jsx
+- [[getStoredPwd()_1]] - code - frontend/src/useData.js
+- [[main.jsx]] - code - frontend/src/main.jsx
+- [[normCity()_1]] - code - frontend/src/App.jsx
+- [[outcomeBadge()_1]] - code - frontend/src/App.jsx
 
 ## Live Query (requires Dataview plugin)
 
@@ -46,16 +47,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 7 edges to [[_COMMUNITY_Community 55]]
-- 6 edges to [[_COMMUNITY_Community 60]]
-- 4 edges to [[_COMMUNITY_Community 83]]
-- 1 edge to [[_COMMUNITY_Community 466]]
-- 1 edge to [[_COMMUNITY_Community 505]]
-- 1 edge to [[_COMMUNITY_Community 546]]
-- 1 edge to [[_COMMUNITY_Community 547]]
-- 1 edge to [[_COMMUNITY_Community 90]]
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 7 edges to [[_COMMUNITY_Community 135]]
+- 1 edge to [[_COMMUNITY_Community 560]]
 
 ## Top bridge nodes
-- [[test_hurricane_climatology.py]] - degree 25, connects to 9 communities
-- [[parse_hurdat2()]] - degree 7, connects to 3 communities
+- [[frontendsrcApp.jsx]] - degree 29, connects to 2 communities
+- [[authHeader()_1]] - degree 11, connects to 1 community
+- [[App()_1]] - degree 5, connects to 1 community
+- [[getStoredPwd()_1]] - degree 2, connects to 1 community

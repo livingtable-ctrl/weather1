@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 743"
 location: "L288"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_743
 ---
 
 # /api/config must surface both kalshi_fee_rate (taker, reference) and…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_api_config_includes_both_fee_rates()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_743

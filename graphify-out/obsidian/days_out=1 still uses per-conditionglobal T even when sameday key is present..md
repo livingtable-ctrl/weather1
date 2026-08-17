@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "rationale"
-community: "Community 113"
-location: "L251"
+community: "Community 101"
+location: "L462"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_113
+  - community/Community_101
 ---
 
 # days_out=1 still uses per-condition/global T even when sameday key is present.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_multiday_unaffected_by_sameday_key()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_113
+#graphify/rationale #graphify/EXTRACTED #community/Community_101

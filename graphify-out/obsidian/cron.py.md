@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 3"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # cron.py
@@ -14,14 +14,9 @@ tags:
 ## Connections
 - [[NOTE this covers a DIFFERENT failure mode than auto_retire_strategies()'s]] - `rationale_for` [EXTRACTED]
 - [[CronContext]] - `contains` [EXTRACTED]
-- [[Dead except TimeoutError Block (L1491-1503)]] - `references` [EXTRACTED]
-- [[Grade Audit Module Doc TIER 2 Files]] - `references` [EXTRACTED]
-- [[Grade Audit Module Doc cron.py]] - `references` [EXTRACTED]
-- [[Graduation Toast Shows Stale Brier ≤0.20 (L2048)]] - `references` [EXTRACTED]
 - [[KalshiClient]] - `imports` [EXTRACTED]
 - [[KalshiWebSocket]] - `imports` [EXTRACTED]
 - [[_acquire_cron_lock()]] - `contains` [EXTRACTED]
-- [[_acquire_cron_lock() Excellent Fail-Closed Design (910)]] - `references` [EXTRACTED]
 - [[_check_accuracy_halt()]] - `contains` [EXTRACTED]
 - [[_check_graduation_gate()]] - `contains` [EXTRACTED]
 - [[_check_live_model_exits()]] - `imports` [EXTRACTED]
@@ -32,7 +27,6 @@ tags:
 - [[_check_startup_orders()]] - `contains` [EXTRACTED]
 - [[_clear_cron_running_flag()]] - `contains` [EXTRACTED]
 - [[_cmd_cron_body()]] - `contains` [EXTRACTED]
-- [[_cmd_cron_body() AC1 Kill-Switch Mid-Placement Gap (610)]] - `references` [EXTRACTED]
 - [[_install_cron_watchdog()]] - `contains` [EXTRACTED]
 - [[_is_cron_running()]] - `contains` [EXTRACTED]
 - [[_log_near_settlement_trades()]] - `contains` [EXTRACTED]
@@ -43,43 +37,60 @@ tags:
 - [[_write_cron_running_flag()]] - `contains` [EXTRACTED]
 - [[atomic_write_json()]] - `imports` [EXTRACTED]
 - [[auto_retire_strategies()]] - `imports` [EXTRACTED]
+- [[auto_settle_paper_trades()]] - `imports` [EXTRACTED]
 - [[backup_data()]] - `imports` [EXTRACTED]
 - [[batch_log_analysis_attempts()]] - `imports` [EXTRACTED]
 - [[bold()]] - `imports` [EXTRACTED]
 - [[calibrate_and_save()]] - `imports` [EXTRACTED]
 - [[check_condition_type_weakness()]] - `imports` [EXTRACTED]
 - [[check_config_integrity()]] - `imports` [EXTRACTED]
+- [[check_expiring_trades()]] - `imports` [EXTRACTED]
 - [[check_market_anomalies()]] - `contains` [EXTRACTED]
 - [[check_retirement_probation()]] - `imports` [EXTRACTED]
 - [[check_series_drift()]] - `imports` [EXTRACTED]
-- [[cmd_cron()]] - `contains` [EXTRACTED]
+- [[close_paper_early()]] - `imports` [EXTRACTED]
+- [[cmd_cron()_1]] - `contains` [EXTRACTED]
+- [[collections_abc]] - `imports_from` [EXTRACTED]
 - [[colors.py]] - `imports_from` [EXTRACTED]
 - [[count_emos_ready_predictions()]] - `imports` [EXTRACTED]
-- [[cron.py File Grade median 7.510]] - `references` [EXTRACTED]
-- [[cron.py Grade Audit]] - `references` [EXTRACTED]
+- [[count_emos_variance_ready_predictions()]] - `imports` [EXTRACTED]
 - [[cron.py — Background cron runner extracted from main.py. Contains cmd_cron and…]] - `rationale_for` [EXTRACTED]
 - [[cyan()]] - `imports` [EXTRACTED]
+- [[dataclasses]] - `imports_from` [EXTRACTED]
 - [[detect_brier_drift()]] - `imports` [EXTRACTED]
 - [[dim()]] - `imports` [EXTRACTED]
 - [[execution_log.py]] - `imports` [EXTRACTED]
 - [[fetch_pdo_pna()]] - `imports` [EXTRACTED]
+- [[fit_and_save_metar_calibration()]] - `imports` [EXTRACTED]
 - [[flush_ensemble_disk_cache()]] - `imports` [EXTRACTED]
 - [[flush_forecast_disk_cache()]] - `imports` [EXTRACTED]
 - [[format_brier_alert()]] - `imports` [EXTRACTED]
+- [[get_accuracy_halt_reason()]] - `imports` [EXTRACTED]
 - [[get_brier_over_time()]] - `imports` [EXTRACTED]
+- [[get_edge_realization_rate()]] - `imports` [EXTRACTED]
 - [[get_gate_counts()]] - `imports` [EXTRACTED]
 - [[get_mean_slippage()]] - `imports` [EXTRACTED]
+- [[get_sameday_band_stats()]] - `imports` [EXTRACTED]
+- [[get_state_snapshot()]] - `imports` [EXTRACTED]
 - [[get_ws_health()]] - `imports` [EXTRACTED]
+- [[graduation_check()]] - `imports` [EXTRACTED]
 - [[green()]] - `imports` [EXTRACTED]
+- [[is_accuracy_halted()]] - `imports` [EXTRACTED]
 - [[is_trading_paused()]] - `imports` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
 - [[kalshi_client.py]] - `imports_from` [EXTRACTED]
 - [[kalshi_ws.py]] - `imports_from` [EXTRACTED]
 - [[log_city_registry_report()]] - `imports` [EXTRACTED]
-- [[param_sweep.py]] - `references` [EXTRACTED]
+- [[logging]] - `imports` [EXTRACTED]
+- [[main.py]] - `imports_from` [EXTRACTED]
+- [[os]] - `imports` [EXTRACTED]
+- [[paper.get_open_trades]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
 - [[paths.py]] - `imports_from` [EXTRACTED]
 - [[prune_api_requests()]] - `imports` [EXTRACTED]
 - [[prune_feature_log()]] - `imports` [EXTRACTED]
 - [[prune_old_analysis_attempts()]] - `imports` [EXTRACTED]
+- [[psutil_1]] - `imports` [EXTRACTED]
 - [[purge_old_predictions()]] - `imports` [EXTRACTED]
 - [[read_settlement_signals()]] - `imports` [EXTRACTED]
 - [[red()]] - `imports` [EXTRACTED]
@@ -92,12 +103,12 @@ tags:
 - [[run_sweep()]] - `imports` [EXTRACTED]
 - [[run_trade_cycle()]] - `imports` [EXTRACTED]
 - [[send_system_alert()]] - `imports` [EXTRACTED]
-- [[send_system_alert() RF1 Promotion (610)]] - `references` [EXTRACTED]
 - [[simulate_portfolio()]] - `imports` [EXTRACTED]
-- [[test_cron_group_c.py]] - `calls` [EXTRACTED]
+- [[threading]] - `imports` [EXTRACTED]
 - [[trade_cycle.py]] - `imports_from` [EXTRACTED]
 - [[train_all_temperature_scaling()]] - `imports` [EXTRACTED]
 - [[train_bias_model()]] - `imports` [EXTRACTED]
+- [[typing]] - `imports_from` [EXTRACTED]
 - [[update_heartbeat()]] - `imports` [EXTRACTED]
 - [[update_learned_weights_from_tracker()]] - `imports` [EXTRACTED]
 - [[utc_today()]] - `imports` [EXTRACTED]
@@ -106,4 +117,4 @@ tags:
 - [[validate_weight_files()]] - `imports` [EXTRACTED]
 - [[yellow()]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_3

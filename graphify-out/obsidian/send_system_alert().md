@@ -1,18 +1,17 @@
 ---
 source_file: "notify.py"
 type: "code"
-community: "Community 96"
+community: "Community 3"
 location: "L362"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_96
+  - community/Community_3
 ---
 
 # send_system_alert()
 
 ## Connections
-- [[NOTIFY_COOLDOWN_STATE_PATH Constant]] - `references` [EXTRACTED]
 - [[Send a system-level alert (not trade-specific) through all configured backends.…]] - `rationale_for` [EXTRACTED]
 - [[_check_prod_reminder()]] - `calls` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
@@ -25,4 +24,4 @@ tags:
 - [[notify.py]] - `contains` [EXTRACTED]
 - [[test_notify.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_96
+#graphify/code #graphify/EXTRACTED #community/Community_3

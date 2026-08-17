@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_suggested_bets.py"
 type: "code"
-community: "Community 176"
+community: "Community 225"
 location: "L46"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_176
+  - community/Community_225
 ---
 
 # _make_market()
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_returns_top_n_sorted_by_ev()]] - `calls` [EXTRACTED]
 - [[test_suggested_bets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_176
+#graphify/code #graphify/EXTRACTED #community/Community_225

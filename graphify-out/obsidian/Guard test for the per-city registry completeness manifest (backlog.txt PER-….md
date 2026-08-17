@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_city_registry_manifest.py"
 type: "rationale"
-community: "Community 89"
+community: "Community 176"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_89
+  - community/Community_176
 ---
 
 # Guard test for the per-city registry completeness manifest (backlog.txt "PER-…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_city_registry_manifest.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_89
+#graphify/rationale #graphify/EXTRACTED #community/Community_176

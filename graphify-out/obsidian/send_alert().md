@@ -1,12 +1,12 @@
 ---
 source_file: "watchdog.py"
 type: "code"
-community: "Community 503"
+community: "Community 6"
 location: "L30"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_503
+  - community/Community_6
 ---
 
 # send_alert()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[watchdog.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_503
+#graphify/code #graphify/EXTRACTED #community/Community_6

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "rationale"
-community: "Community 50"
+community: "Community 54"
 location: "L1175"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_50
+  - community/Community_54
 ---
 
 # A LOW-market ticker from a correlated city must not leak into a var='max'…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_get_regional_recent_bias_var_filters_high_low()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_50
+#graphify/rationale #graphify/EXTRACTED #community/Community_54

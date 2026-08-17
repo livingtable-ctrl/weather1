@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 693"
+community: "Community 117"
 location: "L429"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_117
 ---
 
 # .test_corrupt_override_file_falls_through_to_real_check_not_open()
@@ -15,4 +15,4 @@ tags:
 - [[An unreadablecorrupt override file must fail through to the real (fail-closed)…]] - `rationale_for` [EXTRACTED]
 - [[TestAccuracyHaltOverride]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_117

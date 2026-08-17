@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 1"
 location: "L696"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_1
 ---
 
 # Determine STRONG-tier per-trade cap from current Brier score. Returns a…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_dynamic_kelly_cap()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_1

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 319"
+community: "Community 324"
 location: "L861"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_319
+  - community/Community_324
 ---
 
 # TestGetBias
@@ -21,4 +21,4 @@ tags:
 - [[Focused tests for tracker.get_bias() (111).]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_319
+#graphify/code #graphify/EXTRACTED #community/Community_324

@@ -1,12 +1,12 @@
 ---
 source_file: "docs/superpowers/plans/do-after-graduation.md"
 type: "document"
-community: "Community 156"
+community: "Community 160"
 location: "1b"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_156
+  - community/Community_160
 ---
 
 # 1b: Wire MAX_DRAWDOWN_FRACTION through BotConfig
@@ -16,4 +16,4 @@ tags:
 - [[config.py Module (BotConfig)]] - `references` [EXTRACTED]
 - [[paper.py Module]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_156
+#graphify/document #graphify/EXTRACTED #community/Community_160

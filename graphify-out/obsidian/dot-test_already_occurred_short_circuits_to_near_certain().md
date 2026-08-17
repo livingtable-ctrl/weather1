@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Hurricane Market Season Signals"
+community: "Community 19"
 location: "L1246"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Hurricane_Market_Season_Signals
+  - community/Community_19
 ---
 
 # .test_already_occurred_short_circuits_to_near_certain()
@@ -17,4 +17,4 @@ tags:
 - [[TestAnalyzeHurricaneNextEventTrade]] - `method` [EXTRACTED]
 - [[occurred_this_season=True (live cache says =1 hurricane already this season)…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Hurricane_Market_Season_Signals
+#graphify/code #graphify/EXTRACTED #community/Community_19

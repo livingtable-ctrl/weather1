@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_p.py"
 type: "rationale"
-community: "Community 151"
+community: "Community 432"
 location: "L26"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_151
+  - community/Community_432
 ---
 
 # Create a minimal predictions+outcomes DB with the given row counts.
 
 ## Connections
-- [[_make_db()]] - `rationale_for` [EXTRACTED]
+- [[_make_db()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_151
+#graphify/rationale #graphify/EXTRACTED #community/Community_432

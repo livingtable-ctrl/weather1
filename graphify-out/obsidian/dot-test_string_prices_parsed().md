@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 207"
+community: "Community 81"
 location: "L102"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_207
+  - community/Community_81
 ---
 
 # .test_string_prices_parsed()
@@ -16,4 +16,4 @@ tags:
 - [[TestParseMarketPrice]] - `method` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_207
+#graphify/code #graphify/EXTRACTED #community/Community_81

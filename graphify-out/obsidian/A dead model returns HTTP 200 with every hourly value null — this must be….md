@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ecmwf.py"
 type: "rationale"
-community: "Community 255"
+community: "Community 252"
 location: "L39"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_255
+  - community/Community_252
 ---
 
 # A dead model returns HTTP 200 with every hourly value null — this must be…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_fetch_temperature_ecmwf_all_null_treated_as_failure()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_255
+#graphify/rationale #graphify/EXTRACTED #community/Community_252

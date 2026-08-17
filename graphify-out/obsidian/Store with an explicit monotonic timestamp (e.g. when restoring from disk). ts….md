@@ -1,12 +1,12 @@
 ---
 source_file: "forecast_cache.py"
 type: "rationale"
-community: "Community 51"
+community: "Community 9"
 location: "L68"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_51
+  - community/Community_9
 ---
 
 # Store with an explicit monotonic timestamp (e.g. when restoring from disk). ts…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-set_at()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_51
+#graphify/rationale #graphify/EXTRACTED #community/Community_9

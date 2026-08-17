@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Community 96"
-location: "L6983"
+community: "Community 5"
+location: "L7085"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_96
+  - community/Community_5
 ---
 
 # Standing report replacing backlog.txt's per-entry prose ENABLEMENT TRIGGER text…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_signal_graduation_report()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_96
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

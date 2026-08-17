@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-25-fix-menu-ux.md"
 type: "document"
-community: "Community 295"
+community: "Community 297"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_295
+  - community/Community_297
 ---
 
 # Menu UX Fixes Plan
@@ -15,4 +15,4 @@ tags:
 - [[Ctrl-C Cancel AnalyzeCron]] - `implements` [EXTRACTED]
 - [[Flush stdout Before Cron]] - `implements` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_295
+#graphify/document #graphify/EXTRACTED #community/Community_297

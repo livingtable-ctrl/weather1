@@ -1,19 +1,21 @@
 ---
 type: community
-cohesion: 0.50
-members: 4
+cohesion: 0.33
+members: 6
 ---
 
 # Community 565
 
-**Cohesion:** 0.50 - moderately connected
-**Members:** 4 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[P10.2 Activate emergency shutdown. Writes reason file and touches kill switch.]] - rationale - alerts.py
-- [[activate_black_swan_halt()]] - code - alerts.py
-- [[alerts.py Grade Rubric]] - document - docs/grade_audit/modules/alerts.md
-- [[notify.py (PushoverDiscordemail)]] - code - notify.py
+- [[dot-test_enrich_uses_cache_timestamp_not_current_time()]] - code - tests/test_forecasting.py
+- [[dot-test_enrich_uses_current_time_on_cache_miss()]] - code - tests/test_forecasting.py
+- [[On a cache miss, data_fetched_at must be the current wall-clock time.]] - rationale - tests/test_forecasting.py
+- [[P1-1 data_fetched_at must reflect the cache entry's original fetch time, not…]] - rationale - tests/test_forecasting.py
+- [[TestEnrichWithForecastCacheTimestamp]] - code - tests/test_forecasting.py
+- [[When the forecast is already cached, data_fetched_at must equal the original…]] - rationale - tests/test_forecasting.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -23,13 +25,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 167]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 208]]
-- 1 edge to [[_COMMUNITY_Community 94]]
-- 1 edge to [[_COMMUNITY_Community 451]]
+- 1 edge to [[_COMMUNITY_Community 38]]
+- 1 edge to [[_COMMUNITY_Community 9]]
 
 ## Top bridge nodes
-- [[alerts.py Grade Rubric]] - degree 5, connects to 4 communities
-- [[activate_black_swan_halt()]] - degree 5, connects to 2 communities
+- [[TestEnrichWithForecastCacheTimestamp]] - degree 5, connects to 2 communities

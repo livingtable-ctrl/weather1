@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 471
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_apply_ml_prob_correction_adjusts_probability()]] - code - tests/test_ml_bias.py
-- [[dot-test_apply_ml_prob_correction_falls_back_when_no_model()]] - code - tests/test_ml_bias.py
-- [[dot-test_train_bias_model_returns_dict()]] - code - tests/test_ml_bias.py
-- [[TestMLBias]] - code - tests/test_ml_bias.py
-- [[apply_ml_prob_correction returns adjusted prob when model is available.]] - rationale - tests/test_ml_bias.py
-- [[apply_ml_prob_correction returns our_prob unchanged if no trained model exists.]] - rationale - tests/test_ml_bias.py
-- [[train_bias_model returns a dict with per-city models.]] - rationale - tests/test_ml_bias.py
+- [[dot-test_false_when_env_var_set_but_below_sample_floor()_5]] - code - tests/test_rain_markets.py
+- [[dot-test_false_when_env_var_unset()_5]] - code - tests/test_rain_markets.py
+- [[dot-test_false_when_sample_floor_met_but_env_var_unset()_3]] - code - tests/test_rain_markets.py
+- [[dot-test_never_raises_on_count_failure()_5]] - code - tests/test_rain_markets.py
+- [[dot-test_true_when_env_var_set_and_sample_floor_met()_5]] - code - tests/test_rain_markets.py
+- [[Both conditions are required -- neither alone suffices._2]] - rationale - tests/test_rain_markets.py
+- [[TestRainGatesActive]] - code - tests/test_rain_markets.py
+- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 handoff item 7…]] - rationale - tests/test_rain_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,7 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestMLBias]] - degree 4, connects to 1 community
+- [[TestRainGatesActive]] - degree 7, connects to 1 community

@@ -1,0 +1,299 @@
+---
+type: community
+cohesion: 0.02
+members: 184
+---
+
+# Community 5
+
+**Cohesion:** 0.02 - loosely connected
+**Members:** 184 nodes
+
+## Members
+- [[118 Compute and persist per-city model weights from tracker MAE data. Returns…]] - rationale - weather_markets.py
+- [[119 Load city coordinates from datacities.json so new cities can be added…]] - rationale - weather_markets.py
+- [[126 Return seconds until the next NWP model cycle data becomes available. NWP…]] - rationale - weather_markets.py
+- [[AI Hallucination Code Audit Prompt]] - document - ai_code_hallucination_audit_prompt.md
+- [[Apply ML-based probability calibration correction. The model predicts (actual -…]] - rationale - ml_bias.py
+- [[Apply the same METAR beta-calibration weather_markets.py's analyze_trade uses…]] - rationale - settlement_monitor.py
+- [[Block until the per-endpoint minimum inter-request interval has elapsed.…]] - rationale - weather_markets.py
+- [[Bootstrap 90% CI for a precipitation ensemble probability.]] - rationale - weather_markets.py
+- [[Check METAR same-day lock-in for a temperature market. Fetches the latest METAR…]] - rationale - weather_markets.py
+- [[Code Review Fixes Plan]] - document - code_review_plan.md
+- [[Compute P(T  threshold) or P(T  threshold) using a Gaussian distribution.…]] - rationale - weather_markets.py
+- [[Compute std dev of non-None values. Returns 0.0 if fewer than 2 valid.]] - rationale - weather_markets.py
+- [[Count DISTINCT settled monthly-rain accrual events (ticker prefix, year, month)…]] - rationale - tracker.py
+- [[Count settled predictions with a non-NULL value for a logged signal. Generic…]] - rationale - tracker.py
+- [[Determine time-of-day risk level and forecast sigma multiplier. Returns…]] - rationale - weather_markets.py
+- [[EMOS_COVERED_CONDITION_KEYS]] - code - ml_bias.py
+- [[Estimated standard deviation of forecast error in °F. Weather forecasts get…]] - rationale - weather_markets.py
+- [[Fetch ECMWF deterministic max or min daily temperature for a city. Uses Open-…]] - rationale - weather_markets.py
+- [[Fetch all ECMWF AIFS ensemble members for daily high (var='max') or low…]] - rationale - weather_markets.py
+- [[Fetch all ensemble member temps from one model for a given locationdate. var…]] - rationale - weather_markets.py
+- [[Fetch and analyze Kalshi weather prediction markets. Compares market-implied…]] - rationale - weather_markets.py
+- [[Fetch daily highlowprecip from three forecast models (GFS, ECMWF, ICON) and…]] - rationale - weather_markets.py
+- [[Fetch ensemble precipitation member TOTALS (inches) summed across every date in…]] - rationale - weather_markets.py
+- [[Fetch ensemble precipitation members (inches) for a citydate. ECMWF is fetched…]] - rationale - weather_markets.py
+- [[Fetch highlow from weatherapi.com (free tier 1M callsmonth). Returns…]] - rationale - weather_markets.py
+- [[Fetch per-model ensemble probabilitiesmeans for ICON, GFS, and ECMWF AIFS.…]] - rationale - weather_markets.py
+- [[Fetch the real NBM (National Blend of Models) daily maxmin for a city, via…]] - rationale - weather_markets.py
+- [[Fetch weather data from Pirate Weather (HRRRGFSGEFS blend). Used as fallback…]] - rationale - weather_markets.py
+- [[For a city's KXTEMPxxxH markets (already fetched, any status -- pass an…]] - rationale - weather_markets.py
+- [[Full System Audit Prompt]] - document - docs/full_system_audit_prompt.md
+- [[Full System Grade Prompt]] - document - docs/full_system_grade_prompt.md
+- [[Full multi-source trade analysis pipeline 1. Ensemble probability (80+…]] - rationale - weather_markets.py
+- [[Kalshi Weather Trading Bot README]] - document - README.md
+- [[Load non-expired ensemble entries from disk into the in-memory cache.]] - rationale - weather_markets.py
+- [[Load non-expired entries from disk into the in-memory cache on startup.]] - rationale - weather_markets.py
+- [[Load per-city model weights previously saved by save_learned_weights(). Format…]] - rationale - weather_markets.py
+- [[Load the beta-calibration (a, b, c) for METAR lock-in same-day predictions,…]] - rationale - weather_markets.py
+- [[Parse an ISO close_time string ('...Z' or offset-aware) into an aware UTC…]] - rationale - weather_markets.py
+- [[Parse the accrual (year, month) out of a KXRAINM or KXDENSNOWM-style monthly-…]] - rationale - weather_markets.py
+- [[Per-quintile bias correction. Bins settled predictions by ``our_prob`` into 5…]] - rationale - tracker.py
+- [[Persist per-city model weights to datalearned_weights.json atomically. Called…]] - rationale - weather_markets.py
+- [[Pre-warm _ensemble_cache with batched ENSEMBLE_BASE requests. Instead of one…]] - rationale - weather_markets.py
+- [[Pre-warm _forecast_cache with batched Open-Meteo requests. Instead of one HTTP…]] - rationale - weather_markets.py
+- [[Probability analysis for KXDENSNOWM-style monthly snow-total ladder markets…]] - rationale - weather_markets.py
+- [[Probability analysis for KXRAINM monthly rain-total ladder markets…]] - rationale - weather_markets.py
+- [[Probability analysis for precipitation markets (rainsnow). Uses ensemble…]] - rationale - weather_markets.py
+- [[Probability analysis for snowice markets. Uses ensemble precipitation…]] - rationale - weather_markets.py
+- [[Probability analysis for the 1 storm-order series (backlog.txt HURRICANE…]] - rationale - weather_markets.py
+- [[Probability analysis for the 2 time-to-next-event hurricane series (backlog.txt…]] - rationale - weather_markets.py
+- [[Probability analysis for the 5 season-total hurricanetropical-storm- count…]] - rationale - weather_markets.py
+- [[Production Readiness Remediation Plan]] - document - AUDIT_PLAN.md
+- [[Pure JSON read, no IO side effect -- refresh_hurricane_count_to_date() is the…]] - rationale - weather_markets.py
+- [[Queue a forecast cache entry for the next batch flush.]] - rationale - weather_markets.py
+- [[Queue an ensemble cache entry for the next batch flush. ttl_secs should match…]] - rationale - weather_markets.py
+- [[R24 Single source of truth for city detection from a market ticker + title.…]] - rationale - weather_markets.py
+- [[Raise if model_forecast_means has a key outside KNOWN_FORECAST_MODEL_NAMES.…]] - rationale - weather_markets.py
+- [[Rate-limited wrapper for all Open-Meteo API calls. On 429 returns immediately…]] - rationale - weather_markets.py
+- [[Real per-hour threshold-crossing probability model for KXTEMPxxxH markets…]] - rationale - weather_markets.py
+- [[Reload _CITY_WEIGHTS_SEASONAL_WEIGHTS_CONDITION_WEIGHTS if their JSON files…]] - rationale - weather_markets.py
+- [[Response_2]] - code
+- [[Response_1]] - code
+- [[Return max if `hour` is city's cached max_hour, min if it's the cached…]] - rationale - weather_markets.py
+- [[Return (gem_mean, ukmo_mean) via the same ENSEMBLE_BASE_model_prob_and_mean…]] - rationale - weather_markets.py
+- [[Return (prob, mean_temp) for model_name via ENSEMBLE_BASE. Either may be None.…]] - rationale - weather_markets.py
+- [[Return 0.10 when ensemble is bimodal (two distinct weather scenarios), else 1.0.]] - rationale - weather_markets.py
+- [[Return True if the Open-Meteo ensemble circuit breaker is currently OPEN.]] - rationale - weather_markets.py
+- [[Return True if the ensemble spread (p90-p10) is unusually wide — a sign the…]] - rationale - weather_markets.py
+- [[Return True only when BELOW_GATE_ENABLED=1 AND = 30 settled below predictions.…]] - rationale - weather_markets.py
+- [[Return True when PDOPNA correction is ready to apply. Requires BOTH 20+…]] - rationale - weather_markets.py
+- [[Return True when enough settled trades warrant regime-specific blend weights.…]] - rationale - weather_markets.py
+- [[Return all ensemble member temperatures for a citydate, combining ICON (51…]] - rationale - weather_markets.py
+- [[Return ecmwf_aifs025_ensemble's own member-vote-fraction probability.…]] - rationale - weather_markets.py
+- [[Return per-model additive bias correction for var (maxmin) ensemble…]] - rationale - weather_markets.py
+- [[Return the best available temperature bias correction for a city. Blends the…]] - rationale - weather_markets.py
+- [[Return {max_hour local_hour, min_hour local_hour} -- the local hour with…]] - rationale - weather_markets.py
+- [[Returns (basin, count_type, season_year) for one of the 5 season- total count…]] - rationale - weather_markets.py
+- [[Returns cached count-to-date for `basin``season_year`, or None (falls back to…]] - rationale - weather_markets.py
+- [[Returns {type hurricane_count, basin ATLEPACCPAC, count_type…]] - rationale - weather_markets.py
+- [[Returns {type hurricane_next_event, basin ATL, event_type…]] - rationale - weather_markets.py
+- [[Returns {type storm_order, basin ATL, storm_name str, position…]] - rationale - weather_markets.py
+- [[Same late-bound-closure factory shape as _count_signal_column _count_model_obs…]] - rationale - weather_markets.py
+- [[Same late-bound-closure shape as _count_signal_column, for a registry entry…]] - rationale - weather_markets.py
+- [[Same-daynear-term persistence baseline, extracted from analyze_ trade()'s non-…]] - rationale - weather_markets.py
+- [[Save raw forecast data used for a trade decision to dataforecast_snapshots.…]] - rationale - weather_markets.py
+- [[Shared ensemble-to-probability core, extracted from analyze_trade()'s non-…]] - rationale - weather_markets.py
+- [[Standing report replacing backlog.txt's per-entry prose ENABLEMENT TRIGGER text…]] - rationale - weather_markets.py
+- [[TestMLBias (train_bias_model  apply_ml_prob_correction)]] - code - tests/test_ml_bias.py
+- [[Thin closure factory so each registry entry's count_fn is late-bound to…]] - rationale - weather_markets.py
+- [[Thin wrapper so tests can monkeypatch the settled-trade count.]] - rationale - weather_markets.py
+- [[Thin wrapper so tests can monkeypatch the west-coast settled-trade counts.]] - rationale - weather_markets.py
+- [[Trading Logic Audit 2026-04-23]] - document - docs/audit-2026-04-23.md
+- [[Validate a forecastweather API response dict. Returns True if valid, False if…]] - rationale - schema_validator.py
+- [[Write a one-time entry to feature_activations.json and log a WARNING.…]] - rationale - weather_markets.py
+- [[_SignalRegistryEntry]] - code - weather_markets.py
+- [[_analyze_hourly_trade()]] - code - weather_markets.py
+- [[_analyze_hurricane_count_trade()]] - code - weather_markets.py
+- [[_analyze_hurricane_next_event_trade()]] - code - weather_markets.py
+- [[_analyze_monthly_rain_trade()]] - code - weather_markets.py
+- [[_analyze_monthly_snow_trade()]] - code - weather_markets.py
+- [[_analyze_precip_trade()]] - code - weather_markets.py
+- [[_analyze_snow_trade()]] - code - weather_markets.py
+- [[_analyze_storm_order_trade()]] - code - weather_markets.py
+- [[_below_gates_active()]] - code - weather_markets.py
+- [[_bootstrap_ci_precip()]] - code - weather_markets.py
+- [[_cal_weights_mtime()]] - code - weather_markets.py
+- [[_calibrate_metar_settlement_confidence()]] - code - settlement_monitor.py
+- [[_compute_ensemble_prob()]] - code - weather_markets.py
+- [[_compute_ensemble_spread()]] - code - weather_markets.py
+- [[_compute_persistence_prob()]] - code - weather_markets.py
+- [[_count_gate()]] - code - weather_markets.py
+- [[_count_market_implied_rain()]] - code - weather_markets.py
+- [[_count_signal_column()]] - code - weather_markets.py
+- [[_count_signal_json_key()]] - code - weather_markets.py
+- [[_days_out_from_close_time()]] - code - weather_markets.py
+- [[_ensemble_circuit_is_open()]] - code - weather_markets.py
+- [[_fetch_ensemble_precip()]] - code - weather_markets.py
+- [[_fetch_ensemble_precip_multiday()]] - code - weather_markets.py
+- [[_fetch_model_ensemble()]] - code - weather_markets.py
+- [[_forecast_uncertainty()]] - code - weather_markets.py
+- [[_get_bimodal_kelly_multiplier()]] - code - weather_markets.py
+- [[_get_cached_hurricane_count_to_date()]] - code - weather_markets.py
+- [[_get_cached_hurricane_names_entry()]] - code - weather_markets.py
+- [[_get_cached_storms_named_to_date()]] - code - weather_markets.py
+- [[_get_combined_station_bias()]] - code - weather_markets.py
+- [[_get_consensus_probs()]] - code - weather_markets.py
+- [[_get_ecmwf_aifs_prob()]] - code - weather_markets.py
+- [[_get_gem_ukmo_means()]] - code - weather_markets.py
+- [[_hurricane_count_key_from_ticker()]] - code - weather_markets.py
+- [[_load_city_coords()]] - code - weather_markets.py
+- [[_load_ensemble_disk_cache()]] - code - weather_markets.py
+- [[_load_forecast_disk_cache()]] - code - weather_markets.py
+- [[_load_metar_calibration()]] - code - weather_markets.py
+- [[_maybe_refresh_calibration_weights()]] - code - weather_markets.py
+- [[_metar_lock_in()]] - code - weather_markets.py
+- [[_model_bias()]] - code - weather_markets.py
+- [[_model_prob_and_mean()]] - code - weather_markets.py
+- [[_notify_feature_activation()]] - code - weather_markets.py
+- [[_om_rate_limit()]] - code - weather_markets.py
+- [[_om_request()]] - code - weather_markets.py
+- [[_parse_city_from_ticker()]] - code - weather_markets.py
+- [[_parse_hurricane_count_condition()]] - code - weather_markets.py
+- [[_parse_hurricane_next_event_condition()]] - code - weather_markets.py
+- [[_parse_monthly_ticker_month()]] - code - weather_markets.py
+- [[_parse_storm_order_condition()]] - code - weather_markets.py
+- [[_pdopna_blend_active()]] - code - weather_markets.py
+- [[_pdopna_settled_counts()]] - code - weather_markets.py
+- [[_regime_blend_active()]] - code - weather_markets.py
+- [[_regime_blend_settled_count()]] - code - weather_markets.py
+- [[_safe_parse_close_time()]] - code - weather_markets.py
+- [[_save_ensemble_disk_entry()]] - code - weather_markets.py
+- [[_save_forecast_disk_entry()]] - code - weather_markets.py
+- [[_time_risk()]] - code - weather_markets.py
+- [[_ttl_until_next_cycle()]] - code - weather_markets.py
+- [[_validate_forecast_model_keys()]] - code - weather_markets.py
+- [[analyze_trade()]] - code - weather_markets.py
+- [[apply_ml_prob_correction()]] - code - ml_bias.py
+- [[backlog.txt HURRICANE MARKETS -- storm-order model (2026-08-07). Returns the…]] - rationale - weather_markets.py
+- [[batch_prewarm_ensemble()]] - code - weather_markets.py
+- [[batch_prewarm_forecasts()]] - code - weather_markets.py
+- [[compute_hourly_temperature_proxy()]] - code - weather_markets.py
+- [[count_settled_market_implied_rain_events()]] - code - tracker.py
+- [[count_settled_signal_rows()]] - code - tracker.py
+- [[date_9]] - code
+- [[datetime_2]] - code
+- [[determine_hourly_target_hours()]] - code - weather_markets.py
+- [[fetch_temperature_ecmwf()]] - code - weather_markets.py
+- [[fetch_temperature_nbm()]] - code - weather_markets.py
+- [[fetch_temperature_pirate_weather()]] - code - weather_markets.py
+- [[fetch_temperature_weatherapi()]] - code - weather_markets.py
+- [[gaussian_probability()]] - code - weather_markets.py
+- [[get_ensemble_members()]] - code - weather_markets.py
+- [[get_ensemble_temps()]] - code - weather_markets.py
+- [[get_hourly_target_hour_role()]] - code - weather_markets.py
+- [[get_quintile_bias()]] - code - tracker.py
+- [[get_signal_graduation_report()]] - code - weather_markets.py
+- [[get_weather_forecast()]] - code - weather_markets.py
+- [[is_forecast_anomalous()]] - code - weather_markets.py
+- [[learn_seasonal_weights()]] - code - weather_markets.py
+- [[load_learned_weights()]] - code - weather_markets.py
+- [[max(0, (close_dt.date() - today).days) -- the monthly-rain analog of the daily…]] - rationale - weather_markets.py
+- [[save_forecast_snapshot()]] - code - weather_markets.py
+- [[save_learned_weights()]] - code - weather_markets.py
+- [[validate_forecast()]] - code - schema_validator.py
+- [[weather_markets.py]] - code - weather_markets.py
+
+## Live Query (requires Dataview plugin)
+
+```dataview
+TABLE source_file, type FROM #community/Community_5
+SORT file.name ASC
+```
+
+## Connections to other communities
+- 48 edges to [[_COMMUNITY_Community 3]]
+- 42 edges to [[_COMMUNITY_Community 2]]
+- 25 edges to [[_COMMUNITY_Community 0]]
+- 25 edges to [[_COMMUNITY_Community 4]]
+- 24 edges to [[_COMMUNITY_Community 11]]
+- 21 edges to [[_COMMUNITY_Community 1]]
+- 21 edges to [[_COMMUNITY_Community 6]]
+- 14 edges to [[_COMMUNITY_Community 13]]
+- 13 edges to [[_COMMUNITY_Community 78]]
+- 12 edges to [[_COMMUNITY_Community 81]]
+- 11 edges to [[_COMMUNITY_Community 174]]
+- 10 edges to [[_COMMUNITY_Community 198]]
+- 10 edges to [[_COMMUNITY_Community 8]]
+- 9 edges to [[_COMMUNITY_Community 112]]
+- 9 edges to [[_COMMUNITY_Community 69]]
+- 9 edges to [[_COMMUNITY_Community 82]]
+- 8 edges to [[_COMMUNITY_Community 9]]
+- 8 edges to [[_COMMUNITY_Community 165]]
+- 8 edges to [[_COMMUNITY_Community 187]]
+- 8 edges to [[_COMMUNITY_Community 38]]
+- 8 edges to [[_COMMUNITY_Community 68]]
+- 6 edges to [[_COMMUNITY_Community 102]]
+- 6 edges to [[_COMMUNITY_Community 127]]
+- 5 edges to [[_COMMUNITY_Community 205]]
+- 5 edges to [[_COMMUNITY_Community 26]]
+- 5 edges to [[_COMMUNITY_Community 396]]
+- 5 edges to [[_COMMUNITY_Community 398]]
+- 5 edges to [[_COMMUNITY_Community 53]]
+- 5 edges to [[_COMMUNITY_Community 89]]
+- 5 edges to [[_COMMUNITY_Community 51]]
+- 4 edges to [[_COMMUNITY_Community 14]]
+- 4 edges to [[_COMMUNITY_Community 230]]
+- 4 edges to [[_COMMUNITY_Community 326]]
+- 4 edges to [[_COMMUNITY_Community 341]]
+- 4 edges to [[_COMMUNITY_Community 355]]
+- 4 edges to [[_COMMUNITY_Community 433]]
+- 4 edges to [[_COMMUNITY_Community 444]]
+- 4 edges to [[_COMMUNITY_Community 71]]
+- 3 edges to [[_COMMUNITY_Community 7]]
+- 3 edges to [[_COMMUNITY_Community 109]]
+- 3 edges to [[_COMMUNITY_Community 15]]
+- 3 edges to [[_COMMUNITY_Community 176]]
+- 3 edges to [[_COMMUNITY_Community 183]]
+- 3 edges to [[_COMMUNITY_Community 212]]
+- 3 edges to [[_COMMUNITY_Community 252]]
+- 3 edges to [[_COMMUNITY_Community 264]]
+- 3 edges to [[_COMMUNITY_Community 303]]
+- 3 edges to [[_COMMUNITY_Community 356]]
+- 3 edges to [[_COMMUNITY_Community 442]]
+- 3 edges to [[_COMMUNITY_Community 23]]
+- 2 edges to [[_COMMUNITY_Community 126]]
+- 2 edges to [[_COMMUNITY_Community 203]]
+- 2 edges to [[_COMMUNITY_Community 218]]
+- 2 edges to [[_COMMUNITY_Community 245]]
+- 2 edges to [[_COMMUNITY_Community 249]]
+- 2 edges to [[_COMMUNITY_Community 269]]
+- 2 edges to [[_COMMUNITY_Community 280]]
+- 2 edges to [[_COMMUNITY_Community 306]]
+- 2 edges to [[_COMMUNITY_Community 329]]
+- 2 edges to [[_COMMUNITY_Community 361]]
+- 2 edges to [[_COMMUNITY_Community 378]]
+- 2 edges to [[_COMMUNITY_Community 397]]
+- 2 edges to [[_COMMUNITY_Community 405]]
+- 2 edges to [[_COMMUNITY_Community 460]]
+- 2 edges to [[_COMMUNITY_Community 65]]
+- 2 edges to [[_COMMUNITY_Community 55]]
+- 1 edge to [[_COMMUNITY_Community 159]]
+- 1 edge to [[_COMMUNITY_Community 175]]
+- 1 edge to [[_COMMUNITY_Community 185]]
+- 1 edge to [[_COMMUNITY_Community 20]]
+- 1 edge to [[_COMMUNITY_Community 284]]
+- 1 edge to [[_COMMUNITY_Community 353]]
+- 1 edge to [[_COMMUNITY_Community 44]]
+- 1 edge to [[_COMMUNITY_Community 602]]
+- 1 edge to [[_COMMUNITY_Community 234]]
+- 1 edge to [[_COMMUNITY_Community 88]]
+- 1 edge to [[_COMMUNITY_Community 737]]
+- 1 edge to [[_COMMUNITY_Community 579]]
+- 1 edge to [[_COMMUNITY_Community 138]]
+- 1 edge to [[_COMMUNITY_Community 235]]
+- 1 edge to [[_COMMUNITY_Community 647]]
+- 1 edge to [[_COMMUNITY_Community 238]]
+- 1 edge to [[_COMMUNITY_Community 41]]
+- 1 edge to [[_COMMUNITY_Community 412]]
+- 1 edge to [[_COMMUNITY_Community 33]]
+- 1 edge to [[_COMMUNITY_Community 445]]
+- 1 edge to [[_COMMUNITY_Community 142]]
+
+## Top bridge nodes
+- [[weather_markets.py]] - degree 258, connects to 68 communities
+- [[analyze_trade()]] - degree 164, connects to 45 communities
+- [[_metar_lock_in()]] - degree 16, connects to 10 communities
+- [[get_weather_forecast()]] - degree 24, connects to 8 communities
+- [[_analyze_precip_trade()]] - degree 15, connects to 8 communities

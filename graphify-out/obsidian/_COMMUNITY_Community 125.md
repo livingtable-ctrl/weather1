@@ -1,39 +1,39 @@
 ---
 type: community
-cohesion: 0.14
+cohesion: 0.16
 members: 24
 ---
 
 # Community 125
 
-**Cohesion:** 0.14 - loosely connected
+**Cohesion:** 0.16 - loosely connected
 **Members:** 24 nodes
 
 ## Members
-- [[dot-test_calibration_covariate_fields_absent_gives_none_not_keyerror()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_calibration_covariate_fields_derived_when_present()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_derives_all_fields_correctly()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_ecmwf_consensus_gap_prob_absent_gives_none_not_keyerror()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_ecmwf_consensus_gap_prob_derived_when_present()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_ens_var_is_variance_not_std()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_liquidity_edge_fields_absent_gives_none_not_keyerror()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_liquidity_edge_fields_derived_when_present()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_main_imports_the_real_shared_function()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_market_implied_absent_gives_none_not_keyerror()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_market_implied_fields_derived_when_present()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_market_implied_none_gives_none_not_attributeerror()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_missing_ensemble_stats_gives_none_mean_and_var()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_missing_std_gives_none_var_not_typeerror()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_nbm_quantile_prob_absent_gives_none_not_keyerror()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_nbm_quantile_prob_derived_when_present()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_signals_absent_gives_none_not_keyerror()]] - code - tests/test_prediction_kwargs.py
-- [[dot-test_signals_derived_when_present()]] - code - tests/test_prediction_kwargs.py
-- [[2026-07-17 main.py's cmd_market and cmd_order log_prediction call sites were…]] - rationale - tests/test_prediction_kwargs.py
-- [[TestMainPyUsesSharedHelper]] - code - tests/test_prediction_kwargs.py
-- [[TestPredictionKwargsFromAnalysis]] - code - tests/test_prediction_kwargs.py
-- [[Tests for order_executor._prediction_kwargs_from_analysis -- the single shared…]] - rationale - tests/test_prediction_kwargs.py
-- [[_make_analysis()]] - code - tests/test_prediction_kwargs.py
-- [[test_prediction_kwargs.py]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_49_rows_city_omitted()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_50_rows_city_present()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_all_weights_in_range()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_auto_split_80_20()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_calibrate_city_weights_deterministic()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_city_accepts_cutoff_date_kwarg()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_city_min_is_50()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_cutoff_excludes_future_rows_from_training()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_seasonal_accepts_cutoff_date_kwarg()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_weights_sum_to_one()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_weights_with_explicit_cutoff_sum_to_one()]] - code - tests/test_phase3_batch_c.py
+- [[Generate n rows with spread-out dates for stable 8020 splits.]] - rationale - tests/test_phase3_batch_c.py
+- [[Grid-search optimal blend weights per city. Returns {city {ensemble,…]] - rationale - calibration.py
+- [[P3-1 calibrate_seasonal_weights and calibrate_city_weights accept cutoff_date.]] - rationale - tests/test_phase3_batch_c.py
+- [[P3-25 _CITY_MIN must be 50.]] - rationale - tests/test_phase3_batch_c.py
+- [[Rows after cutoff must not affect training — weights with tight cutoff differ.]] - rationale - tests/test_phase3_batch_c.py
+- [[Same data → same weights (random search uses fixed seed=42).]] - rationale - tests/test_phase3_batch_c.py
+- [[Seed a predictions+outcomes DB for calibration tests.]] - rationale - tests/test_phase3_batch_c.py
+- [[TestCityMinThreshold]] - code - tests/test_phase3_batch_c.py
+- [[TestTemporalIsolationSeasonalCity]] - code - tests/test_phase3_batch_c.py
+- [[Without cutoff_date, function runs without error on enough rows.]] - rationale - tests/test_phase3_batch_c.py
+- [[_make_db()]] - code - tests/test_phase3_batch_c.py
+- [[_rows()]] - code - tests/test_phase3_batch_c.py
+- [[calibrate_city_weights()]] - code - calibration.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -43,9 +43,15 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 45]]
+- 9 edges to [[_COMMUNITY_Community 147]]
+- 6 edges to [[_COMMUNITY_Community 400]]
+- 3 edges to [[_COMMUNITY_Community 4]]
+- 3 edges to [[_COMMUNITY_Community 266]]
+- 2 edges to [[_COMMUNITY_Community 58]]
 
 ## Top bridge nodes
-- [[test_prediction_kwargs.py]] - degree 8, connects to 3 communities
+- [[calibrate_city_weights()]] - degree 20, connects to 4 communities
+- [[_make_db()]] - degree 15, connects to 2 communities
+- [[_rows()]] - degree 12, connects to 1 community
+- [[TestTemporalIsolationSeasonalCity]] - degree 7, connects to 1 community
+- [[TestCityMinThreshold]] - degree 5, connects to 1 community

@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_paper_metrics.py"
 type: "code"
-community: "Community 235"
+community: "Community 236"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_235
+  - community/Community_236
 ---
 
 # test_paper_metrics.py
@@ -16,6 +17,7 @@ tags:
 - [[TestProfitFactor]] - `contains` [EXTRACTED]
 - [[TestSpreadKellyMultiplier]] - `contains` [EXTRACTED]
 - [[Tests for profit factor, break-even stop, and spread Kelly multiplier.]] - `rationale_for` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
 - [[paper.check_breakeven_stops]] - `calls` [EXTRACTED]
 - [[test_place_paper_order_defaults_model_forecast_means_to_empty_dict()]] - `contains` [EXTRACTED]
 - [[test_place_paper_order_stores_model_forecast_means()]] - `contains` [EXTRACTED]
@@ -27,4 +29,4 @@ tags:
 - [[test_score_ensemble_members_uses_db_settled_temp()]] - `contains` [EXTRACTED]
 - [[update_peak_profits()]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_235
+#graphify/code #graphify/EXTRACTED #community/Community_236

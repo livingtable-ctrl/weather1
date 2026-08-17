@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_d.py"
 type: "code"
-community: "Community 87"
+community: "Community 188"
 location: "L93"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_87
+  - community/Community_188
 ---
 
 # .test_simulate_portfolio_succeeds_with_near_singular_matrix()
@@ -16,4 +16,4 @@ tags:
 - [[TestPortfolioVarSampleCount]] - `method` [EXTRACTED]
 - [[simulate_portfolio()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_87
+#graphify/code #graphify/EXTRACTED #community/Community_188

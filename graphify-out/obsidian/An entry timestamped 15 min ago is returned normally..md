@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_ws.py"
 type: "rationale"
-community: "Community 130"
+community: "Community 507"
 location: "L195"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_130
+  - community/Community_507
 ---
 
 # An entry timestamped <15 min ago is returned normally.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_fresh_entry_returns_price()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_130
+#graphify/rationale #graphify/EXTRACTED #community/Community_507

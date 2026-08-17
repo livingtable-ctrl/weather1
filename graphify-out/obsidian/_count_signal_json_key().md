@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 533"
-location: "L6751"
+community: "Community 5"
+location: "L6853"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_533
+  - community/Community_5
 ---
 
 # _count_signal_json_key()
@@ -16,4 +16,4 @@ tags:
 - [[count_settled_signal_rows()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_533
+#graphify/code #graphify/EXTRACTED #community/Community_5

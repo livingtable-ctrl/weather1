@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 289"
+community: "Community 293"
 location: "L6544"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_289
+  - community/Community_293
 ---
 
 # TestGetForecastRunTrend
 
 ## Connections
 - [[dot-_model_response()]] - `method` [EXTRACTED]
-- [[dot-setUp()_17]] - `method` [EXTRACTED]
+- [[dot-setUp()_20]] - `method` [EXTRACTED]
 - [[dot-test_computes_weighted_delta_and_jumpiness_exactly()]] - `method` [EXTRACTED]
 - [[dot-test_days_out_seven_has_only_one_valid_lead_returns_none()]] - `method` [EXTRACTED]
 - [[dot-test_days_out_zero_returns_none_without_network_call()]] - `method` [EXTRACTED]
@@ -23,4 +23,4 @@ tags:
 - [[get_forecast_run_trend() combines all 3 _PREVIOUS_RUN_MODEL_MAP models,…]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_289
+#graphify/code #graphify/EXTRACTED #community/Community_293

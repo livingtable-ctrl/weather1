@@ -1,17 +1,17 @@
 ---
-source_file: "weather app site V_3 (3)/src/App.jsx"
+source_file: "frontend/src/App.jsx"
 type: "code"
-community: "Community 93"
-location: "L338"
+community: "Community 98"
+location: "L2112"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_93
+  - community/Community_98
 ---
 
 # TABS
 
 ## Connections
-- [[weather app site V_3 (3)srcApp.jsx]] - `contains` [EXTRACTED]
+- [[frontendsrcApp.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_93
+#graphify/code #graphify/EXTRACTED #community/Community_98

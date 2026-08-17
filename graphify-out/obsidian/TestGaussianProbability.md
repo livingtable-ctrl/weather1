@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "code"
-community: "Community 26"
+community: "Community 69"
 location: "L23"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_26
+  - community/Community_69
 ---
 
 # TestGaussianProbability
@@ -27,4 +27,4 @@ tags:
 - [[dot-test_wider_sigma_flattens_probability()]] - `method` [EXTRACTED]
 - [[test_gaussian_prob.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_26
+#graphify/code #graphify/EXTRACTED #community/Community_69

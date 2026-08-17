@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "rationale"
-community: "Community 430"
+community: "Community 62"
 location: "L97"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_430
+  - community/Community_62
 ---
 
 # edge_calc_version kwarg is stored and retrievable.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_log_prediction_stores_edge_calc_version()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_430
+#graphify/rationale #graphify/EXTRACTED #community/Community_62

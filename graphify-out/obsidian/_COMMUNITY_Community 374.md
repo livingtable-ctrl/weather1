@@ -10,16 +10,16 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-test_cron_source_no_exact_hour_check()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_retrain_fires_when_marker_old()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_retrain_fires_when_no_marker()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_retrain_skipped_when_marker_recent()]] - code - tests/test_phase2_batch_m.py
-- [[Marker file 6 days old → should retrain.]] - rationale - tests/test_phase2_batch_m.py
-- [[Marker file less than 6 days old → should NOT retrain.]] - rationale - tests/test_phase2_batch_m.py
-- [[TestMlRetrainMarkerFile]] - code - tests/test_phase2_batch_m.py
-- [[When marker file is absent, retrain should be attempted.]] - rationale - tests/test_phase2_batch_m.py
-- [[cron retrain block must use .last_ml_retrain marker, not exact UTC hour.]] - rationale - tests/test_phase2_batch_m.py
-- [[cron._cmd_cron_body must NOT use exact-hour retrain logic.]] - rationale - tests/test_phase2_batch_m.py
+- [[dot-test_fresh_path_recomputes_a_present_but_empty_city()]] - code - tests/test_climatology.py
+- [[dot-test_fresh_path_still_recomputes_a_missing_city()]] - code - tests/test_climatology.py
+- [[dot-test_non_dict_json_does_not_crash_load_all_sigmas()]] - code - tests/test_climatology.py
+- [[dot-test_second_preload_all_call_retries_after_a_failed_compute()]] - code - tests/test_climatology.py
+- [[dot-test_transient_empty_compute_does_not_clobber_existing_good_entry()]] - code - tests/test_climatology.py
+- [[A city that already has real data must survive a later call where…]] - rationale - tests/test_climatology.py
+- [[TestSigmaCacheRobustness]] - code - tests/test_climatology.py
+- [[The actual live-path regression weather_markets._load_dynamic_sigma calls…]] - rationale - tests/test_climatology.py
+- [[opus-review-caught 2026-08-07 (post-merge-fix review) the merge fix's own…]] - rationale - tests/test_climatology.py
+- [[opus-review-caught a city that failed to compute (empty result, e.g.…]] - rationale - tests/test_climatology.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,8 +29,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 32]]
-- 1 edge to [[_COMMUNITY_Community 51]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestMlRetrainMarkerFile]] - degree 7, connects to 2 communities
+- [[TestSigmaCacheRobustness]] - degree 7, connects to 1 community

@@ -1,11 +1,11 @@
 ---
 source_file: ""
 type: "code"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 173"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_173
 ---
 
 # settings
@@ -19,4 +19,4 @@ tags:
 - [[test_kelly_positive_edge_gives_nonzero_fraction()]] - `references` [EXTRACTED]
 - [[test_kelly_quantity_cost_never_exceeds_balance()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_173

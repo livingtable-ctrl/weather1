@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "code"
-community: "Community 164"
+community: "Community 20"
 location: "L1410"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_164
+  - community/Community_20
 ---
 
 # TestCoalesceMarketPrice
@@ -26,4 +26,4 @@ tags:
 - [[dot-test_zero_bid_not_bypassed_by_falsy_check()]] - `method` [EXTRACTED]
 - [[test_p9_p10.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_164
+#graphify/code #graphify/EXTRACTED #community/Community_20

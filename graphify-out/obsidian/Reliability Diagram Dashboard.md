@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md"
 type: "document"
-community: "Community 453"
+community: "Community 484"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_453
+  - community/Community_484
 ---
 
 # Reliability Diagram Dashboard
@@ -15,4 +15,4 @@ tags:
 - [[Phase D Monitoring &amp; Settlement Plan]] - `implements` [EXTRACTED]
 - [[web_app.py module_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_453
+#graphify/document #graphify/EXTRACTED #community/Community_484

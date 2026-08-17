@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "code"
-community: "Community 50"
+community: "Community 54"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_50
+  - community/Community_54
 ---
 
 # test_p9_p10.py
@@ -27,18 +28,16 @@ tags:
 - [[_log_and_settle()]] - `contains` [EXTRACTED]
 - [[_log_settled()]] - `contains` [EXTRACTED]
 - [[atomic_write_json()]] - `references` [EXTRACTED]
-- [[auto_retire_strategies()]] - `calls` [EXTRACTED]
 - [[check_black_swan_conditions()]] - `imports` [EXTRACTED]
 - [[check_config_integrity()]] - `calls` [EXTRACTED]
 - [[coalesce_market_price()]] - `imports` [EXTRACTED]
-- [[detect_brier_drift()]] - `calls` [EXTRACTED]
-- [[get_brier_by_version()]] - `calls` [EXTRACTED]
 - [[get_config_fingerprint()]] - `imports` [EXTRACTED]
-- [[get_recent_city_correlations()]] - `calls` [EXTRACTED]
-- [[get_regional_recent_bias()]] - `calls` [EXTRACTED]
-- [[get_retired_strategies()]] - `calls` [EXTRACTED]
-- [[order_executor.py_1]] - `references` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
+- [[order_executor.py]] - `references` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[run_stress_test()]] - `calls` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[test_get_recent_city_correlations_computes_correlation()]] - `contains` [EXTRACTED]
 - [[test_get_recent_city_correlations_excludes_disputed()]] - `contains` [EXTRACTED]
 - [[test_get_recent_city_correlations_returns_empty_when_no_data()]] - `contains` [EXTRACTED]
@@ -56,5 +55,6 @@ tags:
 - [[test_run_stress_test_total_model_failure_includes_all_cities()]] - `contains` [EXTRACTED]
 - [[test_run_stress_test_unknown_scenario_returns_error()]] - `contains` [EXTRACTED]
 - [[tmp_tracker()]] - `contains` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_50
+#graphify/code #graphify/EXTRACTED #community/Community_54

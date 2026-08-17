@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ecmwf.py"
 type: "code"
-community: "Community 255"
+community: "Community 252"
 location: "L16"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_255
+  - community/Community_252
 ---
 
 # TestECMWFAIFS
@@ -22,4 +22,4 @@ tags:
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[test_ecmwf.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_255
+#graphify/code #graphify/EXTRACTED #community/Community_252

@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.42
+members: 9
 ---
 
 # Community 427
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.42 - moderately connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-test_false_when_env_var_set_but_below_sample_floor()_4]] - code - tests/test_hurricane_markets.py
-- [[dot-test_false_when_env_var_unset()_4]] - code - tests/test_hurricane_markets.py
-- [[dot-test_independent_of_sibling_hurricane_gates()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_never_raises_on_count_failure()_4]] - code - tests/test_hurricane_markets.py
-- [[dot-test_true_when_env_var_set_and_sample_floor_met()_4]] - code - tests/test_hurricane_markets.py
-- [[Mirrors TestHurricaneNextEventGatesActive's exact test shape -- own env var,…]] - rationale - tests/test_hurricane_markets.py
-- [[TestStormOrderGatesActive]] - code - tests/test_hurricane_markets.py
-- [[This gate must not share state with either sibling model's -- flipping the…]] - rationale - tests/test_hurricane_markets.py
+- [[dot-_open_trade()_1]] - code - tests/test_paper_metrics.py
+- [[dot-test_no_peak_no_exit()]] - code - tests/test_paper_metrics.py
+- [[dot-test_peak_below_trigger_no_exit()]] - code - tests/test_paper_metrics.py
+- [[dot-test_peak_hit_price_at_entry_triggers()]] - code - tests/test_paper_metrics.py
+- [[dot-test_peak_hit_price_below_entry_triggers()]] - code - tests/test_paper_metrics.py
+- [[dot-test_peak_hit_still_in_profit_no_exit()]] - code - tests/test_paper_metrics.py
+- [[dot-test_update_peak_profits_no_change_when_lower()]] - code - tests/test_paper_metrics.py
+- [[dot-test_update_peak_profits_sets_new_high()]] - code - tests/test_paper_metrics.py
+- [[TestBreakEvenStop]] - code - tests/test_paper_metrics.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,7 +28,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 90]]
+- 2 edges to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 236]]
 
 ## Top bridge nodes
-- [[TestStormOrderGatesActive]] - degree 7, connects to 1 community
+- [[TestBreakEvenStop]] - degree 9, connects to 1 community
+- [[dot-test_update_peak_profits_no_change_when_lower()]] - degree 3, connects to 1 community
+- [[dot-test_update_peak_profits_sets_new_high()]] - degree 3, connects to 1 community

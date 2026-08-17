@@ -1,18 +1,17 @@
 ---
 source_file: "tests/test_calibration.py"
 type: "code"
-community: "Community 103"
-location: "L189"
+community: "Community 109"
+location: "L220"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_103
+  - community/Community_109
 ---
 
 # .setup_method()
 
 ## Connections
-- [[Path_1]] - `calls` [EXTRACTED]
-- [[TestCalibrateCityWeights]] - `method` [EXTRACTED]
+- [[TestLoadWeights]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_103
+#graphify/code #graphify/EXTRACTED #community/Community_109

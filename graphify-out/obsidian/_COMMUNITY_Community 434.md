@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 434
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-test_false_when_env_var_set_but_below_sample_floor()_5]] - code - tests/test_rain_markets.py
-- [[dot-test_false_when_env_var_unset()_5]] - code - tests/test_rain_markets.py
-- [[dot-test_false_when_sample_floor_met_but_env_var_unset()_3]] - code - tests/test_rain_markets.py
-- [[dot-test_never_raises_on_count_failure()_5]] - code - tests/test_rain_markets.py
-- [[dot-test_true_when_env_var_set_and_sample_floor_met()_5]] - code - tests/test_rain_markets.py
-- [[Both conditions are required -- neither alone suffices._2]] - rationale - tests/test_rain_markets.py
-- [[TestRainGatesActive]] - code - tests/test_rain_markets.py
-- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 handoff item 7…]] - rationale - tests/test_rain_markets.py
+- [[dot-test_all_cities_have_station()]] - code - tests/test_phase4.py
+- [[dot-test_chicago_coords_closer_to_kmdw_than_kord()]] - code - tests/test_phase4.py
+- [[dot-test_chicago_station_is_kmdw()]] - code - tests/test_phase4.py
+- [[dot-test_station_ids_are_icao_format()]] - code - tests/test_phase4.py
+- [[All station IDs are 4-character ICAO codes starting with K.]] - rationale - tests/test_phase4.py
+- [[CITY_COORDS Chicago must be near Midway (KMDW), not O'Hare (KORD). Kalshi…]] - rationale - tests/test_phase4.py
+- [[Chicago must map to Midway (KMDW) — confirmed from Kalshi series API…]] - rationale - tests/test_phase4.py
+- [[Every city in CITY_COORDS has a station mapping.]] - rationale - tests/test_phase4.py
+- [[TestMarketStationMap]] - code - tests/test_phase4.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,7 +28,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 237]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestRainGatesActive]] - degree 7, connects to 1 community
+- [[TestMarketStationMap]] - degree 5, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_regression.py"
 type: "rationale"
-community: "Community 71"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_71
+  - community/Community_4
 ---
 
 # Regression test: Brier score must not degrade more than 1% after refactors.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_regression.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_71
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

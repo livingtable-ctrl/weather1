@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 417
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-test_cron_halts_only_on_should_halt_true()]] - code - tests/test_phase2_batch_l.py
-- [[dot-test_cron_source_unpacks_tuple()]] - code - tests/test_phase2_batch_l.py
-- [[Phase 2 Batch L Regression Tests]] - code - tests/test_phase2_batch_l.py
-- [[Phase 2 Batch L regression tests P2-17P2-19P2-34P2-43 — APIclientsafety.]] - rationale - tests/test_phase2_batch_l.py
-- [[Soft anomaly (should_halt=False) must NOT stop the cron cycle.]] - rationale - tests/test_phase2_batch_l.py
-- [[TestCronUsesAnomalyTuple]] - code - tests/test_phase2_batch_l.py
-- [[cron._cmd_cron_body must unpack (msgs, should_halt) from run_anomaly_check.]] - rationale - tests/test_phase2_batch_l.py
-- [[kalshi_client.KalshiClient  _check_error_body]] - code - kalshi_client.py
+- [[dot-test_returns_none_when_city_is_none()]] - code - tests/test_forecasting.py
+- [[dot-test_returns_none_when_no_tracker_rows()]] - code - tests/test_forecasting.py
+- [[dot-test_returns_softmax_weights_from_tracker()]] - code - tests/test_forecasting.py
+- [[dot-test_used_as_first_priority_in_forecast_model_weights()]] - code - tests/test_forecasting.py
+- [[Returns None immediately when city is None (no tracker call needed).]] - rationale - tests/test_forecasting.py
+- [[Returns None when get_model_weights returns empty dict (no rows).]] - rationale - tests/test_forecasting.py
+- [[Returns get_model_weights result when non-empty.]] - rationale - tests/test_forecasting.py
+- [[TestDynamicModelWeights]] - code - tests/test_forecasting.py
+- [[_forecast_model_weights uses _dynamic_model_weights as first priority, falling…]] - rationale - tests/test_forecasting.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,17 +28,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 2 edges to [[_COMMUNITY_Community 223]]
-- 2 edges to [[_COMMUNITY_Community 356]]
-- 1 edge to [[_COMMUNITY_Community 283]]
-- 1 edge to [[_COMMUNITY_Community 373]]
-- 1 edge to [[_COMMUNITY_Community 80]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 458]]
-- 1 edge to [[_COMMUNITY_Community 86]]
+- 3 edges to [[_COMMUNITY_Community 89]]
+- 1 edge to [[_COMMUNITY_Community 38]]
+- 1 edge to [[_COMMUNITY_Community 9]]
+- 1 edge to [[_COMMUNITY_Community 26]]
 
 ## Top bridge nodes
-- [[Phase 2 Batch L Regression Tests]] - degree 15, connects to 10 communities
-- [[TestCronUsesAnomalyTuple]] - degree 5, connects to 1 community
+- [[TestDynamicModelWeights]] - degree 6, connects to 2 communities
+- [[dot-test_returns_none_when_city_is_none()]] - degree 3, connects to 1 community
+- [[dot-test_returns_none_when_no_tracker_rows()]] - degree 3, connects to 1 community
+- [[dot-test_returns_softmax_weights_from_tracker()]] - degree 3, connects to 1 community
+- [[dot-test_used_as_first_priority_in_forecast_model_weights()]] - degree 3, connects to 1 community

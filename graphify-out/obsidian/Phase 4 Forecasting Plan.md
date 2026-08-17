@@ -1,11 +1,11 @@
 ---
 source_file: "docs/plans/2026-04-10-phase4-forecasting.md"
 type: "document"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 89"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_89
 ---
 
 # Phase 4 Forecasting Plan
@@ -22,6 +22,6 @@ tags:
 - [[climate_indices.py]] - `references` [EXTRACTED]
 - [[climatology.py]] - `references` [EXTRACTED]
 - [[stratified_train_test_split()]] - `implements` [EXTRACTED]
-- [[weather_markets.py_2]] - `references` [EXTRACTED]
+- [[weather_markets.py_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/document #graphify/EXTRACTED #community/Community_89

@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "rationale"
-community: "Community 245"
+community: "Community 227"
 location: "L407"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_245
+  - community/Community_227
 ---
 
 # Add tickers to subscribe to. Must be called before start().
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-subscribe()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_245
+#graphify/rationale #graphify/EXTRACTED #community/Community_227

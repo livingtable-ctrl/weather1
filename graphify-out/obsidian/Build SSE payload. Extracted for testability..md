@@ -1,12 +1,12 @@
 ---
 source_file: "web_app.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 13"
 location: "L117"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_13
 ---
 
 # Build SSE payload. Extracted for testability.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_build_stream_data()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_13

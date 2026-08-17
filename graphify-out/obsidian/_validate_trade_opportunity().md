@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 85"
+community: "Community 76"
 location: "L1895"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_85
+  - community/Community_76
 ---
 
 # _validate_trade_opportunity()
@@ -21,15 +21,14 @@ tags:
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[_log_shadow_predictions()]] - `calls` [EXTRACTED]
 - [[_reprice_or_cancel_pending_orders()]] - `calls` [EXTRACTED]
-- [[_validate_trade_opportunity() (as imported from main)]] - `semantically_similar_to` [INFERRED]
 - [[check_system_health()]] - `calls` [EXTRACTED]
 - [[get_cached_mid_price()]] - `calls` [EXTRACTED]
 - [[get_min_edge_for_confidence()]] - `calls` [EXTRACTED]
 - [[get_paper_min_edge()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
-- [[run_trade_cycle()]] - `conceptually_related_to` [EXTRACTED]
-- [[test_drawdown_tiers.py_1]] - `references` [EXTRACTED]
+- [[test_drawdown_tiers.py]] - `references` [EXTRACTED]
 - [[test_validate_accepts_good_opportunity()]] - `calls` [INFERRED]
 - [[test_validate_low_spread_tier_rejects_edge_below_threshold()]] - `calls` [INFERRED]
 - [[test_validate_missing_ensemble_spread_uses_flat_threshold()]] - `calls` [INFERRED]
@@ -44,4 +43,4 @@ tags:
 - [[test_validate_rejects_zero_edge()]] - `calls` [INFERRED]
 - [[test_validate_rejects_zero_kelly()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_85
+#graphify/code #graphify/INFERRED #community/Community_76

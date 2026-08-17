@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 233"
+community: "Community 235"
 location: "L660"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_233
+  - community/Community_235
 ---
 
 # TestCheckPositionLimitsHourlyGuard
@@ -18,4 +18,4 @@ tags:
 - [[Regression coverage for a gap found 2026-08-07 unlike rainsnow hurricane-…]] - `rationale_for` [EXTRACTED]
 - [[test_hourly_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_233
+#graphify/code #graphify/EXTRACTED #community/Community_235

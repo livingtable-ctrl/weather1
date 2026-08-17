@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "code"
-community: "Community 399"
+community: "Community 424"
 location: "L709"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_399
+  - community/Community_424
 ---
 
 # .test_not_locked_within_margin()
@@ -15,4 +15,4 @@ tags:
 - [[Temperature within margin_f of threshold is too close to lock in.]] - `rationale_for` [EXTRACTED]
 - [[TestCheckMetarLockout]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_399
+#graphify/code #graphify/EXTRACTED #community/Community_424

@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Kelly Sizing Property-Based Tests"
-location: "L7649"
+community: "Community 126"
+location: "L7751"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_126
 ---
 
 # kelly_fraction()
@@ -25,12 +25,12 @@ tags:
 - [[dot-test_no_edge_returns_zero()]] - `calls` [EXTRACTED]
 - [[dot-test_positive_edge()]] - `calls` [EXTRACTED]
 - [[dot-test_zero_fee_still_callable_explicitly()]] - `calls` [EXTRACTED]
-- [[apipaper-order endpoint]] - `calls` [EXTRACTED]
 - [[KELLY_CAP constant]] - `calls` [EXTRACTED]
-- [[Phase 2 Batch A Regression Tests]] - `imports` [EXTRACTED]
 - [[Phase 5 Trading Portfolio Plan]] - `implements` [EXTRACTED]
 - [[Quarter-Kelly criterion for a binary prediction market. price = cost per…]] - `rationale_for` [EXTRACTED]
 - [[System Priority Checklist]] - `references` [EXTRACTED]
+- [[TestKellyCap (P3-13)]] - `calls` [EXTRACTED]
+- [[TestKellyFeeRate (L2-B)]] - `calls` [EXTRACTED]
 - [[Trading Logic Audit 2026-04-23]] - `references` [EXTRACTED]
 - [[Weather Markets Grade Audit]] - `references` [EXTRACTED]
 - [[_price_and_size()]] - `calls` [EXTRACTED]
@@ -43,10 +43,11 @@ tags:
 - [[test_kelly_monotone_in_prob()]] - `calls` [EXTRACTED]
 - [[test_kelly_negative_edge_gives_zero_fraction()]] - `calls` [EXTRACTED]
 - [[test_kelly_positive_edge_gives_nonzero_fraction()]] - `calls` [EXTRACTED]
-- [[test_kelly_property.py]] - `references` [EXTRACTED]
+- [[test_kelly_property.py]] - `imports` [EXTRACTED]
+- [[test_phase2_batch_a.py]] - `imports` [EXTRACTED]
 - [[test_weather.py]] - `imports` [EXTRACTED]
 - [[test_weather_markets.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
-- [[weather_markets.py_2]] - `implements` [EXTRACTED]
+- [[weather_markets.py_1]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_126

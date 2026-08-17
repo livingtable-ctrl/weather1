@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 620
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_get_multiday_calibration_cli_excludes_storm_order()]] - code - tests/test_tracker.py
-- [[Opus-review-caught (2026-08-07, LOW) the rainsnow exclusion tests above have…]] - rationale - tests/test_tracker.py
+- [[dot-test_cron_option_actually_runs_cmd_cron()]] - code - tests/test_menu_ux.py
+- [[dot-test_stdout_flushed_before_cmd_cron()]] - code - tests/test_menu_ux.py
+- [[Menu 'Cron' option must call cmd_cron (was broken when label != elif check).]] - rationale - tests/test_menu_ux.py
+- [[TestCronOutputFlush]] - code - tests/test_menu_ux.py
+- [[sys.stdout.flush() must be called before cmd_cron in the menu loop.]] - rationale - tests/test_menu_ux.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
-- 1 edge to [[_COMMUNITY_Tracker Settlement Sigma & Disputed Rows]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[dot-test_get_multiday_calibration_cli_excludes_storm_order()]] - degree 4, connects to 2 communities
+- [[TestCronOutputFlush]] - degree 3, connects to 1 community

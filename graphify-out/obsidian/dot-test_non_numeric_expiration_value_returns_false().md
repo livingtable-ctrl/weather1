@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 238"
+community: "Community 240"
 location: "L664"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_238
+  - community/Community_240
 ---
 
 # .test_non_numeric_expiration_value_returns_false()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestAuditSettlementMonthlySnow]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_238
+#graphify/code #graphify/EXTRACTED #community/Community_240

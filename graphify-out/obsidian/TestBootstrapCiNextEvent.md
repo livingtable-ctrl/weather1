@@ -1,20 +1,20 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 546"
+community: "Community 615"
 location: "L496"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_546
+  - community/Community_615
 ---
 
 # TestBootstrapCiNextEvent
 
 ## Connections
-- [[dot-test_ci_brackets_point_estimate()]] - `method` [EXTRACTED]
+- [[dot-test_ci_brackets_point_estimate()_1]] - `method` [EXTRACTED]
 - [[dot-test_too_few_outcomes_returns_degenerate_ci()]] - `method` [EXTRACTED]
 - [[dot-test_unanimous_outcomes_clamped_not_degenerate()]] - `method` [EXTRACTED]
 - [[test_hurricane_climatology.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_546
+#graphify/code #graphify/EXTRACTED #community/Community_615

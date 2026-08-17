@@ -1,26 +1,27 @@
 ---
 type: community
-cohesion: 0.33
-members: 11
+cohesion: 0.17
+members: 12
 ---
 
 # Community 325
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 11 nodes
+**Cohesion:** 0.17 - loosely connected
+**Members:** 12 nodes
 
 ## Members
-- [[dot-__init__()_3]] - code - tests/test_alerts.py
-- [[dot-get_market()_2]] - code - tests/test_alerts.py
-- [[dot-test_above_direction_does_not_fire_when_price_below_target()]] - code - tests/test_alerts.py
-- [[dot-test_above_direction_fires_when_price_at_or_over_target()]] - code - tests/test_alerts.py
-- [[dot-test_below_direction_does_not_fire_when_price_above_target()]] - code - tests/test_alerts.py
-- [[dot-test_below_direction_fires_when_price_at_or_under_target()]] - code - tests/test_alerts.py
-- [[dot-test_no_active_alerts_returns_empty_without_fetching()]] - code - tests/test_alerts.py
-- [[Fetch current YES prices for all alert tickers and check which alerts have been…]] - rationale - alerts.py
-- [[TestCheckAlerts]] - code - tests/test_alerts.py
-- [[_FakeClient_1]] - code - tests/test_alerts.py
-- [[check_alerts()]] - code - alerts.py
+- [[50 slippage_adjusted_price uses 0.001  sqrt(quantity) model.]] - rationale - tests/test_trading.py
+- [[dot-test_buy_no_decreases_price()]] - code - tests/test_trading.py
+- [[dot-test_buy_yes_increases_price()]] - code - tests/test_trading.py
+- [[dot-test_clamped_to_0_01_0_99()]] - code - tests/test_trading.py
+- [[dot-test_place_paper_order_stores_actual_fill_price()]] - code - tests/test_trading.py
+- [[dot-test_zero_slippage_at_quantity_zero()]] - code - tests/test_trading.py
+- [[Buying NO subtracts slippage (worse fill for the buyer).]] - rationale - tests/test_trading.py
+- [[Buying YES adds slippage to base price.]] - rationale - tests/test_trading.py
+- [[Output must always be in 0.01, 0.99.]] - rationale - tests/test_trading.py
+- [[TestSlippageAdjustedPrice]] - code - tests/test_trading.py
+- [[place_paper_order records actual_fill_price != entry_price for large orders.]] - rationale - tests/test_trading.py
+- [[quantity=1 produces 0.001 slippage.]] - rationale - tests/test_trading.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,12 +31,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 9 edges to [[_COMMUNITY_Community 94]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 4 edges to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 86]]
 
 ## Top bridge nodes
-- [[check_alerts()]] - degree 10, connects to 2 communities
-- [[_FakeClient_1]] - degree 8, connects to 1 community
-- [[TestCheckAlerts]] - degree 6, connects to 1 community
-- [[dot-test_above_direction_does_not_fire_when_price_below_target()]] - degree 4, connects to 1 community
-- [[dot-test_above_direction_fires_when_price_at_or_over_target()]] - degree 4, connects to 1 community
+- [[TestSlippageAdjustedPrice]] - degree 7, connects to 1 community
+- [[dot-test_buy_no_decreases_price()]] - degree 3, connects to 1 community
+- [[dot-test_buy_yes_increases_price()]] - degree 3, connects to 1 community
+- [[dot-test_clamped_to_0_01_0_99()]] - degree 3, connects to 1 community
+- [[dot-test_zero_slippage_at_quantity_zero()]] - degree 3, connects to 1 community

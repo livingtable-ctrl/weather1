@@ -1,13 +1,13 @@
 ---
 source_file: "frontend/vite.config.js"
 type: "code"
-community: "Community 213"
+community: "Community 854"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_213
+  - community/Community_854
 ---
 
 # Vite Build Config
 
-#graphify/code #graphify/EXTRACTED #community/Community_213
+#graphify/code #graphify/EXTRACTED #community/Community_854

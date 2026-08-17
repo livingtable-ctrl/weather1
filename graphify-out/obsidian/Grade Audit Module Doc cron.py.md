@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/modules/cron.md"
 type: "document"
-community: "Community 109"
+community: "Community 8"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_109
+  - community/Community_8
 ---
 
 # Grade Audit Module Doc: cron.py
@@ -13,11 +13,9 @@ tags:
 ## Connections
 - [[Implicit brier_score min_days_out Default Gap]] - `conceptually_related_to` [INFERRED]
 - [[Per-Order Kill Switch Check]] - `references` [EXTRACTED]
-- [[alerts.py_1]] - `references` [EXTRACTED]
-- [[cron.py]] - `references` [EXTRACTED]
+- [[alerts.py]] - `references` [EXTRACTED]
 - [[test_cron_integration.py]] - `references` [EXTRACTED]
 - [[test_cron_lock.py]] - `references` [EXTRACTED]
 - [[test_cron_trade_updates.py]] - `references` [EXTRACTED]
-- [[test_main_cron_smoke.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_109
+#graphify/document #graphify/EXTRACTED #community/Community_8

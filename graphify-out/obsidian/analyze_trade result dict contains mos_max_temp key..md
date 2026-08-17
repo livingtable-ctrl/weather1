@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_mos.py"
 type: "rationale"
-community: "Community 457"
+community: "Community 670"
 location: "L226"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_457
+  - community/Community_670
 ---
 
 # analyze_trade result dict contains mos_max_temp key.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_analyze_trade_includes_mos_field()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_457
+#graphify/rationale #graphify/EXTRACTED #community/Community_670

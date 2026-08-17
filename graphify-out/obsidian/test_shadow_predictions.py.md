@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_shadow_predictions.py"
 type: "code"
-community: "Shadow Predictions Auto-Place Trades"
+community: "Community 44"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Shadow_Predictions_Auto-Place_Trades
+  - community/Community_44
 ---
 
 # test_shadow_predictions.py
@@ -48,4 +48,4 @@ tags:
 - [[test_trading_paused_skips_invalid_opp()]] - `contains` [EXTRACTED]
 - [[tracker.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Shadow_Predictions_Auto-Place_Trades
+#graphify/code #graphify/EXTRACTED #community/Community_44

@@ -305,6 +305,33 @@ def simulate_portfolio(
                 # not introduced by the Bug A fix below).
                 pass
         elif _tdate:
+            # _tdate is CITY-LOCAL (parse_city_date(), same as
+            # weather_markets.py's analyze_trade), not UTC -- comparing it
+            # against utc_today() is wrong for the ~4-8h evening window where
+            # UTC's calendar date has already rolled over but the city's has
+            # not, which can wrongly exclude a still-open trade from the
+            # simulation and understate portfolio_var()'s VaR estimate right
+            # when order_executor.py's _auto_place_trades gates a live/paper
+            # trade on it. Mirrors analyze_trade's own local-today fix:
+            # ZoneInfo per-city, falling back to UTC if construction fails.
+            _city_mc = t.get("city")
+            try:
+                from datetime import datetime as _dt_mc
+                from zoneinfo import ZoneInfo as _ZoneInfoMc
+
+                from weather_markets import _CITY_TZ
+
+                _today_mc = _dt_mc.now(
+                    _ZoneInfoMc(_CITY_TZ.get(_city_mc or "", "America/New_York"))
+                ).date()
+            except Exception:
+                _log.warning(
+                    "Monte Carlo: ZoneInfo unavailable for city=%s — "
+                    "falling back to UTC date",
+                    _city_mc,
+                )
+                _today_mc = _utc_today()
+
             # Parse both sides as real dates rather than comparing raw strings —
             # a non-day-granular ISO string (e.g. a month-only value) would
             # otherwise compare as a string prefix and could sort incorrectly
@@ -314,9 +341,9 @@ def simulate_portfolio(
             try:
                 from datetime import date as _date_mc
 
-                _is_past = _date_mc.fromisoformat(_tdate) < _utc_today()
+                _is_past = _date_mc.fromisoformat(_tdate) < _today_mc
             except (ValueError, TypeError):
-                _is_past = _tdate < _utc_today().isoformat()
+                _is_past = _tdate < _today_mc.isoformat()
             if _is_past:
                 _log.debug(
                     "Monte Carlo: skipping past-date trade %s (%s)", ticker, _tdate

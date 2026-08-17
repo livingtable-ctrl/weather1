@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 238"
+community: "Community 240"
 location: "L698"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_238
+  - community/Community_240
 ---
 
 # .test_no_matching_outcomes_row_returns_false()
@@ -15,4 +15,4 @@ tags:
 - [[Review-caught gap the UPDATE could match zero rows (no prior outcomes row for…]] - `rationale_for` [EXTRACTED]
 - [[TestAuditSettlementMonthlySnow]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_238
+#graphify/code #graphify/EXTRACTED #community/Community_240

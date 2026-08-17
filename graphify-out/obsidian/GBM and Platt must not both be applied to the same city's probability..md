@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "rationale"
-community: "Community 214"
+community: "Community 218"
 location: "L221"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_214
+  - community/Community_218
 ---
 
 # GBM and Platt must not both be applied to the same city's probability.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestOnlyOneMlCorrectionApplied]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_214
+#graphify/rationale #graphify/EXTRACTED #community/Community_218

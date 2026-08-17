@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 440"
+community: "Community 473"
 location: "L2758"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_440
+  - community/Community_473
 ---
 
 # Schema v9 must add ensemble_prob, nws_prob, clim_prob to predictions.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPerSourceProbColumns]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_440
+#graphify/rationale #graphify/EXTRACTED #community/Community_473

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 241"
-location: "L5068"
+community: "Community 242"
+location: "L5437"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_241
+  - community/Community_242
 ---
 
 # TestComputeEnsembleProbRefactorSafetyNet
@@ -22,4 +22,4 @@ tags:
 - [[Dedicated unit tests for _compute_ensemble_prob(), extracted from…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_241
+#graphify/code #graphify/EXTRACTED #community/Community_242

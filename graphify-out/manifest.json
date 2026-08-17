@@ -1515,10 +1515,10 @@
     "semantic_hash": "b892210585c024a6c54b35aa9072f1df"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\cron.py": {
-    "mtime": 1786729786.0661218,
-    "seen": 1786732592.0476556,
-    "ast_hash": "e186199303550a9778bcd4c52b2721b7",
-    "semantic_hash": "e186199303550a9778bcd4c52b2721b7"
+    "mtime": 1786946407.2116933,
+    "seen": 1786948183.1095824,
+    "ast_hash": "d7cd2b21ca8901f85b31db7e6a836c41",
+    "semantic_hash": "d7cd2b21ca8901f85b31db7e6a836c41"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\execution_log.py": {
     "mtime": 1786729786.1304085,
@@ -1593,10 +1593,10 @@
     "semantic_hash": "ca4561160037ab5296218f7b2d34c6d6"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\main.py": {
-    "mtime": 1786729794.1635528,
-    "seen": 1786732592.0476627,
-    "ast_hash": "d045a4081ef0be7ae97c543b8d4c4a8a",
-    "semantic_hash": "d045a4081ef0be7ae97c543b8d4c4a8a"
+    "mtime": 1786946802.4883175,
+    "seen": 1786948183.1095896,
+    "ast_hash": "8a62e918770c8d9ac52fa88d9cdd1881",
+    "semantic_hash": "8a62e918770c8d9ac52fa88d9cdd1881"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\market_types.py": {
     "mtime": 1786729794.1635528,
@@ -1611,16 +1611,16 @@
     "semantic_hash": "28ff400bc0a39b31959ef8fc9d752245"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\ml_bias.py": {
-    "mtime": 1786729794.165308,
-    "seen": 1786732592.0476649,
-    "ast_hash": "372a1ec0bc3befa30ce1167340575f88",
-    "semantic_hash": "372a1ec0bc3befa30ce1167340575f88"
+    "mtime": 1786946408.4965265,
+    "seen": 1786948183.1095903,
+    "ast_hash": "26cdc44293a4f167a85456dd5f7d4ebf",
+    "semantic_hash": "26cdc44293a4f167a85456dd5f7d4ebf"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\monte_carlo.py": {
-    "mtime": 1786729794.165308,
-    "seen": 1786732592.0476654,
-    "ast_hash": "54ffd22d4203a33a586e4a8b290ad29a",
-    "semantic_hash": "54ffd22d4203a33a586e4a8b290ad29a"
+    "mtime": 1786947141.098865,
+    "seen": 1786948183.1095912,
+    "ast_hash": "16600a18b8825f1b509ecad88c258d46",
+    "semantic_hash": "16600a18b8825f1b509ecad88c258d46"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\mos.py": {
     "mtime": 1786729794.1663115,
@@ -1671,10 +1671,10 @@
     "semantic_hash": "434dbafeecbcd141d24f34f306a0da63"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\paths.py": {
-    "mtime": 1786729794.1703112,
-    "seen": 1786732592.0476708,
-    "ast_hash": "54127375ee10391f271ec2fde2cc732f",
-    "semantic_hash": "54127375ee10391f271ec2fde2cc732f"
+    "mtime": 1786946408.4985242,
+    "seen": 1786948183.1095924,
+    "ast_hash": "0f6d5ab5a66306f582ab8eacb9aa4232",
+    "semantic_hash": "0f6d5ab5a66306f582ab8eacb9aa4232"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\pdf_report.py": {
     "mtime": 1786729794.171311,
@@ -1690,7 +1690,7 @@
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\pyproject.toml": {
     "mtime": 1786729794.1723135,
-    "seen": 1786732592.0476727,
+    "seen": 1786948183.1095932,
     "ast_hash": "0682db3dffe1d05efb773d8354e38a97",
     "semantic_hash": "0682db3dffe1d05efb773d8354e38a97"
   },
@@ -1719,10 +1719,10 @@
     "semantic_hash": "6dc93cf5f09ee3772dbb8eb8d3709f0d"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\settlement_monitor.py": {
-    "mtime": 1786729794.1745956,
-    "seen": 1786732592.0476758,
-    "ast_hash": "2ff5827415b94c53f5600e93b614efe8",
-    "semantic_hash": "2ff5827415b94c53f5600e93b614efe8"
+    "mtime": 1786946408.4985242,
+    "seen": 1786948183.1095939,
+    "ast_hash": "05b7aecc83bbde54ba1d657091836af5",
+    "semantic_hash": "05b7aecc83bbde54ba1d657091836af5"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\sigma_audit.py": {
     "mtime": 1786729794.1755946,
@@ -1786,19 +1786,19 @@
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\fixtures\\regression_baseline.json": {
     "mtime": 1786729794.1852007,
-    "seen": 1786732592.0476854,
+    "seen": 1786948183.1095946,
     "ast_hash": "51fe9aaeebc010c41b3c8b5868d7397b",
     "semantic_hash": "51fe9aaeebc010c41b3c8b5868d7397b"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\fixtures\\sample_forecast.json": {
     "mtime": 1786729794.1852007,
-    "seen": 1786732592.0476856,
+    "seen": 1786948183.1095953,
     "ast_hash": "cfdb06396c5ef115604566662e8d21cd",
     "semantic_hash": "cfdb06396c5ef115604566662e8d21cd"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\fixtures\\sample_markets.json": {
     "mtime": 1786729794.1852007,
-    "seen": 1786732592.0476863,
+    "seen": 1786948183.109596,
     "ast_hash": "76306b59dbd70c1007cbf3ccc976a71c",
     "semantic_hash": "76306b59dbd70c1007cbf3ccc976a71c"
   },
@@ -2067,10 +2067,10 @@
     "semantic_hash": "e3c88b0fbe376bd52ef87693f9048c12"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\test_feature_importance_days_out.py": {
-    "mtime": 1786729794.204289,
-    "seen": 1786732592.0477076,
-    "ast_hash": "5e322edb961046260b81c6dee4679669",
-    "semantic_hash": "5e322edb961046260b81c6dee4679669"
+    "mtime": 1786946982.6425238,
+    "seen": 1786948183.109597,
+    "ast_hash": "e655230edf1a82550a0cb2ef4f4645c4",
+    "semantic_hash": "e655230edf1a82550a0cb2ef4f4645c4"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\test_flash_crash_cb.py": {
     "mtime": 1786729794.204289,
@@ -2211,10 +2211,10 @@
     "semantic_hash": "9d5930973ece8fac0cdaffed25f2707a"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\test_main_cron_smoke.py": {
-    "mtime": 1786729794.2146854,
-    "seen": 1786732592.0477183,
-    "ast_hash": "dc2c0c8f45eaec18665bfbb1017ba856",
-    "semantic_hash": "dc2c0c8f45eaec18665bfbb1017ba856"
+    "mtime": 1786946408.499524,
+    "seen": 1786948183.109598,
+    "ast_hash": "50b693a66a31906babe9f996e8ec9111",
+    "semantic_hash": "50b693a66a31906babe9f996e8ec9111"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\test_market_implied_distribution.py": {
     "mtime": 1786729794.2156835,
@@ -2235,10 +2235,10 @@
     "semantic_hash": "efcf24efa281219803a6797fafb2aec9"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\test_ml_bias.py": {
-    "mtime": 1786729794.2176855,
-    "seen": 1786732592.0477202,
-    "ast_hash": "3818faaafdfedf6b8dd0b00fe0980636",
-    "semantic_hash": "3818faaafdfedf6b8dd0b00fe0980636"
+    "mtime": 1786946408.5005245,
+    "seen": 1786948183.1095986,
+    "ast_hash": "ee92ca012aa1b99d60a1a5a3a4ff81dc",
+    "semantic_hash": "ee92ca012aa1b99d60a1a5a3a4ff81dc"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\test_mos.py": {
     "mtime": 1786729794.2176855,
@@ -2325,10 +2325,10 @@
     "semantic_hash": "edadcc3ea5f2b5d468fa7f24a66a57e2"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\test_paper.py": {
-    "mtime": 1786729794.224189,
-    "seen": 1786732592.047727,
-    "ast_hash": "734905a483a8e6797c51e07a36fbfc69",
-    "semantic_hash": "734905a483a8e6797c51e07a36fbfc69"
+    "mtime": 1786947071.5128334,
+    "seen": 1786948183.109599,
+    "ast_hash": "54eaecb6b354b4fc29c3393dfb1653f8",
+    "semantic_hash": "54eaecb6b354b4fc29c3393dfb1653f8"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\test_paper_cross_process_lock.py": {
     "mtime": 1786729794.224189,
@@ -2571,10 +2571,10 @@
     "semantic_hash": "4a4637f13747841bdceb8fd858419080"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\test_settlement_monitor.py": {
-    "mtime": 1786729794.2401083,
-    "seen": 1786732592.0477452,
-    "ast_hash": "bfdcc1a02649b7bedb5c1786d7dc6211",
-    "semantic_hash": "bfdcc1a02649b7bedb5c1786d7dc6211"
+    "mtime": 1786946408.5015242,
+    "seen": 1786948183.1096003,
+    "ast_hash": "6aa43d1d12aec8e215331d6f7e90fd5a",
+    "semantic_hash": "6aa43d1d12aec8e215331d6f7e90fd5a"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\test_shadow_predictions.py": {
     "mtime": 1786729794.2401083,
@@ -2691,10 +2691,10 @@
     "semantic_hash": "6f1f77d2df3e88680414b478a27142ee"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\test_weather_markets.py": {
-    "mtime": 1786729794.2503998,
-    "seen": 1786732592.0477543,
-    "ast_hash": "0771fb8f0fe38abebd28e942d3e34667",
-    "semantic_hash": "0771fb8f0fe38abebd28e942d3e34667"
+    "mtime": 1786946408.5025241,
+    "seen": 1786948183.1096013,
+    "ast_hash": "fad1bc3ca721cc6b51ec6415a7cafa6a",
+    "semantic_hash": "fad1bc3ca721cc6b51ec6415a7cafa6a"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tests\\test_web_analytics.py": {
     "mtime": 1786729794.2503998,
@@ -2715,10 +2715,10 @@
     "semantic_hash": "eccbfb89ad08526f3cc54c1d921c0121"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\tracker.py": {
-    "mtime": 1786729794.2524002,
-    "seen": 1786732592.047756,
-    "ast_hash": "be94e917cc077590c918557dfc95b742",
-    "semantic_hash": "be94e917cc077590c918557dfc95b742"
+    "mtime": 1786946408.5045235,
+    "seen": 1786948183.1096017,
+    "ast_hash": "5ff5983d37caf3a87be9cdbb9f48dd38",
+    "semantic_hash": "5ff5983d37caf3a87be9cdbb9f48dd38"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\trade_cycle.py": {
     "mtime": 1786729794.2533996,
@@ -2734,7 +2734,7 @@
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\updated frontend\\.design-canvas.state.json": {
     "mtime": 1786729794.2533996,
-    "seen": 1786732592.0477574,
+    "seen": 1786948183.109603,
     "ast_hash": "20a4371df9d36f35f12a3e0516c5ba77",
     "semantic_hash": "20a4371df9d36f35f12a3e0516c5ba77"
   },
@@ -2925,10 +2925,10 @@
     "semantic_hash": "1e9ea6c8aab972b332cba78fc24425b2"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\weather_markets.py": {
-    "mtime": 1786729794.269179,
-    "seen": 1786732592.0477731,
-    "ast_hash": "b806522e16ec166e95e4ac7a12d28be9",
-    "semantic_hash": "b806522e16ec166e95e4ac7a12d28be9"
+    "mtime": 1786946408.5085232,
+    "seen": 1786948183.109604,
+    "ast_hash": "ea88ce4f10d9bcab4b3b8fb515069a33",
+    "semantic_hash": "ea88ce4f10d9bcab4b3b8fb515069a33"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\web_app.py": {
     "mtime": 1786729794.2701797,
@@ -2955,10 +2955,10 @@
     "semantic_hash": "0f2a979a17051754b676f764e5cd9244"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\BACKLOG_OPEN.md": {
-    "mtime": 1786729786.0492337,
-    "seen": 1786732592.0477755,
-    "ast_hash": "f50cf2ba3e1f640c743b789eb61d8497",
-    "semantic_hash": "f50cf2ba3e1f640c743b789eb61d8497"
+    "mtime": 1786947707.2385175,
+    "seen": 1786948183.1096046,
+    "ast_hash": "a7c7b4a1a9495b14e414fbedd47d3b2c",
+    "semantic_hash": "a7c7b4a1a9495b14e414fbedd47d3b2c"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\COMMANDS.md": {
     "mtime": 1786729786.0492337,
@@ -2985,10 +2985,10 @@
     "semantic_hash": "46c21164d4dc3e150e50cc0006d53261"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\backlog.txt": {
-    "mtime": 1786729786.058828,
-    "seen": 1786732592.047778,
-    "ast_hash": "aa89bac9f73485f406d7f4e59556dff0",
-    "semantic_hash": "aa89bac9f73485f406d7f4e59556dff0"
+    "mtime": 1786947702.4103901,
+    "seen": 1786948183.109605,
+    "ast_hash": "cda17d6c3193eb7d3bb8cd6eeda25b64",
+    "semantic_hash": "cda17d6c3193eb7d3bb8cd6eeda25b64"
   },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\code_review_plan.md": {
     "mtime": 1786729786.0636942,
@@ -6518,18 +6518,6 @@
     "ast_hash": "83250b58b5ce50d51ae42f2c0f214055",
     "semantic_hash": "83250b58b5ce50d51ae42f2c0f214055"
   },
-  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\xenodochial-blackburn-fe1ab3\\.graphify_ast_update.json": {
-    "mtime": 1786930931.573736,
-    "seen": 1786930944.503647,
-    "ast_hash": "e0f68251807d4c8d7b9faadc63abed31",
-    "semantic_hash": "e0f68251807d4c8d7b9faadc63abed31"
-  },
-  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\xenodochial-blackburn-fe1ab3\\.graphify_incremental.json": {
-    "mtime": 1786930909.654933,
-    "seen": 1786930944.5036502,
-    "ast_hash": "de4d6d20d2928963ede091a923f06eae",
-    "semantic_hash": "de4d6d20d2928963ede091a923f06eae"
-  },
   "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\xenodochial-blackburn-fe1ab3\\ab_test.py": {
     "mtime": 1786752706.268281,
     "seen": 1786930944.5036516,
@@ -9079,5 +9067,29 @@
     "seen": 1786930944.503902,
     "ast_hash": "83250b58b5ce50d51ae42f2c0f214055",
     "semantic_hash": "83250b58b5ce50d51ae42f2c0f214055"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\data\\city_weights.json": {
+    "mtime": 1786729786.0661218,
+    "seen": 1786948183.109586,
+    "ast_hash": "99914b932bd37a50b983c5e7c90ae93b",
+    "semantic_hash": "99914b932bd37a50b983c5e7c90ae93b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\data\\condition_weights.json": {
+    "mtime": 1786729786.0671225,
+    "seen": 1786948183.1095872,
+    "ast_hash": "0c229f2b79a25bc1e57924f752924bc2",
+    "semantic_hash": "0c229f2b79a25bc1e57924f752924bc2"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\data\\seasonal_weights.json": {
+    "mtime": 1786729786.0671225,
+    "seen": 1786948183.1095881,
+    "ast_hash": "fefb8eb8665845624fa8e184abd5524b",
+    "semantic_hash": "fefb8eb8665845624fa8e184abd5524b"
+  },
+  "C:\\Users\\thesa\\claude kalshi\\.claude\\worktrees\\graphify-a348be\\data\\temperature_scale.json": {
+    "mtime": 1786729786.0671225,
+    "seen": 1786948183.1095886,
+    "ast_hash": "c6ac2a6eb57fa4c9fa778caae8848ec0",
+    "semantic_hash": "c6ac2a6eb57fa4c9fa778caae8848ec0"
   }
 }

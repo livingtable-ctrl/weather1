@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_mos_nbp.py"
+source_file: "tests/test_nws_afd.py"
 type: "code"
-community: "Community 123"
-location: "L331"
+community: "Community 129"
+location: "L195"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_123
+  - community/Community_129
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestNbpFeedsNwsProbFromQuantiles]] - `method` [EXTRACTED]
+- [[TestFetchAfdDiscussion]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_123
+#graphify/code #graphify/EXTRACTED #community/Community_129

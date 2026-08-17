@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 529
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_fresh_weights_file_is_loaded()]] - code - tests/test_weather_markets.py
-- [[dot-test_stale_weights_file_falls_back_to_defaults()]] - code - tests/test_weather_markets.py
-- [[File mtime 1 day ago → loader reads and returns file contents.]] - rationale - tests/test_weather_markets.py
-- [[File mtime 8 days ago → loader returns {} (default weights).]] - rationale - tests/test_weather_markets.py
-- [[L4-D load_learned_weights() must discard files older than 7 days.]] - rationale - tests/test_weather_markets.py
-- [[TestLearnedWeightsTTL]] - code - tests/test_weather_markets.py
+- [[dot-test_blocks_even_when_city_and_date_are_present()_2]] - code - tests/test_snow_markets.py
+- [[dot-test_daily_ticker_unaffected()_3]] - code - tests/test_snow_markets.py
+- [[dot-test_does_not_block_when_gate_active()_2]] - code - tests/test_snow_markets.py
+- [[dot-test_still_blocks_when_gate_inactive()_2]] - code - tests/test_snow_markets.py
+- [[Mutation-test proof flipping _snow_gates_active() to True makes the block…]] - rationale - tests/test_snow_markets.py
+- [[TestCheckPositionLimitsSnowConditional]] - code - tests/test_snow_markets.py
+- [[backlog.txt Snow Step 2 the Step 1 unconditional block became conditional on…]] - rationale - tests/test_snow_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestLearnedWeightsTTL]] - degree 4, connects to 1 community
+- [[TestCheckPositionLimitsSnowConditional]] - degree 6, connects to 1 community

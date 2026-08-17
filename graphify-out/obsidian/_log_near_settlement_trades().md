@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "code"
-community: "Community 196"
-location: "L483"
+community: "Community 199"
+location: "L484"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_196
+  - community/Community_199
 ---
 
 # _log_near_settlement_trades()
@@ -17,10 +17,11 @@ tags:
 - [[dot-test_missing_side_and_entry_prob_reproduces_the_original_silent_failure()]] - `calls` [EXTRACTED]
 - [[dot-test_multiple_trades_all_written()]] - `calls` [EXTRACTED]
 - [[dot-test_writes_row_with_real_trade_field_names()]] - `calls` [EXTRACTED]
-- [[Path_9]] - `references` [EXTRACTED]
+- [[Path_8]] - `references` [EXTRACTED]
+- [[Path]] - `references` [EXTRACTED]
 - [[Write near-settlement snapshot rows for future calibration analysis. `near` is…]] - `rationale_for` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `contains` [EXTRACTED]
 - [[test_near_settlement_log.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_196
+#graphify/code #graphify/EXTRACTED #community/Community_199

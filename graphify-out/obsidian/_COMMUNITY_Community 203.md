@@ -1,32 +1,32 @@
 ---
 type: community
-cohesion: 0.12
+cohesion: 0.16
 members: 17
 ---
 
 # Community 203
 
-**Cohesion:** 0.12 - loosely connected
+**Cohesion:** 0.16 - loosely connected
 **Members:** 17 nodes
 
 ## Members
-- [[dot-_settled_market()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_get_cached_accepts_recent_date_within_max_age()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_get_cached_returns_count_for_matching_season()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_get_cached_returns_none_for_corrupt_non_dict_entry()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_get_cached_returns_none_for_non_int_count()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_get_cached_returns_none_for_stale_date()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_get_cached_returns_none_for_wrong_season_year()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_get_cached_returns_none_when_missing()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_refresh_counts_settled_yes_per_basin()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_refresh_leaves_basin_unwritten_when_no_markets_match()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_refresh_never_raises_on_fetch_failure()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_refresh_skips_basin_already_done_today()]] - code - tests/test_hurricane_markets.py
-- [[A stale prior-season cache entry must never silently tilt the CURRENT season's…]] - rationale - tests/test_hurricane_markets.py
-- [[Opus-review-caught (2026-08-03, HIGH) the cache's `date` field was written but…]] - rationale - tests/test_hurricane_markets.py
-- [[Opus-review-caught (2026-08-03, MEDIUM-HIGH) an emptyno-match settled-markets…]] - rationale - tests/test_hurricane_markets.py
-- [[Opus-review-caught a corrupted cache with a non-dict basin entry must fail…]] - rationale - tests/test_hurricane_markets.py
-- [[TestHurricaneCountToDateCache]] - code - tests/test_hurricane_markets.py
+- [[dot-_cond()]] - code - tests/test_weather.py
+- [[dot-test_above_near_threshold_not_near_zero()]] - code - tests/test_weather.py
+- [[dot-test_below_near_threshold_not_near_one()]] - code - tests/test_weather.py
+- [[dot-test_centered_temp_gives_low_probability()]] - code - tests/test_weather.py
+- [[dot-test_centered_temp_not_near_one()]] - code - tests/test_weather.py
+- [[dot-test_temp_outside_bucket_gives_low_probability()]] - code - tests/test_weather.py
+- [[Convert a live observation to a probability. Uses sigma=3.5 — a midday…]] - rationale - nws.py
+- [[Old sigma=0.25 gave ~0.95; new sigma=3.5 must give much less.]] - rationale - tests/test_weather.py
+- [[Regression obs_prob for 'above''below' must use sigma=3.5, not sigma=1.0.…]] - rationale - tests/test_weather.py
+- [[Regression obs_prob for 'between' must use sigma=3.5, not sigma=0.25. The old…]] - rationale - tests/test_weather.py
+- [[Temp 2°F above 'below' threshold → must be meaningfully below 1.]] - rationale - tests/test_weather.py
+- [[Temp 2°F below 'above' threshold → must be meaningfully above 0.]] - rationale - tests/test_weather.py
+- [[Temp 5°F above the bucket → probability should be tiny.]] - rationale - tests/test_weather.py
+- [[Temp at centre of a 1°F band → ~11%, not ~95%.]] - rationale - tests/test_weather.py
+- [[TestObsProbAboveBelowSigma]] - code - tests/test_weather.py
+- [[TestObsProbBetweenSigma]] - code - tests/test_weather.py
+- [[obs_prob()]] - code - nws.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -36,7 +36,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 90]]
+- 3 edges to [[_COMMUNITY_Community 396]]
+- 2 edges to [[_COMMUNITY_Community 6]]
+- 2 edges to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 38]]
 
 ## Top bridge nodes
-- [[TestHurricaneCountToDateCache]] - degree 13, connects to 1 community
+- [[obs_prob()]] - degree 12, connects to 4 communities
+- [[TestObsProbBetweenSigma]] - degree 6, connects to 1 community
+- [[TestObsProbAboveBelowSigma]] - degree 4, connects to 1 community

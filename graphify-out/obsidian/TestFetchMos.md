@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_mos.py"
 type: "code"
-community: "Community 187"
+community: "Community 193"
 location: "L30"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_187
+  - community/Community_193
 ---
 
 # TestFetchMos
 
 ## Connections
-- [[dot-setup_method()_14]] - `method` [EXTRACTED]
+- [[dot-setup_method()_16]] - `method` [EXTRACTED]
 - [[dot-test_days_out_uses_city_local_today_not_utc()]] - `method` [EXTRACTED]
 - [[dot-test_fetch_mos_best_routing_uses_city_local_today_not_utc()]] - `method` [EXTRACTED]
 - [[dot-test_max_temp_is_highest_in_day()]] - `method` [EXTRACTED]
@@ -24,4 +24,4 @@ tags:
 - [[dot-test_unknown_city_returns_none()_1]] - `method` [EXTRACTED]
 - [[test_mos.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_187
+#graphify/code #graphify/EXTRACTED #community/Community_193

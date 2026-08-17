@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 204"
+community: "Community 208"
 location: "L210"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_204
+  - community/Community_208
 ---
 
 # .test_failure_count_persists_across_instances()
@@ -15,4 +15,4 @@ tags:
 - [[Failure count survives process restart (simulated by creating a new instance).]] - `rationale_for` [EXTRACTED]
 - [[TestCircuitBreakerPersistence]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_204
+#graphify/code #graphify/EXTRACTED #community/Community_208

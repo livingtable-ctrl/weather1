@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "code"
-community: "Forecasting Persistence Model Tests"
+community: "Community 38"
 location: "L23"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_38
 ---
 
 # TestPersistenceProb
@@ -18,6 +18,6 @@ tags:
 - [[dot-test_between_returns_reasonable_value()]] - `method` [EXTRACTED]
 - [[dot-test_invalid_std_dev_returns_none()]] - `method` [EXTRACTED]
 - [[dot-test_unknown_condition_returns_none()]] - `method` [EXTRACTED]
-- [[Phase 4 Improvement Tests]] - `contains` [EXTRACTED]
+- [[test_phase4.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_38

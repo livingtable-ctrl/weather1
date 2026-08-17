@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_integration.py"
 type: "rationale"
-community: "Cron Integration Tests"
+community: "Community 31"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Cron_Integration_Tests
+  - community/Community_31
 ---
 
 # Integration tests for cmd_cron() orchestration layer. All external calls…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_cron_integration.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Cron_Integration_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_31

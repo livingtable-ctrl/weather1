@@ -10,59 +10,59 @@ members: 53
 **Members:** 53 nodes
 
 ## Members
-- [[dot-test_50pct_at_mean()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_all_calibrated_sigmas_in_rmse_range()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_below_direction()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_chicago_returns_calibrated_not_default()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_dallas_returns_calibrated_not_default()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_denver_returns_calibrated_not_default()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_get_historical_sigma_returns_float()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_get_historical_sigma_unknown_city_default()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_high_prob_when_mean_well_above_threshold()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_la_returns_calibrated_not_default()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_miami_returns_calibrated_not_default()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_probability_clamped_to_unit_interval()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_wider_sigma_flattens_probability()]] - code - tests/test_gaussian_prob.py
-- [[50th-percentile threshold → P(above) near 0.50.]] - rationale - tests/test_gaussian_prob.py
-- [[Chicago must return its calibrated sigma, not the 3.5°F default. L8-C bug…]] - rationale - tests/test_gaussian_prob.py
-- [[Compute P(T  threshold) or P(T  threshold) using a Gaussian distribution.…]] - rationale - weather_markets.py
-- [[Convert month (1-12) to season index (1=Winter, 2=Spring, 3=Summer, 4=Fall).]] - rationale - weather_markets.py
-- [[Dallas must return its calibrated sigma (was keyed 'DAL', city is 'Dallas').]] - rationale - tests/test_gaussian_prob.py
-- [[Denver must return its calibrated sigma (was keyed 'DEN', city is 'Denver').]] - rationale - tests/test_gaussian_prob.py
-- [[Every calibrated sigma must be in the NWS Day-3 RMSE range (1.5–5°F).]] - rationale - tests/test_gaussian_prob.py
-- [[Grade Audit Module Doc nws.py]] - document - docs/grade_audit/modules/nws.md
-- [[Grade Audit Module Doc weather_markets.py]] - document - docs/grade_audit/modules/weather_markets.md
-- [[Higher sigma → probability closer to 0.5.]] - rationale - tests/test_gaussian_prob.py
-- [[LA must return its calibrated sigma (was keyed 'LAX', city is 'LA').]] - rationale - tests/test_gaussian_prob.py
-- [[Lazily load+memoize per-city, per-month sigma computed from the 30yr climate…]] - rationale - weather_markets.py
-- [[Miami must return its calibrated sigma (was keyed 'MIA', city is 'Miami').]] - rationale - tests/test_gaussian_prob.py
-- [[NWS Sigma Ladder (days_out-based)]] - document - docs/grade_audit/modules/nws.md
-- [[P(T  threshold) is complement of above.]] - rationale - tests/test_gaussian_prob.py
-- [[P(T  65) ≈ 84% when mean=70, sigma=5 (1 sigma above).]] - rationale - tests/test_gaussian_prob.py
-- [[P(T  threshold) = 50% when threshold equals the forecast mean.]] - rationale - tests/test_gaussian_prob.py
-- [[P(between) counts members in range.]] - rationale - tests/test_gaussian_prob.py
-- [[Return forecast RMSE sigma (°F) for a citymonth. Prefers dynamic values…]] - rationale - weather_markets.py
-- [[TestGaussianProbability]] - code - tests/test_gaussian_prob.py
-- [[Tests for Gaussian probability distribution method.]] - rationale - tests/test_gaussian_prob.py
-- [[Threshold below all members → P(above) near 1.0.]] - rationale - tests/test_gaussian_prob.py
-- [[Unknown city returns the default sigma in the NWS RMSE range.]] - rationale - tests/test_gaussian_prob.py
-- [[When get_ensemble_members succeeds, blend_sources includes 'ensemble_cdf'.]] - rationale - tests/test_gaussian_prob.py
-- [[_load_dynamic_sigma()]] - code - weather_markets.py
-- [[_month_to_season()]] - code - weather_markets.py
-- [[gaussian_probability always returns a value in 0, 1.]] - rationale - tests/test_gaussian_prob.py
-- [[gaussian_probability()]] - code - weather_markets.py
-- [[get_ensemble_members returns None when the API errors.]] - rationale - tests/test_gaussian_prob.py
-- [[get_ensemble_members returns a list of ≥10 floats on success.]] - rationale - tests/test_gaussian_prob.py
-- [[get_historical_sigma returns a positive float in the NWS RMSE range (2-5°F).]] - rationale - tests/test_gaussian_prob.py
-- [[get_historical_sigma()]] - code - weather_markets.py
-- [[test_analyze_trade_includes_ensemble_cdf_in_blend_sources()]] - code - tests/test_gaussian_prob.py
-- [[test_ensemble_cdf_prob_above_at_median()]] - code - tests/test_gaussian_prob.py
-- [[test_ensemble_cdf_prob_below_threshold_below_all()]] - code - tests/test_gaussian_prob.py
-- [[test_ensemble_cdf_prob_between()]] - code - tests/test_gaussian_prob.py
-- [[test_fetch_ensemble_members_returns_list()]] - code - tests/test_gaussian_prob.py
-- [[test_gaussian_prob.py]] - code - tests/test_gaussian_prob.py
-- [[test_get_ensemble_members_returns_none_on_failure()]] - code - tests/test_gaussian_prob.py
-- [[test_signal_quality.py_1]] - code - tests/test_signal_quality.py
+- [[28 Return the current ENSO phase 'el_nino', 'la_nina', or 'neutral'. Uses…]] - rationale - weather_markets.py
+- [[dot-test_all_summer_months_use_lower_ecmwf()]] - code - tests/test_weather_markets.py
+- [[dot-test_all_winter_months_use_high_ecmwf()]] - code - tests/test_weather_markets.py
+- [[dot-test_city_weights_used_when_available()]] - code - tests/test_phase4.py
+- [[dot-test_dynamic_weights_override_learned()]] - code - tests/test_phase4.py
+- [[dot-test_ecmwf_weight_summer()]] - code - tests/test_weather.py
+- [[dot-test_ecmwf_weight_winter()]] - code - tests/test_weather.py
+- [[dot-test_el_nino_boosts_ecmwf_above_neutral()]] - code - tests/test_phase4.py
+- [[dot-test_el_nino_boosts_ecmwf_in_winter()]] - code - tests/test_forecasting.py
+- [[dot-test_el_nino_returns_correct_label()]] - code - tests/test_forecasting.py
+- [[dot-test_get_enso_phase_returns_valid_phase()]] - code - tests/test_phase4.py
+- [[dot-test_gfs_and_icon_constant()]] - code - tests/test_weather.py
+- [[dot-test_gfs_and_icon_weights_are_constant()]] - code - tests/test_weather_markets.py
+- [[dot-test_la_nina_boosts_ecmwf_above_neutral()]] - code - tests/test_phase4.py
+- [[dot-test_la_nina_returns_correct_label()]] - code - tests/test_forecasting.py
+- [[dot-test_neutral_returns_correct_label()]] - code - tests/test_forecasting.py
+- [[dot-test_neutral_winter_ecmwf_weight()]] - code - tests/test_forecasting.py
+- [[dot-test_no_city_falls_back_to_seasonal()]] - code - tests/test_phase4.py
+- [[dot-test_no_enso_boost_in_summer()]] - code - tests/test_phase4.py
+- [[dot-test_none_oni_returns_neutral()]] - code - tests/test_forecasting.py
+- [[dot-test_partial_tracker_weights_backfilled_from_baseline()]] - code - tests/test_forecasting.py
+- [[dot-test_returns_dict_with_expected_keys()]] - code - tests/test_weather_markets.py
+- [[dot-test_seasonal_fallback_when_no_tracker_rows()]] - code - tests/test_forecasting.py
+- [[dot-test_tracker_weights_used_when_available()]] - code - tests/test_forecasting.py
+- [[dot-test_winter_month_boosts_ecmwf_weight()]] - code - tests/test_weather_markets.py
+- [[All summer months (Apr-Sep) should use the lower ECMWF weight.]] - rationale - tests/test_weather_markets.py
+- [[All winter months (Oct-Mar) should use the elevated ECMWF weight.…]] - rationale - tests/test_weather_markets.py
+- [[Dynamic tracker weights take priority over learned_weights.json.]] - rationale - tests/test_phase4.py
+- [[ECMWF should have weight 1.5 in summer months (Apr–Sep).]] - rationale - tests/test_weather.py
+- [[ECMWF should have weight 2.5 in winter months (Oct–Mar), ENSO-neutral.]] - rationale - tests/test_weather.py
+- [[ECMWF weight should be higher in winter than summer. month=1 is winter, so…]] - rationale - tests/test_weather_markets.py
+- [[ENSO should not affect summer weights (not winter).]] - rationale - tests/test_phase4.py
+- [[El Niño winter should give ECMWF higher weight than neutral.]] - rationale - tests/test_phase4.py
+- [[GFS and ICON weights should be 1.0 year-round.]] - rationale - tests/test_weather.py
+- [[GFS and ICON weights should be 1.0 year-round. Loops every month, including…]] - rationale - tests/test_weather_markets.py
+- [[La Niña winter should give ECMWF higher weight than neutral.]] - rationale - tests/test_phase4.py
+- [[No city → seasonal fallback (no learned weights lookup).]] - rationale - tests/test_phase4.py
+- [[Seasonal model weights for the daily forecast blend. ECMWF is the most accurate…]] - rationale - weather_markets.py
+- [[TestEnsoPhase]] - code - tests/test_forecasting.py
+- [[TestEnsoPhase_1]] - code - tests/test_phase4.py
+- [[TestForecastModelWeights]] - code - tests/test_weather_markets.py
+- [[TestForecastModelWeights_1]] - code - tests/test_weather.py
+- [[TestForecastModelWeightsTrackerIntegration]] - code - tests/test_forecasting.py
+- [[TestPerCityLearnedWeights]] - code - tests/test_phase4.py
+- [[When learned_weights.json has NYC weights, they're returned for NYC.]] - rationale - tests/test_phase4.py
+- [[When tracker data covers only some models (e.g. ECMWF has zero rows for this…]] - rationale - tests/test_forecasting.py
+- [[When tracker has 10+ model rows, _forecast_model_weights returns tracker…]] - rationale - tests/test_forecasting.py
+- [[When tracker has no rows (empty dict), _forecast_model_weights falls back to…]] - rationale - tests/test_forecasting.py
+- [[_forecast_model_weights gives ECMWF +0.5 extra during El NiÃ±o winter.]] - rationale - tests/test_forecasting.py
+- [[_forecast_model_weights()]] - code - weather_markets.py
+- [[_get_enso_phase always returns one of three valid values.]] - rationale - tests/test_phase4.py
+- [[_get_enso_phase()]] - code - weather_markets.py
+- [[month=1 is winter, so _forecast_model_weights hits the same live-network…]] - rationale - tests/test_weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -72,25 +72,19 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 10 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 3 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 2 edges to [[_COMMUNITY_Community 257]]
-- 2 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
-- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Community 163]]
-- 1 edge to [[_COMMUNITY_Community 277]]
-- 1 edge to [[_COMMUNITY_Community 465]]
-- 1 edge to [[_COMMUNITY_Community 82]]
-- 1 edge to [[_COMMUNITY_Community 41]]
-- 1 edge to [[_COMMUNITY_Community 575]]
-- 1 edge to [[_COMMUNITY_Community 217]]
-- 1 edge to [[_COMMUNITY_Community 109]]
-- 1 edge to [[_COMMUNITY_Community 211]]
-- 1 edge to [[_COMMUNITY_Community 497]]
+- 5 edges to [[_COMMUNITY_Community 4]]
+- 5 edges to [[_COMMUNITY_Community 5]]
+- 4 edges to [[_COMMUNITY_Community 38]]
+- 2 edges to [[_COMMUNITY_Community 9]]
+- 2 edges to [[_COMMUNITY_Community 11]]
+- 2 edges to [[_COMMUNITY_Community 396]]
+- 1 edge to [[_COMMUNITY_Community 417]]
+- 1 edge to [[_COMMUNITY_Community 89]]
+- 1 edge to [[_COMMUNITY_Community 165]]
 
 ## Top bridge nodes
-- [[test_gaussian_prob.py]] - degree 21, connects to 7 communities
-- [[Grade Audit Module Doc weather_markets.py]] - degree 9, connects to 7 communities
-- [[get_historical_sigma()]] - degree 15, connects to 3 communities
-- [[gaussian_probability()]] - degree 11, connects to 2 communities
-- [[_load_dynamic_sigma()]] - degree 4, connects to 2 communities
+- [[_forecast_model_weights()]] - degree 33, connects to 8 communities
+- [[_get_enso_phase()]] - degree 12, connects to 3 communities
+- [[TestEnsoPhase]] - degree 8, connects to 2 communities
+- [[TestForecastModelWeightsTrackerIntegration]] - degree 5, connects to 2 communities
+- [[TestForecastModelWeights]] - degree 8, connects to 1 community

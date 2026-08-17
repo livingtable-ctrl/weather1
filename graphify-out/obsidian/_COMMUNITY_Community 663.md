@@ -1,16 +1,18 @@
 ---
 type: community
-cohesion: 1.00
-members: 1
+cohesion: 0.67
+members: 3
 ---
 
 # Community 663
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Cohesion:** 0.67 - moderately connected
+**Members:** 3 nodes
 
 ## Members
-- [[AnalysisResult TypedDict]] - code - market_types.py
+- [[first_occurrence_day Function]] - code - hurricane_climatology.py
+- [[next_event_outcomes Function]] - code - hurricane_climatology.py
+- [[next_event_probability Function]] - code - hurricane_climatology.py
 
 ## Live Query (requires Dataview plugin)
 

@@ -1,12 +1,12 @@
 ---
 source_file: "utils.py"
 type: "rationale"
-community: "Community 252"
+community: "Community 305"
 location: "L222"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_252
+  - community/Community_305
 ---
 
 # Return minimum edge required given ensemble spread and trading mode.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_min_edge_for_confidence()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_252
+#graphify/rationale #graphify/EXTRACTED #community/Community_305

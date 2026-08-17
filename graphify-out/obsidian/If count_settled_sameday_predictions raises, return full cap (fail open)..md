@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_sameday_reserve.py"
 type: "rationale"
-community: "Community 74"
+community: "Community 75"
 location: "L96"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_74
+  - community/Community_75
 ---
 
 # If count_settled_sameday_predictions raises, return full cap (fail open).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_db_error_fails_open()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_74
+#graphify/rationale #graphify/EXTRACTED #community/Community_75

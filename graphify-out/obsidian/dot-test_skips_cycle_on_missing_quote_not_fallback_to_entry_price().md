@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "code"
-community: "Community 333"
+community: "Community 340"
 location: "L495"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_333
+  - community/Community_340
 ---
 
 # .test_skips_cycle_on_missing_quote_not_fallback_to_entry_price()
@@ -16,4 +16,4 @@ tags:
 - [[A missinginvalid quote must skip this cycle (matching _check_live_model_exits'…]] - `rationale_for` [EXTRACTED]
 - [[TestEarlyExitPricingConvention]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_333
+#graphify/code #graphify/EXTRACTED #community/Community_340

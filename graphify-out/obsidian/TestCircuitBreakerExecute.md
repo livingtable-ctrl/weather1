@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_b.py"
 type: "code"
-community: "Community 84"
+community: "Community 139"
 location: "L24"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_84
+  - community/Community_139
 ---
 
 # TestCircuitBreakerExecute
@@ -21,6 +21,6 @@ tags:
 - [[CircuitBreaker]] - `uses` [INFERRED]
 - [[CircuitOpenError]] - `uses` [INFERRED]
 - [[P3-4 execute() provides automatic check → call → record protection.]] - `rationale_for` [EXTRACTED]
-- [[Phase 3 Batch B Circuit Breaker Tests]] - `contains` [EXTRACTED]
+- [[test_phase3_batch_b.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_84
+#graphify/code #graphify/EXTRACTED #community/Community_139

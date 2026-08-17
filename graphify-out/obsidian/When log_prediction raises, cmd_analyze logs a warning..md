@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_debug_fixes.py"
 type: "rationale"
-community: "Community 78"
+community: "Community 4"
 location: "L343"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_78
+  - community/Community_4
 ---
 
 # When log_prediction raises, cmd_analyze logs a warning.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_log_prediction_failure_emits_warning()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_78
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

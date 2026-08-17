@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_notify.py"
 type: "rationale"
-community: "Community 574"
+community: "Community 650"
 location: "L234"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_574
+  - community/Community_650
 ---
 
 # Integration-level: send_system_alert() itself (not just the helper) respects…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestSendSystemAlertUsesPersistedCooldown]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_574
+#graphify/rationale #graphify/EXTRACTED #community/Community_650

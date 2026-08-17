@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 343"
+community: "Community 349"
 location: "L721"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_343
+  - community/Community_349
 ---
 
 # .test_portfolio_kelly_with_directional_penalty()
@@ -15,4 +15,4 @@ tags:
 - [[Concentrated same-side bets trigger 50% further reduction.]] - `rationale_for` [EXTRACTED]
 - [[TestDirectionalExposure]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_343
+#graphify/code #graphify/EXTRACTED #community/Community_349

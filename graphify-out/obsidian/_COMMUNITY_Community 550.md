@@ -1,20 +1,21 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.33
+members: 6
 ---
 
 # Community 550
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_single_bad_market_does_not_abort_scan()]] - code - tests/test_main_cron_smoke.py
-- [[dot-test_top_opportunities_shows_error_reason()]] - code - tests/test_main_cron_smoke.py
-- [[One market failing enrichanalyze should not kill the rest of the scan.]] - rationale - tests/test_main_cron_smoke.py
-- [[TestCmdBrief]] - code - tests/test_main_cron_smoke.py
-- [[When market fetch fails, brief prints a visible warning containing the error.]] - rationale - tests/test_main_cron_smoke.py
+- [[61.1 Add `fit_emos(training_data)` to a new `calibration_emos.py`]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[61.2 Add EMOS training data collection to `tracker.py`]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[61.3 Write tests]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[61.4 Verify & Commit]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Background_13]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Task 61 (P12.A) — EMOS Ensemble Calibration]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,7 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 1 edge to [[_COMMUNITY_Community 451]]
 
 ## Top bridge nodes
-- [[TestCmdBrief]] - degree 3, connects to 1 community
+- [[Task 61 (P12.A) — EMOS Ensemble Calibration]] - degree 6, connects to 1 community

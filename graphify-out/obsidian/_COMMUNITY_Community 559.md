@@ -1,20 +1,21 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.33
+members: 6
 ---
 
 # Community 559
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_fetches_and_averages_gem_ukmo_members()]] - code - tests/test_weather_markets.py
-- [[dot-test_returns_none_when_fewer_than_five_members()_1]] - code - tests/test_weather_markets.py
-- [[TestGetGemUkmoMeans]] - code - tests/test_weather_markets.py
-- [[_model_prob_and_mean's own =5-member floor must also gate GEMUKMO — matching…]] - rationale - tests/test_weather_markets.py
-- [[backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' Pass 2…_1]] - rationale - tests/test_weather_markets.py
+- [[Completion Checklist_1]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Tier 1 — Probability Calibration]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Tier 2 — New Data Sources_1]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Tier 3 — Risk & Sizing]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Tier 4 — Market Intelligence]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Tier 5 — Advanced]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,7 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 451]]
 
 ## Top bridge nodes
-- [[TestGetGemUkmoMeans]] - degree 4, connects to 1 community
+- [[Completion Checklist_1]] - degree 6, connects to 1 community

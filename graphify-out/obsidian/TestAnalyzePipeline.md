@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_integration.py"
 type: "code"
-community: "Community 53"
+community: "Community 112"
 location: "L79"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_53
+  - community/Community_112
 ---
 
 # TestAnalyzePipeline
@@ -21,4 +21,4 @@ tags:
 - [[Integration tests for analyze_trade() (112).]] - `rationale_for` [EXTRACTED]
 - [[test_integration.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_53
+#graphify/code #graphify/EXTRACTED #community/Community_112

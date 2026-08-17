@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 561"
-location: "L4979"
+community: "Community 642"
+location: "L5348"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_561
+  - community/Community_642
 ---
 
 # TestMosBlendNoCrossVariableFallback
@@ -17,4 +17,4 @@ tags:
 - [[A LOW market (var='min') with no MOS minimum must skip the MOS blend entirely,…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_561
+#graphify/code #graphify/EXTRACTED #community/Community_642

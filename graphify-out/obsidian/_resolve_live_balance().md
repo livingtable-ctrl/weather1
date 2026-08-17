@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 183"
+community: "Community 220"
 location: "L196"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_183
+  - community/Community_220
 ---
 
 # _resolve_live_balance()
@@ -17,8 +17,7 @@ tags:
 - [[dot-test_missing_balance_key_falls_back_to_zero()]] - `calls` [EXTRACTED]
 - [[Fetch the real Kalshi balance (dollars) for live Kelly sizing. F4 live_config…]] - `rationale_for` [EXTRACTED]
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
-- [[order_executor.py]] - `contains` [EXTRACTED]
-- [[order_executor.py_1]] - `implements` [EXTRACTED]
-- [[test_prelog.py]] - `calls` [EXTRACTED]
+- [[order_executor.py]] - `implements` [EXTRACTED]
+- [[test_prelog.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_183
+#graphify/code #graphify/EXTRACTED #community/Community_220

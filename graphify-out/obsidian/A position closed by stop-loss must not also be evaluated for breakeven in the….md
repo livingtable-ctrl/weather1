@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Community 258"
+community: "Community 180"
 location: "L1992"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_258
+  - community/Community_180
 ---
 
 # A position closed by stop-loss must not also be evaluated for breakeven in the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_stop_loss_close_excludes_position_from_same_cycle_breakeven_check()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_258
+#graphify/rationale #graphify/EXTRACTED #community/Community_180

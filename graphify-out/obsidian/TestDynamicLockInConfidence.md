@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "code"
-community: "Community 367"
+community: "Community 381"
 location: "L729"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_367
+  - community/Community_381
 ---
 
 # TestDynamicLockInConfidence
@@ -20,4 +20,4 @@ tags:
 - [[Regression tests for L6-D METAR lock-in confidence must scale with temperature…]] - `rationale_for` [EXTRACTED]
 - [[test_metar.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_367
+#graphify/code #graphify/EXTRACTED #community/Community_381

@@ -1,11 +1,11 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 118"
+community: "Community 4"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_118
+  - community/Community_4
 ---
 
 # _CONDITION_WEIGHTS cache
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[calibrate_and_save()]] - `conceptually_related_to` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_118
+#graphify/code #graphify/EXTRACTED #community/Community_4

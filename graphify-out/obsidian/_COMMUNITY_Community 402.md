@@ -1,24 +1,24 @@
 ---
 type: community
-cohesion: 0.31
+cohesion: 0.22
 members: 9
 ---
 
 # Community 402
 
-**Cohesion:** 0.31 - loosely connected
+**Cohesion:** 0.22 - loosely connected
 **Members:** 9 nodes
 
 ## Members
-- [[73 place_paper_order simulates random Gaussian fill slippage.]] - rationale - tests/test_paper.py
-- [[dot-_place()]] - code - tests/test_paper.py
-- [[dot-test_actual_fill_price_deviates_from_entry()]] - code - tests/test_paper.py
-- [[dot-test_actual_fill_price_in_valid_range()]] - code - tests/test_paper.py
-- [[dot-test_entry_price_unchanged()]] - code - tests/test_paper.py
-- [[Over many fills, actual_fill_price should vary around entry_price.]] - rationale - tests/test_paper.py
-- [[TestGaussianFillSlippage]] - code - tests/test_paper.py
-- [[actual_fill_price must always be in 0.01, 0.99.]] - rationale - tests/test_paper.py
-- [[entry_price on the trade record must equal the requested price.]] - rationale - tests/test_paper.py
+- [[dot-test_city_weights_override_hardcoded()]] - code - tests/test_weather_markets.py
+- [[dot-test_fallback_to_hardcoded_when_no_calibration()]] - code - tests/test_weather_markets.py
+- [[dot-test_seasonal_weights_used_when_no_city_weights()]] - code - tests/test_weather_markets.py
+- [[If city weights loaded, _blend_weights uses them (days_out=1 = neutral NWS…]] - rationale - tests/test_weather_markets.py
+- [[If no city weights but seasonal weights loaded, use seasonal (days_out=1 =…]] - rationale - tests/test_weather_markets.py
+- [[TestBlendWeightCalibrationPriority]] - code - tests/test_weather_markets.py
+- [[With empty dicts, result should match original hardcoded schedule.]] - rationale - tests/test_weather_markets.py
+- [[_blend_weights() must use city weights  seasonal weights  hardcoded.]] - rationale - tests/test_weather_markets.py
+- [[condition_weights.json (abovebelowbetween blend weights)]] - document - data/condition_weights.json
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,8 +28,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 56]]
-- 1 edge to [[_COMMUNITY_Community 45]]
+- 1 edge to [[_COMMUNITY_Community 11]]
+- 1 edge to [[_COMMUNITY_Community 94]]
 
 ## Top bridge nodes
-- [[TestGaussianFillSlippage]] - degree 7, connects to 2 communities
+- [[TestBlendWeightCalibrationPriority]] - degree 7, connects to 2 communities

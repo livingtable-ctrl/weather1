@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_b.py"
 type: "code"
-community: "Community 84"
+community: "Community 139"
 location: "L176"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_84
+  - community/Community_139
 ---
 
 # .test_half_open_allows_one_probe()
@@ -15,4 +15,4 @@ tags:
 - [[TestCircuitBreakerHalfOpen]] - `method` [EXTRACTED]
 - [[_cb()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_84
+#graphify/code #graphify/EXTRACTED #community/Community_139

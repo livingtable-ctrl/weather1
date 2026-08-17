@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-30-bug-fixes.md"
 type: "document"
-community: "Community 294"
+community: "Community 216"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_294
+  - community/Community_216
 ---
 
 # Bug Fixes April 30 2026 Plan
@@ -22,4 +22,4 @@ tags:
 - [[Fix Validate Blank Output]] - `implements` [EXTRACTED]
 - [[Monte Carlo Clamping Explanation]] - `implements` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_294
+#graphify/document #graphify/EXTRACTED #community/Community_216

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_regime.py"
 type: "code"
-community: "Community 230"
+community: "Community 249"
 location: "L6"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_230
+  - community/Community_249
 ---
 
 # _stats()
@@ -21,4 +21,4 @@ tags:
 - [[test_regime.py]] - `contains` [EXTRACTED]
 - [[test_volatile_detected()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_230
+#graphify/code #graphify/EXTRACTED #community/Community_249

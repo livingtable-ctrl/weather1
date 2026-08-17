@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "rationale"
-community: "Community 73"
+community: "Community 95"
 location: "L45"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_73
+  - community/Community_95
 ---
 
 # fetch_metar returns current_temp_f in Fahrenheit.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_returns_current_temp_f()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_73
+#graphify/rationale #graphify/EXTRACTED #community/Community_95

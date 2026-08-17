@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading_gates.py"
 type: "code"
-community: "Community 54"
+community: "Community 49"
 location: "L11"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_54
+  - community/Community_49
 ---
 
 # ._gate()
@@ -30,4 +30,4 @@ tags:
 - [[LiveTradingGate]] - `calls` [EXTRACTED]
 - [[TestLiveTradingGate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_54
+#graphify/code #graphify/EXTRACTED #community/Community_49

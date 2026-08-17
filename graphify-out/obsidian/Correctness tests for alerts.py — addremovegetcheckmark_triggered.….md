@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts.py"
 type: "rationale"
-community: "Community 94"
+community: "Community 32"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_94
+  - community/Community_32
 ---
 
 # Correctness tests for alerts.py — add/remove/get/check/mark_triggered.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_alerts.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_94
+#graphify/rationale #graphify/EXTRACTED #community/Community_32

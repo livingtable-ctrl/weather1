@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/outputs/config.py.md"
 type: "document"
-community: "Community 129"
+community: "Community 6"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_129
+  - community/Community_6
 ---
 
 # config.py Grade Audit
@@ -14,4 +14,4 @@ tags:
 - [[config.py]] - `references` [EXTRACTED]
 - [[config.py File Grade median T2 ~710, one T1 RF1 promotion]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_129
+#graphify/document #graphify/EXTRACTED #community/Community_6

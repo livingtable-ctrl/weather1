@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backtest.py"
 type: "code"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 8"
 location: "L421"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_8
 ---
 
 # test_backtest_reports_funnel_breakdown_when_empty()
@@ -15,4 +15,4 @@ tags:
 - [[When backtest finds no scoreable markets, cmd_backtest prints a funnel…]] - `rationale_for` [EXTRACTED]
 - [[test_backtest.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/code #graphify/EXTRACTED #community/Community_8

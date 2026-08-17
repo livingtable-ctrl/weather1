@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_near_settlement_log.py"
 type: "code"
-community: "Community 196"
+community: "Community 199"
 location: "L42"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_196
+  - community/Community_199
 ---
 
 # TestLogNearSettlementTrades
@@ -19,4 +19,4 @@ tags:
 - [[dot-test_writes_row_with_real_trade_field_names()]] - `method` [EXTRACTED]
 - [[test_near_settlement_log.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_196
+#graphify/code #graphify/EXTRACTED #community/Community_199

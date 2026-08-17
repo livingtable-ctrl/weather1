@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_nbm.py"
 type: "code"
-community: "Community 234"
+community: "Community 9"
 location: "L17"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_234
+  - community/Community_9
 ---
 
 # .test_nbm_in_ensemble_models()
@@ -15,4 +15,4 @@ tags:
 - [[ENSEMBLE_MODELS_EXTENDED includes NBM.]] - `rationale_for` [EXTRACTED]
 - [[TestNBMFetch]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_234
+#graphify/code #graphify/EXTRACTED #community/Community_9

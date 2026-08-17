@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker Settlement Sigma & Disputed Rows"
+community: "Community 29"
 location: "L4881"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Settlement_Sigma__Disputed_Rows
+  - community/Community_29
 ---
 
 # .test_count_settled_below_predictions_excludes_disputed()
@@ -16,4 +16,4 @@ tags:
 - [[dot-_seed_baseline()]] - `calls` [EXTRACTED]
 - [[TestDisputedOutcomeTracking]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Settlement_Sigma__Disputed_Rows
+#graphify/code #graphify/EXTRACTED #community/Community_29

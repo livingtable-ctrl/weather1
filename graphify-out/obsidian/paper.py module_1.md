@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md"
 type: "code"
-community: "Community 224"
+community: "Community 360"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_224
+  - community/Community_360
 ---
 
 # paper.py module
@@ -21,4 +21,4 @@ tags:
 - [[auto_settle_paper_trades Cron Call]] - `references` [EXTRACTED]
 - [[check_model_exits Threshold + Hold Time Fix]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_224
+#graphify/code #graphify/EXTRACTED #community/Community_360

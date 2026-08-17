@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_c.py"
 type: "rationale"
-community: "Community 72"
+community: "Community 125"
 location: "L214"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_72
+  - community/Community_125
 ---
 
 # P3-1: calibrate_seasonal_weights and calibrate_city_weights accept cutoff_date.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestTemporalIsolationSeasonalCity]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_72
+#graphify/rationale #graphify/EXTRACTED #community/Community_125

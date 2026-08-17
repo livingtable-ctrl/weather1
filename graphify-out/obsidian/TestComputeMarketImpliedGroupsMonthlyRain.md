@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 139"
+community: "Community 16"
 location: "L1447"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_139
+  - community/Community_16
 ---
 
 # TestComputeMarketImpliedGroupsMonthlyRain
@@ -20,4 +20,4 @@ tags:
 - [[backlog.txt RAIN MARKETS -- LADDERSIBLING GROUPING FOR MARKET- IMPLIED…]] - `rationale_for` [EXTRACTED]
 - [[test_rain_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_139
+#graphify/code #graphify/EXTRACTED #community/Community_16

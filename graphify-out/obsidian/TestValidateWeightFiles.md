@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_c.py"
 type: "code"
-community: "Community 119"
+community: "Community 109"
 location: "L80"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_119
+  - community/Community_109
 ---
 
 # TestValidateWeightFiles
@@ -17,6 +17,6 @@ tags:
 - [[dot-test_warns_when_season_missing()]] - `method` [EXTRACTED]
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[P2-7 validate_weight_files warns on missingmalformed entries.]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Batch C Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_c.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_119
+#graphify/code #graphify/EXTRACTED #community/Community_109

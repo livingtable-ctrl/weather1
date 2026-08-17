@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 40"
+community: "Community 1"
 location: "L2085"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_40
+  - community/Community_1
 ---
 
 # _prediction_kwargs_from_analysis()
@@ -16,11 +16,11 @@ tags:
 - [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[_current_forecast_cycle()]] - `calls` [EXTRACTED]
 - [[_log_shadow_predictions()]] - `calls` [EXTRACTED]
+- [[cmd_market()]] - `calls` [EXTRACTED]
+- [[cmd_order()]] - `calls` [EXTRACTED]
 - [[get_forecast_run_trend_from_analysis()]] - `calls` [EXTRACTED]
-- [[main.py CLI Entrypoint]] - `shares_data_with` [EXTRACTED]
-- [[order_executor.py]] - `contains` [EXTRACTED]
-- [[order_executor.py_1]] - `implements` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
+- [[order_executor.py]] - `implements` [EXTRACTED]
 - [[test_prediction_kwargs.py]] - `calls` [EXTRACTED]
-- [[tracker.py_2]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_40
+#graphify/code #graphify/EXTRACTED #community/Community_1

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_b.py"
 type: "code"
-community: "Community 260"
+community: "Community 257"
 location: "L72"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_260
+  - community/Community_257
 ---
 
 # .test_default_halt_no_warning()
@@ -15,4 +15,4 @@ tags:
 - [[Default DRAWDOWN_HALT_PCT=0.20 must NOT emit the tier warning.]] - `rationale_for` [EXTRACTED]
 - [[TestDrawdownTierAbsolute]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_260
+#graphify/code #graphify/EXTRACTED #community/Community_257

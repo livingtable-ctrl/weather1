@@ -1,19 +1,18 @@
 ---
-source_file: "tests/test_phase2_batch_k.py"
+source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 282"
-location: "L38"
+community: "Community 132"
+location: "L391"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_282
+  - community/Community_132
 ---
 
 # .test_weights_sum_to_one()
 
 ## Connections
-- [[dot-_call()]] - `calls` [EXTRACTED]
-- [[All weights must sum to 1.0 regardless of scaling.]] - `rationale_for` [EXTRACTED]
-- [[TestConfidenceScaledBlendWeightsNoNegative]] - `method` [EXTRACTED]
+- [[dot-_seed()_1]] - `calls` [EXTRACTED]
+- [[TestGetModelWeights]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_282
+#graphify/code #graphify/EXTRACTED #community/Community_132

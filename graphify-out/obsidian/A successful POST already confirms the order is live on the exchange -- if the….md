@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "rationale"
-community: "Community 510"
+community: "Community 569"
 location: "L369"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_510
+  - community/Community_569
 ---
 
 # A successful POST already confirms the order is live on the exchange -- if the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPlaceOrderSurvivesGetOrderFailure]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_510
+#graphify/rationale #graphify/EXTRACTED #community/Community_569

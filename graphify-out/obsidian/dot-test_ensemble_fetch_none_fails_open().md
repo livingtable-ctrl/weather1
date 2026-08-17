@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 152"
+community: "Community 16"
 location: "L1145"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_152
+  - community/Community_16
 ---
 
 # .test_ensemble_fetch_none_fails_open()
@@ -18,4 +18,4 @@ tags:
 - [[Fetch failure  fully-outside-horizon (returns None) must not affect the trade…]] - `rationale_for` [EXTRACTED]
 - [[TestRainForecastBlendSignal]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_152
+#graphify/code #graphify/EXTRACTED #community/Community_16

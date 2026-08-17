@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 190"
+community: "Community 174"
 location: "L59"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_190
+  - community/Community_174
 ---
 
 # .test_condition_compounds_horizon()
@@ -16,4 +16,4 @@ tags:
 - [[days_out=10, precip_snow horizon≈0.7143, × 0.80 ≈ 0.5714.]] - `rationale_for` [EXTRACTED]
 - [[edge_confidence()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_190
+#graphify/code #graphify/EXTRACTED #community/Community_174

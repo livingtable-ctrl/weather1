@@ -1,12 +1,12 @@
 ---
 source_file: "nws_afd.py"
 type: "code"
-community: "Community 182"
+community: "Community 6"
 location: "L140"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_182
+  - community/Community_6
 ---
 
 # _section_header_re()
@@ -16,4 +16,4 @@ tags:
 - [[Pattern]] - `references` [EXTRACTED]
 - [[nws_afd.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_182
+#graphify/code #graphify/EXTRACTED #community/Community_6

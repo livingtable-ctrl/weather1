@@ -1,42 +1,44 @@
 ---
 type: community
-cohesion: 0.14
-members: 27
+cohesion: 0.09
+members: 29
 ---
 
 # Community 94
 
-**Cohesion:** 0.14 - loosely connected
-**Members:** 27 nodes
+**Cohesion:** 0.09 - loosely connected
+**Members:** 29 nodes
 
 ## Members
-- [[dot-test_add_alert_defaults_direction_below_cooldown_60()]] - code - tests/test_alerts.py
-- [[dot-test_add_alert_invalid_direction_raises()]] - code - tests/test_alerts.py
-- [[dot-test_add_alert_invalid_target_price_raises()]] - code - tests/test_alerts.py
-- [[dot-test_add_alert_persists_and_increments_id()]] - code - tests/test_alerts.py
-- [[dot-test_add_alert_returns_expected_fields()]] - code - tests/test_alerts.py
-- [[dot-test_remove_existing_alert_returns_true_and_removes()]] - code - tests/test_alerts.py
-- [[dot-test_remove_nonexistent_alert_returns_false()]] - code - tests/test_alerts.py
-- [[Add a price alert. Args ticker Market ticker (e.g. KXHIGHNY-26APR09-T72)…]] - rationale - alerts.py
-- [[Correctness tests for alerts.py — addremovegetcheckmark_triggered.…]] - rationale - tests/test_alerts.py
-- [[Mark an alert as triggered. 91 Records triggered_at timestamp for cooldown…]] - rationale - alerts.py
-- [[Path_29]] - code
-- [[Price alerts — notify when a market's YES price crosses a user-set threshold.…]] - rationale - alerts.py
-- [[Remove an alert by ID. Returns True if found and removed, False otherwise.]] - rationale - alerts.py
-- [[Return all active alerts. 91 An alert with a cooldown is re-armed after the…]] - rationale - alerts.py
-- [[TestAddAlert]] - code - tests/test_alerts.py
-- [[TestRemoveAlert]] - code - tests/test_alerts.py
-- [[Write alerts list to path using safe_io for resilient disk writes (8). P3-9…]] - rationale - alerts.py
-- [[_load()]] - code - alerts.py
-- [[_save()]] - code - alerts.py
-- [[add_alert()]] - code - alerts.py
-- [[alerts.py]] - code - alerts.py
-- [[get_alerts()]] - code - alerts.py
-- [[mark_triggered()]] - code - alerts.py
-- [[parametrize_3]] - code
-- [[remove_alert()]] - code - alerts.py
-- [[save_alerts()]] - code - alerts.py
-- [[test_alerts.py]] - code - tests/test_alerts.py
+- [[D7 Model Version History]] - document - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[Data Integrity Audit Scope (safe_io, checksums)]] - document - system_audit_prompt.txt
+- [[F3 Pickle Type Validation]] - document - docs/superpowers/plans/2026-06-27-category-f-security.md
+- [[Financial Safety Audit Scope (Kelly, drawdown, fees)]] - document - system_audit_prompt.txt
+- [[LV6 Regime-Based Strategy Switching]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
+- [[ML  Forecast Audit Scope]] - document - system_audit_prompt.txt
+- [[Security Audit Scope]] - document - system_audit_prompt.txt
+- [[System Audit Prompt (Enterprise Audit)]] - document - system_audit_prompt.txt
+- [[boto3]] - code - requirements.txt
+- [[calibrate_city_weights() (122)]] - document - docs/superpowers/specs/2026-04-10-model-signal-calibration-design.md
+- [[calibrate_seasonal_weights() (118)]] - document - docs/superpowers/specs/2026-04-10-model-signal-calibration-design.md
+- [[calibration.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[city_weights.json (empty, learned city blend weights)]] - document - data/city_weights.json
+- [[databias_models.pkl]] - code - system_audit_prompt.txt
+- [[datalearned_correlations.json]] - code - system_audit_prompt.txt
+- [[datalearned_weights.json (known corruption bd6c0ef)]] - code - system_audit_prompt.txt
+- [[datapredictions.db (Outcomes DB)]] - code - system_audit_prompt.txt
+- [[feature_importance.py Module]] - code - system_audit_prompt.txt
+- [[forecast_cache.py Module]] - code - system_audit_prompt.txt
+- [[kalshi_ws.py Module]] - code - system_audit_prompt.txt
+- [[ml_bias.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[monte_carlo.py Module (Cholesky)]] - code - system_audit_prompt.txt
+- [[param_sweep.py Module]] - code - system_audit_prompt.txt
+- [[python main.py calibrate CLI Command]] - document - docs/superpowers/specs/2026-04-10-model-signal-calibration-design.md
+- [[regime.py Module (detect_regime)]] - code - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
+- [[safe_io.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[scikit-learn]] - code - requirements.txt
+- [[seasonal_weights.json (winterspringsummerfall blend weights)]] - document - data/seasonal_weights.json
+- [[websockets]] - code - requirements.txt
 
 ## Live Query (requires Dataview plugin)
 
@@ -46,28 +48,19 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 9 edges to [[_COMMUNITY_Community 325]]
-- 4 edges to [[_COMMUNITY_Community 194]]
-- 3 edges to [[_COMMUNITY_Community 419]]
-- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Community 461]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 145]]
-- 1 edge to [[_COMMUNITY_Community 591]]
-- 1 edge to [[_COMMUNITY_Community 167]]
-- 1 edge to [[_COMMUNITY_Community 208]]
-- 1 edge to [[_COMMUNITY_Community 223]]
-- 1 edge to [[_COMMUNITY_Community 565]]
-- 1 edge to [[_COMMUNITY_Community 71]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
-- 1 edge to [[_COMMUNITY_Community 59]]
+- 4 edges to [[_COMMUNITY_Community 231]]
+- 4 edges to [[_COMMUNITY_Community 246]]
+- 4 edges to [[_COMMUNITY_Community 271]]
+- 3 edges to [[_COMMUNITY_Community 200]]
+- 2 edges to [[_COMMUNITY_Community 184]]
+- 2 edges to [[_COMMUNITY_Community 202]]
+- 1 edge to [[_COMMUNITY_Community 402]]
+- 1 edge to [[_COMMUNITY_Community 172]]
+- 1 edge to [[_COMMUNITY_Community 127]]
 
 ## Top bridge nodes
-- [[alerts.py]] - degree 27, connects to 14 communities
-- [[test_alerts.py]] - degree 15, connects to 5 communities
-- [[add_alert()]] - degree 18, connects to 3 communities
-- [[get_alerts()]] - degree 10, connects to 2 communities
-- [[_save()]] - degree 7, connects to 1 community
+- [[System Audit Prompt (Enterprise Audit)]] - degree 12, connects to 4 communities
+- [[Data Integrity Audit Scope (safe_io, checksums)]] - degree 14, connects to 2 communities
+- [[Security Audit Scope]] - degree 5, connects to 2 communities
+- [[city_weights.json (empty, learned city blend weights)]] - degree 4, connects to 2 communities
+- [[ML  Forecast Audit Scope]] - degree 6, connects to 1 community

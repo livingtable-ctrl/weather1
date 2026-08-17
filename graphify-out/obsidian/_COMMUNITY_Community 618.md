@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 618
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_audit_settlement_hourly_no_station_skips_settlement()]] - code - tests/test_tracker.py
-- [[No station mapped for the city -- must return False, not crash or fall through…]] - rationale - tests/test_tracker.py
+- [[dot-test_get_ws_health_initially_not_alive()]] - code - tests/test_kalshi_ws.py
+- [[dot-test_get_ws_health_stale_flag()]] - code - tests/test_kalshi_ws.py
+- [[Fresh import ws not alive, no messages recorded.]] - rationale - tests/test_kalshi_ws.py
+- [[TestWsHealth]] - code - tests/test_kalshi_ws.py
+- [[stale=True when idle  WS_CACHE_TTL_SECS.]] - rationale - tests/test_kalshi_ws.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,7 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
+- 1 edge to [[_COMMUNITY_Community 30]]
 
 ## Top bridge nodes
-- [[dot-test_audit_settlement_hourly_no_station_skips_settlement()]] - degree 2, connects to 1 community
+- [[TestWsHealth]] - degree 3, connects to 1 community

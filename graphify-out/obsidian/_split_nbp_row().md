@@ -1,12 +1,12 @@
 ---
 source_file: "mos.py"
 type: "code"
-community: "Community 99"
+community: "Community 15"
 location: "L434"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_99
+  - community/Community_15
 ---
 
 # _split_nbp_row()
@@ -17,4 +17,4 @@ tags:
 - [[_parse_temp()]] - `calls` [EXTRACTED]
 - [[mos.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_99
+#graphify/code #graphify/EXTRACTED #community/Community_15

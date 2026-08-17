@@ -1,21 +1,22 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Community 693"
-location: "L4695"
+community: "Community 0"
+location: "L4710"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_0
 ---
 
 # _needs_onboarding()
 
 ## Connections
-- [[Path_30]] - `calls` [INFERRED]
+- [[Path]] - `calls` [INFERRED]
 - [[Return True if this looks like a first run (no .env or no trades ever placed).]] - `rationale_for` [EXTRACTED]
+- [[Return True if this looks like a first run (no .env or no trades ever placed)._1]] - `rationale_for` [EXTRACTED]
 - [[get_all_trades()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
-- [[main.py_1]] - `contains` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
+- [[main.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_0

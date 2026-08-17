@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Ensemble Weight Blending Tests"
-location: "L4813"
+community: "Community 11"
+location: "L5182"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_11
 ---
 
 # Verify disagreement flag fires when NWS and ensemble differ by more than 8°F.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_model_disagreement_computation()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_11

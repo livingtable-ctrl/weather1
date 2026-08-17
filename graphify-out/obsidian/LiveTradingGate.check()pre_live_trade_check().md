@@ -1,11 +1,11 @@
 ---
 source_file: "trading_gates.py"
 type: "code"
-community: "Execution Log Live-Loss Tracking"
+community: "Community 12"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Execution_Log_Live-Loss_Tracking
+  - community/Community_12
 ---
 
 # LiveTradingGate.check()/pre_live_trade_check()
@@ -16,4 +16,4 @@ tags:
 - [[test_live_execution.py]] - `references` [EXTRACTED]
 - [[test_p1_remaining.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking
+#graphify/code #graphify/EXTRACTED #community/Community_12

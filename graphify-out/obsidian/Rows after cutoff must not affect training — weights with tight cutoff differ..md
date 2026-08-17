@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_c.py"
 type: "rationale"
-community: "Community 72"
+community: "Community 125"
 location: "L231"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_72
+  - community/Community_125
 ---
 
 # Rows after cutoff must not affect training — weights with tight cutoff differ.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_cutoff_excludes_future_rows_from_training()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_72
+#graphify/rationale #graphify/EXTRACTED #community/Community_125

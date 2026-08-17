@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/screenshots/light.png"
 type: "image"
-community: "Community 192"
+community: "Community 197"
 tags:
   - graphify/image
   - graphify/EXTRACTED
-  - community/Community_192
+  - community/Community_197
 ---
 
 # Top Navigation Bar (Overview, Positions, Signals, Forecast, Analytics, Risk, Trades)
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[Kalshi Weather Dashboard - Overview Tab (Light Theme)]] - `references` [EXTRACTED]
 
-#graphify/image #graphify/EXTRACTED #community/Community_192
+#graphify/image #graphify/EXTRACTED #community/Community_197

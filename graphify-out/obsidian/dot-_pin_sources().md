@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 122"
+community: "Community 128"
 location: "L160"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_122
+  - community/Community_128
 ---
 
 # ._pin_sources()
@@ -26,4 +26,4 @@ tags:
 - [[dot-test_thin_ensemble_gates_out()]] - `calls` [EXTRACTED]
 - [[TestAnalyzeTradeHourlyModel]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_122
+#graphify/code #graphify/EXTRACTED #community/Community_128

@@ -1,16 +1,23 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 40"
+community: "Community 2"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_40
+  - community/Community_2
 ---
 
 # date
 
 ## Connections
-- [[_unpack_opp()]] - `references` [EXTRACTED]
+- [[_fetch_actual_daily_temp()]] - `references` [EXTRACTED]
+- [[_fetch_asos_daily_temp()]] - `references` [EXTRACTED]
+- [[_fetch_asos_hour_temp()]] - `references` [EXTRACTED]
+- [[_fetch_asos_observations()]] - `references` [EXTRACTED]
+- [[_fetch_previous_run_daily()]] - `references` [EXTRACTED]
+- [[_fetch_previous_run_leads()]] - `references` [EXTRACTED]
+- [[get_forecast_run_trend()]] - `references` [EXTRACTED]
+- [[log_prediction()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_40
+#graphify/code #graphify/EXTRACTED #community/Community_2

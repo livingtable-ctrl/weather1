@@ -1,12 +1,12 @@
 ---
 source_file: "schema_validator.py"
 type: "code"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 6"
 location: "L173"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_6
 ---
 
 # validate_nws_response()
@@ -16,7 +16,6 @@ tags:
 - [[Validate NWS API point forecast response.]] - `rationale_for` [EXTRACTED]
 - [[get_nws_daily_forecast()]] - `calls` [EXTRACTED]
 - [[nws.py]] - `imports` [EXTRACTED]
-- [[schema_validator.py]] - `contains` [EXTRACTED]
-- [[schema_validator.py_1]] - `implements` [EXTRACTED]
+- [[schema_validator.py]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/code #graphify/EXTRACTED #community/Community_6

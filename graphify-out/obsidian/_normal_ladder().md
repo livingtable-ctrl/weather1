@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_market_implied_distribution.py"
 type: "code"
-community: "Community 41"
+community: "Community 84"
 location: "L36"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_41
+  - community/Community_84
 ---
 
 # _normal_ladder()
@@ -27,4 +27,4 @@ tags:
 - [[_market()_2]] - `calls` [EXTRACTED]
 - [[test_market_implied_distribution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_41
+#graphify/code #graphify/EXTRACTED #community/Community_84

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecast_cache.py"
 type: "code"
-community: "Forecast Persistent Cache"
+community: "Community 14"
 location: "L276"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecast_Persistent_Cache
+  - community/Community_14
 ---
 
 # test_dump_creates_missing_parent_directories()
@@ -17,4 +17,4 @@ tags:
 - [[nws.py's real cache path is data.nws_station_cache.json -- the parent…]] - `rationale_for` [EXTRACTED]
 - [[test_forecast_cache.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecast_Persistent_Cache
+#graphify/code #graphify/EXTRACTED #community/Community_14

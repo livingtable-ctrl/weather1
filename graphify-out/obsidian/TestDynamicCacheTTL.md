@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 303"
+community: "Community 306"
 location: "L732"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_303
+  - community/Community_306
 ---
 
 # TestDynamicCacheTTL
@@ -20,4 +20,4 @@ tags:
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[test_forecasting.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_303
+#graphify/code #graphify/EXTRACTED #community/Community_306

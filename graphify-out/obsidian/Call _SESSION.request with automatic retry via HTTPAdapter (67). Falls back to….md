@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "rationale"
-community: "Community 226"
+community: "Community 13"
 location: "L117"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_226
+  - community/Community_13
 ---
 
 # Call _SESSION.request with automatic retry via HTTPAdapter (#67). Falls back to…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_request_with_retry()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_226
+#graphify/rationale #graphify/EXTRACTED #community/Community_13

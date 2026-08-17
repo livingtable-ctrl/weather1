@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 511"
+community: "Community 570"
 location: "L427"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_511
+  - community/Community_570
 ---
 
 # TestPlaceMakerOrderIdempotency
@@ -18,4 +18,4 @@ tags:
 - [[2026-07-09 place_maker_order never forwarded a cycle to place_order, so every…]] - `rationale_for` [EXTRACTED]
 - [[test_kalshi_client.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_511
+#graphify/code #graphify/EXTRACTED #community/Community_570

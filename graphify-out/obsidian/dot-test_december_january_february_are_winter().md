@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climate_indices.py"
 type: "code"
-community: "Community 31"
+community: "Community 648"
 location: "L23"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_31
+  - community/Community_648
 ---
 
 # .test_december_january_february_are_winter()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestSeasonBucket]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_31
+#graphify/code #graphify/EXTRACTED #community/Community_648

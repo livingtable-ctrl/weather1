@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Community 323"
+community: "Community 330"
 location: "L418"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_323
+  - community/Community_330
 ---
 
 # Simulate an analyze_trade return dict with specific CI and Kelly values.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-_make_analysis()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_323
+#graphify/rationale #graphify/EXTRACTED #community/Community_330

@@ -1,24 +1,25 @@
 ---
 type: community
-cohesion: 0.31
-members: 9
+cohesion: 0.29
+members: 10
 ---
 
 # Community 389
 
-**Cohesion:** 0.31 - loosely connected
-**Members:** 9 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 10 nodes
 
 ## Members
-- [[dot-setup_method()_25]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_17]] - code - tests/test_live_execution.py
-- [[dot-test_gate_blocked_returns_false_and_places_nothing()_1]] - code - tests/test_live_execution.py
-- [[dot-test_place_order_failure_logs_failed_status()]] - code - tests/test_live_execution.py
-- [[dot-test_success_logs_replaces_order_id()]] - code - tests/test_live_execution.py
-- [[dot-test_taker_cross_logged_as_market_order_type()]] - code - tests/test_live_execution.py
-- [[Place a replacement order for a just-canceled resting order (reprice or taker-…]] - rationale - order_executor.py
-- [[TestReplaceLiveOrder]] - code - tests/test_live_execution.py
-- [[_replace_live_order()]] - code - order_executor.py
+- [[dot-_fake_summary()]] - code - tests/test_phase3_batch_a.py
+- [[dot-test_old_brier_key_absent()]] - code - tests/test_phase3_batch_a.py
+- [[dot-test_train_brier_key_present()]] - code - tests/test_phase3_batch_a.py
+- [[dot-test_val_brier_unreliable_false_when_val_n_ge_10()]] - code - tests/test_phase3_batch_a.py
+- [[dot-test_val_brier_unreliable_flag_present()]] - code - tests/test_phase3_batch_a.py
+- [[dot-test_val_brier_unreliable_true_when_val_n_zero()]] - code - tests/test_phase3_batch_a.py
+- [[Build a minimal run_backtest return dict directly.]] - rationale - tests/test_phase3_batch_a.py
+- [[Construct result dict directly to test with val_n = 10.]] - rationale - tests/test_phase3_batch_a.py
+- [[P3-11 run_backtest must return 'train_brier', not 'brier'.]] - rationale - tests/test_phase3_batch_a.py
+- [[TestBacktestBrierKeyNaming]] - code - tests/test_phase3_batch_a.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,12 +29,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 111]]
-- 2 edges to [[_COMMUNITY_Community 45]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 1 edge to [[_COMMUNITY_Community 67]]
+- 1 edge to [[_COMMUNITY_Community 13]]
+- 1 edge to [[_COMMUNITY_Community 41]]
+- 1 edge to [[_COMMUNITY_Community 8]]
 
 ## Top bridge nodes
-- [[_replace_live_order()]] - degree 11, connects to 4 communities
-- [[TestReplaceLiveOrder]] - degree 9, connects to 2 communities
+- [[TestBacktestBrierKeyNaming]] - degree 9, connects to 2 communities
+- [[dot-_fake_summary()]] - degree 7, connects to 1 community

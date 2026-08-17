@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 67"
+community: "Community 74"
 location: "L891"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_67
+  - community/Community_74
 ---
 
 # _reprice_or_cancel_pending_orders()
@@ -33,9 +33,11 @@ tags:
 - [[_midpoint_price()]] - `calls` [EXTRACTED]
 - [[_replace_live_order()]] - `calls` [EXTRACTED]
 - [[_validate_trade_opportunity()]] - `calls` [EXTRACTED]
+- [[cmd_watch()]] - `calls` [EXTRACTED]
 - [[coalesce_market_price()]] - `calls` [EXTRACTED]
 - [[get_recent_orders()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[test_live_execution.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_67
+#graphify/code #graphify/EXTRACTED #community/Community_74

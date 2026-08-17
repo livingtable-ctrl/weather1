@@ -1,18 +1,17 @@
 ---
-source_file: "docs/superpowers/plans/2026-04-16-phase-c-new-data-sources.md"
+source_file: "docs/RESEARCH-FINDINGS.md"
 type: "document"
-community: "Community 117"
+community: "Community 486"
+location: "L94"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_117
+  - community/Community_486
 ---
 
 # ECMWF AIFS Ensemble
 
 ## Connections
-- [[Confidence-Tiered Edge Thresholds]] - `references` [EXTRACTED]
-- [[Phase C New Data Sources Plan]] - `implements` [EXTRACTED]
-- [[weather_markets.py module]] - `references` [EXTRACTED]
+- [[HIGH PRIORITY Missing Data Sources]] - `contains` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_117
+#graphify/document #graphify/EXTRACTED #community/Community_486

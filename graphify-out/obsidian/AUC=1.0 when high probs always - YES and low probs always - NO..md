@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_regression.py"
 type: "rationale"
-community: "Community 284"
+community: "Community 287"
 location: "L139"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_284
+  - community/Community_287
 ---
 
 # AUC=1.0 when high probs always -> YES and low probs always -> NO.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_roc_auc_perfect_classifier()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_284
+#graphify/rationale #graphify/EXTRACTED #community/Community_287

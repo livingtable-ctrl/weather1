@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "rationale"
-community: "Trade Cycle Engine & Arbitrage Gates"
+community: "Community 17"
 location: "L2155"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Trade_Cycle_Engine__Arbitrage_Gates
+  - community/Community_17
 ---
 
 # Direct unit tests of cron._placement_outcome_phrase() -- a pure function, so…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPlacementOutcomePhrase]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Trade_Cycle_Engine__Arbitrage_Gates
+#graphify/rationale #graphify/EXTRACTED #community/Community_17

@@ -1,11 +1,11 @@
 ---
 source_file: "system_audit_prompt.txt"
 type: "document"
-community: "Community 141"
+community: "Community 94"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_141
+  - community/Community_94
 ---
 
 # System Audit Prompt (Enterprise Audit)
@@ -24,4 +24,4 @@ tags:
 - [[param_sweep.py Module]] - `references` [EXTRACTED]
 - [[regime.py Module (detect_regime)]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_141
+#graphify/document #graphify/EXTRACTED #community/Community_94

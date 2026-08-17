@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "code"
-community: "METAR Lock-In Confidence Tests"
+community: "Community 22"
 location: "L350"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Lock-In_Confidence_Tests
+  - community/Community_22
 ---
 
 # .test_between_no_lock_does_not_reintroduce_unsafe_direction_low_market()
@@ -16,4 +16,4 @@ tags:
 - [[LOW-market mirror of the test above a running daily-low-so-far ABOVE the upper…]] - `rationale_for` [EXTRACTED]
 - [[TestBetweenLockInDynamicConfidence]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Lock-In_Confidence_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_22

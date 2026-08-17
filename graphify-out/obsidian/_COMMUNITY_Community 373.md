@@ -10,16 +10,16 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-test_build_client_reads_env_at_call_time()]] - code - tests/test_phase2_batch_l.py
-- [[dot-test_kalshi_env_function_exists()]] - code - tests/test_phase2_batch_l.py
-- [[dot-test_kalshi_env_reads_fresh()]] - code - tests/test_phase2_batch_l.py
-- [[dot-test_market_base_url_function_exists()]] - code - tests/test_phase2_batch_l.py
-- [[dot-test_market_base_url_switches_with_env()]] - code - tests/test_phase2_batch_l.py
-- [[TestKalshiEnvLiveRead]] - code - tests/test_phase2_batch_l.py
-- [[_kalshi_env() and _market_base_url() must read os.getenv each call.]] - rationale - tests/test_phase2_batch_l.py
-- [[_kalshi_env() reflects env changes without re-import.]] - rationale - tests/test_phase2_batch_l.py
-- [[_market_base_url() returns correct URL for current env.]] - rationale - tests/test_phase2_batch_l.py
-- [[build_client reads the env fresh at call time, not the stale module constant —…]] - rationale - tests/test_phase2_batch_l.py
+- [[dot-test_all_three_tables_cover_the_same_city_set()]] - code - tests/test_climate_indices.py
+- [[dot-test_ao_and_nao_entries_have_all_three_seasons()]] - code - tests/test_climate_indices.py
+- [[dot-test_ao_sens_covers_exactly_twenty_cities()]] - code - tests/test_climate_indices.py
+- [[dot-test_enso_entries_have_only_two_seasons()]] - code - tests/test_climate_indices.py
+- [[dot-test_enso_sens_covers_exactly_twenty_cities()]] - code - tests/test_climate_indices.py
+- [[dot-test_nao_sens_covers_exactly_twenty_cities()]] - code - tests/test_climate_indices.py
+- [[A city present in one table but not another would silently mix a real…]] - rationale - tests/test_climate_indices.py
+- [[ENSO's original ternary never had a spring-specific branch -- must stay 2…]] - rationale - tests/test_climate_indices.py
+- [[TestSensitivityTablesCoverage]] - code - tests/test_climate_indices.py
+- [[Which cities have a table entry (key membership) -- the exact fact the…]] - rationale - tests/test_climate_indices.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,8 +29,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_Community 417]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestKalshiEnvLiveRead]] - degree 8, connects to 2 communities
+- [[TestSensitivityTablesCoverage]] - degree 8, connects to 1 community

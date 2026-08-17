@@ -1,25 +1,25 @@
 ---
 type: community
-cohesion: 0.20
+cohesion: 0.27
 members: 10
 ---
 
 # Community 363
 
-**Cohesion:** 0.20 - loosely connected
+**Cohesion:** 0.27 - loosely connected
 **Members:** 10 nodes
 
 ## Members
-- [[dot-setup_method()_23]] - code - tests/test_execution_log.py
-- [[dot-teardown_method()_16]] - code - tests/test_execution_log.py
-- [[dot-test_forecast_cycle_and_live_columns_exist()]] - code - tests/test_execution_log.py
-- [[dot-test_log_order_stores_cycle_and_live_flag()]] - code - tests/test_execution_log.py
-- [[dot-test_was_ordered_this_cycle_false_different_cycle()]] - code - tests/test_execution_log.py
-- [[dot-test_was_ordered_this_cycle_true()]] - code - tests/test_execution_log.py
-- [[dot-test_was_ordered_this_cycle_true_for_cancelled()]] - code - tests/test_execution_log.py
-- [[Cancelled orders still block the cycle (same as was_recently_ordered behaviour).]] - rationale - tests/test_execution_log.py
-- [[Point execution_log at a fresh temp DB for each test.]] - rationale - tests/test_execution_log.py
-- [[TestExecutionLogMigration]] - code - tests/test_execution_log.py
+- [[dot-test_above_condition_derived_from_title_with_no_series_ticker()]] - code - tests/test_consistency.py
+- [[dot-test_below_condition_derived_from_title_with_no_series_ticker()]] - code - tests/test_consistency.py
+- [[dot-test_series_prefix_would_invert_these_two_real_ladders()]] - code - tests/test_consistency.py
+- [[Extract (condition_type, threshold) from a market ticker. Returns (above,…]] - rationale - consistency.py
+- [[Regression guard for the exact bug an independent review found if a…]] - rationale - tests/test_consistency.py
+- [[TestParseThresholdRealApiShape]] - code - tests/test_consistency.py
+- [[Unit tests for consistency.py — monotonicity  arbitrage detection.]] - rationale - tests/test_consistency.py
+- [[_parse_threshold()]] - code - consistency.py
+- [[_parse_threshold() with market.get(series_ticker) absent -- the real Kalshi…]] - rationale - tests/test_consistency.py
+- [[test_consistency.py]] - code - tests/test_consistency.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,7 +29,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
+- 4 edges to [[_COMMUNITY_Community 48]]
+- 2 edges to [[_COMMUNITY_Community 81]]
+- 1 edge to [[_COMMUNITY_Community 1]]
 
 ## Top bridge nodes
-- [[TestExecutionLogMigration]] - degree 8, connects to 1 community
+- [[test_consistency.py]] - degree 8, connects to 2 communities
+- [[_parse_threshold()]] - degree 7, connects to 2 communities

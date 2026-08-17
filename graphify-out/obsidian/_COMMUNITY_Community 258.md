@@ -10,20 +10,20 @@ members: 14
 **Members:** 14 nodes
 
 ## Members
-- [[dot-test_breakeven_closes_position_that_peaked_then_fell()]] - code - tests/test_paper.py
-- [[dot-test_client_none_returns_empty_list()]] - code - tests/test_paper.py
-- [[dot-test_close_race_on_one_ticker_does_not_abort_remaining_checks()]] - code - tests/test_paper.py
-- [[dot-test_no_open_trades_returns_empty_list()]] - code - tests/test_paper.py
-- [[dot-test_partial_quote_coverage_logs_warning()]] - code - tests/test_paper.py
-- [[dot-test_price_fetch_error_for_one_ticker_does_not_block_others()]] - code - tests/test_paper.py
-- [[dot-test_stop_loss_close_excludes_position_from_same_cycle_breakeven_check()]] - code - tests/test_paper.py
-- [[dot-test_stop_loss_closes_position()]] - code - tests/test_paper.py
-- [[A client.get_market() failure for one ticker must not prevent other open…]] - rationale - tests/test_paper.py
-- [[A position closed by stop-loss must not also be evaluated for breakeven in the…]] - rationale - tests/test_paper.py
-- [[M-1 (opus review) a fetch-failure rate high enough to leave positions…]] - rationale - tests/test_paper.py
-- [[M-1 (opus review) if close_paper_early() raises for one ticker (e.g. a…]] - rationale - tests/test_paper.py
-- [[TestCheckPaperPositionExits]] - code - tests/test_paper.py
-- [[paper.check_paper_position_exits() -- the shared price-based stop-loss…]] - rationale - tests/test_paper.py
+- [[A monthly-snow (KXDENSNOWM) opp must be shadow-logged, not placed, when…]] - rationale - tests/test_shadow_predictions.py
+- [[A storm-order (KXFIRSTHURRICANE) opp must be shadow-logged, not placed, when…]] - rationale - tests/test_shadow_predictions.py
+- [[A time-to-next-event (KXNEXTHURDATE) opp must be shadow-logged, not placed,…]] - rationale - tests/test_shadow_predictions.py
+- [[An hourly (KXTEMPxxxH) opp must be shadow-logged, not placed, when…]] - rationale - tests/test_shadow_predictions.py
+- [[Mirrors test_real_placement_logs_is_shadow_false's full mock setup so a real…]] - rationale - tests/test_shadow_predictions.py
+- [[The core routing guarantee in one batch, a hurricane-count opp (gate inactive)…]] - rationale - tests/test_shadow_predictions.py
+- [[The core routing guarantee in one batch, a rain opp (gate inactive) is shadow-…]] - rationale - tests/test_shadow_predictions.py
+- [[_place_everything_setup()]] - code - tests/test_shadow_predictions.py
+- [[test_hourly_ticker_shadow_only_when_gate_inactive()]] - code - tests/test_shadow_predictions.py
+- [[test_hurricane_next_event_ticker_shadow_only_when_gate_inactive()]] - code - tests/test_shadow_predictions.py
+- [[test_mixed_batch_hurricane_count_shadow_daily_places_normally()]] - code - tests/test_shadow_predictions.py
+- [[test_mixed_batch_rain_shadow_daily_places_normally()]] - code - tests/test_shadow_predictions.py
+- [[test_snow_ticker_shadow_only_when_gate_inactive()]] - code - tests/test_shadow_predictions.py
+- [[test_storm_order_ticker_shadow_only_when_gate_inactive()]] - code - tests/test_shadow_predictions.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,8 +33,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 56]]
-- 1 edge to [[_COMMUNITY_Community 45]]
+- 37 edges to [[_COMMUNITY_Community 44]]
+- 1 edge to [[_COMMUNITY_Community 703]]
+- 1 edge to [[_COMMUNITY_Community 704]]
 
 ## Top bridge nodes
-- [[TestCheckPaperPositionExits]] - degree 11, connects to 2 communities
+- [[_place_everything_setup()]] - degree 22, connects to 3 communities
+- [[test_hourly_ticker_shadow_only_when_gate_inactive()]] - degree 6, connects to 1 community
+- [[test_hurricane_next_event_ticker_shadow_only_when_gate_inactive()]] - degree 6, connects to 1 community
+- [[test_mixed_batch_hurricane_count_shadow_daily_places_normally()]] - degree 6, connects to 1 community
+- [[test_mixed_batch_rain_shadow_daily_places_normally()]] - degree 6, connects to 1 community

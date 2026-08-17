@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_acis_precip.py"
 type: "code"
-community: "Community 271"
+community: "Community 141"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_271
+  - community/Community_141
 ---
 
 # test_acis_precip.py
@@ -25,5 +25,7 @@ tags:
 - [[acis_precip.py]] - `imports` [EXTRACTED]
 - [[acis_precip.py seasonalbootstrap functions]] - `references` [EXTRACTED]
 - [[ensemble_stats()]] - `conceptually_related_to` [AMBIGUOUS]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_271
+#graphify/code #graphify/EXTRACTED #community/Community_141

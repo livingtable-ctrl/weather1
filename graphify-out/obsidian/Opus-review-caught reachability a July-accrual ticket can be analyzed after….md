@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "rationale"
-community: "Community 152"
+community: "Community 16"
 location: "L1039"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_152
+  - community/Community_16
 ---
 
 # Opus-review-caught reachability: a July-accrual ticket can be analyzed after…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_ticket_checked_after_month_end_does_not_crash()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_152
+#graphify/rationale #graphify/EXTRACTED #community/Community_16

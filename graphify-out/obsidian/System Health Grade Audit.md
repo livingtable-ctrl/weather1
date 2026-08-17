@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/outputs/system_health.py.md"
 type: "document"
-community: "Community 296"
+community: "Community 6"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_296
+  - community/Community_6
 ---
 
 # System Health Grade Audit
@@ -14,4 +14,4 @@ tags:
 - [[Grade Audit Preamble]] - `cites` [EXTRACTED]
 - [[system_health.py_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_296
+#graphify/document #graphify/EXTRACTED #community/Community_6

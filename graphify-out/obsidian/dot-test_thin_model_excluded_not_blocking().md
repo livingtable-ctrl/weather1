@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 560"
-location: "L4355"
+community: "Community 641"
+location: "L4724"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_560
+  - community/Community_641
 ---
 
 # .test_thin_model_excluded_not_blocking()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestWeightsFromMaeThinModelIsolation]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_560
+#graphify/code #graphify/EXTRACTED #community/Community_641

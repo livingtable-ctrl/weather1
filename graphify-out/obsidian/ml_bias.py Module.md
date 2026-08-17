@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md"
 type: "code"
-community: "Community 179"
+community: "Community 94"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_179
+  - community/Community_94
 ---
 
 # ml_bias.py Module
@@ -18,4 +18,4 @@ tags:
 - [[Security Audit Scope]] - `references` [EXTRACTED]
 - [[scikit-learn]] - `conceptually_related_to` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_179
+#graphify/code #graphify/EXTRACTED #community/Community_94

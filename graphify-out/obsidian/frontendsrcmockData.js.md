@@ -1,23 +1,23 @@
 ---
 source_file: "frontend/src/mockData.js"
 type: "code"
-community: "Community 88"
+community: "Community 92"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_88
+  - community/Community_92
 ---
 
 # frontend/src/mockData.js
 
 ## Connections
-- [[MOCK Export Object]] - `contains` [EXTRACTED]
+- [[MOCK_1]] - `contains` [EXTRACTED]
 - [[_brng()_1]] - `contains` [EXTRACTED]
 - [[agedPositions_1]] - `contains` [EXTRACTED]
 - [[alerts_1]] - `contains` [EXTRACTED]
 - [[balanceHist_1]] - `contains` [EXTRACTED]
-- [[balanceWalk Function]] - `contains` [EXTRACTED]
+- [[balanceWalk()_2]] - `contains` [EXTRACTED]
 - [[brierByDays_1]] - `contains` [EXTRACTED]
 - [[brierHist_1]] - `contains` [EXTRACTED]
 - [[calibration_1]] - `contains` [EXTRACTED]
@@ -30,6 +30,7 @@ tags:
 - [[directionalBias_1]] - `contains` [EXTRACTED]
 - [[expiryCluster_1]] - `contains` [EXTRACTED]
 - [[forecastDetail_1]] - `contains` [EXTRACTED]
+- [[frontendsrcuseData.js]] - `imports_from` [EXTRACTED]
 - [[mlModels_1]] - `contains` [EXTRACTED]
 - [[modelAccuracy_1]] - `contains` [EXTRACTED]
 - [[opportunities_1]] - `contains` [EXTRACTED]
@@ -42,4 +43,4 @@ tags:
 - [[todayForecasts_1]] - `contains` [EXTRACTED]
 - [[tomorrowForecasts_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_88
+#graphify/code #graphify/EXTRACTED #community/Community_92

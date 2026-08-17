@@ -1,12 +1,12 @@
 ---
 source_file: "system_health.py"
 type: "code"
-community: "Community 296"
+community: "Community 245"
 location: "L86"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_296
+  - community/Community_245
 ---
 
 # check_system_health()
@@ -19,6 +19,6 @@ tags:
 - [[_validate_trade_opportunity()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
 - [[system_health.py]] - `contains` [EXTRACTED]
-- [[test_execution_proof.py_1]] - `references` [EXTRACTED]
+- [[test_execution_proof.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_296
+#graphify/code #graphify/EXTRACTED #community/Community_245

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 313"
+community: "Community 10"
 location: "L980"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_313
+  - community/Community_10
 ---
 
 # Shared setUp/tearDown for Phase 3 test classes.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_Phase3Base]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_313
+#graphify/rationale #graphify/EXTRACTED #community/Community_10

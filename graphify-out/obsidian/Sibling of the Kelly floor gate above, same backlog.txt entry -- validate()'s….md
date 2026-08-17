@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "rationale"
-community: "Community 443"
+community: "Community 476"
 location: "L1569"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_443
+  - community/Community_476
 ---
 
 # Sibling of the Kelly floor gate above, same backlog.txt entry -- validate()'s…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPlacementConfidenceTierGateTierClassification]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_443
+#graphify/rationale #graphify/EXTRACTED #community/Community_476

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 288"
+community: "Community 292"
 location: "L7288"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_288
+  - community/Community_292
 ---
 
 # ._analysis()
@@ -19,4 +19,4 @@ tags:
 - [[dot-test_upsert_on_same_day_rescan_updates_var()]] - `calls` [EXTRACTED]
 - [[TestSignalGraduationCounters]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_288
+#graphify/code #graphify/EXTRACTED #community/Community_292

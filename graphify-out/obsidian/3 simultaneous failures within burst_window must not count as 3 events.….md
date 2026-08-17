@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_circuit_breaker.py"
 type: "rationale"
-community: "Community 293"
+community: "Community 7"
 location: "L138"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_293
+  - community/Community_7
 ---
 
 # 3 simultaneous failures within burst_window must not count as 3 events.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_parallel_failures_count_as_one_event()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_293
+#graphify/rationale #graphify/EXTRACTED #community/Community_7

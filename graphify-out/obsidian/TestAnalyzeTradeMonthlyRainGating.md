@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 139"
+community: "Community 16"
 location: "L55"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_139
+  - community/Community_16
 ---
 
 # TestAnalyzeTradeMonthlyRainGating
@@ -21,4 +21,4 @@ tags:
 - [[Step 2 Step 1's unconditional return-None guard is gone. Rain tickers now…]] - `rationale_for` [EXTRACTED]
 - [[test_rain_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_139
+#graphify/code #graphify/EXTRACTED #community/Community_16

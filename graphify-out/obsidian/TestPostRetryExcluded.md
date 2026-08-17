@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_idempotency.py"
 type: "code"
-community: "Community 548"
+community: "Community 248"
 location: "L6"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_548
+  - community/Community_248
 ---
 
 # TestPostRetryExcluded
@@ -17,4 +17,4 @@ tags:
 - [[KalshiClient]] - `uses` [INFERRED]
 - [[test_idempotency.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_548
+#graphify/code #graphify/EXTRACTED #community/Community_248

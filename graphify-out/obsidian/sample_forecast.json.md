@@ -1,13 +1,13 @@
 ---
 source_file: "tests/fixtures/sample_forecast.json"
 type: "document"
-community: "Legacy Static Dashboard JS Pages"
+community: "Community 842"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Legacy_Static_Dashboard_JS_Pages
+  - community/Community_842
 ---
 
 # sample_forecast.json
 
-#graphify/document #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages
+#graphify/document #graphify/EXTRACTED #community/Community_842

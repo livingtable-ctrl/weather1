@@ -1,19 +1,21 @@
 ---
 type: community
-cohesion: 0.67
-members: 4
+cohesion: 0.33
+members: 6
 ---
 
 # Community 567
 
-**Cohesion:** 0.67 - moderately connected
-**Members:** 4 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[Weather regime detection — identifies when a city is in a persistent anomalous…]] - rationale - regime.py
-- [[regime.py]] - code - regime.py
-- [[regime.py File Grade 510, RF6 promoted]] - document - docs/grade_audit/outputs/regime.py.md
-- [[regime.py Grade Audit]] - document - docs/grade_audit/outputs/regime.py.md
+- [[dot-test_count_model_gate_state_does_not_affect_this_one()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_does_not_block_when_gate_active()_3]] - code - tests/test_hurricane_markets.py
+- [[dot-test_other_hurricane_shapes_still_unconditionally_blocked()_1]] - code - tests/test_hurricane_markets.py
+- [[dot-test_still_blocks_when_gate_inactive()_3]] - code - tests/test_hurricane_markets.py
+- [[TestCheckPositionLimitsHurricaneNextEventConditional]] - code - tests/test_hurricane_markets.py
+- [[The two hurricane sub-models' gates must not cross-activate each other.]] - rationale - tests/test_hurricane_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -23,9 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 230]]
-- 1 edge to [[_COMMUNITY_Community 32]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
-- [[regime.py]] - degree 7, connects to 3 communities
+- [[TestCheckPositionLimitsHurricaneNextEventConditional]] - degree 5, connects to 1 community

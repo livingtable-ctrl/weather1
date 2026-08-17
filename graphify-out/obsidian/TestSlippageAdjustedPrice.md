@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Community 320"
+community: "Community 325"
 location: "L290"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_320
+  - community/Community_325
 ---
 
 # TestSlippageAdjustedPrice
@@ -20,4 +20,4 @@ tags:
 - [[dot-test_zero_slippage_at_quantity_zero()]] - `method` [EXTRACTED]
 - [[test_trading.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_320
+#graphify/code #graphify/EXTRACTED #community/Community_325

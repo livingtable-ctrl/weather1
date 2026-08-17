@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 644
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[EditVar]] - code - updated frontend/variation-editorial.jsx
-- [[variation-editorial.jsx]] - code - updated frontend/variation-editorial.jsx
+- [[TweaksPanel shell + controls]] - code - updated frontend/tweaks-panel.jsx
+- [[Variation A TerminalBloomberg dashboard]] - code - updated frontend/variation-terminal.jsx
+- [[Variation B Calm fintech dashboard]] - code - updated frontend/variation-calm.jsx
+- [[Variation C Editorial data-journalism dashboard]] - code - updated frontend/variation-editorial.jsx
+- [[Variation D Hybrid calmeditorial dashboard]] - code - updated frontend/variation-hybrid.jsx
 
 ## Live Query (requires Dataview plugin)
 

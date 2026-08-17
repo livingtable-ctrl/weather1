@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 206"
-location: "L3253"
+community: "Community 213"
+location: "L3622"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_206
+  - community/Community_213
 ---
 
 # .test_genuinely_past_market_still_gated_during_utc_rollover_window()
@@ -17,6 +17,6 @@ tags:
 - [[TestPastDateGateCityLocal]] - `method` [EXTRACTED]
 - [[ZoneInfo]] - `calls` [INFERRED]
 - [[_frozen_datetime_at()]] - `calls` [EXTRACTED]
-- [[datetime]] - `calls` [EXTRACTED]
+- [[datetime_1]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_206
+#graphify/code #graphify/EXTRACTED #community/Community_213

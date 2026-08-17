@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 526"
 location: "L311"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_526
 ---
 
 # Sanity check: KALSHI_ENV=prod must give the production URL.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_prod_env_uses_prod_base_url()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_526

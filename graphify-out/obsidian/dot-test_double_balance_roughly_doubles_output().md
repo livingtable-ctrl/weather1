@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 693"
+community: "Community 401"
 location: "L78"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_401
 ---
 
 # .test_double_balance_roughly_doubles_output()
@@ -15,4 +15,4 @@ tags:
 - [[TestKellyScalesWithBalance]] - `method` [EXTRACTED]
 - [[_write_paper_json()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_401

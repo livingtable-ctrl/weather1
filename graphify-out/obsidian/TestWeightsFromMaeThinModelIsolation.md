@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 560"
-location: "L4346"
+community: "Community 641"
+location: "L4715"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_560
+  - community/Community_641
 ---
 
 # TestWeightsFromMaeThinModelIsolation
@@ -17,4 +17,4 @@ tags:
 - [[Adjacency finding from the 2026-07-23 opus review of the ECMWF instrumentation…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_560
+#graphify/code #graphify/EXTRACTED #community/Community_641

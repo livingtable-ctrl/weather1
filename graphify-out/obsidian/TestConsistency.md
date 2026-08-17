@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_consistency.py"
 type: "code"
-community: "Community 35"
+community: "Community 48"
 location: "L45"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_35
+  - community/Community_48
 ---
 
 # TestConsistency
@@ -32,4 +32,4 @@ tags:
 - [[dot-test_violation_detected()]] - `method` [EXTRACTED]
 - [[test_consistency.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_35
+#graphify/code #graphify/EXTRACTED #community/Community_48

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Weather Probability Math Tests"
+community: "Community 356"
 location: "L81"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_356
 ---
 
 # TestForecastProbability
@@ -19,4 +19,4 @@ tags:
 - [[dot-test_between_condition()]] - `method` [EXTRACTED]
 - [[test_weather.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_356

@@ -1,12 +1,12 @@
 ---
 source_file: "acis_precip.py"
 type: "code"
-community: "Community 62"
+community: "Community 23"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_62
+  - community/Community_23
 ---
 
 # acis_precip.py
@@ -18,7 +18,7 @@ tags:
 - [[_analyze_monthly_rain_trade()]] - `calls` [EXTRACTED]
 - [[_cache_is_stale()_1]] - `contains` [EXTRACTED]
 - [[_cache_path()_1]] - `contains` [EXTRACTED]
-- [[_load_stale_cache_or_none()_1]] - `contains` [EXTRACTED]
+- [[_load_stale_cache_or_none()]] - `contains` [EXTRACTED]
 - [[_parse_pcpn_value()]] - `contains` [EXTRACTED]
 - [[_station_sid_for_city()]] - `contains` [EXTRACTED]
 - [[acis_snow.py]] - `imports_from` [EXTRACTED]
@@ -30,10 +30,15 @@ tags:
 - [[fetch_seasonal_precip_mean_mm()]] - `contains` [EXTRACTED]
 - [[forecast_cache.py]] - `imports_from` [EXTRACTED]
 - [[historical_remaining_and_full_month_sums()]] - `contains` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
+- [[logging]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
 - [[paths.py]] - `imports_from` [EXTRACTED]
+- [[requests_1]] - `imports` [EXTRACTED]
 - [[safe_io.py]] - `imports` [EXTRACTED]
 - [[test_acis_precip.py]] - `imports` [EXTRACTED]
 - [[test_rain_markets.py]] - `calls` [EXTRACTED]
+- [[time]] - `imports` [EXTRACTED]
 - [[utc_today()]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_62
+#graphify/code #graphify/EXTRACTED #community/Community_23

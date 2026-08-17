@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 204"
+community: "Community 208"
 location: "L331"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_204
+  - community/Community_208
 ---
 
 # .test_load_state_blocks_on_save_lock()
@@ -15,4 +15,4 @@ tags:
 - [[TestCircuitBreakerPersistence]] - `method` [EXTRACTED]
 - [[_load_state() must serialize on _CB_STATE_FILE_LOCK like _save_state().…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_204
+#graphify/code #graphify/EXTRACTED #community/Community_208

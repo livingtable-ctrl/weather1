@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_market_implied_distribution.py"
 type: "code"
-community: "Community 41"
+community: "Community 84"
 location: "L274"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_41
+  - community/Community_84
 ---
 
 # .test_below_three_liquid_precip_brackets_returns_none()
@@ -15,4 +15,4 @@ tags:
 - [[TestFitMarketImpliedDistributionPrecipMonthTotal]] - `method` [EXTRACTED]
 - [[_rain_ladder()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_41
+#graphify/code #graphify/EXTRACTED #community/Community_84

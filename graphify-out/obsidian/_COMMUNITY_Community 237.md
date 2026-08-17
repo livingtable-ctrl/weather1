@@ -1,30 +1,30 @@
 ---
 type: community
-cohesion: 0.13
+cohesion: 0.19
 members: 15
 ---
 
 # Community 237
 
-**Cohesion:** 0.13 - loosely connected
+**Cohesion:** 0.19 - loosely connected
 **Members:** 15 nodes
 
 ## Members
-- [[dot-test_cmd_paper_does_not_refuse_rain_when_gate_active()]] - code - tests/test_rain_markets.py
-- [[dot-test_cmd_paper_refuses_rain_when_gate_inactive()]] - code - tests/test_rain_markets.py
-- [[dot-test_does_not_block_when_gate_active()_1]] - code - tests/test_rain_markets.py
-- [[dot-test_quick_paper_buy_does_not_refuse_rain_when_gate_active()]] - code - tests/test_rain_markets.py
-- [[dot-test_quick_paper_buy_refuses_rain_when_gate_inactive()]] - code - tests/test_rain_markets.py
-- [[dot-test_still_blocks_when_gate_inactive()_1]] - code - tests/test_rain_markets.py
-- [[Mutation-test proof flipping _rain_gates_active() to True makes the block…]] - rationale - tests/test_rain_markets.py
-- [[Opus-review-caught gap (Snow Step 2 round-2 review) the new hurricanesnow…]] - rationale - tests/test_rain_markets.py
-- [[TestCheckPositionLimitsRainConditional]] - code - tests/test_rain_markets.py
-- [[TestQuickPaperBuyAndCmdPaperRainGuards]] - code - tests/test_rain_markets.py
-- [[Tests for backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 1 (schema + safe…]] - rationale - tests/test_rain_markets.py
-- [[_rain_market()]] - code - tests/test_rain_markets.py
-- [[`now`, if given, anchors close_time instead of real wall-clock time -- required…_1]] - rationale - tests/test_rain_markets.py
-- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 the Step 1 unconditional…]] - rationale - tests/test_rain_markets.py
-- [[test_rain_markets.py]] - code - tests/test_rain_markets.py
+- [[dot-_mock_session_get()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_empty_obs_time_returns_none()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_missing_obs_time_returns_none()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_null_obstime_is_rejected_not_fabricated()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_result_obs_time_is_utc_aware()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_unparseable_obs_time_returns_none()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_valid_obs_time_returns_result()]] - code - tests/test_phase2_batch_j.py
+- [[A valid recent obsTime must produce a proper result dict.]] - rationale - tests/test_phase2_batch_j.py
+- [[TestMetarFetchNoFabricatedTimestamp]] - code - tests/test_phase2_batch_j.py
+- [[When obsTime is empty string, fetch_metar must return None.]] - rationale - tests/test_phase2_batch_j.py
+- [[When obsTime is not ISO-parseable, fetch_metar must return None.]] - rationale - tests/test_phase2_batch_j.py
+- [[When obsTime key is absent, fetch_metar must return None.]] - rationale - tests/test_phase2_batch_j.py
+- [[fetch_metar must not fabricate a timestamp — None obsTime → return None.]] - rationale - tests/test_phase2_batch_j.py
+- [[fetch_metar must return None when obsTime is absent or unparseable.]] - rationale - tests/test_phase2_batch_j.py
+- [[obs_time in the result must be timezone-aware.]] - rationale - tests/test_phase2_batch_j.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,20 +34,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 139]]
-- 1 edge to [[_COMMUNITY_Community 152]]
-- 1 edge to [[_COMMUNITY_Community 165]]
-- 1 edge to [[_COMMUNITY_Community 310]]
-- 1 edge to [[_COMMUNITY_Community 311]]
-- 1 edge to [[_COMMUNITY_Community 408]]
-- 1 edge to [[_COMMUNITY_Community 409]]
-- 1 edge to [[_COMMUNITY_Community 434]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Community 174]]
-- 1 edge to [[_COMMUNITY_Community 62]]
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 1 edge to [[_COMMUNITY_Community 303]]
 
 ## Top bridge nodes
-- [[test_rain_markets.py]] - degree 19, connects to 14 communities
+- [[TestMetarFetchNoFabricatedTimestamp]] - degree 9, connects to 1 community

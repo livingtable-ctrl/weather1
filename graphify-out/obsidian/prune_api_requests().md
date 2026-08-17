@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Tracker P&L Attribution Tests"
+community: "Community 3"
 location: "L696"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_3
 ---
 
 # prune_api_requests()
@@ -14,11 +14,11 @@ tags:
 ## Connections
 - [[dot-test_prune_api_requests_exported()]] - `indirect_call` [INFERRED]
 - [[P2-13 Delete api_requests rows older than days_to_keep. Returns row count…]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Batch C Regression Tests]] - `imports` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
-- [[_conn()_1]] - `calls` [EXTRACTED]
+- [[_conn()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
+- [[test_phase2_batch_c.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_3

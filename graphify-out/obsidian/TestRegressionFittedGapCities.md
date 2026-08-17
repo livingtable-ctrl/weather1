@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climate_indices.py"
 type: "code"
-community: "Community 31"
+community: "Community 61"
 location: "L186"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_31
+  - community/Community_61
 ---
 
 # TestRegressionFittedGapCities
@@ -20,4 +20,4 @@ tags:
 - [[Hand-computed regression-locking tests for the 10 cities researched 2026-07-25…]] - `rationale_for` [EXTRACTED]
 - [[test_climate_indices.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_31
+#graphify/code #graphify/EXTRACTED #community/Community_61

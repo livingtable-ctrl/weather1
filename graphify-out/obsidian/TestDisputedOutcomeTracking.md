@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker Disputed Outcome Restoration"
+community: "Community 28"
 location: "L3977"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Disputed_Outcome_Restoration
+  - community/Community_28
 ---
 
 # TestDisputedOutcomeTracking
@@ -16,8 +16,8 @@ tags:
 - [[dot-_add_disputed_outlier()]] - `method` [EXTRACTED]
 - [[dot-_log_settled()]] - `method` [EXTRACTED]
 - [[dot-_seed_baseline()_1]] - `method` [EXTRACTED]
-- [[dot-setUp()_18]] - `method` [EXTRACTED]
-- [[dot-tearDown()_17]] - `method` [EXTRACTED]
+- [[dot-setUp()_15]] - `method` [EXTRACTED]
+- [[dot-tearDown()_15]] - `method` [EXTRACTED]
 - [[dot-test_audit_settlement_clears_stale_dispute_on_clean_recheck()]] - `method` [EXTRACTED]
 - [[dot-test_audit_settlement_daily_fetch_exception_returns_false_not_raise()]] - `method` [EXTRACTED]
 - [[dot-test_audit_settlement_daily_missing_expiration_value_returns_false()]] - `method` [EXTRACTED]
@@ -105,4 +105,4 @@ tags:
 - [[Restored backlog piece (mystery-revert 24559a7) disputed flag on outcomes, set…]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Disputed_Outcome_Restoration
+#graphify/code #graphify/EXTRACTED #community/Community_28

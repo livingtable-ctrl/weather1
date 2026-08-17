@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 437
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-test_bucket_fields()]] - code - tests/test_tracker.py
-- [[dot-test_clustered_data_n_buckets_5()]] - code - tests/test_tracker.py
-- [[dot-test_empty_returns_empty_buckets()]] - code - tests/test_tracker.py
-- [[dot-test_returns_buckets_key()]] - code - tests/test_tracker.py
-- [[30 predictions clustered near 0.50, n_buckets=5 → = 5 buckets returned.]] - rationale - tests/test_tracker.py
-- [[Each bucket should have required fields.]] - rationale - tests/test_tracker.py
-- [[TestMarketCalibrationAdaptive]] - code - tests/test_tracker.py
-- [[Tests for get_market_calibration() quantile-based bucketing (13).]] - rationale - tests/test_tracker.py
+- [[dot-test_minutes_and_reason()]] - code - tests/test_risk_control.py
+- [[dot-test_minutes_only()]] - code - tests/test_risk_control.py
+- [[dot-test_negative_minutes_pass_through_for_cmd_admin_to_reject()]] - code - tests/test_risk_control.py
+- [[dot-test_no_args_uses_defaults()]] - code - tests/test_risk_control.py
+- [[dot-test_reason_only_no_minutes_falls_back_to_default_duration()]] - code - tests/test_risk_control.py
+- [[Parsing itself doesn't validate -- int(-30) is a valid int, so this must pass…]] - rationale - tests/test_risk_control.py
+- [[TestParseAccuracyOverrideArgs]] - code - tests/test_risk_control.py
+- [[The tricky branch args2 ('already') isn't a valid int, so the whole…]] - rationale - tests/test_risk_control.py
+- [[main._parse_accuracy_override_args() -- the CLI arg-parsing branch for `admin…]] - rationale - tests/test_risk_control.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,11 +28,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 135]]
-- 1 edge to [[_COMMUNITY_Community 313]]
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 117]]
 
 ## Top bridge nodes
-- [[TestMarketCalibrationAdaptive]] - degree 7, connects to 2 communities
-- [[dot-test_bucket_fields()]] - degree 3, connects to 1 community
-- [[dot-test_clustered_data_n_buckets_5()]] - degree 3, connects to 1 community
+- [[TestParseAccuracyOverrideArgs]] - degree 8, connects to 2 communities

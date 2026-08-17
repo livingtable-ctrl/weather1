@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 432
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-_make_db()]] - code - tests/test_phase2_batch_c.py
-- [[dot-test_prune_api_requests_exported()]] - code - tests/test_phase2_batch_c.py
-- [[dot-test_prune_deletes_old_rows()]] - code - tests/test_phase2_batch_c.py
-- [[dot-test_prune_returns_zero_when_nothing_old()]] - code - tests/test_phase2_batch_c.py
-- [[P2-13 prune_api_requests must delete old rows and leave recent ones.]] - rationale - tests/test_phase2_batch_c.py
-- [[Path_18]] - code
-- [[TestPruneApiRequests]] - code - tests/test_phase2_batch_c.py
-- [[prune_api_requests must be importable from tracker.]] - rationale - tests/test_phase2_batch_c.py
+- [[Create a minimal predictions+outcomes DB with the given row counts.]] - rationale - tests/test_phase2_batch_p.py
+- [[Path_19]] - code
+- [[Preservation only activates for uncalibrated entries; between (calibrated)…]] - rationale - tests/test_phase2_batch_p.py
+- [[When N = min_samples, calibrate_condition_weights runs and its result is kept.]] - rationale - tests/test_phase2_batch_p.py
+- [[_make_db()_1]] - code - tests/test_phase2_batch_p.py
+- [[calibrate_and_save must keep existing non-neutral below weights when N …]] - rationale - tests/test_phase2_batch_p.py
+- [[test_neutral_below_gets_overwritten_when_n_sufficient()]] - code - tests/test_phase2_batch_p.py
+- [[test_preserve_does_not_touch_between()]] - code - tests/test_phase2_batch_p.py
+- [[test_preserve_non_neutral_below_when_n_too_small()]] - code - tests/test_phase2_batch_p.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,10 +28,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 119]]
-- 1 edge to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
+- 4 edges to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestPruneApiRequests]] - degree 7, connects to 2 communities
-- [[dot-test_prune_api_requests_exported()]] - degree 3, connects to 1 community
+- [[_make_db()_1]] - degree 6, connects to 1 community
+- [[test_neutral_below_gets_overwritten_when_n_sufficient()]] - degree 3, connects to 1 community
+- [[test_preserve_does_not_touch_between()]] - degree 3, connects to 1 community
+- [[test_preserve_non_neutral_below_when_n_too_small()]] - degree 3, connects to 1 community

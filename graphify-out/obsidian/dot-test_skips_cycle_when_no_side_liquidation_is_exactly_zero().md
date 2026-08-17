@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "code"
-community: "Community 333"
+community: "Community 340"
 location: "L532"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_333
+  - community/Community_340
 ---
 
 # .test_skips_cycle_when_no_side_liquidation_is_exactly_zero()
@@ -16,4 +16,4 @@ tags:
 - [[TestEarlyExitPricingConvention]] - `method` [EXTRACTED]
 - [[liquidation_price() returns 0.0 (NOT None) for a NO position when yes_ask=100c…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_333
+#graphify/code #graphify/EXTRACTED #community/Community_340

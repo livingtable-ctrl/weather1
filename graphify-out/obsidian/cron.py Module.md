@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md"
 type: "code"
-community: "Community 199"
+community: "Community 202"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_199
+  - community/Community_202
 ---
 
 # cron.py Module
@@ -22,4 +22,4 @@ tags:
 - [[LV8 Natural Language Daily Brief]] - `references` [EXTRACTED]
 - [[Signals Page Spec (signals)]] - `references` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_199
+#graphify/code #graphify/EXTRACTED #community/Community_202

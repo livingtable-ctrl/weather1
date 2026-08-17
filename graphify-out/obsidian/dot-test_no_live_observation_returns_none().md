@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 414"
-location: "L5251"
+community: "Community 443"
+location: "L5620"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_414
+  - community/Community_443
 ---
 
 # .test_no_live_observation_returns_none()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestComputePersistenceProbRefactorSafetyNet]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_414
+#graphify/code #graphify/EXTRACTED #community/Community_443

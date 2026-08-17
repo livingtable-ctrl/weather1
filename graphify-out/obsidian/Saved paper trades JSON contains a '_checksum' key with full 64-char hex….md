@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_infrastructure.py"
 type: "rationale"
-community: "Circuit Breaker & Session Retry Infrastructure"
+community: "Community 7"
 location: "L529"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Circuit_Breaker__Session_Retry_Infrastructure
+  - community/Community_7
 ---
 
 # Saved paper trades JSON contains a '_checksum' key with full 64-char hex…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_paper_save_embeds_sha256_checksum()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Circuit_Breaker__Session_Retry_Infrastructure
+#graphify/rationale #graphify/EXTRACTED #community/Community_7

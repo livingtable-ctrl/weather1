@@ -1,29 +1,29 @@
 ---
 type: community
-cohesion: 0.14
+cohesion: 0.18
 members: 14
 ---
 
 # Community 261
 
-**Cohesion:** 0.14 - loosely connected
+**Cohesion:** 0.18 - loosely connected
 **Members:** 14 nodes
 
 ## Members
-- [[dot-test_dead_comment_subscribe_variable_never_existed()]] - code - tests/test_phase2_batch_e.py
-- [[dot-test_no_hardcoded_subscribe_comment_in_cron()]] - code - tests/test_phase2_batch_e.py
-- [[dot-test_no_start_with_empty_market_list()]] - code - tests/test_phase2_batch_e.py
-- [[dot-test_subscribe_after_start_raises()]] - code - tests/test_phase2_batch_e.py
-- [[dot-test_subscribe_called_before_start()]] - code - tests/test_phase2_batch_e.py
-- [[dot-test_subscribe_receives_market_tickers()]] - code - tests/test_phase2_batch_e.py
-- [[If the market list is empty, subscribe is skipped but start still fires.]] - rationale - tests/test_phase2_batch_e.py
-- [[P2-5 subscribe() must be called before start(), with real market tickers.]] - rationale - tests/test_phase2_batch_e.py
-- [[TestWebSocketSubscribeOrder]] - code - tests/test_phase2_batch_e.py
-- [[The dead ' _ws.subscribe(active_tickers)' comment must be gone.]] - rationale - tests/test_phase2_batch_e.py
-- [[The subscribe call in cron must pass tickers from the market list, not an empty…]] - rationale - tests/test_phase2_batch_e.py
-- [[active_tickers was never defined in cron — the old commented line could not…]] - rationale - tests/test_phase2_batch_e.py
-- [[subscribe() must precede start() — reversed order raises RuntimeError.]] - rationale - tests/test_phase2_batch_e.py
-- [[subscribe() raises RuntimeError if called after start() — validates ordering…]] - rationale - tests/test_phase2_batch_e.py
+- [[dot-_insert_prediction_and_outcome()]] - code - tests/test_tracker.py
+- [[dot-setUp()_13]] - code - tests/test_tracker.py
+- [[dot-tearDown()_13]] - code - tests/test_tracker.py
+- [[dot-test_midpoint_prediction()]] - code - tests/test_tracker.py
+- [[dot-test_no_data_returns_none()]] - code - tests/test_tracker.py
+- [[dot-test_perfect_prediction_brier_zero()]] - code - tests/test_tracker.py
+- [[dot-test_worst_prediction_brier_one()]] - code - tests/test_tracker.py
+- [[Focused tests for tracker.brier_score() (111).]] - rationale - tests/test_tracker.py
+- [[Helper log a prediction and its outcome.]] - rationale - tests/test_tracker.py
+- [[TestBrierScore]] - code - tests/test_tracker.py
+- [[brier_score() returns None when there are no settled predictions.]] - rationale - tests/test_tracker.py
+- [[forecast_prob=0.0, outcome=YES → Brier score = 1.]] - rationale - tests/test_tracker.py
+- [[forecast_prob=0.5, outcome=NO → Brier = (0.5-0)2 = 0.25.]] - rationale - tests/test_tracker.py
+- [[forecast_prob=1.0, outcome=YES → Brier score = 0.]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,8 +33,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 245]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[TestWebSocketSubscribeOrder]] - degree 9, connects to 2 communities
+- [[TestBrierScore]] - degree 9, connects to 1 community

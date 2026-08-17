@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kelly_property.py"
 type: "rationale"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 173"
 location: "L111"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_173
 ---
 
 # P3-3: kelly_bet_dollars * drawdown_scaling_factor must never exceed current…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_kelly_bet_dollars_never_exceeds_balance()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_173

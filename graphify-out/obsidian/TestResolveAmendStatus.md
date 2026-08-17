@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 329"
+community: "Community 423"
 location: "L1914"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_329
+  - community/Community_423
 ---
 
 # TestResolveAmendStatus
@@ -21,4 +21,4 @@ tags:
 - [[order_executor._resolve_amend_status -- translates an amend_order() response…]] - `rationale_for` [EXTRACTED]
 - [[test_live_execution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_329
+#graphify/code #graphify/EXTRACTED #community/Community_423

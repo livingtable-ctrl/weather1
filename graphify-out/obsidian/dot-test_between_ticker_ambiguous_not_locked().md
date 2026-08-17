@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "code"
-community: "METAR Lock-In Confidence Tests"
+community: "Community 22"
 location: "L213"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Lock-In_Confidence_Tests
+  - community/Community_22
 ---
 
 # .test_between_ticker_ambiguous_not_locked()
@@ -16,4 +16,4 @@ tags:
 - [[A ticker that says neither HIGH nor LOW (e.g. the  default a caller might…]] - `rationale_for` [EXTRACTED]
 - [[TestBetweenLockInDynamicConfidence]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Lock-In_Confidence_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_22

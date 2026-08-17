@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_f.py"
 type: "rationale"
-community: "Community 134"
+community: "Community 155"
 location: "L29"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_134
+  - community/Community_155
 ---
 
 # P2-1: correlation_applied must reflect whether Cholesky actually succeeded.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCorrelationAppliedFlag]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_134
+#graphify/rationale #graphify/EXTRACTED #community/Community_155

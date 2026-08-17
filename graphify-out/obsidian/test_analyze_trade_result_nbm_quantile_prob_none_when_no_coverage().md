@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 131"
+community: "Community 326"
 location: "L1587"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_131
+  - community/Community_326
 ---
 
 # test_analyze_trade_result_nbm_quantile_prob_none_when_no_coverage()
@@ -18,4 +18,4 @@ tags:
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_131
+#graphify/code #graphify/EXTRACTED #community/Community_326

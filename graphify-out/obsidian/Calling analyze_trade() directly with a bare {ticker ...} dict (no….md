@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "rationale"
-community: "Community 139"
+community: "Community 16"
 location: "L63"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_139
+  - community/Community_16
 ---
 
 # Calling analyze_trade() directly with a bare {"ticker": ...} dict (no…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_bare_ticker_dict_hits_no_city_not_the_old_guard()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_139
+#graphify/rationale #graphify/EXTRACTED #community/Community_16

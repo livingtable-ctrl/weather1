@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "rationale"
-community: "METAR Lock-In Confidence Tests"
+community: "Community 22"
 location: "L214"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/METAR_Lock-In_Confidence_Tests
+  - community/Community_22
 ---
 
 # A ticker that says neither HIGH nor LOW (e.g. the "?" default a caller might…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_between_ticker_ambiguous_not_locked()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/METAR_Lock-In_Confidence_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_22

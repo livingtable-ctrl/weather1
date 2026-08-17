@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_paper.py"
+source_file: "tests/test_param_sweep_load.py"
 type: "code"
-community: "Community 188"
-location: "L865"
+community: "Community 190"
+location: "L23"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_188
+  - community/Community_190
 ---
 
 # .tearDown()
 
 ## Connections
-- [[TestDrawdownScaling]] - `method` [EXTRACTED]
+- [[TestLoadSweptMinEdge]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_188
+#graphify/code #graphify/EXTRACTED #community/Community_190

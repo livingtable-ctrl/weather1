@@ -1,11 +1,11 @@
 ---
 source_file: ""
 type: "code"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 3"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_3
 ---
 
 # Lock
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[_get_obs_lock()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/code #graphify/EXTRACTED #community/Community_3

@@ -1,13 +1,13 @@
 ---
 source_file: "hurricane_climatology.py"
 type: "code"
-community: "Community 653"
+community: "Community 793"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_653
+  - community/Community_793
 ---
 
 # bootstrap_ci Function
 
-#graphify/code #graphify/EXTRACTED #community/Community_653
+#graphify/code #graphify/EXTRACTED #community/Community_793

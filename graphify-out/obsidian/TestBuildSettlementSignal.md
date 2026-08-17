@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_settlement_monitor.py"
 type: "code"
-community: "METAR Settlement Monitoring"
+community: "Community 8"
 location: "L48"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_8
 ---
 
 # TestBuildSettlementSignal
@@ -16,6 +16,9 @@ tags:
 - [[dot-test_signal_structure()]] - `method` [EXTRACTED]
 - [[dot-test_signals_expire_after_window()]] - `method` [EXTRACTED]
 - [[dot-test_write_settlement_signals_creates_file()]] - `method` [EXTRACTED]
+- [[build_settlement_signal()]] - `calls` [EXTRACTED]
+- [[read_settlement_signals()]] - `calls` [EXTRACTED]
 - [[test_settlement_monitor.py]] - `contains` [EXTRACTED]
+- [[write_settlement_signals()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/code #graphify/EXTRACTED #community/Community_8

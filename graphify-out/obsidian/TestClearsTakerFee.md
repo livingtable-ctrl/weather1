@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 215"
+community: "Community 219"
 location: "L1486"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_215
+  - community/Community_219
 ---
 
 # TestClearsTakerFee
@@ -23,4 +23,4 @@ tags:
 - [[_clears_taker_fee recomputes net_edge with the real taker fee instead of the…]] - `rationale_for` [EXTRACTED]
 - [[test_live_execution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_215
+#graphify/code #graphify/EXTRACTED #community/Community_219

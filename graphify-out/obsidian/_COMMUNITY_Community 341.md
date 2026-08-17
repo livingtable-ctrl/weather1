@@ -1,26 +1,26 @@
 ---
 type: community
-cohesion: 0.27
+cohesion: 0.20
 members: 11
 ---
 
 # Community 341
 
-**Cohesion:** 0.27 - loosely connected
+**Cohesion:** 0.20 - loosely connected
 **Members:** 11 nodes
 
 ## Members
-- [[dot-test_auth_still_required()]] - code - tests/test_p0_16_cron_endpoint.py
-- [[dot-test_concurrent_guard_checked_before_rate_limit()]] - code - tests/test_p0_16_cron_endpoint.py
-- [[dot-test_returns_409_when_cron_already_running()]] - code - tests/test_p0_16_cron_endpoint.py
-- [[dot-test_starts_successfully_when_no_cron_running()]] - code - tests/test_p0_16_cron_endpoint.py
-- [[409 must be returned even when the per-IP rate limit is not yet exceeded.]] - rationale - tests/test_p0_16_cron_endpoint.py
-- [[Concurrent guard must not bypass authentication.]] - rationale - tests/test_p0_16_cron_endpoint.py
-- [[If _is_cron_running() returns False and no rate limit, cron spawns.]] - rationale - tests/test_p0_16_cron_endpoint.py
-- [[If _is_cron_running() returns True, endpoint must return 409.]] - rationale - tests/test_p0_16_cron_endpoint.py
-- [[TestRunCronConcurrentGuard]] - code - tests/test_p0_16_cron_endpoint.py
-- [[_auth_headers()]] - code - tests/test_p0_16_cron_endpoint.py
-- [[_make_app()_1]] - code - tests/test_p0_16_cron_endpoint.py
+- [[EDGE_CALC_VERSION must be a non-empty string constant.]] - rationale - tests/test_edge_version.py
+- [[Every non-None analyze_trade result must carry an edge_calc_version key.]] - rationale - tests/test_edge_version.py
+- [[Minimal enriched dict that produces a non-None analyze_trade result.]] - rationale - tests/test_edge_version.py
+- [[Precipitation fast-path returns must also carry edge_calc_version.]] - rationale - tests/test_edge_version.py
+- [[Tests for P0.2 — EDGE_CALC_VERSION constant and analyze_trade stamp.]] - rationale - tests/test_edge_version.py
+- [[_enriched()_1]] - code - tests/test_edge_version.py
+- [[test_analyze_trade_returns_edge_version()]] - code - tests/test_edge_version.py
+- [[test_edge_calc_version_is_string()]] - code - tests/test_edge_version.py
+- [[test_edge_version.py]] - code - tests/test_edge_version.py
+- [[test_precip_fast_path_stamps_edge_version()]] - code - tests/test_edge_version.py
+- [[weather_markets.EDGE_CALC_VERSION]] - code - weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,9 +30,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 566]]
+- 4 edges to [[_COMMUNITY_Community 5]]
+- 2 edges to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestRunCronConcurrentGuard]] - degree 5, connects to 1 community
-- [[_make_app()_1]] - degree 5, connects to 1 community
-- [[_auth_headers()]] - degree 4, connects to 1 community
+- [[test_edge_version.py]] - degree 10, connects to 2 communities
+- [[test_analyze_trade_returns_edge_version()]] - degree 4, connects to 1 community
+- [[test_precip_fast_path_stamps_edge_version()]] - degree 3, connects to 1 community

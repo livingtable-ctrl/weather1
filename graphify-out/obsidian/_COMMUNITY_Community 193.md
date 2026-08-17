@@ -1,30 +1,33 @@
 ---
 type: community
-cohesion: 0.18
-members: 15
+cohesion: 0.11
+members: 18
 ---
 
 # Community 193
 
-**Cohesion:** 0.18 - loosely connected
-**Members:** 15 nodes
+**Cohesion:** 0.11 - loosely connected
+**Members:** 18 nodes
 
 ## Members
-- [[BalanceSparkline()]] - code - weather app site V_3 (3)/src/shared.jsx
-- [[BrierAlertCard()]] - code - weather app site V_3 (3)/src/tabs/RiskTab.jsx
-- [[CITY_NAMES_1]] - code - weather app site V_3 (3)/src/shared.jsx
-- [[InfoIcon()_1]] - code - weather app site V_3 (3)/src/shared.jsx
-- [[KillSwitchCriteriaCard()]] - code - weather app site V_3 (3)/src/tabs/RiskTab.jsx
-- [[RiskTab()]] - code - weather app site V_3 (3)/src/tabs/RiskTab.jsx
-- [[RiskTab.jsx]] - code - weather app site V_3 (3)/src/tabs/RiskTab.jsx
-- [[StatCard()]] - code - weather app site V_3 (3)/src/shared.jsx
-- [[SystemEventsCard()]] - code - weather app site V_3 (3)/src/shared.jsx
-- [[TableSkeleton()]] - code - weather app site V_3 (3)/src/shared.jsx
-- [[TradesTab()_1]] - code - weather app site V_3 (3)/src/tabs/TradesTab.jsx
-- [[TradesTab.jsx]] - code - weather app site V_3 (3)/src/tabs/TradesTab.jsx
-- [[fmtEdge()_1]] - code - weather app site V_3 (3)/src/shared.jsx
-- [[outcomeBadge()_1]] - code - weather app site V_3 (3)/src/shared.jsx
-- [[shared.jsx]] - code - weather app site V_3 (3)/src/shared.jsx
+- [[dot-setup_method()_16]] - code - tests/test_mos.py
+- [[dot-test_days_out_uses_city_local_today_not_utc()]] - code - tests/test_mos.py
+- [[dot-test_fetch_mos_best_routing_uses_city_local_today_not_utc()]] - code - tests/test_mos.py
+- [[dot-test_max_temp_is_highest_in_day()]] - code - tests/test_mos.py
+- [[dot-test_negative_caches_failure()]] - code - tests/test_mos.py
+- [[dot-test_returns_dict_on_success()]] - code - tests/test_mos.py
+- [[dot-test_returns_none_on_empty_data()]] - code - tests/test_mos.py
+- [[dot-test_returns_none_on_request_exception()]] - code - tests/test_mos.py
+- [[dot-test_station_lookup()]] - code - tests/test_mos.py
+- [[dot-test_unknown_city_returns_none()_1]] - code - tests/test_mos.py
+- [[A failed fetch must be negative-cached -- a second call within the TTL must not…]] - rationale - tests/test_mos.py
+- [[Clear the MOS in-process cache before each test.]] - rationale - tests/test_mos.py
+- [[TestFetchMos]] - code - tests/test_mos.py
+- [[fetch_mos returns a dict with max_temp_f on success.]] - rationale - tests/test_mos.py
+- [[fetch_mos's days_out (and thus sigma) must be computed against the tz passed…]] - rationale - tests/test_mos.py
+- [[fetch_mos_best's NAM-vs-GFS routing must also key off the passed tz, not UTC --…]] - rationale - tests/test_mos.py
+- [[get_mos_station returns correct ASOS station for each city. Keys are full city…]] - rationale - tests/test_mos.py
+- [[max_temp_f is the highest tmp reading across all hours for the target date.]] - rationale - tests/test_mos.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,12 +37,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 11 edges to [[_COMMUNITY_Community 93]]
-- 1 edge to [[_COMMUNITY_Community 270]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[shared.jsx]] - degree 16, connects to 2 communities
-- [[RiskTab.jsx]] - degree 6, connects to 1 community
-- [[TradesTab.jsx]] - degree 6, connects to 1 community
-- [[TradesTab()_1]] - degree 5, connects to 1 community
-- [[RiskTab()]] - degree 2, connects to 1 community
+- [[TestFetchMos]] - degree 11, connects to 1 community

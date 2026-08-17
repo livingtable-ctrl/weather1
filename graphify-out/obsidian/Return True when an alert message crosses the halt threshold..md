@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "rationale"
-community: "Community 223"
+community: "Community 142"
 location: "L368"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_223
+  - community/Community_142
 ---
 
 # Return True when an alert message crosses the halt threshold.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_is_halt_level()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_223
+#graphify/rationale #graphify/EXTRACTED #community/Community_142

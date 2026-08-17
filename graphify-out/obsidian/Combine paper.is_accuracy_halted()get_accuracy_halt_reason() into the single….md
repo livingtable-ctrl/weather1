@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 3"
 location: "L348"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # Combine paper.is_accuracy_halted()/get_accuracy_halt_reason() into the single…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_check_accuracy_halt()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

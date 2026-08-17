@@ -1,12 +1,12 @@
 ---
 source_file: "trade_cycle.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 3"
 location: "L974"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # Pre-warm forecast/model caches for all unique city/date pairs so the parallel…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_run_batch_prewarm()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

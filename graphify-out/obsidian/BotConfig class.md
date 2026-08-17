@@ -1,11 +1,11 @@
 ---
 source_file: "config.py"
 type: "code"
-community: "Community 243"
+community: "Community 47"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_243
+  - community/Community_47
 ---
 
 # BotConfig class
@@ -15,4 +15,4 @@ tags:
 - [[test_config.py]] - `calls` [EXTRACTED]
 - [[test_config_divergence_guard.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_243
+#graphify/code #graphify/EXTRACTED #community/Community_47

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 396"
+community: "Community 420"
 location: "L762"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_396
+  - community/Community_420
 ---
 
 # .test_quick_paper_buy_refuses_when_gate_inactive()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestManualPlacementPathsHourlyGuard]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_396
+#graphify/code #graphify/EXTRACTED #community/Community_420

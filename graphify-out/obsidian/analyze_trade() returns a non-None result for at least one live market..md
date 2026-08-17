@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_integration_live.py"
 type: "rationale"
-community: "Community 53"
+community: "Community 13"
 location: "L59"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_53
+  - community/Community_13
 ---
 
 # analyze_trade() returns a non-None result for at least one live market.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_analyze_trade_returns_dict_for_live_market()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_53
+#graphify/rationale #graphify/EXTRACTED #community/Community_13

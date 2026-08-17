@@ -1,22 +1,22 @@
 ---
 type: community
-cohesion: 0.38
+cohesion: 0.29
 members: 7
 ---
 
 # Community 485
 
-**Cohesion:** 0.38 - loosely connected
+**Cohesion:** 0.29 - loosely connected
 **Members:** 7 nodes
 
 ## Members
-- [[dot-_daily_market()_2]] - code - tests/test_snow_markets.py
-- [[dot-test_exclusion_holds_even_if_a_date_were_parseable()]] - code - tests/test_snow_markets.py
-- [[dot-test_mixed_list_fit_matches_daily_only_fit()_1]] - code - tests/test_snow_markets.py
-- [[dot-test_snow_only_list_produces_no_distributions()]] - code - tests/test_snow_markets.py
-- [[Real regression guard for the explicit prefix exclusion -- proves it does real…]] - rationale - tests/test_snow_markets.py
-- [[TestComputeMarketImpliedExcludesMonthlySnow]] - code - tests/test_snow_markets.py
-- [[compute_market_implied_distributions() groups by (city, target_date)…_1]] - rationale - tests/test_snow_markets.py
+- [[Per-File Detailed Findings]] - document - docs/audit_findings.md
+- [[`calibration.py` — 12 issues (2 CRITICAL, 5 HIGH, 4 MEDIUM, 1 LOW)]] - document - docs/audit_findings.md
+- [[`ml_bias.py` — 14 issues (2 CRITICAL, 5 HIGH, 5 MEDIUM, 2 LOW)]] - document - docs/audit_findings.md
+- [[`monte_carlo.py` — 11 issues (0 CRITICAL, 4 HIGH, 5 MEDIUM, 2 LOW) (H9 retracted)]] - document - docs/audit_findings.md
+- [[`order_executor.py` — 16 issues (3 CRITICAL, 6 HIGH, 4 MEDIUM, 3 LOW)]] - document - docs/audit_findings.md
+- [[`paper.py` — 19 issues (4 CRITICAL, 6 HIGH, 6 MEDIUM, 3 LOW)]] - document - docs/audit_findings.md
+- [[`tracker.py` — 16 issues (2 CRITICAL, 7 HIGH, 4 MEDIUM, 3 LOW)]] - document - docs/audit_findings.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,11 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 115]]
-- 1 edge to [[_COMMUNITY_Community 174]]
+- 1 edge to [[_COMMUNITY_Community 364]]
 
 ## Top bridge nodes
-- [[TestComputeMarketImpliedExcludesMonthlySnow]] - degree 6, connects to 1 community
-- [[dot-test_exclusion_holds_even_if_a_date_were_parseable()]] - degree 4, connects to 1 community
-- [[dot-test_mixed_list_fit_matches_daily_only_fit()_1]] - degree 3, connects to 1 community
-- [[dot-test_snow_only_list_produces_no_distributions()]] - degree 2, connects to 1 community
+- [[Per-File Detailed Findings]] - degree 7, connects to 1 community

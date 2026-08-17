@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 250"
+community: "Community 21"
 location: "L1455"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_250
+  - community/Community_21
 ---
 
 # TestLiquidityKellyScale
@@ -24,6 +24,7 @@ tags:
 - [[dot-test_zero_liquidity_returns_0_50()]] - `method` [EXTRACTED]
 - [[Position]] - `uses` [INFERRED]
 - [[backlog.txt LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD -- revives the…]] - `rationale_for` [EXTRACTED]
+- [[paper.liquidity_kelly_scale]] - `references` [EXTRACTED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_250
+#graphify/code #graphify/EXTRACTED #community/Community_21

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_positions.py"
 type: "rationale"
-community: "Community 484"
+community: "Community 525"
 location: "L105"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_484
+  - community/Community_525
 ---
 
 # Two open positions on disk; saving one's peak must not touch the other's -- a…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_save_peak_writes_only_the_targeted_position()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_484
+#graphify/rationale #graphify/EXTRACTED #community/Community_525

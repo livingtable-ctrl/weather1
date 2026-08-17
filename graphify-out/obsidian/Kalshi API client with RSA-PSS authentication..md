@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "rationale"
-community: "Community 351"
+community: "Community 41"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_351
+  - community/Community_41
 ---
 
 # Kalshi API client with RSA-PSS authentication.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[kalshi_client.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_351
+#graphify/rationale #graphify/EXTRACTED #community/Community_41

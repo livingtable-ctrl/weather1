@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 518
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_monday_check_uses_utc_weekday()]] - code - tests/test_phase2_batch_h.py
-- [[dot-test_naive_timestamp_treated_as_utc()]] - code - tests/test_phase2_batch_h.py
-- [[A naive ISO timestamp from DB must be interpreted as UTC, not local.]] - rationale - tests/test_phase2_batch_h.py
-- [[P2-18 _check_startup_orders must treat naive DB timestamps as UTC.]] - rationale - tests/test_phase2_batch_h.py
-- [[TestCronStartupOrdersUtc]] - code - tests/test_phase2_batch_h.py
-- [[Weekly DB sweep must fire on UTC Monday, not local Monday.]] - rationale - tests/test_phase2_batch_h.py
+- [[dot-test_restore_default_raises()]] - code - tests/test_phase2_batch_g.py
+- [[dot-test_restore_snapshots_existing_data()]] - code - tests/test_phase2_batch_g.py
+- [[dot-test_restore_with_confirm_proceeds()]] - code - tests/test_phase2_batch_g.py
+- [[dot-test_restore_without_confirm_raises()]] - code - tests/test_phase2_batch_g.py
+- [[P2-47 restore_data must require confirm=True to prevent silent overwrites.]] - rationale - tests/test_phase2_batch_g.py
+- [[TestRestoreDataConfirm]] - code - tests/test_phase2_batch_g.py
+- [[restore_data must snapshot current data before overwriting.]] - rationale - tests/test_phase2_batch_g.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
+- 2 edges to [[_COMMUNITY_Community 221]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestCronStartupOrdersUtc]] - degree 4, connects to 1 community
+- [[TestRestoreDataConfirm]] - degree 6, connects to 1 community
+- [[dot-test_restore_snapshots_existing_data()]] - degree 3, connects to 1 community
+- [[dot-test_restore_with_confirm_proceeds()]] - degree 2, connects to 1 community

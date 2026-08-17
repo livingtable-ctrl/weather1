@@ -1,12 +1,12 @@
 ---
 source_file: "docs/grade_audit/outputs/notify.py.md"
 type: "document"
-community: "Community 195"
+community: "Community 171"
 location: "L:164-251"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_195
+  - community/Community_171
 ---
 
 # alert_strong_signal() RF1 Promotion (6/10)
@@ -16,4 +16,4 @@ tags:
 - [[_send_discord() RF1 + Uncaught ImportError Risk (510)]] - `calls` [EXTRACTED]
 - [[notify.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_195
+#graphify/document #graphify/EXTRACTED #community/Community_171

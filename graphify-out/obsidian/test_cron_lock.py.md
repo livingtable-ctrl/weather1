@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_lock.py"
 type: "code"
-community: "Community 121"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_121
+  - community/Community_4
 ---
 
 # test_cron_lock.py
@@ -19,5 +19,10 @@ tags:
 - [[TestAcquireCronLockLivePid]] - `contains` [EXTRACTED]
 - [[TestAcquireCronLockNoPsutil]] - `contains` [EXTRACTED]
 - [[_acquire()]] - `contains` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
+- [[os]] - `imports` [EXTRACTED]
+- [[test_execution_stability.py]] - `semantically_similar_to` [INFERRED]
+- [[time]] - `imports` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_121
+#graphify/code #graphify/EXTRACTED #community/Community_4

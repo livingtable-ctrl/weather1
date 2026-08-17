@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_settlement_monitor.py"
 type: "code"
-community: "Community 262"
+community: "Community 51"
 location: "L275"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_262
+  - community/Community_51
 ---
 
 # TestBTickerParsing
@@ -19,6 +19,8 @@ tags:
 - [[dot-test_b_ticker_yes_signal_when_max_temp_inside()]] - `method` [EXTRACTED]
 - [[dot-test_t_ticker_still_works_as_before()]] - `method` [EXTRACTED]
 - [[B-ticker (between-bucket) detection in check_city_settlement.]] - `rationale_for` [EXTRACTED]
+- [[backlog.txt settlement_monitor.py's own between-bucket lock (AC3)]] - `references` [EXTRACTED]
+- [[check_city_settlement()]] - `calls` [EXTRACTED]
 - [[test_settlement_monitor.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_262
+#graphify/code #graphify/EXTRACTED #community/Community_51

@@ -1,20 +1,21 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.33
+members: 6
 ---
 
 # Community 556
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_cron_wires_ws_subscribe_via_on_markets_fetched()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_on_markets_fetched_called_before_analysis()]] - code - tests/test_trade_cycle_engine.py
-- [[TestWebSocketStartOrdering]] - code - tests/test_trade_cycle_engine.py
-- [[The WebSocket must subscribe+start right after the market fetch (via…]] - rationale - tests/test_trade_cycle_engine.py
-- [[cron.py-level confirm the real cron.py wiring passes a working…]] - rationale - tests/test_trade_cycle_engine.py
+- [[69.1 Add `_SETTLEMENT_STATION_MAP` to `weather_markets.py`]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[69.2 Apply bias correction in `analyze_trade()`]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[69.3 Write tests]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[69.4 Verify & Commit]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Background_19]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Task 69 (P12.I) — Settlement Station Basis Correction]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,10 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 2 edges to [[_COMMUNITY_Community 42]]
+- 1 edge to [[_COMMUNITY_Community 451]]
 
 ## Top bridge nodes
-- [[TestWebSocketStartOrdering]] - degree 6, connects to 1 community
-- [[dot-test_cron_wires_ws_subscribe_via_on_markets_fetched()]] - degree 3, connects to 1 community
-- [[dot-test_on_markets_fetched_called_before_analysis()]] - degree 2, connects to 1 community
+- [[Task 69 (P12.I) — Settlement Station Basis Correction]] - degree 6, connects to 1 community

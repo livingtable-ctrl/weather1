@@ -1,20 +1,16 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 326"
+community: "Community 33"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_326
+  - community/Community_33
 ---
 
 # Path
 
 ## Connections
-- [[_find_google_drive()]] - `references` [EXTRACTED]
-- [[_find_sync_folder()]] - `references` [EXTRACTED]
-- [[backup_data()]] - `references` [EXTRACTED]
-- [[backup_to_s3()]] - `references` [EXTRACTED]
-- [[restore_data()]] - `references` [EXTRACTED]
+- [[_all_source_files()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_326
+#graphify/code #graphify/EXTRACTED #community/Community_33

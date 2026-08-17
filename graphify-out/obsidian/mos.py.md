@@ -1,12 +1,12 @@
 ---
 source_file: "mos.py"
 type: "code"
-community: "Community 99"
+community: "Community 15"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_99
+  - community/Community_15
 ---
 
 # mos.py
@@ -27,10 +27,13 @@ tags:
 - [[forecast_cache.py]] - `imports_from` [EXTRACTED]
 - [[get_mos_station()]] - `contains` [EXTRACTED]
 - [[is_mos_cached()]] - `contains` [EXTRACTED]
+- [[logging]] - `imports` [EXTRACTED]
 - [[metar.py]] - `imports_from` [EXTRACTED]
+- [[requests_1]] - `imports` [EXTRACTED]
 - [[test_mos_nbp.py]] - `imports` [EXTRACTED]
 - [[test_mos_nbs.py]] - `imports` [EXTRACTED]
+- [[time]] - `imports` [EXTRACTED]
 - [[utc_today()]] - `imports` [EXTRACTED]
 - [[utils.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_99
+#graphify/code #graphify/EXTRACTED #community/Community_15

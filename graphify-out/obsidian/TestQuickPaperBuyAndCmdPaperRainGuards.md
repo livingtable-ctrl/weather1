@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 237"
+community: "Community 580"
 location: "L1660"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_237
+  - community/Community_580
 ---
 
 # TestQuickPaperBuyAndCmdPaperRainGuards
@@ -19,4 +19,4 @@ tags:
 - [[Opus-review-caught gap (Snow Step 2 round-2 review) the new hurricanesnow…]] - `rationale_for` [EXTRACTED]
 - [[test_rain_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_237
+#graphify/code #graphify/EXTRACTED #community/Community_580

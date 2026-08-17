@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L6378"
+community: "Community 3"
+location: "L6480"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # Single shared lookup for one market's market-implied-distribution result out of…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[resolve_market_implied_for_analysis()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

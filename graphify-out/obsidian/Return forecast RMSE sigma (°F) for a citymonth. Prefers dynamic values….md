@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Community 26"
-location: "L2732"
+community: "Community 69"
+location: "L2834"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_26
+  - community/Community_69
 ---
 
 # Return forecast RMSE sigma (°F) for a city/month. Prefers dynamic values…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_historical_sigma()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_26
+#graphify/rationale #graphify/EXTRACTED #community/Community_69

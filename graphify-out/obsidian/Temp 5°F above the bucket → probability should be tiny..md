@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Weather Probability Math Tests"
+community: "Community 203"
 location: "L484"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_203
 ---
 
 # Temp 5°F above the bucket → probability should be tiny.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_temp_outside_bucket_gives_low_probability()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_203

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_nws_afd.py"
 type: "rationale"
-community: "Community 68"
+community: "Community 382"
 location: "L418"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_68
+  - community/Community_382
 ---
 
 # Live check (run with `-m integration`, matches test_integration_live.py's…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_city_wfo_office_matches_live_api()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_68
+#graphify/rationale #graphify/EXTRACTED #community/Community_382

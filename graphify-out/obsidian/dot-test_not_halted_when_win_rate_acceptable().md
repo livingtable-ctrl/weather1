@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 693"
+community: "Community 338"
 location: "L335"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_338
 ---
 
 # .test_not_halted_when_win_rate_acceptable()
@@ -15,4 +15,4 @@ tags:
 - [[TestAccuracyCircuitBreaker]] - `method` [EXTRACTED]
 - [[is_accuracy_halted returns False when win rate is 55% over 20 trades.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_338

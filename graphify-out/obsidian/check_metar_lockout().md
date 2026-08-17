@@ -1,12 +1,12 @@
 ---
 source_file: "metar.py"
 type: "code"
-community: "METAR Settlement Monitoring"
+community: "Community 51"
 location: "L426"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_51
 ---
 
 # check_metar_lockout()
@@ -17,9 +17,9 @@ tags:
 - [[_dynamic_lock_in_confidence()]] - `calls` [EXTRACTED]
 - [[_metar_lock_in()]] - `calls` [EXTRACTED]
 - [[check_city_settlement()]] - `calls` [EXTRACTED]
-- [[datetime_1]] - `references` [EXTRACTED]
+- [[datetime_3]] - `references` [EXTRACTED]
 - [[metar.py]] - `contains` [EXTRACTED]
 - [[settlement_monitor.py]] - `imports` [EXTRACTED]
 - [[test_metar.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/code #graphify/EXTRACTED #community/Community_51

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 127"
+community: "Community 132"
 location: "L376"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_127
+  - community/Community_132
 ---
 
 # ._seed()
@@ -20,8 +20,8 @@ tags:
 - [[dot-test_one_thin_model_excluded_not_blocking_the_other()]] - `calls` [EXTRACTED]
 - [[dot-test_strong_tier_computed()]] - `calls` [EXTRACTED]
 - [[dot-test_weak_tier_computed()]] - `calls` [EXTRACTED]
-- [[dot-test_weights_sum_to_one()]] - `calls` [EXTRACTED]
+- [[dot-test_weights_sum_to_one()_1]] - `calls` [EXTRACTED]
 - [[dot-test_window_days_excludes_old_data()]] - `calls` [EXTRACTED]
 - [[TestGetModelWeights]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_127
+#graphify/code #graphify/EXTRACTED #community/Community_132

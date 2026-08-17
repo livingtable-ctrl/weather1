@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/Kalshi Bot Dashboard.html"
 type: "code"
-community: "Community 48"
+community: "Community 50"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_48
+  - community/Community_50
 ---
 
 # Kalshi Bot Dashboard Explorations Canvas
@@ -20,4 +20,4 @@ tags:
 - [[variation-hybrid.jsx (Hybrid direction)]] - `references` [EXTRACTED]
 - [[variation-terminal.jsx (Terminal density direction)]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_48
+#graphify/code #graphify/EXTRACTED #community/Community_50

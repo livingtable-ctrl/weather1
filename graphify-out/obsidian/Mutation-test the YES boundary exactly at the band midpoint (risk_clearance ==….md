@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "rationale"
-community: "METAR Lock-In Confidence Tests"
+community: "Community 22"
 location: "L433"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/METAR_Lock-In_Confidence_Tests
+  - community/Community_22
 ---
 
 # Mutation-test the YES boundary: exactly at the band midpoint (risk_clearance ==…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_between_yes_lock_boundary_at_exact_midpoint()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/METAR_Lock-In_Confidence_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_22

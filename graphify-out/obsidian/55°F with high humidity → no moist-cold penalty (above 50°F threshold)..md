@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "rationale"
-community: "Community 70"
+community: "Community 65"
 location: "L159"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_70
+  - community/Community_65
 ---
 
 # 55°F with high humidity → no moist-cold penalty (above 50°F threshold).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_moderate_temp_no_moist_cold()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_70
+#graphify/rationale #graphify/EXTRACTED #community/Community_65

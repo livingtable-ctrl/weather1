@@ -1,16 +1,14 @@
 ---
 source_file: "paths.py"
 type: "code"
-community: "Community 331"
+community: "Community 833"
+location: "L26"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_331
+  - community/Community_833
 ---
 
 # paths.DB_PATH
 
-## Connections
-- [[run_audit()]] - `calls` [EXTRACTED]
-
-#graphify/code #graphify/EXTRACTED #community/Community_331
+#graphify/code #graphify/EXTRACTED #community/Community_833

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_ws.py"
 type: "code"
-community: "Community 227"
+community: "Community 30"
 location: "L81"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_227
+  - community/Community_30
 ---
 
 # .test_cache_missing_returns_empty()
@@ -16,4 +16,4 @@ tags:
 - [[read_orderbook_cache returns {} if file does not exist.]] - `rationale_for` [EXTRACTED]
 - [[read_orderbook_cache()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_227
+#graphify/code #graphify/EXTRACTED #community/Community_30

@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Tracker P&L Attribution Tests"
-location: "L4788"
+community: "Community 5"
+location: "L4890"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_5
 ---
 
 # Returns (basin, count_type, season_year) for one of the 5 season- total count…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_hurricane_count_key_from_ticker()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

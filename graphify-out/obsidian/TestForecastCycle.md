@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 424"
+community: "Community 461"
 location: "L392"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_424
+  - community/Community_461
 ---
 
 # TestForecastCycle
@@ -19,4 +19,4 @@ tags:
 - [[Retargeted 2026-07-18 (backlog.txt TWO FUNCTIONS NAMED…]] - `rationale_for` [EXTRACTED]
 - [[test_forecasting.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_424
+#graphify/code #graphify/EXTRACTED #community/Community_461

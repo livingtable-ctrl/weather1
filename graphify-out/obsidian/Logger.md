@@ -1,16 +1,16 @@
 ---
 source_file: ""
 type: "code"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 6"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_6
 ---
 
 # Logger
 
 ## Connections
-- [[_setup_logging()]] - `references` [EXTRACTED]
+- [[_setup_logging()_1]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/code #graphify/EXTRACTED #community/Community_6

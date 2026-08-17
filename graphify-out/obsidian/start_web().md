@@ -1,12 +1,12 @@
 ---
 source_file: "web_app.py"
 type: "code"
-community: "Community 693"
-location: "L3289"
+community: "Community 0"
+location: "L3290"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_0
 ---
 
 # start_web()
@@ -15,7 +15,7 @@ tags:
 - [[Start the Flask web dashboard.]] - `rationale_for` [EXTRACTED]
 - [[_build_app()]] - `calls` [EXTRACTED]
 - [[cmd_web()]] - `calls` [EXTRACTED]
-- [[main.py_1]] - `imports` [EXTRACTED]
-- [[web_app.py_1]] - `contains` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
+- [[web_app.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_0

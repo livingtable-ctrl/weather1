@@ -1,24 +1,27 @@
 ---
-source_file: "tests/test_mos_nbp.py"
+source_file: "tests/test_nws_afd.py"
 type: "code"
-community: "Community 123"
-location: "L50"
+community: "Community 129"
+location: "L169"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_123
+  - community/Community_129
 ---
 
 # _wrap_html()
 
 ## Connections
-- [[dot-test_min_var_does_not_return_the_max_quantiles()]] - `calls` [EXTRACTED]
-- [[dot-test_parses_real_shaped_html_response()]] - `calls` [EXTRACTED]
-- [[dot-test_pil_derived_from_station_suffix()]] - `calls` [EXTRACTED]
-- [[dot-test_quantiles_produce_a_sane_probability()]] - `calls` [EXTRACTED]
-- [[dot-test_repeat_calls_within_ttl_hit_cache_not_network()]] - `calls` [EXTRACTED]
-- [[dot-test_returns_none_for_uncovered_date()_1]] - `calls` [EXTRACTED]
-- [[dot-test_returns_quantiles_for_covered_max_date()]] - `calls` [EXTRACTED]
-- [[test_mos_nbp.py]] - `contains` [EXTRACTED]
+- [[dot-test_caches_per_office_not_per_city()]] - `calls` [EXTRACTED]
+- [[dot-test_empty_present_section_returns_none()]] - `calls` [EXTRACTED]
+- [[dot-test_extracts_bare_discussion_section()]] - `calls` [EXTRACTED]
+- [[dot-test_extracts_qualifier_discussion_section()]] - `calls` [EXTRACTED]
+- [[dot-test_no_narrative_section_returns_none()]] - `calls` [EXTRACTED]
+- [[dot-test_pil_built_from_office_code()]] - `calls` [EXTRACTED]
+- [[dot-test_section_with_no_closing_terminator_returns_none()]] - `calls` [EXTRACTED]
+- [[dot-test_synopsis_short_long_term_fallback()]] - `calls` [EXTRACTED]
+- [[dot-test_terminator_between_nested_sub_headers_truncates()]] - `calls` [EXTRACTED]
+- [[dot-test_ttl_cache_prevents_refetch()]] - `calls` [EXTRACTED]
+- [[test_nws_afd.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_123
+#graphify/code #graphify/EXTRACTED #community/Community_129

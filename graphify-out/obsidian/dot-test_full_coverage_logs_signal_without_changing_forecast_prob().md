@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 152"
+community: "Community 16"
 location: "L859"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_152
+  - community/Community_16
 ---
 
 # .test_full_coverage_logs_signal_without_changing_forecast_prob()
@@ -18,4 +18,4 @@ tags:
 - [[Remaining window (Jul 20-31 = 12 days) fits entirely inside the 16-day forecast…]] - `rationale_for` [EXTRACTED]
 - [[TestRainForecastBlendSignal]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_152
+#graphify/code #graphify/EXTRACTED #community/Community_16

@@ -1,12 +1,12 @@
 ---
 source_file: "calibration.py"
 type: "rationale"
-community: "Community 118"
+community: "Community 266"
 location: "L301"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_118
+  - community/Community_266
 ---
 
 # Grid-search optimal blend weights per condition type (above/below/between).…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[calibrate_condition_weights()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_118
+#graphify/rationale #graphify/EXTRACTED #community/Community_266

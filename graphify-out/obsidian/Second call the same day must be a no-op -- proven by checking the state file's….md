@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_city_registry_report_logging.py"
 type: "rationale"
-community: "Community 89"
+community: "Community 412"
 location: "L48"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_89
+  - community/Community_412
 ---
 
 # Second call the same day must be a no-op -- proven by checking the state file's…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_gated_to_run_once_per_day()_2]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_89
+#graphify/rationale #graphify/EXTRACTED #community/Community_412

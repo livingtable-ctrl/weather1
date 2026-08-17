@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_nws_afd.py"
 type: "rationale"
-community: "Community 68"
+community: "Community 382"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_68
+  - community/Community_382
 ---
 
 # Tests for nws_afd.py -- backlog.txt "NWS AFD (AREA FORECAST DISCUSSION)…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_nws_afd.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_68
+#graphify/rationale #graphify/EXTRACTED #community/Community_382

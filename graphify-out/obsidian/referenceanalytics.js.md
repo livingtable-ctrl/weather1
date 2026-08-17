@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/reference/analytics.js"
 type: "code"
-community: "Community 448"
+community: "Community 481"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_448
+  - community/Community_481
 ---
 
 # reference/analytics.js
@@ -18,6 +18,6 @@ tags:
 - [[loadModelAttribution()_1]] - `contains` [EXTRACTED]
 - [[loadPriceImprovement()_1]] - `contains` [EXTRACTED]
 - [[loadSourceReliability()_1]] - `contains` [EXTRACTED]
-- [[makeLayout()_3]] - `contains` [EXTRACTED]
+- [[makeLayout()_2]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_448
+#graphify/code #graphify/EXTRACTED #community/Community_481

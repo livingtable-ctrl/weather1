@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Forecasting Persistence Model Tests"
-location: "L1291"
+community: "Community 26"
+location: "L1393"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_26
 ---
 
 # _get_enso_phase()
@@ -18,10 +18,11 @@ tags:
 - [[dot-test_la_nina_returns_correct_label()]] - `calls` [EXTRACTED]
 - [[dot-test_neutral_returns_correct_label()]] - `calls` [EXTRACTED]
 - [[dot-test_none_oni_returns_neutral()]] - `calls` [EXTRACTED]
-- [[Phase 4 Improvement Tests]] - `imports` [EXTRACTED]
+- [[TestForecastModelWeights]] - `references` [EXTRACTED]
 - [[_forecast_model_weights()]] - `calls` [EXTRACTED]
 - [[get_enso_index()]] - `calls` [EXTRACTED]
 - [[test_forecasting.py]] - `imports` [EXTRACTED]
+- [[test_phase4.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_26

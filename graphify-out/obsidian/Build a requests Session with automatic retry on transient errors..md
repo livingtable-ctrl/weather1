@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "rationale"
-community: "Circuit Breaker & Session Retry Infrastructure"
+community: "Community 248"
 location: "L94"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Circuit_Breaker__Session_Retry_Infrastructure
+  - community/Community_248
 ---
 
 # Build a requests Session with automatic retry on transient errors.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_build_session()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Circuit_Breaker__Session_Retry_Infrastructure
+#graphify/rationale #graphify/EXTRACTED #community/Community_248

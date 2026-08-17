@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 608
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[pyproject.toml Project Config]] - code - pyproject.toml
-- [[regression_baseline.json]] - document - tests/fixtures/regression_baseline.json
+- [[dot-test_rerun_preserves_unrelated_settings()]] - code - tests/test_cmd_setup.py
+- [[Re-running the setup wizard on an already-configured .env must only touch the 3…]] - rationale - tests/test_cmd_setup.py
+- [[TestCmdSetupPreservesExistingEnv]] - code - tests/test_cmd_setup.py
+- [[cmd_setup() must not destroy existing .env settings when re-run.]] - rationale - tests/test_cmd_setup.py
+- [[test_cmd_setup.py]] - code - tests/test_cmd_setup.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -19,3 +22,9 @@ members: 2
 TABLE source_file, type FROM #community/Community_608
 SORT file.name ASC
 ```
+
+## Connections to other communities
+- 1 edge to [[_COMMUNITY_Community 4]]
+
+## Top bridge nodes
+- [[test_cmd_setup.py]] - degree 3, connects to 1 community

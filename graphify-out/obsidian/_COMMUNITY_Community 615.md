@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 615
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_audit_settlement_daily_skips_unresolvable_cond_type()]] - code - tests/test_tracker.py
-- [[opus-review-caught (2026-08-10) the deleted var-derivation block's `else…]] - rationale - tests/test_tracker.py
+- [[dot-test_ci_brackets_point_estimate()_1]] - code - tests/test_hurricane_climatology.py
+- [[dot-test_too_few_outcomes_returns_degenerate_ci()]] - code - tests/test_hurricane_climatology.py
+- [[dot-test_unanimous_outcomes_clamped_not_degenerate()]] - code - tests/test_hurricane_climatology.py
+- [[Opus-review-caught (2026-08-07, HIGH) a unanimous outcome set -- the common…]] - rationale - tests/test_hurricane_climatology.py
+- [[TestBootstrapCiNextEvent]] - code - tests/test_hurricane_climatology.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,7 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
+- 1 edge to [[_COMMUNITY_Community 43]]
 
 ## Top bridge nodes
-- [[dot-test_audit_settlement_daily_skips_unresolvable_cond_type()]] - degree 2, connects to 1 community
+- [[TestBootstrapCiNextEvent]] - degree 4, connects to 1 community

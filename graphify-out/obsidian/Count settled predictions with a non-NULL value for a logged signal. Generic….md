@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Community 533"
-location: "L2652"
+community: "Community 5"
+location: "L2678"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_533
+  - community/Community_5
 ---
 
 # Count settled predictions with a non-NULL value for a logged signal. Generic…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[count_settled_signal_rows()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_533
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

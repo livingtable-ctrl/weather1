@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 504"
+community: "Community 565"
 location: "L1069"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_504
+  - community/Community_565
 ---
 
 # TestEnrichWithForecastCacheTimestamp
@@ -18,4 +18,4 @@ tags:
 - [[P1-1 data_fetched_at must reflect the cache entry's original fetch time, not…]] - `rationale_for` [EXTRACTED]
 - [[test_forecasting.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_504
+#graphify/code #graphify/EXTRACTED #community/Community_565

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "code"
-community: "METAR Lock-In Confidence Tests"
+community: "Community 22"
 location: "L229"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Lock-In_Confidence_Tests
+  - community/Community_22
 ---
 
 # .test_between_malformed_condition_missing_bounds_fails_closed()
@@ -16,4 +16,4 @@ tags:
 - [[TestBetweenLockInDynamicConfidence]] - `method` [EXTRACTED]
 - [[ZoneInfo]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Lock-In_Confidence_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_22

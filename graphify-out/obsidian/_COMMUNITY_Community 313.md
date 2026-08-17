@@ -10,18 +10,18 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[dot-setUp()_20]] - code - tests/test_tracker.py
-- [[dot-tearDown()_19]] - code - tests/test_tracker.py
-- [[dot-test_empty_has_threshold()]] - code - tests/test_tracker.py
-- [[dot-test_threshold_60_vs_80()]] - code - tests/test_tracker.py
-- [[dot-test_threshold_in_return_dict()]] - code - tests/test_tracker.py
-- [[Empty DB still returns threshold in dict.]] - rationale - tests/test_tracker.py
-- [[Return dict must include 'threshold' key.]] - rationale - tests/test_tracker.py
-- [[Shared setUptearDown for Phase 3 test classes.]] - rationale - tests/test_tracker.py
-- [[TestConfusionMatrixThreshold]] - code - tests/test_tracker.py
-- [[Tests for get_confusion_matrix() with configurable threshold (12).]] - rationale - tests/test_tracker.py
-- [[_Phase3Base]] - code - tests/test_tracker.py
-- [[prob=0.7, settled YES threshold=0.6 → TP; threshold=0.8 → FN.]] - rationale - tests/test_tracker.py
+- [[dot-test_consistency_violations_logged_at_warning()]] - code - tests/test_phase3_batch_e.py
+- [[dot-test_excess_violations_set_skip_flag()]] - code - tests/test_phase3_batch_e.py
+- [[dot-test_find_violations_called_in_source()]] - code - tests/test_phase3_batch_e.py
+- [[dot-test_find_violations_detects_inversion()]] - code - tests/test_phase3_batch_e.py
+- [[dot-test_find_violations_with_clean_markets_returns_empty()]] - code - tests/test_phase3_batch_e.py
+- [[dot-test_skip_flag_blocks_auto_trading()]] - code - tests/test_phase3_batch_e.py
+- [[A set of coherent above-threshold markets must produce zero violations.]] - rationale - tests/test_phase3_batch_e.py
+- [[More than 5 violations must set consistency_skip=True.]] - rationale - tests/test_phase3_batch_e.py
+- [[P(75°)  P(65°) is an impossible inversion — must be flagged.]] - rationale - tests/test_phase3_batch_e.py
+- [[P3-14 the consistency check must run after market scan and loghalt on excess…]] - rationale - tests/test_phase3_batch_e.py
+- [[TestCronConsistencyCheck]] - code - tests/test_phase3_batch_e.py
+- [[consistency_skip must guard the auto_place_trades calls.]] - rationale - tests/test_phase3_batch_e.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,18 +31,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 135]]
-- 2 edges to [[_COMMUNITY_Tracker SQLite Storage Tests]]
-- 1 edge to [[_COMMUNITY_Community 264]]
-- 1 edge to [[_COMMUNITY_Community 411]]
-- 1 edge to [[_COMMUNITY_Community 436]]
-- 1 edge to [[_COMMUNITY_Community 487]]
-- 1 edge to [[_COMMUNITY_Community 437]]
-- 1 edge to [[_COMMUNITY_Community 438]]
-- 1 edge to [[_COMMUNITY_Community 315]]
-- 1 edge to [[_COMMUNITY_Community 439]]
+- 2 edges to [[_COMMUNITY_Community 48]]
+- 1 edge to [[_COMMUNITY_Community 312]]
 
 ## Top bridge nodes
-- [[_Phase3Base]] - degree 16, connects to 10 communities
-- [[TestConfusionMatrixThreshold]] - degree 6, connects to 1 community
-- [[dot-test_threshold_60_vs_80()]] - degree 3, connects to 1 community
+- [[TestCronConsistencyCheck]] - degree 8, connects to 1 community
+- [[dot-test_find_violations_detects_inversion()]] - degree 3, connects to 1 community
+- [[dot-test_find_violations_with_clean_markets_returns_empty()]] - degree 3, connects to 1 community

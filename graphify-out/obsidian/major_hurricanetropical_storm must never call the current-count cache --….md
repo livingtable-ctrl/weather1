@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "rationale"
-community: "Hurricane Market Season Signals"
+community: "Community 19"
 location: "L829"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Hurricane_Market_Season_Signals
+  - community/Community_19
 ---
 
 # major_hurricane/tropical_storm must never call the current-count cache --…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_tilt_only_applied_for_hurricane_count_type()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Hurricane_Market_Season_Signals
+#graphify/rationale #graphify/EXTRACTED #community/Community_19

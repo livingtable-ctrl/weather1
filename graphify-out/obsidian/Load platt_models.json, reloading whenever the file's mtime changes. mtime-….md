@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "ML Bias Correction & Audit Plans"
-location: "L1188"
+community: "Community 245"
+location: "L1191"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_245
 ---
 
 # Load platt_models.json, reloading whenever the file's mtime changes. mtime-…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_load_platt_models()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/rationale #graphify/EXTRACTED #community/Community_245

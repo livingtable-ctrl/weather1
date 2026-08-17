@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/reference/signals.js"
 type: "code"
-community: "Community 324"
+community: "Community 331"
 location: "L68"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_324
+  - community/Community_331
 ---
 
 # applyLiveFilters()
@@ -16,4 +16,4 @@ tags:
 - [[referencesignals.js]] - `contains` [EXTRACTED]
 - [[renderLiveSignals()_1]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_324
+#graphify/code #graphify/EXTRACTED #community/Community_331

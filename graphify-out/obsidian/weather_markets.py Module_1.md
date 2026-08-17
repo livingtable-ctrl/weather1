@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md"
 type: "code"
-community: "Community 141"
+community: "Community 231"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_141
+  - community/Community_231
 ---
 
 # weather_markets.py Module
@@ -34,4 +34,4 @@ tags:
 - [[_blend_weights() Priority Logic]] - `references` [EXTRACTED]
 - [[edge_confidence(days_out) Function]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_141
+#graphify/code #graphify/EXTRACTED #community/Community_231

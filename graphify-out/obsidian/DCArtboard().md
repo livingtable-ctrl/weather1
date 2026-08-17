@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/design-canvas.jsx"
 type: "code"
-community: "Community 48"
+community: "Community 50"
 location: "L521"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_48
+  - community/Community_50
 ---
 
 # DCArtboard()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[design-canvas.jsx]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_48
+#graphify/code #graphify/INFERRED #community/Community_50

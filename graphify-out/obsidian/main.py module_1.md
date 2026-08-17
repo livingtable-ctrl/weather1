@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md"
 type: "code"
-community: "Community 295"
+community: "Community 297"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_295
+  - community/Community_297
 ---
 
 # main.py module
@@ -20,4 +20,4 @@ tags:
 - [[Wire WebSocket into Cron Loop]] - `references` [EXTRACTED]
 - [[_check_early_exits Hold Time Fix]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_295
+#graphify/code #graphify/EXTRACTED #community/Community_297

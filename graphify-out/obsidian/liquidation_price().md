@@ -1,12 +1,12 @@
 ---
 source_file: "positions.py"
 type: "code"
-community: "Community 145"
+community: "Community 3"
 location: "L91"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_145
+  - community/Community_3
 ---
 
 # liquidation_price()
@@ -24,4 +24,4 @@ tags:
 - [[test_early_exits.py]] - `references` [EXTRACTED]
 - [[update_peak_profits()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_145
+#graphify/code #graphify/EXTRACTED #community/Community_3

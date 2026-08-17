@@ -2,7 +2,7 @@
 source_file: "tests/test_tracker.py"
 type: "code"
 community: "Community 46"
-location: "L617"
+location: "L918"
 tags:
   - graphify/code
   - graphify/EXTRACTED
@@ -12,6 +12,6 @@ tags:
 # .setUp()
 
 ## Connections
-- [[TestBrierScoreLastN]] - `method` [EXTRACTED]
+- [[TestGetBrierOverTime]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_46

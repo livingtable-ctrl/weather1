@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climatology.py"
 type: "code"
-community: "Community 360"
+community: "Community 374"
 location: "L765"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_360
+  - community/Community_374
 ---
 
 # .test_non_dict_json_does_not_crash_load_all_sigmas()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestSigmaCacheRobustness]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_360
+#graphify/code #graphify/EXTRACTED #community/Community_374

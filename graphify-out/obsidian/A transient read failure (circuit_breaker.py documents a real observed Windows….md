@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_notify.py"
 type: "rationale"
-community: "Community 149"
+community: "Community 153"
 location: "L172"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_149
+  - community/Community_153
 ---
 
 # A transient read failure (circuit_breaker.py documents a real observed Windows…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_read_failure_does_not_clobber_other_keys()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_149
+#graphify/rationale #graphify/EXTRACTED #community/Community_153

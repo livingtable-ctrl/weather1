@@ -10,16 +10,16 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-test_empty_string_returns_zero()]] - code - tests/test_feature_importance_days_out.py
-- [[dot-test_malformed_string_returns_zero_not_raise()]] - code - tests/test_feature_importance_days_out.py
-- [[dot-test_none_returns_zero()]] - code - tests/test_feature_importance_days_out.py
-- [[dot-test_parses_iso_string_and_subtracts_utc_today()]] - code - tests/test_feature_importance_days_out.py
-- [[dot-test_regression_string_minus_date_would_have_raised()]] - code - tests/test_feature_importance_days_out.py
-- [[dot-test_target_date_in_past_gives_negative_days_out()]] - code - tests/test_feature_importance_days_out.py
-- [[A malformedunexpected target_date value must not raise --…]] - rationale - tests/test_feature_importance_days_out.py
-- [[Documents the exact bug this replaces subtracting a date from a raw ISO string…]] - rationale - tests/test_feature_importance_days_out.py
-- [[TestFeatureImportanceDaysOut]] - code - tests/test_feature_importance_days_out.py
-- [[The core bug fix target_date_str must be parsed to a date before arithmetic,…]] - rationale - tests/test_feature_importance_days_out.py
+- [[Adversarial Code Audit — Kalshi Weather Trading Bot]] - document - docs/audit_findings.md
+- [[Executive Summary]] - document - docs/audit_findings.md
+- [[HIGH Issues — Top 10 by Financial Risk]] - document - docs/audit_findings.md
+- [[Most Suspicious Modules (AI Hallucination Risk)]] - document - docs/audit_findings.md
+- [[P0 — Fix Before Next Live Trade (Safety-Critical) ✅ COMPLETE]] - document - docs/audit_findings.md
+- [[P1 — Fix Within 24 Hours]] - document - docs/audit_findings.md
+- [[P2 — Fix Within 1 Week]] - document - docs/audit_findings.md
+- [[P3 — Scheduled Cleanup_1]] - document - docs/audit_findings.md
+- [[Prioritized Remediation Plan]] - document - docs/audit_findings.md
+- [[Production Readiness Scores]] - document - docs/audit_findings.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,7 +29,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 497]]
+- 1 edge to [[_COMMUNITY_Community 267]]
+- 1 edge to [[_COMMUNITY_Community 446]]
+- 1 edge to [[_COMMUNITY_Community 540]]
+- 1 edge to [[_COMMUNITY_Community 485]]
 
 ## Top bridge nodes
-- [[TestFeatureImportanceDaysOut]] - degree 7, connects to 1 community
+- [[Adversarial Code Audit — Kalshi Weather Trading Bot]] - degree 9, connects to 4 communities

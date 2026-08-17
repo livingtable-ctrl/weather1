@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 138"
-location: "L2635"
+community: "Community 107"
+location: "L2776"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_138
+  - community/Community_107
 ---
 
 # ._write_open_trades()
@@ -24,4 +24,4 @@ tags:
 - [[dot-test_yes_side_marks_at_bid()]] - `calls` [EXTRACTED]
 - [[TestGetUnrealizedPnlPaper]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_138
+#graphify/code #graphify/EXTRACTED #community/Community_107

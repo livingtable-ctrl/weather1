@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_target_hours.py"
 type: "code"
-community: "Community 112"
+community: "Community 120"
 location: "L100"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_112
+  - community/Community_120
 ---
 
 # test_stale_city_refreshed_others_untouched()
@@ -18,4 +18,4 @@ tags:
 - [[_today()]] - `calls` [EXTRACTED]
 - [[test_hourly_target_hours.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_112
+#graphify/code #graphify/EXTRACTED #community/Community_120

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts_side.py"
 type: "code"
-community: "Community 200"
+community: "Community 274"
 location: "L241"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_200
+  - community/Community_274
 ---
 
 # .test_breakeven_trades_excluded_from_win_rate_denominator()
@@ -16,4 +16,4 @@ tags:
 - [[TestGroupCFixes]] - `method` [EXTRACTED]
 - [[check_anomalies()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_200
+#graphify/code #graphify/EXTRACTED #community/Community_274

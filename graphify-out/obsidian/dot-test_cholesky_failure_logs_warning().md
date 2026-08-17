@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_f.py"
 type: "code"
-community: "Community 134"
+community: "Community 155"
 location: "L79"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_134
+  - community/Community_155
 ---
 
 # .test_cholesky_failure_logs_warning()
@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[A non-positive-definite matrix must log a WARNING, not fail silently.]] - `rationale_for` [EXTRACTED]
 - [[TestCorrelationAppliedFlag]] - `method` [EXTRACTED]
-- [[_make_trade()]] - `calls` [EXTRACTED]
+- [[_make_trade()_2]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_134
+#graphify/code #graphify/EXTRACTED #community/Community_155

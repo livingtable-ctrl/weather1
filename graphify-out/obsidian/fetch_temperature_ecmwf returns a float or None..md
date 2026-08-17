@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ecmwf.py"
 type: "rationale"
-community: "Community 255"
+community: "Community 252"
 location: "L18"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_255
+  - community/Community_252
 ---
 
 # fetch_temperature_ecmwf returns a float or None.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_fetch_temperature_ecmwf_returns_float_or_none()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_255
+#graphify/rationale #graphify/EXTRACTED #community/Community_252

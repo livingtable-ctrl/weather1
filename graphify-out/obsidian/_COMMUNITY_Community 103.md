@@ -1,41 +1,42 @@
 ---
 type: community
-cohesion: 0.13
-members: 26
+cohesion: 0.07
+members: 27
 ---
 
 # Community 103
 
-**Cohesion:** 0.13 - loosely connected
-**Members:** 26 nodes
+**Cohesion:** 0.07 - loosely connected
+**Members:** 27 nodes
 
 ## Members
-- [[dot-setup_method()]] - code - tests/test_calibration.py
-- [[dot-setup_method()_1]] - code - tests/test_calibration.py
-- [[dot-teardown_method()]] - code - tests/test_calibration.py
-- [[dot-teardown_method()_1]] - code - tests/test_calibration.py
-- [[dot-test_load_city_missing_file_returns_empty()]] - code - tests/test_calibration.py
-- [[dot-test_load_city_valid_json_returns_dict()]] - code - tests/test_calibration.py
-- [[dot-test_load_condition_corrupt_json_returns_empty()]] - code - tests/test_calibration.py
-- [[dot-test_load_condition_missing_file_returns_empty()]] - code - tests/test_calibration.py
-- [[dot-test_load_condition_valid_json_returns_dict()]] - code - tests/test_calibration.py
-- [[dot-test_load_seasonal_corrupt_json_returns_empty()]] - code - tests/test_calibration.py
-- [[dot-test_load_seasonal_missing_file_returns_empty()]] - code - tests/test_calibration.py
-- [[dot-test_load_seasonal_valid_json_returns_dict()]] - code - tests/test_calibration.py
-- [[Load per-city weights from JSON. Returns {} if file missing.]] - rationale - calibration.py
-- [[Load per-condition-type weights from JSON. Returns {} if file missing.]] - rationale - calibration.py
-- [[Load seasonal weights from JSON. Returns {} if file missing.]] - rationale - calibration.py
-- [[Path_1]] - code
-- [[TestCalibrateCityWeights]] - code - tests/test_calibration.py
-- [[TestLoadWeights]] - code - tests/test_calibration.py
-- [[Tests for calibration.py — seasonal and per-city blend weight calibration.]] - rationale - tests/test_calibration.py
-- [[load_city_weights()]] - code - calibration.py
-- [[load_condition_weights()]] - code - calibration.py
-- [[load_seasonal_weights and load_city_weights must handle missingvalidcorrupt…]] - rationale - tests/test_calibration.py
-- [[load_seasonal_weights()]] - code - calibration.py
-- [[run_backtest result includes brier_by_condition dict.]] - rationale - tests/test_calibration.py
-- [[test_calibration.py]] - code - tests/test_calibration.py
-- [[test_run_backtest_reports_per_condition_type()]] - code - tests/test_calibration.py
+- [[18.1 Add `SHADOW_LOG_PATH` constant and `_log_shadow_trade` helper to `main.py`]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[18.2 Add `shadow` parameter to `_auto_place_trades`]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[18.3 Add `cmd_shadow` CLI command]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[18.4 Write tests]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[18.5 Verify Task 18]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[18.6 Commit Task 18]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[19.1 Add `sweep_edge_thresholds` to `backtest.py`]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[19.2 Write tests]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[19.3 Verify Task 19]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[19.4 Full regression check]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[19.5 Commit Task 19]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[2026-04-14-p5-testing-layer]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[36.1 Add `run_ab_test` to `backtest.py`]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[36.2 Write tests]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[36.3 Verify Task 36]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[36.4 Commit Task 36]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[37.1 Add `detect_overfitting` to `backtest.py`]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[37.2 Write tests]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[37.3 Verify Task 37]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[37.4 Full regression check]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[37.5 Commit Task 37]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[P5 Testing & Validation Layer — Implementation Plan]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[Summary of changes]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[Task 18 (P5.2) — Shadow mode]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[Task 19 (P5.5) — Parameter sweep testing]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[Task 36 (P5.3) — AB testing system]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
+- [[Task 37 (P5.4) — Overfitting detection]] - document - docs/superpowers/plans/2026-04-14-p5-testing-layer.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -43,21 +44,3 @@ members: 26
 TABLE source_file, type FROM #community/Community_103
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 9 edges to [[_COMMUNITY_Community 69]]
-- 9 edges to [[_COMMUNITY_Community 118]]
-- 4 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 3 edges to [[_COMMUNITY_Community 119]]
-- 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
-- 2 edges to [[_COMMUNITY_Community 109]]
-- 1 edge to [[_COMMUNITY_Community 72]]
-- 1 edge to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-
-## Top bridge nodes
-- [[test_calibration.py]] - degree 22, connects to 8 communities
-- [[load_condition_weights()]] - degree 9, connects to 3 communities
-- [[load_seasonal_weights()]] - degree 9, connects to 3 communities
-- [[load_city_weights()]] - degree 8, connects to 3 communities
-- [[Path_1]] - degree 12, connects to 1 community

@@ -1,17 +1,17 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 211"
+community: "Community 102"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_211
+  - community/Community_102
 ---
 
 # date
 
 ## Connections
-- [[_fetch_daily_temps_f()]] - `references` [EXTRACTED]
-- [[fetch_metar_daily_extreme()]] - `references` [EXTRACTED]
+- [[_climatological_prob_inner()]] - `references` [EXTRACTED]
+- [[climatological_prob()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_211
+#graphify/code #graphify/EXTRACTED #community/Community_102

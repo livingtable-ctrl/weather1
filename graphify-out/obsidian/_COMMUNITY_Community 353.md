@@ -1,21 +1,26 @@
 ---
 type: community
-cohesion: 0.20
-members: 6
+cohesion: 0.25
+members: 11
 ---
 
 # Community 353
 
-**Cohesion:** 0.20 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 11 nodes
 
 ## Members
-- [[Fit Platt scaling (A, B) via cross-entropy minimisation with scipy.]] - rationale - ml_bias.py
-- [[Train per-city Platt scaling fits (A, B) via cross-entropy on logit(p).…]] - rationale - ml_bias.py
-- [[_fit_platt()]] - code - ml_bias.py
-- [[train_all_temperature_scaling Function]] - code - ml_bias.py
-- [[train_platt_per_city Function]] - code - ml_bias.py
-- [[train_platt_per_city()]] - code - ml_bias.py
+- [[dot-test_analyze_trade_result_includes_city()]] - code - tests/test_weather_markets.py
+- [[dot-test_different_city_is_not_a_hedge()]] - code - tests/test_weather_markets.py
+- [[dot-test_missing_city_returns_false()]] - code - tests/test_weather_markets.py
+- [[dot-test_same_city_different_date_is_not_a_hedge()]] - code - tests/test_weather_markets.py
+- [[dot-test_same_city_same_date_opposite_side_is_a_hedge()]] - code - tests/test_weather_markets.py
+- [[A NO on tomorrow's market must NOT be flagged as a hedge of a YES on today's…]] - rationale - tests/test_weather_markets.py
+- [[Return True if the new trade would partially hedge an existing open position…]] - rationale - weather_markets.py
+- [[TestDetectHedgeOpportunity]] - code - tests/test_weather_markets.py
+- [[analyze_trade must surface 'city' in its result (previously missing entirely)…]] - rationale - tests/test_weather_markets.py
+- [[analyze_trade's returned dict must include a 'city' key so…]] - rationale - tests/test_weather_markets.py
+- [[detect_hedge_opportunity()]] - code - weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,11 +30,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 52]]
+- 2 edges to [[_COMMUNITY_Community 11]]
+- 2 edges to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 5]]
 
 ## Top bridge nodes
-- [[_fit_platt()]] - degree 4, connects to 2 communities
-- [[train_platt_per_city()]] - degree 5, connects to 1 community
-- [[train_all_temperature_scaling Function]] - degree 1, connects to 1 community
+- [[detect_hedge_opportunity()]] - degree 11, connects to 4 communities
+- [[TestDetectHedgeOpportunity]] - degree 7, connects to 1 community

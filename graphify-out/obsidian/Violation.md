@@ -1,12 +1,12 @@
 ---
 source_file: "consistency.py"
 type: "code"
-community: "Trade Cycle Engine & Arbitrage Gates"
+community: "Community 17"
 location: "L38"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Trade_Cycle_Engine__Arbitrage_Gates
+  - community/Community_17
 ---
 
 # Violation
@@ -58,4 +58,4 @@ tags:
 - [[test_p1_remaining.py]] - `imports` [EXTRACTED]
 - [[test_trade_cycle_engine.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Trade_Cycle_Engine__Arbitrage_Gates
+#graphify/code #graphify/INFERRED #community/Community_17

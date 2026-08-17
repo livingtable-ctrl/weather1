@@ -10,17 +10,17 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-test_dew_point_temp_correction_at_saturation()]] - code - tests/test_metar.py
-- [[dot-test_dew_point_temp_correction_dry_city_no_effect()]] - code - tests/test_metar.py
-- [[dot-test_dew_point_temp_correction_dry_conditions_no_effect()]] - code - tests/test_metar.py
-- [[dot-test_dew_point_temp_correction_miami()]] - code - tests/test_metar.py
-- [[dot-test_fetch_metar_includes_dew_point_f()]] - code - tests/test_metar.py
-- [[At depression=0 (saturated), correction is exactly -3.0 (the formula max).]] - rationale - tests/test_metar.py
-- [[Denver (not in sensitive set) must return 0.0 regardless of dew point.]] - rationale - tests/test_metar.py
-- [[Even for a sensitive city, depression = 20°F means no correction.]] - rationale - tests/test_metar.py
-- [[Miami humid day dew=76, forecast=90 → depression=14°F  20°F → negative…]] - rationale - tests/test_metar.py
-- [[TestDewPointCorrection]] - code - tests/test_metar.py
-- [[fetch_metar result dict must include dew_point_f key.]] - rationale - tests/test_metar.py
+- [[dot-test_builds_per_city_max_and_min_structure()]] - code - tests/test_climatology.py
+- [[dot-test_concurrent_cold_cache_calls_compute_only_once()]] - code - tests/test_climatology.py
+- [[dot-test_covers_lasvegas_and_neworleans()]] - code - tests/test_climatology.py
+- [[dot-test_force_bypasses_memoization()]] - code - tests/test_climatology.py
+- [[dot-test_memoizes_in_process()]] - code - tests/test_climatology.py
+- [[dot-test_reads_fresh_cache_without_recompute()]] - code - tests/test_climatology.py
+- [[dot-test_recomputes_stale_cache()]] - code - tests/test_climatology.py
+- [[dot-test_writes_cache_file()]] - code - tests/test_climatology.py
+- [[TestLoadAllSigmasBehavior]] - code - tests/test_climatology.py
+- [[The actual backlog payoff cities absent from weather_markets' static…]] - rationale - tests/test_climatology.py
+- [[backlog.txt FORECAST_SIGMA.JSON ATOMIC WRITE CONTENTION cron.py's…]] - rationale - tests/test_climatology.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,14 +30,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Community 73]]
-- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestDewPointCorrection]] - degree 7, connects to 2 communities
-- [[dot-test_fetch_metar_includes_dew_point_f()]] - degree 4, connects to 2 communities
-- [[dot-test_dew_point_temp_correction_at_saturation()]] - degree 3, connects to 1 community
-- [[dot-test_dew_point_temp_correction_dry_city_no_effect()]] - degree 3, connects to 1 community
-- [[dot-test_dew_point_temp_correction_dry_conditions_no_effect()]] - degree 3, connects to 1 community
+- [[TestLoadAllSigmasBehavior]] - degree 9, connects to 1 community

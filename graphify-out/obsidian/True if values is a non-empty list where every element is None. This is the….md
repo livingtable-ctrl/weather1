@@ -1,12 +1,12 @@
 ---
 source_file: "schema_validator.py"
 type: "rationale"
-community: "Community 356"
+community: "Community 187"
 location: "L159"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_356
+  - community/Community_187
 ---
 
 # True if values is a non-empty list where every element is None. This is the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[is_all_null()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_356
+#graphify/rationale #graphify/EXTRACTED #community/Community_187

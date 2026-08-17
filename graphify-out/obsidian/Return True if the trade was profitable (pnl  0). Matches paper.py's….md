@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "rationale"
-community: "Community 194"
+community: "Community 359"
 location: "L204"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_194
+  - community/Community_359
 ---
 
 # Return True if the trade was profitable (pnl > 0). Matches paper.py's…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_trade_won()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_194
+#graphify/rationale #graphify/EXTRACTED #community/Community_359

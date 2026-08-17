@@ -1,47 +1,47 @@
 ---
 type: community
-cohesion: 0.10
+cohesion: 0.08
 members: 32
 ---
 
 # Community 77
 
-**Cohesion:** 0.10 - loosely connected
+**Cohesion:** 0.08 - loosely connected
 **Members:** 32 nodes
 
 ## Members
-- [[dot-_candles()]] - code - tests/test_tracker.py
-- [[dot-_settle()]] - code - tests/test_tracker.py
-- [[dot-_settle()_1]] - code - tests/test_tracker.py
-- [[dot-setUp()_42]] - code - tests/test_tracker.py
-- [[dot-setUp()_43]] - code - tests/test_tracker.py
-- [[dot-tearDown()_41]] - code - tests/test_tracker.py
-- [[dot-tearDown()_42]] - code - tests/test_tracker.py
-- [[dot-test_backfills_settled_tickers_missing_price_history()]] - code - tests/test_tracker.py
-- [[dot-test_candlestick_fetch_failure_for_one_ticker_does_not_abort_the_pass()]] - code - tests/test_tracker.py
-- [[dot-test_corrects_stale_proxy_value_from_expiration_value()]] - code - tests/test_tracker.py
-- [[dot-test_disputed_rows_are_included()]] - code - tests/test_tracker.py
-- [[dot-test_disputed_settled_tickers_are_included()]] - code - tests/test_tracker.py
-- [[dot-test_empty_candle_list_does_not_count_as_filled()]] - code - tests/test_tracker.py
-- [[dot-test_failed_fetch_leaves_prior_value_untouched()]] - code - tests/test_tracker.py
-- [[dot-test_one_get_market_failure_does_not_abort_the_whole_pass()]] - code - tests/test_tracker.py
-- [[dot-test_one_ticker_failure_does_not_abort_the_whole_pass()]] - code - tests/test_tracker.py
-- [[dot-test_rows_with_null_settled_temp_f_are_not_selected()]] - code - tests/test_tracker.py
-- [[dot-test_skips_ticker_with_no_open_time_cleanly_no_warning()]] - code - tests/test_tracker.py
-- [[dot-test_skips_tickers_that_already_have_price_history()]] - code - tests/test_tracker.py
-- [[dot-test_uses_real_series_ticker_when_get_market_provides_one()]] - code - tests/test_tracker.py
-- [[dot-test_zero_when_nothing_has_settled_temp_f()]] - code - tests/test_tracker.py
-- [[dot-test_zero_when_nothing_settled()]] - code - tests/test_tracker.py
-- [[A ticker whose candles are genuinely unavailable (e.g. past the endpoint's…]] - rationale - tests/test_tracker.py
-- [[Deliberately the OPPOSITE of a first-draft version of this test (which asserted…]] - rationale - tests/test_tracker.py
-- [[Matches backfill_price_history's own reasoning (see…]] - rationale - tests/test_tracker.py
-- [[Missing open_time is a genuine, expected skip condition (not an error) -- must…]] - rationale - tests/test_tracker.py
-- [[Rows that never got a settled_temp_f (e.g. hourlymonthly-precip tickers, or a…]] - rationale - tests/test_tracker.py
-- [[TestBackfillDailyTempSettlement]] - code - tests/test_tracker.py
-- [[TestBackfillPriceHistory]] - code - tests/test_tracker.py
-- [[The row already has an (old, ASOS-proxy-derived) settled_temp_f; re-running…]] - rationale - tests/test_tracker.py
-- [[tracker.backfill_daily_temp_settlement() -- the one-off recovery pass…]] - rationale - tests/test_tracker.py
-- [[tracker.backfill_price_history(client) -- the one-off recovery pass for…]] - rationale - tests/test_tracker.py
+- [[dot-_call()_4]] - code - tests/test_phase2_batch_k.py
+- [[dot-_call()_5]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_all_identical_flagged_as_degenerate()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_analyze_trade_skips_degenerate_ensemble()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_degenerate_key_always_present_when_nonempty()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_empty_returns_empty()_1]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_exactly_5_members_not_degenerate()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_no_negative_weights_no_clim()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_no_negative_weights_no_nws()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_no_negative_weights_tight_spread()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_six_identical_members_is_degenerate()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_tight_spread_boosts_ensemble()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_varied_temps_not_degenerate()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_weights_sum_to_one()_5]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_wide_spread_reduces_ensemble()]] - code - tests/test_phase2_batch_k.py
+- [[10 identical values (std=0) with n5 must be degenerate=True.]] - rationale - tests/test_phase2_batch_k.py
+- [[6 identical members triggers degenerate=True.]] - rationale - tests/test_phase2_batch_k.py
+- [[All weights must sum to 1.0 regardless of scaling.]] - rationale - tests/test_phase2_batch_k.py
+- [[Empty input returns empty dict (no degenerate key).]] - rationale - tests/test_phase2_batch_k.py
+- [[Exactly 5 identical members degenerate threshold requires 5.]] - rationale - tests/test_phase2_batch_k.py
+- [[No negative weights when NWS is unavailable and spread is tight.]] - rationale - tests/test_phase2_batch_k.py
+- [[No negative weights when climatology is unavailable and spread is tight.]] - rationale - tests/test_phase2_batch_k.py
+- [[Normal spread must not be flagged as degenerate.]] - rationale - tests/test_phase2_batch_k.py
+- [[TestConfidenceScaledBlendWeightsNoNegative]] - code - tests/test_phase2_batch_k.py
+- [[TestEnsembleStatsDegenerate]] - code - tests/test_phase2_batch_k.py
+- [[Tighter-than-reference spread (std  4°F) must increase w_ens.]] - rationale - tests/test_phase2_batch_k.py
+- [[Weights must stay = 0 when scale  1 (tight spread).]] - rationale - tests/test_phase2_batch_k.py
+- [[Wider-than-reference spread (std  4°F) must decrease w_ens.]] - rationale - tests/test_phase2_batch_k.py
+- [[With ens_std=0.5 (scale=40.5=8, clamped to 1.5), w_climw_nws stay = 0.]] - rationale - tests/test_phase2_batch_k.py
+- [[analyze_trade must return None when ens_stats.degenerate is True.]] - rationale - tests/test_phase2_batch_k.py
+- [[degenerate key must be present for any non-empty input.]] - rationale - tests/test_phase2_batch_k.py
+- [[ensemble_stats must flag all-identical members as degenerate.]] - rationale - tests/test_phase2_batch_k.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -51,8 +51,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 3 edges to [[_COMMUNITY_Community 68]]
+- 1 edge to [[_COMMUNITY_Community 183]]
 
 ## Top bridge nodes
-- [[TestBackfillPriceHistory]] - degree 15, connects to 1 community
-- [[TestBackfillDailyTempSettlement]] - degree 11, connects to 1 community
+- [[dot-_call()_5]] - degree 14, connects to 1 community
+- [[TestEnsembleStatsDegenerate]] - degree 10, connects to 1 community
+- [[TestConfidenceScaledBlendWeightsNoNegative]] - degree 9, connects to 1 community
+- [[dot-_call()_4]] - degree 2, connects to 1 community

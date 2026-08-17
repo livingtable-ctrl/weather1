@@ -1,12 +1,12 @@
 ---
 source_file: "mos.py"
 type: "rationale"
-community: "Community 99"
+community: "Community 15"
 location: "L573"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_99
+  - community/Community_15
 ---
 
 # Fetch and parse the station's current NBP bulletin into {(local_date,…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_fetch_nbp_percentiles()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_99
+#graphify/rationale #graphify/EXTRACTED #community/Community_15

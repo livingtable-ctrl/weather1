@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_isoformat_cutoff_guard.py"
 type: "code"
-community: "Community 75"
+community: "Community 66"
 location: "L197"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_75
+  - community/Community_66
 ---
 
 # _iter_isoformat_cutoff_sites()
@@ -21,4 +21,4 @@ tags:
 - [[test_isoformat_cutoff_guard.py]] - `contains` [EXTRACTED]
 - [[test_no_new_isoformat_cutoff_outside_allowlist()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_75
+#graphify/code #graphify/EXTRACTED #community/Community_66

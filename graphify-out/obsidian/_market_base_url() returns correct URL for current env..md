@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "rationale"
-community: "Community 373"
+community: "Community 388"
 location: "L369"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_373
+  - community/Community_388
 ---
 
 # _market_base_url() returns correct URL for current env.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_market_base_url_switches_with_env()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_373
+#graphify/rationale #graphify/EXTRACTED #community/Community_388

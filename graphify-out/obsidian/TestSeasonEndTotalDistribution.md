@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 60"
+community: "Community 59"
 location: "L217"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_60
+  - community/Community_59
 ---
 
 # TestSeasonEndTotalDistribution
@@ -20,4 +20,4 @@ tags:
 - [[dot-test_window_years_caps_history_to_most_recent()]] - `method` [EXTRACTED]
 - [[test_hurricane_climatology.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_60
+#graphify/code #graphify/EXTRACTED #community/Community_59

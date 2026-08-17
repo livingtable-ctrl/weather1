@@ -1,11 +1,11 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 500"
+community: "Community 452"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_500
+  - community/Community_452
 ---
 
 # Live Order Executor Module
@@ -14,4 +14,4 @@ tags:
 - [[portfolio_var Function]] - `references` [EXTRACTED]
 - [[update_orderbook_cache Function]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_500
+#graphify/code #graphify/EXTRACTED #community/Community_452

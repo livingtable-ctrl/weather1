@@ -1,12 +1,12 @@
 ---
 source_file: "calibration.py"
 type: "code"
-community: "Community 118"
+community: "Community 400"
 location: "L73"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_118
+  - community/Community_400
 ---
 
 # _split_rows()
@@ -18,4 +18,4 @@ tags:
 - [[calibrate_seasonal_weights()]] - `calls` [EXTRACTED]
 - [[calibration.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_118
+#graphify/code #graphify/EXTRACTED #community/Community_400

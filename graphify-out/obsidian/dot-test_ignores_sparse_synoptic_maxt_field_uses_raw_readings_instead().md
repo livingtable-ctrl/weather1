@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "code"
-community: "Community 91"
+community: "Community 100"
 location: "L443"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_91
+  - community/Community_100
 ---
 
 # .test_ignores_sparse_synoptic_maxt_field_uses_raw_readings_instead()
@@ -17,4 +17,4 @@ tags:
 - [[TestFetchMetarDailyExtreme]] - `method` [EXTRACTED]
 - [[ZoneInfo]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_91
+#graphify/code #graphify/EXTRACTED #community/Community_100

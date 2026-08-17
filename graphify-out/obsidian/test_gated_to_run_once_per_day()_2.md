@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_city_registry_report_logging.py"
 type: "code"
-community: "Community 89"
+community: "Community 412"
 location: "L47"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_89
+  - community/Community_412
 ---
 
 # test_gated_to_run_once_per_day()
@@ -16,4 +16,4 @@ tags:
 - [[_today()_3]] - `calls` [EXTRACTED]
 - [[test_city_registry_report_logging.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_89
+#graphify/code #graphify/EXTRACTED #community/Community_412

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 530"
-location: "L3130"
+community: "Community 588"
+location: "L3499"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_530
+  - community/Community_588
 ---
 
 # weather_markets.py must not contain any date.today() calls.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_no_date_today_calls_remain()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_530
+#graphify/rationale #graphify/EXTRACTED #community/Community_588

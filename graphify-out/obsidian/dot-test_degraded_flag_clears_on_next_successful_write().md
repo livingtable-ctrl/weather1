@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "code"
-community: "Community 274"
+community: "Community 275"
 location: "L255"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_274
+  - community/Community_275
 ---
 
 # .test_degraded_flag_clears_on_next_successful_write()
@@ -15,4 +15,4 @@ tags:
 - [[Once the DB recovers, a real write should clear the fail-closed flag.]] - `rationale_for` [EXTRACTED]
 - [[TestDailyLiveLoss]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_274
+#graphify/code #graphify/EXTRACTED #community/Community_275

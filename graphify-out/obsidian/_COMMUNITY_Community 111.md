@@ -1,40 +1,41 @@
 ---
 type: community
-cohesion: 0.10
-members: 25
+cohesion: 0.13
+members: 26
 ---
 
 # Community 111
 
-**Cohesion:** 0.10 - loosely connected
-**Members:** 25 nodes
+**Cohesion:** 0.13 - loosely connected
+**Members:** 26 nodes
 
 ## Members
-- [[dot-test_cycle_dedup_skips_already_ordered()]] - code - tests/test_live_execution.py
-- [[dot-test_falls_back_to_rest_when_ws_cache_missing()]] - code - tests/test_live_execution.py
-- [[dot-test_falls_back_to_rest_when_ws_entry_one_sided()]] - code - tests/test_live_execution.py
-- [[dot-test_filled_order_updates_status()]] - code - tests/test_live_execution.py
-- [[dot-test_places_order_when_not_yet_ordered()]] - code - tests/test_live_execution.py
-- [[dot-test_returns_false_when_already_ordered_this_cycle()]] - code - tests/test_live_execution.py
-- [[dot-test_returns_none_when_both_sources_unavailable()]] - code - tests/test_live_execution.py
-- [[dot-test_returns_none_when_rest_market_has_no_quote()]] - code - tests/test_live_execution.py
-- [[dot-test_uses_ws_cache_when_fresh_and_complete()]] - code - tests/test_live_execution.py
-- [[dot-test_var_computation_error_skips_the_trade()]] - code - tests/test_live_execution.py
-- [[A one-sided WS book (no real ask) must not be treated as usable -- falls…]] - rationale - tests/test_live_execution.py
-- [[F5 a portfolio_var() exception used to be swallowed at DEBUG and the trade…]] - rationale - tests/test_live_execution.py
-- [[If was_ordered_this_cycle returns True, no paper or live order is placed.]] - rationale - tests/test_live_execution.py
-- [[Positive control order fires when dedup finds no prior order this cycle.]] - rationale - tests/test_live_execution.py
-- [[Return a market-price-shaped dict ({yes_bid ..., yes_ask ...}) with the…]] - rationale - order_executor.py
-- [[TestAutoPlaceTradesCycleCheck]] - code - tests/test_live_execution.py
-- [[TestGetCurrentBook]] - code - tests/test_live_execution.py
-- [[TestPlaceLiveOrderDedup]] - code - tests/test_live_execution.py
-- [[TestPollPendingOrders]] - code - tests/test_live_execution.py
-- [[TestVarGateFailsClosed]] - code - tests/test_live_execution.py
-- [[Tests for live execution path in main.py.]] - rationale - tests/test_live_execution.py
-- [[_get_current_book()]] - code - order_executor.py
-- [[_place_live_order must return (False, 0.0) when the ticker was already ordered…]] - rationale - tests/test_live_execution.py
-- [[_poll_pending_orders updates a pending live order to 'filled' when API returns…]] - rationale - tests/test_live_execution.py
-- [[test_live_execution.py]] - code - tests/test_live_execution.py
+- [[dot-__init__()_1]] - code - tests/test_execution_proof.py
+- [[dot-get_market()_1]] - code - tests/test_execution_proof.py
+- [[If log_analysis_attempt fails after a successful trade, it must be logged.]] - rationale - tests/test_execution_proof.py
+- [[If place_paper_order raises a non-ValueError, it must be logged.]] - rationale - tests/test_execution_proof.py
+- [[L1-B if the fresh market price eliminates our edge, trade must be skipped.…]] - rationale - tests/test_execution_proof.py
+- [[L1-B when a client is supplied, entry_price must reflect the re-fetched market…]] - rationale - tests/test_execution_proof.py
+- [[L1-B without a client (paper-only mode), stale analysis price is used. This…]] - rationale - tests/test_execution_proof.py
+- [[L1-D place_paper_order failure must print a visible error — not just log. A…]] - rationale - tests/test_execution_proof.py
+- [[Minimal KalshiClient stand-in for price-refresh tests.]] - rationale - tests/test_execution_proof.py
+- [[Minimal flat opportunity dict accepted by _auto_place_trades.]] - rationale - tests/test_execution_proof.py
+- [[Returns 0 immediately when drawdown guard is active.]] - rationale - tests/test_execution_proof.py
+- [[Stub out all guards so _auto_place_trades reaches the trade loop.]] - rationale - tests/test_execution_proof.py
+- [[Tests for P0.1 — Trade execution proof. _auto_place_trades must return the…]] - rationale - tests/test_execution_proof.py
+- [[_FakeClient]] - code - tests/test_execution_proof.py
+- [[_auto_place_trades must return the count of actually placed trades.]] - rationale - tests/test_execution_proof.py
+- [[_make_opp()]] - code - tests/test_execution_proof.py
+- [[_stub_auto_prereqs()]] - code - tests/test_execution_proof.py
+- [[test_auto_place_trades_logs_analysis_attempt_failure()]] - code - tests/test_execution_proof.py
+- [[test_auto_place_trades_logs_paper_failure()]] - code - tests/test_execution_proof.py
+- [[test_auto_place_trades_returns_placed_count()]] - code - tests/test_execution_proof.py
+- [[test_auto_place_trades_returns_zero_when_halted()]] - code - tests/test_execution_proof.py
+- [[test_execution_proof.py]] - code - tests/test_execution_proof.py
+- [[test_l1b_no_client_uses_stale_price()]] - code - tests/test_execution_proof.py
+- [[test_l1b_price_refresh_skips_when_edge_gone()]] - code - tests/test_execution_proof.py
+- [[test_l1b_price_refresh_uses_fresh_market_prob()]] - code - tests/test_execution_proof.py
+- [[test_l1d_paper_failure_printed_to_console()]] - code - tests/test_execution_proof.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -44,33 +45,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 17 edges to [[_COMMUNITY_Community 45]]
-- 6 edges to [[_COMMUNITY_Community 67]]
-- 6 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 4 edges to [[_COMMUNITY_Community 110]]
-- 4 edges to [[_COMMUNITY_Community 144]]
-- 4 edges to [[_COMMUNITY_Community 215]]
-- 3 edges to [[_COMMUNITY_Community 157]]
-- 3 edges to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 2 edges to [[_COMMUNITY_Community 300]]
-- 2 edges to [[_COMMUNITY_Community 329]]
-- 2 edges to [[_COMMUNITY_Community 389]]
-- 2 edges to [[_COMMUNITY_Community 227]]
-- 1 edge to [[_COMMUNITY_Community 171]]
-- 1 edge to [[_COMMUNITY_Community 337]]
-- 1 edge to [[_COMMUNITY_Community 338]]
-- 1 edge to [[_COMMUNITY_Community 429]]
-- 1 edge to [[_COMMUNITY_Community 468]]
-- 1 edge to [[_COMMUNITY_Community 469]]
-- 1 edge to [[_COMMUNITY_Community 198]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 328]]
-- 1 edge to [[_COMMUNITY_Community 183]]
+- 1 edge to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 110]]
+- 1 edge to [[_COMMUNITY_Community 245]]
+- 1 edge to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 6]]
+- 1 edge to [[_COMMUNITY_Community 41]]
+- 1 edge to [[_COMMUNITY_Community 31]]
 
 ## Top bridge nodes
-- [[test_live_execution.py]] - degree 54, connects to 20 communities
-- [[_get_current_book()]] - degree 16, connects to 7 communities
-- [[TestGetCurrentBook]] - degree 8, connects to 1 community
-- [[TestPlaceLiveOrderDedup]] - degree 6, connects to 1 community
-- [[TestVarGateFailsClosed]] - degree 5, connects to 1 community
+- [[test_execution_proof.py]] - degree 19, connects to 7 communities

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 106"
+community: "Community 113"
 location: "L301"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_106
+  - community/Community_113
 ---
 
 # .test_not_paused_at_start()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMaxDrawdown]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_106
+#graphify/code #graphify/EXTRACTED #community/Community_113

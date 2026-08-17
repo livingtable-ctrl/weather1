@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 549"
+community: "Community 617"
 location: "L480"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_549
+  - community/Community_617
 ---
 
 # .test_warns_on_world_readable_key()
@@ -15,4 +15,4 @@ tags:
 - [[Loading a key file with groupother read bits set emits a warning (Unix only).]] - `rationale_for` [EXTRACTED]
 - [[TestKeyPermissions]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_549
+#graphify/code #graphify/EXTRACTED #community/Community_617

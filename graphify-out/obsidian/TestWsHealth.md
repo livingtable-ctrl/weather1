@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_ws.py"
 type: "code"
-community: "Community 130"
+community: "Community 618"
 location: "L305"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_130
+  - community/Community_618
 ---
 
 # TestWsHealth
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_get_ws_health_stale_flag()]] - `method` [EXTRACTED]
 - [[test_kalshi_ws.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_130
+#graphify/code #graphify/EXTRACTED #community/Community_618

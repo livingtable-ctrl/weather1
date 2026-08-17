@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 378"
+community: "Community 392"
 location: "L1475"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_378
+  - community/Community_392
 ---
 
 # .test_unexpected_unit_refuses_value()
@@ -16,4 +16,4 @@ tags:
 - [[If Open-Meteo ever reports mm (or anything else) instead of cm, this must fail…]] - `rationale_for` [EXTRACTED]
 - [[TestFetchSeasonalSnowMeanCmUnitValidation]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_378
+#graphify/code #graphify/EXTRACTED #community/Community_392

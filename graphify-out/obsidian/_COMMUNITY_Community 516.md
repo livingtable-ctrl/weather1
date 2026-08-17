@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 516
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_no_duplicate_v8_to_v9_comments()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_schema_version_matches_migration_count()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_v18_to_v19_comment_present()]] - code - tests/test_phase2_batch_g.py
-- [[Last migration must be labeled v18→v19 matching _SCHEMA_VERSION=19.]] - rationale - tests/test_phase2_batch_g.py
-- [[P2-41 migration comments must match index+1 version numbers.]] - rationale - tests/test_phase2_batch_g.py
-- [[TestTrackerMigrationComments]] - code - tests/test_phase2_batch_g.py
+- [[dot-setUp()_38]] - code - tests/test_paper.py
+- [[dot-tearDown()_37]] - code - tests/test_paper.py
+- [[dot-test_export_trades_csv()]] - code - tests/test_paper.py
+- [[dot-test_export_trades_csv_empty()]] - code - tests/test_paper.py
+- [[dot-test_export_trades_csv_handles_heterogeneous_schema()]] - code - tests/test_paper.py
+- [[An older trade record (fewer keys, simulating a pre-field JSON row) must not…]] - rationale - tests/test_paper.py
+- [[TestExportTrades]] - code - tests/test_paper.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 248]]
+- 4 edges to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 21]]
 
 ## Top bridge nodes
-- [[TestTrackerMigrationComments]] - degree 5, connects to 1 community
+- [[TestExportTrades]] - degree 7, connects to 2 communities
+- [[dot-test_export_trades_csv_handles_heterogeneous_schema()]] - degree 3, connects to 1 community
+- [[dot-setUp()_38]] - degree 2, connects to 1 community
+- [[dot-test_export_trades_csv()]] - degree 2, connects to 1 community
+- [[dot-test_export_trades_csv_empty()]] - degree 2, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 529"
-location: "L2859"
+community: "Community 587"
+location: "L3228"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_529
+  - community/Community_587
 ---
 
 # TestLearnedWeightsTTL
@@ -17,4 +17,4 @@ tags:
 - [[L4-D load_learned_weights() must discard files older than 7 days.]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_529
+#graphify/code #graphify/EXTRACTED #community/Community_587

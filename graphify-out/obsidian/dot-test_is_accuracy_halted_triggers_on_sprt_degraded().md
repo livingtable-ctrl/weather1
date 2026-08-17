@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_sprt.py"
 type: "code"
-community: "Community 380"
+community: "Community 472"
 location: "L118"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_380
+  - community/Community_472
 ---
 
 # .test_is_accuracy_halted_triggers_on_sprt_degraded()
@@ -15,4 +15,4 @@ tags:
 - [[TestIsAccuracyHaltedSprt]] - `method` [EXTRACTED]
 - [[is_accuracy_halted returns True when sprt_model_health returns 'degraded'.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_380
+#graphify/code #graphify/EXTRACTED #community/Community_472

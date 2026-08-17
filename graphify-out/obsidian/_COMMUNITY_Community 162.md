@@ -1,35 +1,35 @@
 ---
 type: community
-cohesion: 0.13
+cohesion: 0.10
 members: 20
 ---
 
 # Community 162
 
-**Cohesion:** 0.13 - loosely connected
+**Cohesion:** 0.10 - loosely connected
 **Members:** 20 nodes
 
 ## Members
-- [[Every .py file in the repo outside the excluded directories above.]] - rationale - tests/test_disputed_row_guard.py
-- [[Fails if a function joins the raw outcomes table without a documented reason in…]] - rationale - tests/test_disputed_row_guard.py
-- [[Innermost (smallest-span) function containing lineno, or None if the line isn't…]] - rationale - tests/test_disputed_row_guard.py
-- [[Inverse check every allowlisted (file, qualname) must still actually join the…]] - rationale - tests/test_disputed_row_guard.py
-- [[Module]] - code
-- [[Path_5]] - code
-- [[Return (relative_file, line_number, enclosing_qualified_function_name) for…]] - rationale - tests/test_disputed_row_guard.py
-- [[Return (start_line, end_line, qualified_name) for every…]] - rationale - tests/test_disputed_row_guard.py
-- [[Sanity check the view definition itself hasn't been renamedremoved out from…]] - rationale - tests/test_disputed_row_guard.py
-- [[_func_for_line()]] - code - tests/test_disputed_row_guard.py
-- [[_function_spans()]] - code - tests/test_disputed_row_guard.py
-- [[_iter_outcomes_join_sites()]] - code - tests/test_disputed_row_guard.py
-- [[_production_py_files()]] - code - tests/test_disputed_row_guard.py
-- [[rAutomated guard against a new query anywhere in the repo joining the raw…]] - rationale - tests/test_disputed_row_guard.py
-- [[test_config_divergence_guard.py_1]] - code - tests/test_config_divergence_guard.py
-- [[test_disputed_row_guard.py]] - code - tests/test_disputed_row_guard.py
-- [[test_no_new_raw_outcomes_join_outside_allowlist()]] - code - tests/test_disputed_row_guard.py
-- [[test_outcomes_valid_view_exists_in_schema()]] - code - tests/test_disputed_row_guard.py
-- [[test_raw_outcomes_allowlist_has_no_stale_entries()]] - code - tests/test_disputed_row_guard.py
-- [[tracker.outcomes_valid VIEW (init_db)]] - code - tracker.py
+- [[dot-test_circuit_open_serves_cached_value_instead_of_none()]] - code - tests/test_acis_precip.py
+- [[dot-test_correct_mm_unit_returns_value()]] - code - tests/test_acis_precip.py
+- [[dot-test_different_params_are_not_cache_collisions()]] - code - tests/test_acis_precip.py
+- [[dot-test_fetch_exception_returns_none()_1]] - code - tests/test_acis_precip.py
+- [[dot-test_month_outside_window_result_is_also_cached()]] - code - tests/test_acis_precip.py
+- [[dot-test_month_outside_window_returns_none()]] - code - tests/test_acis_precip.py
+- [[dot-test_none_result_IS_cached_second_call_skips_http()]] - code - tests/test_acis_precip.py
+- [[dot-test_one_response_fills_cache_for_every_month_present()]] - code - tests/test_acis_precip.py
+- [[dot-test_parses_matching_month()]] - code - tests/test_acis_precip.py
+- [[dot-test_successful_result_is_cached_second_call_skips_http()]] - code - tests/test_acis_precip.py
+- [[dot-test_unexpected_unit_refuses_value()]] - code - tests/test_acis_precip.py
+- [[A different (lat, lon, tz, year, month) must be a real cache miss, not…]] - rationale - tests/test_acis_precip.py
+- [[Control for the guard above an explicit, correct 'mm' unit must not be refused.]] - rationale - tests/test_acis_precip.py
+- [[One response covers ~6 months of data -- every (year, month) actually present…]] - rationale - tests/test_acis_precip.py
+- [[Opus-review-caught gap (Snow Step 2 round-2 review) the mm claim was, like…]] - rationale - tests/test_acis_precip.py
+- [[TestFetchSeasonalPrecipMeanMm]] - code - tests/test_acis_precip.py
+- [[The target-month-absent-from-response None path (a successful HTTP call whose…]] - rationale - tests/test_acis_precip.py
+- [[Unlike a plain .get()-based cache, None results ARE cached here too (via…]] - rationale - tests/test_acis_precip.py
+- [[While the circuit breaker is open, a cache hit must still win -- matches…]] - rationale - tests/test_acis_precip.py
+- [[backlog.txt 'OPEN-METEO SEASONAL API...' research finding this function had…]] - rationale - tests/test_acis_precip.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -39,12 +39,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 184]]
-- 1 edge to [[_COMMUNITY_Community 355]]
-- 1 edge to [[_COMMUNITY_Community 146]]
-- 1 edge to [[_COMMUNITY_Community 497]]
-- 1 edge to [[_COMMUNITY_Community 202]]
+- 1 edge to [[_COMMUNITY_Community 141]]
 
 ## Top bridge nodes
-- [[test_disputed_row_guard.py]] - degree 13, connects to 3 communities
-- [[test_config_divergence_guard.py_1]] - degree 3, connects to 2 communities
+- [[TestFetchSeasonalPrecipMeanMm]] - degree 12, connects to 1 community

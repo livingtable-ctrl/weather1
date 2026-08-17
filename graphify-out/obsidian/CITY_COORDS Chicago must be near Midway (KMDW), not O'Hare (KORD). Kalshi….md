@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "rationale"
-community: "Community 407"
+community: "Community 434"
 location: "L387"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_407
+  - community/Community_434
 ---
 
 # CITY_COORDS Chicago must be near Midway (KMDW), not O'Hare (KORD). Kalshi…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_chicago_coords_closer_to_kmdw_than_kord()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_407
+#graphify/rationale #graphify/EXTRACTED #community/Community_434

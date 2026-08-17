@@ -1,30 +1,31 @@
 ---
 type: community
-cohesion: 0.18
-members: 15
+cohesion: 0.17
+members: 16
 ---
 
 # Community 224
 
-**Cohesion:** 0.18 - loosely connected
-**Members:** 15 nodes
+**Cohesion:** 0.17 - loosely connected
+**Members:** 16 nodes
 
 ## Members
-- [[API Schema Drift Test]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[B1 Per-Trade Drawdown Re-check]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
-- [[Code Review Remediation Plan]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[Drawdown-Tiered Kelly Step Reduction]] - document - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
-- [[Expand SHA-256 Checksum to 16 Hex Chars]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[Extract Output Formatters to output_formatters.py]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[Fix Exit Signals Dead-End]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
-- [[Fix Failing kelly_bet_dollars Test]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[Gate Kelly Scaling Behind MIN_BRIER_SAMPLES]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[Rolling Win-Rate Accuracy Circuit Breaker]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[Tighten DRAWDOWN_HALT_PCT to 20%]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[Type Hints + mypy CI Enforcement]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[Wire drawdown_scaling_factor to Configurable Thresholds]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[main.py Coverage + cmd_cron Smoke Tests]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[paper.py module_1]] - code - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
+- [[dot-_run_place()]] - code - tests/test_prelog.py
+- [[dot-test_exactly_one_log_row_on_failure()]] - code - tests/test_prelog.py
+- [[dot-test_exactly_one_log_row_on_success()]] - code - tests/test_prelog.py
+- [[dot-test_pending_row_exists_before_api_call()]] - code - tests/test_prelog.py
+- [[dot-test_placed_order_counts_toward_open_positions()]] - code - tests/test_prelog.py
+- [[dot-test_status_updated_to_failed_on_exception()]] - code - tests/test_prelog.py
+- [[dot-test_status_updated_to_pending_on_success()]] - code - tests/test_prelog.py
+- [[A 'pending' log row must exist in the DB before place_order is called.]] - rationale - tests/test_prelog.py
+- [[After a successful place_order, status must be updated to 'pending' — the…]] - rationale - tests/test_prelog.py
+- [[After place_order raises, status must be updated to 'failed'.]] - rationale - tests/test_prelog.py
+- [[Even on API failure, exactly one DB row must exist.]] - rationale - tests/test_prelog.py
+- [[Exactly one DB row must be created (pre-log + in-place update, not two inserts).]] - rationale - tests/test_prelog.py
+- [[F1 regression a successfully-placed live order must actually be counted by…]] - rationale - tests/test_prelog.py
+- [[Helper run _place_live_order with the gate open and capture log calls.]] - rationale - tests/test_prelog.py
+- [[TestPreLogPattern]] - code - tests/test_prelog.py
+- [[_place_live_order must pre-log with status='pending' before calling place_order.]] - rationale - tests/test_prelog.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,17 +35,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 210]]
-- 3 edges to [[_COMMUNITY_Community 294]]
-- 3 edges to [[_COMMUNITY_Community 295]]
-- 2 edges to [[_COMMUNITY_Community 536]]
-- 1 edge to [[_COMMUNITY_Community 117]]
-- 1 edge to [[_COMMUNITY_Community 452]]
-- 1 edge to [[_COMMUNITY_Community 453]]
+- 1 edge to [[_COMMUNITY_Community 220]]
+- 1 edge to [[_COMMUNITY_Community 1]]
 
 ## Top bridge nodes
-- [[Code Review Remediation Plan]] - degree 16, connects to 5 communities
-- [[paper.py module_1]] - degree 9, connects to 2 communities
-- [[B1 Per-Trade Drawdown Re-check]] - degree 4, connects to 1 community
-- [[Drawdown-Tiered Kelly Step Reduction]] - degree 3, connects to 1 community
-- [[Rolling Win-Rate Accuracy Circuit Breaker]] - degree 3, connects to 1 community
+- [[TestPreLogPattern]] - degree 9, connects to 1 community
+- [[dot-test_placed_order_counts_toward_open_positions()]] - degree 4, connects to 1 community

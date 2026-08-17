@@ -1,12 +1,12 @@
 ---
 source_file: "positions.py"
 type: "rationale"
-community: "Community 159"
+community: "Community 57"
 location: "L187"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_159
+  - community/Community_57
 ---
 
 # Return positions whose unrealized loss has breached the stop-loss threshold.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[check_stop_losses()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_159
+#graphify/rationale #graphify/EXTRACTED #community/Community_57

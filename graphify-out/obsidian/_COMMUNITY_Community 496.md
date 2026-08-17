@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.47
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 496
 
-**Cohesion:** 0.47 - moderately connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[Generate an index of unfinished backlog.txt entries. backlog.txt is a single…]] - rationale - backlog_index.py
-- [[Split backlog.txt into entries anchored on '' at column 0, and return one dict…]] - rationale - backlog_index.py
-- [[backlog_index.py]] - code - backlog_index.py
-- [[main()]] - code - backlog_index.py
-- [[parse_entries()]] - code - backlog_index.py
-- [[render()]] - code - backlog_index.py
+- [[fetchWeatherAlerts]] - code - weather app site V_3 (3)/src/useData.js
+- [[handleSSEEvent]] - code - frontend/src/useData.js
+- [[handleSSEEvent (V3)]] - code - weather app site V_3 (3)/src/useData.js
+- [[startSSE]] - code - frontend/src/useData.js
+- [[startSSE (V3)]] - code - weather app site V_3 (3)/src/useData.js
+- [[useData (hook)]] - code - frontend/src/useData.js
+- [[useData hook (V3)]] - code - weather app site V_3 (3)/src/useData.js
 
 ## Live Query (requires Dataview plugin)
 
@@ -23,3 +24,12 @@ members: 6
 TABLE source_file, type FROM #community/Community_496
 SORT file.name ASC
 ```
+
+## Connections to other communities
+- 2 edges to [[_COMMUNITY_Community 168]]
+- 1 edge to [[_COMMUNITY_Community 135]]
+
+## Top bridge nodes
+- [[useData hook (V3)]] - degree 4, connects to 1 community
+- [[useData (hook)]] - degree 3, connects to 1 community
+- [[fetchWeatherAlerts]] - degree 2, connects to 1 community

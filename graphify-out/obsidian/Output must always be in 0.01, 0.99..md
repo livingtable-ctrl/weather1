@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Community 320"
+community: "Community 325"
 location: "L317"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_320
+  - community/Community_325
 ---
 
 # Output must always be in [0.01, 0.99].
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_clamped_to_0_01_0_99()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_320
+#graphify/rationale #graphify/EXTRACTED #community/Community_325

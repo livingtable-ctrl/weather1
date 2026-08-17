@@ -1,12 +1,12 @@
 ---
 source_file: "forecast_cache.py"
 type: "code"
-community: "Community 51"
+community: "Community 9"
 location: "L56"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_51
+  - community/Community_9
 ---
 
 # .set_with_ttl()
@@ -17,4 +17,4 @@ tags:
 - [[Store with a per-entry TTL, overriding the class-level default. L5-A used to…]] - `rationale_for` [EXTRACTED]
 - [[T]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_51
+#graphify/code #graphify/EXTRACTED #community/Community_9

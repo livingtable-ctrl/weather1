@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_b.py"
 type: "code"
-community: "Community 260"
+community: "Community 257"
 location: "L19"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_260
+  - community/Community_257
 ---
 
 # TestDrawdownTierAbsolute
@@ -21,6 +21,6 @@ tags:
 - [[dot-test_tier4_is_0_95()]] - `method` [EXTRACTED]
 - [[dot-test_tiers_unchanged_with_non_default_halt()]] - `method` [EXTRACTED]
 - [[P2-2 _DRAWDOWN_TIER_ constants must be hardcoded absolute values.]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Batch B Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_b.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_260
+#graphify/code #graphify/EXTRACTED #community/Community_257

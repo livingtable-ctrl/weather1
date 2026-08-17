@@ -1,12 +1,12 @@
 ---
 source_file: "trading_gates.py"
 type: "code"
-community: "Trade Cycle Engine & Arbitrage Gates"
+community: "Community 17"
 location: "L14"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Trade_Cycle_Engine__Arbitrage_Gates
+  - community/Community_17
 ---
 
 # LiveTradingGate
@@ -55,9 +55,11 @@ tags:
 - [[TestTierAndCapUnification]] - `uses` [INFERRED]
 - [[TestWalkForwardNoLookAhead]] - `uses` [INFERRED]
 - [[TestWebSocketStartOrdering]] - `uses` [INFERRED]
+- [[_render_analysis_results()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[test_p1_remaining.py]] - `imports` [EXTRACTED]
 - [[test_trade_cycle_engine.py]] - `imports` [EXTRACTED]
 - [[test_trading_gates.py]] - `imports` [EXTRACTED]
 - [[trading_gates.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Trade_Cycle_Engine__Arbitrage_Gates
+#graphify/code #graphify/INFERRED #community/Community_17

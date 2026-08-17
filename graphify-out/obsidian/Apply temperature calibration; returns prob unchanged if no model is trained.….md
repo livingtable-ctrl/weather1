@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "rationale"
-community: "ML Bias Multiday-Predictions Filter"
-location: "L433"
+community: "Community 82"
+location: "L652"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_82
 ---
 
 # Apply temperature calibration; returns prob unchanged if no model is trained.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[apply_temperature_scaling()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/rationale #graphify/EXTRACTED #community/Community_82

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_i.py"
 type: "code"
-community: "Community 405"
+community: "Community 431"
 location: "L370"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_405
+  - community/Community_431
 ---
 
 # ._base_state()
@@ -19,4 +19,4 @@ tags:
 - [[dot-test_directional_cap_triggers_when_exceeded()]] - `calls` [EXTRACTED]
 - [[TestCheckPositionLimitsExposureCaps]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_405
+#graphify/code #graphify/EXTRACTED #community/Community_431

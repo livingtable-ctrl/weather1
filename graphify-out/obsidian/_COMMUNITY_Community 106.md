@@ -1,41 +1,42 @@
 ---
 type: community
-cohesion: 0.08
-members: 26
+cohesion: 0.11
+members: 27
 ---
 
 # Community 106
 
-**Cohesion:** 0.08 - loosely connected
-**Members:** 26 nodes
+**Cohesion:** 0.11 - loosely connected
+**Members:** 27 nodes
 
 ## Members
-- [[dot-setUp()]] - code - tests/test_paper.py
-- [[dot-tearDown()]] - code - tests/test_paper.py
-- [[dot-test_boundary_exactly_800_not_paused()]] - code - tests/test_paper.py
-- [[dot-test_effective_balance_adds_back_same_day_cost()]] - code - tests/test_paper.py
-- [[dot-test_effective_balance_ignores_multiday_cost()]] - code - tests/test_paper.py
-- [[dot-test_kelly_normal_above_threshold()]] - code - tests/test_paper.py
-- [[dot-test_kelly_returns_zero_in_drawdown()]] - code - tests/test_paper.py
-- [[dot-test_max_drawdown_pct_uses_actual_balance()]] - code - tests/test_paper.py
-- [[dot-test_needs_manual_settle_excluded_from_effective_balance()]] - code - tests/test_paper.py
-- [[dot-test_not_paused_at_start()]] - code - tests/test_paper.py
-- [[dot-test_paused_below_threshold()]] - code - tests/test_paper.py
-- [[dot-test_paused_drawdown_ignores_same_day_costs()]] - code - tests/test_paper.py
-- [[dot-test_reset_peak_requires_confirmed()]] - code - tests/test_paper.py
-- [[dot-test_reset_peak_sets_to_current_balance()]] - code - tests/test_paper.py
-- [[Balance below 50% of $1000 → drawdown active.]] - rationale - tests/test_paper.py
-- [[Balance exactly at $800 (= 80% of $1000, 20% halt) is NOT paused (strict less-…]] - rationale - tests/test_paper.py
-- [[Same-day trades marked needs_manual_settle are excluded from effective balance…]] - rationale - tests/test_paper.py
-- [[TestMaxDrawdown]] - code - tests/test_paper.py
-- [[get_effective_balance() adds back open same-day trade costs.]] - rationale - tests/test_paper.py
-- [[get_effective_balance() does NOT add back multi-day trade costs.]] - rationale - tests/test_paper.py
-- [[get_max_drawdown_pct() uses actual balance for reporting — same-day open costs…]] - rationale - tests/test_paper.py
-- [[is_paused_drawdown() stays False when balance dips below halt only due to open…]] - rationale - tests/test_paper.py
-- [[kelly_bet_dollars should return 0.0 when in drawdown.]] - rationale - tests/test_paper.py
-- [[kelly_bet_dollars works normally when balance = $500 (capped at $50).]] - rationale - tests/test_paper.py
-- [[reset_peak_balance() raises ValueError without confirmed=True.]] - rationale - tests/test_paper.py
-- [[reset_peak_balance() resets peak to current balance, preserving trades.]] - rationale - tests/test_paper.py
+- [[dot-_make_client()_1]] - code - tests/test_kalshi_client.py
+- [[dot-_make_client()]] - code - tests/test_kalshi_client.py
+- [[dot-test_calls_correct_path_and_params()]] - code - tests/test_kalshi_client.py
+- [[dot-test_client_order_id_included_when_provided()]] - code - tests/test_kalshi_client.py
+- [[dot-test_client_order_id_omitted_when_not_provided()]] - code - tests/test_kalshi_client.py
+- [[dot-test_cursor_passed_on_second_call()]] - code - tests/test_kalshi_client.py
+- [[dot-test_cursor_present_but_next_page_empty_stops_pagination()]] - code - tests/test_kalshi_client.py
+- [[dot-test_min_ts_max_ts_omitted_when_not_provided()]] - code - tests/test_kalshi_client.py
+- [[dot-test_missing_trades_key_returns_empty_list()]] - code - tests/test_kalshi_client.py
+- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()]] - code - tests/test_kalshi_client.py
+- [[dot-test_posts_to_amend_path_with_order_id()]] - code - tests/test_kalshi_client.py
+- [[dot-test_repeated_cursor_stops_pagination()]] - code - tests/test_kalshi_client.py
+- [[dot-test_returns_raw_post_response_unchanged()]] - code - tests/test_kalshi_client.py
+- [[dot-test_single_page_returns_all_trades_no_cursor()]] - code - tests/test_kalshi_client.py
+- [[dot-test_two_page_pagination_combines_results()]] - code - tests/test_kalshi_client.py
+- [[dot-test_updated_client_order_id_always_present_and_deterministic()]] - code - tests/test_kalshi_client.py
+- [[dot-test_updated_client_order_id_differs_for_different_price()]] - code - tests/test_kalshi_client.py
+- [[A cursor identical to one already seen must stop the loop rather than spin…]] - rationale - tests/test_kalshi_client.py
+- [[AMEND ORDER (V2) kalshi_client.amend_order() -- POST…]] - rationale - tests/test_kalshi_client.py
+- [[Live-verified real Kalshi behavior (2026-07-19) a non-empty cursor can be…]] - rationale - tests/test_kalshi_client.py
+- [[No cursor in response - single call, all trades returned.]] - rationale - tests/test_kalshi_client.py
+- [[No get_order() follow-up (unlike place_order) -- the amend response already…]] - rationale - tests/test_kalshi_client.py
+- [[PUBLIC TRADES REST BACKFILL backlog item -- GET marketstrades fetch.]] - rationale - tests/test_kalshi_client.py
+- [[Same (order_id, side, count, price, cycle) - same updated_client_order_id, so…]] - rationale - tests/test_kalshi_client.py
+- [[Same V2 sideprice mapping as place_order -- a NO buy amend must be expressed…]] - rationale - tests/test_kalshi_client.py
+- [[TestAmendOrder]] - code - tests/test_kalshi_client.py
+- [[TestGetTrades]] - code - tests/test_kalshi_client.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -45,8 +46,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 56]]
-- 1 edge to [[_COMMUNITY_Community 45]]
+- 4 edges to [[_COMMUNITY_Community 344]]
+- 4 edges to [[_COMMUNITY_Community 506]]
+- 2 edges to [[_COMMUNITY_Community 229]]
+- 2 edges to [[_COMMUNITY_Community 379]]
+- 2 edges to [[_COMMUNITY_Community 569]]
+- 2 edges to [[_COMMUNITY_Community 570]]
 
 ## Top bridge nodes
-- [[TestMaxDrawdown]] - degree 16, connects to 2 communities
+- [[dot-_make_client()]] - degree 30, connects to 5 communities
+- [[TestGetTrades]] - degree 11, connects to 1 community
+- [[TestAmendOrder]] - degree 10, connects to 1 community

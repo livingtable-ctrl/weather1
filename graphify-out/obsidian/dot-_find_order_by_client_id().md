@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Community 86"
+community: "Community 13"
 location: "L551"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_86
+  - community/Community_13
 ---
 
 # ._find_order_by_client_id()
@@ -18,4 +18,4 @@ tags:
 - [[KalshiClient]] - `method` [EXTRACTED]
 - [[Return the order matching client_order_id, or None if not found. Checks resting…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_86
+#graphify/code #graphify/EXTRACTED #community/Community_13

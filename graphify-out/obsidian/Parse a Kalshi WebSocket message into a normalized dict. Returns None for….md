@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "rationale"
-community: "Community 352"
+community: "Community 30"
 location: "L73"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_352
+  - community/Community_30
 ---
 
 # Parse a Kalshi WebSocket message into a normalized dict. Returns None for…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[parse_message()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_352
+#graphify/rationale #graphify/EXTRACTED #community/Community_30

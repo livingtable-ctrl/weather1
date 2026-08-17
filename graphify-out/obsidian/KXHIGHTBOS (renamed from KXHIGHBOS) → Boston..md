@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 116"
-location: "L2702"
+community: "Community 654"
+location: "L3071"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_116
+  - community/Community_654
 ---
 
 # KXHIGHTBOS (renamed from KXHIGHBOS) → Boston.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_boston_renamed_high_ticker()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_116
+#graphify/rationale #graphify/EXTRACTED #community/Community_654

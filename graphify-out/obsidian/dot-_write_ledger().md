@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_positions.py"
 type: "code"
-community: "Community 484"
+community: "Community 525"
 location: "L58"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_484
+  - community/Community_525
 ---
 
 # ._write_ledger()
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_save_peak_writes_only_the_targeted_position()]] - `calls` [EXTRACTED]
 - [[TestPaperPositionStore]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_484
+#graphify/code #graphify/EXTRACTED #community/Community_525

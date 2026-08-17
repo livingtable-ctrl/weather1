@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "rationale"
-community: "Community 353"
-location: "L305"
+community: "Community 82"
+location: "L329"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_353
+  - community/Community_82
 ---
 
 # Train per-city Platt scaling: fits (A, B) via cross-entropy on logit(p).…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[train_platt_per_city()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_353
+#graphify/rationale #graphify/EXTRACTED #community/Community_82

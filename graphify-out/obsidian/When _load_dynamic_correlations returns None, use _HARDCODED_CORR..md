@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Community 489"
+community: "Community 530"
 location: "L53"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_489
+  - community/Community_530
 ---
 
 # When _load_dynamic_correlations returns None, use _HARDCODED_CORR.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_falls_back_to_hardcoded_when_none()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_489
+#graphify/rationale #graphify/EXTRACTED #community/Community_530

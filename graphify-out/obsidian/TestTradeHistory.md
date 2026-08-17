@@ -12,9 +12,9 @@ tags:
 # TestTradeHistory
 
 ## Connections
-- [[dot-_trade()_3]] - `method` [EXTRACTED]
-- [[dot-setUp()_29]] - `method` [EXTRACTED]
-- [[dot-tearDown()_28]] - `method` [EXTRACTED]
+- [[dot-_trade()_2]] - `method` [EXTRACTED]
+- [[dot-setUp()_28]] - `method` [EXTRACTED]
+- [[dot-tearDown()_27]] - `method` [EXTRACTED]
 - [[dot-test_block_trade_flag_stored_as_one()]] - `method` [EXTRACTED]
 - [[dot-test_dedup_via_unique_trade_id_is_idempotent()]] - `method` [EXTRACTED]
 - [[dot-test_different_trade_ids_both_stored()]] - `method` [EXTRACTED]

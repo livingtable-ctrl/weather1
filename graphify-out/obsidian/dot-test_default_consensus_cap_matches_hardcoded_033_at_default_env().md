@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_price_and_size.py"
 type: "code"
-community: "Community 58"
+community: "Community 78"
 location: "L123"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_58
+  - community/Community_78
 ---
 
 # .test_default_consensus_cap_matches_hardcoded_033_at_default_env()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPriceAndSizeCiAdjustedKelly]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_58
+#graphify/code #graphify/EXTRACTED #community/Community_78

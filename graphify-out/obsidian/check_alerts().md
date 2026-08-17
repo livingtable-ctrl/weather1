@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "code"
-community: "Community 325"
+community: "Community 32"
 location: "L125"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_325
+  - community/Community_32
 ---
 
 # check_alerts()
@@ -19,8 +19,10 @@ tags:
 - [[dot-test_no_active_alerts_returns_empty_without_fetching()]] - `calls` [EXTRACTED]
 - [[Fetch current YES prices for all alert tickers and check which alerts have been…]] - `rationale_for` [EXTRACTED]
 - [[alerts.py]] - `contains` [EXTRACTED]
+- [[cmd_watch()]] - `calls` [EXTRACTED]
 - [[get_alerts()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 - [[test_alerts.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_325
+#graphify/code #graphify/EXTRACTED #community/Community_32

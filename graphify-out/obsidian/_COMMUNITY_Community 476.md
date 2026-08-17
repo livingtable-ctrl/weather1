@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 476
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_drift_tighten_edge_exported_from_utils()]] - code - tests/test_p9_p10.py
-- [[dot-test_effective_edge_raised_when_drift_detected()]] - code - tests/test_p9_p10.py
-- [[dot-test_effective_edge_unchanged_without_drift()]] - code - tests/test_p9_p10.py
-- [[DRIFT_TIGHTEN_EDGE is a positive float exported from utils.]] - rationale - tests/test_p9_p10.py
-- [[TestDriftTightenEdge]] - code - tests/test_p9_p10.py
-- [[When drift is drifting=False, effective threshold equals STRONG_EDGE.]] - rationale - tests/test_p9_p10.py
-- [[When drift is drifting=True, effective threshold = STRONG_EDGE +…]] - rationale - tests/test_p9_p10.py
+- [[dot-test_low_spread_tier_at_boundary_still_clears_gate()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_low_spread_tier_untiers_when_net_edge_below_confidence_threshold()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_missing_ensemble_spread_falls_back_to_flat_paper_min_edge()]] - code - tests/test_trade_cycle_engine.py
+- [[LOW-confidence tier (spread=0.15) requires paper edge = 0.10. net_edge=0.08…]] - rationale - tests/test_trade_cycle_engine.py
+- [[No ensemble_spread key -- matches validate()'s own fallback to…]] - rationale - tests/test_trade_cycle_engine.py
+- [[Sibling of the Kelly floor gate above, same backlog.txt entry -- validate()'s…]] - rationale - tests/test_trade_cycle_engine.py
+- [[TestPlacementConfidenceTierGateTierClassification]] - code - tests/test_trade_cycle_engine.py
+- [[validate() rejects strictly-below min_edge, so net_edge exactly at the LOW-tier…]] - rationale - tests/test_trade_cycle_engine.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,7 +27,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 50]]
+- 3 edges to [[_COMMUNITY_Community 17]]
+- 3 edges to [[_COMMUNITY_Community 25]]
 
 ## Top bridge nodes
-- [[TestDriftTightenEdge]] - degree 4, connects to 1 community
+- [[TestPlacementConfidenceTierGateTierClassification]] - degree 7, connects to 1 community
+- [[dot-test_low_spread_tier_at_boundary_still_clears_gate()]] - degree 3, connects to 1 community
+- [[dot-test_low_spread_tier_untiers_when_net_edge_below_confidence_threshold()]] - degree 3, connects to 1 community
+- [[dot-test_missing_ensemble_spread_falls_back_to_flat_paper_min_edge()]] - degree 3, connects to 1 community

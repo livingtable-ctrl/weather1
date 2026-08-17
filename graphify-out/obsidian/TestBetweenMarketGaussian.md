@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "code"
-community: "Community 163"
+community: "Community 164"
 location: "L389"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_163
+  - community/Community_164
 ---
 
 # TestBetweenMarketGaussian
@@ -24,4 +24,4 @@ tags:
 - [[Regression tests for L6-C 'between' condition markets must receive a Gaussian…]] - `rationale_for` [EXTRACTED]
 - [[test_gaussian_prob.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_163
+#graphify/code #graphify/EXTRACTED #community/Community_164

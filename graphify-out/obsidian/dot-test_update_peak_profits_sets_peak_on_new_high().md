@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "code"
-community: "Community 463"
+community: "Community 502"
 location: "L613"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_463
+  - community/Community_502
 ---
 
 # .test_update_peak_profits_sets_peak_on_new_high()
@@ -16,4 +16,4 @@ tags:
 - [[update_peak_profits must record a new peak when unrealized profit exceeds…]] - `rationale_for` [EXTRACTED]
 - [[update_peak_profits()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_463
+#graphify/code #graphify/EXTRACTED #community/Community_502

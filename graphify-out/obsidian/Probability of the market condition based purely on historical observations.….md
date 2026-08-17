@@ -1,12 +1,12 @@
 ---
 source_file: "climatology.py"
 type: "rationale"
-community: "Climatology & Climate Index Fetching"
+community: "Community 102"
 location: "L147"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_102
 ---
 
 # Probability of the market condition based purely on historical observations.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[climatological_prob()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/rationale #graphify/EXTRACTED #community/Community_102

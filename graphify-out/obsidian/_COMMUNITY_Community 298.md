@@ -1,27 +1,27 @@
 ---
 type: community
-cohesion: 0.20
+cohesion: 0.17
 members: 12
 ---
 
 # Community 298
 
-**Cohesion:** 0.20 - loosely connected
+**Cohesion:** 0.17 - loosely connected
 **Members:** 12 nodes
 
 ## Members
-- [[dot-_check_error_body()]] - code - kalshi_client.py
-- [[dot-_delete()]] - code - kalshi_client.py
-- [[dot-_full_path()]] - code - kalshi_client.py
-- [[dot-_post()]] - code - kalshi_client.py
-- [[dot-_sign_headers()]] - code - kalshi_client.py
-- [[dot-amend_order()]] - code - kalshi_client.py
-- [[dot-cancel_order()]] - code - kalshi_client.py
-- [[Amend a resting order's price andor size atomically via Kalshi's V2 amend…]] - rationale - kalshi_client.py
-- [[Build signed auth headers for authenticated endpoints.]] - rationale - kalshi_client.py
-- [[Cancel a resting order via Kalshi's V2 endpoint -- the legacy DELETE…]] - rationale - kalshi_client.py
-- [[Raise ValueError if a 200 response contains an error field.]] - rationale - kalshi_client.py
-- [[Return the full URL path (e.g. trade-apiv2markets) used in signing.]] - rationale - kalshi_client.py
+- [[C13 · `weather_markets.py` — PlattML corrections applied to already-bias-corrected probabilities]] - document - docs/audit_findings.md
+- [[C14 · `weather_markets.py` — Batch prewarm discards ECMWF model weights]] - document - docs/audit_findings.md
+- [[C15 · `weather_markets.py` — `range` vs `between` typo disables bucket-market consensus]] - document - docs/audit_findings.md
+- [[C16 · `system_health.py` — Health check always returns healthy=True]] - document - docs/audit_findings.md
+- [[C17 · `alerts.py` — Safety functions silently return all clear on any exception]] - document - docs/audit_findings.md
+- [[C18 · `alerts.py` — Kill switch may silently fail to create the halt file]] - document - docs/audit_findings.md
+- [[C19 · `alerts.py` — Black swan daily loss check uses paper P&L not real account equity]] - document - docs/audit_findings.md
+- [[C20 · `metar.py` — Proxy observations still feeding bias corruption]] - document - docs/audit_findings.md
+- [[C21 · `metar.py` — `get_station_bias()` is a permanent stub returning 0.0]] - document - docs/audit_findings.md
+- [[C22 · `settlement_monitor.py` — Wrong series tickers for 3 of 5 monitored cities]] - document - docs/audit_findings.md
+- [[C23 · `settlement_monitor.py` — Signals produced but never acted on]] - document - docs/audit_findings.md
+- [[Phase 2 CRITICAL Issues]] - document - docs/audit_findings.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,15 +31,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 7 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 4 edges to [[_COMMUNITY_Community 86]]
-- 2 edges to [[_COMMUNITY_Community 226]]
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 225]]
+- 1 edge to [[_COMMUNITY_Community 446]]
 
 ## Top bridge nodes
-- [[dot-_post()]] - degree 7, connects to 3 communities
-- [[dot-_check_error_body()]] - degree 6, connects to 3 communities
-- [[dot-_sign_headers()]] - degree 6, connects to 3 communities
-- [[dot-_delete()]] - degree 6, connects to 2 communities
-- [[dot-_full_path()]] - degree 5, connects to 2 communities
+- [[Phase 2 CRITICAL Issues]] - degree 12, connects to 1 community

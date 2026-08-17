@@ -1,11 +1,12 @@
 ---
 source_file: "frontend/src/App.jsx"
 type: "code"
-community: "Community 499"
+community: "Community 560"
+location: "L9"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_499
+  - community/Community_560
 ---
 
 # ErrorBoundary
@@ -17,4 +18,4 @@ tags:
 - [[frontendsrcApp.jsx]] - `contains` [EXTRACTED]
 - [[main.jsx entry point]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_499
+#graphify/code #graphify/EXTRACTED #community/Community_560

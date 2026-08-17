@@ -1,19 +1,21 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "code"
-community: "ML Bias Multiday-Predictions Filter"
+community: "Community 99"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_99
 ---
 
 # test_ml_bias.py
 
 ## Connections
-- [[Grade Audit Module Doc ml_bias.py]] - `references` [EXTRACTED]
 - [[TestApplyTemperatureScaling]] - `contains` [EXTRACTED]
+- [[TestCmdCalibrateMetarBlock]] - `contains` [EXTRACTED]
 - [[TestEmos]] - `contains` [EXTRACTED]
+- [[TestFitAndSaveMetarCalibration]] - `contains` [EXTRACTED]
 - [[TestMLBias]] - `contains` [EXTRACTED]
 - [[TestTrainAllTemperatureScalingHourlyPool]] - `contains` [EXTRACTED]
 - [[TestTrainAllTemperatureScalingRainExclusion]] - `contains` [EXTRACTED]
@@ -21,23 +23,31 @@ tags:
 - [[TestTrainBiasModelRainExclusion]] - `contains` [EXTRACTED]
 - [[Tests for ML-based bias correction.]] - `rationale_for` [EXTRACTED]
 - [[_load_emos_params()]] - `imports` [EXTRACTED]
-- [[apply_ml_prob_correction()]] - `calls` [EXTRACTED]
-- [[apply_temperature_scaling()]] - `calls` [EXTRACTED]
+- [[_metar_rows()]] - `contains` [EXTRACTED]
+- [[deactivate_emos()]] - `imports` [EXTRACTED]
 - [[emos_exceedance_prob()]] - `imports` [EXTRACTED]
 - [[emos_interval_prob()]] - `imports` [EXTRACTED]
 - [[fit_emos()]] - `imports` [EXTRACTED]
-- [[get_emos_training_data()]] - `calls` [EXTRACTED]
-- [[log_outcome()]] - `calls` [EXTRACTED]
-- [[log_prediction()]] - `calls` [EXTRACTED]
+- [[get_emos_status()]] - `imports` [EXTRACTED]
+- [[numpy_1]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[reset_temperature_scale_for_emos()]] - `imports` [EXTRACTED]
+- [[restore_temperature_scale_from_emos_snapshot()]] - `imports` [EXTRACTED]
 - [[save_emos_params()]] - `imports` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
+- [[test_apply_metar_calibration_matches_hand_computed_value()]] - `contains` [EXTRACTED]
+- [[test_apply_metar_calibration_platt_special_case_matches_apply_platt()]] - `contains` [EXTRACTED]
 - [[test_apply_platt_identity_calibration()]] - `contains` [EXTRACTED]
 - [[test_apply_platt_per_city_monotonicity()]] - `contains` [EXTRACTED]
 - [[test_apply_platt_per_city_unknown_city_unchanged()]] - `contains` [EXTRACTED]
+- [[test_fit_metar_calibration_at_epv_floor_succeeds()]] - `contains` [EXTRACTED]
+- [[test_fit_metar_calibration_below_epv_floor_returns_none()]] - `contains` [EXTRACTED]
+- [[test_fit_metar_calibration_on_real_repo_data()]] - `contains` [EXTRACTED]
+- [[test_fit_metar_calibration_rejects_non_binary_labels()]] - `contains` [EXTRACTED]
+- [[test_get_metar_lockout_calibration_data_scopes_correctly()]] - `contains` [EXTRACTED]
+- [[test_sigmoid_does_not_overflow_on_extreme_input()]] - `contains` [EXTRACTED]
 - [[test_train_platt_per_city_returns_coefficients()]] - `contains` [EXTRACTED]
-- [[train_all_temperature_scaling()]] - `calls` [EXTRACTED]
-- [[train_bias_model()]] - `calls` [EXTRACTED]
-- [[train_platt_per_city()]] - `calls` [EXTRACTED]
 - [[utc_today()]] - `imports` [EXTRACTED]
-- [[weather_markets._KXTEMP_HOURLY_CITY]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/code #graphify/EXTRACTED #community/Community_99

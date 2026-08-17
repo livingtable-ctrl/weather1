@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_idempotency.py"
 type: "code"
-community: "Community 548"
+community: "Community 248"
 location: "L7"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_548
+  - community/Community_248
 ---
 
 # .test_post_not_in_allowed_methods()
@@ -16,4 +16,4 @@ tags:
 - [[_build_session must not include POST in allowed_methods.]] - `rationale_for` [EXTRACTED]
 - [[_build_session()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_548
+#graphify/code #graphify/EXTRACTED #community/Community_248

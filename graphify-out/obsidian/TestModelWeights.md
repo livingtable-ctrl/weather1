@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 137"
+community: "Community 127"
 location: "L416"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_137
+  - community/Community_127
 ---
 
 # TestModelWeights
@@ -23,4 +23,4 @@ tags:
 - [[dot-test_tracked_but_non_ensemble_model_never_leaks_in()]] - `method` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_137
+#graphify/code #graphify/EXTRACTED #community/Community_127

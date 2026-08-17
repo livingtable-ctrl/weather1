@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 264"
+community: "Community 260"
 location: "L1444"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_264
+  - community/Community_260
 ---
 
 # .test_season_filter_winter()
@@ -16,4 +16,4 @@ tags:
 - [[TestEnsembleMemberAccuracy]] - `method` [EXTRACTED]
 - [[Winter filter returns only Oct-Mar data.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_264
+#graphify/code #graphify/EXTRACTED #community/Community_260

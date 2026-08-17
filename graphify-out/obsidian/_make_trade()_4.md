@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_walk_forward.py"
 type: "code"
-community: "Community 37"
+community: "Community 40"
 location: "L12"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_37
+  - community/Community_40
 ---
 
 # _make_trade()
@@ -23,4 +23,4 @@ tags:
 - [[Make a minimal trade record for backtesting.]] - `rationale_for` [EXTRACTED]
 - [[test_walk_forward.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_37
+#graphify/code #graphify/EXTRACTED #community/Community_40

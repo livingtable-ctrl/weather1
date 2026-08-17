@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 116"
-location: "L2624"
+community: "Community 122"
+location: "L2993"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_116
+  - community/Community_122
 ---
 
 # TestCityDetection
 
 ## Connections
-- [[dot-_city()_1]] - `method` [EXTRACTED]
+- [[dot-_city()]] - `method` [EXTRACTED]
 - [[dot-test_atlanta_full_name_in_ticker_not_la()]] - `method` [EXTRACTED]
 - [[dot-test_boston_renamed_high_ticker()]] - `method` [EXTRACTED]
 - [[dot-test_boston_renamed_low_ticker()]] - `method` [EXTRACTED]
@@ -36,4 +36,4 @@ tags:
 - [[L5-B bare 'LA' in ticker_up substring must not misfire on city names that…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_116
+#graphify/code #graphify/EXTRACTED #community/Community_122

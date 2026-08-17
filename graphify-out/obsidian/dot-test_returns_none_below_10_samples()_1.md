@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 487"
+community: "Community 10"
 location: "L1316"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_487
+  - community/Community_10
 ---
 
 # .test_returns_none_below_10_samples()
@@ -15,4 +15,4 @@ tags:
 - [[dot-_add()]] - `calls` [EXTRACTED]
 - [[TestGetOptimalThreshold]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_487
+#graphify/code #graphify/EXTRACTED #community/Community_10

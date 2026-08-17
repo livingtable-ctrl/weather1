@@ -1,12 +1,12 @@
 ---
 source_file: "feature_importance.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 0"
 location: "L93"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_0
 ---
 
 # Compute average feature values for winning vs losing trades. Returns a dict…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_feature_summary()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

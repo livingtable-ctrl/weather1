@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 623
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_count_settled_hurricane_predictions_counts_only_hurricane_tickers()]] - code - tests/test_tracker.py
-- [[backlog.txt HURRICANE MARKETS -- season-count model must count KXHURCTOT-…]] - rationale - tests/test_tracker.py
+- [[dot-test_missing_value_group_becomes_none_pair()]] - code - tests/test_mos_nbp.py
+- [[dot-test_special_missing_code_becomes_none()]] - code - tests/test_mos_nbp.py
+- [[dot-test_well_formed_groups()]] - code - tests/test_mos_nbp.py
+- [[A group that doesn't split into exactly 2 numeric tokens must not silently…]] - rationale - tests/test_mos_nbp.py
+- [[TestSplitNbpRow]] - code - tests/test_mos_nbp.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
-- 1 edge to [[_COMMUNITY_Tracker Settlement Sigma & Disputed Rows]]
+- 1 edge to [[_COMMUNITY_Community 15]]
 
 ## Top bridge nodes
-- [[dot-test_count_settled_hurricane_predictions_counts_only_hurricane_tickers()]] - degree 3, connects to 2 communities
+- [[TestSplitNbpRow]] - degree 4, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "static/signals.js"
 type: "code"
-community: "Legacy Static Dashboard JS Pages"
+community: "Community 273"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Legacy_Static_Dashboard_JS_Pages
+  - community/Community_273
 ---
 
 # static/signals.js
@@ -16,12 +16,12 @@ tags:
 - [[applyLiveFilters()]] - `contains` [EXTRACTED]
 - [[loadLiveSignals()]] - `contains` [EXTRACTED]
 - [[loadSignals()]] - `contains` [EXTRACTED]
-- [[populateCityFilter()]] - `contains` [EXTRACTED]
+- [[populateCityFilter()_1]] - `contains` [EXTRACTED]
 - [[populateFilters()]] - `contains` [EXTRACTED]
 - [[renderAlerts()]] - `contains` [EXTRACTED]
 - [[renderLiveSignals()]] - `contains` [EXTRACTED]
 - [[renderLog()]] - `contains` [EXTRACTED]
-- [[renderSummary()]] - `contains` [EXTRACTED]
+- [[renderSummary()_1]] - `contains` [EXTRACTED]
 - [[setText()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_273

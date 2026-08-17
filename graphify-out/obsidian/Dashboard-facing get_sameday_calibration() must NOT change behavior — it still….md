@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 135"
+community: "Community 10"
 location: "L1207"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_135
+  - community/Community_10
 ---
 
 # Dashboard-facing get_sameday_calibration() must NOT change behavior — it still…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_get_sameday_calibration_still_includes_between()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_135
+#graphify/rationale #graphify/EXTRACTED #community/Community_10

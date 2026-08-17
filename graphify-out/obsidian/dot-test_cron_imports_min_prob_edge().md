@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_improvements.py"
 type: "code"
-community: "Community 346"
+community: "Community 352"
 location: "L181"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_346
+  - community/Community_352
 ---
 
 # .test_cron_imports_min_prob_edge()
@@ -15,4 +15,4 @@ tags:
 - [[TestMinProbEdgeGate]] - `method` [EXTRACTED]
 - [[The prob-edge gate (MIN_PROB_EDGE) must be wired into the module that actually…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_346
+#graphify/code #graphify/EXTRACTED #community/Community_352

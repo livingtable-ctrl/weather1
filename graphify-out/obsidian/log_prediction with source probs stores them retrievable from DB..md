@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 440"
+community: "Community 473"
 location: "L2783"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_440
+  - community/Community_473
 ---
 
 # log_prediction with source probs stores them retrievable from DB.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_log_prediction_stores_source_probs()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_440
+#graphify/rationale #graphify/EXTRACTED #community/Community_473

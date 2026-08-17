@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backlog_batch.py"
 type: "code"
-community: "Kelly City Multiplier & Edge Realization"
+community: "Community 24"
 location: "L111"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Kelly_City_Multiplier__Edge_Realization
+  - community/Community_24
 ---
 
 # .test_blocks_when_date_cap_reached()
@@ -16,4 +16,4 @@ tags:
 - [[TestMaxPositionsPerDate]] - `method` [EXTRACTED]
 - [[When 4 positions already expire on a date, a 5th is rejected.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization
+#graphify/code #graphify/EXTRACTED #community/Community_24

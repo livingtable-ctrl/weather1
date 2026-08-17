@@ -1,38 +1,39 @@
 ---
 type: community
 cohesion: 0.12
-members: 23
+members: 24
 ---
 
 # Community 129
 
 **Cohesion:** 0.12 - loosely connected
-**Members:** 23 nodes
+**Members:** 24 nodes
 
 ## Members
-- [[BREAKEVEN_TRIGGER_PCT is actually enforced from utils.py, not this dataclass…]] - rationale - config.py
-- [[Central configuration dataclass. Parses and validates all environment…]] - rationale - config.py
-- [[H-11 parse a float env var with a clear error message on bad input.]] - rationale - config.py
-- [[H-11 parse an int env var with a clear error message on bad input.]] - rationale - config.py
-- [[KELLY_CAP is actually enforced from utils.py, not this dataclass…]] - rationale - config.py
-- [[MAX_CITY_DATE_EXPOSURE is actually enforced from utils.py, not this dataclass…]] - rationale - config.py
-- [[MAX_DAYS_OUT is actually enforced from utils.py, not this dataclass…]] - rationale - config.py
-- [[MAX_SAME_DAY_SPEND is actually enforced from utils.py, not this dataclass…]] - rationale - config.py
-- [[METHOD_KELLY_GATE is actually enforced from utils.py, not this dataclass…]] - rationale - config.py
-- [[MIN_ARB_EDGE is actually enforced from utils.py, not this dataclass (main.py…]] - rationale - config.py
-- [[_env_float()]] - code - config.py
-- [[_env_int()]] - code - config.py
-- [[_live_breakeven_trigger_pct()]] - code - config.py
-- [[_live_kelly_cap()]] - code - config.py
-- [[_live_max_city_date_exposure()]] - code - config.py
-- [[_live_max_days_out()]] - code - config.py
-- [[_live_max_same_day_spend()]] - code - config.py
-- [[_live_method_kelly_gate()]] - code - config.py
-- [[_live_min_arb_edge()]] - code - config.py
-- [[config.py]] - code - config.py
-- [[config.py File Grade median T2 ~710, one T1 RF1 promotion]] - document - docs/grade_audit/outputs/config.py.md
-- [[config.py Grade Audit]] - document - docs/grade_audit/outputs/config.py.md
-- [[load_and_validate() Bypasses lru_cache Clear (610)]] - document - docs/grade_audit/outputs/config.py.md
+- [[dot-setup_method()_6]] - code - tests/test_nws_afd.py
+- [[dot-test_caches_per_office_not_per_city()]] - code - tests/test_nws_afd.py
+- [[dot-test_empty_present_section_returns_none()]] - code - tests/test_nws_afd.py
+- [[dot-test_extracts_bare_discussion_section()]] - code - tests/test_nws_afd.py
+- [[dot-test_extracts_qualifier_discussion_section()]] - code - tests/test_nws_afd.py
+- [[dot-test_fetch_exception_returns_none()]] - code - tests/test_nws_afd.py
+- [[dot-test_negative_result_is_cached_not_refetched_every_call()]] - code - tests/test_nws_afd.py
+- [[dot-test_no_narrative_section_returns_none()]] - code - tests/test_nws_afd.py
+- [[dot-test_pil_built_from_office_code()]] - code - tests/test_nws_afd.py
+- [[dot-test_section_with_no_closing_terminator_returns_none()]] - code - tests/test_nws_afd.py
+- [[dot-test_service_notice_page_returns_none()]] - code - tests/test_nws_afd.py
+- [[dot-test_synopsis_short_long_term_fallback()]] - code - tests/test_nws_afd.py
+- [[dot-test_terminator_between_nested_sub_headers_truncates()]] - code - tests/test_nws_afd.py
+- [[dot-test_ttl_cache_prevents_refetch()]] - code - tests/test_nws_afd.py
+- [[dot-test_unknown_city_returns_none_without_network_call()]] - code - tests/test_nws_afd.py
+- [[A .DISCUSSION section that's the last thing in the bulletin (no trailing &&…]] - rationale - tests/test_nws_afd.py
+- [[Documented, not fixed if a && ever appears BETWEEN nested .KEY MESSAGE…]] - rationale - tests/test_nws_afd.py
+- [[Regression guard for a bug caught during the ForecastCache swap (self-caught,…]] - rationale - tests/test_nws_afd.py
+- [[Regression guard for the real HIGH bug a bracketed qualifier on the…]] - rationale - tests/test_nws_afd.py
+- [[Regression guard for the real HIGH gap offices with no .DISCUSSION section at…]] - rationale - tests/test_nws_afd.py
+- [[Regression guard for the real MEDIUM bug a present-but-empty section (header…]] - rationale - tests/test_nws_afd.py
+- [[Synthetic (not a real captured bulletin, since a live check 2026-07-30 found…]] - rationale - tests/test_nws_afd.py
+- [[TestFetchAfdDiscussion]] - code - tests/test_nws_afd.py
+- [[_wrap_html()]] - code - tests/test_nws_afd.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -42,19 +43,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 212]]
-- 3 edges to [[_COMMUNITY_Community 454]]
-- 3 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 2 edges to [[_COMMUNITY_Community 297]]
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_Community 243]]
-- 1 edge to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Community 186]]
-- 1 edge to [[_COMMUNITY_Community 182]]
-- 1 edge to [[_COMMUNITY_Community 32]]
-- 1 edge to [[_COMMUNITY_Community 195]]
+- 2 edges to [[_COMMUNITY_Community 382]]
 
 ## Top bridge nodes
-- [[config.py]] - degree 32, connects to 10 communities
-- [[_env_float()]] - degree 9, connects to 1 community
-- [[_env_int()]] - degree 4, connects to 1 community
+- [[TestFetchAfdDiscussion]] - degree 16, connects to 1 community
+- [[_wrap_html()]] - degree 11, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Community 350"
+community: "Community 355"
 location: "L315"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_350
+  - community/Community_355
 ---
 
 # Empty close_time string → HIGH / 1.0 (safe default).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_missing_close_time_returns_high_risk()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_350
+#graphify/rationale #graphify/EXTRACTED #community/Community_355

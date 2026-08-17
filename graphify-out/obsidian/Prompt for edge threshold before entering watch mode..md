@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L6614"
+community: "Community 13"
+location: "L6865"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_13
 ---
 
 # Prompt for edge threshold before entering watch mode.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_menu_watch()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_13

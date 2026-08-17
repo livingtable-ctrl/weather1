@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "NWS/Circuit-Breaker Data Validation"
-location: "L2337"
+community: "Community 405"
+location: "L2706"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_405
 ---
 
 # .test_partial_data_high_only()
@@ -15,4 +15,4 @@ tags:
 - [[TestFetchNbmForecast]] - `method` [EXTRACTED]
 - [[fetch_nbm_forecast()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/code #graphify/EXTRACTED #community/Community_405

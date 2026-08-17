@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 198"
+community: "Community 30"
 location: "L40"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_198
+  - community/Community_30
 ---
 
 # _set_ws_alive()
@@ -15,4 +15,4 @@ tags:
 - [[_ws_listener()]] - `calls` [EXTRACTED]
 - [[kalshi_ws.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_198
+#graphify/code #graphify/EXTRACTED #community/Community_30

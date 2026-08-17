@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 348"
-location: "L4857"
+community: "Community 353"
+location: "L5226"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_348
+  - community/Community_353
 ---
 
 # .test_same_city_different_date_is_not_a_hedge()
@@ -16,4 +16,4 @@ tags:
 - [[TestDetectHedgeOpportunity]] - `method` [EXTRACTED]
 - [[detect_hedge_opportunity()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_348
+#graphify/code #graphify/EXTRACTED #community/Community_353

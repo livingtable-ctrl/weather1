@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 285"
+community: "Community 288"
 location: "L1359"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_285
+  - community/Community_288
 ---
 
 # .test_parse_snow_value_trace_sentinel()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestAcisSnowModule]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_285
+#graphify/code #graphify/EXTRACTED #community/Community_288

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Community 203"
+community: "Community 206"
 location: "L470"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_203
+  - community/Community_206
 ---
 
 # .test_refresh_never_raises_on_fetch_failure()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestHurricaneCountToDateCache]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_203
+#graphify/code #graphify/EXTRACTED #community/Community_206

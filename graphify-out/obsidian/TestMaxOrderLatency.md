@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 56"
+community: "Community 21"
 location: "L1075"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_56
+  - community/Community_21
 ---
 
 # TestMaxOrderLatency
@@ -19,4 +19,4 @@ tags:
 - [[Position]] - `uses` [INFERRED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_56
+#graphify/code #graphify/EXTRACTED #community/Community_21

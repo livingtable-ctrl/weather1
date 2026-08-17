@@ -10,13 +10,13 @@ members: 7
 **Members:** 7 nodes
 
 ## Members
-- [[dot-test_returns_dict_with_correct_keys()]] - code - tests/test_tracker.py
-- [[dot-test_returns_none_below_10_samples()_1]] - code - tests/test_tracker.py
-- [[dot-test_threshold_within_range()]] - code - tests/test_tracker.py
-- [[Optimal threshold should be between 0.05 and 0.95.]] - rationale - tests/test_tracker.py
-- [[Returns dict with threshold_f1 and best_f1.]] - rationale - tests/test_tracker.py
-- [[TestGetOptimalThreshold]] - code - tests/test_tracker.py
-- [[Tests for get_optimal_threshold() (60).]] - rationale - tests/test_tracker.py
+- [[M1. Reliability Diagram (Calibration Curve)]] - document - docs/RESEARCH-FINDINGS.md
+- [[M2. CRPS (Continuous Ranked Probability Score)]] - document - docs/RESEARCH-FINDINGS.md
+- [[M3. Per-City Per-Season Performance Segmentation]] - document - docs/RESEARCH-FINDINGS.md
+- [[M4. Walk-Forward Backtesting]] - document - docs/RESEARCH-FINDINGS.md
+- [[M5. Strategy P&L Attribution]] - document - docs/RESEARCH-FINDINGS.md
+- [[M6. AB Parameter Experiments]] - document - docs/RESEARCH-FINDINGS.md
+- [[Part 7 — Monitoring & Analytics]] - document - docs/RESEARCH-FINDINGS.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,12 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 135]]
-- 1 edge to [[_COMMUNITY_Community 313]]
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 645]]
 
 ## Top bridge nodes
-- [[TestGetOptimalThreshold]] - degree 6, connects to 2 communities
-- [[dot-test_returns_dict_with_correct_keys()]] - degree 3, connects to 1 community
-- [[dot-test_threshold_within_range()]] - degree 3, connects to 1 community
-- [[dot-test_returns_none_below_10_samples()_1]] - degree 2, connects to 1 community
+- [[Part 7 — Monitoring & Analytics]] - degree 7, connects to 1 community

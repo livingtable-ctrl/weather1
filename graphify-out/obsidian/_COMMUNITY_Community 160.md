@@ -1,35 +1,35 @@
 ---
 type: community
-cohesion: 0.14
+cohesion: 0.12
 members: 20
 ---
 
 # Community 160
 
-**Cohesion:** 0.14 - loosely connected
+**Cohesion:** 0.12 - loosely connected
 **Members:** 20 nodes
 
 ## Members
-- [[dot-test_basic()]] - code - tests/test_weather.py
-- [[dot-test_empty()]] - code - tests/test_weather.py
-- [[dot-test_empty_list_returns_empty_dict()]] - code - tests/test_weather_markets.py
-- [[dot-test_mean_std_correct()]] - code - tests/test_weather_markets.py
-- [[dot-test_min_max_correct()]] - code - tests/test_weather_markets.py
-- [[dot-test_p10_less_than_p90()]] - code - tests/test_weather_markets.py
-- [[dot-test_returns_all_required_keys()]] - code - tests/test_weather_markets.py
-- [[dot-test_single()]] - code - tests/test_weather.py
-- [[dot-test_single_element_std_is_zero()]] - code - tests/test_weather_markets.py
-- [[Group A Testing Plan]] - document - docs/superpowers/plans/2026-04-10-group-a-testing.md
-- [[Result must contain n, mean, std, min, max, p10, p90.]] - rationale - tests/test_weather_markets.py
-- [[Single-element ensemble std=0, min=max=mean=the value.]] - rationale - tests/test_weather_markets.py
-- [[Summary statistics for a list of ensemble member temperatures.]] - rationale - weather_markets.py
-- [[TestEnsembleStats]] - code - tests/test_weather_markets.py
-- [[TestEnsembleStats_1]] - code - tests/test_weather.py
-- [[Verify mean and std match statistics module on known data.]] - rationale - tests/test_weather_markets.py
-- [[ensemble_stats()]] - code - weather_markets.py
-- [[ensemble_stats() must return {} not raise.]] - rationale - tests/test_weather_markets.py
-- [[min and max match the actual extremes.]] - rationale - tests/test_weather_markets.py
-- [[p10 = mean = p90 for a non-degenerate ensemble.]] - rationale - tests/test_weather_markets.py
+- [[1b Wire MAX_DRAWDOWN_FRACTION through BotConfig]] - document - docs/superpowers/plans/do-after-graduation.md
+- [[1d Split paper.py (2,193 lines)]] - document - docs/superpowers/plans/do-after-graduation.md
+- [[2a Dynamic Cap Based on Brier Score]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
+- [[2b Condition-Type Brier Up-Weighting]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
+- [[4a Early Exit on Model Cycle Update]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
+- [[4c Entry Hour Tracking]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
+- [[D9 Kalshi Market URL Links]] - document - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[G4 Split paper.py]] - document - docs/superpowers/plans/2026-06-27-category-g-architecture.md
+- [[G5 Config Consolidation (BotConfig)]] - document - docs/superpowers/plans/2026-06-27-category-g-architecture.md
+- [[H11 Weather Alert Display]] - document - docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md
+- [[H5 Position Building Indicator]] - document - docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md
+- [[H7 Portfolio Expected Value Card]] - document - docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md
+- [[Kelly Cap Raise (25%→33%)]] - document - docs/superpowers/specs/2026-04-10-suggested-bets-design.md
+- [[LV2 Marginal Kelly (Portfolio Covariance)]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
+- [[LV7 Cross-Market Signals]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
+- [[PositionsTab.jsx Component]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[Trades Page Spec (trades)]] - document - docs/superpowers/specs/2026-04-10-dashboard-modernization-design.md
+- [[config.py Module (BotConfig)]] - code - docs/superpowers/plans/2026-06-27-category-g-architecture.md
+- [[paper.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[shared.jsx Helpers]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -39,18 +39,16 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 3 edges to [[_COMMUNITY_Community 59]]
-- 2 edges to [[_COMMUNITY_Weather Probability Math Tests]]
-- 1 edge to [[_COMMUNITY_Community 173]]
-- 1 edge to [[_COMMUNITY_Community 271]]
-- 1 edge to [[_COMMUNITY_Community 388]]
-- 1 edge to [[_COMMUNITY_Community 230]]
-- 1 edge to [[_COMMUNITY_Community 36]]
+- 3 edges to [[_COMMUNITY_Community 246]]
+- 3 edges to [[_COMMUNITY_Community 202]]
+- 3 edges to [[_COMMUNITY_Community 172]]
+- 3 edges to [[_COMMUNITY_Community 184]]
+- 2 edges to [[_COMMUNITY_Community 271]]
+- 1 edge to [[_COMMUNITY_Community 231]]
 
 ## Top bridge nodes
-- [[ensemble_stats()]] - degree 23, connects to 8 communities
-- [[Group A Testing Plan]] - degree 3, connects to 2 communities
-- [[TestEnsembleStats]] - degree 7, connects to 1 community
-- [[TestEnsembleStats_1]] - degree 4, connects to 1 community
+- [[paper.py Module]] - degree 17, connects to 4 communities
+- [[H11 Weather Alert Display]] - degree 4, connects to 2 communities
+- [[PositionsTab.jsx Component]] - degree 5, connects to 1 community
+- [[G5 Config Consolidation (BotConfig)]] - degree 4, connects to 1 community
+- [[D9 Kalshi Market URL Links]] - degree 3, connects to 1 community

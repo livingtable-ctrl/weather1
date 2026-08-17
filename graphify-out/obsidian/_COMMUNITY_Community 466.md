@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.38
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 466
 
-**Cohesion:** 0.38 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-_valid_hurdat2_response()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_cache_write_failure_still_returns_fetched_text()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_successful_fetch_writes_cache_via_atomic_write_text()]] - code - tests/test_hurricane_climatology.py
-- [[A cache-write failure (disk full, permissions, or -- the actual motivating…]] - rationale - tests/test_hurricane_climatology.py
-- [[TestFetchHurdat2RawCacheWrite]] - code - tests/test_hurricane_climatology.py
-- [[The real, non-mocked safe_io.atomic_write_text must be what lands the cache…]] - rationale - tests/test_hurricane_climatology.py
-- [[backlog.txt hurricane_climatology.fetch_hurdat2_raw's CACHE WRITE ISN'T…]] - rationale - tests/test_hurricane_climatology.py
+- [[dot-setup_method()_30]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_22]] - code - tests/test_live_execution.py
+- [[dot-test_fill_captures_latency_and_mid_price()]] - code - tests/test_live_execution.py
+- [[dot-test_log_order_result_coalesce_never_nulls_out_prior_fill_data()]] - code - tests/test_live_execution.py
+- [[dot-test_non_fill_status_leaves_instrumentation_null()]] - code - tests/test_live_execution.py
+- [[A later log_order_result() call on an already-instrumented row (e.g. from an…]] - rationale - tests/test_live_execution.py
+- [[TestFillInstrumentation]] - code - tests/test_live_execution.py
+- [[_poll_pending_orders must capture filled_atmarket_mid_at_fill the moment a…]] - rationale - tests/test_live_execution.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,7 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 98]]
+- 3 edges to [[_COMMUNITY_Community 12]]
 
 ## Top bridge nodes
-- [[TestFetchHurdat2RawCacheWrite]] - degree 5, connects to 1 community
+- [[TestFillInstrumentation]] - degree 9, connects to 1 community

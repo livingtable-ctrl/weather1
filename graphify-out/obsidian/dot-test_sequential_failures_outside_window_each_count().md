@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_circuit_breaker.py"
 type: "code"
-community: "Community 293"
+community: "Community 7"
 location: "L155"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_293
+  - community/Community_7
 ---
 
 # .test_sequential_failures_outside_window_each_count()
@@ -16,4 +16,4 @@ tags:
 - [[Failures spaced further apart than burst_window each increment the counter.]] - `rationale_for` [EXTRACTED]
 - [[TestCircuitBreakerBurstWindow]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_293
+#graphify/code #graphify/EXTRACTED #community/Community_7

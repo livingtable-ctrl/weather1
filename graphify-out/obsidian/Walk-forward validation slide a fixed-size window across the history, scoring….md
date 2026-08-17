@@ -1,12 +1,12 @@
 ---
 source_file: "backtest.py"
 type: "rationale"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 0"
 location: "L670"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_0
 ---
 
 # Walk-forward validation: slide a fixed-size window across the history, scoring…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[run_walk_forward()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

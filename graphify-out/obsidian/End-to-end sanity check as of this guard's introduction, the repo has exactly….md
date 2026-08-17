@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_isoformat_cutoff_guard.py"
 type: "rationale"
-community: "Community 75"
+community: "Community 66"
 location: "L356"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_75
+  - community/Community_66
 ---
 
 # End-to-end sanity check: as of this guard's introduction, the repo has exactly…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_current_repo_matches_exactly_the_known_allowlisted_sites()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_75
+#graphify/rationale #graphify/EXTRACTED #community/Community_66

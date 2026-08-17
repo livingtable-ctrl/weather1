@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_safe_io.py"
 type: "rationale"
-community: "Safe I/O CRC Validation Tests"
+community: "Community 698"
 location: "L629"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Safe_I/O_CRC_Validation_Tests
+  - community/Community_698
 ---
 
 # Regression test for the 2026-07-27 live bug: every real caller omits…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_atomic_write_default_fallback_does_not_clobber_original()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Safe_I/O_CRC_Validation_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_698

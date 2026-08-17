@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker Settlement Sigma & Disputed Rows"
+community: "Community 29"
 location: "L5606"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Settlement_Sigma__Disputed_Rows
+  - community/Community_29
 ---
 
 # .test_count_settled_predictions_excludes_storm_order()
@@ -17,4 +17,4 @@ tags:
 - [[TestLiveTradingGateConditionTypeFilter]] - `method` [EXTRACTED]
 - [[backlog.txt HURRICANE MARKETS -- storm-order model (2026-08-07) same this…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Settlement_Sigma__Disputed_Rows
+#graphify/code #graphify/EXTRACTED #community/Community_29

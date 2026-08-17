@@ -1,12 +1,12 @@
 ---
 source_file: "positions.py"
 type: "code"
-community: "Community 145"
+community: "Community 3"
 location: "L229"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_145
+  - community/Community_3
 ---
 
 # check_breakeven_stops()
@@ -17,9 +17,10 @@ tags:
 - [[Return positions whose break-even stop has triggered. Fires when…]] - `rationale_for` [EXTRACTED]
 - [[_check_live_position_exits()]] - `calls` [EXTRACTED]
 - [[_passes_exit_gates()]] - `calls` [EXTRACTED]
+- [[check_paper_position_exits()]] - `calls` [EXTRACTED]
 - [[liquidation_price()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
 - [[positions.py]] - `contains` [EXTRACTED]
-- [[test_positions.py]] - `calls` [EXTRACTED]
+- [[test_positions.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_145
+#graphify/code #graphify/EXTRACTED #community/Community_3

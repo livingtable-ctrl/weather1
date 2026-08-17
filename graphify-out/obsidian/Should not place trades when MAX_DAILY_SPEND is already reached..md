@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Community 92"
+community: "Community 726"
 location: "L518"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_92
+  - community/Community_726
 ---
 
 # Should not place trades when MAX_DAILY_SPEND is already reached.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_auto_place_trades_stops_at_daily_spend_cap()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_92
+#graphify/rationale #graphify/EXTRACTED #community/Community_726

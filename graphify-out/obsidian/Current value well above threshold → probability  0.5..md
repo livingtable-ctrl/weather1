@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "rationale"
-community: "Forecasting Persistence Model Tests"
+community: "Community 38"
 location: "L25"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_38
 ---
 
 # Current value well above threshold → probability > 0.5.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_above_threshold_high_current()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_38

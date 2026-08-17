@@ -1,31 +1,31 @@
 ---
 type: community
-cohesion: 0.17
+cohesion: 0.18
 members: 16
 ---
 
 # Community 219
 
-**Cohesion:** 0.17 - loosely connected
+**Cohesion:** 0.18 - loosely connected
 **Members:** 16 nodes
 
 ## Members
-- [[dot-_run_place()]] - code - tests/test_prelog.py
-- [[dot-test_exactly_one_log_row_on_failure()]] - code - tests/test_prelog.py
-- [[dot-test_exactly_one_log_row_on_success()]] - code - tests/test_prelog.py
-- [[dot-test_pending_row_exists_before_api_call()]] - code - tests/test_prelog.py
-- [[dot-test_placed_order_counts_toward_open_positions()]] - code - tests/test_prelog.py
-- [[dot-test_status_updated_to_failed_on_exception()]] - code - tests/test_prelog.py
-- [[dot-test_status_updated_to_pending_on_success()]] - code - tests/test_prelog.py
-- [[A 'pending' log row must exist in the DB before place_order is called.]] - rationale - tests/test_prelog.py
-- [[After a successful place_order, status must be updated to 'pending' — the…]] - rationale - tests/test_prelog.py
-- [[After place_order raises, status must be updated to 'failed'.]] - rationale - tests/test_prelog.py
-- [[Even on API failure, exactly one DB row must exist.]] - rationale - tests/test_prelog.py
-- [[Exactly one DB row must be created (pre-log + in-place update, not two inserts).]] - rationale - tests/test_prelog.py
-- [[F1 regression a successfully-placed live order must actually be counted by…]] - rationale - tests/test_prelog.py
-- [[Helper run _place_live_order with the gate open and capture log calls.]] - rationale - tests/test_prelog.py
-- [[TestPreLogPattern]] - code - tests/test_prelog.py
-- [[_place_live_order must pre-log with status='pending' before calling place_order.]] - rationale - tests/test_prelog.py
+- [[dot-test_defaults_to_min_edge_constant()]] - code - tests/test_live_execution.py
+- [[dot-test_falls_back_to_min_edge_on_tier_exception()]] - code - tests/test_live_execution.py
+- [[dot-test_false_for_thin_edge()]] - code - tests/test_live_execution.py
+- [[dot-test_invalid_side_returns_false()]] - code - tests/test_live_execution.py
+- [[dot-test_missing_entry_price_returns_false()]] - code - tests/test_live_execution.py
+- [[dot-test_missing_forecast_prob_returns_false()]] - code - tests/test_live_execution.py
+- [[dot-test_no_side_computed_correctly()]] - code - tests/test_live_execution.py
+- [[dot-test_true_for_strong_edge()]] - code - tests/test_live_execution.py
+- [[dot-test_uses_confidence_tier_when_spread_present()]] - code - tests/test_live_execution.py
+- [[Replicate _validate_trade_opportunity's live min-edge threshold (confidence-…]] - rationale - order_executor.py
+- [[TestClearsTakerFee]] - code - tests/test_live_execution.py
+- [[TestLiveMinEdge]] - code - tests/test_live_execution.py
+- [[True if net_edge, recomputed with the REAL taker fee instead of the maker fee…]] - rationale - order_executor.py
+- [[_clears_taker_fee recomputes net_edge with the real taker fee instead of the…]] - rationale - tests/test_live_execution.py
+- [[_clears_taker_fee()]] - code - order_executor.py
+- [[_live_min_edge()]] - code - order_executor.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -35,9 +35,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 183]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 8 edges to [[_COMMUNITY_Community 12]]
+- 2 edges to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 74]]
+- 1 edge to [[_COMMUNITY_Community 305]]
 
 ## Top bridge nodes
-- [[TestPreLogPattern]] - degree 9, connects to 1 community
-- [[dot-test_placed_order_counts_toward_open_positions()]] - degree 4, connects to 1 community
+- [[_clears_taker_fee()]] - degree 11, connects to 3 communities
+- [[_live_min_edge()]] - degree 8, connects to 3 communities
+- [[TestClearsTakerFee]] - degree 10, connects to 1 community
+- [[TestLiveMinEdge]] - degree 6, connects to 1 community

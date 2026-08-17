@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_regression.py"
 type: "code"
-community: "Community 71"
+community: "Community 4"
 location: "L201"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_71
+  - community/Community_4
 ---
 
 # test_get_weather_markets_does_not_call_global_get_markets()
@@ -15,4 +15,4 @@ tags:
 - [[get_weather_markets must not call client.get_markets() without series_ticker.…]] - `rationale_for` [EXTRACTED]
 - [[test_regression.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_71
+#graphify/code #graphify/EXTRACTED #community/Community_4

@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 610
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[Matches atomic_write_json's own path.parent.mkdir(parents=True, exist_ok=True)…]] - rationale - tests/test_safe_io.py
-- [[test_atomic_write_text_creates_parent_dirs()]] - code - tests/test_safe_io.py
+- [[dot-test_blocks_when_lock_is_fresh_without_psutil()]] - code - tests/test_cron_lock.py
+- [[dot-test_overrides_stale_lock_without_psutil()]] - code - tests/test_cron_lock.py
+- [[TestAcquireCronLockNoPsutil]] - code - tests/test_cron_lock.py
+- [[Without psutil, a lock  1800s old must block.]] - rationale - tests/test_cron_lock.py
+- [[Without psutil, a lock  1800s old must be overridden.]] - rationale - tests/test_cron_lock.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,7 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Safe IO CRC Validation Tests]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[test_atomic_write_text_creates_parent_dirs()]] - degree 2, connects to 1 community
+- [[TestAcquireCronLockNoPsutil]] - degree 3, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "rationale"
-community: "ML Bias Multiday-Predictions Filter"
-location: "L43"
+community: "Community 82"
+location: "L58"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_82
 ---
 
 # Return the HMAC secret from env. Empty string disables verification (dev only).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_hmac_secret()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/rationale #graphify/EXTRACTED #community/Community_82

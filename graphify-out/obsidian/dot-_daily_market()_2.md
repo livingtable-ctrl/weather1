@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 485"
+community: "Community 528"
 location: "L1624"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_485
+  - community/Community_528
 ---
 
 # ._daily_market()
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_mixed_list_fit_matches_daily_only_fit()_1]] - `calls` [EXTRACTED]
 - [[TestComputeMarketImpliedExcludesMonthlySnow]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_485
+#graphify/code #graphify/EXTRACTED #community/Community_528

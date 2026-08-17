@@ -1,11 +1,11 @@
 ---
 source_file: "templates/analytics.html"
 type: "code"
-community: "Community 147"
+community: "Community 334"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_147
+  - community/Community_334
 ---
 
 # Analytics Template Page
@@ -15,4 +15,4 @@ tags:
 - [[D4 Per-City Reliability Diagram]] - `conceptually_related_to` [INFERRED]
 - [[staticanalytics.js_1]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_147
+#graphify/code #graphify/EXTRACTED #community/Community_334

@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/report.md"
 type: "document"
-community: "Community 59"
+community: "Community 6"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_59
+  - community/Community_6
 ---
 
 # Grade Audit Final Report
@@ -20,29 +20,25 @@ tags:
 - [[ab_test.py]] - `references` [EXTRACTED]
 - [[alerts.py]] - `references` [EXTRACTED]
 - [[atomic_write_json_with_history()]] - `cites` [EXTRACTED]
-- [[brier_score()]] - `cites` [EXTRACTED]
 - [[calibration.py]] - `references` [EXTRACTED]
 - [[circuit_breaker.py]] - `references` [EXTRACTED]
 - [[climatology.py]] - `references` [EXTRACTED]
 - [[cloud_backup.py]] - `references` [EXTRACTED]
-- [[config.py_1]] - `references` [EXTRACTED]
-- [[cron.py_2]] - `references` [EXTRACTED]
-- [[execution_log.py_2]] - `references` [EXTRACTED]
+- [[config.py]] - `references` [EXTRACTED]
+- [[execution_log.py_1]] - `references` [EXTRACTED]
 - [[get_ensemble_temps()]] - `cites` [EXTRACTED]
-- [[kalshi_client.py_2]] - `references` [EXTRACTED]
+- [[kalshi_client.py_1]] - `references` [EXTRACTED]
 - [[kalshi_ws.py_1]] - `references` [EXTRACTED]
-- [[main.py]] - `references` [EXTRACTED]
-- [[metar.py_1]] - `references` [EXTRACTED]
-- [[ml_bias.py_2]] - `references` [EXTRACTED]
-- [[monte_carlo.py_2]] - `references` [EXTRACTED]
-- [[notify.py_1]] - `references` [EXTRACTED]
-- [[nws.py_1]] - `references` [EXTRACTED]
-- [[output_formatters.py_1]] - `references` [EXTRACTED]
+- [[metar.py]] - `references` [EXTRACTED]
+- [[monte_carlo.py_1]] - `references` [EXTRACTED]
+- [[notify.py]] - `references` [EXTRACTED]
+- [[nws.py]] - `references` [EXTRACTED]
+- [[output_formatters.py]] - `references` [EXTRACTED]
 - [[paper.py]] - `references` [EXTRACTED]
-- [[param_sweep.py_1]] - `references` [EXTRACTED]
+- [[param_sweep.py]] - `references` [EXTRACTED]
 - [[project_root()]] - `cites` [EXTRACTED]
-- [[regime.py_2]] - `references` [EXTRACTED]
+- [[regime.py_1]] - `references` [EXTRACTED]
 - [[validate_market()]] - `cites` [EXTRACTED]
 - [[validate_nws_response()]] - `cites` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_59
+#graphify/document #graphify/EXTRACTED #community/Community_6

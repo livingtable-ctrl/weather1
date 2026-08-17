@@ -1,31 +1,32 @@
 ---
 type: community
-cohesion: 0.18
-members: 16
+cohesion: 0.12
+members: 17
 ---
 
 # Community 210
 
-**Cohesion:** 0.18 - loosely connected
-**Members:** 16 nodes
+**Cohesion:** 0.12 - loosely connected
+**Members:** 17 nodes
 
 ## Members
-- [[B2 Dynamic Correlation Matrix in Monte Carlo]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
-- [[B4 Marginal Kelly (deferred)]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
-- [[B6 Tail-Risk Stress Testing]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
-- [[B7 Overnight GFS Gap Protection]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
-- [[C1 Partial Exit (50% Close)]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
-- [[C2 Take-Profit Ladder]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
-- [[C3 Re-entry After Early Exit (deferred)]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
-- [[C4 Position Building (post-graduation)]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
-- [[C5 Settlement Countdown (Frontend)]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
-- [[C6 Auto-Execute Monotonicity Violations]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
-- [[Category B Risk Management Plan]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
-- [[Category C Position Management Plan]] - document - docs/superpowers/plans/2026-06-27-category-c-position-management.md
-- [[Fix High Early Exit Rate Plan]] - document - docs/superpowers/plans/2026-04-25-fix-early-exits.md
-- [[_check_early_exits Hold Time Fix]] - document - docs/superpowers/plans/2026-04-25-fix-early-exits.md
-- [[check_model_exits Threshold + Hold Time Fix]] - document - docs/superpowers/plans/2026-04-25-fix-early-exits.md
-- [[order_executor.py module]] - code - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
+- [[dot-test_all_cities_return_station()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_city_tz_covers_all_cities()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_city_tz_values_are_valid_iana()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_every_city_coords_entry_has_tz_and_station()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_old_abbreviations_removed()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_settlement_monitor_series_tickers_match_known_weather_series()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_settlement_monitor_stations_match_metar_module()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_station_ids_are_correct()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_station_map_matches_metar_module()]] - code - tests/test_phase2_batch_j.py
+- [[All 18 Kalshi cities must map to a METAR station and timezone.]] - rationale - tests/test_phase2_batch_j.py
+- [[All timezone strings must be parseable by zoneinfo.]] - rationale - tests/test_phase2_batch_j.py
+- [[Every CITY_COORDS key must have a _CITY_TZ and metar.MARKET_STATION_MAP entry…]] - rationale - tests/test_phase2_batch_j.py
+- [[Old 3-letter keys (MIA, CHI, LAX, DAL, DEN) must no longer be primary keys.]] - rationale - tests/test_phase2_batch_j.py
+- [[TestMetarStationForCityAllCities]] - code - tests/test_phase2_batch_j.py
+- [[_CITY_METAR_STATION must agree with metar.MARKET_STATION_MAP.]] - rationale - tests/test_phase2_batch_j.py
+- [[_CITY_SERIES_TICKER is now derived from KNOWN_WEATHER_SERIES +…]] - rationale - tests/test_phase2_batch_j.py
+- [[settlement_monitor._MONITOR_CITIES is now derived from metar.MARKET_STATION_MAP…]] - rationale - tests/test_phase2_batch_j.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -35,14 +36,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 224]]
-- 3 edges to [[_COMMUNITY_Community 294]]
-- 2 edges to [[_COMMUNITY_Community 295]]
-- 1 edge to [[_COMMUNITY_Community 453]]
+- 1 edge to [[_COMMUNITY_Community 303]]
 
 ## Top bridge nodes
-- [[Category B Risk Management Plan]] - degree 9, connects to 4 communities
-- [[C1 Partial Exit (50% Close)]] - degree 5, connects to 1 community
-- [[order_executor.py module]] - degree 4, connects to 1 community
-- [[B6 Tail-Risk Stress Testing]] - degree 3, connects to 1 community
-- [[C6 Auto-Execute Monotonicity Violations]] - degree 3, connects to 1 community
+- [[TestMetarStationForCityAllCities]] - degree 11, connects to 1 community

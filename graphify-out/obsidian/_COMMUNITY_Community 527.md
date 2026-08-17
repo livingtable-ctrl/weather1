@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.38
+members: 7
 ---
 
 # Community 527
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.38 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[Apply the common monkeypatches needed for L7-B _auto_place_trades tests.]] - rationale - tests/test_trading.py
-- [[Regression for L7-B for NO trades, entry_price must equal no_ask = 1 - yes_bid…]] - rationale - tests/test_trading.py
-- [[Regression for L7-B for YES trades, entry_price passed to place_paper_order…]] - rationale - tests/test_trading.py
-- [[_l7b_common_patches()]] - code - tests/test_trading.py
-- [[test_auto_place_uses_no_ask_not_mid_for_no_trades()]] - code - tests/test_trading.py
-- [[test_auto_place_uses_yes_ask_not_mid_for_yes_trades()]] - code - tests/test_trading.py
+- [[dot-test_known_untracked_snow_series_suppressed()]] - code - tests/test_snow_markets.py
+- [[dot-test_missing_kxdensnowm_flagged_after_3_days()]] - code - tests/test_snow_markets.py
+- [[dot-test_unknown_snow_ticker_warns_immediately()]] - code - tests/test_snow_markets.py
+- [[All 32 KNOWN_UNTRACKED_SNOW_SERIES entries must be suppressed, not just the…]] - rationale - tests/test_snow_markets.py
+- [[Regression control mirroring the pre-existing KXHIGHKXLOW missing-ticker test…]] - rationale - tests/test_snow_markets.py
+- [[TestCheckSeriesDriftSnow]] - code - tests/test_snow_markets.py
+- [[_mock_client()_3]] - code - tests/test_snow_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,10 +26,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 92]]
-- 1 edge to [[_COMMUNITY_Community 347]]
+- 2 edges to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[_l7b_common_patches()]] - degree 5, connects to 2 communities
-- [[test_auto_place_uses_no_ask_not_mid_for_no_trades()]] - degree 3, connects to 1 community
-- [[test_auto_place_uses_yes_ask_not_mid_for_yes_trades()]] - degree 3, connects to 1 community
+- [[_mock_client()_3]] - degree 4, connects to 1 community
+- [[TestCheckSeriesDriftSnow]] - degree 4, connects to 1 community

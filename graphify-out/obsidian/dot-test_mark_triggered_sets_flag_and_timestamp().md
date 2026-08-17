@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts.py"
 type: "code"
-community: "Community 461"
+community: "Community 32"
 location: "L143"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_461
+  - community/Community_32
 ---
 
 # .test_mark_triggered_sets_flag_and_timestamp()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMarkTriggered]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_461
+#graphify/code #graphify/EXTRACTED #community/Community_32

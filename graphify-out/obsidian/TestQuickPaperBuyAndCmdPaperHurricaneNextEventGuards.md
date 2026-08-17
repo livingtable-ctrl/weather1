@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Community 507"
+community: "Community 45"
 location: "L1728"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_507
+  - community/Community_45
 ---
 
 # TestQuickPaperBuyAndCmdPaperHurricaneNextEventGuards
@@ -19,4 +19,4 @@ tags:
 - [[Opus-review-caught gap only cmd_order and check_position_limits had direct…]] - `rationale_for` [EXTRACTED]
 - [[test_hurricane_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_507
+#graphify/code #graphify/EXTRACTED #community/Community_45

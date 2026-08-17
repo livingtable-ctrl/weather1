@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "code"
-community: "Community 208"
+community: "Community 108"
 location: "L291"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_208
+  - community/Community_108
 ---
 
 # check_anomalies()
@@ -29,4 +29,4 @@ tags:
 - [[run_anomaly_check()]] - `calls` [EXTRACTED]
 - [[test_alerts_side.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_208
+#graphify/code #graphify/EXTRACTED #community/Community_108

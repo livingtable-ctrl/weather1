@@ -1,20 +1,23 @@
 ---
 source_file: "settlement_monitor.py"
 type: "code"
-community: "METAR Settlement Monitoring"
-location: "L272"
+community: "Community 51"
+location: "L362"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_51
 ---
 
 # check_city_settlement()
 
 ## Connections
 - [[Check METAR for a city and return any new settlement signals. Args city City…]] - `rationale_for` [EXTRACTED]
+- [[Check METAR for a city and return any new settlement signals. Args city City…_1]] - `rationale_for` [EXTRACTED]
 - [[METAR Lock-In Module]] - `calls` [EXTRACTED]
+- [[TestBTickerParsing]] - `calls` [EXTRACTED]
 - [[ZoneInfo]] - `calls` [INFERRED]
+- [[_calibrate_metar_settlement_confidence()]] - `calls` [EXTRACTED]
 - [[_check_between_settlement()]] - `calls` [EXTRACTED]
 - [[build_settlement_signal()]] - `calls` [EXTRACTED]
 - [[check_metar_lockout()]] - `calls` [EXTRACTED]
@@ -22,7 +25,6 @@ tags:
 - [[fetch_metar_daily_extreme()]] - `calls` [EXTRACTED]
 - [[run_settlement_monitor()]] - `calls` [EXTRACTED]
 - [[settlement_monitor.py]] - `contains` [EXTRACTED]
-- [[settlement_monitor.py_1]] - `implements` [EXTRACTED]
 - [[test_settlement_monitor.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/code #graphify/EXTRACTED #community/Community_51

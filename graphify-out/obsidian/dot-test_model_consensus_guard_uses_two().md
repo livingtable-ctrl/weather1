@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_improvements.py"
 type: "code"
-community: "Community 526"
+community: "Community 585"
 location: "L203"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_526
+  - community/Community_585
 ---
 
 # .test_model_consensus_guard_uses_two()
@@ -15,4 +15,4 @@ tags:
 - [[TestEnsembleMemberThreshold]] - `method` [EXTRACTED]
 - [[The model-consensus-check guard (ens_prob + _get_consensus_probs block) must…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_526
+#graphify/code #graphify/EXTRACTED #community/Community_585

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_improvements.py"
 type: "code"
-community: "Community 346"
+community: "Community 352"
 location: "L173"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_346
+  - community/Community_352
 ---
 
 # .test_min_prob_edge_constant_exists()
@@ -15,4 +15,4 @@ tags:
 - [[MIN_PROB_EDGE constant must be defined in utils.py with value 0.08.]] - `rationale_for` [EXTRACTED]
 - [[TestMinProbEdgeGate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_346
+#graphify/code #graphify/EXTRACTED #community/Community_352

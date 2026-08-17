@@ -1,20 +1,21 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.33
+members: 6
 ---
 
 # Community 553
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_dedupes_by_ticker_before_analysis()]] - code - tests/test_p1_remaining.py
-- [[dot-test_skips_stale_markets_before_analysis()]] - code - tests/test_p1_remaining.py
-- [[A zero-volume market closing within 60 minutes must never reach…]] - rationale - tests/test_p1_remaining.py
-- [[TestAnalyzeOnceDedupAndStaleParity]] - code - tests/test_p1_remaining.py
-- [[The same ticker appearing twice in one scan (oldnew Kalshi series format…]] - rationale - tests/test_p1_remaining.py
+- [[66.1 Add `get_teleconnection_indices()` to `climate_indices.py`]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[66.2 Add `teleconnection_temp_adjustment(city, condition_type, ao, nao)` to `weather_markets.py`]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[66.3 Write tests]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[66.4 Verify & Commit]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Background_16]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Task 66 (P12.F) — Teleconnection Index Overlay (AO, NAO, MJO)]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,8 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 1 edge to [[_COMMUNITY_Community 96]]
+- 1 edge to [[_COMMUNITY_Community 451]]
 
 ## Top bridge nodes
-- [[TestAnalyzeOnceDedupAndStaleParity]] - degree 5, connects to 2 communities
+- [[Task 66 (P12.F) — Teleconnection Index Overlay (AO, NAO, MJO)]] - degree 6, connects to 1 community

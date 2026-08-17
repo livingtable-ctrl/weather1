@@ -1,12 +1,12 @@
 ---
 source_file: "docs/grade_audit/outputs/nws.py.md"
 type: "document"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 6"
 location: "L:260-310"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_6
 ---
 
 # nws_prob() Zero Test Coverage, Unguarded Exception (7/10)
@@ -17,4 +17,4 @@ tags:
 - [[nws.py]] - `references` [EXTRACTED]
 - [[weather_markets.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/document #graphify/EXTRACTED #community/Community_6

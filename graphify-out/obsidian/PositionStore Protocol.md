@@ -1,11 +1,11 @@
 ---
 source_file: "positions.py"
 type: "code"
-community: "Community 589"
+community: "Community 666"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_589
+  - community/Community_666
 ---
 
 # PositionStore Protocol
@@ -14,4 +14,4 @@ tags:
 - [[LivePositionStore Class]] - `implements` [EXTRACTED]
 - [[PaperPositionStore Class]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_589
+#graphify/code #graphify/EXTRACTED #community/Community_666

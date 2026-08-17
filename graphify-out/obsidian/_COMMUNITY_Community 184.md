@@ -1,33 +1,33 @@
 ---
 type: community
-cohesion: 0.13
+cohesion: 0.12
 members: 18
 ---
 
 # Community 184
 
-**Cohesion:** 0.13 - loosely connected
+**Cohesion:** 0.12 - loosely connected
 **Members:** 18 nodes
 
 ## Members
-- [[A real client.get_market() response has no series_ticker field at all…]] - rationale - tracker.py
-- [[Bulk-insert OHLC candlesticks for a market. Idempotent — re-running for the…]] - rationale - tracker.py
-- [[Bulk-insert public trade-flow history for a market. Idempotent -- re-running…]] - rationale - tracker.py
-- [[Check settled markets in the DB against Kalshi and record outcomes. Returns…]] - rationale - tracker.py
-- [[One-off recovery pass for price_history rows lost to the real series_ticker bug…]] - rationale - tracker.py
-- [[Parse a FixedPointCount string (e.g. 10.00 contracts) into a float.]] - rationale - tracker.py
-- [[Parse a nullable fixed-point-dollar string (e.g. 0.55) from a candlestick…]] - rationale - tracker.py
-- [[Record the outcome for a settled trade. F4 Uses append-only writes to avoid…]] - rationale - feature_importance.py
-- [[Record whether a market settled YES or NO. Returns True if newly recorded,…]] - rationale - tracker.py
-- [[_candle_dollars()]] - code - tracker.py
-- [[_derive_series_ticker()]] - code - tracker.py
-- [[_fp_count()]] - code - tracker.py
-- [[backfill_price_history()]] - code - tracker.py
-- [[log_outcome()]] - code - tracker.py
-- [[log_price_candles()]] - code - tracker.py
-- [[log_trades()]] - code - tracker.py
-- [[sync_outcomes()]] - code - tracker.py
-- [[update_outcome()]] - code - feature_importance.py
+- [[A Persistent Daily Loss Counter]] - document - docs/superpowers/specs/2026-04-10-live-order-lifecycle-design.md
+- [[B Live Order Settlement Tracking]] - document - docs/superpowers/specs/2026-04-10-live-order-lifecycle-design.md
+- [[D Live TaxAudit Export]] - document - docs/superpowers/specs/2026-04-10-live-order-lifecycle-design.md
+- [[1a Tiered Auto-Trade + MEDIUM Risk]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
+- [[4b Daily Spend Cap]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
+- [[Cycle-Aware Deduplication]] - document - docs/superpowers/specs/2026-04-10-execution-pipeline-design.md
+- [[E3 Circuit Breaker State Persistence]] - document - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
+- [[LV10 Kalshi Settlement Outcome Database]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
+- [[Midpoint Limit Order Strategy]] - document - docs/superpowers/specs/2026-04-10-execution-pipeline-design.md
+- [[Reliability  Silent Failures Audit Scope]] - document - system_audit_prompt.txt
+- [[_place_live_order() Function]] - document - docs/superpowers/specs/2026-04-10-execution-pipeline-design.md
+- [[alerts.py Module]] - code - system_audit_prompt.txt
+- [[circuit_breaker.py Module_1]] - code - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
+- [[consistency.py Module]] - code - system_audit_prompt.txt
+- [[execution_log.py Module]] - code - docs/superpowers/specs/2026-04-10-execution-pipeline-design.md
+- [[kalshi_client.py Module]] - code - docs/superpowers/specs/2026-04-10-execution-pipeline-design.md
+- [[notify.py Module]] - code - system_audit_prompt.txt
+- [[utils.py Module (constants)]] - code - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -37,20 +37,15 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 15 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 6 edges to [[_COMMUNITY_Community 36]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_Community 32]]
-- 1 edge to [[_COMMUNITY_Community 96]]
-- 1 edge to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
-- 1 edge to [[_COMMUNITY_Community 78]]
-- 1 edge to [[_COMMUNITY_Community 162]]
-- 1 edge to [[_COMMUNITY_Community 52]]
+- 3 edges to [[_COMMUNITY_Community 160]]
+- 2 edges to [[_COMMUNITY_Community 94]]
+- 1 edge to [[_COMMUNITY_Community 246]]
+- 1 edge to [[_COMMUNITY_Community 231]]
+- 1 edge to [[_COMMUNITY_Community 271]]
 
 ## Top bridge nodes
-- [[sync_outcomes()]] - degree 16, connects to 7 communities
-- [[backfill_price_history()]] - degree 7, connects to 3 communities
-- [[log_outcome()]] - degree 7, connects to 3 communities
-- [[log_price_candles()]] - degree 8, connects to 2 communities
-- [[log_trades()]] - degree 7, connects to 2 communities
+- [[Reliability  Silent Failures Audit Scope]] - degree 8, connects to 2 communities
+- [[1a Tiered Auto-Trade + MEDIUM Risk]] - degree 3, connects to 2 communities
+- [[execution_log.py Module]] - degree 7, connects to 1 community
+- [[E3 Circuit Breaker State Persistence]] - degree 2, connects to 1 community
+- [[Cycle-Aware Deduplication]] - degree 2, connects to 1 community

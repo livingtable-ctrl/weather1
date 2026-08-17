@@ -1,20 +1,19 @@
 ---
-source_file: "tests/test_phase3_batch_c.py"
+source_file: "tests/test_phase2_batch_k.py"
 type: "code"
-community: "Community 72"
-location: "L160"
+community: "Community 77"
+location: "L38"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_72
+  - community/Community_77
 ---
 
 # .test_weights_sum_to_one()
 
 ## Connections
-- [[TestRandomSearchAndGate]] - `method` [EXTRACTED]
-- [[_make_db()_1]] - `calls` [EXTRACTED]
-- [[_rows()]] - `calls` [EXTRACTED]
-- [[calibrate_city_weights()]] - `calls` [EXTRACTED]
+- [[dot-_call()_5]] - `calls` [EXTRACTED]
+- [[All weights must sum to 1.0 regardless of scaling.]] - `rationale_for` [EXTRACTED]
+- [[TestConfidenceScaledBlendWeightsNoNegative]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_72
+#graphify/code #graphify/EXTRACTED #community/Community_77

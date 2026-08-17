@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_edge_version.py"
 type: "code"
-community: "Community 334"
+community: "Community 341"
 location: "L12"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_334
+  - community/Community_341
 ---
 
 # _enriched()
@@ -16,4 +16,4 @@ tags:
 - [[test_analyze_trade_returns_edge_version()]] - `calls` [EXTRACTED]
 - [[test_edge_version.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_334
+#graphify/code #graphify/EXTRACTED #community/Community_341

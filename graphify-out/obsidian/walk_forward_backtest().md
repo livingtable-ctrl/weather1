@@ -1,12 +1,12 @@
 ---
 source_file: "backtest.py"
 type: "code"
-community: "Community 37"
+community: "Community 40"
 location: "L989"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_37
+  - community/Community_40
 ---
 
 # walk_forward_backtest()
@@ -30,4 +30,4 @@ tags:
 - [[test_walk_forward.py]] - `imports` [EXTRACTED]
 - [[walk_forward_split()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_37
+#graphify/code #graphify/EXTRACTED #community/Community_40

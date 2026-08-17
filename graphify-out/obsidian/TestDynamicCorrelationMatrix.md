@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Community 489"
+community: "Community 530"
 location: "L24"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_489
+  - community/Community_530
 ---
 
 # TestDynamicCorrelationMatrix
@@ -17,4 +17,4 @@ tags:
 - [[dot-test_uses_dynamic_when_available()]] - `method` [EXTRACTED]
 - [[test_trading.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_489
+#graphify/code #graphify/EXTRACTED #community/Community_530

@@ -1,32 +1,32 @@
 ---
 type: community
-cohesion: 0.16
+cohesion: 0.15
 members: 17
 ---
 
 # Community 202
 
-**Cohesion:** 0.16 - loosely connected
+**Cohesion:** 0.15 - loosely connected
 **Members:** 17 nodes
 
 ## Members
-- [[Fails if a function calls date.today() without a documented reason in…]] - rationale - tests/test_date_today_guard.py
-- [[Inverse check every allowlisted function must still actually call date.today()…]] - rationale - tests/test_date_today_guard.py
-- [[Path_11]] - code
-- [[Regression for an opus-review finding on this guard Python 3.12+ tokenizes…]] - rationale - tests/test_date_today_guard.py
-- [[Regression this guard's own first version flagged a false positive on…]] - rationale - tests/test_date_today_guard.py
-- [[Return (file, line_number, enclosing_function_name) for every date.today() call…]] - rationale - tests/test_date_today_guard.py
-- [[Return source lines with every STRINGCOMMENTf-string-text token blanked out…]] - rationale - tests/test_date_today_guard.py
-- [[The positive-case sibling to the above a real date.today() call interpolated…]] - rationale - tests/test_date_today_guard.py
-- [[_code_only_lines()]] - code - tests/test_date_today_guard.py
-- [[_iter_date_today_sites()]] - code - tests/test_date_today_guard.py
-- [[rAutomated guard against new date.today() usage in production code…]] - rationale - tests/test_date_today_guard.py
-- [[test_date_today_allowlist_has_no_stale_entries()]] - code - tests/test_date_today_guard.py
-- [[test_date_today_guard.py]] - code - tests/test_date_today_guard.py
-- [[test_docstring_mention_of_date_today_is_not_a_false_positive()]] - code - tests/test_date_today_guard.py
-- [[test_fstring_prose_mention_is_not_a_false_positive()]] - code - tests/test_date_today_guard.py
-- [[test_fstring_real_call_is_still_caught()]] - code - tests/test_date_today_guard.py
-- [[test_no_new_date_today_outside_allowlist()]] - code - tests/test_date_today_guard.py
+- [[1a Extract paths.py (break circular dep)]] - document - docs/superpowers/plans/do-after-graduation.md
+- [[D1 Forecast Source Attribution]] - document - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[D2 Model Disagreement Flag]] - document - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[D3 Trade Timeline View]] - document - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[E10 analysis_attempts Pruning]] - document - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
+- [[E2 Weekly VACUUM Scheduling]] - document - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
+- [[E4 Dead Man's Switch (48h Alert)]] - document - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
+- [[G1 Extract paths.py]] - document - docs/superpowers/plans/2026-06-27-category-g-architecture.md
+- [[H6 Signal Drill-Down Panel]] - document - docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md
+- [[H8 Model Disagreement Indicator (Positions)]] - document - docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md
+- [[LV3 HRRR Intraday Update]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
+- [[LV8 Natural Language Daily Brief]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
+- [[Signals Page Spec (signals)]] - document - docs/superpowers/specs/2026-04-10-dashboard-modernization-design.md
+- [[SignalsTab.jsx Component]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[cron.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[paths.py Module]] - code - docs/superpowers/plans/2026-06-27-category-g-architecture.md
+- [[watchdog.py Module]] - code - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -36,10 +36,16 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Community 146]]
-- 1 edge to [[_COMMUNITY_Community 162]]
-- 1 edge to [[_COMMUNITY_Community 497]]
+- 4 edges to [[_COMMUNITY_Community 246]]
+- 3 edges to [[_COMMUNITY_Community 160]]
+- 2 edges to [[_COMMUNITY_Community 231]]
+- 2 edges to [[_COMMUNITY_Community 94]]
+- 1 edge to [[_COMMUNITY_Community 334]]
+- 1 edge to [[_COMMUNITY_Community 271]]
 
 ## Top bridge nodes
-- [[test_date_today_guard.py]] - degree 12, connects to 4 communities
+- [[G1 Extract paths.py]] - degree 7, connects to 3 communities
+- [[D1 Forecast Source Attribution]] - degree 5, connects to 1 community
+- [[SignalsTab.jsx Component]] - degree 4, connects to 1 community
+- [[D2 Model Disagreement Flag]] - degree 4, connects to 1 community
+- [[1a Extract paths.py (break circular dep)]] - degree 4, connects to 1 community

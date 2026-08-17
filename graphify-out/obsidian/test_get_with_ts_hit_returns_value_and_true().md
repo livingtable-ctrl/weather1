@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecast_cache.py"
 type: "code"
-community: "Forecast Persistent Cache"
+community: "Community 14"
 location: "L92"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecast_Persistent_Cache
+  - community/Community_14
 ---
 
 # test_get_with_ts_hit_returns_value_and_true()
@@ -16,4 +16,4 @@ tags:
 - [[get_with_ts returns (value, True, wall_ts) on a cache hit.]] - `rationale_for` [EXTRACTED]
 - [[test_forecast_cache.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecast_Persistent_Cache
+#graphify/code #graphify/EXTRACTED #community/Community_14

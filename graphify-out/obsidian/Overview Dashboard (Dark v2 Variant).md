@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/screenshots/dark-v2.png"
 type: "image"
-community: "Community 247"
+community: "Community 244"
 tags:
   - graphify/image
   - graphify/EXTRACTED
-  - community/Community_247
+  - community/Community_244
 ---
 
 # Overview Dashboard (Dark v2 Variant)
@@ -23,4 +23,4 @@ tags:
 - [[Overview TabPage]] - `implements` [EXTRACTED]
 - [[Top Navigation Bar (OverviewPositionsSignalsForecastAnalyticsRiskTrades)]] - `references` [EXTRACTED]
 
-#graphify/image #graphify/EXTRACTED #community/Community_247
+#graphify/image #graphify/EXTRACTED #community/Community_244

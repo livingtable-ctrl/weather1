@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Ensemble Weight Blending Tests"
-location: "L4220"
+community: "Community 11"
+location: "L4589"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_11
 ---
 
 # TestBatchPrewarmEnsembleRateLimitTiering
@@ -17,4 +17,4 @@ tags:
 - [[Open-Meteo's free ensemble-api endpoint enforces an undocumented rolling-~60s…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_11

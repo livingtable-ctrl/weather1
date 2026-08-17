@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "code"
-community: "Community 693"
+community: "Community 196"
 location: "L364"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_196
 ---
 
 # TestApiTradesLiveQuoteEnrichment
 
 ## Connections
-- [[dot-_open_trade()_1]] - `method` [EXTRACTED]
+- [[dot-_open_trade()]] - `method` [EXTRACTED]
 - [[dot-test_falls_back_to_sse_cache_when_live_fetch_raises()]] - `method` [EXTRACTED]
 - [[dot-test_live_batch_fetch_is_used_when_it_succeeds()]] - `method` [EXTRACTED]
 - [[dot-test_live_quote_takes_precedence_over_a_different_sse_value_for_the_same_ticker()]] - `method` [EXTRACTED]
@@ -26,4 +26,4 @@ tags:
 - [[handleCloseConfirm]] - `shares_data_with` [INFERRED]
 - [[test_web_app.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_196

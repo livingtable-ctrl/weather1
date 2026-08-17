@@ -1,12 +1,12 @@
 ---
 source_file: "monte_carlo.py"
 type: "code"
-community: "Community 181"
+community: "Community 148"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_181
+  - community/Community_148
 ---
 
 # monte_carlo.py
@@ -19,11 +19,18 @@ tags:
 - [[_load_dynamic_correlations() RF1 Bare Except (610)]] - `references` [EXTRACTED]
 - [[_repair_psd()]] - `contains` [EXTRACTED]
 - [[get_city_correlation()]] - `contains` [EXTRACTED]
+- [[get_peak_balance()]] - `imports` [EXTRACTED]
 - [[get_recent_city_correlations()]] - `imports` [EXTRACTED]
 - [[load_correlations_from_backtest()]] - `contains` [EXTRACTED]
 - [[load_correlations_from_backtest() RF1 Bare Except (610)]] - `references` [EXTRACTED]
+- [[load_paper_trades()]] - `imports` [EXTRACTED]
+- [[logging]] - `imports` [EXTRACTED]
+- [[math]] - `imports` [EXTRACTED]
 - [[monte_carlo.py File Grade mixed, 4 functions flagged fix-before-live]] - `references` [EXTRACTED]
 - [[monte_carlo.py Grade Audit]] - `references` [EXTRACTED]
+- [[paper.get_balance]] - `imports` [EXTRACTED]
+- [[paper.position_correlation_matrix]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
 - [[paths.py]] - `imports_from` [EXTRACTED]
 - [[portfolio_var()]] - `contains` [EXTRACTED]
 - [[run_stress_test()]] - `contains` [EXTRACTED]
@@ -35,4 +42,4 @@ tags:
 - [[utc_today()]] - `imports` [EXTRACTED]
 - [[utils.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_181
+#graphify/code #graphify/EXTRACTED #community/Community_148

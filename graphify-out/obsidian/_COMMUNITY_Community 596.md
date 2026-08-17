@@ -1,18 +1,20 @@
 ---
 type: community
-cohesion: 0.67
-members: 3
+cohesion: 0.40
+members: 5
 ---
 
 # Community 596
 
-**Cohesion:** 0.67 - moderately connected
-**Members:** 3 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[Prevent CPUmemory checks from interfering with trade-logic assertions.]] - rationale - tests/test_trade_validation.py
-- [[fixture_14]] - code
-- [[healthy_system()]] - code - tests/test_trade_validation.py
+- [[70.1 Add `reconcile_open_orders(client)` to `main.py`]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[70.2 Write tests]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[70.3 Verify & Commit]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Background_22]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Task 70 (P12.J) — Startup Position Reconciliation]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -22,7 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 85]]
+- 1 edge to [[_COMMUNITY_Community 451]]
 
 ## Top bridge nodes
-- [[healthy_system()]] - degree 3, connects to 1 community
+- [[Task 70 (P12.J) — Startup Position Reconciliation]] - degree 5, connects to 1 community

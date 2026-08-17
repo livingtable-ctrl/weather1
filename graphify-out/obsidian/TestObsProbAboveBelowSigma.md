@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Weather Probability Math Tests"
+community: "Community 203"
 location: "L494"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_203
 ---
 
 # TestObsProbAboveBelowSigma
@@ -17,4 +17,4 @@ tags:
 - [[Regression obs_prob for 'above''below' must use sigma=3.5, not sigma=1.0.…]] - `rationale_for` [EXTRACTED]
 - [[test_weather.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_203

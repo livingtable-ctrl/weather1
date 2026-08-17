@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 65"
+community: "Community 63"
 location: "L6167"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_65
+  - community/Community_63
 ---
 
 # .test_min_excludes_next_day_readings_phoenix_no_dst()
@@ -16,4 +16,4 @@ tags:
 - [[Same same-day-only rule, exercised on a stationtimezone the fix's own…]] - `rationale_for` [EXTRACTED]
 - [[TestFetchAsosDailyTemp]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_65
+#graphify/code #graphify/EXTRACTED #community/Community_63

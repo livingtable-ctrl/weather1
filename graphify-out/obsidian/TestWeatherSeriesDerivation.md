@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backtest.py"
 type: "code"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 606"
 location: "L354"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_606
 ---
 
 # TestWeatherSeriesDerivation
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_stale_known_weather_series_raises_at_import()_1]] - `method` [EXTRACTED]
 - [[test_backtest.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/code #graphify/EXTRACTED #community/Community_606

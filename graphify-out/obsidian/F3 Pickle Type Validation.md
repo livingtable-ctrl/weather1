@@ -1,12 +1,12 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-f-security.md"
 type: "document"
-community: "Community 179"
+community: "Community 94"
 location: "F3"
 tags:
   - graphify/document
-  - graphify/INFERRED
-  - community/Community_179
+  - graphify/EXTRACTED
+  - community/Community_94
 ---
 
 # F3: Pickle Type Validation
@@ -17,4 +17,4 @@ tags:
 - [[main.py Module]] - `references` [EXTRACTED]
 - [[ml_bias.py Module]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/INFERRED #community/Community_179
+#graphify/document #graphify/EXTRACTED #community/Community_94

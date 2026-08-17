@@ -10,18 +10,18 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[dot-test_false_when_env_var_set_but_below_sample_floor()]] - code - tests/test_snow_markets.py
-- [[dot-test_false_when_env_var_unset()]] - code - tests/test_snow_markets.py
-- [[dot-test_false_when_sample_floor_met_but_env_var_unset()]] - code - tests/test_snow_markets.py
-- [[dot-test_falsy_env_var_values_stay_false()]] - code - tests/test_snow_markets.py
-- [[dot-test_never_raises_on_count_failure()]] - code - tests/test_snow_markets.py
-- [[dot-test_true_when_env_var_set_and_sample_floor_met()]] - code - tests/test_snow_markets.py
-- [[dot-test_truthy_env_var_values_case_insensitive()]] - code - tests/test_snow_markets.py
-- [[Both conditions are required -- neither alone suffices.]] - rationale - tests/test_snow_markets.py
-- [[Mirrors the falsy check above -- confirms the accepted truthy set really is…]] - rationale - tests/test_snow_markets.py
-- [[Review-caught gap only unset1 were ever exercised -- must confirm explicit…]] - rationale - tests/test_snow_markets.py
-- [[TestSnowGatesActive]] - code - tests/test_snow_markets.py
-- [[backlog.txt Snow Step 2 shadow-only rollout _snow_gates_active() mirrors…]] - rationale - tests/test_snow_markets.py
+- [[dot-test_abtest_default_max_trades_per_variant_is_200()]] - code - tests/test_phase3_batch_e.py
+- [[dot-test_abtest_persists_max_trades_to_state()]] - code - tests/test_phase3_batch_e.py
+- [[dot-test_default_max_trades_constant_is_200()]] - code - tests/test_phase3_batch_e.py
+- [[dot-test_get_active_variant_reads_max_from_state()]] - code - tests/test_phase3_batch_e.py
+- [[dot-test_get_active_variant_uses_state_limit_not_module_constant()]] - code - tests/test_phase3_batch_e.py
+- [[ABTest.__init__ must write max_trades_per_variant into _meta of the state file.]] - rationale - tests/test_phase3_batch_e.py
+- [[P3-2 max_trades_per_variant default must be 200; get_active_variant reads from…]] - rationale - tests/test_phase3_batch_e.py
+- [[Phase 3 Batch E regression tests P3-2, P3-14.]] - rationale - tests/test_phase3_batch_e.py
+- [[TestABTestSampleSize]] - code - tests/test_phase3_batch_e.py
+- [[Variant with trades  state limit is active even if trades =…]] - rationale - tests/test_phase3_batch_e.py
+- [[get_active_variant must honour the max_trades_per_variant stored in state, not…]] - rationale - tests/test_phase3_batch_e.py
+- [[test_phase3_batch_e.py]] - code - tests/test_phase3_batch_e.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,7 +31,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 174]]
+- 2 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 116]]
+- 1 edge to [[_COMMUNITY_Community 313]]
+- 1 edge to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 48]]
+- 1 edge to [[_COMMUNITY_Community 9]]
 
 ## Top bridge nodes
-- [[TestSnowGatesActive]] - degree 9, connects to 1 community
+- [[test_phase3_batch_e.py]] - degree 9, connects to 6 communities

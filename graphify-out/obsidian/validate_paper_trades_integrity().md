@@ -1,21 +1,19 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 693"
+community: "Community 1"
 location: "L1304"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_1
 ---
 
 # validate_paper_trades_integrity()
 
 ## Connections
 - [[Check paper_trades.json for structural corruption. Returns a list of error…]] - `rationale_for` [EXTRACTED]
-- [[_build_app()]] - `calls` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
-- [[paper.py_1]] - `contains` [EXTRACTED]
-- [[web_app.py_1]] - `imports` [EXTRACTED]
+- [[_load()]] - `calls` [EXTRACTED]
+- [[paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_1

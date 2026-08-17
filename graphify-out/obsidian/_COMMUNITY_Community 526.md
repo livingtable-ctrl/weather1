@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 526
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_ensemble_guard_uses_two()]] - code - tests/test_trade_improvements.py
-- [[dot-test_model_consensus_guard_uses_two()]] - code - tests/test_trade_improvements.py
-- [[Confirming the = 2 threshold is present in weather_markets.py.]] - rationale - tests/test_trade_improvements.py
-- [[TestEnsembleMemberThreshold]] - code - tests/test_trade_improvements.py
-- [[The model-consensus-check guard (ens_prob + _get_consensus_probs block) must…]] - rationale - tests/test_trade_improvements.py
-- [[_score_ensemble_members must run once at least 2 temp samples exist.]] - rationale - tests/test_trade_improvements.py
+- [[dot-test_demo_env_uses_demo_base_url()]] - code - tests/test_risk_control.py
+- [[dot-test_paper_mode_never_calls_place_live_order()]] - code - tests/test_risk_control.py
+- [[dot-test_prod_env_uses_prod_base_url()]] - code - tests/test_risk_control.py
+- [[Sanity check KALSHI_ENV=prod must give the production URL.]] - rationale - tests/test_risk_control.py
+- [[TestPaperLiveSeparation]] - code - tests/test_risk_control.py
+- [[When KALSHI_ENV=demo the MARKET_BASE_URL must point to demo.kalshi.co.]] - rationale - tests/test_risk_control.py
+- [[_auto_place_trades(live=False) must never call _place_live_order.]] - rationale - tests/test_risk_control.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 2 edges to [[_COMMUNITY_Community 186]]
+- 1 edge to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 401]]
 
 ## Top bridge nodes
-- [[TestEnsembleMemberThreshold]] - degree 4, connects to 1 community
+- [[TestPaperLiveSeparation]] - degree 6, connects to 2 communities
+- [[dot-test_paper_mode_never_calls_place_live_order()]] - degree 3, connects to 1 community

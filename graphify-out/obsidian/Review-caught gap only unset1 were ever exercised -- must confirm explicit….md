@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "rationale"
-community: "Community 312"
+community: "Community 318"
 location: "L332"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_312
+  - community/Community_318
 ---
 
 # Review-caught gap: only unset/"1" were ever exercised -- must confirm explicit…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_falsy_env_var_values_stay_false()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_312
+#graphify/rationale #graphify/EXTRACTED #community/Community_318

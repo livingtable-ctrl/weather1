@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.32
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 422
 
-**Cohesion:** 0.32 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-test_already_sqlite_format_passes_through_unchanged()]] - code - tests/test_execution_log.py
-- [[dot-test_normalized_value_compares_correctly_against_datetime_now()]] - code - tests/test_execution_log.py
-- [[dot-test_normalizes_iso_t_format_to_sqlite_format()]] - code - tests/test_execution_log.py
-- [[Return a SQL expression normalizing a mixed-format timestamp column for…]] - rationale - utils.py
-- [[TestSqlNormalizeIsoColumn]] - code - tests/test_execution_log.py
-- [[The actual bug this exists to prevent an unnormalized ISO-T value sorts higher…]] - rationale - tests/test_execution_log.py
-- [[sql_normalize_iso_column()]] - code - utils.py
-- [[utils.sql_normalize_iso_column() -- the shared helper both call sites above…]] - rationale - tests/test_execution_log.py
+- [[dot-test_false_when_env_var_set_but_below_sample_floor()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_false_when_env_var_unset()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_false_when_sample_floor_met_but_env_var_unset()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_falsy_env_var_values_stay_false()_1]] - code - tests/test_hurricane_markets.py
+- [[dot-test_never_raises_on_count_failure()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_true_when_env_var_set_and_sample_floor_met()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_truthy_env_var_values_case_insensitive()_1]] - code - tests/test_hurricane_markets.py
+- [[Mirrors _rain_gates_active()'s_snow_gates_active()'s exact test shape…]] - rationale - tests/test_hurricane_markets.py
+- [[TestHurricaneCountGatesActive]] - code - tests/test_hurricane_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,11 +28,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 5 edges to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Community 75]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
-- [[sql_normalize_iso_column()]] - degree 11, connects to 4 communities
-- [[TestSqlNormalizeIsoColumn]] - degree 5, connects to 1 community
+- [[TestHurricaneCountGatesActive]] - degree 9, connects to 1 community

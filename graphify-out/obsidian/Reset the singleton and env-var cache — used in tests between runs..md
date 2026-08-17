@@ -1,12 +1,12 @@
 ---
 source_file: "config.py"
 type: "rationale"
-community: "Community 212"
+community: "Community 47"
 location: "L386"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_212
+  - community/Community_47
 ---
 
 # Reset the singleton and env-var cache — used in tests between runs.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[reset_config()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_212
+#graphify/rationale #graphify/EXTRACTED #community/Community_47

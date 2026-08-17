@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "code"
-community: "METAR Lock-In Confidence Tests"
+community: "Community 22"
 location: "L189"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Lock-In_Confidence_Tests
+  - community/Community_22
 ---
 
 # .test_between_lock_in_reenabled_uses_daily_extreme_not_current_temp()
@@ -16,4 +16,4 @@ tags:
 - [[Between-market METAR lock-in is RE-ENABLED (backlog.txt BETWEEN- BUCKET…]] - `rationale_for` [EXTRACTED]
 - [[TestBetweenLockInDynamicConfidence]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Lock-In_Confidence_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_22

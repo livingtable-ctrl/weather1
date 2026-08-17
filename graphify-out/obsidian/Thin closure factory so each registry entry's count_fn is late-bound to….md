@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Community 533"
-location: "L6734"
+community: "Community 5"
+location: "L6836"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_533
+  - community/Community_5
 ---
 
 # Thin closure factory so each registry entry's count_fn is late-bound to…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_count_signal_column()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_533
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

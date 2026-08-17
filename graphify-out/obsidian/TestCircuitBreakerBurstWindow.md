@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_circuit_breaker.py"
 type: "code"
-community: "Community 293"
+community: "Community 7"
 location: "L136"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_293
+  - community/Community_7
 ---
 
 # TestCircuitBreakerBurstWindow
@@ -17,4 +17,4 @@ tags:
 - [[CircuitBreaker]] - `uses` [INFERRED]
 - [[test_circuit_breaker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_293
+#graphify/code #graphify/EXTRACTED #community/Community_7

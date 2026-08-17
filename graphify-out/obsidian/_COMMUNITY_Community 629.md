@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 629
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_count_settled_storm_order_predictions_counts_only_storm_order_tickers()]] - code - tests/test_tracker.py
-- [[backlog.txt HURRICANE MARKETS -- storm-order model (2026-08-07) must count…]] - rationale - tests/test_tracker.py
+- [[dot-test_kelly_cap_in_utils()]] - code - tests/test_phase3_batch_a.py
+- [[dot-test_paper_kelly_sizing_capped()]] - code - tests/test_phase3_batch_a.py
+- [[dot-test_weather_markets_imports_kelly_cap()]] - code - tests/test_phase3_batch_a.py
+- [[P3-13 KELLY_CAP must be 0.25 in utils and used by both modules.]] - rationale - tests/test_phase3_batch_a.py
+- [[TestKellyCapConstant]] - code - tests/test_phase3_batch_a.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +24,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
-- 1 edge to [[_COMMUNITY_Tracker Settlement Sigma & Disputed Rows]]
+- 1 edge to [[_COMMUNITY_Community 13]]
+- 1 edge to [[_COMMUNITY_Community 41]]
 
 ## Top bridge nodes
-- [[dot-test_count_settled_storm_order_predictions_counts_only_storm_order_tickers()]] - degree 3, connects to 2 communities
+- [[TestKellyCapConstant]] - degree 6, connects to 2 communities

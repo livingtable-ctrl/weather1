@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md"
 type: "code"
-community: "Community 179"
+community: "Community 271"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_179
+  - community/Community_271
 ---
 
 # main.py Module
@@ -29,4 +29,4 @@ tags:
 - [[live_config.json Hard Stops]] - `references` [EXTRACTED]
 - [[python main.py calibrate CLI Command]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_179
+#graphify/code #graphify/EXTRACTED #community/Community_271

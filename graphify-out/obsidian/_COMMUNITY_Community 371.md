@@ -1,25 +1,25 @@
 ---
 type: community
-cohesion: 0.20
+cohesion: 0.29
 members: 10
 ---
 
 # Community 371
 
-**Cohesion:** 0.20 - loosely connected
+**Cohesion:** 0.29 - loosely connected
 **Members:** 10 nodes
 
 ## Members
-- [[dot-setUp()_26]] - code - tests/test_paper.py
-- [[dot-tearDown()_25]] - code - tests/test_paper.py
-- [[dot-test_drawdown_zero_at_start()]] - code - tests/test_paper.py
-- [[dot-test_max_drawdown_pct_correct()]] - code - tests/test_paper.py
-- [[dot-test_paused_from_peak_not_start()]] - code - tests/test_paper.py
-- [[dot-test_peak_does_not_decrease_on_loss()]] - code - tests/test_paper.py
-- [[dot-test_peak_tracks_winning_trade()]] - code - tests/test_paper.py
-- [[dot-test_performance_includes_peak_and_drawdown()]] - code - tests/test_paper.py
-- [[TestHighWaterMark]] - code - tests/test_paper.py
-- [[Win to $1500+, then lose 50% of peak → should be paused.]] - rationale - tests/test_paper.py
+- [[dot-_mock_daily_response()]] - code - tests/test_backtest.py
+- [[dot-_mock_resp()]] - code - tests/test_backtest.py
+- [[dot-test_fetch_archive_temps_survives_write_failure()]] - code - tests/test_backtest.py
+- [[dot-test_fetch_archive_temps_writes_via_atomic_helper()]] - code - tests/test_backtest.py
+- [[dot-test_reads_cache_round_trip()]] - code - tests/test_backtest.py
+- [[A cache file written by the real (non-mocked) safe_io.atomic_write_json must be…]] - rationale - tests/test_backtest.py
+- [[A failed cache write (e.g. AtomicWriteError) must not crash the fetch or lose…]] - rationale - tests/test_backtest.py
+- [[TestFetchArchiveTempsCacheWrite]] - code - tests/test_backtest.py
+- [[backlog.txt climate_indices.py's PDOPNA CACHE AND backtest.py's OWN CACHE…_1]] - rationale - tests/test_backtest.py
+- [[fetch_archive_temps must use safe_io.atomic_write_json, not a plain write_text…]] - rationale - tests/test_backtest.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,8 +29,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 56]]
-- 1 edge to [[_COMMUNITY_Community 45]]
+- 1 edge to [[_COMMUNITY_Community 8]]
 
 ## Top bridge nodes
-- [[TestHighWaterMark]] - degree 10, connects to 2 communities
+- [[TestFetchArchiveTempsCacheWrite]] - degree 7, connects to 1 community

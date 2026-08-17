@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kelly_property.py"
 type: "rationale"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 173"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_173
 ---
 
 # Property-based tests for Kelly sizing using Hypothesis.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_kelly_property.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_173

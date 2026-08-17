@@ -1,35 +1,35 @@
 ---
 type: community
-cohesion: 0.14
+cohesion: 0.12
 members: 20
 ---
 
 # Community 163
 
-**Cohesion:** 0.14 - loosely connected
+**Cohesion:** 0.12 - loosely connected
 **Members:** 20 nodes
 
 ## Members
-- [[dot-_analyze_between_yes()]] - code - tests/test_gaussian_prob.py
-- [[dot-_make_between_enriched()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_between_edge_gate_blocks_insufficient_clearance()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_between_edge_gate_boundary_at_derived_threshold()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_between_edge_gate_passes_at_achievable_clearance()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_between_edge_gate_uses_comp_temp_f_not_current_temp_f()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_between_market_blend_sources_reports_gaussian()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_between_market_has_nonzero_p_win_gaussian()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_between_yes_lock_end_to_end_real_metar_lock_in()]] - code - tests/test_gaussian_prob.py
-- [[Drive analyze_trade with a mocked YES METAR lock so the downstream…]] - rationale - tests/test_gaussian_prob.py
-- [[End-to-end regression drive the REAL (unmocked) _metar_lock_in -- only…]] - rationale - tests/test_gaussian_prob.py
-- [[Mutation-test the exact derived threshold ((hi-lo)8 = 0.25°F for this 2°F…]] - rationale - tests/test_gaussian_prob.py
-- [[Negative control paired with the test above a reading close to the band edge…]] - rationale - tests/test_gaussian_prob.py
-- [[Positive control for the between_edge gate fix the OLD 1.5°F threshold was…]] - rationale - tests/test_gaussian_prob.py
-- [[Regression for L6-C blend_sources must contain 'gaussian' for 'between'…]] - rationale - tests/test_gaussian_prob.py
-- [[Regression for L6-C p_win_gaussian must not be None for 'between' condition…]] - rationale - tests/test_gaussian_prob.py
-- [[Regression tests for L6-C 'between' condition markets must receive a Gaussian…]] - rationale - tests/test_gaussian_prob.py
-- [[TestBetweenMarketGaussian]] - code - tests/test_gaussian_prob.py
-- [[The gate must key off comp_temp_f (the daily extreme that decided the lock),…]] - rationale - tests/test_gaussian_prob.py
-- [[Ticker ending -B70.5 → between 70.0 and 71.0.]] - rationale - tests/test_gaussian_prob.py
+- [[A 5.5% edge (above PAPER_MIN_EDGE, below old MIN_EDGE) must not be filtered.]] - rationale - tests/test_edge_threshold.py
+- [[Confirm 5.5% edge is below the old MIN_EDGE (7%) so the distinction matters.]] - rationale - tests/test_edge_threshold.py
+- [[Live-refreshed PAPER_MIN_EDGE — call this, not a frozen import, from any long-…]] - rationale - utils.py
+- [[Miami requires 20pp probability-edge conviction (vs 8pp default), per the…]] - rationale - tests/test_edge_threshold.py
+- [[Mirrors cron.py's `_city_min = CITY_MIN_PROB_EDGE.get(_city_key,…]] - rationale - tests/test_edge_threshold.py
+- [[Paper threshold must be lower than the displaylive threshold.]] - rationale - tests/test_edge_threshold.py
+- [[Tests for P1.3 — PAPER_MIN_EDGE (via get_paper_min_edge()) and cmd_cron filter.]] - rationale - tests/test_edge_threshold.py
+- [[get_paper_min_edge()]] - code - utils.py
+- [[get_paper_min_edge() must be = 5% per system requirements.]] - rationale - tests/test_edge_threshold.py
+- [[get_paper_min_edge() must be  0 — zero threshold would trade everything.]] - rationale - tests/test_edge_threshold.py
+- [[test_city_min_prob_edge_gate_mirrors_cron_lookup()]] - code - tests/test_edge_threshold.py
+- [[test_city_min_prob_edge_miami_override()]] - code - tests/test_edge_threshold.py
+- [[test_edge_threshold.py]] - code - tests/test_edge_threshold.py
+- [[test_old_min_edge_would_have_blocked_5pct()]] - code - tests/test_edge_threshold.py
+- [[test_paper_min_edge_5pct_passes_filter()]] - code - tests/test_edge_threshold.py
+- [[test_paper_min_edge_is_at_most_5_pct()]] - code - tests/test_edge_threshold.py
+- [[test_paper_min_edge_is_lower_than_min_edge()]] - code - tests/test_edge_threshold.py
+- [[test_paper_min_edge_is_positive()]] - code - tests/test_edge_threshold.py
+- [[utils.CITY_MIN_PROB_EDGE]] - code - utils.py
+- [[utils.MIN_EDGE]] - code - utils.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -39,7 +39,16 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 26]]
+- 2 edges to [[_COMMUNITY_Community 0]]
+- 2 edges to [[_COMMUNITY_Community 6]]
+- 2 edges to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 76]]
+- 1 edge to [[_COMMUNITY_Community 25]]
+- 1 edge to [[_COMMUNITY_Community 426]]
+- 1 edge to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 17]]
+- 1 edge to [[_COMMUNITY_Community 33]]
 
 ## Top bridge nodes
-- [[TestBetweenMarketGaussian]] - degree 11, connects to 1 community
+- [[get_paper_min_edge()]] - degree 17, connects to 8 communities
+- [[test_edge_threshold.py]] - degree 12, connects to 1 community

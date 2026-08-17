@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "ML Bias Correction & Audit Plans"
-location: "L2427"
+community: "Community 5"
+location: "L2529"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_5
 ---
 
 # Fetch weather data from Pirate Weather (HRRR/GFS/GEFS blend). Used as fallback…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[fetch_temperature_pirate_weather()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

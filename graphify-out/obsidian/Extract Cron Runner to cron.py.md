@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-18-remediation.md"
 type: "document"
-community: "Community 295"
+community: "Community 297"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_295
+  - community/Community_297
 ---
 
 # Extract Cron Runner to cron.py
@@ -15,4 +15,4 @@ tags:
 - [[cron.py module_1]] - `implements` [EXTRACTED]
 - [[main.py module_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_295
+#graphify/document #graphify/EXTRACTED #community/Community_297

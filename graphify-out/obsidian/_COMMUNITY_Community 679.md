@@ -1,16 +1,17 @@
 ---
 type: community
 cohesion: 1.00
-members: 1
+members: 2
 ---
 
 # Community 679
 
 **Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Members:** 2 nodes
 
 ## Members
-- [[_place_live_order Function]] - code - order_executor.py
+- [[cron.py File Grade median 7.510]] - document - docs/grade_audit/outputs/cron.py.md
+- [[cron.py Grade Audit]] - document - docs/grade_audit/outputs/cron.py.md
 
 ## Live Query (requires Dataview plugin)
 

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_sprt.py"
 type: "code"
-community: "Community 166"
+community: "Community 167"
 location: "L26"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_166
+  - community/Community_167
 ---
 
 # .test_sprt_ok_on_good_win_rate()
@@ -15,4 +15,4 @@ tags:
 - [[Returns 'ok' when win rate is healthy (3550 = 70%).]] - `rationale_for` [EXTRACTED]
 - [[TestSprtModelHealth]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_166
+#graphify/code #graphify/EXTRACTED #community/Community_167

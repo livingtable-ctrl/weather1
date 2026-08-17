@@ -1,12 +1,12 @@
 ---
-source_file: "weather app site V_3 (3)/src/useData.js"
+source_file: "frontend/src/useData.js"
 type: "code"
-community: "Community 692"
+community: "Community 135"
 location: "L53"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_692
+  - community/Community_135
 ---
 
 # safe()
@@ -14,7 +14,6 @@ tags:
 ## Connections
 - [[apiFetch()]] - `calls` [EXTRACTED]
 - [[fetchAllSafe()]] - `indirect_call` [INFERRED]
-- [[useData()_1]] - `calls` [EXTRACTED]
-- [[weather app site V_3 (3)srcuseData.js]] - `contains` [EXTRACTED]
+- [[frontendsrcuseData.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_692
+#graphify/code #graphify/EXTRACTED #community/Community_135

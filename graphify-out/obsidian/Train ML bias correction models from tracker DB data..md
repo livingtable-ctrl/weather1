@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L4995"
+community: "Community 3"
+location: "L4997"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_3
 ---
 
 # Train ML bias correction models from tracker DB data.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_train_bias()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecast_accuracy.py"
 type: "rationale"
-community: "Community 232"
+community: "Community 234"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_232
+  - community/Community_234
 ---
 
 # Forecast accuracy regression tests. Uses saved fixture responses to verify…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_forecast_accuracy.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_232
+#graphify/rationale #graphify/EXTRACTED #community/Community_234

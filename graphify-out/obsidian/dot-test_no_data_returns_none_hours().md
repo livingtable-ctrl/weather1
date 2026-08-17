@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 278"
+community: "Community 279"
 location: "L636"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_278
+  - community/Community_279
 ---
 
 # .test_no_data_returns_none_hours()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestHourlyTemperatureProxy]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_278
+#graphify/code #graphify/EXTRACTED #community/Community_279

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_circuit_breaker.py"
 type: "code"
-community: "Community 44"
+community: "Community 7"
 location: "L83"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_44
+  - community/Community_7
 ---
 
 # .test_second_trip_doubles_timeout()
@@ -15,4 +15,4 @@ tags:
 - [[CircuitBreaker]] - `calls` [EXTRACTED]
 - [[TestCircuitBreakerBackoff]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_44
+#graphify/code #graphify/EXTRACTED #community/Community_7

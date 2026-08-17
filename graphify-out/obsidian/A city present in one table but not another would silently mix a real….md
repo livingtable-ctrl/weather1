@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climate_indices.py"
 type: "rationale"
-community: "Community 31"
+community: "Community 373"
 location: "L83"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_31
+  - community/Community_373
 ---
 
 # A city present in one table but not another would silently mix a real…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_all_three_tables_cover_the_same_city_set()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_31
+#graphify/rationale #graphify/EXTRACTED #community/Community_373

@@ -1,0 +1,17 @@
+---
+source_file: "docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md"
+type: "document"
+community: "Community 549"
+location: "L686"
+tags:
+  - graphify/document
+  - graphify/EXTRACTED
+  - community/Community_549
+---
+
+# Background
+
+## Connections
+- [[Task 59 (P11.J) — WebSocket monitoring for same-day markets]] - `contains` [EXTRACTED]
+
+#graphify/document #graphify/EXTRACTED #community/Community_549

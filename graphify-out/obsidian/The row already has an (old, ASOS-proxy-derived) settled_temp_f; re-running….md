@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 77"
+community: "Community 80"
 location: "L7749"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_77
+  - community/Community_80
 ---
 
 # The row already has an (old, ASOS-proxy-derived) settled_temp_f; re-running…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_corrects_stale_proxy_value_from_expiration_value()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_77
+#graphify/rationale #graphify/EXTRACTED #community/Community_80

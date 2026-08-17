@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "rationale"
-community: "Community 285"
+community: "Community 288"
 location: "L1355"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_285
+  - community/Community_288
 ---
 
 # Unit tests for acis_snow.py's own sentinel-parsing and cache-key isolation from…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestAcisSnowModule]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_285
+#graphify/rationale #graphify/EXTRACTED #community/Community_288

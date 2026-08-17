@@ -1,16 +1,18 @@
 ---
 type: community
-cohesion: 1.00
-members: 1
+cohesion: 0.67
+members: 3
 ---
 
 # Community 672
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Cohesion:** 0.67 - moderately connected
+**Members:** 3 nodes
 
 ## Members
-- [[get_city_correlation Function]] - code - monte_carlo.py
+- [[Prevent CPUmemory checks from interfering with trade-logic assertions.]] - rationale - tests/test_trade_validation.py
+- [[fixture_18]] - code
+- [[healthy_system()]] - code - tests/test_trade_validation.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -18,3 +20,9 @@ members: 1
 TABLE source_file, type FROM #community/Community_672
 SORT file.name ASC
 ```
+
+## Connections to other communities
+- 1 edge to [[_COMMUNITY_Community 76]]
+
+## Top bridge nodes
+- [[healthy_system()]] - degree 3, connects to 1 community

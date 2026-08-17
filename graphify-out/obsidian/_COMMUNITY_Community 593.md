@@ -1,18 +1,20 @@
 ---
 type: community
-cohesion: 0.67
-members: 3
+cohesion: 0.40
+members: 5
 ---
 
 # Community 593
 
-**Cohesion:** 0.67 - moderately connected
-**Members:** 3 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_brief_exception_still_shows_press_enter()]] - code - tests/test_menu_ux.py
-- [[If cmd_brief raises, the menu must still show the press-Enter prompt.]] - rationale - tests/test_menu_ux.py
-- [[TestBriefCloseable]] - code - tests/test_menu_ux.py
+- [[CLI Direct Access]] - document - docs/RESEARCH-FINDINGS.md
+- [[Known Station-Level Biases]] - document - docs/RESEARCH-FINDINGS.md
+- [[NYC Settles on Central Park (KNYC), NOT JFK]] - document - docs/RESEARCH-FINDINGS.md
+- [[Part 3 — Critical Settlement Mechanics]] - document - docs/RESEARCH-FINDINGS.md
+- [[Settlement Timing Details]] - document - docs/RESEARCH-FINDINGS.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -22,7 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
+- 1 edge to [[_COMMUNITY_Community 645]]
 
 ## Top bridge nodes
-- [[TestBriefCloseable]] - degree 2, connects to 1 community
+- [[Part 3 — Critical Settlement Mechanics]] - degree 5, connects to 1 community

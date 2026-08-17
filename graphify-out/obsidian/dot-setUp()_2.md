@@ -1,17 +1,18 @@
 ---
-source_file: "tests/test_tracker.py"
+source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 128"
-location: "L7277"
+community: "Community 114"
+location: "L416"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_128
+  - community/Community_114
 ---
 
 # .setUp()
 
 ## Connections
-- [[TestSignalGraduationCounters]] - `method` [EXTRACTED]
+- [[Path]] - `calls` [INFERRED]
+- [[TestPortfolioKelly]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_128
+#graphify/code #graphify/EXTRACTED #community/Community_114

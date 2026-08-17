@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 479
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-setUp()_38]] - code - tests/test_paper.py
-- [[dot-tearDown()_37]] - code - tests/test_paper.py
-- [[dot-test_export_trades_csv()]] - code - tests/test_paper.py
-- [[dot-test_export_trades_csv_empty()]] - code - tests/test_paper.py
-- [[dot-test_export_trades_csv_handles_heterogeneous_schema()]] - code - tests/test_paper.py
-- [[An older trade record (fewer keys, simulating a pre-field JSON row) must not…]] - rationale - tests/test_paper.py
-- [[TestExportTrades]] - code - tests/test_paper.py
+- [[dot-test_circuit_breaker_skips_when_open()]] - code - tests/test_weather_markets.py
+- [[dot-test_negative_caches_failure()_1]] - code - tests/test_weather_markets.py
+- [[dot-test_parses_response_correctly()]] - code - tests/test_weather_markets.py
+- [[dot-test_returns_none_on_request_failure()]] - code - tests/test_weather_markets.py
+- [[dot-test_returns_none_when_key_missing()]] - code - tests/test_weather_markets.py
+- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_3]] - rationale - tests/test_weather_markets.py
+- [[TestFetchTemperatureWeatherapi]] - code - tests/test_weather_markets.py
+- [[fetch_temperature_weatherapi() requires WEATHERAPI_KEY to be set.]] - rationale - tests/test_weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,8 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 56]]
+- 1 edge to [[_COMMUNITY_Community 11]]
 
 ## Top bridge nodes
-- [[TestExportTrades]] - degree 7, connects to 2 communities
+- [[TestFetchTemperatureWeatherapi]] - degree 7, connects to 1 community

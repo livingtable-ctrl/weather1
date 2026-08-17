@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_isoformat_cutoff_guard.py"
 type: "rationale"
-community: "Community 75"
+community: "Community 66"
 location: "L198"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_75
+  - community/Community_66
 ---
 
 # Return (relative_file, line_number, enclosing_qualified_function_name) for…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_iter_isoformat_cutoff_sites()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_75
+#graphify/rationale #graphify/EXTRACTED #community/Community_66

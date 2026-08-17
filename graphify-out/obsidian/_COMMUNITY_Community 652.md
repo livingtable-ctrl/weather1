@@ -1,16 +1,19 @@
 ---
 type: community
-cohesion: 1.00
-members: 1
+cohesion: 0.50
+members: 4
 ---
 
 # Community 652
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Cohesion:** 0.50 - moderately connected
+**Members:** 4 nodes
 
 ## Members
-- [[vite.config.js]] - code - frontend/vite.config.js
+- [[dot-test_default_correlations_seed_matches_city_pair_corr()]] - code - tests/test_trading.py
+- [[dot-test_hardcoded_corr_matches_city_pair_corr_for_shared_pairs()]] - code - tests/test_trading.py
+- [[TestCorrelationTablesStayInSync]] - code - tests/test_trading.py
+- [[monte_carlo._DEFAULT_CORRELATIONS and _HARDCODED_CORR are hand-typed seeds that…]] - rationale - tests/test_trading.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -18,3 +21,9 @@ members: 1
 TABLE source_file, type FROM #community/Community_652
 SORT file.name ASC
 ```
+
+## Connections to other communities
+- 1 edge to [[_COMMUNITY_Community 86]]
+
+## Top bridge nodes
+- [[TestCorrelationTablesStayInSync]] - degree 4, connects to 1 community

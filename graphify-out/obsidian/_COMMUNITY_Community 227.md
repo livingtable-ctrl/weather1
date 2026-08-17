@@ -1,30 +1,30 @@
 ---
 type: community
-cohesion: 0.17
+cohesion: 0.13
 members: 15
 ---
 
 # Community 227
 
-**Cohesion:** 0.17 - loosely connected
+**Cohesion:** 0.13 - loosely connected
 **Members:** 15 nodes
 
 ## Members
-- [[dot-test_cache_missing_returns_empty()]] - code - tests/test_kalshi_ws.py
-- [[dot-test_delta_message_does_not_feed_flash_crash_breaker()]] - code - tests/test_kalshi_ws.py
-- [[dot-test_orderbook_delta_does_not_refresh_mid_price_timestamp()]] - code - tests/test_kalshi_ws.py
-- [[dot-test_ticker_message_feeds_flash_crash_breaker()]] - code - tests/test_kalshi_ws.py
-- [[dot-test_update_and_read_cache()]] - code - tests/test_kalshi_ws.py
-- [[2026-07-12 a 'ticker'-type message must feed flash_crash_cb.check() on every…]] - rationale - tests/test_kalshi_ws.py
-- [[A delta message must not bump `ts` (or touch mid_price) -- only a ticker-type…]] - rationale - tests/test_kalshi_ws.py
-- [[An orderbook_delta carries no real mid_price -- it must not reach…]] - rationale - tests/test_kalshi_ws.py
-- [[Read the current order book cache from disk.]] - rationale - kalshi_ws.py
-- [[TestOrderbookCache]] - code - tests/test_kalshi_ws.py
-- [[Update in-memory and on-disk cache for a ticker.]] - rationale - kalshi_ws.py
-- [[read_orderbook_cache returns {} if file does not exist.]] - rationale - tests/test_kalshi_ws.py
-- [[read_orderbook_cache()]] - code - kalshi_ws.py
-- [[update_orderbook_cache writes and read_orderbook_cache reads back.]] - rationale - tests/test_kalshi_ws.py
-- [[update_orderbook_cache()]] - code - kalshi_ws.py
+- [[dot-__init__()_4]] - code - kalshi_ws.py
+- [[dot-_run()_2]] - code - kalshi_ws.py
+- [[dot-start()]] - code - kalshi_ws.py
+- [[dot-stop()]] - code - kalshi_ws.py
+- [[dot-subscribe()]] - code - kalshi_ws.py
+- [[Add tickers to subscribe to. Must be called before start().]] - rationale - kalshi_ws.py
+- [[Background WebSocket thread for real-time Kalshi order book data. Usage ws =…]] - rationale - kalshi_ws.py
+- [[Formal overfitting guard compare in-sample vs out-of-sample Brier scores.…]] - rationale - backtest.py
+- [[KalshiWebSocket]] - code - kalshi_ws.py
+- [[Run a quick 7-day backtest silently in a background thread on startup. If…]] - rationale - main.py
+- [[Run a quick 7-day backtest silently in a background thread on startup. If…_1]] - rationale - main.py
+- [[Start the WebSocket listener in a background thread.]] - rationale - kalshi_ws.py
+- [[Stop the WebSocket listener. Cancels the running task (rather than just…]] - rationale - kalshi_ws.py
+- [[auto_backtest()]] - code - main.py
+- [[check_overfitting()]] - code - backtest.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,14 +34,18 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 198]]
-- 3 edges to [[_COMMUNITY_Community 130]]
-- 2 edges to [[_COMMUNITY_Community 111]]
-- 1 edge to [[_COMMUNITY_Community 95]]
-- 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 5 edges to [[_COMMUNITY_Community 0]]
+- 3 edges to [[_COMMUNITY_Community 3]]
+- 2 edges to [[_COMMUNITY_Community 201]]
+- 2 edges to [[_COMMUNITY_Community 30]]
+- 1 edge to [[_COMMUNITY_Community 13]]
+- 1 edge to [[_COMMUNITY_Community 156]]
+- 1 edge to [[_COMMUNITY_Community 2]]
+- 1 edge to [[_COMMUNITY_Community 6]]
+- 1 edge to [[_COMMUNITY_Community 8]]
 
 ## Top bridge nodes
-- [[update_orderbook_cache()]] - degree 13, connects to 6 communities
-- [[read_orderbook_cache()]] - degree 6, connects to 2 communities
-- [[TestOrderbookCache]] - degree 6, connects to 1 community
+- [[auto_backtest()]] - degree 11, connects to 5 communities
+- [[KalshiWebSocket]] - degree 12, connects to 3 communities
+- [[check_overfitting()]] - degree 4, connects to 2 communities
+- [[dot-_run()_2]] - degree 4, connects to 2 communities

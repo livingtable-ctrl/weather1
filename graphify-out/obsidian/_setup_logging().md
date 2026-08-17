@@ -1,19 +1,19 @@
 ---
-source_file: "utils.py"
+source_file: "main.py"
 type: "code"
-community: "NWS/Circuit-Breaker Data Validation"
-location: "L424"
+community: "Community 0"
+location: "L9226"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_0
 ---
 
 # _setup_logging()
 
 ## Connections
-- [[106107 Configure structured logging. Each module should use…]] - `rationale_for` [EXTRACTED]
-- [[Logger]] - `references` [EXTRACTED]
-- [[utils.py]] - `contains` [EXTRACTED]
+- [[Path]] - `calls` [INFERRED]
+- [[main()]] - `calls` [EXTRACTED]
+- [[main.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/code #graphify/EXTRACTED #community/Community_0

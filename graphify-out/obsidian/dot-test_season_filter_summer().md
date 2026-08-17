@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 264"
+community: "Community 260"
 location: "L1453"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_264
+  - community/Community_260
 ---
 
 # .test_season_filter_summer()
@@ -16,4 +16,4 @@ tags:
 - [[Summer filter returns only Apr-Sep data.]] - `rationale_for` [EXTRACTED]
 - [[TestEnsembleMemberAccuracy]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_264
+#graphify/code #graphify/EXTRACTED #community/Community_260

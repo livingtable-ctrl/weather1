@@ -1,0 +1,309 @@
+---
+type: community
+cohesion: 0.02
+members: 208
+---
+
+# Community 3
+
+**Cohesion:** 0.02 - loosely connected
+**Members:** 208 nodes
+
+## Members
+- [[NOTE this covers a DIFFERENT failure mode than auto_retire_strategies()'s]] - rationale - cron.py
+- [[118 Compute per-city inverse-MAE weights from tracker data and persist to…]] - rationale - weather_markets.py
+- [[92 Send to all configured Discord webhooks (comma-separated…]] - rationale - notify.py
+- [[dot-test_resting_order_recovery_preserves_response_for_fill_polling()]] - code - tests/test_live_execution.py
+- [[All callable dependencies that cmd_cron needs from outside cron.py. Constructed…]] - rationale - cron.py
+- [[Build a CronContext from the current (possibly monkeypatched) main namespace.…]] - rationale - main.py
+- [[Build a CronContext from the current (possibly monkeypatched) main namespace.…_1]] - rationale - main.py
+- [[Check fill status of all pending live orders and update execution_log. Also…]] - rationale - order_executor.py
+- [[Combine paper.is_accuracy_halted()get_accuracy_halt_reason() into the single…]] - rationale - cron.py
+- [[Core scan logic — extracted from cmd_cron so it can be wrapped in tryfinally.]] - rationale - cron.py
+- [[Count multi-day predictions that are actually trainable EMOS rows — ens_mean…]] - rationale - tracker.py
+- [[Count multiday_predictions rows with ens_mean, settled_temp_f, AND ens_var all…]] - rationale - tracker.py
+- [[CronContext]] - code - cron.py
+- [[Deep-review followup log_order_result() does an unconditional column UPDATE,…]] - rationale - tests/test_live_execution.py
+- [[Delete RUNNING_FLAG_PATH if it exists.]] - rationale - cron.py
+- [[Delete settled predictions older than retention_days and their outcomes.…]] - rationale - tracker.py
+- [[Delete the cron lock file.]] - rationale - cron.py
+- [[Describe a tier's actual placement outcome for the STRONGMED console banners.…]] - rationale - cron.py
+- [[Event]] - code
+- [[Everything a caller (cron.py's wrapper, main.py's watch loop) needs to…]] - rationale - trade_cycle.py
+- [[Extract (city, target_date) from a market dict without any network calls. Used…]] - rationale - weather_markets.py
+- [[Fetch METAR-lockout calibration data, fit, and persist to disk with cache…]] - rationale - ml_bias.py
+- [[Fetch open markets and filter to weather-related ones. 66 Results cached for…]] - rationale - weather_markets.py
+- [[Fetch the latest hourly observation for a city. Returns dict with temp_f,…]] - rationale - nws.py
+- [[Fetch the latest observed precipitation (inches) from NWS for same-day markets.…]] - rationale - nws.py
+- [[Fetch the most recent METAR observation for a station. Returns dict with keys…]] - rationale - metar.py
+- [[Group `markets` (a full flat scan result, already fetched — no new network…]] - rationale - weather_markets.py
+- [[KalshiClient_2]] - code
+- [[KalshiClient_3]] - code
+- [[Live equivalent of _check_early_exits (paper-only, above) re-analyze each open…]] - rationale - order_executor.py
+- [[Load live trading hard stops from datalive_config.json. Creates the file with…]] - rationale - main.py
+- [[Load live trading hard stops from datalive_config.json. Creates the file with…_1]] - rationale - main.py
+- [[Load paper-trade history and run walk_forward_backtest against it. Shared core…]] - rationale - backtest.py
+- [[Load the set of previously-seen tickers from disk (survives restarts).]] - rationale - main.py
+- [[Load the set of previously-seen tickers from disk (survives restarts)._1]] - rationale - main.py
+- [[Lock]] - code
+- [[Log a deferred-items checklist once per day after _PROD_REMINDER_DATE in prod…]] - rationale - cron.py
+- [[Log a warning if the open_meteo_ensemble circuit has been open for 24 hours.…]] - rationale - weather_markets.py
+- [[Minimum probability-edge required based on market horizon. Further-out markets…]] - rationale - utils.py
+- [[Once per basin per day recompute the REAL current-season hurricane- count-to-…]] - rationale - weather_markets.py
+- [[Once per city per day recompute determine_hourly_target_hours() from a fresh…]] - rationale - weather_markets.py
+- [[Once per day compare KNOWN_WEATHER_SERIES against Kalshi's live Climate and…]] - rationale - weather_markets.py
+- [[Once per day for each currently-retired forecasting method, sample a handful…]] - rationale - weather_markets.py
+- [[Once per day log a summary of per-city registry completeness gaps so a half-…]] - rationale - weather_markets.py
+- [[P10.1 Detect slow Brier score degradation over time. Splits available weekly…]] - rationale - tracker.py
+- [[P10.2 Load state and run black swan detection. Auto-halts if triggered. Called…]] - rationale - alerts.py
+- [[P2-13 Delete api_requests rows older than days_to_keep. Returns row count…]] - rationale - tracker.py
+- [[P9.5 Auto-retire forecasting methods whose Brier score exceeds…]] - rationale - tracker.py
+- [[Per-UTC-time-band win rates for settled same-day abovebelow trades. Returns…]] - rationale - paper.py
+- [[Persist the set of seen tickers so the next run knows what's new.]] - rationale - main.py
+- [[Persist the set of seen tickers so the next run knows what's new._1]] - rationale - main.py
+- [[Pre-warm forecastmodel caches for all unique citydate pairs so the parallel…]] - rationale - trade_cycle.py
+- [[Prevent accidental live trading before enough settled predictions exist. Reads…]] - rationale - cron.py
+- [[Print anomaly warnings; no-op when list is empty.]] - rationale - cron.py
+- [[Protect open live positions with stop-loss and breakeven-stop checks, reusing…]] - rationale - order_executor.py
+- [[Re-analyze all open paper positions. If the updated model probability has…]] - rationale - order_executor.py
+- [[Recompute seasonal and per-city blend weights from settled predictions.]] - rationale - main.py
+- [[Recompute seasonal and per-city blend weights from settled predictions._1]] - rationale - main.py
+- [[Reconcile 'pending' execution_log rows against the Kalshi API at startup. A…]] - rationale - order_executor.py
+- [[Return (creating if needed) the per-city observation lock.]] - rationale - nws.py
+- [[Return WS thread health info for monitoring.]] - rationale - kalshi_ws.py
+- [[Return a human-readable reason string for the current accuracy halt, or '' if…]] - rationale - paper.py
+- [[Return a multi-line BrierAlert string with explanation and actionable next…]] - rationale - tracker.py
+- [[Return a string identifier for the current NWS forecast cycle. NWS model runs…]] - rationale - order_executor.py
+- [[Return mean Brier score per ISO week for the last `weeks` weeks. Joins settled…]] - rationale - tracker.py
+- [[Return mean slippage in cents over the last `days` days, or None if no fills.]] - rationale - tracker.py
+- [[Return open paper trades whose markets close within warn_hours. Each entry…]] - rationale - paper.py
+- [[Return positions whose break-even stop has triggered. Fires when…]] - rationale - positions.py
+- [[Return signals where blended_prob − market_price  _ANOMALY_THRESHOLD.]] - rationale - cron.py
+- [[Return the most recent N order log entries.]] - rationale - execution_log.py
+- [[Return what closing this position right now would actually realize. A YES…]] - rationale - positions.py
+- [[Returns True if a valid (non-expired) manual override is active. Auto-clears…]] - rationale - cron.py
+- [[Run one full recover-pending - settle - scan - analyze - decide place…]] - rationale - trade_cycle.py
+- [[Run walk-forward backtest on historical paper trades.]] - rationale - main.py
+- [[Run walk-forward backtest on historical paper trades._1]] - rationale - main.py
+- [[Send a STRONG BUY notification through all configured backends. Tries desktop…]] - rationale - notify.py
+- [[Send a system-level alert (not trade-specific) through all configured backends.…]] - rationale - notify.py
+- [[Send an email notification via SMTP (STARTTLS). Reads SMTP_HOST, SMTP_PORT,…]] - rationale - notify.py
+- [[Send via Pushover API. Requires PUSHOVER_TOKEN and PUSHOVER_USER in env.…]] - rationale - notify.py
+- [[Send via ntfy.sh. Requires NTFY_TOPIC in env (or pass topic explicitly).…]] - rationale - notify.py
+- [[Settle any open paper trades whose tickers have recorded outcomes. First checks…]] - rationale - paper.py
+- [[Shared (city, RAIN, year, month) event key for a KXRAINM ticker -- single…]] - rationale - weather_markets.py
+- [[Shared position read-model for paper and live trading. Both paper.py (JSON-…]] - rationale - positions.py
+- [[Silent background scan — writes to datacron.log, auto-places strong paper…]] - rationale - cron.py
+- [[Single shared lookup for one market's market-implied-distribution result out of…]] - rationale - weather_markets.py
+- [[Start a daemon thread that hard-kills the process if cron hangs  timeout_secs.…]] - rationale - cron.py
+- [[TestCmdCronGuards (cmd_cron guard smoke tests)]] - code - tests/test_main_cron_smoke.py
+- [[The actual per-city-date-pair warming work, factored out of…]] - rationale - trade_cycle.py
+- [[TradeCycleResult]] - code - trade_cycle.py
+- [[Train ML bias correction models from tracker DB data.]] - rationale - main.py
+- [[Train ML bias correction models from tracker DB data._1]] - rationale - main.py
+- [[Train T for the global pool and for each condition type that has enough data.…]] - rationale - ml_bias.py
+- [[Train a bias correction model per city from tracker DB data. Saves models to…]] - rationale - ml_bias.py
+- [[Translate a Kalshi order status into this bot's own execution_log status…]] - rationale - order_executor.py
+- [[Truncate feature_importance.jsonl to the most recent max_lines entries. Returns…]] - rationale - feature_importance.py
+- [[Try to acquire the cron file lock. Fail CLOSED on every error. Returns True…]] - rationale - cron.py
+- [[Warn (never halt) when a (method, condition_type) pair's rolling directional…]] - rationale - tracker.py
+- [[Warn if MAX_DAILY_SPEND exceeds the current paper balance. A spend cap that…]] - rationale - cron.py
+- [[Warn if any orders were placed in the last 5 minutes (double-execution guard).]] - rationale - cron.py
+- [[Write UTC ISO timestamp to RUNNING_FLAG_PATH; warn if a fresh flag already…]] - rationale - cron.py
+- [[Write all pending ensemble entries to disk in one atomic operation. Call this…]] - rationale - weather_markets.py
+- [[Write all pending forecast entries to disk in one atomic operation. Call this…]] - rationale - weather_markets.py
+- [[_METAR_CAL cache]] - code - weather_markets.py
+- [[_acquire_cron_lock()]] - code - cron.py
+- [[_analyze_once()]] - code - main.py
+- [[_build_cron_context()]] - code - main.py
+- [[_check_accuracy_halt()]] - code - cron.py
+- [[_check_early_exits()]] - code - order_executor.py
+- [[_check_graduation_gate()]] - code - cron.py
+- [[_check_live_model_exits()]] - code - order_executor.py
+- [[_check_live_position_exits()]] - code - order_executor.py
+- [[_check_manual_override()]] - code - cron.py
+- [[_check_prod_reminder()]] - code - cron.py
+- [[_check_spend_cap_vs_balance()]] - code - cron.py
+- [[_check_startup_orders()]] - code - cron.py
+- [[_clear_cron_running_flag()]] - code - cron.py
+- [[_cmd_cron_body()]] - code - cron.py
+- [[_current_forecast_cycle()]] - code - order_executor.py
+- [[_get with a hard wall-clock deadline for observation endpoints. Windows SSL can…]] - rationale - nws.py
+- [[_get_obs()]] - code - nws.py
+- [[_get_obs_lock()]] - code - nws.py
+- [[_install_cron_watchdog()]] - code - cron.py
+- [[_kalshi_status_to_internal()]] - code - order_executor.py
+- [[_load_live_config()]] - code - main.py
+- [[_load_watch_state()]] - code - main.py
+- [[_midpoint_price Function]] - code - order_executor.py
+- [[_placement_outcome_phrase()]] - code - cron.py
+- [[_poll_pending_orders()]] - code - order_executor.py
+- [[_recover_pending_orders()]] - code - order_executor.py
+- [[_release_cron_lock()]] - code - cron.py
+- [[_run_batch_prewarm()]] - code - trade_cycle.py
+- [[_run_batch_prewarm_for_pairs()]] - code - trade_cycle.py
+- [[_save_watch_state()]] - code - main.py
+- [[_send_discord()]] - code - notify.py
+- [[_send_email()]] - code - notify.py
+- [[_send_ntfy()]] - code - notify.py
+- [[_send_pushover()]] - code - notify.py
+- [[_validate_trade_opportunity Function]] - code - order_executor.py
+- [[_write_cron_running_flag()]] - code - cron.py
+- [[_ws_listener Function]] - code - kalshi_ws.py
+- [[alert_strong_signal()]] - code - notify.py
+- [[auto_retire_strategies()]] - code - tracker.py
+- [[auto_settle_paper_trades()]] - code - paper.py
+- [[check_breakeven_stops()]] - code - positions.py
+- [[check_condition_type_weakness()]] - code - tracker.py
+- [[check_ensemble_circuit_health()]] - code - weather_markets.py
+- [[check_expiring_trades()]] - code - paper.py
+- [[check_market_anomalies()]] - code - cron.py
+- [[check_retirement_probation()]] - code - weather_markets.py
+- [[check_series_drift()]] - code - weather_markets.py
+- [[cmd_calibrate()]] - code - main.py
+- [[cmd_cron()_1]] - code - cron.py
+- [[cmd_train_bias()]] - code - main.py
+- [[cmd_walk_forward()]] - code - main.py
+- [[cmd_watch()]] - code - main.py
+- [[collections_abc]] - concept
+- [[compute_market_implied_distributions()]] - code - weather_markets.py
+- [[count_emos_ready_predictions()]] - code - tracker.py
+- [[count_emos_variance_ready_predictions()]] - code - tracker.py
+- [[cron.py]] - code - cron.py
+- [[cron.py — Background cron runner extracted from main.py. Contains cmd_cron and…]] - rationale - cron.py
+- [[dataclasses]] - concept
+- [[detect_brier_drift()]] - code - tracker.py
+- [[fetch_metar()]] - code - metar.py
+- [[fit_and_save_metar_calibration()]] - code - ml_bias.py
+- [[flush_ensemble_disk_cache()]] - code - weather_markets.py
+- [[flush_forecast_disk_cache()]] - code - weather_markets.py
+- [[format_brier_alert()]] - code - tracker.py
+- [[get_accuracy_halt_reason()]] - code - paper.py
+- [[get_brier_over_time()]] - code - tracker.py
+- [[get_cached_mid_price Function]] - code - kalshi_ws.py
+- [[get_gate_counts()]] - code - weather_markets.py
+- [[get_live_observation()]] - code - nws.py
+- [[get_live_precip_obs()]] - code - nws.py
+- [[get_mean_slippage()]] - code - tracker.py
+- [[get_recent_orders()]] - code - execution_log.py
+- [[get_sameday_band_stats()]] - code - paper.py
+- [[get_weather_markets()]] - code - weather_markets.py
+- [[get_ws_health()]] - code - kalshi_ws.py
+- [[liquidation_price()]] - code - positions.py
+- [[log_city_registry_report()]] - code - weather_markets.py
+- [[market_implied_rain_event_key()]] - code - weather_markets.py
+- [[min_prob_edge_for_days_out()]] - code - utils.py
+- [[parse_city_date()]] - code - weather_markets.py
+- [[positions.py]] - code - positions.py
+- [[prune_api_requests()]] - code - tracker.py
+- [[prune_feature_log()]] - code - feature_importance.py
+- [[prune_old_analysis_attempts()]] - code - tracker.py
+- [[psutil_1]] - concept
+- [[purge_old_predictions()]] - code - tracker.py
+- [[refresh_hourly_target_hours()]] - code - weather_markets.py
+- [[refresh_hurricane_count_to_date()]] - code - weather_markets.py
+- [[report_anomalies()]] - code - cron.py
+- [[reset_gate_counts()]] - code - weather_markets.py
+- [[resolve_market_implied_for_analysis()]] - code - weather_markets.py
+- [[run_black_swan_check()]] - code - alerts.py
+- [[run_paper_walk_forward()]] - code - backtest.py
+- [[run_trade_cycle()]] - code - trade_cycle.py
+- [[send_system_alert()]] - code - notify.py
+- [[test_brier_alert_includes_guidance]] - code - tests/test_main_cron_smoke.py
+- [[trade_cycle.py]] - code - trade_cycle.py
+- [[trade_cycle.py — shared headless trade-cycle engine. Extracted from cron.py's…]] - rationale - trade_cycle.py
+- [[train_all_temperature_scaling()]] - code - ml_bias.py
+- [[train_bias_model()]] - code - ml_bias.py
+- [[typing]] - concept
+- [[update_heartbeat()]] - code - watchdog.py
+- [[update_learned_weights_from_tracker()]] - code - weather_markets.py
+- [[vacuum_database()]] - code - tracker.py
+
+## Live Query (requires Dataview plugin)
+
+```dataview
+TABLE source_file, type FROM #community/Community_3
+SORT file.name ASC
+```
+
+## Connections to other communities
+- 106 edges to [[_COMMUNITY_Community 0]]
+- 59 edges to [[_COMMUNITY_Community 1]]
+- 48 edges to [[_COMMUNITY_Community 5]]
+- 41 edges to [[_COMMUNITY_Community 2]]
+- 30 edges to [[_COMMUNITY_Community 6]]
+- 18 edges to [[_COMMUNITY_Community 13]]
+- 17 edges to [[_COMMUNITY_Community 8]]
+- 15 edges to [[_COMMUNITY_Community 4]]
+- 11 edges to [[_COMMUNITY_Community 12]]
+- 11 edges to [[_COMMUNITY_Community 137]]
+- 9 edges to [[_COMMUNITY_Community 42]]
+- 8 edges to [[_COMMUNITY_Community 82]]
+- 7 edges to [[_COMMUNITY_Community 81]]
+- 5 edges to [[_COMMUNITY_Community 346]]
+- 5 edges to [[_COMMUNITY_Community 57]]
+- 4 edges to [[_COMMUNITY_Community 161]]
+- 4 edges to [[_COMMUNITY_Community 23]]
+- 4 edges to [[_COMMUNITY_Community 269]]
+- 4 edges to [[_COMMUNITY_Community 284]]
+- 4 edges to [[_COMMUNITY_Community 406]]
+- 3 edges to [[_COMMUNITY_Community 227]]
+- 3 edges to [[_COMMUNITY_Community 96]]
+- 3 edges to [[_COMMUNITY_Community 142]]
+- 3 edges to [[_COMMUNITY_Community 159]]
+- 3 edges to [[_COMMUNITY_Community 185]]
+- 3 edges to [[_COMMUNITY_Community 20]]
+- 3 edges to [[_COMMUNITY_Community 104]]
+- 3 edges to [[_COMMUNITY_Community 303]]
+- 3 edges to [[_COMMUNITY_Community 9]]
+- 3 edges to [[_COMMUNITY_Community 74]]
+- 2 edges to [[_COMMUNITY_Community 109]]
+- 2 edges to [[_COMMUNITY_Community 119]]
+- 2 edges to [[_COMMUNITY_Community 163]]
+- 2 edges to [[_COMMUNITY_Community 199]]
+- 2 edges to [[_COMMUNITY_Community 207]]
+- 2 edges to [[_COMMUNITY_Community 232]]
+- 2 edges to [[_COMMUNITY_Community 24]]
+- 2 edges to [[_COMMUNITY_Community 44]]
+- 2 edges to [[_COMMUNITY_Community 361]]
+- 2 edges to [[_COMMUNITY_Community 426]]
+- 2 edges to [[_COMMUNITY_Community 30]]
+- 2 edges to [[_COMMUNITY_Community 31]]
+- 2 edges to [[_COMMUNITY_Community 48]]
+- 2 edges to [[_COMMUNITY_Community 305]]
+- 2 edges to [[_COMMUNITY_Community 17]]
+- 2 edges to [[_COMMUNITY_Community 73]]
+- 2 edges to [[_COMMUNITY_Community 353]]
+- 2 edges to [[_COMMUNITY_Community 32]]
+- 2 edges to [[_COMMUNITY_Community 7]]
+- 2 edges to [[_COMMUNITY_Community 461]]
+- 2 edges to [[_COMMUNITY_Community 51]]
+- 2 edges to [[_COMMUNITY_Community 41]]
+- 1 edge to [[_COMMUNITY_Community 116]]
+- 1 edge to [[_COMMUNITY_Community 226]]
+- 1 edge to [[_COMMUNITY_Community 127]]
+- 1 edge to [[_COMMUNITY_Community 170]]
+- 1 edge to [[_COMMUNITY_Community 176]]
+- 1 edge to [[_COMMUNITY_Community 220]]
+- 1 edge to [[_COMMUNITY_Community 280]]
+- 1 edge to [[_COMMUNITY_Community 283]]
+- 1 edge to [[_COMMUNITY_Community 40]]
+- 1 edge to [[_COMMUNITY_Community 230]]
+- 1 edge to [[_COMMUNITY_Community 469]]
+- 1 edge to [[_COMMUNITY_Community 312]]
+- 1 edge to [[_COMMUNITY_Community 146]]
+- 1 edge to [[_COMMUNITY_Community 131]]
+- 1 edge to [[_COMMUNITY_Community 235]]
+- 1 edge to [[_COMMUNITY_Community 38]]
+- 1 edge to [[_COMMUNITY_Community 33]]
+- 1 edge to [[_COMMUNITY_Community 111]]
+- 1 edge to [[_COMMUNITY_Community 75]]
+- 1 edge to [[_COMMUNITY_Community 245]]
+- 1 edge to [[_COMMUNITY_Community 497]]
+
+## Top bridge nodes
+- [[cron.py]] - degree 104, connects to 20 communities
+- [[_cmd_cron_body()]] - degree 81, connects to 18 communities
+- [[trade_cycle.py]] - degree 41, connects to 15 communities
+- [[run_trade_cycle()]] - degree 28, connects to 12 communities
+- [[_check_live_model_exits()]] - degree 22, connects to 9 communities

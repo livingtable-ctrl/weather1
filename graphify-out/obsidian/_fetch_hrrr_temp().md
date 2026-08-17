@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Forecasting Persistence Model Tests"
-location: "L2267"
+community: "Community 460"
+location: "L2369"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_460
 ---
 
 # _fetch_hrrr_temp()
@@ -17,9 +17,9 @@ tags:
 - [[dot-test_fetch_hrrr_temp_returns_max_of_hourly()]] - `calls` [EXTRACTED]
 - [[dot-test_fetch_hrrr_temp_returns_none_for_unknown_city()]] - `calls` [EXTRACTED]
 - [[Fetch HRRR-derived hourly temperature and return the daily max or min. Uses…]] - `rationale_for` [EXTRACTED]
-- [[date_2]] - `references` [EXTRACTED]
+- [[date_9]] - `references` [EXTRACTED]
 - [[test_dead_code_scan.py]] - `references` [EXTRACTED]
 - [[test_forecasting.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_460

@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 462
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_default_min_edge_is_none_not_the_display_constant()]] - code - tests/test_cron_group_c.py
-- [[dot-test_min_edge_param_raises_the_net_edge_gate()]] - code - tests/test_cron_group_c.py
-- [[dot-test_no_edge_override_gates_on_paper_min_edge_alone()]] - code - tests/test_cron_group_c.py
-- [[Deep-review followup _cmd_cron_bodycmd_cron used to default min_edge to the…]] - rationale - tests/test_cron_group_c.py
-- [[F4 cron.py's min_edge parameter (the --edge N CLI override) was accepted but…]] - rationale - tests/test_cron_group_c.py
-- [[TestEdgeFlagWired]] - code - tests/test_cron_group_c.py
-- [[When min_edge is None (no --edge passed), the effective gate must be…]] - rationale - tests/test_cron_group_c.py
+- [[dot-test_blocks_even_when_city_and_date_are_present()_1]] - code - tests/test_hurricane_gating.py
+- [[dot-test_blocks_kxtropstorm()]] - code - tests/test_hurricane_gating.py
+- [[dot-test_blocks_regardless_of_qty_and_price()_1]] - code - tests/test_hurricane_gating.py
+- [[dot-test_daily_ticker_unaffected()_2]] - code - tests/test_hurricane_gating.py
+- [[Guard must fire before the `if city and target_date_str` exposure-cap block,…]] - rationale - tests/test_hurricane_gating.py
+- [[TestCheckPositionLimitsBlocksHurricane]] - code - tests/test_hurricane_gating.py
+- [[The same broadened-marker-set finding as the analyze_trade tests above applies…]] - rationale - tests/test_hurricane_gating.py
+- [[paper.check_position_limits() is one of several call paths reachable without…]] - rationale - tests/test_hurricane_gating.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,7 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
-- [[TestEdgeFlagWired]] - degree 4, connects to 1 community
+- [[TestCheckPositionLimitsBlocksHurricane]] - degree 6, connects to 1 community

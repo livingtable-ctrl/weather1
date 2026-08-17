@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "code"
-community: "Community 279"
+community: "Community 282"
 location: "L765"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_279
+  - community/Community_282
 ---
 
 # TestGraduationBrierGate
@@ -21,4 +21,4 @@ tags:
 - [[graduation_check() uses last-50 Brier with threshold 0.23.]] - `rationale_for` [EXTRACTED]
 - [[test_p9_p10.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_279
+#graphify/code #graphify/EXTRACTED #community/Community_282

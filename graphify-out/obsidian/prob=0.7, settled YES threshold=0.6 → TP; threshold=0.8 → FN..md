@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 313"
+community: "Community 10"
 location: "L1294"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_313
+  - community/Community_10
 ---
 
 # prob=0.7, settled YES: threshold=0.6 → TP; threshold=0.8 → FN.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_threshold_60_vs_80()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_313
+#graphify/rationale #graphify/EXTRACTED #community/Community_10

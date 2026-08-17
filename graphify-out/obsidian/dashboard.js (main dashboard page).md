@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/reference/dashboard.js"
 type: "code"
-community: "Community 229"
+community: "Community 667"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_229
+  - community/Community_667
 ---
 
 # dashboard.js (main dashboard page)
@@ -14,4 +14,4 @@ tags:
 - [[trades.js (trades page)]] - `shares_data_with` [INFERRED]
 - [[watchdog.py (dead man's switch)]] - `semantically_similar_to` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_229
+#graphify/code #graphify/INFERRED #community/Community_667

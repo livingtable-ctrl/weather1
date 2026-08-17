@@ -1,12 +1,12 @@
 ---
 source_file: "settlement_monitor.py"
 type: "code"
-community: "METAR Settlement Monitoring"
-location: "L164"
+community: "Community 88"
+location: "L169"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_88
 ---
 
 # _check_between_settlement()
@@ -24,12 +24,13 @@ tags:
 - [[dot-test_running_high_still_below_band_stays_uncertain_not_locked()]] - `calls` [EXTRACTED]
 - [[dot-test_yes_requires_real_max_temp_not_current_temp_fallback()]] - `calls` [EXTRACTED]
 - [[Determine settlement outcome for a between-bucket market. Returns a dict with…]] - `rationale_for` [EXTRACTED]
+- [[Determine settlement outcome for a between-bucket market. Returns a dict with…_1]] - `rationale_for` [EXTRACTED]
+- [[TestCheckBetweenSettlement (AC3 between-bucket lockout)]] - `calls` [EXTRACTED]
 - [[_metar_lock_in()]] - `conceptually_related_to` [EXTRACTED]
 - [[check_city_settlement()]] - `calls` [EXTRACTED]
 - [[fetch_metar_daily_extreme()]] - `references` [EXTRACTED]
 - [[settlement_monitor.py]] - `contains` [EXTRACTED]
-- [[settlement_monitor.py_1]] - `implements` [EXTRACTED]
-- [[test_settlement_monitor.py]] - `calls` [EXTRACTED]
+- [[test_settlement_monitor.py]] - `imports` [EXTRACTED]
 - [[weather_markets._dynamic_lock_in_confidence()]] - `conceptually_related_to` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/code #graphify/EXTRACTED #community/Community_88

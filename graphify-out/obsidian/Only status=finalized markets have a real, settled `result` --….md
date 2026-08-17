@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "rationale"
-community: "Community 278"
+community: "Community 279"
 location: "L643"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_278
+  - community/Community_279
 ---
 
 # Only status=finalized markets have a real, settled `result` --…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_non_finalized_markets_excluded()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_278
+#graphify/rationale #graphify/EXTRACTED #community/Community_279

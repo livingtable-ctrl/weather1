@@ -1,27 +1,27 @@
 ---
 type: community
-cohesion: 0.23
+cohesion: 0.26
 members: 12
 ---
 
 # Community 323
 
-**Cohesion:** 0.23 - loosely connected
+**Cohesion:** 0.26 - loosely connected
 **Members:** 12 nodes
 
 ## Members
-- [[dot-_make_analysis()]] - code - tests/test_weather.py
-- [[dot-test_ci_adjusted_kelly_minimum_confidence()]] - code - tests/test_weather.py
-- [[dot-test_ci_adjusted_kelly_no_reduction_on_zero_ci()]] - code - tests/test_weather.py
-- [[dot-test_ci_adjusted_kelly_nonnegative()]] - code - tests/test_weather.py
-- [[dot-test_ci_adjusted_kelly_reduces_on_wide_ci()]] - code - tests/test_weather.py
-- [[CI width  0.75 → confidence floored at 0.25.]] - rationale - tests/test_weather.py
-- [[Simulate an analyze_trade return dict with specific CI and Kelly values.]] - rationale - tests/test_weather.py
-- [[TestCIAdjustedKelly]] - code - tests/test_weather.py
-- [[Tests that CI width correctly scales the fee-adjusted Kelly fraction.]] - rationale - tests/test_weather.py
-- [[Wide CI (width=0.5) reduces Kelly by 50%.]] - rationale - tests/test_weather.py
-- [[Zero CI width → no reduction (confidence=1.0).]] - rationale - tests/test_weather.py
-- [[ci_adjusted_kelly should never be negative.]] - rationale - tests/test_weather.py
+- [[dot-_sl_trade()]] - code - tests/test_tracker.py
+- [[dot-setUp()_23]] - code - tests/test_tracker.py
+- [[dot-tearDown()_22]] - code - tests/test_tracker.py
+- [[dot-test_excludes_disputed_outcome()]] - code - tests/test_tracker.py
+- [[dot-test_multiple_trades_averaged()]] - code - tests/test_tracker.py
+- [[dot-test_no_side_settlement_priced_correctly()]] - code - tests/test_tracker.py
+- [[dot-test_no_trades_returns_zero_dict()]] - code - tests/test_tracker.py
+- [[dot-test_skips_ticker_with_no_synced_outcome()]] - code - tests/test_tracker.py
+- [[dot-test_yes_side_stop_loss_that_exited_a_winner()]] - code - tests/test_tracker.py
+- [[dot-test_yes_side_stop_loss_that_saved_money()]] - code - tests/test_tracker.py
+- [[Restored backlog piece (mystery-revert 24559a7, piece 3) stop-loss exit audit.…]] - rationale - tests/test_tracker.py
+- [[TestStopLossAccuracy]] - code - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,7 +31,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Weather Probability Math Tests]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[TestCIAdjustedKelly]] - degree 7, connects to 1 community
+- [[TestStopLossAccuracy]] - degree 12, connects to 1 community

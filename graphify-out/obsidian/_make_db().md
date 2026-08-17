@@ -1,22 +1,31 @@
 ---
-source_file: "tests/test_phase2_batch_p.py"
+source_file: "tests/test_phase3_batch_c.py"
 type: "code"
-community: "Community 151"
-location: "L23"
+community: "Community 125"
+location: "L18"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_151
+  - community/Community_125
 ---
 
 # _make_db()
 
 ## Connections
-- [[Create a minimal predictions+outcomes DB with the given row counts.]] - `rationale_for` [EXTRACTED]
-- [[Path_4]] - `references` [EXTRACTED]
-- [[Phase 2 Batch P Below-Condition Weight Tests]] - `contains` [EXTRACTED]
-- [[test_neutral_below_gets_overwritten_when_n_sufficient()]] - `calls` [EXTRACTED]
-- [[test_preserve_does_not_touch_between()]] - `calls` [EXTRACTED]
-- [[test_preserve_non_neutral_below_when_n_too_small()]] - `calls` [EXTRACTED]
+- [[dot-_make_condition_db()]] - `calls` [EXTRACTED]
+- [[dot-test_49_rows_city_omitted()]] - `calls` [EXTRACTED]
+- [[dot-test_50_rows_city_present()]] - `calls` [EXTRACTED]
+- [[dot-test_all_weights_in_range()]] - `calls` [EXTRACTED]
+- [[dot-test_auto_split_80_20()]] - `calls` [EXTRACTED]
+- [[dot-test_calibrate_city_weights_deterministic()]] - `calls` [EXTRACTED]
+- [[dot-test_city_accepts_cutoff_date_kwarg()]] - `calls` [EXTRACTED]
+- [[dot-test_cutoff_excludes_future_rows_from_training()]] - `calls` [EXTRACTED]
+- [[dot-test_no_market_date_rows_handled_gracefully()]] - `calls` [EXTRACTED]
+- [[dot-test_seasonal_accepts_cutoff_date_kwarg()]] - `calls` [EXTRACTED]
+- [[dot-test_weights_sum_to_one()]] - `calls` [EXTRACTED]
+- [[dot-test_weights_with_explicit_cutoff_sum_to_one()]] - `calls` [EXTRACTED]
+- [[Path_11]] - `references` [EXTRACTED]
+- [[Seed a predictions+outcomes DB for calibration tests.]] - `rationale_for` [EXTRACTED]
+- [[test_phase3_batch_c.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_151
+#graphify/code #graphify/EXTRACTED #community/Community_125

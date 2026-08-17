@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_config_divergence_guard.py"
 type: "code"
-community: "Community 243"
+community: "Community 47"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_243
+  - community/Community_47
 ---
 
 # test_config_divergence_guard.py
@@ -20,10 +20,14 @@ tags:
 - [[_numeric_or_str()]] - `contains` [EXTRACTED]
 - [[_scan_env_defaults()]] - `contains` [EXTRACTED]
 - [[config.py]] - `calls` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
 - [[test_bare_os_replace_guard.py]] - `semantically_similar_to` [INFERRED]
 - [[test_config_validation.py]] - `shares_data_with` [INFERRED]
+- [[test_dead_code_scan.py]] - `references` [EXTRACTED]
 - [[test_dead_field_allowlist_has_no_stale_entries()]] - `contains` [EXTRACTED]
+- [[test_disputed_row_guard.py]] - `references` [EXTRACTED]
 - [[test_every_botconfig_field_has_a_call_site_or_a_documented_reason()]] - `contains` [EXTRACTED]
 - [[test_no_env_var_has_conflicting_hardcoded_defaults()]] - `contains` [EXTRACTED]
+- [[test_paths_bypass_guard.py]] - `semantically_similar_to` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_243
+#graphify/code #graphify/EXTRACTED #community/Community_47

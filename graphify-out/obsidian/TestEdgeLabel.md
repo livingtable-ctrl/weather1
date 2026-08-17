@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 221"
+community: "Community 198"
 location: "L1066"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_221
+  - community/Community_198
 ---
 
 # TestEdgeLabel
@@ -22,7 +22,9 @@ tags:
 - [[dot-test_strong_buy_yes_boundary()]] - `method` [EXTRACTED]
 - [[dot-test_weak_no()]] - `method` [EXTRACTED]
 - [[dot-test_weak_yes()]] - `method` [EXTRACTED]
+- [[_edge_label()]] - `calls` [EXTRACTED]
 - [[_edge_label(edge, side) must take its YESNO direction word from `side`, never…]] - `rationale_for` [EXTRACTED]
+- [[backlog.txt SIGNAL LABEL DIRECTION IGNORES RECOMMENDED_SIDE]] - `references` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_221
+#graphify/code #graphify/EXTRACTED #community/Community_198

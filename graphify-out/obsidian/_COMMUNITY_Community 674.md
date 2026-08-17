@@ -1,16 +1,17 @@
 ---
 type: community
 cohesion: 1.00
-members: 1
+members: 2
 ---
 
 # Community 674
 
 **Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Members:** 2 nodes
 
 ## Members
-- [[_repair_psd Function]] - code - monte_carlo.py
+- [[backtest command]] - document - COMMANDS.md
+- [[walkforward command]] - document - COMMANDS.md
 
 ## Live Query (requires Dataview plugin)
 

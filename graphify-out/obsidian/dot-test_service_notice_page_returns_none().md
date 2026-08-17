@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_nws_afd.py"
 type: "code"
-community: "Community 68"
+community: "Community 129"
 location: "L360"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_68
+  - community/Community_129
 ---
 
 # .test_service_notice_page_returns_none()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestFetchAfdDiscussion]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_68
+#graphify/code #graphify/EXTRACTED #community/Community_129

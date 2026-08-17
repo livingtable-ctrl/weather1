@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_4
 ---
 
 # P2 Risk Control verification tests. No production code is modified — all tests…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_risk_control.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 490"
-location: "L3307"
+community: "Community 531"
+location: "L3676"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_490
+  - community/Community_531
 ---
 
 # TestStationBiasKeys
@@ -20,4 +20,4 @@ tags:
 - [[Regression bias dict keys must match CITY_COORDS keys exactly. Previously used…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_490
+#graphify/code #graphify/EXTRACTED #community/Community_531

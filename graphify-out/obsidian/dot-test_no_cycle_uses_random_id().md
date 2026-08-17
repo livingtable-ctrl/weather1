@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_idempotency.py"
 type: "code"
-community: "Community 143"
+community: "Community 191"
 location: "L96"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_143
+  - community/Community_191
 ---
 
 # .test_no_cycle_uses_random_id()
@@ -16,4 +16,4 @@ tags:
 - [[Omitting cycle produces a random (non-deterministic) client_order_id.]] - `rationale_for` [EXTRACTED]
 - [[TestClientOrderId]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_143
+#graphify/code #graphify/EXTRACTED #community/Community_191

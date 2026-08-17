@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Community 298"
+community: "Community 13"
 location: "L619"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_298
+  - community/Community_13
 ---
 
 # .cancel_order()
@@ -16,4 +16,4 @@ tags:
 - [[Cancel a resting order via Kalshi's V2 endpoint -- the legacy DELETE…]] - `rationale_for` [EXTRACTED]
 - [[KalshiClient]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_298
+#graphify/code #graphify/EXTRACTED #community/Community_13

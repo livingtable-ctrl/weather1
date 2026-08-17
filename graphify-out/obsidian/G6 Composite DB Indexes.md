@@ -1,12 +1,12 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-g-architecture.md"
 type: "document"
-community: "Community 249"
+community: "Community 246"
 location: "G6"
 tags:
   - graphify/document
   - graphify/AMBIGUOUS
-  - community/Community_249
+  - community/Community_246
 ---
 
 # G6: Composite DB Indexes
@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[Data Integrity Audit Scope (safe_io, checksums)]] - `conceptually_related_to` [AMBIGUOUS]
 - [[get_brier_over_time() Tracker Function]] - `semantically_similar_to` [INFERRED]
-- [[tracker.py Module]] - `references` [EXTRACTED]
+- [[tracker.py Module_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/AMBIGUOUS #community/Community_249
+#graphify/document #graphify/AMBIGUOUS #community/Community_246

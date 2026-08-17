@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "rationale"
-community: "Community 113"
-location: "L230"
+community: "Community 101"
+location: "L441"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_113
+  - community/Community_101
 ---
 
 # days_out=0 returns prob unchanged when 'sameday' key absent — no global…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_sameday_no_fallback_to_global()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_113
+#graphify/rationale #graphify/EXTRACTED #community/Community_101

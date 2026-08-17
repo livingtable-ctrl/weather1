@@ -1,29 +1,28 @@
 ---
 type: community
-cohesion: 0.19
-members: 14
+cohesion: 0.17
+members: 13
 ---
 
 # Community 269
 
-**Cohesion:** 0.19 - loosely connected
-**Members:** 14 nodes
+**Cohesion:** 0.17 - loosely connected
+**Members:** 13 nodes
 
 ## Members
-- [[dot-test_above_condition_clear_outcome()]] - code - tests/test_weather_markets.py
-- [[dot-test_below_condition_returns_valid_tuple()]] - code - tests/test_weather_markets.py
-- [[dot-test_between_condition_returns_valid_tuple()]] - code - tests/test_weather_markets.py
-- [[dot-test_small_n_under_30_returns_wide_ci()]] - code - tests/test_weather_markets.py
-- [[dot-test_too_few_members_returns_wide_ci()]] - code - tests/test_weather_markets.py
-- [[Bootstrap 90% confidence interval on the ensemble probability estimate. 114…]] - rationale - weather_markets.py
-- [[N  30 but = 5 → also returns (0.0, 1.0) per 114.]] - rationale - tests/test_weather_markets.py
-- [[N  5 → maximally uncertain (0.0, 1.0).]] - rationale - tests/test_weather_markets.py
-- [[N = 30, all temps above threshold → CI near (1.0, 1.0).]] - rationale - tests/test_weather_markets.py
-- [[TestBootstrapCI]] - code - tests/test_weather_markets.py
-- [[Tests for _bootstrap_ci — bootstrap 90% CI on ensemble probability.]] - rationale - tests/test_weather_markets.py
-- [[_bootstrap_ci()]] - code - weather_markets.py
-- [[below' condition returns (lo, hi) with 0 = lo = hi = 1.]] - rationale - tests/test_weather_markets.py
-- [[between' condition returns (lo, hi) with 0 = lo = hi = 1.]] - rationale - tests/test_weather_markets.py
+- [[Manually un-retire a forecasting method that was auto-retired. Writes a 72-hour…]] - rationale - main.py
+- [[Manually un-retire a forecasting method that was auto-retired. Writes a 72-hour…_1]] - rationale - main.py
+- [[P9.5 Load retired strategy methods from disk. Returns {method {retired_at…]] - rationale - tracker.py
+- [[P9.5 Manually un-retire a strategy method. Returns True if it was retired.…]] - rationale - tracker.py
+- [[Return True if method has an active retirement-immunity pin.]] - rationale - tracker.py
+- [[Return {method pinned_until_iso} for currently active (non-expired) pins.…]] - rationale - tracker.py
+- [[_get_strategy_pins()]] - code - tracker.py
+- [[_save_retired_strategies()]] - code - tracker.py
+- [[_save_strategy_pins()]] - code - tracker.py
+- [[cmd_unretire_strategy()]] - code - main.py
+- [[get_retired_strategies()]] - code - tracker.py
+- [[is_strategy_pinned()]] - code - tracker.py
+- [[unretire_strategy()]] - code - tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,10 +32,15 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 1 edge to [[_COMMUNITY_Weather Probability Math Tests]]
+- 7 edges to [[_COMMUNITY_Community 0]]
+- 6 edges to [[_COMMUNITY_Community 2]]
+- 4 edges to [[_COMMUNITY_Community 3]]
+- 2 edges to [[_COMMUNITY_Community 5]]
+- 2 edges to [[_COMMUNITY_Community 8]]
 
 ## Top bridge nodes
-- [[_bootstrap_ci()]] - degree 11, connects to 3 communities
-- [[TestBootstrapCI]] - degree 7, connects to 1 community
+- [[get_retired_strategies()]] - degree 10, connects to 4 communities
+- [[_save_retired_strategies()]] - degree 4, connects to 3 communities
+- [[unretire_strategy()]] - degree 8, connects to 2 communities
+- [[is_strategy_pinned()]] - degree 4, connects to 2 communities
+- [[_save_strategy_pins()]] - degree 3, connects to 2 communities

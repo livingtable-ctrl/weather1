@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 1"
 location: "L173"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_1
 ---
 
 # Count live orders with status 'pending' — enforces max_open_positions limit.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_count_open_live_orders()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_1

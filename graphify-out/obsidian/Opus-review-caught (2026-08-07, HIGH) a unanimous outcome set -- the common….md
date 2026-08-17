@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "rationale"
-community: "Community 546"
+community: "Community 615"
 location: "L508"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_546
+  - community/Community_615
 ---
 
 # Opus-review-caught (2026-08-07, HIGH): a unanimous outcome set -- the common…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_unanimous_outcomes_clamped_not_degenerate()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_546
+#graphify/rationale #graphify/EXTRACTED #community/Community_615

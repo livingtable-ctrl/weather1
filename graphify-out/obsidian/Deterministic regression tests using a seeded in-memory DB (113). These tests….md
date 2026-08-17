@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_regression.py"
 type: "rationale"
-community: "Community 284"
+community: "Community 287"
 location: "L76"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_284
+  - community/Community_287
 ---
 
 # Deterministic regression tests using a seeded in-memory DB (#113). These tests…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestBrierScoreComputation]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_284
+#graphify/rationale #graphify/EXTRACTED #community/Community_287

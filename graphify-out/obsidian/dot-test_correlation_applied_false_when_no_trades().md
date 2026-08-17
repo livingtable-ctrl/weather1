@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_f.py"
 type: "code"
-community: "Community 134"
+community: "Community 155"
 location: "L70"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_134
+  - community/Community_155
 ---
 
 # .test_correlation_applied_false_when_no_trades()
@@ -15,4 +15,4 @@ tags:
 - [[Empty trade list must return correlation_applied=False (or absent).]] - `rationale_for` [EXTRACTED]
 - [[TestCorrelationAppliedFlag]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_134
+#graphify/code #graphify/EXTRACTED #community/Community_155

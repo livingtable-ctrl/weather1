@@ -10,20 +10,20 @@ members: 14
 **Members:** 14 nodes
 
 ## Members
-- [[dot-_mock_climate_history()]] - code - tests/test_climatology.py
-- [[dot-test_missing_cities_helper_returns_empty_when_all_present()]] - code - tests/test_climatology.py
-- [[dot-test_missing_cities_helper_treats_absent_file_as_all_missing()]] - code - tests/test_climatology.py
-- [[dot-test_missing_cities_helper_treats_corrupt_file_as_all_missing()]] - code - tests/test_climatology.py
-- [[dot-test_missing_cities_helper_treats_empty_entry_as_missing()]] - code - tests/test_climatology.py
-- [[dot-test_missing_cities_helper_treats_non_dict_json_as_all_missing()]] - code - tests/test_climatology.py
-- [[dot-test_second_call_for_same_cities_does_not_recompute()]] - code - tests/test_climatology.py
-- [[dot-test_sequential_per_city_preload_all_calls_build_full_table()]] - code - tests/test_climatology.py
-- [[Once a city is already in the fresh cache, a later preload_all() call for that…]] - rationale - tests/test_climatology.py
-- [[TestPreloadAllSigmaGate]] - code - tests/test_climatology.py
-- [[The exact backlog scenario main.py's wizard calls preload_all({city…]] - rationale - tests/test_climatology.py
-- [[backlog.txt PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE…]] - rationale - tests/test_climatology.py
-- [[opus-review-caught 2026-08-07 a city KEY present in the file with no real…]] - rationale - tests/test_climatology.py
-- [[opus-review-caught 2026-08-07 valid JSON that isn't an object (null, a list,…]] - rationale - tests/test_climatology.py
+- [[dot-test_auto_settle_called_after_sync_outcomes()]] - code - tests/test_cron_trade_updates.py
+- [[dot-test_cmd_cron_calls_auto_settle_paper_trades()]] - code - tests/test_cron_trade_updates.py
+- [[dot-test_cron_prints_signal_count_when_markets_found()]] - code - tests/test_cron_trade_updates.py
+- [[dot-test_per_ticker_print_code_exists_in_cron()]] - code - tests/test_cron_trade_updates.py
+- [[Stub out all guards that can cause cmd_cron to exit early. Without these stubs,…]] - rationale - tests/test_cron_trade_updates.py
+- [[TestCronPrintPlacedTrades]] - code - tests/test_cron_trade_updates.py
+- [[TestCronSettlesPaperTrades]] - code - tests/test_cron_trade_updates.py
+- [[Tests for cron trade update fixes.]] - rationale - tests/test_cron_trade_updates.py
+- [[_apply_cron_isolation()]] - code - tests/test_cron_trade_updates.py
+- [[auto_settle_paper_trades must be called in the same cron cycle as sync_outcomes.]] - rationale - tests/test_cron_trade_updates.py
+- [[cmd_cron must call auto_settle_paper_trades so paper trades get marked wonlost.]] - rationale - tests/test_cron_trade_updates.py
+- [[cmd_cron must emit output describing scan results and any placement activity.]] - rationale - tests/test_cron_trade_updates.py
+- [[cron.py must track placement count and include it in the run summary.]] - rationale - tests/test_cron_trade_updates.py
+- [[test_cron_trade_updates.py]] - code - tests/test_cron_trade_updates.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,7 +33,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 302]]
+- 1 edge to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 8]]
+- 1 edge to [[_COMMUNITY_Community 31]]
 
 ## Top bridge nodes
-- [[TestPreloadAllSigmaGate]] - degree 10, connects to 1 community
+- [[test_cron_trade_updates.py]] - degree 7, connects to 3 communities

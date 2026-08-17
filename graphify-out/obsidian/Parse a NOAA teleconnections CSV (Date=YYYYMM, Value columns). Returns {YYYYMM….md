@@ -1,12 +1,12 @@
 ---
 source_file: "climate_indices.py"
 type: "rationale"
-community: "Climatology & Climate Index Fetching"
+community: "Community 361"
 location: "L468"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_361
 ---
 
 # Parse a NOAA teleconnections CSV (Date=YYYYMM, Value columns). Returns {YYYYMM:…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_fetch_noaa_csv_index()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/rationale #graphify/EXTRACTED #community/Community_361

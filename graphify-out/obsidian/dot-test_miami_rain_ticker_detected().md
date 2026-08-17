@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 102"
-location: "L2830"
+community: "Community 123"
+location: "L3199"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_102
+  - community/Community_123
 ---
 
 # .test_miami_rain_ticker_detected()
 
 ## Connections
-- [[dot-_city()]] - `calls` [EXTRACTED]
+- [[dot-_city()_1]] - `calls` [EXTRACTED]
 - [[Passes the existing substring chain by luck (MIA) -- tested so a future edit…]] - `rationale_for` [EXTRACTED]
 - [[TestMonthlyRainCityDetection]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_102
+#graphify/code #graphify/EXTRACTED #community/Community_123

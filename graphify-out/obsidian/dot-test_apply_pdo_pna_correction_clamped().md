@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 169"
+community: "Community 177"
 location: "L1558"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_169
+  - community/Community_177
 ---
 
 # .test_apply_pdo_pna_correction_clamped()
@@ -16,4 +16,4 @@ tags:
 - [[TestPDOPNA]] - `method` [EXTRACTED]
 - [[apply_pdo_pna_correction()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_169
+#graphify/code #graphify/EXTRACTED #community/Community_177

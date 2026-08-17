@@ -1,18 +1,16 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 71"
+community: "Community 55"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_71
+  - community/Community_55
 ---
 
 # fixture
 
 ## Connections
-- [[_force_demo_env()_1]] - `references` [EXTRACTED]
-- [[_no_dashboard_password()_1]] - `references` [EXTRACTED]
-- [[analytics_client()]] - `references` [EXTRACTED]
+- [[dot-isolated_temp_paths()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_71
+#graphify/code #graphify/EXTRACTED #community/Community_55

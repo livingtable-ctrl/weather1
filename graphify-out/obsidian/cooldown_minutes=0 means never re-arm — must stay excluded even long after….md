@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts.py"
 type: "rationale"
-community: "Community 419"
+community: "Community 32"
 location: "L126"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_419
+  - community/Community_32
 ---
 
 # cooldown_minutes=0 means never re-arm — must stay excluded even long after…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_triggered_alert_with_zero_cooldown_never_rearms()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_419
+#graphify/rationale #graphify/EXTRACTED #community/Community_32

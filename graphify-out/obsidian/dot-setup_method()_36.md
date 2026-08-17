@@ -1,17 +1,18 @@
 ---
-source_file: "tests/test_signal_quality.py"
+source_file: "tests/test_flash_crash_cb.py"
 type: "code"
-community: "Community 52"
+community: "Community 64"
 location: "L13"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_52
+  - community/Community_64
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestGetMemberAccuracyDaysBack]] - `method` [EXTRACTED]
+- [[FlashCrashCB]] - `calls` [EXTRACTED]
+- [[TestFlashCrashCB]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_52
+#graphify/code #graphify/EXTRACTED #community/Community_64

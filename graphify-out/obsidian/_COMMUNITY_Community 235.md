@@ -1,30 +1,30 @@
 ---
 type: community
-cohesion: 0.13
+cohesion: 0.15
 members: 15
 ---
 
 # Community 235
 
-**Cohesion:** 0.13 - loosely connected
+**Cohesion:** 0.15 - loosely connected
 **Members:** 15 nodes
 
 ## Members
-- [[A legacy trade with an emptymissing model_forecast_means must produce no per-…]] - rationale - tests/test_paper_metrics.py
-- [[A trade placed before the var field existed (no 'var' key at all) must fall…]] - rationale - tests/test_paper_metrics.py
-- [[A trade with var=min stored on it must log under var=min, even though its…]] - rationale - tests/test_paper_metrics.py
-- [[Every model present in trade'model_forecast_means' must produce its own row,…]] - rationale - tests/test_paper_metrics.py
-- [[Omitting model_forecast_means entirely (e.g. a manual dashboard order, see…]] - rationale - tests/test_paper_metrics.py
-- [[Tests for profit factor, break-even stop, and spread Kelly multiplier.]] - rationale - tests/test_paper_metrics.py
-- [[test_paper_metrics.py]] - code - tests/test_paper_metrics.py
-- [[test_place_paper_order_defaults_model_forecast_means_to_empty_dict()]] - code - tests/test_paper_metrics.py
-- [[test_place_paper_order_stores_model_forecast_means()]] - code - tests/test_paper_metrics.py
-- [[test_place_paper_order_stores_var_on_trade()]] - code - tests/test_paper_metrics.py
-- [[test_score_ensemble_members_falls_back_for_legacy_trade_without_var()]] - code - tests/test_paper_metrics.py
-- [[test_score_ensemble_members_logs_every_model_in_the_generic_dict()]] - code - tests/test_paper_metrics.py
-- [[test_score_ensemble_members_prefers_stored_var()]] - code - tests/test_paper_metrics.py
-- [[test_score_ensemble_members_skips_absent_models()]] - code - tests/test_paper_metrics.py
-- [[test_score_ensemble_members_uses_db_settled_temp()]] - code - tests/test_paper_metrics.py
+- [[dot-_daily_market()_1]] - code - tests/test_hourly_markets.py
+- [[dot-_hourly_market()]] - code - tests/test_hourly_markets.py
+- [[dot-test_daily_ticker_unaffected()]] - code - tests/test_hourly_markets.py
+- [[dot-test_does_not_block_when_gate_active()]] - code - tests/test_hourly_markets.py
+- [[dot-test_mixed_list_fit_matches_daily_only_fit()]] - code - tests/test_hourly_markets.py
+- [[dot-test_still_blocks_when_gate_inactive()]] - code - tests/test_hourly_markets.py
+- [[Mutation-test proof flipping _hourly_gates_active() to True makes the block…]] - rationale - tests/test_hourly_markets.py
+- [[Regression coverage for a gap found 2026-08-07 unlike rainsnow hurricane-…]] - rationale - tests/test_hourly_markets.py
+- [[TestCheckPositionLimitsHourlyGuard]] - code - tests/test_hourly_markets.py
+- [[TestComputeMarketImpliedExcludesHourly]] - code - tests/test_hourly_markets.py
+- [[Tests for backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS (KXTEMPxxxH).…]] - rationale - tests/test_hourly_markets.py
+- [[compute_market_implied_distributions() groups by (city, target_date)…]] - rationale - tests/test_hourly_markets.py
+- [[hourly KXTEMPxxxH model  _hourly_gates_active()  refresh_hourly_target_hours()]] - code - weather_markets.py
+- [[test_hourly_markets.py]] - code - tests/test_hourly_markets.py
+- [[test_snow_markets.py (referenced, not in this chunk)]] - code - tests/test_snow_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,12 +34,18 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 306]]
-- 1 edge to [[_COMMUNITY_Community 401]]
-- 1 edge to [[_COMMUNITY_Community 477]]
+- 3 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 128]]
+- 1 edge to [[_COMMUNITY_Community 279]]
+- 1 edge to [[_COMMUNITY_Community 308]]
+- 1 edge to [[_COMMUNITY_Community 419]]
+- 1 edge to [[_COMMUNITY_Community 420]]
+- 1 edge to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 120]]
 - 1 edge to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 272]]
-- 1 edge to [[_COMMUNITY_Community 180]]
 
 ## Top bridge nodes
-- [[test_paper_metrics.py]] - degree 15, connects to 6 communities
+- [[test_hourly_markets.py]] - degree 15, connects to 8 communities
+- [[test_snow_markets.py (referenced, not in this chunk)]] - degree 2, connects to 1 community
+- [[hourly KXTEMPxxxH model  _hourly_gates_active()  refresh_hourly_target_hours()]] - degree 2, connects to 1 community

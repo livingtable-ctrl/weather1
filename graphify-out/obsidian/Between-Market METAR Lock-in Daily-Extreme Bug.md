@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/modules/weather_markets.md"
 type: "document"
-community: "Community 211"
+community: "Community 33"
 tags:
   - graphify/document
-  - graphify/INFERRED
-  - community/Community_211
+  - graphify/EXTRACTED
+  - community/Community_33
 ---
 
 # Between-Market METAR Lock-in Daily-Extreme Bug
@@ -14,4 +14,4 @@ tags:
 - [[Grade Audit Module Doc weather_markets.py]] - `references` [EXTRACTED]
 - [[metar.py]] - `semantically_similar_to` [INFERRED]
 
-#graphify/document #graphify/INFERRED #community/Community_211
+#graphify/document #graphify/EXTRACTED #community/Community_33

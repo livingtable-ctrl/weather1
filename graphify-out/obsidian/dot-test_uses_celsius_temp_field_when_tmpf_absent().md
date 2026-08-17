@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "code"
-community: "Community 91"
+community: "Community 100"
 location: "L509"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_91
+  - community/Community_100
 ---
 
 # .test_uses_celsius_temp_field_when_tmpf_absent()
@@ -17,4 +17,4 @@ tags:
 - [[The REAL aviationweather.gov payload has no tmpf field at all — only temp in…]] - `rationale_for` [EXTRACTED]
 - [[ZoneInfo]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_91
+#graphify/code #graphify/EXTRACTED #community/Community_100

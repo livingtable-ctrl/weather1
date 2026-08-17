@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_acis_precip.py"
 type: "code"
-community: "Community 357"
+community: "Community 370"
 location: "L51"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_357
+  - community/Community_370
 ---
 
 # TestParsePcpnValue
@@ -23,4 +23,4 @@ tags:
 - [[dot-test_trace_is_zero()]] - `method` [EXTRACTED]
 - [[test_acis_precip.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_357
+#graphify/code #graphify/EXTRACTED #community/Community_370

@@ -1,19 +1,18 @@
 ---
-source_file: "positions.py"
+source_file: "order_executor.py"
 type: "code"
-community: "Community 45"
-location: "L88"
+community: "Community 12"
+location: "L1158"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Community_12
 ---
 
 # .save_peak()
 
 ## Connections
+- [[LivePositionStore]] - `method` [EXTRACTED]
 - [[Position]] - `references` [EXTRACTED]
-- [[PositionStore]] - `method` [EXTRACTED]
-- [[update_peak_profits()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_45
+#graphify/code #graphify/EXTRACTED #community/Community_12

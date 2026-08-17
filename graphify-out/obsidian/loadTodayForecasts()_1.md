@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/reference/forecast.js"
 type: "code"
-community: "Community 450"
+community: "Community 483"
 location: "L27"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_450
+  - community/Community_483
 ---
 
 # loadTodayForecasts()
@@ -15,4 +15,4 @@ tags:
 - [[referenceforecast.js]] - `contains` [EXTRACTED]
 - [[renderForecastTable()_1]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_450
+#graphify/code #graphify/EXTRACTED #community/Community_483

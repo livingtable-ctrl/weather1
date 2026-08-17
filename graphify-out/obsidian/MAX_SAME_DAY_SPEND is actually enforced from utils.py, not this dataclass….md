@@ -1,12 +1,12 @@
 ---
 source_file: "config.py"
 type: "rationale"
-community: "Community 129"
+community: "Community 6"
 location: "L60"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_129
+  - community/Community_6
 ---
 
 # MAX_SAME_DAY_SPEND is actually enforced from utils.py, not this dataclass…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_live_max_same_day_spend()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_129
+#graphify/rationale #graphify/EXTRACTED #community/Community_6

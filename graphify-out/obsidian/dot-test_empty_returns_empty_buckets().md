@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 437"
+community: "Community 10"
 location: "L1358"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_437
+  - community/Community_10
 ---
 
 # .test_empty_returns_empty_buckets()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMarketCalibrationAdaptive]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_437
+#graphify/code #graphify/EXTRACTED #community/Community_10

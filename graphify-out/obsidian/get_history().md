@@ -1,23 +1,25 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Black Swan Halt State"
-location: "L2991"
+community: "Community 0"
+location: "L3046"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_0
 ---
 
 # get_history()
 
 ## Connections
 - [[Return recent predictions with outcomes where available.]] - `rationale_for` [EXTRACTED]
-- [[_conn()_1]] - `calls` [EXTRACTED]
+- [[_cmd_settle_open()]] - `calls` [EXTRACTED]
+- [[_conn()]] - `calls` [EXTRACTED]
 - [[cmd_history()]] - `calls` [EXTRACTED]
 - [[export_predictions_csv()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[output_formatters.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_0

@@ -1,12 +1,12 @@
 ---
 source_file: "circuit_breaker.py"
 type: "rationale"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_4
 ---
 
 # Simple per-source circuit breaker. States: CLOSED — normal operation OPEN —…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[circuit_breaker.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Ensemble Weight Blending Tests"
-location: "L4024"
+community: "Community 11"
+location: "L4393"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_11
 ---
 
 # backlog.txt 'GENERALIZED PER-MODEL ACCURACY TRACKING' Pass 2:…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestBatchPrewarmEnsembleTrackingOnlyModels]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_11

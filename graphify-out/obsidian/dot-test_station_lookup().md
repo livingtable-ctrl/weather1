@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_mos.py"
 type: "code"
-community: "Community 187"
+community: "Community 193"
 location: "L92"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_187
+  - community/Community_193
 ---
 
 # .test_station_lookup()
@@ -15,4 +15,4 @@ tags:
 - [[TestFetchMos]] - `method` [EXTRACTED]
 - [[get_mos_station returns correct ASOS station for each city. Keys are full city…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_187
+#graphify/code #graphify/EXTRACTED #community/Community_193

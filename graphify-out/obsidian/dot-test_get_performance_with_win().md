@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 150"
+community: "Community 154"
 location: "L153"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_150
+  - community/Community_154
 ---
 
 # .test_get_performance_with_win()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestKellyCompounding]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_150
+#graphify/code #graphify/EXTRACTED #community/Community_154

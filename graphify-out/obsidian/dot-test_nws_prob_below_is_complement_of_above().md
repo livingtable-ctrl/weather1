@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_nbm.py"
 type: "code"
-community: "Community 131"
+community: "Community 15"
 location: "L227"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_131
+  - community/Community_15
 ---
 
 # .test_nws_prob_below_is_complement_of_above()
@@ -16,4 +16,4 @@ tags:
 - [[TestNBMQuantiles]] - `method` [EXTRACTED]
 - [[nws_prob_from_quantiles()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_131
+#graphify/code #graphify/EXTRACTED #community/Community_15

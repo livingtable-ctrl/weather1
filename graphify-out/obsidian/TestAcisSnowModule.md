@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 285"
+community: "Community 288"
 location: "L1354"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_285
+  - community/Community_288
 ---
 
 # TestAcisSnowModule
@@ -24,4 +24,4 @@ tags:
 - [[Unit tests for acis_snow.py's own sentinel-parsing and cache-key isolation from…]] - `rationale_for` [EXTRACTED]
 - [[test_snow_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_285
+#graphify/code #graphify/EXTRACTED #community/Community_288

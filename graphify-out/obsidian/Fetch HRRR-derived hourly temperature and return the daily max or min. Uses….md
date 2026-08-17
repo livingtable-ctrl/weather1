@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Forecasting Persistence Model Tests"
-location: "L2268"
+community: "Community 460"
+location: "L2370"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_460
 ---
 
 # Fetch HRRR-derived hourly temperature and return the daily max or min. Uses…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_fetch_hrrr_temp()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_460

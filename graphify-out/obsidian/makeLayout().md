@@ -1,19 +1,19 @@
 ---
-source_file: "static/analytics.js"
+source_file: "static/forecast.js"
 type: "code"
-community: "Legacy Static Dashboard JS Pages"
-location: "L23"
+community: "Community 369"
+location: "L16"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Legacy_Static_Dashboard_JS_Pages
+  - community/Community_369
 ---
 
 # makeLayout()
 
 ## Connections
-- [[loadAnalytics()]] - `calls` [EXTRACTED]
-- [[loadBrierHistory()]] - `calls` [EXTRACTED]
-- [[staticanalytics.js]] - `contains` [EXTRACTED]
+- [[renderCityHeatmap()]] - `calls` [EXTRACTED]
+- [[renderEnsembleChart()]] - `calls` [EXTRACTED]
+- [[staticforecast.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_369

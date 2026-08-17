@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "rationale"
-community: "Community 26"
+community: "Community 4"
 location: "L1163"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_26
+  - community/Community_4
 ---
 
 # Threshold below all members → P(above) near 1.0.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_ensemble_cdf_prob_below_threshold_below_all()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_26
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

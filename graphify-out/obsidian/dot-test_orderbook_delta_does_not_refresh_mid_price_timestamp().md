@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_ws.py"
 type: "code"
-community: "Community 227"
+community: "Community 30"
 location: "L91"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_227
+  - community/Community_30
 ---
 
 # .test_orderbook_delta_does_not_refresh_mid_price_timestamp()
@@ -16,4 +16,4 @@ tags:
 - [[TestOrderbookCache]] - `method` [EXTRACTED]
 - [[update_orderbook_cache()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_227
+#graphify/code #graphify/EXTRACTED #community/Community_30

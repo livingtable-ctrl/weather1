@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_positions.py"
 type: "code"
-community: "Community 45"
+community: "Community 12"
 location: "L231"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Community_12
 ---
 
 # .test_exit_wraps_exit_live_position()
@@ -16,4 +16,4 @@ tags:
 - [[Position]] - `calls` [EXTRACTED]
 - [[TestLivePositionStore]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_45
+#graphify/code #graphify/EXTRACTED #community/Community_12

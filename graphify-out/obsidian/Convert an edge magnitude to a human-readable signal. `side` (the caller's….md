@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Community 221"
-location: "L6492"
+community: "Community 198"
+location: "L6594"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_221
+  - community/Community_198
 ---
 
 # Convert an edge magnitude to a human-readable signal. `side` (the caller's…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_edge_label()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_221
+#graphify/rationale #graphify/EXTRACTED #community/Community_198

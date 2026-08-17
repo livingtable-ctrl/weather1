@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "code"
-community: "Community 257"
+community: "Community 254"
 location: "L264"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_257
+  - community/Community_254
 ---
 
 # TestGaussianBlendSeparateSource
@@ -18,4 +18,4 @@ tags:
 - [[Regression tests for L6-B Gaussian contribution must appear in blend_sources…]] - `rationale_for` [EXTRACTED]
 - [[test_gaussian_prob.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_257
+#graphify/code #graphify/EXTRACTED #community/Community_254

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climate_indices.py"
 type: "code"
-community: "Community 31"
+community: "Community 61"
 location: "L208"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_31
+  - community/Community_61
 ---
 
 # .test_six_of_ten_researched_cities_are_entirely_default()
@@ -16,4 +16,4 @@ tags:
 - [[TestRegressionFittedGapCities]] - `method` [EXTRACTED]
 - [[WashingtonPhiladelphiaMinneapolisHoustonLasVegasNewOrleans nothing…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_31
+#graphify/code #graphify/EXTRACTED #community/Community_61

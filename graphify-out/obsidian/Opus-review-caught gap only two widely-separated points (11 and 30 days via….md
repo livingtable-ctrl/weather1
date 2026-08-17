@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "rationale"
-community: "Community 152"
+community: "Community 16"
 location: "L979"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_152
+  - community/Community_16
 ---
 
 # Opus-review-caught gap: only two widely-separated points (11 and 30 days via…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_boundary_just_over_16_days_skips_fetch()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_152
+#graphify/rationale #graphify/EXTRACTED #community/Community_16

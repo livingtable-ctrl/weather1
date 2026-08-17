@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "rationale"
-community: "Community 508"
+community: "Community 45"
 location: "L2554"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_508
+  - community/Community_45
 ---
 
 # None of the 3 hurricane sub-models' gates must cross-activate each other.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_sibling_gate_state_does_not_affect_this_one()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_508
+#graphify/rationale #graphify/EXTRACTED #community/Community_45

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p0_11_retired_strategy.py"
 type: "code"
-community: "Community 124"
+community: "Community 138"
 location: "L195"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_124
+  - community/Community_138
 ---
 
 # TestRetirementProbationBypass
@@ -18,4 +18,4 @@ tags:
 - [[bypass_retirement_check=True is check_retirement_probation()'s only caller — it…]] - `rationale_for` [EXTRACTED]
 - [[test_p0_11_retired_strategy.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_124
+#graphify/code #graphify/EXTRACTED #community/Community_138

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_acis_precip.py"
 type: "rationale"
-community: "Community 271"
+community: "Community 141"
 location: "L583"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_271
+  - community/Community_141
 ---
 
 # Opus-review-caught gap (round 2): ACIS can return HTTP 200 with an empty "data"…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestFetchHistoricalDailyEmptyResponse]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_271
+#graphify/rationale #graphify/EXTRACTED #community/Community_141

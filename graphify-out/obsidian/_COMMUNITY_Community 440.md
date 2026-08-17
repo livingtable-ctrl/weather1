@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 440
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-setUp()_32]] - code - tests/test_tracker.py
-- [[dot-tearDown()_31]] - code - tests/test_tracker.py
-- [[dot-test_columns_exist_after_init()]] - code - tests/test_tracker.py
-- [[dot-test_log_prediction_stores_source_probs()]] - code - tests/test_tracker.py
-- [[After init_db(), predictions table must have ensemble_prob, nws_prob, clim_prob.]] - rationale - tests/test_tracker.py
-- [[Schema v9 must add ensemble_prob, nws_prob, clim_prob to predictions.]] - rationale - tests/test_tracker.py
-- [[TestPerSourceProbColumns]] - code - tests/test_tracker.py
-- [[log_prediction with source probs stores them retrievable from DB.]] - rationale - tests/test_tracker.py
+- [[18 - get_ensemble_member_accuracy() must stratify by city and season.]] - rationale - tests/test_tracker.py
+- [[dot-setUp()_31]] - code - tests/test_tracker.py
+- [[dot-tearDown()_30]] - code - tests/test_tracker.py
+- [[dot-test_grpb_ensemble_city_filter()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_ensemble_empty_returns_none()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_ensemble_return_shape()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_ensemble_season_filter_excludes_wrong_months()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_ensemble_season_winter_oct_to_mar()]] - code - tests/test_tracker.py
+- [[TestEnsembleMemberAccuracyStratified]] - code - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,7 +28,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[TestPerSourceProbColumns]] - degree 6, connects to 1 community
+- [[TestEnsembleMemberAccuracyStratified]] - degree 9, connects to 1 community

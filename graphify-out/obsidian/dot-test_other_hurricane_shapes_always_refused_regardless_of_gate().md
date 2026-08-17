@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 38"
+community: "Community 36"
 location: "L1206"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_38
+  - community/Community_36
 ---
 
 # .test_other_hurricane_shapes_always_refused_regardless_of_gate()
@@ -18,4 +18,4 @@ tags:
 - [[KXHURCAT (per-storm category) has no model at all -- must refuse…]] - `rationale_for` [EXTRACTED]
 - [[TestCmdTodayPlacementGates]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_38
+#graphify/code #graphify/EXTRACTED #community/Community_36

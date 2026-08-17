@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_d.py"
 type: "code"
-community: "Community 87"
+community: "Community 188"
 location: "L17"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_87
+  - community/Community_188
 ---
 
 # TestPortfolioVarSampleCount
@@ -19,6 +19,6 @@ tags:
 - [[dot-test_repair_psd_renormalizes_to_unit_diagonal()]] - `method` [EXTRACTED]
 - [[dot-test_simulate_portfolio_succeeds_with_near_singular_matrix()]] - `method` [EXTRACTED]
 - [[P3-3 portfolio_var must default to 5000 simulations.]] - `rationale_for` [EXTRACTED]
-- [[Phase 3 Batch D Monte CarloBacktest Tests]] - `contains` [EXTRACTED]
+- [[test_phase3_batch_d.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_87
+#graphify/code #graphify/EXTRACTED #community/Community_188

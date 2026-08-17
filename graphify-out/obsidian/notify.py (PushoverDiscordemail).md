@@ -1,11 +1,11 @@
 ---
 source_file: "notify.py"
 type: "code"
-community: "Community 565"
+community: "Community 142"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_565
+  - community/Community_142
 ---
 
 # notify.py (Pushover/Discord/email)
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[activate_black_swan_halt()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_565
+#graphify/code #graphify/EXTRACTED #community/Community_142

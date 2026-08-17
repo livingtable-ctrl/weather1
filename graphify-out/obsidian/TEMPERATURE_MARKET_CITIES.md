@@ -1,11 +1,11 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 8"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_8
 ---
 
 # TEMPERATURE_MARKET_CITIES
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[run_backtest()]] - `shares_data_with` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/code #graphify/EXTRACTED #community/Community_8

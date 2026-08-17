@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_b.py"
 type: "code"
-community: "Community 260"
+community: "Community 257"
 location: "L37"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_260
+  - community/Community_257
 ---
 
 # .test_tier4_is_0_95()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestDrawdownTierAbsolute]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_260
+#graphify/code #graphify/EXTRACTED #community/Community_257

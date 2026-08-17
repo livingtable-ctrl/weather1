@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Community 577"
+community: "Community 652"
 location: "L86"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_577
+  - community/Community_652
 ---
 
 # TestCorrelationTablesStayInSync
@@ -17,4 +17,4 @@ tags:
 - [[monte_carlo._DEFAULT_CORRELATIONS and _HARDCODED_CORR are hand-typed seeds that…]] - `rationale_for` [EXTRACTED]
 - [[test_trading.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_577
+#graphify/code #graphify/EXTRACTED #community/Community_652

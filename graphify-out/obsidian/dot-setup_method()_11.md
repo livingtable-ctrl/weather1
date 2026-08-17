@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_live_execution.py"
+source_file: "tests/test_mos_nbp.py"
 type: "code"
-community: "Community 157"
-location: "L1246"
+community: "Community 145"
+location: "L293"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_157
+  - community/Community_145
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestFinalizeCancelReturnValue]] - `method` [EXTRACTED]
+- [[TestFetchNbmQuantiles]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_157
+#graphify/code #graphify/EXTRACTED #community/Community_145

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_settlement_monitor.py"
 type: "rationale"
-community: "METAR Settlement Monitoring"
+community: "Community 8"
 location: "L99"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_8
 ---
 
 # Signals older than max_age_minutes are filtered out.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_signals_expire_after_window()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/rationale #graphify/EXTRACTED #community/Community_8

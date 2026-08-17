@@ -10,17 +10,17 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-test_default_max_trades_still_works()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_get_active_variant_skips_meta_key()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_get_active_variant_uses_persisted_max()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_meta_key_written_on_init()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_meta_updated_when_max_trades_changes()]] - code - tests/test_phase2_batch_m.py
-- [[ABTest.__init__ must write max_trades_per_variant into _meta.]] - rationale - tests/test_phase2_batch_m.py
-- [[Constructing ABTest with a new max_trades must update the persisted _meta.]] - rationale - tests/test_phase2_batch_m.py
-- [[TestAbTestMaxTradesMeta]] - code - tests/test_phase2_batch_m.py
-- [[Without a persisted _meta, _DEFAULT_MAX_TRADES is used.]] - rationale - tests/test_phase2_batch_m.py
-- [[get_active_variant must not treat _meta as a variant.]] - rationale - tests/test_phase2_batch_m.py
-- [[get_active_variant must respect the persisted max_trades, not…]] - rationale - tests/test_phase2_batch_m.py
+- [[dot-setup_method()_22]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_14]] - code - tests/test_live_execution.py
+- [[dot-test_daily_live_spend_cap_blocks_across_cycles()]] - code - tests/test_live_execution.py
+- [[dot-test_daily_loss_limit_blocks_after_db_loss()]] - code - tests/test_live_execution.py
+- [[dot-test_daily_loss_limit_blocks_without_keyerror_when_key_missing()]] - code - tests/test_live_execution.py
+- [[dot-test_max_trade_dollars_caps_size()]] - code - tests/test_live_execution.py
+- [[Daily loss limit blocks order when DB-backed loss is at or above limit.]] - rationale - tests/test_live_execution.py
+- [[Deep-review followup F7 removed placement-time add_live_loss(cost) (correctly,…]] - rationale - tests/test_live_execution.py
+- [[F10 config'daily_loss_limit' was bare-indexed in the print on the same…]] - rationale - tests/test_live_execution.py
+- [[Kelly wants 10 contracts at $0.55 = $5.50contract → $55 total, capped to $50.]] - rationale - tests/test_live_execution.py
+- [[TestPlaceLiveOrder]] - code - tests/test_live_execution.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,8 +30,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 32]]
-- 1 edge to [[_COMMUNITY_Community 51]]
+- 3 edges to [[_COMMUNITY_Community 12]]
 
 ## Top bridge nodes
-- [[TestAbTestMaxTradesMeta]] - degree 7, connects to 2 communities
+- [[TestPlaceLiveOrder]] - degree 9, connects to 1 community

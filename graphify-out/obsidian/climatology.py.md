@@ -1,12 +1,12 @@
 ---
 source_file: "climatology.py"
 type: "code"
-community: "Climatology & Climate Index Fetching"
+community: "Community 102"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_102
 ---
 
 # climatology.py
@@ -16,11 +16,13 @@ tags:
 - [[CircuitBreaker]] - `imports` [EXTRACTED]
 - [[ForecastCache]] - `imports` [EXTRACTED]
 - [[Grade Audit Final Report]] - `references` [EXTRACTED]
+- [[Grade Audit Module Doc TIER 2 Files]] - `references` [EXTRACTED]
+- [[Grade Audit Output climatology.py]] - `references` [EXTRACTED]
 - [[Historical climatology from Open-Meteo archive API. Fetches 30 years of daily…]] - `rationale_for` [EXTRACTED]
 - [[Phase 2 Infrastructure Plan]] - `references` [EXTRACTED]
 - [[Phase 4 Forecasting Plan]] - `references` [EXTRACTED]
-- [[_cache_is_stale()_3]] - `contains` [EXTRACTED]
-- [[_cache_path()_3]] - `contains` [EXTRACTED]
+- [[_cache_is_stale()]] - `contains` [EXTRACTED]
+- [[_cache_path()]] - `contains` [EXTRACTED]
 - [[_climatological_prob_inner()]] - `contains` [EXTRACTED]
 - [[_load_sigma_cache_file()]] - `contains` [EXTRACTED]
 - [[_sigma_cache_missing_cities()]] - `contains` [EXTRACTED]
@@ -29,17 +31,24 @@ tags:
 - [[climatological_prob()]] - `contains` [EXTRACTED]
 - [[compute_sigma_from_climate()]] - `contains` [EXTRACTED]
 - [[fetch_historical()]] - `contains` [EXTRACTED]
+- [[fetch_historical() RF1 Silent API-Failure Swallow]] - `references` [EXTRACTED]
 - [[forecast_cache.py]] - `imports_from` [EXTRACTED]
-- [[load_all_sigmas()]] - `contains` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
+- [[load_all_sigmas()]] - `implements` [EXTRACTED]
+- [[logging]] - `imports` [EXTRACTED]
 - [[normal_cdf()]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
 - [[paths.py]] - `imports_from` [EXTRACTED]
 - [[persistence_prob()]] - `contains` [EXTRACTED]
 - [[preload_all()]] - `contains` [EXTRACTED]
 - [[prob_threshold()]] - `imports` [EXTRACTED]
+- [[requests_1]] - `imports` [EXTRACTED]
 - [[safe_io.py]] - `imports` [EXTRACTED]
-- [[test_climatology.py]] - `imports` [EXTRACTED]
+- [[test_climatology.py]] - `calls` [EXTRACTED]
+- [[threading]] - `imports` [EXTRACTED]
+- [[time]] - `imports` [EXTRACTED]
 - [[utc_today()]] - `imports` [EXTRACTED]
 - [[utils.py]] - `imports_from` [EXTRACTED]
 - [[weather_markets.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_102

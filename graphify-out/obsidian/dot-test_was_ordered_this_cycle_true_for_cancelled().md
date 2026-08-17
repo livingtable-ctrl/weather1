@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "code"
-community: "Community 363"
+community: "Community 377"
 location: "L65"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_363
+  - community/Community_377
 ---
 
 # .test_was_ordered_this_cycle_true_for_cancelled()
@@ -15,4 +15,4 @@ tags:
 - [[Cancelled orders still block the cycle (same as was_recently_ordered behaviour).]] - `rationale_for` [EXTRACTED]
 - [[TestExecutionLogMigration]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_363
+#graphify/code #graphify/EXTRACTED #community/Community_377

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_price_and_size.py"
 type: "code"
-community: "Community 309"
+community: "Community 314"
 location: "L334"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_309
+  - community/Community_314
 ---
 
 # TestSnowTradeWiring
@@ -18,4 +18,4 @@ tags:
 - [[Same reasoning as TestPrecipTradeWiring above -- _analyze_snow_trade's own…]] - `rationale_for` [EXTRACTED]
 - [[test_price_and_size.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_309
+#graphify/code #graphify/EXTRACTED #community/Community_314

@@ -1,24 +1,25 @@
 ---
 type: community
-cohesion: 0.22
-members: 9
+cohesion: 0.44
+members: 10
 ---
 
 # Community 398
 
-**Cohesion:** 0.22 - loosely connected
-**Members:** 9 nodes
+**Cohesion:** 0.44 - moderately connected
+**Members:** 10 nodes
 
 ## Members
-- [[dot-test_false_when_env_var_set_but_below_sample_floor()_2]] - code - tests/test_hurricane_markets.py
-- [[dot-test_false_when_env_var_unset()_2]] - code - tests/test_hurricane_markets.py
-- [[dot-test_false_when_sample_floor_met_but_env_var_unset()_2]] - code - tests/test_hurricane_markets.py
-- [[dot-test_falsy_env_var_values_stay_false()_1]] - code - tests/test_hurricane_markets.py
-- [[dot-test_never_raises_on_count_failure()_2]] - code - tests/test_hurricane_markets.py
-- [[dot-test_true_when_env_var_set_and_sample_floor_met()_2]] - code - tests/test_hurricane_markets.py
-- [[dot-test_truthy_env_var_values_case_insensitive()_1]] - code - tests/test_hurricane_markets.py
-- [[Mirrors _rain_gates_active()'s_snow_gates_active()'s exact test shape…]] - rationale - tests/test_hurricane_markets.py
-- [[TestHurricaneCountGatesActive]] - code - tests/test_hurricane_markets.py
+- [[dot-_market()_6]] - code - tests/test_weather.py
+- [[dot-test_above_temp()]] - code - tests/test_weather.py
+- [[dot-test_below_temp()]] - code - tests/test_weather.py
+- [[dot-test_bucket()]] - code - tests/test_weather.py
+- [[dot-test_precip_any()]] - code - tests/test_weather.py
+- [[dot-test_t_bucket_tiles_with_adjacent_between_bucket()]] - code - tests/test_weather.py
+- [[dot-test_unrecognised_returns_none()]] - code - tests/test_weather.py
+- [[Parse what outcome a market is asking about from its ticker and title. Returns…]] - rationale - weather_markets.py
+- [[TestParseMarketCondition]] - code - tests/test_weather.py
+- [[_parse_market_condition()]] - code - weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,7 +29,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 90]]
+- 5 edges to [[_COMMUNITY_Community 5]]
+- 2 edges to [[_COMMUNITY_Community 396]]
+- 2 edges to [[_COMMUNITY_Community 2]]
+- 1 edge to [[_COMMUNITY_Community 81]]
+- 1 edge to [[_COMMUNITY_Community 8]]
+- 1 edge to [[_COMMUNITY_Community 6]]
 
 ## Top bridge nodes
-- [[TestHurricaneCountGatesActive]] - degree 9, connects to 1 community
+- [[_parse_market_condition()]] - degree 18, connects to 6 communities
+- [[TestParseMarketCondition]] - degree 8, connects to 1 community

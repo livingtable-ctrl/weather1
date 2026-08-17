@@ -1,11 +1,11 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 55"
+community: "Community 45"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_55
+  - community/Community_45
 ---
 
 # _analyze_hurricane_next_event_trade() / is_hurricane_next_event_ticker()
@@ -15,4 +15,4 @@ tags:
 - [[test_hurricane_gating.py]] - `references` [EXTRACTED]
 - [[test_hurricane_markets.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_55
+#graphify/code #graphify/EXTRACTED #community/Community_45

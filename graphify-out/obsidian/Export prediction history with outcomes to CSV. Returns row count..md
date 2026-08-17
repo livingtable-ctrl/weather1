@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Black Swan Halt State"
-location: "L3414"
+community: "Community 0"
+location: "L3469"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_0
 ---
 
 # Export prediction history with outcomes to CSV. Returns row count.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[export_predictions_csv()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

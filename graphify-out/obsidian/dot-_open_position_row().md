@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 144"
+community: "Community 137"
 location: "L3489"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_144
+  - community/Community_137
 ---
 
 # ._open_position_row()
@@ -23,4 +23,4 @@ tags:
 - [[dot-test_within_settlement_gate_skips_exit()]] - `calls` [EXTRACTED]
 - [[TestCheckLiveModelExits]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_144
+#graphify/code #graphify/EXTRACTED #community/Community_137

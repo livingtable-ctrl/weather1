@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_validation.py"
 type: "code"
-community: "Community 85"
+community: "Community 76"
 location: "L116"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_85
+  - community/Community_76
 ---
 
 # test_validate_low_spread_tier_rejects_edge_below_threshold()
@@ -17,4 +17,4 @@ tags:
 - [[ensemble_spread=0.20 (LOW tier) requires edge = 0.10; edge=0.08 should be…]] - `rationale_for` [EXTRACTED]
 - [[test_trade_validation.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_85
+#graphify/code #graphify/EXTRACTED #community/Community_76

@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Community 384"
-location: "L6118"
+community: "Community 269"
+location: "L6173"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_384
+  - community/Community_269
 ---
 
 # get_retired_strategies()
@@ -16,10 +16,11 @@ tags:
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[auto_retire_strategies()]] - `calls` [EXTRACTED]
 - [[check_retirement_probation()]] - `calls` [EXTRACTED]
-- [[test_p0_11_retired_strategy.py]] - `calls` [EXTRACTED]
-- [[test_p9_p10.py]] - `calls` [EXTRACTED]
+- [[cmd_retire_strategies()]] - `calls` [EXTRACTED]
+- [[cmd_unretire_strategy()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 - [[unretire_strategy()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_384
+#graphify/code #graphify/EXTRACTED #community/Community_269

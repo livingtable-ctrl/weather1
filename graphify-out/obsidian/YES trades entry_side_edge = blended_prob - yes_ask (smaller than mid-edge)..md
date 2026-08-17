@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 528"
+community: "Community 586"
 location: "L158"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_528
+  - community/Community_586
 ---
 
 # YES trades: entry_side_edge = blended_prob - yes_ask (smaller than mid-edge).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_yes_entry_side_edge_uses_yes_ask()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_528
+#graphify/rationale #graphify/EXTRACTED #community/Community_586

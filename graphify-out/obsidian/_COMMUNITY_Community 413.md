@@ -1,24 +1,24 @@
 ---
 type: community
-cohesion: 0.22
+cohesion: 0.31
 members: 9
 ---
 
 # Community 413
 
-**Cohesion:** 0.22 - loosely connected
+**Cohesion:** 0.31 - loosely connected
 **Members:** 9 nodes
 
 ## Members
-- [[18 - get_ensemble_member_accuracy() must stratify by city and season.]] - rationale - tests/test_tracker.py
-- [[dot-setUp()_31]] - code - tests/test_tracker.py
-- [[dot-tearDown()_30]] - code - tests/test_tracker.py
-- [[dot-test_grpb_ensemble_city_filter()]] - code - tests/test_tracker.py
-- [[dot-test_grpb_ensemble_empty_returns_none()]] - code - tests/test_tracker.py
-- [[dot-test_grpb_ensemble_return_shape()]] - code - tests/test_tracker.py
-- [[dot-test_grpb_ensemble_season_filter_excludes_wrong_months()]] - code - tests/test_tracker.py
-- [[dot-test_grpb_ensemble_season_winter_oct_to_mar()]] - code - tests/test_tracker.py
-- [[TestEnsembleMemberAccuracyStratified]] - code - tests/test_tracker.py
+- [[dot-test_empty_when_fetch_historical_returns_none()]] - code - tests/test_climatology.py
+- [[dot-test_ignores_null_values()]] - code - tests/test_climatology.py
+- [[dot-test_min_var_uses_lows_not_highs()]] - code - tests/test_climatology.py
+- [[dot-test_respects_sigma_floor()]] - code - tests/test_climatology.py
+- [[dot-test_returns_per_month_dict()]] - code - tests/test_climatology.py
+- [[dot-test_skips_months_with_fewer_than_30_points()]] - code - tests/test_climatology.py
+- [[Build a fake fetch_historical() response one highlow reading per (year,…]] - rationale - tests/test_climatology.py
+- [[TestComputeSigmaFromClimate]] - code - tests/test_climatology.py
+- [[_synthetic_climate_data()]] - code - tests/test_climatology.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,7 +28,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 2 edges to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestEnsembleMemberAccuracyStratified]] - degree 9, connects to 1 community
+- [[TestComputeSigmaFromClimate]] - degree 7, connects to 1 community
+- [[_synthetic_climate_data()]] - degree 6, connects to 1 community

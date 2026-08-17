@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecast_cache.py"
 type: "code"
-community: "Forecast Persistent Cache"
+community: "Community 14"
 location: "L141"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecast_Persistent_Cache
+  - community/Community_14
 ---
 
 # test_get_with_ts_per_entry_ttl_respected()
@@ -16,4 +16,4 @@ tags:
 - [[get_with_ts honours per-entry TTL set via set_with_ttl.]] - `rationale_for` [EXTRACTED]
 - [[test_forecast_cache.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecast_Persistent_Cache
+#graphify/code #graphify/EXTRACTED #community/Community_14

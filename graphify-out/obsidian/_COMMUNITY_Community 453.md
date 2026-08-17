@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.38
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 453
 
-**Cohesion:** 0.38 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[B3 Portfolio Expected Value Card]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
-- [[Fix Web Analytics Charts Plan]] - document - docs/superpowers/plans/2026-04-25-fix-web-analytics.md
-- [[Profit Goal Feature Plan]] - document - docs/superpowers/plans/2026-04-25-profit-goal.md
-- [[Reliability Diagram Dashboard]] - document - docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md
-- [[Top 5 Trades of the Day Plan]] - document - docs/superpowers/plans/2026-04-25-top-5-trades.md
-- [[web_app.py XSS Escaping Fix]] - document - docs/superpowers/plans/2026-04-18-remediation.md
-- [[web_app.py module_1]] - code - docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md
+- [[101 Remove stray .paper_trades_ temp files left by interrupted atomic…]] - rationale - paper.py
+- [[Copy predictions.db and paper_trades.json to databackups on startup. 103…]] - rationale - main.py
+- [[Copy predictions.db and paper_trades.json to databackups on startup. 103…_1]] - rationale - main.py
+- [[Re-open a backed-up predictions.db, count rows in predictions table. Logs…]] - rationale - main.py
+- [[Re-open a backed-up predictions.db, count rows in predictions table. Logs…_1]] - rationale - main.py
+- [[auto_backup()]] - code - main.py
+- [[cleanup_temp_files()]] - code - paper.py
+- [[verify_db_backup()]] - code - main.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,13 +27,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 117]]
-- 1 edge to [[_COMMUNITY_Community 210]]
-- 1 edge to [[_COMMUNITY_Community 224]]
-- 1 edge to [[_COMMUNITY_Community 294]]
+- 5 edges to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 221]]
+- 1 edge to [[_COMMUNITY_Community 23]]
+- 1 edge to [[_COMMUNITY_Community 498]]
+- 1 edge to [[_COMMUNITY_Community 1]]
 
 ## Top bridge nodes
-- [[web_app.py module_1]] - degree 7, connects to 1 community
-- [[Reliability Diagram Dashboard]] - degree 3, connects to 1 community
-- [[B3 Portfolio Expected Value Card]] - degree 2, connects to 1 community
-- [[web_app.py XSS Escaping Fix]] - degree 2, connects to 1 community
+- [[auto_backup()]] - degree 9, connects to 4 communities
+- [[cleanup_temp_files()]] - degree 4, connects to 2 communities
+- [[verify_db_backup()]] - degree 5, connects to 1 community

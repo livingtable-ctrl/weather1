@@ -1,53 +1,54 @@
 ---
 type: community
-cohesion: 0.07
-members: 38
+cohesion: 0.08
+members: 39
 ---
 
 # Community 55
 
-**Cohesion:** 0.07 - loosely connected
-**Members:** 38 nodes
+**Cohesion:** 0.08 - loosely connected
+**Members:** 39 nodes
 
 ## Members
-- [[Clamped to 0.01, 0.99, matching every other probability this codebase…]] - rationale - hurricane_climatology.py
-- [[Earliest (month, day) at which ANY of `year`'s storms first reached kt…]] - rationale - hurricane_climatology.py
-- [[Empirical bootstrap distribution of SEASON-END counts for `count_type`, built…]] - rationale - hurricane_climatology.py
-- [[Empirical outcomes (did the event occur before target_month_day) for the…]] - rationale - hurricane_climatology.py
-- [[Empirical outcomes (was `target_position` the position of the first storm to…]] - rationale - hurricane_climatology.py
-- [[How many of `year`'s storms had ALREADY reached `count_type` strength on or…]] - rationale - hurricane_climatology.py
-- [[Mirrors acis_precip.bootstrap_ci_month_total's exact resampling shape n…]] - rationale - hurricane_climatology.py
-- [[Mirrors bootstrap_ci's exact resampling shape n resamples-with- replacement of…]] - rationale - hurricane_climatology.py
-- [[NOAA HURDAT2 best-track climatology for Kalshi's season-total hurricane…]] - rationale - hurricane_climatology.py
-- [[Opus-review-caught (2026-08-03) fetch_hurdat2_raw's own looks like HURDAT2…]] - rationale - hurricane_climatology.py
-- [[Path_23]] - code
-- [[Returns `year`'s storms that received a real NHC name (excludes…]] - rationale - hurricane_climatology.py
-- [[Returns the 1-indexed NAME-index position (rank among `year`'s real NAMED…]] - rationale - hurricane_climatology.py
-- [[_analyze_hurricane_count_trade()  is_hurricane_count_ticker()]] - code - weather_markets.py
-- [[_analyze_hurricane_next_event_trade()  is_hurricane_next_event_ticker()]] - code - weather_markets.py
-- [[_cache_is_stale()]] - code - hurricane_climatology.py
-- [[_cache_path()]] - code - hurricane_climatology.py
-- [[_load_stale_cache_or_none()]] - code - hurricane_climatology.py
-- [[_named_storms_in_naming_order()]] - code - hurricane_climatology.py
-- [[_warn_if_stale()]] - code - hurricane_climatology.py
-- [[basin is Kalshi's own vocabulary ATLEPACCPAC. Returns all parsed…]] - rationale - hurricane_climatology.py
-- [[bootstrap_ci()]] - code - hurricane_climatology.py
-- [[bootstrap_ci_next_event()]] - code - hurricane_climatology.py
-- [[count_as_of_day()]] - code - hurricane_climatology.py
-- [[exceedance_probability()]] - code - hurricane_climatology.py
-- [[fetch_hurdat2_raw()]] - code - hurricane_climatology.py
-- [[file_key is ATL or PAC (see HURDAT2_URLSBASIN_FILE_AND_PREFIX). Disk-…]] - rationale - hurricane_climatology.py
-- [[first_hurricane_position()]] - code - hurricane_climatology.py
-- [[first_hurricane_position_outcomes()]] - code - hurricane_climatology.py
-- [[first_occurrence_day()]] - code - hurricane_climatology.py
-- [[hurricane_climatology.py]] - code - hurricane_climatology.py
-- [[load_basin_storms()]] - code - hurricane_climatology.py
-- [[next_event_outcomes()]] - code - hurricane_climatology.py
-- [[next_event_probability()]] - code - hurricane_climatology.py
-- [[season_end_counts()]] - code - hurricane_climatology.py
-- [[season_end_total_distribution()]] - code - hurricane_climatology.py
-- [[storms already filtered to one basin (via load_basin_storms). Counts, for the…]] - rationale - hurricane_climatology.py
-- [[strike_type greater (Kalshi's real, live-confirmed N strike shape for…]] - rationale - hurricane_climatology.py
+- [[dot-isolated_temp_paths()]] - code - tests/test_ml_bias.py
+- [[dot-test_count_emos_variance_ready_predictions_requires_ens_var()]] - code - tests/test_ml_bias.py
+- [[dot-test_deactivate_emos_archives_to_history_before_unlink()]] - code - tests/test_ml_bias.py
+- [[dot-test_deactivate_emos_noop_when_already_inactive()]] - code - tests/test_ml_bias.py
+- [[dot-test_deactivate_emos_removes_file_and_returns_true_when_active()]] - code - tests/test_ml_bias.py
+- [[dot-test_emos_exceedance_prob_called_via_load_emos_params()]] - code - tests/test_ml_bias.py
+- [[dot-test_get_emos_status_active_returns_all_fields()]] - code - tests/test_ml_bias.py
+- [[dot-test_get_emos_status_inactive_when_file_missing()]] - code - tests/test_ml_bias.py
+- [[dot-test_get_emos_training_data_excludes_null_ens_mean()]] - code - tests/test_ml_bias.py
+- [[dot-test_load_emos_params_picks_up_change_without_process_restart()]] - code - tests/test_ml_bias.py
+- [[dot-test_load_emos_params_returns_none_when_file_missing()]] - code - tests/test_ml_bias.py
+- [[dot-test_reset_temperature_scale_handles_missing_file()]] - code - tests/test_ml_bias.py
+- [[dot-test_reset_temperature_scale_migrates_old_single_value_format()]] - code - tests/test_ml_bias.py
+- [[dot-test_reset_temperature_scale_sets_identity_preserves_sameday()]] - code - tests/test_ml_bias.py
+- [[dot-test_reset_temperature_scale_snapshots_prior_values()]] - code - tests/test_ml_bias.py
+- [[dot-test_restore_from_emos_snapshot_noop_when_no_snapshot()]] - code - tests/test_ml_bias.py
+- [[dot-test_restore_from_emos_snapshot_restores_and_consumes_it()]] - code - tests/test_ml_bias.py
+- [[dot-test_save_and_reload_emos_params()]] - code - tests/test_ml_bias.py
+- [[A long-running process (loopwatch) must see a savedeactivate made by a…]] - rationale - tests/test_ml_bias.py
+- [[First-ever activation's params must survive deactivation --…]] - rationale - tests/test_ml_bias.py
+- [[Old format is {T x, n_samples y} -- NOT {T x, n y}. Must match…]] - rationale - tests/test_ml_bias.py
+- [[Persist EMOS parameters and clear the in-process cache.]] - rationale - ml_bias.py
+- [[Remove emos_params.json, reverting multi-day abovebelowbetween predictions to…]] - rationale - ml_bias.py
+- [[Reset T_globalT_aboveT_belowT_between to 1.0 (identityno-op) in…]] - rationale - ml_bias.py
+- [[Restore globalabovebelowbetween to their pre-EMOS-activation T values from…]] - rationale - ml_bias.py
+- [[Return cached (a, b, c, d) from emos_params.json, or None if not trained. Re-…]] - rationale - ml_bias.py
+- [[Return {active bool, abcdnmean_crpsfitted_at ...}…]] - rationale - ml_bias.py
+- [[Shared isolation for resetdeactivate tests -- patches every module-level…]] - rationale - tests/test_ml_bias.py
+- [[TestEmos]] - code - tests/test_ml_bias.py
+- [[The stricter count (what actually gates EMOS's cd variance fit) must exclude…]] - rationale - tests/test_ml_bias.py
+- [[_load_emos_params must return the cache when _EMOS_CACHE is populated.]] - rationale - tests/test_ml_bias.py
+- [[_load_emos_params()]] - code - ml_bias.py
+- [[deactivate_emos()]] - code - ml_bias.py
+- [[fixture_16]] - code
+- [[get_emos_status()]] - code - ml_bias.py
+- [[globalabovebelowbetween all reset to T=1.0 (EMOS covers all 4 -- 'between'…]] - rationale - tests/test_ml_bias.py
+- [[reset_temperature_scale_for_emos()]] - code - ml_bias.py
+- [[restore_temperature_scale_from_emos_snapshot()]] - code - ml_bias.py
+- [[save_emos_params()]] - code - ml_bias.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -57,17 +58,17 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 7 edges to [[_COMMUNITY_Community 98]]
-- 4 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 3 edges to [[_COMMUNITY_Community 90]]
-- 2 edges to [[_COMMUNITY_Community 61]]
-- 1 edge to [[_COMMUNITY_Community 47]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
+- 12 edges to [[_COMMUNITY_Community 0]]
+- 7 edges to [[_COMMUNITY_Community 99]]
+- 6 edges to [[_COMMUNITY_Community 230]]
+- 6 edges to [[_COMMUNITY_Community 82]]
+- 3 edges to [[_COMMUNITY_Community 8]]
+- 2 edges to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 255]]
 
 ## Top bridge nodes
-- [[hurricane_climatology.py]] - degree 24, connects to 4 communities
-- [[_analyze_hurricane_count_trade()  is_hurricane_count_ticker()]] - degree 4, connects to 3 communities
-- [[fetch_hurdat2_raw()]] - degree 8, connects to 2 communities
-- [[first_hurricane_position()]] - degree 7, connects to 2 communities
-- [[load_basin_storms()]] - degree 6, connects to 2 communities
+- [[save_emos_params()]] - degree 15, connects to 6 communities
+- [[reset_temperature_scale_for_emos()]] - degree 13, connects to 4 communities
+- [[deactivate_emos()]] - degree 11, connects to 3 communities
+- [[_load_emos_params()]] - degree 10, connects to 3 communities
+- [[get_emos_status()]] - degree 9, connects to 3 communities

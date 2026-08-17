@@ -10,18 +10,18 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[dot-setUp()_22]] - code - tests/test_tracker.py
-- [[dot-tearDown()_21]] - code - tests/test_tracker.py
-- [[dot-test_candle_missing_end_period_ts_is_skipped()]] - code - tests/test_tracker.py
-- [[dot-test_dedup_via_unique_index_is_idempotent()]] - code - tests/test_tracker.py
-- [[dot-test_empty_candlesticks_list_is_noop()]] - code - tests/test_tracker.py
-- [[dot-test_get_price_history_orders_by_end_period_ts()]] - code - tests/test_tracker.py
-- [[dot-test_logs_and_retrieves_candle()]] - code - tests/test_tracker.py
-- [[dot-test_null_price_field_stored_as_none()]] - code - tests/test_tracker.py
-- [[A candle with no trades in-period has price=None (only bidask quotes).]] - rationale - tests/test_tracker.py
-- [[Re-inserting the same tickerperiodend_ts candle is a no-op.]] - rationale - tests/test_tracker.py
-- [[TestPriceHistory]] - code - tests/test_tracker.py
-- [[log_price_candles  get_price_history — OHLC candlestick storage.]] - rationale - tests/test_tracker.py
+- [[dot-test_exact_threshold_total_not_counted_as_exceeding()]] - code - tests/test_snow_markets.py
+- [[dot-test_no_historical_data_returns_none()_1]] - code - tests/test_snow_markets.py
+- [[dot-test_seasonal_tilt_applied_reaches_full_pipeline_with_cm_to_mm_conversion()]] - code - tests/test_snow_markets.py
+- [[dot-test_snow_market_excluded_no_warning()]] - code - tests/test_snow_markets.py
+- [[dot-test_unmapped_city_station_returns_none()_1]] - code - tests/test_snow_markets.py
+- [[dot-test_unparseable_ticker_month_returns_none()]] - code - tests/test_snow_markets.py
+- [[Opus-review-caught gap asserting only `is None` would also pass if the market…]] - rationale - tests/test_snow_markets.py
+- [[Opus-review-caught gap the exceedance comparison (`t  threshold`) is strict,…]] - rationale - tests/test_snow_markets.py
+- [[Real regression for the cm-mm conversion this call site owns Open-Meteo's…]] - rationale - tests/test_snow_markets.py
+- [[TestGroupMarketsExcludesMonthlySnow]] - code - tests/test_snow_markets.py
+- [[_snow_market()]] - code - tests/test_snow_markets.py
+- [[`now`, if given, anchors close_time instead of real wall-clock time -- required…]] - rationale - tests/test_snow_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,7 +31,15 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 10 edges to [[_COMMUNITY_Community 239]]
+- 4 edges to [[_COMMUNITY_Community 259]]
+- 3 edges to [[_COMMUNITY_Community 528]]
+- 2 edges to [[_COMMUNITY_Community 4]]
+- 2 edges to [[_COMMUNITY_Community 390]]
 
 ## Top bridge nodes
-- [[TestPriceHistory]] - degree 10, connects to 1 community
+- [[_snow_market()]] - degree 22, connects to 5 communities
+- [[dot-test_exact_threshold_total_not_counted_as_exceeding()]] - degree 3, connects to 1 community
+- [[dot-test_seasonal_tilt_applied_reaches_full_pipeline_with_cm_to_mm_conversion()]] - degree 3, connects to 1 community
+- [[dot-test_unparseable_ticker_month_returns_none()]] - degree 3, connects to 1 community
+- [[dot-test_no_historical_data_returns_none()_1]] - degree 2, connects to 1 community

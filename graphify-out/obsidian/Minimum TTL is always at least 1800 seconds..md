@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "rationale"
-community: "Community 82"
+community: "Community 433"
 location: "L225"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_82
+  - community/Community_433
 ---
 
 # Minimum TTL is always at least 1800 seconds.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_minimum_ttl_is_1800()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_82
+#graphify/rationale #graphify/EXTRACTED #community/Community_433

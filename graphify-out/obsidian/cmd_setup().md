@@ -1,20 +1,27 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Community 693"
-location: "L4803"
+community: "Community 0"
+location: "L4818"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_0
 ---
 
 # cmd_setup()
 
 ## Connections
-- [[Path_30]] - `calls` [INFERRED]
+- [[Path]] - `calls` [INFERRED]
+- [[bold()]] - `calls` [EXTRACTED]
 - [[build_client()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
-- [[main.py_1]] - `contains` [EXTRACTED]
+- [[cyan()]] - `calls` [EXTRACTED]
+- [[dim()]] - `calls` [EXTRACTED]
+- [[green()]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
+- [[main.py]] - `contains` [EXTRACTED]
+- [[preload_all()]] - `calls` [EXTRACTED]
+- [[red()]] - `calls` [EXTRACTED]
+- [[yellow()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_0

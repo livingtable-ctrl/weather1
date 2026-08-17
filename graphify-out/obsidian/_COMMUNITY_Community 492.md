@@ -10,13 +10,13 @@ members: 7
 **Members:** 7 nodes
 
 ## Members
-- [[dot-test_above_mean()]] - code - tests/test_weather.py
-- [[dot-test_below_mean()]] - code - tests/test_weather.py
-- [[dot-test_median()]] - code - tests/test_weather.py
-- [[P(X = mu + 2sigma) ~ 0.977.]] - rationale - tests/test_weather.py
-- [[P(X = mu - 2sigma) ~ 0.023.]] - rationale - tests/test_weather.py
-- [[P(X = mu) = 0.5 for a normal distribution.]] - rationale - tests/test_weather.py
-- [[TestNormalCDF]] - code - tests/test_weather.py
+- [[55.1 Add `_CYCLE_QUALITY` dict and `cycle_confidence_multiplier(cycle_str)` to `weather_markets.py`]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[55.2 Wire into `edge_confidence()` in `weather_markets.py`]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[55.3 Wire into `analyze_trade()` in `weather_markets.py`]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[55.4 Write tests]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[55.5 Verify & Commit]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[Background_3]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[Task 55 (P11.F) — NWP forecast cycle quality discount]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Weather Probability Math Tests]]
+- 1 edge to [[_COMMUNITY_Community 543]]
 
 ## Top bridge nodes
-- [[TestNormalCDF]] - degree 4, connects to 1 community
+- [[Task 55 (P11.F) — NWP forecast cycle quality discount]] - degree 7, connects to 1 community

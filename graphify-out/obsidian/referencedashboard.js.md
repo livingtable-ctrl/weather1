@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/reference/dashboard.js"
 type: "code"
-community: "Community 449"
+community: "Community 482"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_449
+  - community/Community_482
 ---
 
 # reference/dashboard.js
@@ -20,4 +20,4 @@ tags:
 - [[renderFearGreed()_1]] - `contains` [EXTRACTED]
 - [[renderMarketsStrip()_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_449
+#graphify/code #graphify/EXTRACTED #community/Community_482

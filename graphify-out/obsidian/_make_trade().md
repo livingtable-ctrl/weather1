@@ -1,22 +1,25 @@
 ---
-source_file: "tests/test_phase2_batch_f.py"
+source_file: "tests/test_early_exits.py"
 type: "code"
-community: "Community 134"
-location: "L22"
+community: "Community 104"
+location: "L9"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_134
+  - community/Community_104
 ---
 
 # _make_trade()
 
 ## Connections
-- [[dot-test_cholesky_failure_logs_warning()]] - `calls` [EXTRACTED]
-- [[dot-test_correlation_applied_false_when_cholesky_fails()]] - `calls` [EXTRACTED]
-- [[dot-test_correlation_applied_false_when_no_city()]] - `calls` [EXTRACTED]
-- [[dot-test_correlation_applied_true_when_cholesky_succeeds()]] - `calls` [EXTRACTED]
-- [[dot-test_simulate_result_has_required_keys()]] - `calls` [EXTRACTED]
-- [[Phase 2 Batch F Regression Tests]] - `contains` [EXTRACTED]
+- [[dot-_shifted_trade_and_analysis()]] - `calls` [EXTRACTED]
+- [[dot-test_default_threshold_does_not_trigger_same_shift()]] - `calls` [EXTRACTED]
+- [[dot-test_edge_gone_threshold_is_negative()]] - `calls` [EXTRACTED]
+- [[dot-test_get_weather_markets_called_once_for_multiple_trades()]] - `calls` [EXTRACTED]
+- [[dot-test_lowering_threshold_triggers_previously_subthreshold_shift()]] - `calls` [EXTRACTED]
+- [[dot-test_minimum_hold_time_prevents_early_exit()]] - `calls` [EXTRACTED]
+- [[dot-test_model_flipped_requires_10pct_net_edge()]] - `calls` [EXTRACTED]
+- [[dot-test_new_trade_not_exited_by_probability_shift()]] - `calls` [EXTRACTED]
+- [[test_early_exits.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_134
+#graphify/code #graphify/EXTRACTED #community/Community_104

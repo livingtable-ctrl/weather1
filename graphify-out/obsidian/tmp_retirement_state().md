@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_retirement_probation.py"
 type: "code"
-community: "Community 140"
+community: "Community 146"
 location: "L35"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_140
+  - community/Community_146
 ---
 
 # tmp_retirement_state()
@@ -16,4 +16,4 @@ tags:
 - [[fixture_2]] - `references` [EXTRACTED]
 - [[test_retirement_probation.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_140
+#graphify/code #graphify/EXTRACTED #community/Community_146

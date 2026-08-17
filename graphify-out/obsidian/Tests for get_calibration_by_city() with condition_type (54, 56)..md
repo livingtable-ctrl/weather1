@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 438"
+community: "Community 10"
 location: "L1386"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_438
+  - community/Community_10
 ---
 
 # Tests for get_calibration_by_city() with condition_type (#54, #56).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCalibrationByCityConditionType]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_438
+#graphify/rationale #graphify/EXTRACTED #community/Community_10

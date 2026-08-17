@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 111"
+community: "Community 406"
 location: "L131"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_111
+  - community/Community_406
 ---
 
 # _get_current_book()
@@ -26,7 +26,7 @@ tags:
 - [[get_cached_book()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
-- [[test_live_execution.py]] - `references` [EXTRACTED]
+- [[test_live_execution.py]] - `imports` [EXTRACTED]
 - [[update_orderbook_cache()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_111
+#graphify/code #graphify/EXTRACTED #community/Community_406

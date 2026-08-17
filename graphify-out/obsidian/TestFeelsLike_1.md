@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 70"
+community: "Community 65"
 location: "L42"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_70
+  - community/Community_65
 ---
 
 # TestFeelsLike
@@ -17,6 +17,7 @@ tags:
 - [[dot-test_default_params_used()]] - `method` [EXTRACTED]
 - [[dot-test_hot_humid_returns_higher_than_actual()]] - `method` [EXTRACTED]
 - [[dot-test_moderate_conditions_returns_near_actual()]] - `method` [EXTRACTED]
+- [[pyproject.toml (pytestcoverageruffmypy config)]] - `conceptually_related_to` [INFERRED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_70
+#graphify/code #graphify/EXTRACTED #community/Community_65

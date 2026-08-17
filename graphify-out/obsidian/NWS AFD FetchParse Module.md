@@ -1,11 +1,11 @@
 ---
 source_file: "nws_afd.py"
 type: "code"
-community: "Community 99"
+community: "Community 15"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_99
+  - community/Community_15
 ---
 
 # NWS AFD Fetch/Parse Module
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[_fetch_nbp_percentiles()]] - `conceptually_related_to` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_99
+#graphify/code #graphify/EXTRACTED #community/Community_15

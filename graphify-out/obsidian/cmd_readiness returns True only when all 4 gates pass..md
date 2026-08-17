@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Community 92"
+community: "Community 723"
 location: "L1524"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_92
+  - community/Community_723
 ---
 
 # cmd_readiness returns True only when all 4 gates pass.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_cmd_readiness_passes_when_all_gates_clear()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_92
+#graphify/rationale #graphify/EXTRACTED #community/Community_723

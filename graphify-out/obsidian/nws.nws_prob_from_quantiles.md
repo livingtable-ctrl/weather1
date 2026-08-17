@@ -1,11 +1,11 @@
 ---
 source_file: "nws.py"
 type: "code"
-community: "Community 182"
+community: "Community 15"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_182
+  - community/Community_15
 ---
 
 # nws.nws_prob_from_quantiles
@@ -15,4 +15,4 @@ tags:
 - [[test_mos_nbp.py]] - `calls` [EXTRACTED]
 - [[test_nbm.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_182
+#graphify/code #graphify/EXTRACTED #community/Community_15

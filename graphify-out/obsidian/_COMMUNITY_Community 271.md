@@ -1,28 +1,28 @@
 ---
 type: community
-cohesion: 0.15
+cohesion: 0.18
 members: 13
 ---
 
 # Community 271
 
-**Cohesion:** 0.15 - loosely connected
+**Cohesion:** 0.18 - loosely connected
 **Members:** 13 nodes
 
 ## Members
-- [[dot-test_ci_contains_point_estimate()]] - code - tests/test_acis_precip.py
-- [[dot-test_deterministic_point_estimate_hand_check()]] - code - tests/test_acis_precip.py
-- [[dot-test_empty_data_falls_back_to_stale_cache_not_written_as_empty()_1]] - code - tests/test_acis_precip.py
-- [[dot-test_too_few_years_returns_wide_ci()]] - code - tests/test_acis_precip.py
-- [[Opus-review-caught gap (round 2) ACIS can return HTTP 200 with an empty data…]] - rationale - tests/test_acis_precip.py
-- [[TestBootstrapCiMonthTotal]] - code - tests/test_acis_precip.py
-- [[TestFetchHistoricalDailyEmptyResponse]] - code - tests/test_acis_precip.py
-- [[Tests for acis_precip.py (backlog.txt RAIN  SNOW  HURRICANE MARKETS Step…]] - rationale - tests/test_acis_precip.py
-- [[_clear_seasonal_cache()]] - code - tests/test_acis_precip.py
-- [[acis_precip.py seasonalbootstrap functions]] - code - acis_precip.py
-- [[fetch_seasonal_precip_mean_mm now caches both successful AND None results…]] - rationale - tests/test_acis_precip.py
-- [[fixture_5]] - code
-- [[test_acis_precip.py]] - code - tests/test_acis_precip.py
+- [[C Automated GTC Cancellation]] - document - docs/superpowers/specs/2026-04-10-live-order-lifecycle-design.md
+- [[--live CLI Flag]] - document - docs/superpowers/specs/2026-04-10-execution-pipeline-design.md
+- [[1b NWP Cycle-Aligned Scanning]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
+- [[3a Model Consensus Gate]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
+- [[4a Unit Tests for main.py Functions]] - document - docs/superpowers/plans/do-after-graduation.md
+- [[E1 Log Rotation]] - document - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
+- [[E6 Config Validation on Startup]] - document - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
+- [[F1 RSA Private Key Permission Check]] - document - docs/superpowers/plans/2026-06-27-category-f-security.md
+- [[F2 .env World-Readable Warning]] - document - docs/superpowers/plans/2026-06-27-category-f-security.md
+- [[G3 Split main.py CLI Commands]] - document - docs/superpowers/plans/2026-06-27-category-g-architecture.md
+- [[cli.py Module (extracted CLI dispatch)]] - code - docs/superpowers/plans/2026-06-27-category-g-architecture.md
+- [[live_config.json Hard Stops]] - document - docs/superpowers/specs/2026-04-10-execution-pipeline-design.md
+- [[main.py Module]] - code - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -32,14 +32,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 161]]
-- 1 edge to [[_COMMUNITY_Community 357]]
-- 1 edge to [[_COMMUNITY_Community 390]]
-- 1 edge to [[_COMMUNITY_Community 418]]
-- 1 edge to [[_COMMUNITY_Community 539]]
-- 1 edge to [[_COMMUNITY_Community 571]]
-- 1 edge to [[_COMMUNITY_Community 160]]
-- 1 edge to [[_COMMUNITY_Community 62]]
+- 4 edges to [[_COMMUNITY_Community 94]]
+- 2 edges to [[_COMMUNITY_Community 160]]
+- 1 edge to [[_COMMUNITY_Community 184]]
+- 1 edge to [[_COMMUNITY_Community 202]]
+- 1 edge to [[_COMMUNITY_Community 231]]
 
 ## Top bridge nodes
-- [[test_acis_precip.py]] - degree 13, connects to 8 communities
+- [[main.py Module]] - degree 17, connects to 4 communities
+- [[F1 RSA Private Key Permission Check]] - degree 3, connects to 1 community
+- [[3a Model Consensus Gate]] - degree 2, connects to 1 community

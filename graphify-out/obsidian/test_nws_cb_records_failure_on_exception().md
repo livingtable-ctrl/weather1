@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_infrastructure.py"
 type: "code"
-community: "Community 44"
+community: "Community 7"
 location: "L200"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_44
+  - community/Community_7
 ---
 
 # test_nws_cb_records_failure_on_exception()
@@ -16,4 +16,4 @@ tags:
 - [[CircuitBreaker]] - `calls` [EXTRACTED]
 - [[test_infrastructure.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_44
+#graphify/code #graphify/EXTRACTED #community/Community_7

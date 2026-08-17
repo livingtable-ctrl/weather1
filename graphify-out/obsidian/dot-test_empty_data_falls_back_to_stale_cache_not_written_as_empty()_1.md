@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_acis_precip.py"
+source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 271"
-location: "L591"
+community: "Community 4"
+location: "L1322"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_271
+  - community/Community_4
 ---
 
 # .test_empty_data_falls_back_to_stale_cache_not_written_as_empty()
 
 ## Connections
-- [[TestFetchHistoricalDailyEmptyResponse]] - `method` [EXTRACTED]
+- [[TestFetchHistoricalDailySnowEmptyResponse]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_271
+#graphify/code #graphify/EXTRACTED #community/Community_4

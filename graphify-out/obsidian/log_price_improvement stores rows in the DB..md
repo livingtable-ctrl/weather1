@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Community 557"
+community: "Community 637"
 location: "L194"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_557
+  - community/Community_637
 ---
 
 # log_price_improvement stores rows in the DB.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_log_two_entries_stored()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_557
+#graphify/rationale #graphify/EXTRACTED #community/Community_637

@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-b-risk-management.md"
 type: "document"
-community: "Community 210"
+community: "Community 217"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_210
+  - community/Community_217
 ---
 
 # B2: Dynamic Correlation Matrix in Monte Carlo
@@ -15,4 +15,4 @@ tags:
 - [[B6 Tail-Risk Stress Testing]] - `shares_data_with` [INFERRED]
 - [[Category B Risk Management Plan]] - `implements` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_210
+#graphify/document #graphify/EXTRACTED #community/Community_217

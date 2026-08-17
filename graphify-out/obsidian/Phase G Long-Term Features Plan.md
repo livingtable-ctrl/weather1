@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-16-phase-g-long-term.md"
 type: "document"
-community: "Community 452"
+community: "Community 216"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_452
+  - community/Community_216
 ---
 
 # Phase G: Long-Term Features Plan
@@ -15,4 +15,4 @@ tags:
 - [[ML-Based Bias Correction (ml_bias.py)]] - `implements` [EXTRACTED]
 - [[Strategy P&amp;L Attribution]] - `implements` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_452
+#graphify/document #graphify/EXTRACTED #community/Community_216

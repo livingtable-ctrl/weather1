@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md"
 type: "code"
-community: "Community 104"
+community: "Community 172"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_104
+  - community/Community_172
 ---
 
 # App.jsx Component
@@ -15,4 +15,4 @@ tags:
 - [[H2 LivePaper Mode Indicator]] - `references` [EXTRACTED]
 - [[srcmain.jsx Entry Point]] - `conceptually_related_to` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_104
+#graphify/code #graphify/EXTRACTED #community/Community_172

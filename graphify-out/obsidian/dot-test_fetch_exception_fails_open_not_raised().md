@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 152"
+community: "Community 16"
 location: "L1190"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_152
+  - community/Community_16
 ---
 
 # .test_fetch_exception_fails_open_not_raised()
@@ -18,4 +18,4 @@ tags:
 - [[A raw exception inside the ensemble fetch must be caught by the new block's own…]] - `rationale_for` [EXTRACTED]
 - [[TestRainForecastBlendSignal]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_152
+#graphify/code #graphify/EXTRACTED #community/Community_16

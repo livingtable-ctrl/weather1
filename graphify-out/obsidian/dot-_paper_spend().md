@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_o.py"
 type: "code"
-community: "Community 63"
+community: "Community 60"
 location: "L94"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_63
+  - community/Community_60
 ---
 
 # ._paper_spend()
@@ -18,4 +18,4 @@ tags:
 - [[TestCapIndependence]] - `method` [EXTRACTED]
 - [[_daily_paper_spend()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_63
+#graphify/code #graphify/EXTRACTED #community/Community_60

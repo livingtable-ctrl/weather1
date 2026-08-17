@@ -1,12 +1,12 @@
 ---
 source_file: "backtest.py"
 type: "code"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 6"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_6
 ---
 
 # backtest.py
@@ -26,20 +26,30 @@ tags:
 - [[fetch_archive_precip_prob()]] - `contains` [EXTRACTED]
 - [[fetch_archive_temps()]] - `contains` [EXTRACTED]
 - [[fetch_previous_run_ensemble()]] - `contains` [EXTRACTED]
+- [[hashlib]] - `imports` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
 - [[kelly_fraction()]] - `imports` [EXTRACTED]
+- [[load_paper_trades()]] - `imports` [EXTRACTED]
+- [[logging]] - `imports` [EXTRACTED]
 - [[parse_market_price()]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
 - [[paths.py]] - `imports_from` [EXTRACTED]
 - [[prob_threshold()]] - `imports` [EXTRACTED]
+- [[requests_1]] - `imports` [EXTRACTED]
 - [[run_backtest()]] - `contains` [EXTRACTED]
 - [[run_paper_walk_forward()]] - `contains` [EXTRACTED]
 - [[run_walk_forward()]] - `contains` [EXTRACTED]
 - [[safe_io.py]] - `imports` [EXTRACTED]
 - [[save_walk_forward_params()]] - `contains` [EXTRACTED]
 - [[stratified_train_test_split()]] - `implements` [EXTRACTED]
+- [[test_backtest.py]] - `calls` [EXTRACTED]
+- [[test_backtest_stratified.py]] - `calls` [EXTRACTED]
+- [[test_calibration.py]] - `calls` [EXTRACTED]
+- [[test_city_registry_manifest.py]] - `references` [EXTRACTED]
 - [[utc_today()]] - `imports` [EXTRACTED]
 - [[utils.py]] - `imports_from` [EXTRACTED]
 - [[walk_forward_backtest()]] - `contains` [EXTRACTED]
 - [[walk_forward_split()]] - `contains` [EXTRACTED]
 - [[weather_markets.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/code #graphify/EXTRACTED #community/Community_6

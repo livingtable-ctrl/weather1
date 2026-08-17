@@ -1,20 +1,23 @@
 ---
 type: community
-cohesion: 0.00
-members: 5
+cohesion: 0.36
+members: 8
 ---
 
 # Community 460
 
-**Cohesion:** 0.00 - loosely connected
-**Members:** 5 nodes
+**Cohesion:** 0.36 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[Path_20]] - code
-- [[test_verify_backup_fails_on_corrupt_file()]] - code - tests/test_safe_io.py
-- [[test_verify_backup_fails_on_invalid_json()]] - code - tests/test_safe_io.py
-- [[test_verify_backup_logs_checksum_on_success()]] - code - tests/test_safe_io.py
-- [[test_verify_backup_passes_on_good_file()]] - code - tests/test_safe_io.py
+- [[dot-test_fetch_hrrr_temp_negative_caches_failure()]] - code - tests/test_forecasting.py
+- [[dot-test_fetch_hrrr_temp_returns_float_or_none()]] - code - tests/test_forecasting.py
+- [[dot-test_fetch_hrrr_temp_returns_max_of_hourly()]] - code - tests/test_forecasting.py
+- [[dot-test_fetch_hrrr_temp_returns_none_for_unknown_city()]] - code - tests/test_forecasting.py
+- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_2]] - rationale - tests/test_forecasting.py
+- [[Fetch HRRR-derived hourly temperature and return the daily max or min. Uses…]] - rationale - weather_markets.py
+- [[TestHRRR]] - code - tests/test_forecasting.py
+- [[_fetch_hrrr_temp()]] - code - weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,10 +27,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Safe IO CRC Validation Tests]]
+- 2 edges to [[_COMMUNITY_Community 38]]
+- 2 edges to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 9]]
+- 1 edge to [[_COMMUNITY_Community 33]]
 
 ## Top bridge nodes
-- [[test_verify_backup_fails_on_corrupt_file()]] - degree 1, connects to 1 community
-- [[test_verify_backup_fails_on_invalid_json()]] - degree 1, connects to 1 community
-- [[test_verify_backup_logs_checksum_on_success()]] - degree 1, connects to 1 community
-- [[test_verify_backup_passes_on_good_file()]] - degree 1, connects to 1 community
+- [[_fetch_hrrr_temp()]] - degree 9, connects to 3 communities
+- [[TestHRRR]] - degree 6, connects to 2 communities

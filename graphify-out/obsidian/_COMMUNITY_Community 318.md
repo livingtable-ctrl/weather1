@@ -1,27 +1,27 @@
 ---
 type: community
-cohesion: 0.26
+cohesion: 0.17
 members: 12
 ---
 
 # Community 318
 
-**Cohesion:** 0.26 - loosely connected
+**Cohesion:** 0.17 - loosely connected
 **Members:** 12 nodes
 
 ## Members
-- [[dot-_sl_trade()]] - code - tests/test_tracker.py
-- [[dot-setUp()_23]] - code - tests/test_tracker.py
-- [[dot-tearDown()_22]] - code - tests/test_tracker.py
-- [[dot-test_excludes_disputed_outcome()]] - code - tests/test_tracker.py
-- [[dot-test_multiple_trades_averaged()]] - code - tests/test_tracker.py
-- [[dot-test_no_side_settlement_priced_correctly()]] - code - tests/test_tracker.py
-- [[dot-test_no_trades_returns_zero_dict()]] - code - tests/test_tracker.py
-- [[dot-test_skips_ticker_with_no_synced_outcome()]] - code - tests/test_tracker.py
-- [[dot-test_yes_side_stop_loss_that_exited_a_winner()]] - code - tests/test_tracker.py
-- [[dot-test_yes_side_stop_loss_that_saved_money()]] - code - tests/test_tracker.py
-- [[Restored backlog piece (mystery-revert 24559a7, piece 3) stop-loss exit audit.…]] - rationale - tests/test_tracker.py
-- [[TestStopLossAccuracy]] - code - tests/test_tracker.py
+- [[dot-test_false_when_env_var_set_but_below_sample_floor()]] - code - tests/test_snow_markets.py
+- [[dot-test_false_when_env_var_unset()]] - code - tests/test_snow_markets.py
+- [[dot-test_false_when_sample_floor_met_but_env_var_unset()]] - code - tests/test_snow_markets.py
+- [[dot-test_falsy_env_var_values_stay_false()]] - code - tests/test_snow_markets.py
+- [[dot-test_never_raises_on_count_failure()]] - code - tests/test_snow_markets.py
+- [[dot-test_true_when_env_var_set_and_sample_floor_met()]] - code - tests/test_snow_markets.py
+- [[dot-test_truthy_env_var_values_case_insensitive()]] - code - tests/test_snow_markets.py
+- [[Both conditions are required -- neither alone suffices.]] - rationale - tests/test_snow_markets.py
+- [[Mirrors the falsy check above -- confirms the accepted truthy set really is…]] - rationale - tests/test_snow_markets.py
+- [[Review-caught gap only unset1 were ever exercised -- must confirm explicit…]] - rationale - tests/test_snow_markets.py
+- [[TestSnowGatesActive]] - code - tests/test_snow_markets.py
+- [[backlog.txt Snow Step 2 shadow-only rollout _snow_gates_active() mirrors…]] - rationale - tests/test_snow_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,7 +31,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestStopLossAccuracy]] - degree 12, connects to 1 community
+- [[TestSnowGatesActive]] - degree 9, connects to 1 community

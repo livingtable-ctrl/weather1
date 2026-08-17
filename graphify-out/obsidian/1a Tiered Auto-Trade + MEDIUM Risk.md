@@ -1,12 +1,12 @@
 ---
 source_file: "docs/superpowers/specs/2026-04-11-profit-optimization-design.md"
 type: "document"
-community: "Community 154"
+community: "Community 184"
 location: "Section 1a"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_154
+  - community/Community_184
 ---
 
 # 1a Tiered Auto-Trade + MEDIUM Risk
@@ -16,4 +16,4 @@ tags:
 - [[paper.py Module]] - `references` [EXTRACTED]
 - [[utils.py Module (constants)]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_154
+#graphify/document #graphify/EXTRACTED #community/Community_184

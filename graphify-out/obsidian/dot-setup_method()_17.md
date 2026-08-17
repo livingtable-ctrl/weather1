@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_execution_log.py"
+source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 274"
-location: "L202"
+community: "Community 208"
+location: "L183"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_274
+  - community/Community_208
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestDailyLiveLoss]] - `method` [EXTRACTED]
+- [[TestCircuitBreakerPersistence]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_274
+#graphify/code #graphify/EXTRACTED #community/Community_208

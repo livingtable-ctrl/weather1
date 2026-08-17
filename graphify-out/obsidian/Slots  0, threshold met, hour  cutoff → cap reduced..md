@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_sameday_reserve.py"
 type: "rationale"
-community: "Community 74"
+community: "Community 75"
 location: "L53"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_74
+  - community/Community_75
 ---
 
 # Slots > 0, threshold met, hour < cutoff → cap reduced.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_reservation_active_before_cutoff()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_74
+#graphify/rationale #graphify/EXTRACTED #community/Community_75

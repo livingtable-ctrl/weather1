@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Community 298"
+community: "Community 13"
 location: "L252"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_298
+  - community/Community_13
 ---
 
 # ._full_path()
@@ -18,4 +18,4 @@ tags:
 - [[KalshiClient]] - `method` [EXTRACTED]
 - [[Return the full URL path (e.g. trade-apiv2markets) used in signing.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_298
+#graphify/code #graphify/EXTRACTED #community/Community_13

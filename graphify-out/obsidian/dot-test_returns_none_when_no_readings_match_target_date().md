@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "code"
-community: "Community 91"
+community: "Community 100"
 location: "L418"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_91
+  - community/Community_100
 ---
 
 # .test_returns_none_when_no_readings_match_target_date()
@@ -17,4 +17,4 @@ tags:
 - [[TestFetchMetarDailyExtreme]] - `method` [EXTRACTED]
 - [[ZoneInfo]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_91
+#graphify/code #graphify/EXTRACTED #community/Community_100

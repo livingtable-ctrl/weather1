@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_calibration.py"
+source_file: "tests/test_positions.py"
 type: "code"
-community: "Community 103"
-location: "L223"
+community: "Community 12"
+location: "L168"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_103
+  - community/Community_12
 ---
 
 # .teardown_method()
 
 ## Connections
-- [[TestLoadWeights]] - `method` [EXTRACTED]
+- [[TestLivePositionStore]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_103
+#graphify/code #graphify/EXTRACTED #community/Community_12

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_auth.py"
 type: "rationale"
-community: "Community 242"
+community: "Community 243"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_242
+  - community/Community_243
 ---
 
 # P0-8: mutation endpoints must require authentication.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_web_auth.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_242
+#graphify/rationale #graphify/EXTRACTED #community/Community_243

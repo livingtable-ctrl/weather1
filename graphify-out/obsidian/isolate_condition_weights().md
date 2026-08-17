@@ -1,12 +1,12 @@
 ---
 source_file: "tests/conftest.py"
 type: "code"
-community: "Test Fixture Cache Clearing (conftest)"
+community: "Community 18"
 location: "L185"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Test_Fixture_Cache_Clearing_conftest
+  - community/Community_18
 ---
 
 # isolate_condition_weights()
@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[Snapshot and restore weather_markets._CONDITION_WEIGHTS around every test.…]] - `rationale_for` [EXTRACTED]
 - [[conftest.py]] - `contains` [EXTRACTED]
-- [[fixture]] - `references` [EXTRACTED]
+- [[fixture_5]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Test_Fixture_Cache_Clearing_conftest
+#graphify/code #graphify/EXTRACTED #community/Community_18

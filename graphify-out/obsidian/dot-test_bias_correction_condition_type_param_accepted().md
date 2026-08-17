@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 52"
+community: "Community 438"
 location: "L94"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_52
+  - community/Community_438
 ---
 
 # .test_bias_correction_condition_type_param_accepted()
@@ -16,4 +16,4 @@ tags:
 - [[get_bias accepts condition_type kwarg — confirms the interface exists for…]] - `rationale_for` [EXTRACTED]
 - [[get_bias()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_52
+#graphify/code #graphify/EXTRACTED #community/Community_438

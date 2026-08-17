@@ -1,12 +1,12 @@
 ---
 source_file: "hurricane_climatology.py"
 type: "code"
-community: "Community 55"
+community: "Community 43"
 location: "L354"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_55
+  - community/Community_43
 ---
 
 # season_end_counts()
@@ -16,4 +16,4 @@ tags:
 - [[season_end_total_distribution()]] - `calls` [EXTRACTED]
 - [[storms already filtered to one basin (via load_basin_storms). Counts, for the…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_55
+#graphify/code #graphify/EXTRACTED #community/Community_43

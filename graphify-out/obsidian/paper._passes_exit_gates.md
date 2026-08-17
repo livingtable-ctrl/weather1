@@ -1,11 +1,11 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 272"
+community: "Community 104"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_272
+  - community/Community_104
 ---
 
 # paper._passes_exit_gates
@@ -15,4 +15,4 @@ tags:
 - [[paper.check_breakeven_stops]] - `calls` [INFERRED]
 - [[test_early_exits.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Community_272
+#graphify/code #graphify/INFERRED #community/Community_104

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_m.py"
 type: "code"
-community: "Community 345"
+community: "Community 9"
 location: "L448"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_345
+  - community/Community_9
 ---
 
 # .test_get_active_variant_skips_meta_key()
@@ -15,4 +15,4 @@ tags:
 - [[TestAbTestMaxTradesMeta]] - `method` [EXTRACTED]
 - [[get_active_variant must not treat _meta as a variant.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_345
+#graphify/code #graphify/EXTRACTED #community/Community_9

@@ -1,20 +1,22 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.29
+members: 7
 ---
 
 # Community 535
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[I10 KALSHI_ENV Live-Trade Gate]] - document - docs/grade_audit/outputs
-- [[RF5 Hardcoded Threshold]] - document - docs/grade_audit/outputs
-- [[build_client() RF5 Hardcoded demo Default 3x (610)]] - document - docs/grade_audit/outputs/main.py.md
-- [[cmd_order() No KALSHI_ENV=prod Warning Before Live Order (610)]] - document - docs/grade_audit/outputs/main.py.md
-- [[validate_env() AC4 Fail No KALSHI_ENV Value Check (710)]] - document - docs/grade_audit/outputs/main.py.md
+- [[dot-test_200_with_correct_credentials()]] - code - tests/test_web_app.py
+- [[dot-test_401_when_password_set_and_no_credentials()]] - code - tests/test_web_app.py
+- [[dot-test_no_auth_required_when_password_unset()]] - code - tests/test_web_app.py
+- [[Dashboard is open when DASHBOARD_PASSWORD is empty.]] - rationale - tests/test_web_app.py
+- [[Dashboard returns 200 with correct Basic Auth credentials.]] - rationale - tests/test_web_app.py
+- [[Dashboard returns 401 when password is set and no Authorization header sent.]] - rationale - tests/test_web_app.py
+- [[TestDashboardAuth]] - code - tests/test_web_app.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -22,3 +24,9 @@ members: 5
 TABLE source_file, type FROM #community/Community_535
 SORT file.name ASC
 ```
+
+## Connections to other communities
+- 1 edge to [[_COMMUNITY_Community 115]]
+
+## Top bridge nodes
+- [[TestDashboardAuth]] - degree 4, connects to 1 community

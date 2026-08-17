@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 429
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-setup_method()_29]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_21]] - code - tests/test_live_execution.py
-- [[dot-test_fill_captures_latency_and_mid_price()]] - code - tests/test_live_execution.py
-- [[dot-test_log_order_result_coalesce_never_nulls_out_prior_fill_data()]] - code - tests/test_live_execution.py
-- [[dot-test_non_fill_status_leaves_instrumentation_null()]] - code - tests/test_live_execution.py
-- [[A later log_order_result() call on an already-instrumented row (e.g. from an…]] - rationale - tests/test_live_execution.py
-- [[TestFillInstrumentation]] - code - tests/test_live_execution.py
-- [[_poll_pending_orders must capture filled_atmarket_mid_at_fill the moment a…]] - rationale - tests/test_live_execution.py
+- [[dot-test_checksum_changes_when_data_changes()]] - code - tests/test_phase2_batch_b.py
+- [[dot-test_save_checksum_is_verifiable()]] - code - tests/test_phase2_batch_b.py
+- [[dot-test_save_strips_old_crc32_field()]] - code - tests/test_phase2_batch_b.py
+- [[dot-test_save_writes_checksum_field()]] - code - tests/test_phase2_batch_b.py
+- [[Different data must produce a different checksum.]] - rationale - tests/test_phase2_batch_b.py
+- [[P2-14 _save must embed a 64-char SHA-256 _checksum field in every write.]] - rationale - tests/test_phase2_batch_b.py
+- [[Round-trip _load after _save must succeed without CorruptionError.]] - rationale - tests/test_phase2_batch_b.py
+- [[TestSaveEmbedsSHA256]] - code - tests/test_phase2_batch_b.py
+- [[_save must not carry forward the legacy _crc32 field.]] - rationale - tests/test_phase2_batch_b.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,8 +28,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 111]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestFillInstrumentation]] - degree 9, connects to 2 communities
+- [[TestSaveEmbedsSHA256]] - degree 6, connects to 1 community

@@ -1,19 +1,21 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 176"
+community: "Community 112"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_176
+  - community/Community_112
 ---
 
 # patch
 
 ## Connections
-- [[dot-test_empty_when_no_opportunities()]] - `references` [EXTRACTED]
-- [[dot-test_market_fetch_failure_returns_500()]] - `references` [EXTRACTED]
-- [[dot-test_returns_top_n_sorted_by_ev()]] - `references` [EXTRACTED]
-- [[_force_demo_env()]] - `calls` [EXTRACTED]
+- [[dot-test_analyze_trade_below_condition()]] - `references` [EXTRACTED]
+- [[dot-test_analyze_trade_handles_missing_forecast()]] - `references` [EXTRACTED]
+- [[dot-test_analyze_trade_precip_any_condition()]] - `references` [EXTRACTED]
+- [[dot-test_analyze_trade_returns_result()]] - `references` [EXTRACTED]
+- [[dot-test_analyze_trade_signal_is_valid()]] - `references` [EXTRACTED]
+- [[dot-test_analyze_trade_works_without_nws_or_clim()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_176
+#graphify/code #graphify/EXTRACTED #community/Community_112

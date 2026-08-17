@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/design-canvas.jsx"
 type: "code"
-community: "Community 48"
+community: "Community 50"
 location: "L642"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_48
+  - community/Community_50
 ---
 
 # DCArtboardFrame()
@@ -15,4 +15,4 @@ tags:
 - [[dcExport()]] - `calls` [EXTRACTED]
 - [[design-canvas.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_48
+#graphify/code #graphify/EXTRACTED #community/Community_50

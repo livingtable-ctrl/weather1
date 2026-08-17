@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_spend_validation.py"
 type: "code"
-community: "Community 244"
+community: "Community 71"
 location: "L63"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_244
+  - community/Community_71
 ---
 
 # test_uses_real_utils_default_not_a_second_zero_default()
@@ -15,4 +15,4 @@ tags:
 - [[F8 regression the check used to read os.getenv(MAX_DAILY_SPEND, 0)…]] - `rationale_for` [EXTRACTED]
 - [[test_spend_validation.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_244
+#graphify/code #graphify/EXTRACTED #community/Community_71

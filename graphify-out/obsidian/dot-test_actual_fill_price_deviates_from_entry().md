@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 402"
+community: "Community 428"
 location: "L1064"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_402
+  - community/Community_428
 ---
 
 # .test_actual_fill_price_deviates_from_entry()
@@ -16,4 +16,4 @@ tags:
 - [[Over many fills, actual_fill_price should vary around entry_price.]] - `rationale_for` [EXTRACTED]
 - [[TestGaussianFillSlippage]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_402
+#graphify/code #graphify/EXTRACTED #community/Community_428

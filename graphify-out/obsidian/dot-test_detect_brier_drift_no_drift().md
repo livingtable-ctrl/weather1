@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "code"
-community: "Community 431"
+community: "Community 467"
 location: "L365"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_431
+  - community/Community_467
 ---
 
 # .test_detect_brier_drift_no_drift()
@@ -15,4 +15,4 @@ tags:
 - [[Stable Brier over time should not trigger drift.]] - `rationale_for` [EXTRACTED]
 - [[TestDriftDetection]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_431
+#graphify/code #graphify/EXTRACTED #community/Community_467

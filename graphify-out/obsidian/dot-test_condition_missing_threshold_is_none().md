@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_j.py"
 type: "code"
-community: "Community 307"
+community: "Community 311"
 location: "L23"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_307
+  - community/Community_311
 ---
 
 # .test_condition_missing_threshold_is_none()
@@ -15,4 +15,4 @@ tags:
 - [[Missing threshold must be None — the gate correctly blocks it.]] - `rationale_for` [EXTRACTED]
 - [[TestMetarLockInZeroThreshold]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_307
+#graphify/code #graphify/EXTRACTED #community/Community_311

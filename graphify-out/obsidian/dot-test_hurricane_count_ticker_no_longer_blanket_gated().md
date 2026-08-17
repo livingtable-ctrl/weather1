@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_gating.py"
 type: "code"
-community: "Community 61"
+community: "Community 70"
 location: "L79"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_61
+  - community/Community_70
 ---
 
 # .test_hurricane_count_ticker_no_longer_blanket_gated()
@@ -15,4 +15,4 @@ tags:
 - [[TestAnalyzeTradeHurricaneGating]] - `method` [EXTRACTED]
 - [[backlog.txt HURRICANE MARKETS -- season-count model (2026-08-03) KXHURCTOT…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_61
+#graphify/code #graphify/EXTRACTED #community/Community_70

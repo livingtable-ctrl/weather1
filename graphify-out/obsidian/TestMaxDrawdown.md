@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 106"
+community: "Community 113"
 location: "L288"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_106
+  - community/Community_113
 ---
 
 # TestMaxDrawdown
 
 ## Connections
-- [[dot-setUp()]] - `method` [EXTRACTED]
-- [[dot-tearDown()]] - `method` [EXTRACTED]
+- [[dot-setUp()_1]] - `method` [EXTRACTED]
+- [[dot-tearDown()_1]] - `method` [EXTRACTED]
 - [[dot-test_boundary_exactly_800_not_paused()]] - `method` [EXTRACTED]
 - [[dot-test_effective_balance_adds_back_same_day_cost()]] - `method` [EXTRACTED]
 - [[dot-test_effective_balance_ignores_multiday_cost()]] - `method` [EXTRACTED]
@@ -29,4 +29,4 @@ tags:
 - [[Position]] - `uses` [INFERRED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_106
+#graphify/code #graphify/EXTRACTED #community/Community_113

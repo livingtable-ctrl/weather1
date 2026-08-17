@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 531"
-location: "L4687"
+community: "Community 589"
+location: "L5056"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_531
+  - community/Community_589
 ---
 
 # ._patch_common()
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_hourly_fetch_skips_bias_correction()]] - `calls` [EXTRACTED]
 - [[TestGetEnsembleTempsBiasCorrection]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_531
+#graphify/code #graphify/EXTRACTED #community/Community_589

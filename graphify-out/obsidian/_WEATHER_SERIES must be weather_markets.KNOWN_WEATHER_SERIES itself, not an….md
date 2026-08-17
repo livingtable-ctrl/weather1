@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backtest.py"
 type: "rationale"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 606"
 location: "L356"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_606
 ---
 
 # _WEATHER_SERIES must be weather_markets.KNOWN_WEATHER_SERIES itself, not an…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_derived_from_known_weather_series_not_a_second_copy()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/rationale #graphify/EXTRACTED #community/Community_606

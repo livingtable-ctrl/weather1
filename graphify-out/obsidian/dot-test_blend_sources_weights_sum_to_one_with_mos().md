@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "code"
-community: "Community 257"
+community: "Community 254"
 location: "L777"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_257
+  - community/Community_254
 ---
 
 # .test_blend_sources_weights_sum_to_one_with_mos()
@@ -16,4 +16,4 @@ tags:
 - [[L6-E after MOS injection blend_sources weights must still sum to 1.0 (within…]] - `rationale_for` [EXTRACTED]
 - [[TestBlendSourcesNormalisation]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_257
+#graphify/code #graphify/EXTRACTED #community/Community_254

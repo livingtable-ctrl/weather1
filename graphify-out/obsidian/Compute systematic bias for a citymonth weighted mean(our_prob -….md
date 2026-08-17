@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Community 36"
+community: "Community 2"
 location: "L1473"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_36
+  - community/Community_2
 ---
 
 # Compute systematic bias for a city/month: weighted mean(our_prob -…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_bias()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_36
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

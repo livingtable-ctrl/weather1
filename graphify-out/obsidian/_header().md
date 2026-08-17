@@ -1,19 +1,21 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Community 693"
-location: "L501"
+community: "Community 0"
+location: "L503"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_0
 ---
 
 # _header()
 
 ## Connections
 - [[Print a styled section header.]] - `rationale_for` [EXTRACTED]
+- [[Print a styled section header._1]] - `rationale_for` [EXTRACTED]
 - [[_cmd_alerts()]] - `calls` [EXTRACTED]
+- [[bold()]] - `calls` [EXTRACTED]
 - [[cmd_analyze()]] - `calls` [EXTRACTED]
 - [[cmd_brief()]] - `calls` [EXTRACTED]
 - [[cmd_browse()]] - `calls` [EXTRACTED]
@@ -35,6 +37,6 @@ tags:
 - [[cmd_simulate()]] - `calls` [EXTRACTED]
 - [[cmd_version_compare()]] - `calls` [EXTRACTED]
 - [[cmd_walkforward()]] - `calls` [EXTRACTED]
-- [[main.py_1]] - `contains` [EXTRACTED]
+- [[main.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_0

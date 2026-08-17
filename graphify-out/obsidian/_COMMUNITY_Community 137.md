@@ -10,29 +10,29 @@ members: 23
 **Members:** 23 nodes
 
 ## Members
-- [[25118 Derive per-model blend weights from inverse-MAE scores in tracker.…]] - rationale - weather_markets.py
-- [[dot-test_falls_back_to_seasonal_baseline()]] - code - tests/test_weather_markets.py
-- [[dot-test_learned_weights_backfill_missing_models_from_baseline()]] - code - tests/test_weather_markets.py
-- [[dot-test_mae_data_overrides_and_skips_learned_weights_entirely()]] - code - tests/test_weather_markets.py
-- [[dot-test_malformed_learned_weights_falls_back_safely()]] - code - tests/test_weather_markets.py
-- [[dot-test_stray_tracked_model_never_leaks_into_result()]] - code - tests/test_weather_markets.py
-- [[dot-test_tier1_admits_a_model_outside_the_fixed_baseline()]] - code - tests/test_weather_markets.py
-- [[dot-test_tier2_admits_a_model_outside_the_fixed_baseline()]] - code - tests/test_weather_markets.py
-- [[dot-test_tier3_seasonal_baseline_stays_fixed_to_3_models()]] - code - tests/test_weather_markets.py
-- [[dot-test_tracked_but_non_ensemble_model_never_leaks_in()]] - code - tests/test_weather_markets.py
-- [[A corrupted (non-dict) learned_weights.json entry for a city must not crash --…]] - rationale - tests/test_weather_markets.py
-- [[A stray tracked value (e.g. blended, not a real model) in mae_weights must…]] - rationale - tests/test_weather_markets.py
-- [[GRADUATE GEMUKMO generalization a model _weights_from_mae() reports (i.e. it…]] - rationale - tests/test_weather_markets.py
-- [[No tracker MAE data, no learned weights → pure seasonal baseline.]] - rationale - tests/test_weather_markets.py
-- [[Priority-2 (learned_weights.json) is a partial dict — the model it omits must…]] - rationale - tests/test_weather_markets.py
-- [[Return per-model weights for the ensemble blend. Priority order — tier 1 is…]] - rationale - weather_markets.py
-- [[Same generalization for tier 2 (learned_weights.json) a previously learned…]] - rationale - tests/test_weather_markets.py
-- [[TestModelWeights]] - code - tests/test_weather_markets.py
-- [[Tier 3 (pure seasonal fallback, no trackerlearned data at all) must stay…]] - rationale - tests/test_weather_markets.py
-- [[When tracker MAE data exists, it blends against the seasonal baseline directly…]] - rationale - tests/test_weather_markets.py
-- [[_model_weights()]] - code - weather_markets.py
-- [[_weights_from_mae()]] - code - weather_markets.py
-- [[ecmwf_ifs025 is real, currently-tracked data (feeds _forecast_model_weights()'s…]] - rationale - tests/test_weather_markets.py
+- [[dot-_open_position_row()]] - code - tests/test_live_execution.py
+- [[dot-_open_position_row()_1]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_10]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_7]] - code - tests/test_live_execution.py
+- [[dot-test_healthy_position_is_left_alone()]] - code - tests/test_live_execution.py
+- [[dot-test_missing_entry_prob_is_skipped()]] - code - tests/test_live_execution.py
+- [[dot-test_model_flip_beyond_threshold_triggers_exit()]] - code - tests/test_live_execution.py
+- [[dot-test_no_client_returns_zero()]] - code - tests/test_live_execution.py
+- [[dot-test_no_open_positions_is_a_no_op()]] - code - tests/test_live_execution.py
+- [[dot-test_stop_loss_and_breakeven_are_mutually_exclusive_same_cycle()]] - code - tests/test_live_execution.py
+- [[dot-test_stop_loss_breach_triggers_immediate_exit()]] - code - tests/test_live_execution.py
+- [[dot-test_stop_loss_fires_on_rest_fallback_integer_cents_book()]] - code - tests/test_live_execution.py
+- [[dot-test_two_positions_on_same_ticker_both_get_exited()]] - code - tests/test_live_execution.py
+- [[dot-test_two_positions_same_ticker_only_one_individually_breaches_both_exit()]] - code - tests/test_live_execution.py
+- [[dot-test_within_settlement_gate_skips_exit()]] - code - tests/test_live_execution.py
+- [[A ticker that stop-loss-exits must not also be evaluated for a breakeven exit…]] - rationale - tests/test_live_execution.py
+- [[Regression _get_current_book's REST fallback returns the raw…]] - rationale - tests/test_live_execution.py
+- [[Regression two separate open live positions sharing a ticker (two distinct…]] - rationale - tests/test_live_execution.py
+- [[Shared execution_log DB isolation for the live-position-protection test classes…]] - rationale - tests/test_live_execution.py
+- [[TestCheckLiveModelExits]] - code - tests/test_live_execution.py
+- [[TestCheckLivePositionExits]] - code - tests/test_live_execution.py
+- [[The fan-out safety property this ticket-level by_ticker grouping exists for…]] - rationale - tests/test_live_execution.py
+- [[_LiveDBTestBase]] - code - tests/test_live_execution.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -42,12 +42,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 5 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 4 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 2 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 11 edges to [[_COMMUNITY_Community 3]]
+- 10 edges to [[_COMMUNITY_Community 12]]
+- 2 edges to [[_COMMUNITY_Community 119]]
 
 ## Top bridge nodes
-- [[_model_weights()]] - degree 19, connects to 3 communities
-- [[_weights_from_mae()]] - degree 5, connects to 3 communities
-- [[TestModelWeights]] - degree 10, connects to 1 community
+- [[_LiveDBTestBase]] - degree 11, connects to 2 communities
+- [[TestCheckLivePositionExits]] - degree 12, connects to 1 community
+- [[TestCheckLiveModelExits]] - degree 9, connects to 1 community
+- [[dot-test_stop_loss_and_breakeven_are_mutually_exclusive_same_cycle()]] - degree 4, connects to 1 community
+- [[dot-test_stop_loss_fires_on_rest_fallback_integer_cents_book()]] - degree 4, connects to 1 community

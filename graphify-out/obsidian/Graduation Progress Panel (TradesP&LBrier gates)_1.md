@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/screenshots/dark.png"
 type: "image"
-community: "Community 292"
+community: "Community 296"
 tags:
   - graphify/image
   - graphify/EXTRACTED
-  - community/Community_292
+  - community/Community_296
 ---
 
 # Graduation Progress Panel (Trades/P&L/Brier gates)
@@ -16,4 +16,4 @@ tags:
 - [[Graduation Gate - Trades Progress Bar (56730, complete)]] - `references` [EXTRACTED]
 - [[Kalshi Weather Dashboard - Dark Theme]] - `references` [EXTRACTED]
 
-#graphify/image #graphify/EXTRACTED #community/Community_292
+#graphify/image #graphify/EXTRACTED #community/Community_296

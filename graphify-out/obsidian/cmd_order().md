@@ -1,21 +1,47 @@
 ---
 source_file: "main.py"
 type: "code"
-community: "Community 693"
-location: "L4318"
+community: "Community 1"
+location: "L4333"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_1
 ---
 
 # cmd_order()
 
 ## Connections
+- [[KalshiClient]] - `references` [EXTRACTED]
 - [[KalshiClient_1]] - `references` [EXTRACTED]
+- [[_hourly_gates_active()]] - `calls` [EXTRACTED]
+- [[_hurricane_count_gates_active()]] - `calls` [EXTRACTED]
+- [[_hurricane_next_event_gates_active()]] - `calls` [EXTRACTED]
+- [[_prediction_kwargs_from_analysis()]] - `calls` [EXTRACTED]
+- [[_snow_gates_active()]] - `calls` [EXTRACTED]
+- [[_storm_order_gates_active()]] - `calls` [EXTRACTED]
+- [[_to_fill_count()]] - `calls` [EXTRACTED]
+- [[analyze_trade()]] - `calls` [EXTRACTED]
+- [[bold()]] - `calls` [EXTRACTED]
 - [[check_position_limits()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
-- [[main.py_1]] - `contains` [EXTRACTED]
-- [[place_paper_order()_1]] - `calls` [EXTRACTED]
+- [[dim()]] - `calls` [EXTRACTED]
+- [[enrich_with_forecast()]] - `calls` [EXTRACTED]
+- [[green()]] - `calls` [EXTRACTED]
+- [[is_hurricane_count_ticker()]] - `calls` [EXTRACTED]
+- [[is_hurricane_next_event_ticker()]] - `calls` [EXTRACTED]
+- [[is_hurricane_ticker()]] - `calls` [EXTRACTED]
+- [[is_storm_order_ticker()]] - `calls` [EXTRACTED]
+- [[is_trading_paused()]] - `calls` [EXTRACTED]
+- [[log_analysis_attempt()]] - `calls` [EXTRACTED]
+- [[log_order()]] - `calls` [EXTRACTED]
+- [[log_order_result()]] - `calls` [EXTRACTED]
+- [[log_prediction()]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
+- [[main.py]] - `contains` [EXTRACTED]
+- [[place_paper_order()]] - `calls` [EXTRACTED]
+- [[pre_live_trade_check()]] - `calls` [EXTRACTED]
+- [[red()]] - `calls` [EXTRACTED]
+- [[was_recently_ordered()]] - `calls` [EXTRACTED]
+- [[yellow()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_1

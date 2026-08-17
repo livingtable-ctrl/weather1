@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Community 86"
+community: "Community 13"
 location: "L266"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_86
+  - community/Community_13
 ---
 
 # ._get()
@@ -19,7 +19,7 @@ tags:
 - [[dot-get_balance()]] - `calls` [EXTRACTED]
 - [[dot-get_candlesticks()]] - `calls` [EXTRACTED]
 - [[dot-get_events()]] - `calls` [EXTRACTED]
-- [[dot-get_market()_3]] - `calls` [EXTRACTED]
+- [[dot-get_market()_2]] - `calls` [EXTRACTED]
 - [[dot-get_markets()]] - `calls` [EXTRACTED]
 - [[dot-get_open_orders()]] - `calls` [EXTRACTED]
 - [[dot-get_order()]] - `calls` [EXTRACTED]
@@ -30,4 +30,4 @@ tags:
 - [[KalshiClient]] - `method` [EXTRACTED]
 - [[_request_with_retry()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_86
+#graphify/code #graphify/EXTRACTED #community/Community_13

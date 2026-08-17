@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_main_cron_smoke.py"
 type: "rationale"
-community: "Community 40"
-location: "L206"
+community: "Community 207"
+location: "L242"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_40
+  - community/Community_207
 ---
 
 # format_brier_alert() output should include actionable next steps.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_brier_alert_includes_guidance()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_40
+#graphify/rationale #graphify/EXTRACTED #community/Community_207

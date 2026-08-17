@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Community 577"
+community: "Community 652"
 location: "L110"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_577
+  - community/Community_652
 ---
 
 # .test_hardcoded_corr_matches_city_pair_corr_for_shared_pairs()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCorrelationTablesStayInSync]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_577
+#graphify/code #graphify/EXTRACTED #community/Community_652

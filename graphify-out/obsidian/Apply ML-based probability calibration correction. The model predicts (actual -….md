@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "rationale"
-community: "ML Bias Correction & Audit Plans"
-location: "L358"
+community: "Community 5"
+location: "L569"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_5
 ---
 
 # Apply ML-based probability calibration correction. The model predicts (actual -…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[apply_ml_prob_correction()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/rationale #graphify/EXTRACTED #community/Community_5

@@ -1,22 +1,22 @@
 ---
 source_file: "cloud_backup.py"
 type: "code"
-community: "Community 326"
+community: "Community 6"
 location: "L97"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_326
+  - community/Community_6
 ---
 
 # _find_sync_folder()
 
 ## Connections
-- [[Path_14]] - `references` [EXTRACTED]
+- [[Path_23]] - `references` [EXTRACTED]
 - [[Return the best available cloud sync folder, in priority order 1.…]] - `rationale_for` [EXTRACTED]
 - [[_find_google_drive()]] - `calls` [EXTRACTED]
 - [[backup_data()]] - `calls` [EXTRACTED]
 - [[cloud_backup.py]] - `contains` [EXTRACTED]
 - [[restore_data()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_326
+#graphify/code #graphify/EXTRACTED #community/Community_6

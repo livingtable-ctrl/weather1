@@ -1,42 +1,42 @@
 ---
 type: community
-cohesion: 0.11
+cohesion: 0.13
 members: 27
 ---
 
 # Community 102
 
-**Cohesion:** 0.11 - loosely connected
+**Cohesion:** 0.13 - loosely connected
 **Members:** 27 nodes
 
 ## Members
-- [[dot-_city()]] - code - tests/test_weather_markets.py
-- [[dot-test_atlanta_full_name_in_ticker_not_la()]] - code - tests/test_weather_markets.py
-- [[dot-test_austin_rain_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_chicago_rain_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_dallas_rain_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_denver_rain_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_houston_rain_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_la_rain_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_miami_rain_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_nyc_rain_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_san_francisco_rain_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_seattle_rain_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_st_petersburg_rain_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[KXRAIN-ATLANTA ticker 'ATLANTA' contains 'LA' — must be Atlanta, not LA.]] - rationale - tests/test_weather_markets.py
-- [[Onboarded 2026-07-26. Would return None without the explicit fix --…]] - rationale - tests/test_weather_markets.py
-- [[Passes the existing substring chain by luck (AUS).]] - rationale - tests/test_weather_markets.py
-- [[Passes the existing substring chain by luck (CHI).]] - rationale - tests/test_weather_markets.py
-- [[Passes the existing substring chain by luck (DEN).]] - rationale - tests/test_weather_markets.py
-- [[Passes the existing substring chain by luck (MIA) -- tested so a future edit…]] - rationale - tests/test_weather_markets.py
-- [[Passes the existing substring chain by luck (NY). Real NYC ladder only has 4…]] - rationale - tests/test_weather_markets.py
-- [[Real ticker shape pulled live 2026-07-20. Would return None without the…]] - rationale - tests/test_weather_markets.py
-- [[TestMonthlyRainCityDetection]] - code - tests/test_weather_markets.py
-- [[Would return None without the explicit fix -- KXRAINDALM doesn't contain…]] - rationale - tests/test_weather_markets.py
-- [[Would return None without the explicit fix -- KXRAINHOUM doesn't contain…]] - rationale - tests/test_weather_markets.py
-- [[Would return None without the explicit fix -- KXRAINLAXM has no…]] - rationale - tests/test_weather_markets.py
-- [[Would return None without the explicit fix -- KXRAINSFOM doesn't contain…]] - rationale - tests/test_weather_markets.py
-- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 1 KXRAINM monthly rain-…]] - rationale - tests/test_weather_markets.py
+- [[NOTE this gate only protects preload_all()'s own (always force=True)]] - rationale - climatology.py
+- [[Cities in city_coords not yet present -- or present with no real computed data,…]] - rationale - climatology.py
+- [[Compute per-month forecast sigma (°F) from 30yr climate archive for one city.…]] - rationale - climatology.py
+- [[Download 30 years of daily highlow for a city and cache to disk. Auto-…]] - rationale - climatology.py
+- [[Fetch and cache historical data for all cities. Refreshes stale caches.]] - rationale - climatology.py
+- [[Grade Audit Output climatology.py]] - document - docs/grade_audit/outputs/climatology.py.md
+- [[Historical climatology from Open-Meteo archive API. Fetches 30 years of daily…]] - rationale - climatology.py
+- [[Path_2]] - code
+- [[Probability of the market condition based purely on historical observations.…]] - rationale - climatology.py
+- [[Read _SIGMA_CACHE_PATH and return its dict content, or {} on any readparse…]] - rationale - climatology.py
+- [[Return True if the cache file is missing or older than CACHE_MAX_AGE seconds.]] - rationale - climatology.py
+- [[Return per-city, per-month forecast sigmas computed from 30yr climate archive.…]] - rationale - climatology.py
+- [[True if a per-city sigma cache entry has at least one real computed month…]] - rationale - climatology.py
+- [[_cache_is_stale()]] - code - climatology.py
+- [[_cache_path()]] - code - climatology.py
+- [[_climatological_prob_inner()]] - code - climatology.py
+- [[_load_sigma_cache_file()]] - code - climatology.py
+- [[_sigma_cache_missing_cities()]] - code - climatology.py
+- [[_sigma_entry_has_data()]] - code - climatology.py
+- [[climatological_prob()]] - code - climatology.py
+- [[climatology.py]] - code - climatology.py
+- [[compute_sigma_from_climate()]] - code - climatology.py
+- [[date_1]] - code
+- [[fetch_historical()]] - code - climatology.py
+- [[fetch_historical() RF1 Silent API-Failure Swallow]] - document - docs/grade_audit/outputs/climatology.py.md
+- [[load_all_sigmas()]] - code - climatology.py
+- [[preload_all()]] - code - climatology.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -46,18 +46,22 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 12 edges to [[_COMMUNITY_Community 116]]
-- 5 edges to [[_COMMUNITY_Community 321]]
-- 2 edges to [[_COMMUNITY_Community 578]]
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 1 edge to [[_COMMUNITY_Community 632]]
-- 1 edge to [[_COMMUNITY_Community 633]]
-- 1 edge to [[_COMMUNITY_Community 634]]
-- 1 edge to [[_COMMUNITY_Community 635]]
-- 1 edge to [[_COMMUNITY_Community 636]]
-- 1 edge to [[_COMMUNITY_Community 637]]
+- 11 edges to [[_COMMUNITY_Community 4]]
+- 9 edges to [[_COMMUNITY_Community 6]]
+- 6 edges to [[_COMMUNITY_Community 5]]
+- 5 edges to [[_COMMUNITY_Community 8]]
+- 4 edges to [[_COMMUNITY_Community 23]]
+- 3 edges to [[_COMMUNITY_Community 9]]
+- 3 edges to [[_COMMUNITY_Community 0]]
+- 2 edges to [[_COMMUNITY_Community 7]]
+- 2 edges to [[_COMMUNITY_Community 69]]
+- 2 edges to [[_COMMUNITY_Community 38]]
+- 2 edges to [[_COMMUNITY_Community 89]]
+- 1 edge to [[_COMMUNITY_Community 1]]
 
 ## Top bridge nodes
-- [[dot-_city()]] - degree 37, connects to 9 communities
-- [[TestMonthlyRainCityDetection]] - degree 14, connects to 1 community
-- [[dot-test_atlanta_full_name_in_ticker_not_la()]] - degree 3, connects to 1 community
+- [[climatology.py]] - degree 38, connects to 9 communities
+- [[load_all_sigmas()]] - degree 15, connects to 5 communities
+- [[fetch_historical()]] - degree 12, connects to 3 communities
+- [[_climatological_prob_inner()]] - degree 7, connects to 3 communities
+- [[preload_all()]] - degree 11, connects to 2 communities

@@ -1,12 +1,12 @@
 ---
 source_file: "COMMANDS.md"
 type: "document"
-community: "Community 693"
+community: "Community 362"
 location: "L143"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_362
 ---
 
 # Subcommand Notes
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[Kalshi Weather Bot — Command Reference]] - `contains` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_693
+#graphify/document #graphify/EXTRACTED #community/Community_362

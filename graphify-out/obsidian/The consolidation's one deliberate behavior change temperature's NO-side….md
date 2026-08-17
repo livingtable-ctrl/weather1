@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_price_and_size.py"
 type: "rationale"
-community: "Community 58"
+community: "Community 579"
 location: "L524"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_58
+  - community/Community_579
 ---
 
 # The consolidation's one deliberate behavior change: temperature's NO-side…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_no_side_empty_bid_book_entry_side_edge_bugfix()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_58
+#graphify/rationale #graphify/EXTRACTED #community/Community_579

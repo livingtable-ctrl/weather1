@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_market_implied_distribution.py"
 type: "code"
-community: "Community 41"
+community: "Community 380"
 location: "L340"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_41
+  - community/Community_380
 ---
 
 # TestResolveMarketImpliedForAnalysis
@@ -20,7 +20,7 @@ tags:
 - [[dot-test_temperature_city_and_date_match()]] - `method` [EXTRACTED]
 - [[dot-test_temperature_date_accepts_plain_iso_string()]] - `method` [EXTRACTED]
 - [[dot-test_temperature_match_with_no_computed_result_returns_none()]] - `method` [EXTRACTED]
-- [[backlog.txt RAIN MARKETS -- LADDERSIBLING GROUPING FOR MARKET- IMPLIED…_2]] - `rationale_for` [EXTRACTED]
+- [[backlog.txt RAIN MARKETS -- LADDERSIBLING GROUPING FOR MARKET- IMPLIED…_1]] - `rationale_for` [EXTRACTED]
 - [[test_market_implied_distribution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_41
+#graphify/code #graphify/EXTRACTED #community/Community_380

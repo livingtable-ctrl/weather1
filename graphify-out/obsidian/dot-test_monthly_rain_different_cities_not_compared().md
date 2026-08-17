@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_consistency.py"
 type: "code"
-community: "Community 35"
+community: "Community 48"
 location: "L230"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_35
+  - community/Community_48
 ---
 
 # .test_monthly_rain_different_cities_not_compared()
@@ -17,4 +17,4 @@ tags:
 - [[_rain_market()_1]] - `calls` [EXTRACTED]
 - [[find_violations()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_35
+#graphify/code #graphify/EXTRACTED #community/Community_48

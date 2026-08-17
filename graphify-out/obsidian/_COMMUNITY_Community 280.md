@@ -1,28 +1,28 @@
 ---
 type: community
-cohesion: 0.26
+cohesion: 0.19
 members: 13
 ---
 
 # Community 280
 
-**Cohesion:** 0.26 - loosely connected
+**Cohesion:** 0.19 - loosely connected
 **Members:** 13 nodes
 
 ## Members
-- [[dot-test_current_api_open_interest_fp_prevents_false_stale()]] - code - tests/test_paper.py
-- [[dot-test_current_api_volume_fp_prevents_false_stale()]] - code - tests/test_paper.py
-- [[dot-test_market_no_volume_closing_soon_is_stale()]] - code - tests/test_paper.py
-- [[dot-test_market_no_volume_far_future_not_stale()]] - code - tests/test_paper.py
-- [[dot-test_market_with_open_interest_not_stale()]] - code - tests/test_paper.py
-- [[dot-test_market_with_volume_not_stale()]] - code - tests/test_paper.py
-- [[dot-test_missing_close_time_not_stale()]] - code - tests/test_paper.py
-- [[dot-test_string_volume_fp_does_not_crash()]] - code - tests/test_paper.py
-- [[dot-test_string_zero_volume_fp_still_stale_when_closing_soon()]] - code - tests/test_paper.py
-- [[A genuinely-zero string volume_fp (0.00) must still correctly report stale --…]] - rationale - tests/test_paper.py
-- [[Returns True if a market has no volume AND no open interest AND closes within…]] - rationale - weather_markets.py
-- [[TestIsStale]] - code - tests/test_paper.py
-- [[is_stale()]] - code - weather_markets.py
+- [[dot-test_dew_point_temp_correction_at_saturation()]] - code - tests/test_metar.py
+- [[dot-test_dew_point_temp_correction_dry_city_no_effect()]] - code - tests/test_metar.py
+- [[dot-test_dew_point_temp_correction_dry_conditions_no_effect()]] - code - tests/test_metar.py
+- [[dot-test_dew_point_temp_correction_miami()]] - code - tests/test_metar.py
+- [[dot-test_fetch_metar_includes_dew_point_f()]] - code - tests/test_metar.py
+- [[At depression=0 (saturated), correction is exactly -3.0 (the formula max).]] - rationale - tests/test_metar.py
+- [[Denver (not in sensitive set) must return 0.0 regardless of dew point.]] - rationale - tests/test_metar.py
+- [[Even for a sensitive city, depression = 20°F means no correction.]] - rationale - tests/test_metar.py
+- [[Miami humid day dew=76, forecast=90 → depression=14°F  20°F → negative…]] - rationale - tests/test_metar.py
+- [[Return a bias correction (°F, negative = cooler) based on dew point depression.…]] - rationale - weather_markets.py
+- [[TestDewPointCorrection]] - code - tests/test_metar.py
+- [[_dew_point_temp_correction()]] - code - weather_markets.py
+- [[fetch_metar result dict must include dew_point_f key.]] - rationale - tests/test_metar.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -32,11 +32,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Community 56]]
-- 1 edge to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 2 edges to [[_COMMUNITY_Community 4]]
+- 2 edges to [[_COMMUNITY_Community 9]]
+- 2 edges to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 3]]
 
 ## Top bridge nodes
-- [[is_stale()]] - degree 15, connects to 3 communities
-- [[TestIsStale]] - degree 11, connects to 2 communities
+- [[_dew_point_temp_correction()]] - degree 8, connects to 2 communities
+- [[TestDewPointCorrection]] - degree 7, connects to 2 communities
+- [[dot-test_fetch_metar_includes_dew_point_f()]] - degree 4, connects to 2 communities

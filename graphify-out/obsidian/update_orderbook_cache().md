@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 227"
+community: "Community 30"
 location: "L138"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_227
+  - community/Community_30
 ---
 
 # update_orderbook_cache()
@@ -22,8 +22,8 @@ tags:
 - [[_ws_listener()]] - `calls` [EXTRACTED]
 - [[flash_crash_cb (FlashCrashCB instance)]] - `calls` [EXTRACTED]
 - [[kalshi_ws.py]] - `contains` [EXTRACTED]
-- [[order_executor.py_1]] - `shares_data_with` [EXTRACTED]
-- [[test_kalshi_ws.py]] - `references` [EXTRACTED]
+- [[order_executor.py]] - `shares_data_with` [EXTRACTED]
+- [[test_kalshi_ws.py]] - `imports` [EXTRACTED]
 - [[test_live_execution.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_227
+#graphify/code #graphify/EXTRACTED #community/Community_30

@@ -1,18 +1,19 @@
 ---
-source_file: "static/risk.js"
+source_file: "updated frontend/reference/analytics.js"
 type: "code"
-community: "Legacy Static Dashboard JS Pages"
+community: "Community 481"
 location: "L23"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Legacy_Static_Dashboard_JS_Pages
+  - community/Community_481
 ---
 
 # makeLayout()
 
 ## Connections
-- [[loadRisk()]] - `calls` [EXTRACTED]
-- [[staticrisk.js]] - `contains` [EXTRACTED]
+- [[loadAnalytics()_1]] - `calls` [EXTRACTED]
+- [[loadBrierHistory()_1]] - `calls` [EXTRACTED]
+- [[referenceanalytics.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_481

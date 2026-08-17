@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 319"
+community: "Community 324"
 location: "L905"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_319
+  - community/Community_324
 ---
 
 # get_bias() always returns a float (0.0 for insufficient data).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_returns_float_type()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_319
+#graphify/rationale #graphify/EXTRACTED #community/Community_324

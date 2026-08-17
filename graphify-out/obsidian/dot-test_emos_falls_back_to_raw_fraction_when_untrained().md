@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 241"
-location: "L5175"
+community: "Community 242"
+location: "L5544"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_241
+  - community/Community_242
 ---
 
 # .test_emos_falls_back_to_raw_fraction_when_untrained()
@@ -16,4 +16,4 @@ tags:
 - [[=10 members with no EMOS params must use the raw exceedance fraction fallback,…]] - `rationale_for` [EXTRACTED]
 - [[TestComputeEnsembleProbRefactorSafetyNet]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_241
+#graphify/code #graphify/EXTRACTED #community/Community_242

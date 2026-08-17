@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 472"
+community: "Community 509"
 location: "L1325"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_472
+  - community/Community_509
 ---
 
 # .test_floor_cleared_shows_cleared_status()
@@ -15,4 +15,4 @@ tags:
 - [[dot-_row()]] - `calls` [EXTRACTED]
 - [[TestCmdSignals]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_472
+#graphify/code #graphify/EXTRACTED #community/Community_509

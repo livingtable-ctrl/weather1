@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Community 36"
+community: "Community 2"
 location: "L1880"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_36
+  - community/Community_2
 ---
 
 # #84: Brier score broken down by dominant blend source. For each settled…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_component_attribution()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_36
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

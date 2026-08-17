@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "rationale"
-community: "Community 26"
+community: "Community 69"
 location: "L50"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_26
+  - community/Community_69
 ---
 
 # P(T < threshold) is complement of above.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_below_direction()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_26
+#graphify/rationale #graphify/EXTRACTED #community/Community_69

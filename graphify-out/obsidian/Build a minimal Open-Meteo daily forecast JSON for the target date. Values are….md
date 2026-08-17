@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecast_accuracy.py"
 type: "rationale"
-community: "Community 232"
+community: "Community 234"
 location: "L53"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_232
+  - community/Community_234
 ---
 
 # Build a minimal Open-Meteo daily forecast JSON for the target date. Values are…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_open_meteo_response()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_232
+#graphify/rationale #graphify/EXTRACTED #community/Community_234

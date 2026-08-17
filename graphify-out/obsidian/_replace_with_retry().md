@@ -1,23 +1,22 @@
 ---
 source_file: "safe_io.py"
 type: "code"
-community: "Community 47"
+community: "Community 8"
 location: "L22"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_47
+  - community/Community_8
 ---
 
 # _replace_with_retry()
 
 ## Connections
-- [[Path_21]] - `references` [EXTRACTED]
+- [[Path_28]] - `references` [EXTRACTED]
 - [[_atomic_write_payload()]] - `calls` [EXTRACTED]
 - [[os.replace(src, dst), retrying briefly on PermissionError. Self-caught…]] - `rationale_for` [EXTRACTED]
 - [[paper._acquire_file_lock()  msvcrt retry loop]] - `semantically_similar_to` [INFERRED]
-- [[safe_io.py]] - `contains` [EXTRACTED]
-- [[safe_io.py_1]] - `implements` [EXTRACTED]
+- [[safe_io.py]] - `implements` [EXTRACTED]
 - [[test_safe_io.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_47
+#graphify/code #graphify/EXTRACTED #community/Community_8

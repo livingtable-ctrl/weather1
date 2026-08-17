@@ -1,12 +1,12 @@
 ---
 source_file: "climate_indices.py"
 type: "rationale"
-community: "Climatology & Climate Index Fetching"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_4
 ---
 
 # Climate indices from NOAA Climate Prediction Center. Fetches AO (Arctic…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[climate_indices.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

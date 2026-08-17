@@ -1,25 +1,25 @@
 ---
 type: community
-cohesion: 0.24
+cohesion: 0.20
 members: 10
 ---
 
 # Community 385
 
-**Cohesion:** 0.24 - loosely connected
+**Cohesion:** 0.20 - loosely connected
 **Members:** 10 nodes
 
 ## Members
-- [[Bucket (predicted_prob, settled_yes) pairs into 5 equal-width calibration bins.…]] - rationale - tracker.py
-- [[Calibration analytics for multi-day (days_out IS NULL OR =1) predictions,…]] - rationale - tracker.py
-- [[Calibration analytics for same-day (days_out=0) METAR-locked predictions.…]] - rationale - tracker.py
-- [[Read a single T value from datatemperature_scale.json (None if…]] - rationale - tracker.py
-- [[Same population as get_sameday_calibration() but excludes…]] - rationale - tracker.py
-- [[_calibration_curve()]] - code - tracker.py
-- [[_read_temperature_scale_key()]] - code - tracker.py
-- [[get_multiday_calibration_cli()]] - code - tracker.py
-- [[get_sameday_calibration()]] - code - tracker.py
-- [[get_sameday_calibration_cli()]] - code - tracker.py
+- [[dot-setUp()_26]] - code - tests/test_paper.py
+- [[dot-tearDown()_25]] - code - tests/test_paper.py
+- [[dot-test_drawdown_zero_at_start()]] - code - tests/test_paper.py
+- [[dot-test_max_drawdown_pct_correct()]] - code - tests/test_paper.py
+- [[dot-test_paused_from_peak_not_start()]] - code - tests/test_paper.py
+- [[dot-test_peak_does_not_decrease_on_loss()]] - code - tests/test_paper.py
+- [[dot-test_peak_tracks_winning_trade()]] - code - tests/test_paper.py
+- [[dot-test_performance_includes_peak_and_drawdown()]] - code - tests/test_paper.py
+- [[TestHighWaterMark]] - code - tests/test_paper.py
+- [[Win to $1500+, then lose 50% of peak → should be paused.]] - rationale - tests/test_paper.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,13 +29,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 8 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 3 edges to [[_COMMUNITY_Community 36]]
-- 1 edge to [[_COMMUNITY_Community 47]]
+- 1 edge to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 21]]
+- 1 edge to [[_COMMUNITY_Community 0]]
 
 ## Top bridge nodes
-- [[get_multiday_calibration_cli()]] - degree 6, connects to 2 communities
-- [[get_sameday_calibration()]] - degree 6, connects to 2 communities
-- [[get_sameday_calibration_cli()]] - degree 6, connects to 2 communities
-- [[_read_temperature_scale_key()]] - degree 6, connects to 2 communities
-- [[_calibration_curve()]] - degree 5, connects to 1 community
+- [[TestHighWaterMark]] - degree 10, connects to 2 communities
+- [[dot-setUp()_26]] - degree 2, connects to 1 community

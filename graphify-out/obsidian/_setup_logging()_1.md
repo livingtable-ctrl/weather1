@@ -1,19 +1,19 @@
 ---
-source_file: "main.py"
+source_file: "utils.py"
 type: "code"
-community: "Community 693"
-location: "L8962"
+community: "Community 6"
+location: "L424"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_6
 ---
 
 # _setup_logging()
 
 ## Connections
-- [[Path_30]] - `calls` [INFERRED]
-- [[main()_1]] - `calls` [EXTRACTED]
-- [[main.py_1]] - `contains` [EXTRACTED]
+- [[106107 Configure structured logging. Each module should use…]] - `rationale_for` [EXTRACTED]
+- [[Logger]] - `references` [EXTRACTED]
+- [[utils.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_6

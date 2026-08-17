@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_infrastructure.py"
 type: "code"
-community: "Circuit Breaker & Session Retry Infrastructure"
+community: "Community 7"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Circuit_Breaker__Session_Retry_Infrastructure
+  - community/Community_7
 ---
 
 # test_infrastructure.py
@@ -13,20 +14,24 @@ tags:
 ## Connections
 - [[AtomicWriteError]] - `imports` [EXTRACTED]
 - [[CircuitBreaker]] - `imports` [EXTRACTED]
-- [[CircuitBreaker class]] - `references` [EXTRACTED]
+- [[CircuitBreaker class_1]] - `references` [EXTRACTED]
 - [[Grade Audit Module Doc main.py]] - `references` [EXTRACTED]
-- [[_build_session()]] - `references` [EXTRACTED]
+- [[_build_session()]] - `imports` [EXTRACTED]
 - [[_get_obs_station()]] - `references` [EXTRACTED]
 - [[_save()_load() SHA-256 checksum]] - `references` [EXTRACTED]
-- [[alerts.py_2]] - `references` [EXTRACTED]
+- [[alerts.py_1]] - `references` [EXTRACTED]
 - [[append_entry()]] - `references` [EXTRACTED]
-- [[atomic_write_json()]] - `references` [EXTRACTED]
+- [[atomic_write_json()]] - `imports` [EXTRACTED]
 - [[circuit_breaker.py]] - `imports_from` [EXTRACTED]
-- [[climatology.py_2]] - `references` [EXTRACTED]
+- [[climatology.py_1]] - `references` [EXTRACTED]
 - [[get_live_observation()]] - `references` [EXTRACTED]
-- [[init_db()]] - `references` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
 - [[kalshi_client.py]] - `imports_from` [EXTRACTED]
+- [[os]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[safe_io.py]] - `imports_from` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[test_alerts_write_raises_on_failure()]] - `contains` [EXTRACTED]
 - [[test_atomic_write_creates_file()]] - `contains` [EXTRACTED]
 - [[test_atomic_write_falls_back_to_tmp_on_oserror()]] - `contains` [EXTRACTED]
@@ -60,6 +65,7 @@ tags:
 - [[test_station_cache_loads_pre_migration_flat_format()]] - `contains` [EXTRACTED]
 - [[test_verify_db_backup_counts_rows()]] - `contains` [EXTRACTED]
 - [[test_verify_db_backup_raises_on_empty()]] - `contains` [EXTRACTED]
-- [[weather_markets.py_1]] - `references` [EXTRACTED]
+- [[time]] - `imports` [EXTRACTED]
+- [[weather_markets.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Circuit_Breaker__Session_Retry_Infrastructure
+#graphify/code #graphify/EXTRACTED #community/Community_7

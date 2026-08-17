@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Ensemble Weight Blending Tests"
+community: "Community 442"
 location: "L2034"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_442
 ---
 
 # Shared enriched-market fixture for the ecmwf_consensus_gap_prob tests below --…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_ecmwf_gap_test_enriched()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_442

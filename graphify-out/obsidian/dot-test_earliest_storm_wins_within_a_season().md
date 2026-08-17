@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 98"
+community: "Community 166"
 location: "L377"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_98
+  - community/Community_166
 ---
 
 # .test_earliest_storm_wins_within_a_season()
@@ -16,4 +16,4 @@ tags:
 - [[TestFirstOccurrenceDay]] - `method` [EXTRACTED]
 - [[_next_event_fixture_storms()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_98
+#graphify/code #graphify/EXTRACTED #community/Community_166

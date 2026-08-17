@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p0_16_cron_endpoint.py"
 type: "rationale"
-community: "Community 341"
+community: "Community 347"
 location: "L33"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_341
+  - community/Community_347
 ---
 
 # If _is_cron_running() returns True, endpoint must return 409.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_returns_409_when_cron_already_running()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_341
+#graphify/rationale #graphify/EXTRACTED #community/Community_347

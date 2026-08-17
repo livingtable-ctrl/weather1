@@ -1,12 +1,12 @@
 ---
 source_file: "circuit_breaker.py"
 type: "rationale"
-community: "Community 44"
+community: "Community 7"
 location: "L275"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_44
+  - community/Community_7
 ---
 
 # Call fn(*args, **kwargs) with automatic circuit protection. Raises…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-execute()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_44
+#graphify/rationale #graphify/EXTRACTED #community/Community_7

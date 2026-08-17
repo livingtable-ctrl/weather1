@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "code"
-community: "Community 430"
+community: "Community 62"
 location: "L64"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_430
+  - community/Community_62
 ---
 
 # TestStrategyVersioning
@@ -18,4 +18,4 @@ tags:
 - [[dot-test_log_prediction_version_defaults_to_none()]] - `method` [EXTRACTED]
 - [[test_p9_p10.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_430
+#graphify/code #graphify/EXTRACTED #community/Community_62

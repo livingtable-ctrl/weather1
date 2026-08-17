@@ -10,16 +10,16 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-test_no_real_ask_still_prices_normally()]] - code - tests/test_paper.py
-- [[dot-test_no_zero_ask_returns_none_not_one()]] - code - tests/test_paper.py
-- [[dot-test_yes_real_bid_still_prices_normally()]] - code - tests/test_paper.py
-- [[dot-test_yes_zero_bid_returns_none_not_zero()]] - code - tests/test_paper.py
-- [[dot-test_zero_ask_no_longer_books_phantom_win()]] - code - tests/test_paper.py
-- [[dot-test_zero_bid_no_longer_fires_phantom_stop_loss()]] - code - tests/test_paper.py
-- [[Deep-review followup parse_market_price() coalesces a missing side to 0.0…]] - rationale - tests/test_paper.py
-- [[End-to-end a NO position with a one-sided (ask=0) book must not be treated as…]] - rationale - tests/test_paper.py
-- [[End-to-end a YES position with a one-sided (bid=0) book must not be treated as…]] - rationale - tests/test_paper.py
-- [[TestLiquidationPriceZeroSide]] - code - tests/test_paper.py
+- [[dot-test_accumulated_sentinel_is_none()]] - code - tests/test_acis_precip.py
+- [[dot-test_empty_string_is_none()]] - code - tests/test_acis_precip.py
+- [[dot-test_float_passthrough()]] - code - tests/test_acis_precip.py
+- [[dot-test_garbage_string_is_none_not_a_crash()]] - code - tests/test_acis_precip.py
+- [[dot-test_int_passthrough()]] - code - tests/test_acis_precip.py
+- [[dot-test_missing_is_none()]] - code - tests/test_acis_precip.py
+- [[dot-test_none_is_none()]] - code - tests/test_acis_precip.py
+- [[dot-test_numeric_string()]] - code - tests/test_acis_precip.py
+- [[dot-test_trace_is_zero()]] - code - tests/test_acis_precip.py
+- [[TestParsePcpnValue]] - code - tests/test_acis_precip.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,12 +29,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 56]]
-- 1 edge to [[_COMMUNITY_Community 145]]
-- 1 edge to [[_COMMUNITY_Community 159]]
+- 1 edge to [[_COMMUNITY_Community 141]]
 
 ## Top bridge nodes
-- [[TestLiquidationPriceZeroSide]] - degree 9, connects to 2 communities
-- [[dot-test_zero_ask_no_longer_books_phantom_win()]] - degree 4, connects to 2 communities
-- [[dot-test_zero_bid_no_longer_fires_phantom_stop_loss()]] - degree 4, connects to 2 communities
+- [[TestParsePcpnValue]] - degree 10, connects to 1 community

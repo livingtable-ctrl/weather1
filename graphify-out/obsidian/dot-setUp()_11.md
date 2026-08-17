@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_paper.py"
+source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 259"
-location: "L929"
+community: "Community 241"
+location: "L2422"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_259
+  - community/Community_241
 ---
 
 # .setUp()
 
 ## Connections
-- [[TestAutoSettlePaperTrades]] - `method` [EXTRACTED]
+- [[TestGetMemberBias]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_259
+#graphify/code #graphify/EXTRACTED #community/Community_241

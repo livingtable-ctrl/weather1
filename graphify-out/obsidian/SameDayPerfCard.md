@@ -1,12 +1,12 @@
 ---
 source_file: "weather app site V_3 (3)/src/tabs/AnalyticsTab.jsx"
 type: "code"
-community: "Community 692"
+community: "Community 757"
 location: "724"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_692
+  - community/Community_757
 ---
 
 # SameDayPerfCard
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[MarketTypeSplitCard]] - `semantically_similar_to` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_692
+#graphify/code #graphify/INFERRED #community/Community_757

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_date_today_guard.py"
 type: "rationale"
-community: "Community 202"
+community: "Community 33"
 location: "L171"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_202
+  - community/Community_33
 ---
 
 # Regression: this guard's own first version flagged a false positive on…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_docstring_mention_of_date_today_is_not_a_false_positive()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_202
+#graphify/rationale #graphify/EXTRACTED #community/Community_33

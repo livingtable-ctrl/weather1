@@ -1,17 +1,16 @@
 ---
 source_file: "docs/grade_audit/outputs/ml_bias.py.md"
 type: "document"
-community: "ML Bias Multiday-Predictions Filter"
+community: "Community 681"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_681
 ---
 
 # ml_bias.py Grade Audit
 
 ## Connections
-- [[ml_bias.py]] - `references` [EXTRACTED]
 - [[ml_bias.py File Grade median 810, 2 mandatory fixes]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/document #graphify/EXTRACTED #community/Community_681

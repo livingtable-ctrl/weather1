@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 478"
+community: "Community 515"
 location: "L1182"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_478
+  - community/Community_515
 ---
 
 # TestDynamicKellyCapMinSamples
@@ -18,4 +18,4 @@ tags:
 - [[Position]] - `uses` [INFERRED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_478
+#graphify/code #graphify/EXTRACTED #community/Community_515

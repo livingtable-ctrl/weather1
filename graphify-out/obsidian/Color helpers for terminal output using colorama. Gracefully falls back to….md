@@ -1,12 +1,12 @@
 ---
 source_file: "colors.py"
 type: "rationale"
-community: "Black Swan Halt State"
+community: "Community 0"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_0
 ---
 
 # Color helpers for terminal output using colorama. Gracefully falls back to…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[colors.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

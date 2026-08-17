@@ -1,11 +1,11 @@
 ---
 source_file: "docs/plans/2026-04-10-phase6-dashboard.md"
 type: "document"
-community: "Community 36"
+community: "Community 89"
 tags:
   - graphify/document
-  - graphify/EXTRACTED
-  - community/Community_36
+  - graphify/INFERRED
+  - community/Community_89
 ---
 
 # Phase 6 Dashboard Plan
@@ -15,9 +15,6 @@ tags:
 - [[Phase 1 Testing Foundation Plan]] - `references` [INFERRED]
 - [[Phase 5 Trading Portfolio Plan]] - `conceptually_related_to` [INFERRED]
 - [[Phase 7 Data Safety Plan]] - `conceptually_related_to` [INFERRED]
-- [[get_component_attribution()]] - `implements` [EXTRACTED]
-- [[tracker.py_1]] - `references` [EXTRACTED]
-- [[weather_markets.py_2]] - `references` [EXTRACTED]
-- [[web_app.py]] - `references` [EXTRACTED]
+- [[weather_markets.py_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_36
+#graphify/document #graphify/INFERRED #community/Community_89

@@ -10,18 +10,18 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[dot-_restore_module_caches()]] - code - tests/test_forecasting.py
-- [[dot-test_cache_hit_returns_ensemble_without_fetch()]] - code - tests/test_forecasting.py
-- [[dot-test_cache_hit_returns_forecast_without_fetch()]] - code - tests/test_forecasting.py
-- [[dot-test_ttl_until_next_cycle_before_02z()]] - code - tests/test_forecasting.py
-- [[dot-test_ttl_until_next_cycle_minimum()]] - code - tests/test_forecasting.py
-- [[At 0100 UTC, next cycle is 0200 UTC â†’ ~3600s.]] - rationale - tests/test_forecasting.py
-- [[TTL is at least 1800 seconds.]] - rationale - tests/test_forecasting.py
-- [[TestDynamicCacheTTL]] - code - tests/test_forecasting.py
-- [[fixture_6]] - code
-- [[get_ensemble_temps returns cached data without making API calls.]] - rationale - tests/test_forecasting.py
-- [[get_weather_forecast returns cached data without making API calls.]] - rationale - tests/test_forecasting.py
-- [[test_cache_hit_returns_forecast_without_fetch and…]] - rationale - tests/test_forecasting.py
+- [[dot-test_past_date_trade_excluded_from_simulation()]] - code - tests/test_paper.py
+- [[For each simulation randomly resolve each open trade as winloss using the…]] - rationale - monte_carlo.py
+- [[How many days out a trade was placed, for feature-importance logging.…]] - rationale - main.py
+- [[How many days out a trade was placed, for feature-importance logging.…_1]] - rationale - main.py
+- [[Phase 2 Batch J regression tests P2-21P2-22P2-23 — METAR pipeline.]] - rationale - tests/test_phase2_batch_j.py
+- [[Trades whose target_date is in the past are skipped — no forward risk.]] - rationale - tests/test_paper.py
+- [[_DEFAULT_CORRELATIONS seed dict]] - code - monte_carlo.py
+- [[_MONITOR_CITIES]] - code - settlement_monitor.py
+- [[_feature_importance_days_out()]] - code - main.py
+- [[simulate_portfolio()]] - code - monte_carlo.py
+- [[test_phase2_batch_j.py]] - code - tests/test_phase2_batch_j.py
+- [[weather_markets._CITY_TZ]] - code - weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,11 +31,32 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
-- 1 edge to [[_COMMUNITY_Community 51]]
+- 7 edges to [[_COMMUNITY_Community 209]]
+- 6 edges to [[_COMMUNITY_Community 4]]
+- 4 edges to [[_COMMUNITY_Community 188]]
+- 4 edges to [[_COMMUNITY_Community 2]]
+- 4 edges to [[_COMMUNITY_Community 23]]
+- 3 edges to [[_COMMUNITY_Community 0]]
+- 3 edges to [[_COMMUNITY_Community 3]]
+- 3 edges to [[_COMMUNITY_Community 5]]
+- 2 edges to [[_COMMUNITY_Community 144]]
+- 2 edges to [[_COMMUNITY_Community 1]]
+- 2 edges to [[_COMMUNITY_Community 189]]
+- 2 edges to [[_COMMUNITY_Community 335]]
+- 2 edges to [[_COMMUNITY_Community 523]]
+- 1 edge to [[_COMMUNITY_Community 210]]
+- 1 edge to [[_COMMUNITY_Community 237]]
+- 1 edge to [[_COMMUNITY_Community 311]]
+- 1 edge to [[_COMMUNITY_Community 183]]
+- 1 edge to [[_COMMUNITY_Community 522]]
+- 1 edge to [[_COMMUNITY_Community 41]]
+- 1 edge to [[_COMMUNITY_Community 238]]
+- 1 edge to [[_COMMUNITY_Community 21]]
+- 1 edge to [[_COMMUNITY_Community 148]]
 
 ## Top bridge nodes
-- [[TestDynamicCacheTTL]] - degree 7, connects to 2 communities
-- [[dot-test_ttl_until_next_cycle_before_02z()]] - degree 3, connects to 1 community
-- [[dot-test_ttl_until_next_cycle_minimum()]] - degree 3, connects to 1 community
+- [[simulate_portfolio()]] - degree 37, connects to 17 communities
+- [[test_phase2_batch_j.py]] - degree 11, connects to 7 communities
+- [[_feature_importance_days_out()]] - degree 8, connects to 5 communities
+- [[_MONITOR_CITIES]] - degree 5, connects to 3 communities
+- [[dot-test_past_date_trade_excluded_from_simulation()]] - degree 4, connects to 2 communities

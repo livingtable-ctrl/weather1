@@ -1,44 +1,46 @@
 ---
 type: community
-cohesion: 0.10
-members: 29
+cohesion: 0.09
+members: 31
 ---
 
 # Community 86
 
-**Cohesion:** 0.10 - loosely connected
-**Members:** 29 nodes
+**Cohesion:** 0.09 - loosely connected
+**Members:** 31 nodes
 
 ## Members
-- [[dot-_find_order_by_client_id()]] - code - kalshi_client.py
-- [[dot-_get()]] - code - kalshi_client.py
-- [[dot-_validate()]] - code - kalshi_client.py
-- [[dot-get_balance()]] - code - kalshi_client.py
-- [[dot-get_candlesticks()]] - code - kalshi_client.py
-- [[dot-get_events()]] - code - kalshi_client.py
-- [[dot-get_market()_3]] - code - kalshi_client.py
-- [[dot-get_markets()]] - code - kalshi_client.py
-- [[dot-get_open_orders()]] - code - kalshi_client.py
-- [[dot-get_order()]] - code - kalshi_client.py
-- [[dot-get_orderbook()]] - code - kalshi_client.py
-- [[dot-get_positions()]] - code - kalshi_client.py
-- [[dot-get_series_list()]] - code - kalshi_client.py
-- [[dot-get_trades()]] - code - kalshi_client.py
-- [[dot-place_maker_order()]] - code - kalshi_client.py
-- [[dot-place_order()]] - code - kalshi_client.py
-- [[dot-test_validate_emits_log_error_not_warning()]] - code - tests/test_phase3_batch_a.py
-- [[dot-test_validate_no_warning_on_schema_change()]] - code - tests/test_phase3_batch_a.py
-- [[Fetch a single order by ID from the Kalshi portfolio API. Returns the inner…]] - rationale - kalshi_client.py
-- [[GET marketstrades -- public trade-flow history for a single market…]] - rationale - kalshi_client.py
-- [[GET series{series_ticker}markets{ticker}candlesticks -- OHLC price…]] - rationale - kalshi_client.py
-- [[P3-21 _validate must log an error, not emit a warning.]] - rationale - tests/test_phase3_batch_a.py
-- [[Place a limit order with a deterministic idempotency key. Uses Kalshi's V2…]] - rationale - kalshi_client.py
-- [[Place a passive limit (maker) order at the specified price. Uses…]] - rationale - kalshi_client.py
-- [[Return the order matching client_order_id, or None if not found. Checks resting…]] - rationale - kalshi_client.py
-- [[TestKalshiClientValidateLogsError]] - code - tests/test_phase3_batch_a.py
-- [[Validate a Kalshi market dict has required fields and sane prices. Returns True…]] - rationale - schema_validator.py
-- [[Warn (don't crash) if the API response shape has changed.]] - rationale - kalshi_client.py
-- [[validate_market()]] - code - schema_validator.py
+- [[A HIGH bracket and a LOW bracket for the same citydate are NOT mutually…]] - rationale - tests/test_trading.py
+- [[A single opportunity with no same-event siblings must pass its…]] - rationale - tests/test_trading.py
+- [[After a paper position settles, was_traded_today() must still block re-entry on…]] - rationale - tests/test_trading.py
+- [[Apply the common monkeypatches needed for L7-B _auto_place_trades tests.]] - rationale - tests/test_trading.py
+- [[Regression for L7-B for NO trades, entry_price must equal no_ask = 1 - yes_bid…]] - rationale - tests/test_trading.py
+- [[Regression for L7-B for YES trades, entry_price passed to place_paper_order…]] - rationale - tests/test_trading.py
+- [[Run _auto_place_trades with portfolio_kelly_fraction mocked to a pass-through…]] - rationale - tests/test_trading.py
+- [[Same-event siblings with zero recorded edge (division-by-zero guard) must fall…]] - rationale - tests/test_trading.py
+- [[Tests for Phase 5 trading improvements 49 dynamic correlation matrix 50…]] - rationale - tests/test_trading.py
+- [[Two same-citydateHIGH-series brackets with a 31 edge ratio (0.18 vs 0.06)…]] - rationale - tests/test_trading.py
+- [[With many samples the shrinkage factor is negligible — bias stays near its raw…]] - rationale - tests/test_trading.py
+- [[With only min_samples rows, the returned bias must be strictly smaller in…]] - rationale - tests/test_trading.py
+- [[_l7b_common_patches()]] - code - tests/test_trading.py
+- [[_run_with_captured_kelly()]] - code - tests/test_trading.py
+- [[_sibling_opp()]] - code - tests/test_trading.py
+- [[check_model_exits must include 'market' key in each recommendation (L3-B).]] - rationale - tests/test_trading.py
+- [[cmd_watch's automated loop must also run paper stop-lossbreakeven protection,…]] - rationale - tests/test_trading.py
+- [[log_prediction(city=None) must write nothing to the DB (L4-B).]] - rationale - tests/test_trading.py
+- [[test_auto_place_uses_no_ask_not_mid_for_no_trades()]] - code - tests/test_trading.py
+- [[test_auto_place_uses_yes_ask_not_mid_for_yes_trades()]] - code - tests/test_trading.py
+- [[test_check_model_exits_includes_market_in_rec()]] - code - tests/test_trading.py
+- [[test_cmd_watch_auto_executes_paper_stop_loss()]] - code - tests/test_trading.py
+- [[test_get_bias_near_full_strength_for_large_samples()]] - code - tests/test_trading.py
+- [[test_get_bias_shrinks_toward_zero_for_small_samples()]] - code - tests/test_trading.py
+- [[test_high_and_low_siblings_not_grouped()]] - code - tests/test_trading.py
+- [[test_log_prediction_with_null_city_is_noop()]] - code - tests/test_trading.py
+- [[test_sibling_brackets_split_room_by_edge_share()]] - code - tests/test_trading.py
+- [[test_singleton_opp_kelly_unscaled()]] - code - tests/test_trading.py
+- [[test_trading.py]] - code - tests/test_trading.py
+- [[test_was_traded_today_blocks_reentry_after_settlement()]] - code - tests/test_trading.py
+- [[test_zero_edge_group_splits_equally()]] - code - tests/test_trading.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -48,22 +50,26 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 17 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 4 edges to [[_COMMUNITY_Community 298]]
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_Community 59]]
-- 1 edge to [[_COMMUNITY_Community 57]]
-- 1 edge to [[_COMMUNITY_Community 225]]
-- 1 edge to [[_COMMUNITY_Community 226]]
-- 1 edge to [[_COMMUNITY_Community 458]]
-- 1 edge to [[_COMMUNITY_Community 80]]
-- 1 edge to [[_COMMUNITY_Community 351]]
-- 1 edge to [[_COMMUNITY_Community 417]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
+- 4 edges to [[_COMMUNITY_Community 1]]
+- 4 edges to [[_COMMUNITY_Community 4]]
+- 2 edges to [[_COMMUNITY_Community 212]]
+- 1 edge to [[_COMMUNITY_Community 325]]
+- 1 edge to [[_COMMUNITY_Community 395]]
+- 1 edge to [[_COMMUNITY_Community 478]]
+- 1 edge to [[_COMMUNITY_Community 530]]
+- 1 edge to [[_COMMUNITY_Community 637]]
+- 1 edge to [[_COMMUNITY_Community 652]]
+- 1 edge to [[_COMMUNITY_Community 722]]
+- 1 edge to [[_COMMUNITY_Community 723]]
+- 1 edge to [[_COMMUNITY_Community 724]]
+- 1 edge to [[_COMMUNITY_Community 725]]
+- 1 edge to [[_COMMUNITY_Community 726]]
+- 1 edge to [[_COMMUNITY_Community 727]]
+- 1 edge to [[_COMMUNITY_Community 728]]
+- 1 edge to [[_COMMUNITY_Community 729]]
+- 1 edge to [[_COMMUNITY_Community 76]]
+- 1 edge to [[_COMMUNITY_Community 71]]
 
 ## Top bridge nodes
-- [[validate_market()]] - degree 11, connects to 7 communities
-- [[dot-place_order()]] - degree 8, connects to 4 communities
-- [[dot-_get()]] - degree 17, connects to 3 communities
-- [[TestKalshiClientValidateLogsError]] - degree 5, connects to 2 communities
-- [[dot-_validate()]] - degree 13, connects to 1 community
+- [[test_trading.py]] - degree 41, connects to 18 communities
+- [[test_zero_edge_group_splits_equally()]] - degree 4, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 530"
-location: "L3099"
+community: "Community 588"
+location: "L3468"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_530
+  - community/Community_588
 ---
 
 # TestUtcTodayDate
@@ -17,4 +17,4 @@ tags:
 - [[L5-E weather_markets must use datetime.now(UTC).date() not date.today() for…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_530
+#graphify/code #graphify/EXTRACTED #community/Community_588

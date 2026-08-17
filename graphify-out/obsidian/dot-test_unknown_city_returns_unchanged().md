@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 490"
-location: "L3349"
+community: "Community 531"
+location: "L3718"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_490
+  - community/Community_531
 ---
 
 # .test_unknown_city_returns_unchanged()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestStationBiasKeys]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_490
+#graphify/code #graphify/EXTRACTED #community/Community_531

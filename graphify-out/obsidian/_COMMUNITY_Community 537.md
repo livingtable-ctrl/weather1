@@ -1,20 +1,21 @@
 ---
 type: community
-cohesion: 0.70
-members: 5
+cohesion: 0.47
+members: 6
 ---
 
 # Community 537
 
-**Cohesion:** 0.70 - tightly connected
-**Members:** 5 nodes
+**Cohesion:** 0.47 - moderately connected
+**Members:** 6 nodes
 
 ## Members
-- [[Pytest Run Output 1]] - document - test_output.txt
-- [[Pytest Run Output 2]] - document - test_output2.txt
-- [[TestBlackSwanModetest_no_conditions_on_clean_trades (FAILED)]] - code - tests/test_p9_p10.py
-- [[TestCronLocktest_lock_released_in_finally (FAILED)]] - code - tests/test_execution_stability.py
-- [[test_cmd_cron_logs_state_snapshot (FAILED)]] - code - tests/test_state_consistency.py
+- [[Generate an index of unfinished backlog.txt entries. backlog.txt is a single…]] - rationale - backlog_index.py
+- [[Split backlog.txt into entries anchored on '' at column 0, and return one dict…]] - rationale - backlog_index.py
+- [[backlog_index.py]] - code - backlog_index.py
+- [[main()_1]] - code - backlog_index.py
+- [[parse_entries()]] - code - backlog_index.py
+- [[render()]] - code - backlog_index.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -22,3 +23,9 @@ members: 5
 TABLE source_file, type FROM #community/Community_537
 SORT file.name ASC
 ```
+
+## Connections to other communities
+- 1 edge to [[_COMMUNITY_Community 4]]
+
+## Top bridge nodes
+- [[backlog_index.py]] - degree 5, connects to 1 community

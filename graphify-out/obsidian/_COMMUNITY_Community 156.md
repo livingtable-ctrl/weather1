@@ -1,35 +1,36 @@
 ---
 type: community
-cohesion: 0.12
-members: 20
+cohesion: 0.13
+members: 21
 ---
 
 # Community 156
 
-**Cohesion:** 0.12 - loosely connected
-**Members:** 20 nodes
+**Cohesion:** 0.13 - loosely connected
+**Members:** 21 nodes
 
 ## Members
-- [[1b Wire MAX_DRAWDOWN_FRACTION through BotConfig]] - document - docs/superpowers/plans/do-after-graduation.md
-- [[1d Split paper.py (2,193 lines)]] - document - docs/superpowers/plans/do-after-graduation.md
-- [[2a Dynamic Cap Based on Brier Score]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
-- [[2b Condition-Type Brier Up-Weighting]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
-- [[4a Early Exit on Model Cycle Update]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
-- [[4c Entry Hour Tracking]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
-- [[D9 Kalshi Market URL Links]] - document - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[G4 Split paper.py]] - document - docs/superpowers/plans/2026-06-27-category-g-architecture.md
-- [[G5 Config Consolidation (BotConfig)]] - document - docs/superpowers/plans/2026-06-27-category-g-architecture.md
-- [[H11 Weather Alert Display]] - document - docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md
-- [[H5 Position Building Indicator]] - document - docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md
-- [[H7 Portfolio Expected Value Card]] - document - docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md
-- [[Kelly Cap Raise (25%→33%)]] - document - docs/superpowers/specs/2026-04-10-suggested-bets-design.md
-- [[LV2 Marginal Kelly (Portfolio Covariance)]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
-- [[LV7 Cross-Market Signals]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
-- [[PositionsTab.jsx Component]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[Trades Page Spec (trades)]] - document - docs/superpowers/specs/2026-04-10-dashboard-modernization-design.md
-- [[config.py Module (BotConfig)]] - code - docs/superpowers/plans/2026-06-27-category-g-architecture.md
-- [[paper.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[shared.jsx Helpers]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[dot-_run()_1]] - code - tests/test_settlement_monitor.py
+- [[dot-test_between_path_not_calibrated()]] - code - tests/test_settlement_monitor.py
+- [[dot-test_calibration_failure_fails_closed()]] - code - tests/test_settlement_monitor.py
+- [[dot-test_magnitude_cap_boundary_just_over_060_skips()]] - code - tests/test_settlement_monitor.py
+- [[dot-test_magnitude_cap_boundary_just_under_060_applies()]] - code - tests/test_settlement_monitor.py
+- [[dot-test_magnitude_cap_still_skips_pathological_correction()]] - code - tests/test_settlement_monitor.py
+- [[dot-test_magnitude_cap_uses_metar_limit_not_generic_030()]] - code - tests/test_settlement_monitor.py
+- [[dot-test_no_calibration_model_leaves_confidence_unchanged()]] - code - tests/test_settlement_monitor.py
+- [[dot-test_no_lock_orientation_round_trip_not_inverted()]] - code - tests/test_settlement_monitor.py
+- [[dot-test_yes_lock_calibration_crosses_the_080_gate()]] - code - tests/test_settlement_monitor.py
+- [[Fresh install  below the fit's data floor -- no calibration file on disk yet…]] - rationale - tests/test_settlement_monitor.py
+- [[If _load_metar_calibration (or the calibration call itself) raises…]] - rationale - tests/test_settlement_monitor.py
+- [[Mirror of the test above a delta of 0.61 (just over 0.60) must be skipped,…]] - rationale - tests/test_settlement_monitor.py
+- [[Regression guard for the exact bug class two opus reviews caught twice already…]] - rationale - tests/test_settlement_monitor.py
+- [[Regression test for the exact HIGH finding the entry-path fix's review caught…]] - rationale - tests/test_settlement_monitor.py
+- [[Scope boundary the `between` path uses its own separate confidence formula and…]] - rationale - tests/test_settlement_monitor.py
+- [[TestMetarSettlementCalibration]] - code - tests/test_settlement_monitor.py
+- [[The cap must still actually cap something -- a correction whose delta exceeds…]] - rationale - tests/test_settlement_monitor.py
+- [[Tighten the cap value itself, not just bracket it loosely a delta of 0.59…]] - rationale - tests/test_settlement_monitor.py
+- [[backlog.txt L4 settlement_monitor.py's T-ticker force-close path must apply…]] - rationale - tests/test_settlement_monitor.py
+- [[cron.py force-closes at confidence = 0.80. A raw YES-lock confidence of 0.90…]] - rationale - tests/test_settlement_monitor.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -39,16 +40,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 104]]
-- 3 edges to [[_COMMUNITY_Community 154]]
-- 3 edges to [[_COMMUNITY_Community 249]]
-- 3 edges to [[_COMMUNITY_Community 199]]
-- 2 edges to [[_COMMUNITY_Community 179]]
-- 1 edge to [[_COMMUNITY_Community 141]]
+- 1 edge to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 227]]
 
 ## Top bridge nodes
-- [[paper.py Module]] - degree 17, connects to 4 communities
-- [[H11 Weather Alert Display]] - degree 4, connects to 2 communities
-- [[PositionsTab.jsx Component]] - degree 5, connects to 1 community
-- [[G5 Config Consolidation (BotConfig)]] - degree 4, connects to 1 community
-- [[D9 Kalshi Market URL Links]] - degree 3, connects to 1 community
+- [[dot-_run()_1]] - degree 10, connects to 2 communities
+- [[TestMetarSettlementCalibration]] - degree 12, connects to 1 community

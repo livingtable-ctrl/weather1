@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Ensemble Weight Blending Tests"
+community: "Community 11"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_11
 ---
 
 # test_weather_markets.py
@@ -47,13 +47,14 @@ tags:
 - [[TestLearnedWeightsTTL]] - `contains` [EXTRACTED]
 - [[TestLearnedWeightsValidation]] - `contains` [EXTRACTED]
 - [[TestLiquidityEdgeScale]] - `contains` [EXTRACTED]
+- [[TestLoadMetarCalibration]] - `contains` [EXTRACTED]
 - [[TestMetarLockInLowMarketAsymmetry]] - `contains` [EXTRACTED]
 - [[TestModelBias]] - `contains` [EXTRACTED]
 - [[TestModelWeights]] - `contains` [EXTRACTED]
 - [[TestMonthlyRainCityDetection]] - `contains` [EXTRACTED]
 - [[TestMosBlendNoCrossVariableFallback]] - `contains` [EXTRACTED]
 - [[TestNoSideEntryEdgeSign]] - `contains` [EXTRACTED]
-- [[TestNormalCdf_1]] - `contains` [EXTRACTED]
+- [[TestNormalCdf]] - `contains` [EXTRACTED]
 - [[TestParseMarketPrice]] - `contains` [EXTRACTED]
 - [[TestPastDateGateCityLocal]] - `contains` [EXTRACTED]
 - [[TestStationBiasKeys]] - `contains` [EXTRACTED]
@@ -75,11 +76,12 @@ tags:
 - [[_forecast_model_weights()]] - `imports` [EXTRACTED]
 - [[_frozen_datetime_at()]] - `contains` [EXTRACTED]
 - [[_liquidity_edge_scale()]] - `imports` [EXTRACTED]
+- [[_metar_locked_enriched()]] - `contains` [EXTRACTED]
 - [[_model_weights()]] - `imports` [EXTRACTED]
 - [[_stub_ecmwf_gap_common()]] - `contains` [EXTRACTED]
 - [[analyze_trade()]] - `imports` [EXTRACTED]
 - [[censoring_correction()]] - `imports` [EXTRACTED]
-- [[datetime]] - `imports_from` [EXTRACTED]
+- [[datetime_1]] - `imports_from` [EXTRACTED]
 - [[detect_hedge_opportunity()]] - `imports` [EXTRACTED]
 - [[edge_confidence()]] - `imports` [EXTRACTED]
 - [[ensemble_stats()]] - `imports` [EXTRACTED]
@@ -90,7 +92,10 @@ tags:
 - [[normal_cdf()]] - `imports` [EXTRACTED]
 - [[nws_prob_from_quantiles()]] - `imports` [EXTRACTED]
 - [[parse_market_price()]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[snow_liquid_ratio()]] - `imports` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[test_analyze_trade_accepts_today_and_future()]] - `contains` [EXTRACTED]
 - [[test_analyze_trade_captures_ecmwf_forecast_means()]] - `contains` [EXTRACTED]
 - [[test_analyze_trade_captures_gem_ukmo_forecast_means()]] - `contains` [EXTRACTED]
@@ -109,6 +114,13 @@ tags:
 - [[test_ensemble_confidence_scale_clamped()]] - `contains` [EXTRACTED]
 - [[test_ensemble_confidence_scale_high_std_reduces_ens_weight()]] - `contains` [EXTRACTED]
 - [[test_ensemble_confidence_scale_no_std_unchanged()]] - `contains` [EXTRACTED]
+- [[test_metar_calibration_applied_for_above_market()]] - `contains` [EXTRACTED]
+- [[test_metar_calibration_bias_correction_zero_when_uncorrected()]] - `contains` [EXTRACTED]
+- [[test_metar_calibration_magnitude_capped()]] - `contains` [EXTRACTED]
+- [[test_metar_calibration_no_lock_correction_survives_the_cap()]] - `contains` [EXTRACTED]
+- [[test_metar_calibration_noop_when_no_model_on_disk()]] - `contains` [EXTRACTED]
+- [[test_metar_calibration_records_raw_prob_via_bias_correction()]] - `contains` [EXTRACTED]
+- [[test_metar_calibration_skipped_for_between_market()]] - `contains` [EXTRACTED]
 - [[test_metar_locked_trade_has_ecmwf_forecast_mean_keys()]] - `contains` [EXTRACTED]
 - [[test_metar_locked_trade_has_nbm_quantile_prob_key()]] - `contains` [EXTRACTED]
 - [[test_model_consensus_false_when_models_disagree()]] - `contains` [EXTRACTED]
@@ -119,10 +131,8 @@ tags:
 - [[test_snow_to_liquid_ratio_borderline()]] - `contains` [EXTRACTED]
 - [[test_snow_to_liquid_ratio_dry_cold()]] - `contains` [EXTRACTED]
 - [[test_wet_bulb_temp_approximation()]] - `contains` [EXTRACTED]
-- [[trade_cycle.py (headless trade-cycle engine)]] - `shares_data_with` [INFERRED]
 - [[utils.py]] - `imports_from` [EXTRACTED]
 - [[weather_markets.py]] - `imports_from` [EXTRACTED]
-- [[weather_markets.py_1]] - `references` [EXTRACTED]
 - [[wet_bulb_temp()]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_11

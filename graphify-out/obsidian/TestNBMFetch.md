@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_nbm.py"
 type: "code"
-community: "Community 234"
+community: "Community 9"
 location: "L16"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_234
+  - community/Community_9
 ---
 
 # TestNBMFetch
@@ -22,4 +22,4 @@ tags:
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[test_nbm.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_234
+#graphify/code #graphify/EXTRACTED #community/Community_9

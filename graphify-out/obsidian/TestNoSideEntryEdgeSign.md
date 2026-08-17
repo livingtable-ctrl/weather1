@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 322"
-location: "L3454"
+community: "Community 328"
+location: "L3823"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_322
+  - community/Community_328
 ---
 
 # TestNoSideEntryEdgeSign
@@ -20,4 +20,4 @@ tags:
 - [[P0-14 — entry_side_edge must be positive for a valid NO trade. Old formula…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_322
+#graphify/code #graphify/EXTRACTED #community/Community_328

@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 693"
+community: "Community 117"
+location: "L363"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_117
 ---
 
 # TestAccuracyHaltOverride
@@ -27,8 +28,8 @@ tags:
 - [[admin accuracy-clear command]] - `references` [INFERRED]
 - [[admin accuracy-override command]] - `references` [EXTRACTED]
 - [[admin accuracy-status command]] - `references` [INFERRED]
-- [[isolate_paper_data fixture]] - `references` [EXTRACTED]
+- [[isolate_paper_data()]] - `references` [EXTRACTED]
 - [[override_accuracy_halt()clear_accuracy_halt_override()…]] - `rationale_for` [EXTRACTED]
 - [[test_risk_control.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_117

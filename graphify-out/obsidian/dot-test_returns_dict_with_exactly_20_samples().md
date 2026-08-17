@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 439"
+community: "Community 10"
 location: "L2138"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_439
+  - community/Community_10
 ---
 
 # .test_returns_dict_with_exactly_20_samples()
@@ -16,4 +16,4 @@ tags:
 - [[Exactly 20 samples must return a result dict.]] - `rationale_for` [EXTRACTED]
 - [[TestOptimalThresholdGuard20]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_439
+#graphify/code #graphify/EXTRACTED #community/Community_10

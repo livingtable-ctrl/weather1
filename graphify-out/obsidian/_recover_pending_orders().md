@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 3"
 location: "L269"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # _recover_pending_orders()
@@ -27,7 +27,7 @@ tags:
 - [[log_order_result()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[run_trade_cycle()]] - `calls` [EXTRACTED]
-- [[test_live_execution.py]] - `references` [EXTRACTED]
+- [[test_live_execution.py]] - `imports` [EXTRACTED]
 - [[trade_cycle.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_3

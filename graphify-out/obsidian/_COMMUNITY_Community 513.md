@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 513
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_fewer_than_five_days_returns_none()]] - code - tests/test_paper.py
-- [[dot-test_known_daily_pnl_produces_expected_sharpe()]] - code - tests/test_paper.py
-- [[dot-test_zero_variance_returns_none()]] - code - tests/test_paper.py
-- [[5 days of known P&L - exact annualized Sharpe (sqrt(252)).]] - rationale - tests/test_paper.py
-- [[Identical daily P&L - stdev=0 - must not divide by zero.]] - rationale - tests/test_paper.py
-- [[TestGetRollingSharpe]] - code - tests/test_paper.py
+- [[dot-test_drift_tighten_edge_exported_from_utils()]] - code - tests/test_p9_p10.py
+- [[dot-test_effective_edge_raised_when_drift_detected()]] - code - tests/test_p9_p10.py
+- [[dot-test_effective_edge_unchanged_without_drift()]] - code - tests/test_p9_p10.py
+- [[DRIFT_TIGHTEN_EDGE is a positive float exported from utils.]] - rationale - tests/test_p9_p10.py
+- [[TestDriftTightenEdge]] - code - tests/test_p9_p10.py
+- [[When drift is drifting=False, effective threshold equals STRONG_EDGE.]] - rationale - tests/test_p9_p10.py
+- [[When drift is drifting=True, effective threshold = STRONG_EDGE +…]] - rationale - tests/test_p9_p10.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,8 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 56]]
+- 1 edge to [[_COMMUNITY_Community 54]]
 
 ## Top bridge nodes
-- [[TestGetRollingSharpe]] - degree 5, connects to 2 communities
+- [[TestDriftTightenEdge]] - degree 4, connects to 1 community

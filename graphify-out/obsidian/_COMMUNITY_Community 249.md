@@ -1,29 +1,29 @@
 ---
 type: community
-cohesion: 0.18
+cohesion: 0.31
 members: 14
 ---
 
 # Community 249
 
-**Cohesion:** 0.18 - loosely connected
+**Cohesion:** 0.31 - loosely connected
 **Members:** 14 nodes
 
 ## Members
-- [[10 Bias Correction by Condition Type]] - document - docs/superpowers/specs/2026-04-10-signal-quality-design.md
-- [[25 Recent-MAE Ensemble Weighting]] - document - docs/superpowers/specs/2026-04-10-signal-quality-design.md
-- [[3a Empirical Validation of STRONG_EDGEMIN_EDGE]] - document - docs/superpowers/plans/do-after-graduation.md
-- [[3b Per-Station Bias Calibration]] - document - docs/superpowers/plans/do-after-graduation.md
-- [[D10 AB Test for Market Anchor Weights]] - document - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[E11 SYNCHRONOUS=NORMAL for SQLite WAL]] - document - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
-- [[E12 Fix Dynamic Station Bias Training]] - document - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
-- [[G6 Composite DB Indexes]] - document - docs/superpowers/plans/2026-06-27-category-g-architecture.md
-- [[LV4 Market Microstructure Scoring]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
-- [[LV9 AB Test Market Anchor Weight]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
-- [[ab_test.py Module (ABTest)]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[get_brier_over_time() Tracker Function]] - document - docs/superpowers/specs/2026-04-10-dashboard-modernization-design.md
-- [[properscoring]] - code - requirements.txt
-- [[tracker.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
+- [[Confidence boost at days_out=15 should be lower than at days_out=1.]] - rationale - tests/test_regime.py
+- [[Detect the current weather regime for a city based on ensemble statistics.…]] - rationale - regime.py
+- [[Tests for regime.detect_regime() — RF6 gap closure.]] - rationale - tests/test_regime.py
+- [[_stats()]] - code - tests/test_regime.py
+- [[detect_regime()]] - code - regime.py
+- [[test_blocking_high_detected()]] - code - tests/test_regime.py
+- [[test_cold_snap_detected()]] - code - tests/test_regime.py
+- [[test_days_out_none_does_not_raise()]] - code - tests/test_regime.py
+- [[test_empty_ensemble_stats_returns_normal()]] - code - tests/test_regime.py
+- [[test_far_horizon_reduces_boost()]] - code - tests/test_regime.py
+- [[test_heat_dome_detected()]] - code - tests/test_regime.py
+- [[test_normal_detected()]] - code - tests/test_regime.py
+- [[test_regime.py]] - code - tests/test_regime.py
+- [[test_volatile_detected()]] - code - tests/test_regime.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,18 +33,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 141]]
-- 4 edges to [[_COMMUNITY_Community 199]]
-- 3 edges to [[_COMMUNITY_Community 156]]
-- 3 edges to [[_COMMUNITY_Community 209]]
-- 1 edge to [[_COMMUNITY_Community 104]]
-- 1 edge to [[_COMMUNITY_Community 147]]
-- 1 edge to [[_COMMUNITY_Community 154]]
-- 1 edge to [[_COMMUNITY_Community 197]]
+- 2 edges to [[_COMMUNITY_Community 5]]
+- 2 edges to [[_COMMUNITY_Community 445]]
+- 1 edge to [[_COMMUNITY_Community 183]]
 
 ## Top bridge nodes
-- [[tracker.py Module]] - degree 20, connects to 5 communities
-- [[LV9 AB Test Market Anchor Weight]] - degree 4, connects to 1 community
-- [[ab_test.py Module (ABTest)]] - degree 3, connects to 1 community
-- [[E12 Fix Dynamic Station Bias Training]] - degree 3, connects to 1 community
-- [[G6 Composite DB Indexes]] - degree 3, connects to 1 community
+- [[detect_regime()]] - degree 14, connects to 3 communities
+- [[test_regime.py]] - degree 12, connects to 1 community

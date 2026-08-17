@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "rationale"
-community: "Community 194"
+community: "Community 108"
 location: "L251"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_194
+  - community/Community_108
 ---
 
 # Return the exact win-rate window check_anomalies()'s WIN RATE COLLAPSE gate…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_win_rate_window()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_194
+#graphify/rationale #graphify/EXTRACTED #community/Community_108

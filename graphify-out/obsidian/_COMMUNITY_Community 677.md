@@ -1,16 +1,17 @@
 ---
 type: community
 cohesion: 1.00
-members: 1
+members: 2
 ---
 
 # Community 677
 
 **Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Members:** 2 nodes
 
 ## Members
-- [[_check_live_position_exits Function]] - code - order_executor.py
+- [[I2 _DATA_LOCK RMW Discipline]] - document - docs/grade_audit/outputs
+- [[undo_last_trade() RF2 No _DATA_LOCK, Race Condition (510)]] - document - docs/grade_audit/outputs/paper.py.md
 
 ## Live Query (requires Dataview plugin)
 

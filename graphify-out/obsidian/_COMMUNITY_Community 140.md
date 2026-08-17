@@ -1,37 +1,37 @@
 ---
 type: community
-cohesion: 0.16
+cohesion: 0.10
 members: 22
 ---
 
 # Community 140
 
-**Cohesion:** 0.16 - loosely connected
+**Cohesion:** 0.10 - loosely connected
 **Members:** 22 nodes
 
 ## Members
-- [[A sampled market whose bypass-resolved method is currently retired must be…]] - rationale - tests/test_retirement_probation.py
-- [[If the bypass-resolved method for a sampled market isn't in the retired set, it…]] - rationale - tests/test_retirement_probation.py
-- [[Isolate the probation state file and the retired-strategiespins files this…]] - rationale - tests/test_retirement_probation.py
-- [[No currently-retired method - must not even fetch markets.]] - rationale - tests/test_retirement_probation.py
-- [[None means not enough fresh evidence yet -- must not unretire.]] - rationale - tests/test_retirement_probation.py
-- [[Once brier_score_probation_rolling() reports a recovered score, the method must…]] - rationale - tests/test_retirement_probation.py
-- [[Tests for check_retirement_probation() — once-per-day generation of fresh,…]] - rationale - tests/test_retirement_probation.py
-- [[_market()]] - code - tests/test_retirement_probation.py
-- [[_mock_client()_2]] - code - tests/test_retirement_probation.py
-- [[_today()_2]] - code - tests/test_retirement_probation.py
-- [[fixture_2]] - code
-- [[test_auto_unretires_when_probation_brier_clears_threshold()]] - code - tests/test_retirement_probation.py
-- [[test_does_not_unretire_when_insufficient_probation_samples()]] - code - tests/test_retirement_probation.py
-- [[test_does_not_unretire_when_probation_brier_still_bad()]] - code - tests/test_retirement_probation.py
-- [[test_gated_to_run_once_per_day()_1]] - code - tests/test_retirement_probation.py
-- [[test_logs_probation_prediction_for_retired_method()]] - code - tests/test_retirement_probation.py
-- [[test_never_raises_on_broken_state_file()]] - code - tests/test_retirement_probation.py
-- [[test_noop_when_nothing_retired()]] - code - tests/test_retirement_probation.py
-- [[test_retirement_probation.py]] - code - tests/test_retirement_probation.py
-- [[test_runs_again_on_a_new_day()]] - code - tests/test_retirement_probation.py
-- [[test_skips_market_whose_method_is_not_retired()]] - code - tests/test_retirement_probation.py
-- [[tmp_retirement_state()]] - code - tests/test_retirement_probation.py
+- [[dot-__init__()_3]] - code - ab_test.py
+- [[dot-pick_variant()]] - code - ab_test.py
+- [[dot-record_outcome()]] - code - ab_test.py
+- [[dot-test_get_active_variant_fallback()]] - code - tests/test_ab_test.py
+- [[Any_1]] - code
+- [[Convenience load a named test from disk and pick the active variant. Returns…]] - rationale - ab_test.py
+- [[L4-A get_active_variant must return the variant value, not None. Previously…]] - rationale - tests/test_ab_test.py
+- [[L4-A variant value must round-trip through disk (JSON serializedeserialize).…]] - rationale - tests/test_ab_test.py
+- [[Pick an active variant (round-robin among non-disabled, non-exhausted variants).]] - rationale - ab_test.py
+- [[Record a trade outcome for the given variant.]] - rationale - ab_test.py
+- [[Redirect all ab_test state IO to a temp directory for test isolation.]] - rationale - tests/test_ab_test.py
+- [[Tests for ab_test.py — AB experiment framework.]] - rationale - tests/test_ab_test.py
+- [[_load_test_state()]] - code - ab_test.py
+- [[_patch_ab_dir()]] - code - tests/test_ab_test.py
+- [[_save_test_state()]] - code - ab_test.py
+- [[ab_test.ABTest]] - code - ab_test.py
+- [[fixture]] - code
+- [[get_active_variant returns ('control', None) for unknown test name.]] - rationale - tests/test_ab_test.py
+- [[get_active_variant()]] - code - ab_test.py
+- [[test_ab_test.py]] - code - tests/test_ab_test.py
+- [[test_l4a_get_active_variant_returns_value()]] - code - tests/test_ab_test.py
+- [[test_l4a_get_active_variant_value_survives_reload()]] - code - tests/test_ab_test.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -41,7 +41,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 9 edges to [[_COMMUNITY_Community 116]]
+- 5 edges to [[_COMMUNITY_Community 6]]
+- 2 edges to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[test_retirement_probation.py]] - degree 15, connects to 1 community
+- [[test_ab_test.py]] - degree 11, connects to 4 communities
+- [[get_active_variant()]] - degree 10, connects to 2 communities
+- [[_load_test_state()]] - degree 4, connects to 2 communities
+- [[dot-__init__()_3]] - degree 4, connects to 1 community
+- [[test_l4a_get_active_variant_returns_value()]] - degree 4, connects to 1 community

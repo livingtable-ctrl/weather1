@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_main_cron_smoke.py"
 type: "code"
-community: "Community 550"
-location: "L154"
+community: "Community 619"
+location: "L190"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_550
+  - community/Community_619
 ---
 
 # .test_single_bad_market_does_not_abort_scan()
@@ -14,5 +14,6 @@ tags:
 ## Connections
 - [[One market failing enrichanalyze should not kill the rest of the scan.]] - `rationale_for` [EXTRACTED]
 - [[TestCmdBrief]] - `method` [EXTRACTED]
+- [[main()]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_550
+#graphify/code #graphify/EXTRACTED #community/Community_619

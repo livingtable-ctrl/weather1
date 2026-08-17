@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/outputs/kalshi_ws.py.md"
 type: "document"
-community: "Community 198"
+community: "Community 30"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_198
+  - community/Community_30
 ---
 
 # kalshi_ws.py File Grade: median 7/10, 3 RF1 violations
@@ -14,4 +14,4 @@ tags:
 - [[kalshi_ws.py]] - `references` [EXTRACTED]
 - [[kalshi_ws.py Grade Audit]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_198
+#graphify/document #graphify/EXTRACTED #community/Community_30

@@ -1,12 +1,12 @@
 ---
 source_file: "utils.py"
 type: "code"
-community: "Community 252"
+community: "Community 305"
 location: "L212"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_252
+  - community/Community_305
 ---
 
 # classify_confidence_tier()
@@ -18,4 +18,4 @@ tags:
 - [[test_confidence_tiers.py]] - `imports` [EXTRACTED]
 - [[utils.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_252
+#graphify/code #graphify/EXTRACTED #community/Community_305

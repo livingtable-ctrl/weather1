@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_mos_nbs.py"
 type: "code"
-community: "Community 114"
+community: "Community 121"
 location: "L20"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_114
+  - community/Community_121
 ---
 
 # _mock_nbs_response()
@@ -24,4 +24,4 @@ tags:
 - [[Build a fake mos.json payload shaped like the real IEM API.]] - `rationale_for` [EXTRACTED]
 - [[test_mos_nbs.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_114
+#graphify/code #graphify/EXTRACTED #community/Community_121

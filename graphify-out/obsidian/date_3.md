@@ -1,19 +1,21 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 309"
+community: "Community 15"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_309
+  - community/Community_15
 ---
 
 # date
 
 ## Connections
-- [[dot-test_consensus_bonus_actually_raises_ci_adjusted_kelly()]] - `calls` [EXTRACTED]
-- [[dot-test_no_side_empty_bid_book()_1]] - `calls` [EXTRACTED]
-- [[dot-test_yes_side_normal_book()_1]] - `calls` [EXTRACTED]
-- [[_ny_tomorrow()]] - `references` [EXTRACTED]
+- [[_local_or_utc_today()]] - `references` [EXTRACTED]
+- [[fetch_mos()]] - `references` [EXTRACTED]
+- [[fetch_mos_best()]] - `references` [EXTRACTED]
+- [[fetch_nbm_iem()]] - `references` [EXTRACTED]
+- [[fetch_nbm_quantiles()]] - `references` [EXTRACTED]
+- [[is_mos_cached()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_309
+#graphify/code #graphify/EXTRACTED #community/Community_15

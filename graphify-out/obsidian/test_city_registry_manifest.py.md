@@ -1,20 +1,20 @@
 ---
 source_file: "tests/test_city_registry_manifest.py"
 type: "code"
-community: "Community 89"
+community: "Community 176"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_89
+  - community/Community_176
 ---
 
 # test_city_registry_manifest.py
 
 ## Connections
 - [[Guard test for the per-city registry completeness manifest (backlog.txt PER-…]] - `rationale_for` [EXTRACTED]
-- [[backtest.py_2]] - `references` [EXTRACTED]
-- [[city_registry_report()]] - `calls` [EXTRACTED]
+- [[backtest.py]] - `references` [EXTRACTED]
+- [[city_registry_report()]] - `imports` [EXTRACTED]
 - [[settlement_monitor.py]] - `references` [EXTRACTED]
 - [[test_bare_os_replace_guard.py]] - `semantically_similar_to` [INFERRED]
 - [[test_city_registry_report_logging.py]] - `shares_data_with` [INFERRED]
@@ -27,6 +27,6 @@ tags:
 - [[test_station_bias_fully_covered()]] - `contains` [EXTRACTED]
 - [[test_temperature_market_cities_excludes_rain_only_cities()]] - `contains` [EXTRACTED]
 - [[test_wfo_office_fully_covered()]] - `contains` [EXTRACTED]
-- [[weather_markets.py]] - `calls` [EXTRACTED]
+- [[weather_markets.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_89
+#graphify/code #graphify/EXTRACTED #community/Community_176

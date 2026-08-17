@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 241"
-location: "L5078"
+community: "Community 242"
+location: "L5447"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_241
+  - community/Community_242
 ---
 
 # ._condition()
@@ -20,4 +20,4 @@ tags:
 - [[dot-test_nine_members_uses_gaussian()]] - `calls` [EXTRACTED]
 - [[TestComputeEnsembleProbRefactorSafetyNet]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_241
+#graphify/code #graphify/EXTRACTED #community/Community_242

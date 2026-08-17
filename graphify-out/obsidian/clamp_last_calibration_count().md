@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 2"
 location: "L2235"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_2
 ---
 
 # clamp_last_calibration_count()
@@ -15,4 +15,4 @@ tags:
 - [[Clamp a `.last_calibration_count` sentinel value against today's live…]] - `rationale_for` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/code #graphify/EXTRACTED #community/Community_2

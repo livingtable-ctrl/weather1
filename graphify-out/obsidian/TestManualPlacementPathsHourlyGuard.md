@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 396"
+community: "Community 420"
 location: "L726"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_396
+  - community/Community_420
 ---
 
 # TestManualPlacementPathsHourlyGuard
@@ -20,4 +20,4 @@ tags:
 - [[Same gap as above, at the explicit refuse-outright guards in main.py's…]] - `rationale_for` [EXTRACTED]
 - [[test_hourly_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_396
+#graphify/code #graphify/EXTRACTED #community/Community_420

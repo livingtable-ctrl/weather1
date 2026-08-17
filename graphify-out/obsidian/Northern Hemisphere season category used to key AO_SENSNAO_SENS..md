@@ -1,12 +1,12 @@
 ---
 source_file: "climate_indices.py"
 type: "rationale"
-community: "Climatology & Climate Index Fetching"
+community: "Community 4"
 location: "L423"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_4
 ---
 
 # Northern Hemisphere season category used to key AO_SENS/NAO_SENS.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_season_bucket()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

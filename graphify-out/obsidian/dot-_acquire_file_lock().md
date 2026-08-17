@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 693"
+community: "Community 368"
 location: "L171"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_368
 ---
 
 # ._acquire_file_lock()
@@ -15,4 +15,4 @@ tags:
 - [[dot-acquire()]] - `calls` [EXTRACTED]
 - [[_CrossProcessDataLock]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_368

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_mos_nbp.py"
 type: "code"
-community: "Community 148"
+community: "Community 152"
 location: "L109"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_148
+  - community/Community_152
 ---
 
 # .test_pacific_timezone_shifts_local_dates()
@@ -15,4 +15,4 @@ tags:
 - [[Same UTC bulletin, different station timezone -- local dates must shift…]] - `rationale_for` [EXTRACTED]
 - [[TestParseNbpBulletin]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_148
+#graphify/code #graphify/EXTRACTED #community/Community_152

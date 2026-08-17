@@ -1,20 +1,21 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.33
+members: 6
 ---
 
 # Community 545
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_fetch_forecast_default_true_still_calls_get_weather_forecast()]] - code - tests/test_forecasting.py
-- [[dot-test_fetch_forecast_false_skips_get_weather_forecast()]] - code - tests/test_forecasting.py
-- [[Regression default behavior (every other existing caller) is unchanged.]] - rationale - tests/test_forecasting.py
-- [[TestEnrichWithForecastSkipsFetch]] - code - tests/test_forecasting.py
-- [[fetch_forecast=False must skip get_weather_forecast() entirely (used by…]] - rationale - tests/test_forecasting.py
+- [[53.1 Add `would_exceed_ruin_threshold(open_trades, proposed_trade, max_ruin_pct)` to `monte_carlo.py`]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[53.2 Wire into `_auto_place_trades` in `main.py`]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[53.3 Write tests]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[53.4 Verify & Commit]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[Background_8]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[Task 53 (P11.D) — Monte Carlo pre-trade portfolio gate]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,8 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
+- 1 edge to [[_COMMUNITY_Community 543]]
 
 ## Top bridge nodes
-- [[TestEnrichWithForecastSkipsFetch]] - degree 5, connects to 2 communities
+- [[Task 53 (P11.D) — Monte Carlo pre-trade portfolio gate]] - degree 6, connects to 1 community

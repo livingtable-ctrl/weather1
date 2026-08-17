@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "code"
-community: "Community 382"
+community: "Community 134"
 location: "L1375"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_382
+  - community/Community_134
 ---
 
 # .test_untiered_strong_text_no_longer_shows_multiple_stars()
@@ -16,4 +16,4 @@ tags:
 - [[TestDashboardStarsKeyOffTier]] - `method` [EXTRACTED]
 - [[_strong_market_analysis()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_382
+#graphify/code #graphify/EXTRACTED #community/Community_134

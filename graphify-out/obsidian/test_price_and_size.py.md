@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_price_and_size.py"
 type: "code"
-community: "Community 58"
+community: "Community 78"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_58
+  - community/Community_78
 ---
 
 # test_price_and_size.py
@@ -24,10 +24,13 @@ tags:
 - [[_metar_lock_in()]] - `calls` [EXTRACTED]
 - [[_metar_locked_temp_result()]] - `contains` [EXTRACTED]
 - [[_ny_tomorrow()]] - `contains` [EXTRACTED]
-- [[_price_and_size()]] - `calls` [EXTRACTED]
+- [[_price_and_size()]] - `imports` [EXTRACTED]
 - [[_prices()]] - `contains` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[utils.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_58
+#graphify/code #graphify/EXTRACTED #community/Community_78

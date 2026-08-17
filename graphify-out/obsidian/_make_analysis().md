@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_prediction_kwargs.py"
 type: "code"
-community: "Community 125"
+community: "Community 130"
 location: "L14"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_125
+  - community/Community_130
 ---
 
 # _make_analysis()
@@ -31,4 +31,4 @@ tags:
 - [[dot-test_signals_derived_when_present()]] - `calls` [EXTRACTED]
 - [[test_prediction_kwargs.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_125
+#graphify/code #graphify/EXTRACTED #community/Community_130

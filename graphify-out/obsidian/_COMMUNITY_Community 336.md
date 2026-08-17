@@ -10,17 +10,17 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-_make_client()_5]] - code - tests/test_kalshi_client.py
-- [[dot-test_cursor_passed_on_second_call()_1]] - code - tests/test_kalshi_client.py
-- [[dot-test_single_page_returns_all_markets()]] - code - tests/test_kalshi_client.py
-- [[dot-test_three_pages_returns_all()]] - code - tests/test_kalshi_client.py
-- [[dot-test_two_page_pagination_combines_results()_1]] - code - tests/test_kalshi_client.py
-- [[Cursor on first page → second call made, both pages combined.]] - rationale - tests/test_kalshi_client.py
-- [[No cursor in response → single call, all markets returned.]] - rationale - tests/test_kalshi_client.py
-- [[P1-19 get_markets must follow cursor pagination until exhausted.]] - rationale - tests/test_kalshi_client.py
-- [[TestGetMarketsPagination]] - code - tests/test_kalshi_client.py
-- [[The cursor value from page 1 is passed as a param on the page 2 call.]] - rationale - tests/test_kalshi_client.py
-- [[Three pages with cursors → all 3 pages combined.]] - rationale - tests/test_kalshi_client.py
+- [[CorruptionError]] - code - paper.py
+- [[Path_15]] - code
+- [[Raised when a file's CRC32 checksum does not match its content.]] - rationale - paper.py
+- [[Validate CRC32 checksum embedded in data dict. No-op if field absent.]] - rationale - paper.py
+- [[When every candidate (primary write AND every emergency candidate) fails, the…]] - rationale - tests/test_safe_io.py
+- [[_validate_crc()]] - code - paper.py
+- [[_write_with_crc()]] - code - tests/test_safe_io.py
+- [[test_atomic_write_error_message_accurate_when_no_emergency_copy_possible()]] - code - tests/test_safe_io.py
+- [[test_load_raises_on_tampered_file()]] - code - tests/test_safe_io.py
+- [[test_load_skips_crc_check_when_field_absent()]] - code - tests/test_safe_io.py
+- [[test_load_validates_crc_on_good_file()]] - code - tests/test_safe_io.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,12 +30,18 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 100]]
-- 1 edge to [[_COMMUNITY_Community 225]]
+- 7 edges to [[_COMMUNITY_Community 85]]
+- 4 edges to [[_COMMUNITY_Community 1]]
+- 2 edges to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 116]]
+- 1 edge to [[_COMMUNITY_Community 304]]
+- 1 edge to [[_COMMUNITY_Community 13]]
+- 1 edge to [[_COMMUNITY_Community 8]]
+- 1 edge to [[_COMMUNITY_Community 498]]
 
 ## Top bridge nodes
-- [[TestGetMarketsPagination]] - degree 7, connects to 1 community
-- [[dot-test_cursor_passed_on_second_call()_1]] - degree 3, connects to 1 community
-- [[dot-test_single_page_returns_all_markets()]] - degree 3, connects to 1 community
-- [[dot-test_three_pages_returns_all()]] - degree 3, connects to 1 community
-- [[dot-test_two_page_pagination_combines_results()_1]] - degree 3, connects to 1 community
+- [[CorruptionError]] - degree 11, connects to 7 communities
+- [[_validate_crc()]] - degree 9, connects to 3 communities
+- [[test_atomic_write_error_message_accurate_when_no_emergency_copy_possible()]] - degree 3, connects to 1 community
+- [[test_load_validates_crc_on_good_file()]] - degree 3, connects to 1 community
+- [[_write_with_crc()]] - degree 3, connects to 1 community

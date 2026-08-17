@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 122"
+community: "Community 128"
 location: "L105"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_122
+  - community/Community_128
 ---
 
 # TestAnalyzeTradeHourlyModel
@@ -31,4 +31,4 @@ tags:
 - [[Step 2 the real per-hour probability model, reached only for a city's cached…]] - `rationale_for` [EXTRACTED]
 - [[test_hourly_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_122
+#graphify/code #graphify/EXTRACTED #community/Community_128

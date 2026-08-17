@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "rationale"
-community: "Community 74"
+community: "Community 75"
 location: "L1695"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_74
+  - community/Community_75
 ---
 
 # Effective same-day slot cap for the current UTC hour. Dynamic mode: scales cap…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_sameday_effective_cap()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_74
+#graphify/rationale #graphify/EXTRACTED #community/Community_75

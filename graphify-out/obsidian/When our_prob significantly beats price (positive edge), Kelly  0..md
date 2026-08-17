@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kelly_property.py"
 type: "rationale"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 173"
 location: "L67"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_173
 ---
 
 # When our_prob significantly beats price (positive edge), Kelly > 0.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_kelly_positive_edge_gives_nonzero_fraction()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_173

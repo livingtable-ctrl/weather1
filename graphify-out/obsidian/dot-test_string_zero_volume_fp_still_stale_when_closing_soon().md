@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 280"
+community: "Community 284"
 location: "L269"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_280
+  - community/Community_284
 ---
 
 # .test_string_zero_volume_fp_still_stale_when_closing_soon()
@@ -16,4 +16,4 @@ tags:
 - [[TestIsStale]] - `method` [EXTRACTED]
 - [[is_stale()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_280
+#graphify/code #graphify/EXTRACTED #community/Community_284

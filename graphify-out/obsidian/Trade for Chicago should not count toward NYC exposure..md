@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Community 107"
+community: "Community 114"
 location: "L445"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_107
+  - community/Community_114
 ---
 
 # Trade for Chicago should not count toward NYC exposure.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_exposure_ignores_other_city()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_107
+#graphify/rationale #graphify/EXTRACTED #community/Community_114

@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 636
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_new_orleans_high_ticker_detected()]] - code - tests/test_weather_markets.py
-- [[KXHIGHTNOLA → NewOrleans (previously untracked city).]] - rationale - tests/test_weather_markets.py
+- [[dot-test_cron_wires_ws_subscribe_via_on_markets_fetched()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_on_markets_fetched_called_before_analysis()]] - code - tests/test_trade_cycle_engine.py
+- [[TestWebSocketStartOrdering]] - code - tests/test_trade_cycle_engine.py
+- [[The WebSocket must subscribe+start right after the market fetch (via…]] - rationale - tests/test_trade_cycle_engine.py
+- [[cron.py-level confirm the real cron.py wiring passes a working…]] - rationale - tests/test_trade_cycle_engine.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +24,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 116]]
-- 1 edge to [[_COMMUNITY_Community 102]]
+- 3 edges to [[_COMMUNITY_Community 17]]
+- 2 edges to [[_COMMUNITY_Community 25]]
 
 ## Top bridge nodes
-- [[dot-test_new_orleans_high_ticker_detected()]] - degree 3, connects to 2 communities
+- [[TestWebSocketStartOrdering]] - degree 6, connects to 1 community
+- [[dot-test_cron_wires_ws_subscribe_via_on_markets_fetched()]] - degree 3, connects to 1 community
+- [[dot-test_on_markets_fetched_called_before_analysis()]] - degree 2, connects to 1 community

@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_n.py"
 type: "rationale"
-community: "Community 63"
+community: "Community 60"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_63
+  - community/Community_60
 ---
 
 # test_phase2_batch_n.py — Tests for order_executor daily spend cap separation.…
 
 ## Connections
-- [[Phase 2 Batch N Daily Spend Tests]] - `rationale_for` [EXTRACTED]
+- [[test_phase2_batch_n.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_63
+#graphify/rationale #graphify/EXTRACTED #community/Community_60

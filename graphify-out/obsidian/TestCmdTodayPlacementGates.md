@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 38"
+community: "Community 36"
 location: "L967"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_38
+  - community/Community_36
 ---
 
 # TestCmdTodayPlacementGates
@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[dot-_analysis()_4]] - `method` [EXTRACTED]
 - [[dot-_market()_5]] - `method` [EXTRACTED]
-- [[dot-_run()_4]] - `method` [EXTRACTED]
+- [[dot-_run()_5]] - `method` [EXTRACTED]
 - [[dot-_run_with_cpl_spy()]] - `method` [EXTRACTED]
 - [[dot-test_check_position_limits_called_with_real_city_and_date()]] - `method` [EXTRACTED]
 - [[dot-test_fails_open_when_check_position_limits_raises()]] - `method` [EXTRACTED]
@@ -33,4 +33,4 @@ tags:
 - [[Violation]] - `uses` [INFERRED]
 - [[test_p1_remaining.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_38
+#graphify/code #graphify/EXTRACTED #community/Community_36

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 472"
+community: "Community 509"
 location: "L1295"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_472
+  - community/Community_509
 ---
 
 # TestCmdSignals
@@ -22,4 +22,4 @@ tags:
 - [[backlog.txt SIGNAL GRADUATION IS A CONVENTION part (b) the `py main.py…]] - `rationale_for` [EXTRACTED]
 - [[test_p1_remaining.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_472
+#graphify/code #graphify/EXTRACTED #community/Community_509

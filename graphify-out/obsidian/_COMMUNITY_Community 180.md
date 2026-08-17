@@ -1,33 +1,34 @@
 ---
 type: community
-cohesion: 0.12
-members: 18
+cohesion: 0.11
+members: 19
 ---
 
 # Community 180
 
-**Cohesion:** 0.12 - loosely connected
-**Members:** 18 nodes
+**Cohesion:** 0.11 - loosely connected
+**Members:** 19 nodes
 
 ## Members
-- [[Grade Audit Module Doc main.py]] - document - docs/grade_audit/modules/main.md
-- [[Grade Audit Module Doc order_executor.py]] - document - docs/grade_audit/modules/order_executor.md
-- [[Grade Audit Module Doc paper.py]] - document - docs/grade_audit/modules/paper.md
-- [[Graduation Brier Threshold (≤0.23)]] - document - docs/grade_audit/modules/paper.md
-- [[No exception when ENABLE_MICRO_LIVE is not 'true' (gate is skipped entirely).]] - rationale - tests/test_graduation_gate.py
-- [[No exception when ENABLE_MICRO_LIVE='false'.]] - rationale - tests/test_graduation_gate.py
-- [[No exception when ENABLE_MICRO_LIVE=true and count = MIN_BRIER_SAMPLES.]] - rationale - tests/test_graduation_gate.py
-- [[P2-D Gate must fail-closed when the tracker DB is unavailable. If…]] - rationale - tests/test_graduation_gate.py
-- [[RuntimeError raised when ENABLE_MICRO_LIVE=true and count  MIN_BRIER_SAMPLES.]] - rationale - tests/test_graduation_gate.py
-- [[Tests for the graduation gate in main.py (_check_graduation_gate).]] - rationale - tests/test_graduation_gate.py
-- [[_drawdown_snapshot() Effective Balance Gate]] - document - docs/grade_audit/modules/paper.md
-- [[client_order_id Idempotency Check]] - document - docs/grade_audit/modules/kalshi_client.md
-- [[test_gate_fails_closed_when_db_unavailable()]] - code - tests/test_graduation_gate.py
-- [[test_gate_passes_when_micro_live_and_sufficient_samples()]] - code - tests/test_graduation_gate.py
-- [[test_gate_raises_when_micro_live_and_insufficient_samples()]] - code - tests/test_graduation_gate.py
-- [[test_gate_skipped_when_micro_live_explicitly_false()]] - code - tests/test_graduation_gate.py
-- [[test_gate_skipped_when_micro_live_false()]] - code - tests/test_graduation_gate.py
-- [[test_graduation_gate.py]] - code - tests/test_graduation_gate.py
+- [[dot-test_breakeven_closes_position_that_peaked_then_fell()]] - code - tests/test_paper.py
+- [[dot-test_client_none_returns_empty_list()]] - code - tests/test_paper.py
+- [[dot-test_close_race_on_one_ticker_does_not_abort_remaining_checks()]] - code - tests/test_paper.py
+- [[dot-test_no_open_trades_returns_empty_list()]] - code - tests/test_paper.py
+- [[dot-test_partial_quote_coverage_logs_warning()]] - code - tests/test_paper.py
+- [[dot-test_price_fetch_error_for_one_ticker_does_not_block_others()]] - code - tests/test_paper.py
+- [[dot-test_stop_loss_close_excludes_position_from_same_cycle_breakeven_check()]] - code - tests/test_paper.py
+- [[dot-test_stop_loss_closes_position()]] - code - tests/test_paper.py
+- [[A client.get_market() failure for one ticker must not prevent other open…]] - rationale - tests/test_paper.py
+- [[A client.get_market() failure for one ticker must not prevent other open…_1]] - rationale - tests/test_paper.py
+- [[A position closed by stop-loss must not also be evaluated for breakeven in the…]] - rationale - tests/test_paper.py
+- [[A position closed by stop-loss must not also be evaluated for breakeven in the…_1]] - rationale - tests/test_paper.py
+- [[M-1 (opus review) a fetch-failure rate high enough to leave positions…]] - rationale - tests/test_paper.py
+- [[M-1 (opus review) a fetch-failure rate high enough to leave positions…_1]] - rationale - tests/test_paper.py
+- [[M-1 (opus review) if close_paper_early() raises for one ticker (e.g. a…]] - rationale - tests/test_paper.py
+- [[M-1 (opus review) if close_paper_early() raises for one ticker (e.g. a…_1]] - rationale - tests/test_paper.py
+- [[TestCheckPaperPositionExits]] - code - tests/test_paper.py
+- [[paper.check_paper_position_exits() -- the shared price-based stop-loss…]] - rationale - tests/test_paper.py
+- [[paper.check_paper_position_exits() -- the shared price-based stop-loss…_1]] - rationale - tests/test_paper.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -37,20 +38,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
-- 1 edge to [[_COMMUNITY_Community 235]]
-- 1 edge to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Community 56]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 105]]
-- 1 edge to [[_COMMUNITY_Community 273]]
-- 1 edge to [[_COMMUNITY_Community 351]]
-- 1 edge to [[_COMMUNITY_Community 49]]
-- 1 edge to [[_COMMUNITY_Community 97]]
-- 1 edge to [[_COMMUNITY_Community 142]]
+- 1 edge to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 21]]
 
 ## Top bridge nodes
-- [[Grade Audit Module Doc order_executor.py]] - degree 7, connects to 5 communities
-- [[Grade Audit Module Doc paper.py]] - degree 7, connects to 3 communities
-- [[Grade Audit Module Doc main.py]] - degree 5, connects to 2 communities
-- [[client_order_id Idempotency Check]] - degree 2, connects to 1 community
+- [[TestCheckPaperPositionExits]] - degree 12, connects to 2 communities

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 190"
+community: "Community 174"
 location: "L50"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_190
+  - community/Community_174
 ---
 
 # TestEdgeConfidenceConditionType
@@ -17,4 +17,4 @@ tags:
 - [[dot-test_unknown_condition_defaults_to_one()]] - `method` [EXTRACTED]
 - [[test_signal_quality.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_190
+#graphify/code #graphify/EXTRACTED #community/Community_174

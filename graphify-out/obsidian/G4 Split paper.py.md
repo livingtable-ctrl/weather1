@@ -1,12 +1,12 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-g-architecture.md"
 type: "document"
-community: "Community 156"
+community: "Community 160"
 location: "G4"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_156
+  - community/Community_160
 ---
 
 # G4: Split paper.py
@@ -15,4 +15,4 @@ tags:
 - [[1d Split paper.py (2,193 lines)]] - `references` [EXTRACTED]
 - [[paper.py Module]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_156
+#graphify/document #graphify/EXTRACTED #community/Community_160

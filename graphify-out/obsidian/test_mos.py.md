@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_mos.py"
 type: "code"
-community: "Community 457"
+community: "Community 4"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_457
+  - community/Community_4
 ---
 
 # test_mos.py
@@ -17,6 +18,9 @@ tags:
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[fetch_mos()]] - `calls` [EXTRACTED]
 - [[get_mos_station()]] - `calls` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[test_metar.py]] - `semantically_similar_to` [INFERRED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_457
+#graphify/code #graphify/EXTRACTED #community/Community_4

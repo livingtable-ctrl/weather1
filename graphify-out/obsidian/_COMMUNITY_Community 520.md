@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 520
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_breaching_order_is_blocked()]] - code - tests/test_phase2_batch_i.py
-- [[dot-test_check_position_limits_failure_is_logged_not_silent()]] - code - tests/test_phase2_batch_i.py
-- [[dot-test_within_limits_order_proceeds()]] - code - tests/test_phase2_batch_i.py
-- [[2026-07-09 main.py's two check_position_limits call sites checked…]] - rationale - tests/test_phase2_batch_i.py
-- [[2026-07-09 the except-pass around check_position_limits() used to swallow a…]] - rationale - tests/test_phase2_batch_i.py
-- [[TestQuickPaperBuyRespectsPositionLimits]] - code - tests/test_phase2_batch_i.py
+- [[$50 trade on a $5000 account = 1% exposure — well under 50% cap.]] - rationale - tests/test_phase2_batch_i.py
+- [[dot-test_exposure_denom_called()_1]] - code - tests/test_phase2_batch_i.py
+- [[dot-test_global_cap_triggers_correctly()]] - code - tests/test_phase2_batch_i.py
+- [[dot-test_small_order_passes_on_grown_account()]] - code - tests/test_phase2_batch_i.py
+- [[49% existing + 10% new = 59% → must breach MAX_TOTAL_OPEN_EXPOSURE (50%).]] - rationale - tests/test_phase2_batch_i.py
+- [[Global exposure cap must use _exposure_denom(), not STARTING_BALANCE.]] - rationale - tests/test_phase2_batch_i.py
+- [[TestCheckPositionLimitsDenom]] - code - tests/test_phase2_batch_i.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestQuickPaperBuyRespectsPositionLimits]] - degree 5, connects to 1 community
+- [[TestCheckPositionLimitsDenom]] - degree 5, connects to 1 community

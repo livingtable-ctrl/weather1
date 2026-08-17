@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Tracker Settlement Sigma & Disputed Rows"
+community: "Community 29"
 location: "L5770"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_Settlement_Sigma__Disputed_Rows
+  - community/Community_29
 ---
 
 # Opus-review-caught (2026-08-07): this feeds paper.is_accuracy_halted(), the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_get_rolling_win_rate_excludes_hurricane_rows()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_Settlement_Sigma__Disputed_Rows
+#graphify/rationale #graphify/EXTRACTED #community/Community_29

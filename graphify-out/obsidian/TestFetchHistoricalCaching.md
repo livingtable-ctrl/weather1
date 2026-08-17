@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climatology.py"
 type: "code"
-community: "Community 216"
+community: "Community 222"
 location: "L52"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_216
+  - community/Community_222
 ---
 
 # TestFetchHistoricalCaching
@@ -26,4 +26,4 @@ tags:
 - [[fetch_historical()'s _MEM_CACHE memoization -- previously zero direct coverage…]] - `rationale_for` [EXTRACTED]
 - [[test_climatology.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_216
+#graphify/code #graphify/EXTRACTED #community/Community_222

@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 693"
+community: "Community 1"
 location: "L1578"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_1
 ---
 
 # _exposure_denom()
@@ -15,13 +15,13 @@ tags:
 - [[P0-4 exposure denominator scales with balance so caps stay proportional. 4…]] - `rationale_for` [EXTRACTED]
 - [[check_position_limits()]] - `calls` [EXTRACTED]
 - [[covariance_kelly_scale()]] - `calls` [EXTRACTED]
-- [[get_balance()]] - `calls` [EXTRACTED]
 - [[get_city_date_exposure()]] - `calls` [EXTRACTED]
 - [[get_correlated_exposure()]] - `calls` [EXTRACTED]
 - [[get_directional_exposure()]] - `calls` [EXTRACTED]
 - [[get_ticker_exposure()]] - `calls` [EXTRACTED]
 - [[get_total_exposure()]] - `calls` [EXTRACTED]
-- [[paper.py_1]] - `contains` [EXTRACTED]
+- [[paper.get_balance]] - `calls` [EXTRACTED]
+- [[paper.py]] - `contains` [EXTRACTED]
 - [[place_paper_order()_1]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_1

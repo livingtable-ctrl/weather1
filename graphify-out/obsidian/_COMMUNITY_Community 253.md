@@ -1,29 +1,29 @@
 ---
 type: community
-cohesion: 0.16
+cohesion: 0.14
 members: 14
 ---
 
 # Community 253
 
-**Cohesion:** 0.16 - loosely connected
+**Cohesion:** 0.14 - loosely connected
 **Members:** 14 nodes
 
 ## Members
-- [[dot-test_auto_settle_called_after_sync_outcomes()]] - code - tests/test_cron_trade_updates.py
-- [[dot-test_cmd_cron_calls_auto_settle_paper_trades()]] - code - tests/test_cron_trade_updates.py
-- [[dot-test_cron_prints_signal_count_when_markets_found()]] - code - tests/test_cron_trade_updates.py
-- [[dot-test_per_ticker_print_code_exists_in_cron()]] - code - tests/test_cron_trade_updates.py
-- [[Stub out all guards that can cause cmd_cron to exit early. Without these stubs,…]] - rationale - tests/test_cron_trade_updates.py
-- [[TestCronPrintPlacedTrades]] - code - tests/test_cron_trade_updates.py
-- [[TestCronSettlesPaperTrades]] - code - tests/test_cron_trade_updates.py
-- [[Tests for cron trade update fixes.]] - rationale - tests/test_cron_trade_updates.py
-- [[_apply_cron_isolation()]] - code - tests/test_cron_trade_updates.py
-- [[auto_settle_paper_trades must be called in the same cron cycle as sync_outcomes.]] - rationale - tests/test_cron_trade_updates.py
-- [[cmd_cron must call auto_settle_paper_trades so paper trades get marked wonlost.]] - rationale - tests/test_cron_trade_updates.py
-- [[cmd_cron must emit output describing scan results and any placement activity.]] - rationale - tests/test_cron_trade_updates.py
-- [[cron.py must track placement count and include it in the run summary.]] - rationale - tests/test_cron_trade_updates.py
-- [[test_cron_trade_updates.py]] - code - tests/test_cron_trade_updates.py
+- [[dot-setup_method()_18]] - code - tests/test_execution_log.py
+- [[dot-teardown_method()_10]] - code - tests/test_execution_log.py
+- [[dot-test_all_migrated_columns_present_on_fresh_db()]] - code - tests/test_execution_log.py
+- [[dot-test_genuine_operational_error_is_not_swallowed()]] - code - tests/test_execution_log.py
+- [[dot-test_legacy_db_with_all_columns_but_no_version_self_heals()]] - code - tests/test_execution_log.py
+- [[dot-test_schema_version_equals_migration_count()]] - code - tests/test_execution_log.py
+- [[dot-test_user_version_equals_schema_version_after_init()]] - code - tests/test_execution_log.py
+- [[A brand-new DB (no legacy columns baked into CREATE TABLE) must still end up…]] - rationale - tests/test_execution_log.py
+- [[A pre-versioning DB already has every column (the old CREATE TABLE included…]] - rationale - tests/test_execution_log.py
+- [[After init_log(), PRAGMA user_version must equal _SCHEMA_VERSION.]] - rationale - tests/test_execution_log.py
+- [[Mutation-proof check for the actual bug this migration style fixes a real…]] - rationale - tests/test_execution_log.py
+- [[TestSchemaVersionMatchesMigrations]] - code - tests/test_execution_log.py
+- [[_SCHEMA_VERSION must equal len(_MIGRATIONS) -- off-by-one leaves the last…]] - rationale - tests/test_execution_log.py
+- [[backlog.txt execution_log.py's SWALLOWED-ALTER MIGRATIONS vs tracker.py's…]] - rationale - tests/test_execution_log.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,7 +33,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 109]]
+- 1 edge to [[_COMMUNITY_Community 42]]
 
 ## Top bridge nodes
-- [[test_cron_trade_updates.py]] - degree 5, connects to 1 community
+- [[TestSchemaVersionMatchesMigrations]] - degree 9, connects to 1 community

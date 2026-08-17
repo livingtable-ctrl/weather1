@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_shadow_predictions.py"
 type: "rationale"
-community: "Shadow Predictions Auto-Place Trades"
+community: "Community 44"
 location: "L120"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Shadow_Predictions_Auto-Place_Trades
+  - community/Community_44
 ---
 
 # A ticker with an existing open position must not get re-logged every cron cycle…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_trading_paused_skips_already_open_ticker()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Shadow_Predictions_Auto-Place_Trades
+#graphify/rationale #graphify/EXTRACTED #community/Community_44

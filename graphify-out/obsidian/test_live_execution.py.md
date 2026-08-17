@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 111"
+community: "Community 12"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_111
+  - community/Community_12
 ---
 
 # test_live_execution.py
@@ -50,20 +51,20 @@ tags:
 - [[_clears_taker_fee()]] - `imports` [EXTRACTED]
 - [[_exit_live_position()]] - `imports` [EXTRACTED]
 - [[_finalize_cancel()]] - `imports` [EXTRACTED]
-- [[_get_current_book()]] - `references` [EXTRACTED]
+- [[_get_current_book()]] - `imports` [EXTRACTED]
 - [[_get_live_open_positions()]] - `imports` [EXTRACTED]
 - [[_live_min_edge()]] - `imports` [EXTRACTED]
-- [[_midpoint_price()]] - `references` [EXTRACTED]
+- [[_midpoint_price()]] - `imports` [EXTRACTED]
 - [[_place_live_order()]] - `references` [EXTRACTED]
-- [[_place_live_order()_poll_pending_orders()_auto_place_trades()]] - `references` [EXTRACTED]
 - [[_poll_pending_orders()]] - `imports` [EXTRACTED]
-- [[_recover_pending_orders()]] - `references` [EXTRACTED]
+- [[_recover_pending_orders()]] - `imports` [EXTRACTED]
 - [[_replace_live_order()]] - `imports` [EXTRACTED]
 - [[_reprice_or_cancel_pending_orders()]] - `imports` [EXTRACTED]
 - [[_resolve_amend_status()]] - `imports` [EXTRACTED]
 - [[log_order()]] - `references` [EXTRACTED]
 - [[portfolio_var()]] - `references` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[update_orderbook_cache()]] - `references` [EXTRACTED]
 - [[update_peak_profits()]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_111
+#graphify/code #graphify/EXTRACTED #community/Community_12

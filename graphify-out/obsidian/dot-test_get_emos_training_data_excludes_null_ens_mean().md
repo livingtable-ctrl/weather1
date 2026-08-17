@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "code"
-community: "ML Bias Multiday-Predictions Filter"
-location: "L1039"
+community: "Community 55"
+location: "L1250"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_55
 ---
 
 # .test_get_emos_training_data_excludes_null_ens_mean()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestEmos]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/code #graphify/EXTRACTED #community/Community_55

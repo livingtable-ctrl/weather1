@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 473"
+community: "Community 510"
 location: "L399"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_473
+  - community/Community_510
 ---
 
 # .test_settlement_uses_entry_price_not_actual_fill()
@@ -15,4 +15,4 @@ tags:
 - [[TestSettlementCostBasis]] - `method` [EXTRACTED]
 - [[settle_paper_trade uses entry_price (what was deducted at entry) for P&L.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_473
+#graphify/code #graphify/EXTRACTED #community/Community_510

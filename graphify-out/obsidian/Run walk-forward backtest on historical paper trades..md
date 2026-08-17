@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L6053"
+community: "Community 3"
+location: "L6055"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_3
 ---
 
 # Run walk-forward backtest on historical paper trades.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_walk_forward()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

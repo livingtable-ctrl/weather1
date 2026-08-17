@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 437"
+community: "Community 10"
 location: "L1372"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_437
+  - community/Community_10
 ---
 
 # Each bucket should have required fields.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_bucket_fields()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_437
+#graphify/rationale #graphify/EXTRACTED #community/Community_10

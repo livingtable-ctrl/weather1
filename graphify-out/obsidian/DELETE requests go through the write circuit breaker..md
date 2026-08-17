@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_b.py"
 type: "rationale"
-community: "Community 226"
+community: "Community 7"
 location: "L155"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_226
+  - community/Community_7
 ---
 
 # DELETE requests go through the write circuit breaker.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_delete_uses_write_cb()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_226
+#graphify/rationale #graphify/EXTRACTED #community/Community_7

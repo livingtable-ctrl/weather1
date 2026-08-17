@@ -1,17 +1,21 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.33
+members: 6
 ---
 
 # Community 570
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[Log an ensemble member's temperature prediction vs actuals for accuracy…]] - rationale - tracker.py
-- [[log_member_score()]] - code - tracker.py
+- [[dot-_make_client()_9]] - code - tests/test_kalshi_client.py
+- [[dot-test_same_cycle_produces_the_same_idempotency_key()]] - code - tests/test_kalshi_client.py
+- [[dot-test_without_cycle_each_call_gets_a_different_key()]] - code - tests/test_kalshi_client.py
+- [[2026-07-09 place_maker_order never forwarded a cycle to place_order, so every…]] - rationale - tests/test_kalshi_client.py
+- [[Documents the pre-existing (and still correct for a genuinely distinct manual…]] - rationale - tests/test_kalshi_client.py
+- [[TestPlaceMakerOrderIdempotency]] - code - tests/test_kalshi_client.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +25,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Community 36]]
+- 2 edges to [[_COMMUNITY_Community 106]]
+- 1 edge to [[_COMMUNITY_Community 229]]
 
 ## Top bridge nodes
-- [[log_member_score()]] - degree 4, connects to 2 communities
+- [[TestPlaceMakerOrderIdempotency]] - degree 5, connects to 1 community
+- [[dot-test_without_cycle_each_call_gets_a_different_key()]] - degree 3, connects to 1 community
+- [[dot-test_same_cycle_produces_the_same_idempotency_key()]] - degree 2, connects to 1 community

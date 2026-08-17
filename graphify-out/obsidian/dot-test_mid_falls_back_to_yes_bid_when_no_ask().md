@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 207"
+community: "Community 81"
 location: "L117"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_207
+  - community/Community_81
 ---
 
 # .test_mid_falls_back_to_yes_bid_when_no_ask()
@@ -16,4 +16,4 @@ tags:
 - [[When yes_ask is 0 the mid falls back to yes_bid.]] - `rationale_for` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_207
+#graphify/code #graphify/EXTRACTED #community/Community_81

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecast_cache.py"
 type: "code"
-community: "Forecast Persistent Cache"
+community: "Community 14"
 location: "L250"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecast_Persistent_Cache
+  - community/Community_14
 ---
 
 # test_dump_then_load_round_trips_values()
@@ -18,4 +18,4 @@ tags:
 - [[_tuple_str_to_key()]] - `indirect_call` [INFERRED]
 - [[test_forecast_cache.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecast_Persistent_Cache
+#graphify/code #graphify/EXTRACTED #community/Community_14

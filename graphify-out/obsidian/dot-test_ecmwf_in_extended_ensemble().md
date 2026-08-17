@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ecmwf.py"
 type: "code"
-community: "Community 255"
+community: "Community 252"
 location: "L113"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_255
+  - community/Community_252
 ---
 
 # .test_ecmwf_in_extended_ensemble()
@@ -15,4 +15,4 @@ tags:
 - [[ENSEMBLE_MODELS_EXTENDED includes an ecmwf entry.]] - `rationale_for` [EXTRACTED]
 - [[TestECMWFAIFS]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_255
+#graphify/code #graphify/EXTRACTED #community/Community_252

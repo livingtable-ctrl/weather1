@@ -1,12 +1,12 @@
 ---
 source_file: "consistency.py"
 type: "rationale"
-community: "Community 32"
+community: "Community 1"
 location: "L116"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_32
+  - community/Community_1
 ---
 
 # Group markets by (series_ticker, date_str). Returns dict: key -> list of…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_group_markets()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_32
+#graphify/rationale #graphify/EXTRACTED #community/Community_1

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 102"
-location: "L2826"
+community: "Community 123"
+location: "L3195"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_102
+  - community/Community_123
 ---
 
 # Would return None without the explicit fix -- "KXRAINDALM" doesn't contain…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_dallas_rain_ticker_detected()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_102
+#graphify/rationale #graphify/EXTRACTED #community/Community_123

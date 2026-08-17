@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Ensemble Weight Blending Tests"
+community: "Community 442"
 location: "L2127"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_442
 ---
 
 # test_analyze_trade_ecmwf_consensus_gap_prob_none_when_ecmwf_prob_missing()
@@ -18,4 +18,4 @@ tags:
 - [[ecmwf_aifs_prob going None (e.g. below the 5-member floor) must leave…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_442

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "code"
-community: "Community 42"
+community: "Community 25"
 location: "L2342"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_42
+  - community/Community_25
 ---
 
 # .test_cron_batch_log_receives_rejected_tickers()
@@ -16,4 +16,4 @@ tags:
 - [[TestAnalysisAttemptDataLoss]] - `method` [EXTRACTED]
 - [[_strong_market_analysis()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_42
+#graphify/code #graphify/EXTRACTED #community/Community_25

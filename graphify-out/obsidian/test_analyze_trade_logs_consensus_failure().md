@@ -1,21 +1,21 @@
 ---
 source_file: "tests/test_silent_failures.py"
 type: "code"
-community: "Community 220"
+community: "Community 71"
 location: "L77"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_220
+  - community/Community_71
 ---
 
 # test_analyze_trade_logs_consensus_failure()
 
 ## Connections
 - [[If _get_consensus_probs raises, it must be logged — not silently defaulted.]] - `rationale_for` [EXTRACTED]
-- [[_make_enriched()_1]] - `calls` [EXTRACTED]
+- [[_make_enriched()_2]] - `calls` [EXTRACTED]
 - [[_patch_analyze_prereqs()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[test_silent_failures.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_220
+#graphify/code #graphify/EXTRACTED #community/Community_71

@@ -1,19 +1,21 @@
 ---
-source_file: "tests/test_forecasting.py"
+source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 464"
-location: "L889"
+community: "Community 238"
+location: "L222"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_464
+  - community/Community_238
 ---
 
 # ._enriched()
 
 ## Connections
-- [[dot-test_gaussian_lifts_zero_ensemble_when_forecast_is_high()]] - `calls` [EXTRACTED]
-- [[dot-test_gaussian_pulls_down_ceiling_ensemble()]] - `calls` [EXTRACTED]
-- [[TestGaussianEnsembleBlend]] - `method` [EXTRACTED]
+- [[dot-test_narrow_spread_allows_signal()]] - `calls` [EXTRACTED]
+- [[dot-test_passes_sufficient_volume()]] - `calls` [EXTRACTED]
+- [[dot-test_skips_low_volume_market()]] - `calls` [EXTRACTED]
+- [[dot-test_wide_spread_suppresses_signal()]] - `calls` [EXTRACTED]
+- [[TestMaxModelSpreadGate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_464
+#graphify/code #graphify/EXTRACTED #community/Community_238

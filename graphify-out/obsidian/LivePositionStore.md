@@ -1,21 +1,21 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 45"
+community: "Community 12"
 location: "L1136"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_45
+  - community/Community_12
 ---
 
 # LivePositionStore
 
 ## Connections
-- [[dot-__init__()_7]] - `method` [EXTRACTED]
-- [[dot-exit()]] - `method` [EXTRACTED]
-- [[dot-get_open()]] - `method` [EXTRACTED]
-- [[dot-save_peak()]] - `method` [EXTRACTED]
+- [[dot-__init__()_2]] - `method` [EXTRACTED]
+- [[dot-exit()_1]] - `method` [EXTRACTED]
+- [[dot-get_open()_1]] - `method` [EXTRACTED]
+- [[dot-save_peak()_1]] - `method` [EXTRACTED]
 - [[dot-test_does_not_overwrite_a_higher_stored_peak()]] - `calls` [EXTRACTED]
 - [[dot-test_exit_wraps_exit_live_position()]] - `calls` [EXTRACTED]
 - [[dot-test_get_open_converts_filled_unsettled_rows_to_positions()]] - `calls` [EXTRACTED]
@@ -58,10 +58,9 @@ tags:
 - [[TestVarGateFailsClosed]] - `uses` [INFERRED]
 - [[_LiveDBTestBase]] - `uses` [INFERRED]
 - [[_check_live_position_exits()]] - `calls` [EXTRACTED]
-- [[execution_log.py_1]] - `calls` [EXTRACTED]
-- [[order_executor.py]] - `contains` [EXTRACTED]
-- [[order_executor.py_1]] - `implements` [EXTRACTED]
+- [[execution_log.py]] - `calls` [EXTRACTED]
+- [[order_executor.py]] - `implements` [EXTRACTED]
 - [[test_live_execution.py]] - `imports` [EXTRACTED]
-- [[test_positions.py]] - `calls` [EXTRACTED]
+- [[test_positions.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Community_45
+#graphify/code #graphify/INFERRED #community/Community_12

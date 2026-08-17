@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_b.py"
 type: "rationale"
-community: "Community 248"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_248
+  - community/Community_4
 ---
 
 # Phase 2 Batch B regression tests: P2-2, P2-4, P2-14.
 
 ## Connections
-- [[Phase 2 Batch B Regression Tests]] - `rationale_for` [EXTRACTED]
+- [[test_phase2_batch_b.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_248
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

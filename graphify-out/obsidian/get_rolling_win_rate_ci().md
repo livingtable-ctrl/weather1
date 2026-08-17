@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Community 582"
+community: "Community 2"
 location: "L2137"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_582
+  - community/Community_2
 ---
 
 # get_rolling_win_rate_ci()
@@ -17,4 +17,4 @@ tags:
 - [[get_rolling_win_rate()]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_582
+#graphify/code #graphify/EXTRACTED #community/Community_2

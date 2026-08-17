@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 617
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_audit_settlement_hourly_writes_settled_value_not_temp_f()]] - code - tests/test_tracker.py
-- [[backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 2 handoff item 3 a…]] - rationale - tests/test_tracker.py
+- [[dot-test_no_warning_on_private_key()]] - code - tests/test_kalshi_client.py
+- [[dot-test_warns_on_world_readable_key()]] - code - tests/test_kalshi_client.py
+- [[Loading a key file with 0600 permissions emits no warning (Unix only).]] - rationale - tests/test_kalshi_client.py
+- [[Loading a key file with groupother read bits set emits a warning (Unix only).]] - rationale - tests/test_kalshi_client.py
+- [[TestKeyPermissions]] - code - tests/test_kalshi_client.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,7 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
+- 1 edge to [[_COMMUNITY_Community 229]]
 
 ## Top bridge nodes
-- [[dot-test_audit_settlement_hourly_writes_settled_value_not_temp_f()]] - degree 2, connects to 1 community
+- [[TestKeyPermissions]] - degree 3, connects to 1 community

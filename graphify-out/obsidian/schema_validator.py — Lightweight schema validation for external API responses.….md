@@ -1,12 +1,12 @@
 ---
 source_file: "schema_validator.py"
 type: "rationale"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 6"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_6
 ---
 
 # schema_validator.py — Lightweight schema validation for external API responses.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[schema_validator.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/rationale #graphify/EXTRACTED #community/Community_6

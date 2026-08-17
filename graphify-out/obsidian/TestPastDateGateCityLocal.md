@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 206"
-location: "L3171"
+community: "Community 213"
+location: "L3540"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_206
+  - community/Community_213
 ---
 
 # TestPastDateGateCityLocal
@@ -19,4 +19,4 @@ tags:
 - [[dot-test_same_day_market_still_open_during_utc_rollover_window()]] - `method` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_206
+#graphify/code #graphify/EXTRACTED #community/Community_213

@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Community 298"
+community: "Community 13"
 location: "L628"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_298
+  - community/Community_13
 ---
 
 # .amend_order()
@@ -17,4 +17,4 @@ tags:
 - [[KalshiClient]] - `method` [EXTRACTED]
 - [[_to_v2_side_price()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_298
+#graphify/code #graphify/EXTRACTED #community/Community_13

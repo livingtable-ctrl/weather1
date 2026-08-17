@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L649"
+community: "Community 5"
+location: "L650"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_5
 ---
 
 # _save_forecast_disk_entry()
@@ -17,4 +17,4 @@ tags:
 - [[get_weather_forecast()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_5

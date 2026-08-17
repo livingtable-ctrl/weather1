@@ -1,12 +1,12 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md"
 type: "document"
-community: "Community 199"
+community: "Community 202"
 location: "H6"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_199
+  - community/Community_202
 ---
 
 # H6: Signal Drill-Down Panel
@@ -15,4 +15,4 @@ tags:
 - [[D1 Forecast Source Attribution]] - `references` [EXTRACTED]
 - [[SignalsTab.jsx Component]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_199
+#graphify/document #graphify/EXTRACTED #community/Community_202

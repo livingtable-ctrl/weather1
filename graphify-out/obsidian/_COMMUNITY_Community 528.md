@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.38
+members: 7
 ---
 
 # Community 528
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.38 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_no_entry_side_edge_uses_no_ask()]] - code - tests/test_weather_markets.py
-- [[dot-test_yes_entry_side_edge_uses_yes_ask()]] - code - tests/test_weather_markets.py
-- [[L7-C entry_side_edge must use ask price, not mid, for each side.]] - rationale - tests/test_weather_markets.py
-- [[NO trades entry_side_edge = P(NO wins) - no_ask = (1-blended_prob) -…]] - rationale - tests/test_weather_markets.py
-- [[TestEntryEdgeVsMidEdge]] - code - tests/test_weather_markets.py
-- [[YES trades entry_side_edge = blended_prob - yes_ask (smaller than mid-edge).]] - rationale - tests/test_weather_markets.py
+- [[dot-_daily_market()_2]] - code - tests/test_snow_markets.py
+- [[dot-test_exclusion_holds_even_if_a_date_were_parseable()]] - code - tests/test_snow_markets.py
+- [[dot-test_mixed_list_fit_matches_daily_only_fit()_1]] - code - tests/test_snow_markets.py
+- [[dot-test_snow_only_list_produces_no_distributions()]] - code - tests/test_snow_markets.py
+- [[Real regression guard for the explicit prefix exclusion -- proves it does real…]] - rationale - tests/test_snow_markets.py
+- [[TestComputeMarketImpliedExcludesMonthlySnow]] - code - tests/test_snow_markets.py
+- [[compute_market_implied_distributions() groups by (city, target_date)…_1]] - rationale - tests/test_snow_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,10 +26,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 3 edges to [[_COMMUNITY_Community 317]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestEntryEdgeVsMidEdge]] - degree 4, connects to 1 community
-- [[dot-test_no_entry_side_edge_uses_no_ask()]] - degree 3, connects to 1 community
-- [[dot-test_yes_entry_side_edge_uses_yes_ask()]] - degree 3, connects to 1 community
+- [[TestComputeMarketImpliedExcludesMonthlySnow]] - degree 6, connects to 1 community
+- [[dot-test_exclusion_holds_even_if_a_date_were_parseable()]] - degree 4, connects to 1 community
+- [[dot-test_mixed_list_fit_matches_daily_only_fit()_1]] - degree 3, connects to 1 community
+- [[dot-test_snow_only_list_produces_no_distributions()]] - degree 2, connects to 1 community

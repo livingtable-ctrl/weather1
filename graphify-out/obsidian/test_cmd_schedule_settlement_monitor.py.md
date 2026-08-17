@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cmd_schedule_settlement_monitor.py"
 type: "code"
-community: "Community 64"
+community: "Community 53"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_64
+  - community/Community_53
 ---
 
 # test_cmd_schedule_settlement_monitor.py
@@ -28,6 +28,8 @@ tags:
 - [[cmd_schedule() must register a settlement-monitor task that spans every tracked…]] - `rationale_for` [EXTRACTED]
 - [[datetime_4]] - `imports_from` [EXTRACTED]
 - [[settlement_monitor.py]] - `references` [EXTRACTED]
+- [[subprocess]] - `imports` [EXTRACTED]
+- [[types]] - `imports_from` [EXTRACTED]
 - [[weather_markets.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_64
+#graphify/code #graphify/EXTRACTED #community/Community_53

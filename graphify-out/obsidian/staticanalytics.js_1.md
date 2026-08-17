@@ -1,12 +1,12 @@
 ---
 source_file: "templates/analytics.html"
 type: "code"
-community: "Community 147"
+community: "Community 334"
 location: "scripts block"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_147
+  - community/Community_334
 ---
 
 # static/analytics.js
@@ -15,4 +15,4 @@ tags:
 - [[Analytics Page Template (reference)]] - `references` [EXTRACTED]
 - [[Analytics Template Page]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_147
+#graphify/code #graphify/EXTRACTED #community/Community_334

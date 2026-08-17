@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "code"
-community: "Community 256"
+community: "Community 253"
 location: "L116"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_256
+  - community/Community_253
 ---
 
 # .test_schema_version_equals_migration_count()
@@ -15,4 +15,4 @@ tags:
 - [[TestSchemaVersionMatchesMigrations]] - `method` [EXTRACTED]
 - [[_SCHEMA_VERSION must equal len(_MIGRATIONS) -- off-by-one leaves the last…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_256
+#graphify/code #graphify/EXTRACTED #community/Community_253

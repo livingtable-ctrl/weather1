@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_drawdown_tiers.py"
 type: "code"
-community: "Community 362"
+community: "Community 376"
 location: "L82"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_362
+  - community/Community_376
 ---
 
 # .test_tier_constants_are_absolute()
@@ -15,4 +15,4 @@ tags:
 - [[P2-2 tiers must not shift when DRAWDOWN_HALT_PCT is non-default.]] - `rationale_for` [EXTRACTED]
 - [[TestDrawdownTiersRelativeToHalt]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_362
+#graphify/code #graphify/EXTRACTED #community/Community_376

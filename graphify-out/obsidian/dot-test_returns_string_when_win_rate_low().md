@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 400"
+community: "Community 425"
 location: "L33"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_400
+  - community/Community_425
 ---
 
 # .test_returns_string_when_win_rate_low()
@@ -15,4 +15,4 @@ tags:
 - [[TestGetAccuracyHaltReason]] - `method` [EXTRACTED]
 - [[get_accuracy_halt_reason returns non-empty string when rolling win rate is low.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_400
+#graphify/code #graphify/EXTRACTED #community/Community_425

@@ -1,12 +1,12 @@
 ---
 source_file: "docs/grade_audit/outputs/regime.py.md"
 type: "document"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 445"
 location: "L:10-98"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_445
 ---
 
 # detect_regime() RF6: Zero Test Coverage on Live Kelly Path (5/10)
@@ -19,4 +19,4 @@ tags:
 - [[regime.py]] - `references` [EXTRACTED]
 - [[weather_markets.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/document #graphify/EXTRACTED #community/Community_445

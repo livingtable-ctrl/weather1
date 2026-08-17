@@ -1,35 +1,35 @@
 ---
 type: community
-cohesion: 0.15
+cohesion: 0.14
 members: 20
 ---
 
 # Community 164
 
-**Cohesion:** 0.15 - loosely connected
+**Cohesion:** 0.14 - loosely connected
 **Members:** 20 nodes
 
 ## Members
-- [[dot-test_cents_string_normalized()]] - code - tests/test_p9_p10.py
-- [[dot-test_dollar_float_passed_through()]] - code - tests/test_p9_p10.py
-- [[dot-test_dollar_string_passed_through()]] - code - tests/test_p9_p10.py
-- [[dot-test_falls_back_to_second_key_when_first_absent()]] - code - tests/test_p9_p10.py
-- [[dot-test_first_key_wins_when_both_present()]] - code - tests/test_p9_p10.py
-- [[dot-test_key_constants_match_expected_field_names()]] - code - tests/test_p9_p10.py
-- [[dot-test_legacy_cents_int_normalized()]] - code - tests/test_p9_p10.py
-- [[dot-test_no_keys_present_defaults_to_zero()]] - code - tests/test_p9_p10.py
-- [[dot-test_one_cent_int_normalized_not_misread_as_one_dollar()]] - code - tests/test_p9_p10.py
-- [[dot-test_order_executor_uses_the_shared_helper_not_a_local_copy()]] - code - tests/test_p9_p10.py
-- [[dot-test_unparseable_string_raises()]] - code - tests/test_p9_p10.py
-- [[dot-test_zero_bid_not_bypassed_by_falsy_check()]] - code - tests/test_p9_p10.py
-- [[A genuine 0-valued field (0¢ bid) must not be skipped in favor of a later…]] - rationale - tests/test_p9_p10.py
-- [[A string price  1.0 is the legacy cents-as-string format.]] - rationale - tests/test_p9_p10.py
-- [[Deliberately unguarded -- order_executor.py's live reprice loop and…]] - rationale - tests/test_p9_p10.py
-- [[Regression guard for the consolidation itself order_executor.py must no longer…]] - rationale - tests/test_p9_p10.py
-- [[Return the first present field as a 0.0-1.0 decimal, trying each key in order.…]] - rationale - utils.py
-- [[TestCoalesceMarketPrice]] - code - tests/test_p9_p10.py
-- [[The exact edge case that diverged across the 3 original copies an integer…]] - rationale - tests/test_p9_p10.py
-- [[coalesce_market_price()]] - code - utils.py
+- [[dot-_analyze_between_yes()]] - code - tests/test_gaussian_prob.py
+- [[dot-_make_between_enriched()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_between_edge_gate_blocks_insufficient_clearance()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_between_edge_gate_boundary_at_derived_threshold()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_between_edge_gate_passes_at_achievable_clearance()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_between_edge_gate_uses_comp_temp_f_not_current_temp_f()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_between_market_blend_sources_reports_gaussian()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_between_market_has_nonzero_p_win_gaussian()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_between_yes_lock_end_to_end_real_metar_lock_in()]] - code - tests/test_gaussian_prob.py
+- [[Drive analyze_trade with a mocked YES METAR lock so the downstream…]] - rationale - tests/test_gaussian_prob.py
+- [[End-to-end regression drive the REAL (unmocked) _metar_lock_in -- only…]] - rationale - tests/test_gaussian_prob.py
+- [[Mutation-test the exact derived threshold ((hi-lo)8 = 0.25°F for this 2°F…]] - rationale - tests/test_gaussian_prob.py
+- [[Negative control paired with the test above a reading close to the band edge…]] - rationale - tests/test_gaussian_prob.py
+- [[Positive control for the between_edge gate fix the OLD 1.5°F threshold was…]] - rationale - tests/test_gaussian_prob.py
+- [[Regression for L6-C blend_sources must contain 'gaussian' for 'between'…]] - rationale - tests/test_gaussian_prob.py
+- [[Regression for L6-C p_win_gaussian must not be None for 'between' condition…]] - rationale - tests/test_gaussian_prob.py
+- [[Regression tests for L6-C 'between' condition markets must receive a Gaussian…]] - rationale - tests/test_gaussian_prob.py
+- [[TestBetweenMarketGaussian]] - code - tests/test_gaussian_prob.py
+- [[The gate must key off comp_temp_f (the daily extreme that decided the lock),…]] - rationale - tests/test_gaussian_prob.py
+- [[Ticker ending -B70.5 → between 70.0 and 71.0.]] - rationale - tests/test_gaussian_prob.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -39,16 +39,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 50]]
-- 2 edges to [[_COMMUNITY_Community 67]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Community 144]]
-- 1 edge to [[_COMMUNITY_Community 458]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 96]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[coalesce_market_price()]] - degree 24, connects to 9 communities
-- [[TestCoalesceMarketPrice]] - degree 13, connects to 1 community
+- [[TestBetweenMarketGaussian]] - degree 11, connects to 1 community

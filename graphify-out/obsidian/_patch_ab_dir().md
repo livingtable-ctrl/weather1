@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_ab_test.py"
 type: "code"
-community: "Community 33"
+community: "Community 140"
 location: "L12"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_33
+  - community/Community_140
 ---
 
 # _patch_ab_dir()
 
 ## Connections
 - [[Redirect all ab_test state IO to a temp directory for test isolation.]] - `rationale_for` [EXTRACTED]
-- [[fixture_7]] - `references` [EXTRACTED]
+- [[fixture]] - `references` [EXTRACTED]
 - [[test_ab_test.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_33
+#graphify/code #graphify/EXTRACTED #community/Community_140

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_config_validation.py"
 type: "code"
-community: "Community 212"
+community: "Community 47"
 location: "L16"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_212
+  - community/Community_47
 ---
 
 # test_validate_config_passes_in_prod_with_keys()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_config_validation.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_212
+#graphify/code #graphify/EXTRACTED #community/Community_47

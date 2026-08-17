@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "code"
-community: "Community 73"
+community: "Community 95"
 location: "L17"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_73
+  - community/Community_95
 ---
 
 # _fresh_obs_time()
@@ -16,4 +16,4 @@ tags:
 - [[Return an obsTime string 15 minutes in the past (always within the 90-min…]] - `rationale_for` [EXTRACTED]
 - [[test_metar.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_73
+#graphify/code #graphify/EXTRACTED #community/Community_95

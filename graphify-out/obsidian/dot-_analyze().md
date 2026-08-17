@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 304"
+community: "Community 308"
 location: "L25"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_304
+  - community/Community_308
 ---
 
 # ._analyze()
@@ -20,4 +20,4 @@ tags:
 - [[dot-test_nyc_hourly_ticker_returns_none()]] - `calls` [EXTRACTED]
 - [[TestAnalyzeTradeHourlyGuard]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_304
+#graphify/code #graphify/EXTRACTED #community/Community_308

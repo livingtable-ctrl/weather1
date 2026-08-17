@@ -1,33 +1,34 @@
 ---
 type: community
-cohesion: 0.12
-members: 18
+cohesion: 0.20
+members: 19
 ---
 
 # Community 182
 
-**Cohesion:** 0.12 - loosely connected
-**Members:** 18 nodes
+**Cohesion:** 0.20 - loosely connected
+**Members:** 19 nodes
 
 ## Members
-- [[Build a header-matching regex for one AFD section name (matches just the header…]] - rationale - nws_afd.py
-- [[Grade Audit Module Doc forecast_cache.py]] - document - docs/grade_audit/modules/forecast_cache.md
-- [[No Test for Concurrent Cache Access]] - document - docs/grade_audit/outputs/forecast_cache.py.md
-- [[Pattern]] - code
-- [[Return one section's body text, or None if the section (or a real closing…]] - rationale - nws_afd.py
-- [[Tests for NBM data source integration.]] - rationale - tests/test_nbm.py
-- [[Thread-safe in-memory forecast cache with TTL expiry. Replaces the module-level…]] - rationale - forecast_cache.py
-- [[_section_body()]] - code - nws_afd.py
-- [[_section_header_re()]] - code - nws_afd.py
-- [[forecast_cache.py]] - code - forecast_cache.py
-- [[forecast_cache.py File Grade median 810, all TIER1]] - document - docs/grade_audit/outputs/forecast_cache.py.md
-- [[forecast_cache.py Grade Audit]] - document - docs/grade_audit/outputs/forecast_cache.py.md
-- [[len(entry)==3 Storage-Format Discriminator Fragility]] - document - docs/grade_audit/outputs/forecast_cache.py.md
-- [[nws.nws_prob_from_quantiles]] - code - nws.py
-- [[nws_afd.py]] - code - nws_afd.py
-- [[nws_afd.py — NWS Area Forecast Discussion (AFD) fetchparse. backlog.txt NWS…]] - rationale - nws_afd.py
-- [[set_at() Bypasses max_size Eviction Guard (710)]] - document - docs/grade_audit/outputs/forecast_cache.py.md
-- [[test_nbm.py]] - code - tests/test_nbm.py
+- [[dot-_add_null_var_score()]] - code - tests/test_tracker.py
+- [[dot-_add_prediction()]] - code - tests/test_tracker.py
+- [[dot-_id_of()]] - code - tests/test_tracker.py
+- [[dot-_var_for()]] - code - tests/test_tracker.py
+- [[dot-setUp()_8]] - code - tests/test_tracker.py
+- [[dot-tearDown()_8]] - code - tests/test_tracker.py
+- [[dot-test_already_populated_rows_untouched_and_not_recounted()]] - code - tests/test_tracker.py
+- [[dot-test_ambiguous_city_date_left_unresolved()]] - code - tests/test_tracker.py
+- [[dot-test_duplicate_null_rows_dont_abort_the_whole_batch()]] - code - tests/test_tracker.py
+- [[dot-test_idempotent_rerun()]] - code - tests/test_tracker.py
+- [[dot-test_no_matching_prediction_left_unresolved()]] - code - tests/test_tracker.py
+- [[dot-test_non_high_low_ticker_left_unresolved()]] - code - tests/test_tracker.py
+- [[dot-test_unambiguous_high_ticker_backfills_max()]] - code - tests/test_tracker.py
+- [[dot-test_unambiguous_low_ticker_backfills_min()]] - code - tests/test_tracker.py
+- [[A rainprecip market at that citydate has neither prefix -- must not be…]] - rationale - tests/test_tracker.py
+- [[Both a high and a low market traded that citydate -- no ticker on the…]] - rationale - tests/test_tracker.py
+- [[Real-data regression (found by review 2026-08-13) two pre- existing rows…]] - rationale - tests/test_tracker.py
+- [[TestBackfillEnsembleMemberScoresVar]] - code - tests/test_tracker.py
+- [[backfill_ensemble_member_scores_var() -- recovers var for legacy…]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -37,29 +38,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Forecast Persistent Cache]]
-- 3 edges to [[_COMMUNITY_Community 51]]
-- 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 3 edges to [[_COMMUNITY_Community 99]]
-- 2 edges to [[_COMMUNITY_Community 131]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 2 edges to [[_COMMUNITY_Community 62]]
-- 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Community 234]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 114]]
-- 1 edge to [[_COMMUNITY_Community 123]]
-- 1 edge to [[_COMMUNITY_Community 68]]
-- 1 edge to [[_COMMUNITY_Community 73]]
-- 1 edge to [[_COMMUNITY_Community 129]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
-- 1 edge to [[_COMMUNITY_Community 211]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[forecast_cache.py]] - degree 26, connects to 13 communities
-- [[test_nbm.py]] - degree 11, connects to 7 communities
-- [[nws_afd.py]] - degree 7, connects to 3 communities
-- [[nws.nws_prob_from_quantiles]] - degree 3, connects to 2 communities
-- [[_section_body()]] - degree 3, connects to 1 community
+- [[TestBackfillEnsembleMemberScoresVar]] - degree 16, connects to 1 community

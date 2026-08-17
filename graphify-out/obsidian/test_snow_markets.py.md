@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 174"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_174
+  - community/Community_4
 ---
 
 # test_snow_markets.py
@@ -33,9 +33,10 @@ tags:
 - [[_snow_gates_active()]] - `calls` [EXTRACTED]
 - [[_snow_market()]] - `contains` [EXTRACTED]
 - [[acis_snow.py]] - `calls` [EXTRACTED]
-- [[audit_settlement()]] - `calls` [EXTRACTED]
 - [[check_series_drift()]] - `calls` [EXTRACTED]
-- [[main.py CLI Entrypoint]] - `calls` [EXTRACTED]
+- [[logging]] - `imports` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[test_rain_markets.py]] - `semantically_similar_to` [INFERRED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_174
+#graphify/code #graphify/EXTRACTED #community/Community_4

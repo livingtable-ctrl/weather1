@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.32
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 420
 
-**Cohesion:** 0.32 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-_run_fetch()]] - code - tests/test_backtest_stratified.py
-- [[dot-test_ensemble_centred_near_forecast()]] - code - tests/test_backtest_stratified.py
-- [[dot-test_ensemble_not_centred_on_actual()]] - code - tests/test_backtest_stratified.py
-- [[Ensemble mean must NOT be within 1°F of the actual temperature (exact_val).…]] - rationale - tests/test_backtest_stratified.py
-- [[Ensemble mean must be within 5°F of the surrounding-day average (proxy…]] - rationale - tests/test_backtest_stratified.py
-- [[L6-A synthetic ensemble must be centred on a forecast, not the actual outcome.]] - rationale - tests/test_backtest_stratified.py
-- [[Monkeypatch requests.get so fetch_archive_temps uses controlled data, then…]] - rationale - tests/test_backtest_stratified.py
-- [[TestFetchArchiveTempsEnsembleCenter]] - code - tests/test_backtest_stratified.py
+- [[dot-test_cmd_order_does_not_refuse_when_gate_active()]] - code - tests/test_hourly_markets.py
+- [[dot-test_cmd_order_refuses_when_gate_inactive()]] - code - tests/test_hourly_markets.py
+- [[dot-test_cmd_paper_does_not_refuse_when_gate_active()]] - code - tests/test_hourly_markets.py
+- [[dot-test_cmd_paper_refuses_when_gate_inactive()]] - code - tests/test_hourly_markets.py
+- [[dot-test_quick_paper_buy_refuses_when_gate_inactive()]] - code - tests/test_hourly_markets.py
+- [[Mutation-test proof the conditional is real -- once active, this guard no…]] - rationale - tests/test_hourly_markets.py
+- [[Mutation-test proof proceeds past THIS guard once the gate is active._1]] - rationale - tests/test_hourly_markets.py
+- [[Same gap as above, at the explicit refuse-outright guards in main.py's…]] - rationale - tests/test_hourly_markets.py
+- [[TestManualPlacementPathsHourlyGuard]] - code - tests/test_hourly_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,8 +28,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
+- 1 edge to [[_COMMUNITY_Community 235]]
 
 ## Top bridge nodes
-- [[TestFetchArchiveTempsEnsembleCenter]] - degree 5, connects to 1 community
-- [[dot-_run_fetch()]] - degree 5, connects to 1 community
+- [[TestManualPlacementPathsHourlyGuard]] - degree 7, connects to 1 community

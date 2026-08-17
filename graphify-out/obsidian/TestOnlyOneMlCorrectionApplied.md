@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "code"
-community: "Community 214"
+community: "Community 218"
 location: "L220"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_214
+  - community/Community_218
 ---
 
 # TestOnlyOneMlCorrectionApplied
@@ -19,6 +19,6 @@ tags:
 - [[dot-test_platt_not_called_when_gbm_model_present()]] - `method` [EXTRACTED]
 - [[dot-test_source_uses_has_ml_model_gate()]] - `method` [EXTRACTED]
 - [[GBM and Platt must not both be applied to the same city's probability.]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Batch K Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_k.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_214
+#graphify/code #graphify/EXTRACTED #community/Community_218

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 446"
+community: "Community 402"
 location: "L1195"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_446
+  - community/Community_402
 ---
 
 # TestBlendWeightCalibrationPriority
@@ -16,6 +16,8 @@ tags:
 - [[dot-test_fallback_to_hardcoded_when_no_calibration()]] - `method` [EXTRACTED]
 - [[dot-test_seasonal_weights_used_when_no_city_weights()]] - `method` [EXTRACTED]
 - [[_blend_weights() must use city weights  seasonal weights  hardcoded.]] - `rationale_for` [EXTRACTED]
+- [[city_weights.json (empty, learned city blend weights)]] - `shares_data_with` [INFERRED]
+- [[condition_weights.json (abovebelowbetween blend weights)]] - `shares_data_with` [INFERRED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_446
+#graphify/code #graphify/EXTRACTED #community/Community_402

@@ -1,47 +1,47 @@
 ---
 type: community
-cohesion: 0.06
+cohesion: 0.09
 members: 32
 ---
 
 # Community 73
 
-**Cohesion:** 0.06 - loosely connected
+**Cohesion:** 0.09 - loosely connected
 **Members:** 32 nodes
 
 ## Members
-- [[dot-test_celsius_converted_to_fahrenheit()]] - code - tests/test_metar.py
-- [[dot-test_dew_point_f_parsed_from_real_dewp_celsius_field()]] - code - tests/test_metar.py
-- [[dot-test_max_min_temp_f_parsed_from_real_api_field_names()]] - code - tests/test_metar.py
-- [[dot-test_max_min_temp_f_prefers_fahrenheit_field_if_ever_present()]] - code - tests/test_metar.py
-- [[dot-test_negative_caches_failure()_2]] - code - tests/test_metar.py
-- [[dot-test_returns_current_temp_f()]] - code - tests/test_metar.py
-- [[dot-test_returns_none_for_implausible_high_temp()]] - code - tests/test_metar.py
-- [[dot-test_returns_none_for_implausible_low_temp()]] - code - tests/test_metar.py
-- [[dot-test_returns_none_on_empty_response()]] - code - tests/test_metar.py
-- [[dot-test_returns_none_on_failure()]] - code - tests/test_metar.py
-- [[dot-test_returns_none_when_observation_stale()]] - code - tests/test_metar.py
-- [[dot-test_returns_none_when_obstime_missing()]] - code - tests/test_metar.py
-- [[dot-test_returns_none_when_obstime_unparseable()]] - code - tests/test_metar.py
-- [[dot-test_returns_result_when_observation_fresh()]] - code - tests/test_metar.py
-- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_4]] - rationale - tests/test_metar.py
-- [[Defensive if the API ever adds a Fahrenheit extreme field, prefer it over…]] - rationale - tests/test_metar.py
-- [[Grade Audit Module Doc metar.py]] - document - docs/grade_audit/modules/metar.md
-- [[If only Celsius provided, convert to Fahrenheit.]] - rationale - tests/test_metar.py
-- [[P1-2 observation 30 minutes old → accepted.]] - rationale - tests/test_metar.py
-- [[P1-2 observation older than 90 minutes → None.]] - rationale - tests/test_metar.py
-- [[P1-2 response with invalid obsTime string → None.]] - rationale - tests/test_metar.py
-- [[P1-2 response with no obsTime key → None (no fabricated timestamp).]] - rationale - tests/test_metar.py
-- [[P1-2 temperature above 140°F → None (physically impossible).]] - rationale - tests/test_metar.py
-- [[P1-2 temperature below -80°F → None (physically impossible).]] - rationale - tests/test_metar.py
-- [[Regression for the field-name bug found by opus review of backlog.txt BETWEEN-…]] - rationale - tests/test_metar.py
-- [[Regression for the same field-name bug the real payload's dew point field is…]] - rationale - tests/test_metar.py
-- [[Return an obsTime string 15 minutes in the past (always within the 90-min…]] - rationale - tests/test_metar.py
-- [[TestFetchMetar]] - code - tests/test_metar.py
-- [[Tests for METAR same-day lock-in strategy.]] - rationale - tests/test_metar.py
-- [[_fresh_obs_time()]] - code - tests/test_metar.py
-- [[fetch_metar returns current_temp_f in Fahrenheit.]] - rationale - tests/test_metar.py
-- [[test_metar.py]] - code - tests/test_metar.py
+- [[dot-_seed_row()]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_37]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_38]] - code - tests/test_live_execution.py
+- [[dot-setup_method()_39]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_28]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_29]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_30]] - code - tests/test_live_execution.py
+- [[dot-test_false_when_cancel_call_itself_raises()]] - code - tests/test_live_execution.py
+- [[dot-test_false_when_order_still_resting_despite_zero_fill_count()]] - code - tests/test_live_execution.py
+- [[dot-test_false_when_partial_fill_detected()]] - code - tests/test_live_execution.py
+- [[dot-test_false_when_post_cancel_verification_query_fails()]] - code - tests/test_live_execution.py
+- [[dot-test_get_order_failure_falls_back_to_plain_canceled()]] - code - tests/test_live_execution.py
+- [[dot-test_partial_fill_cancel_promotes_to_filled()]] - code - tests/test_live_execution.py
+- [[dot-test_raw_api_status_preserved_when_still_resting()]] - code - tests/test_live_execution.py
+- [[dot-test_returns_canceled_zero_on_clean_cancel()]] - code - tests/test_live_execution.py
+- [[dot-test_returns_filled_with_count_on_partial_fill()]] - code - tests/test_live_execution.py
+- [[dot-test_returns_sentinel_negative_one_when_verification_query_fails()]] - code - tests/test_live_execution.py
+- [[dot-test_true_when_confirmed_unfilled()]] - code - tests/test_live_execution.py
+- [[dot-test_zero_fill_cancel_stays_canceled()]] - code - tests/test_live_execution.py
+- [[A cancel that hasn't propagated yet (Kalshi still reports resting) must…]] - rationale - tests/test_live_execution.py
+- [[A cancel that hasn't propagated yet (Kalshi still reports resting, zero fills…]] - rationale - tests/test_live_execution.py
+- [[Cancel a resting order and return True only if verified both genuinely unfilled…]] - rationale - order_executor.py
+- [[F9 followup _finalize_cancel() is the shared post-cancel_order() fill-check…]] - rationale - tests/test_live_execution.py
+- [[Fill state genuinely unknown here -- callers must fail closed (never place a…]] - rationale - tests/test_live_execution.py
+- [[Record the outcome of a cancel_order() call this bot just initiated. F9…]] - rationale - order_executor.py
+- [[TestCancelAndVerifySafeToReplace]] - code - tests/test_live_execution.py
+- [[TestFinalizeCancel]] - code - tests/test_live_execution.py
+- [[TestFinalizeCancelReturnValue]] - code - tests/test_live_execution.py
+- [[The cancel itself already happened -- a failed follow-up query must not leave…]] - rationale - tests/test_live_execution.py
+- [[_cancel_and_verify_safe_to_replace()]] - code - order_executor.py
+- [[_finalize_cancel now returns (status, fill_count, raw_api_status) so…]] - rationale - tests/test_live_execution.py
+- [[_finalize_cancel()]] - code - order_executor.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -51,19 +51,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_METAR Settlement Monitoring]]
-- 2 edges to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Community 339]]
-- 1 edge to [[_COMMUNITY_Community 367]]
-- 1 edge to [[_COMMUNITY_Community 399]]
-- 1 edge to [[_COMMUNITY_Community 91]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 457]]
-- 1 edge to [[_COMMUNITY_Community 182]]
-- 1 edge to [[_COMMUNITY_Forecast Persistent Cache]]
-- 1 edge to [[_COMMUNITY_Community 211]]
+- 11 edges to [[_COMMUNITY_Community 12]]
+- 4 edges to [[_COMMUNITY_Community 1]]
+- 2 edges to [[_COMMUNITY_Community 3]]
+- 2 edges to [[_COMMUNITY_Community 74]]
 
 ## Top bridge nodes
-- [[test_metar.py]] - degree 16, connects to 10 communities
-- [[TestFetchMetar]] - degree 16, connects to 1 community
-- [[Grade Audit Module Doc metar.py]] - degree 2, connects to 1 community
+- [[_finalize_cancel()]] - degree 16, connects to 4 communities
+- [[_cancel_and_verify_safe_to_replace()]] - degree 10, connects to 3 communities
+- [[TestCancelAndVerifySafeToReplace]] - degree 11, connects to 1 community
+- [[TestFinalizeCancelReturnValue]] - degree 10, connects to 1 community
+- [[TestFinalizeCancel]] - degree 9, connects to 1 community

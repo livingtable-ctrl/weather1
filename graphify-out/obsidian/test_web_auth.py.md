@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_auth.py"
 type: "code"
-community: "Community 242"
+community: "Community 243"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_242
+  - community/Community_243
 ---
 
 # test_web_auth.py
@@ -16,7 +16,7 @@ tags:
 - [[TestMutationEndpointsRequireAuth]] - `contains` [EXTRACTED]
 - [[_basic_auth()]] - `contains` [EXTRACTED]
 - [[_make_app()]] - `contains` [EXTRACTED]
-- [[utils.py_1]] - `references` [EXTRACTED]
-- [[web_app.py (Flask dashboardAPI)]] - `references` [EXTRACTED]
+- [[base64]] - `imports` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_242
+#graphify/code #graphify/EXTRACTED #community/Community_243

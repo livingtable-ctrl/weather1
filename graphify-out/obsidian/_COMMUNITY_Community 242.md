@@ -1,30 +1,30 @@
 ---
 type: community
-cohesion: 0.25
+cohesion: 0.19
 members: 15
 ---
 
 # Community 242
 
-**Cohesion:** 0.25 - loosely connected
+**Cohesion:** 0.19 - loosely connected
 **Members:** 15 nodes
 
 ## Members
-- [[dot-test_halt_with_correct_auth_succeeds()]] - code - tests/test_web_auth.py
-- [[dot-test_halt_with_wrong_password_returns_401()]] - code - tests/test_web_auth.py
-- [[dot-test_halt_without_auth_returns_401()]] - code - tests/test_web_auth.py
-- [[dot-test_no_password_allows_open_access()]] - code - tests/test_web_auth.py
-- [[dot-test_resume_with_correct_auth_succeeds()]] - code - tests/test_web_auth.py
-- [[dot-test_resume_without_auth_returns_401()]] - code - tests/test_web_auth.py
-- [[dot-test_run_cron_rate_limited_after_first_spawn()]] - code - tests/test_web_auth.py
-- [[dot-test_run_cron_without_auth_returns_401()]] - code - tests/test_web_auth.py
-- [[Create a test Flask app in demo mode.]] - rationale - tests/test_web_auth.py
-- [[P0-8 mutation endpoints must require authentication.]] - rationale - tests/test_web_auth.py
-- [[TestMutationEndpointsRequireAuth]] - code - tests/test_web_auth.py
-- [[When DASHBOARD_PASSWORD is empty, mutation endpoints are open (dev mode).]] - rationale - tests/test_web_auth.py
-- [[_basic_auth()]] - code - tests/test_web_auth.py
-- [[_make_app()]] - code - tests/test_web_auth.py
-- [[test_web_auth.py]] - code - tests/test_web_auth.py
+- [[dot-_condition()_3]] - code - tests/test_weather_markets.py
+- [[dot-test_below_condition_widens_sigma_in_gaussian_branch()]] - code - tests/test_weather_markets.py
+- [[dot-test_below_ten_members_uses_gaussian_not_emos()]] - code - tests/test_weather_markets.py
+- [[dot-test_emos_falls_back_to_raw_fraction_when_untrained()]] - code - tests/test_weather_markets.py
+- [[dot-test_emos_used_when_params_trained()]] - code - tests/test_weather_markets.py
+- [[dot-test_exactly_ten_members_uses_emos_or_ensemble_not_gaussian()]] - code - tests/test_weather_markets.py
+- [[dot-test_nine_members_uses_gaussian()]] - code - tests/test_weather_markets.py
+- [[10 members must take the Gaussian branch (_forecast_probability), never EMOS…]] - rationale - tests/test_weather_markets.py
+- [[=10 members with EMOS params available must use method='emos', not the raw-…]] - rationale - tests/test_weather_markets.py
+- [[=10 members with no EMOS params must use the raw exceedance fraction fallback,…]] - rationale - tests/test_weather_markets.py
+- [[Dedicated unit tests for _compute_ensemble_prob(), extracted from…]] - rationale - tests/test_weather_markets.py
+- [[One below the boundary must still take the Gaussian branch.]] - rationale - tests/test_weather_markets.py
+- [[TestComputeEnsembleProbRefactorSafetyNet]] - code - tests/test_weather_markets.py
+- [[The =10 boundary is inclusive -- exactly 10 members must take the EMOSraw-…]] - rationale - tests/test_weather_markets.py
+- [[below' condition type widens sigma by 1.5x in the Gaussian branch (empirical…]] - rationale - tests/test_weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,8 +34,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 176]]
-- 1 edge to [[_COMMUNITY_Community 228]]
+- 1 edge to [[_COMMUNITY_Community 11]]
 
 ## Top bridge nodes
-- [[test_web_auth.py]] - degree 6, connects to 2 communities
+- [[TestComputeEnsembleProbRefactorSafetyNet]] - degree 9, connects to 1 community

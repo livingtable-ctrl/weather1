@@ -1,28 +1,28 @@
 ---
 type: community
-cohesion: 0.19
+cohesion: 0.23
 members: 13
 ---
 
 # Community 286
 
-**Cohesion:** 0.19 - loosely connected
+**Cohesion:** 0.23 - loosely connected
 **Members:** 13 nodes
 
 ## Members
-- [[14 - get_edge_decay_curve() must segment by condition_type when provided.]] - rationale - tests/test_tracker.py
-- [[dot-_log_with_days_out()]] - code - tests/test_tracker.py
-- [[dot-setUp()_14]] - code - tests/test_tracker.py
-- [[dot-tearDown()_14]] - code - tests/test_tracker.py
-- [[dot-test_grpb_edge_decay_condition_type_filters()]] - code - tests/test_tracker.py
-- [[dot-test_grpb_edge_decay_no_filter_returns_all()]] - code - tests/test_tracker.py
-- [[dot-test_grpb_edge_decay_returns_list()]] - code - tests/test_tracker.py
-- [[dot-test_grpb_edge_decay_unknown_condition_type_returns_empty()]] - code - tests/test_tracker.py
-- [[Filtering by a condition_type with no data returns empty list.]] - rationale - tests/test_tracker.py
-- [[Filtering by above should exclude precip_any rows.]] - rationale - tests/test_tracker.py
-- [[No filter should return rows from all condition types.]] - rationale - tests/test_tracker.py
-- [[Return value is always a list (never None).]] - rationale - tests/test_tracker.py
-- [[TestEdgeDecayCurveConditionTypeGrpB]] - code - tests/test_tracker.py
+- [[dot-_make_client()_4]] - code - tests/test_phase2_batch_l.py
+- [[dot-test_check_error_body_passes_on_clean_response()]] - code - tests/test_phase2_batch_l.py
+- [[dot-test_check_error_body_passes_on_non_dict()]] - code - tests/test_phase2_batch_l.py
+- [[dot-test_check_error_body_raises_on_error_field()]] - code - tests/test_phase2_batch_l.py
+- [[dot-test_get_raises_on_error_body()]] - code - tests/test_phase2_batch_l.py
+- [[dot-test_post_raises_on_error_body()]] - code - tests/test_phase2_batch_l.py
+- [[dot-test_post_succeeds_on_clean_response()]] - code - tests/test_phase2_batch_l.py
+- [[Non-dict body (e.g. list) should not raise.]] - rationale - tests/test_phase2_batch_l.py
+- [[TestKalshiClientErrorBody]] - code - tests/test_phase2_batch_l.py
+- [[_get must raise ValueError when response JSON has an error field.]] - rationale - tests/test_phase2_batch_l.py
+- [[_get_post_delete must raise ValueError on 200-with-error responses.]] - rationale - tests/test_phase2_batch_l.py
+- [[_post must raise ValueError when response JSON has an error field.]] - rationale - tests/test_phase2_batch_l.py
+- [[_post must return data normally when no error field.]] - rationale - tests/test_phase2_batch_l.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -32,7 +32,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 13]]
+- 1 edge to [[_COMMUNITY_Community 187]]
 
 ## Top bridge nodes
-- [[TestEdgeDecayCurveConditionTypeGrpB]] - degree 9, connects to 1 community
+- [[TestKalshiClientErrorBody]] - degree 10, connects to 2 communities

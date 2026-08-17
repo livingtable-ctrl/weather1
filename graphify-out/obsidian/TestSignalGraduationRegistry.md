@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 170"
+community: "Community 178"
 location: "L1770"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_170
+  - community/Community_178
 ---
 
 # TestSignalGraduationRegistry
@@ -27,4 +27,4 @@ tags:
 - [[backlog.txt SIGNAL GRADUATION IS A CONVENTION part (b)…]] - `rationale_for` [EXTRACTED]
 - [[test_forecasting.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_170
+#graphify/code #graphify/EXTRACTED #community/Community_178

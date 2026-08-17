@@ -1,17 +1,20 @@
 ---
-source_file: "tests/test_alerts.py"
+source_file: "ab_test.py"
 type: "code"
-community: "Community 325"
-location: "L212"
+community: "Community 140"
+location: "L63"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_325
+  - community/Community_140
 ---
 
 # .__init__()
 
 ## Connections
-- [[_FakeClient_1]] - `method` [EXTRACTED]
+- [[ABTest]] - `method` [EXTRACTED]
+- [[Any_1]] - `references` [EXTRACTED]
+- [[_load_test_state()]] - `calls` [EXTRACTED]
+- [[_save_test_state()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_325
+#graphify/code #graphify/EXTRACTED #community/Community_140

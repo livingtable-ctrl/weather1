@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 507
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_cmd_paper_does_not_refuse_when_gate_active()_1]] - code - tests/test_hurricane_markets.py
-- [[dot-test_cmd_paper_refuses_when_gate_inactive()_1]] - code - tests/test_hurricane_markets.py
-- [[dot-test_quick_paper_buy_does_not_refuse_when_gate_active()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_quick_paper_buy_refuses_when_gate_inactive()_1]] - code - tests/test_hurricane_markets.py
-- [[Opus-review-caught gap only cmd_order and check_position_limits had direct…]] - rationale - tests/test_hurricane_markets.py
-- [[TestQuickPaperBuyAndCmdPaperHurricaneNextEventGuards]] - code - tests/test_hurricane_markets.py
+- [[dot-test_fresh_entry_returns_price()]] - code - tests/test_kalshi_ws.py
+- [[dot-test_missing_ts_returns_none()]] - code - tests/test_kalshi_ws.py
+- [[dot-test_stale_entry_returns_none()]] - code - tests/test_kalshi_ws.py
+- [[An entry timestamped 15 min ago is returned normally.]] - rationale - tests/test_kalshi_ws.py
+- [[An entry timestamped WS_CACHE_TTL_SECS ago returns None.]] - rationale - tests/test_kalshi_ws.py
+- [[An entry with no ts field is treated as stale.]] - rationale - tests/test_kalshi_ws.py
+- [[TestCacheStaleness]] - code - tests/test_kalshi_ws.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 90]]
+- 1 edge to [[_COMMUNITY_Community 30]]
 
 ## Top bridge nodes
-- [[TestQuickPaperBuyAndCmdPaperHurricaneNextEventGuards]] - degree 6, connects to 1 community
+- [[TestCacheStaleness]] - degree 4, connects to 1 community

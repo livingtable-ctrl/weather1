@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_validation.py"
 type: "code"
-community: "Community 488"
+community: "Community 76"
 location: "L201"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_488
+  - community/Community_76
 ---
 
 # .test_ws_cached_price_is_preferred_over_market_dict()
@@ -17,4 +17,4 @@ tags:
 - [[_opp()]] - `calls` [EXTRACTED]
 - [[_validate_trade_opportunity()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_488
+#graphify/code #graphify/EXTRACTED #community/Community_76

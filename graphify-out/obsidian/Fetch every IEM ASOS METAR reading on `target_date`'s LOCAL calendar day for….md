@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Tracker P&L Attribution Tests"
-location: "L3484"
+community: "Community 2"
+location: "L3539"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_2
 ---
 
 # Fetch every IEM ASOS METAR reading on `target_date`'s LOCAL calendar day for…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_fetch_asos_observations()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

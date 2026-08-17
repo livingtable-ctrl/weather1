@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Community 90"
+community: "Community 45"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_90
+  - community/Community_45
 ---
 
 # test_hurricane_markets.py
@@ -40,9 +41,11 @@ tags:
 - [[_analyze_hurricane_count_trade()  is_hurricane_count_ticker()]] - `references` [EXTRACTED]
 - [[_analyze_hurricane_next_event_trade()  is_hurricane_next_event_ticker()]] - `references` [EXTRACTED]
 - [[hurricane_climatology.py]] - `references` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[test_hurricane_climatology.py]] - `cites` [EXTRACTED]
 - [[test_hurricane_gating.py]] - `cites` [EXTRACTED]
 - [[test_next_event_type_values_are_a_subset_of_climatology_thresholds()]] - `contains` [EXTRACTED]
 - [[test_snow_markets.py (referenced, not in this chunk)]] - `cites` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_90
+#graphify/code #graphify/EXTRACTED #community/Community_45

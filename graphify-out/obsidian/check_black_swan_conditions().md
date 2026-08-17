@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "code"
-community: "Community 167"
+community: "Community 170"
 location: "L447"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_167
+  - community/Community_170
 ---
 
 # check_black_swan_conditions()
@@ -36,4 +36,4 @@ tags:
 - [[test_alerts_side.py]] - `imports` [EXTRACTED]
 - [[test_p9_p10.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_167
+#graphify/code #graphify/EXTRACTED #community/Community_170

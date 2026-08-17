@@ -1,16 +1,17 @@
 ---
 type: community
 cohesion: 1.00
-members: 1
+members: 2
 ---
 
 # Community 688
 
 **Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Members:** 2 nodes
 
 ## Members
-- [[Position Dataclass]] - code - positions.py
+- [[pyproject.toml Project Config]] - code - pyproject.toml
+- [[regression_baseline.json]] - document - tests/fixtures/regression_baseline.json
 
 ## Live Query (requires Dataview plugin)
 

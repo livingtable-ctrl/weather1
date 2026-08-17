@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/design-canvas.jsx"
 type: "code"
-community: "Community 564"
+community: "Community 659"
 tags:
   - graphify/code
   - graphify/AMBIGUOUS
-  - community/Community_564
+  - community/Community_659
 ---
 
 # DesignCanvas (pan/zoom review tool)
@@ -15,4 +15,4 @@ tags:
 - [[FullProto (full-prototype.jsx dashboard)]] - `conceptually_related_to` [AMBIGUOUS]
 - [[Proto (prototype.jsx dashboard)]] - `conceptually_related_to` [AMBIGUOUS]
 
-#graphify/code #graphify/AMBIGUOUS #community/Community_564
+#graphify/code #graphify/AMBIGUOUS #community/Community_659

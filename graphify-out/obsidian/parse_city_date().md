@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "ML Bias Correction & Audit Plans"
-location: "L5308"
+community: "Community 3"
+location: "L5410"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_3
 ---
 
 # parse_city_date()
@@ -16,10 +16,13 @@ tags:
 - [[_parse_city_from_ticker()]] - `calls` [EXTRACTED]
 - [[_run_batch_prewarm()]] - `calls` [EXTRACTED]
 - [[audit_settlement()]] - `calls` [EXTRACTED]
+- [[cmd_brief()]] - `calls` [EXTRACTED]
+- [[cmd_today()]] - `calls` [EXTRACTED]
 - [[compute_market_implied_distributions()]] - `calls` [EXTRACTED]
-- [[date_2]] - `references` [EXTRACTED]
+- [[date_9]] - `references` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `imports` [EXTRACTED]
 - [[trade_cycle.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/code #graphify/EXTRACTED #community/Community_3

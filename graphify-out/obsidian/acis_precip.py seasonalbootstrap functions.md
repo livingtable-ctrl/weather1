@@ -1,11 +1,11 @@
 ---
 source_file: "acis_precip.py"
 type: "code"
-community: "Community 271"
+community: "Community 141"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_271
+  - community/Community_141
 ---
 
 # acis_precip.py seasonal/bootstrap functions
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[test_acis_precip.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_271
+#graphify/code #graphify/EXTRACTED #community/Community_141

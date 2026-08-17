@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 227"
+community: "Community 30"
 location: "L192"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_227
+  - community/Community_30
 ---
 
 # read_orderbook_cache()
@@ -19,4 +19,4 @@ tags:
 - [[kalshi_ws.py]] - `contains` [EXTRACTED]
 - [[test_kalshi_ws.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_227
+#graphify/code #graphify/EXTRACTED #community/Community_30

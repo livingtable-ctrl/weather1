@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md"
 type: "code"
-community: "Community 104"
+community: "Community 172"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_104
+  - community/Community_172
 ---
 
 # web_app.py Module
@@ -25,4 +25,4 @@ tags:
 - [[Security Audit Scope]] - `references` [EXTRACTED]
 - [[flask]] - `conceptually_related_to` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_104
+#graphify/code #graphify/EXTRACTED #community/Community_172

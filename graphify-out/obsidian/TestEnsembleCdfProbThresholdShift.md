@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Weather Probability Math Tests"
+community: "Community 396"
 location: "L118"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_396
 ---
 
 # TestEnsembleCdfProbThresholdShift
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_below_uses_prob_threshold()]] - `method` [EXTRACTED]
 - [[test_weather.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_396

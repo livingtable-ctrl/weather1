@@ -1,20 +1,21 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.33
+members: 6
 ---
 
 # Community 542
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-__init__()_9]] - code - tests/test_climatology.py
-- [[dot-json()]] - code - tests/test_climatology.py
-- [[dot-raise_for_status()]] - code - tests/test_climatology.py
-- [[Minimal requests.Response stand-in for mocking climatology._session.get.]] - rationale - tests/test_climatology.py
-- [[_FakeResponse]] - code - tests/test_climatology.py
+- [[2026-04-10-group-g-dashboard]] - document - docs/superpowers/plans/2026-04-10-group-g-dashboard.md
+- [[Group G — Dashboard & Analytics Implementation Plan]] - document - docs/superpowers/plans/2026-04-10-group-g-dashboard.md
+- [[Task 1 Balance history range parameter (81)]] - document - docs/superpowers/plans/2026-04-10-group-g-dashboard.md
+- [[Task 2 Model attribution endpoint (84)]] - document - docs/superpowers/plans/2026-04-10-group-g-dashboard.md
+- [[Task 3 Per-market SSE stream endpoint (85)]] - document - docs/superpowers/plans/2026-04-10-group-g-dashboard.md
+- [[Task 4 Price improvement tracking and API endpoint (65)]] - document - docs/superpowers/plans/2026-04-10-group-g-dashboard.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -22,9 +23,3 @@ members: 5
 TABLE source_file, type FROM #community/Community_542
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 302]]
-
-## Top bridge nodes
-- [[_FakeResponse]] - degree 5, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "rationale"
-community: "Community 310"
+community: "Community 315"
 location: "L1267"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_310
+  - community/Community_315
 ---
 
 # Opus-review-caught bug (2026-07-28, verified via a live Open-Meteo API call): a…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_partial_coverage_member_excluded_not_truncated()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_310
+#graphify/rationale #graphify/EXTRACTED #community/Community_315

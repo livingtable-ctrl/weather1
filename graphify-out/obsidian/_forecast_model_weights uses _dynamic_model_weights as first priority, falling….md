@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Forecasting Persistence Model Tests"
+community: "Community 417"
 location: "L34"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_417
 ---
 
 # _forecast_model_weights uses _dynamic_model_weights as first priority, falling…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_used_as_first_priority_in_forecast_model_weights()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_417

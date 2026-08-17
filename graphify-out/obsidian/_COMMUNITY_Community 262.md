@@ -10,20 +10,20 @@ members: 14
 **Members:** 14 nodes
 
 ## Members
-- [[dot-test_b_ticker_locks_yes_from_max_temp_despite_evening_cooling()]] - code - tests/test_settlement_monitor.py
-- [[dot-test_b_ticker_malformed_band_missing_bounds_fails_closed()]] - code - tests/test_settlement_monitor.py
-- [[dot-test_b_ticker_no_signal_when_max_temp_unavailable_despite_in_band_reading()]] - code - tests/test_settlement_monitor.py
-- [[dot-test_b_ticker_outside_near_edge_not_locked()]] - code - tests/test_settlement_monitor.py
-- [[dot-test_b_ticker_yes_signal_when_max_temp_inside()]] - code - tests/test_settlement_monitor.py
-- [[dot-test_t_ticker_still_works_as_before()]] - code - tests/test_settlement_monitor.py
-- [[A between market dict missing 'lower''upper' must be skipped, not silently…]] - rationale - tests/test_settlement_monitor.py
-- [[AC3 regression guard at the check_city_settlement integration level an in-band…]] - rationale - tests/test_settlement_monitor.py
-- [[B-ticker (between-bucket) detection in check_city_settlement.]] - rationale - tests/test_settlement_monitor.py
-- [[B-ticker locked YES when the real daily high (from fetch_metar_daily_extreme,…]] - rationale - tests/test_settlement_monitor.py
-- [[B-ticker market with daily high just outside band (clearance  2°F) → no signal.]] - rationale - tests/test_settlement_monitor.py
-- [[Integration-level version of the entry's own failure scenario real daily high…]] - rationale - tests/test_settlement_monitor.py
-- [[T-ticker (abovebelow) markets are unaffected by the B-ticker changes.]] - rationale - tests/test_settlement_monitor.py
-- [[TestBTickerParsing]] - code - tests/test_settlement_monitor.py
+- [[dot-test_load_rejects_float_city_values()]] - code - tests/test_weather_markets.py
+- [[dot-test_load_rejects_non_positive_weights()]] - code - tests/test_weather_markets.py
+- [[dot-test_save_allows_valid_weights()]] - code - tests/test_weather_markets.py
+- [[dot-test_save_fails_open_when_atomic_write_raises()]] - code - tests/test_weather_markets.py
+- [[dot-test_save_rejects_float_city_values()]] - code - tests/test_weather_markets.py
+- [[dot-test_save_rejects_near_zero_weights()]] - code - tests/test_weather_markets.py
+- [[P1-9 save_learned_weights must reject corrupt data (win-rate floats), and…]] - rationale - tests/test_weather_markets.py
+- [[Regression coverage for the OTHER bare os.replace() CALL SITES backlog entry…]] - rationale - tests/test_weather_markets.py
+- [[TestLearnedWeightsValidation]] - code - tests/test_weather_markets.py
+- [[load_learned_weights must return {} and delete corrupt file with float city…]] - rationale - tests/test_weather_markets.py
+- [[load_learned_weights must return {} when any weight is = 0.]] - rationale - tests/test_weather_markets.py
+- [[save_learned_weights must not write when any model weight is near zero.]] - rationale - tests/test_weather_markets.py
+- [[save_learned_weights must not write when city values are floats (win-rates).]] - rationale - tests/test_weather_markets.py
+- [[save_learned_weights must write valid {city {model weight}} dicts.]] - rationale - tests/test_weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,7 +33,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
+- 1 edge to [[_COMMUNITY_Community 11]]
 
 ## Top bridge nodes
-- [[TestBTickerParsing]] - degree 8, connects to 1 community
+- [[TestLearnedWeightsValidation]] - degree 8, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 693"
+community: "Community 0"
 location: "L2512"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_0
 ---
 
 # clear_accuracy_halt_override()
@@ -15,7 +15,7 @@ tags:
 - [[Remove the accuracy-halt override flag early, if present -- safe to call…]] - `rationale_for` [EXTRACTED]
 - [[cmd_admin()]] - `calls` [EXTRACTED]
 - [[get_accuracy_halt_override_status()]] - `calls` [EXTRACTED]
-- [[main.py_1]] - `imports` [EXTRACTED]
-- [[paper.py_1]] - `contains` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
+- [[paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_0

@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 438
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-test_empty_condition_type_filter()]] - code - tests/test_tracker.py
-- [[dot-test_no_filter_returns_all()]] - code - tests/test_tracker.py
-- [[dot-test_nyc_high_vs_precip_different_bias()]] - code - tests/test_tracker.py
-- [[Filtering by non-existent condition_type returns empty dict.]] - rationale - tests/test_tracker.py
-- [[NYC HIGH vs NYC PRECIP should have different bias.]] - rationale - tests/test_tracker.py
-- [[TestCalibrationByCityConditionType]] - code - tests/test_tracker.py
-- [[Tests for get_calibration_by_city() with condition_type (54, 56).]] - rationale - tests/test_tracker.py
-- [[Without condition_type, all predictions are included.]] - rationale - tests/test_tracker.py
+- [[dot-setup_method()_28]] - code - tests/test_signal_quality.py
+- [[dot-teardown_method()_20]] - code - tests/test_signal_quality.py
+- [[dot-test_bias_correction_condition_type_param_accepted()]] - code - tests/test_signal_quality.py
+- [[dot-test_condition_type_scale_in_kelly()]] - code - tests/test_signal_quality.py
+- [[dot-test_monthly_rain_and_snow_condition_confidence()]] - code - tests/test_signal_quality.py
+- [[Opus-review-caught gap _CONDITION_CONFIDENCEsnow_month_total had zero test…]] - rationale - tests/test_signal_quality.py
+- [[TestAnalyzeTradeConditionType]] - code - tests/test_signal_quality.py
+- [[_CONDITION_CONFIDENCE values correctly rank precip_snow  precip_any  above.]] - rationale - tests/test_signal_quality.py
+- [[get_bias accepts condition_type kwarg — confirms the interface exists for…]] - rationale - tests/test_signal_quality.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,12 +28,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 135]]
-- 1 edge to [[_COMMUNITY_Community 313]]
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 238]]
+- 1 edge to [[_COMMUNITY_Community 2]]
 
 ## Top bridge nodes
-- [[TestCalibrationByCityConditionType]] - degree 6, connects to 2 communities
-- [[dot-test_empty_condition_type_filter()]] - degree 3, connects to 1 community
-- [[dot-test_no_filter_returns_all()]] - degree 3, connects to 1 community
-- [[dot-test_nyc_high_vs_precip_different_bias()]] - degree 3, connects to 1 community
+- [[TestAnalyzeTradeConditionType]] - degree 6, connects to 1 community
+- [[dot-test_bias_correction_condition_type_param_accepted()]] - degree 3, connects to 1 community

@@ -1,19 +1,21 @@
 ---
 type: community
 cohesion: 0.33
-members: 4
+members: 6
 ---
 
 # Community 578
 
 **Cohesion:** 0.33 - loosely connected
-**Members:** 4 nodes
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_la_high_temp_series_detected()]] - code - tests/test_weather_markets.py
-- [[dot-test_la_renamed_high_ticker()]] - code - tests/test_weather_markets.py
-- [[KXHIGHLA temperature series → city == 'LA'.]] - rationale - tests/test_weather_markets.py
-- [[KXHIGHLAX (renamed from KXHIGHLA) → LA.]] - rationale - tests/test_weather_markets.py
+- [[dot-test_breaching_order_is_blocked()]] - code - tests/test_phase2_batch_i.py
+- [[dot-test_check_position_limits_failure_is_logged_not_silent()]] - code - tests/test_phase2_batch_i.py
+- [[dot-test_within_limits_order_proceeds()]] - code - tests/test_phase2_batch_i.py
+- [[2026-07-09 main.py's two check_position_limits call sites checked…]] - rationale - tests/test_phase2_batch_i.py
+- [[2026-07-09 the except-pass around check_position_limits() used to swallow a…]] - rationale - tests/test_phase2_batch_i.py
+- [[TestQuickPaperBuyRespectsPositionLimits]] - code - tests/test_phase2_batch_i.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -23,9 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 116]]
-- 2 edges to [[_COMMUNITY_Community 102]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[dot-test_la_high_temp_series_detected()]] - degree 3, connects to 2 communities
-- [[dot-test_la_renamed_high_ticker()]] - degree 3, connects to 2 communities
+- [[TestQuickPaperBuyRespectsPositionLimits]] - degree 5, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "rationale"
-community: "Community 257"
+community: "Community 254"
 location: "L846"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_257
+  - community/Community_254
 ---
 
 # L6-E: without MOS the normalisation guard must not break the normal blend path…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_blend_sources_weights_sum_to_one_without_mos()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_257
+#graphify/rationale #graphify/EXTRACTED #community/Community_254

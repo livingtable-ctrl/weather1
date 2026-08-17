@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.24
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 461
 
-**Cohesion:** 0.24 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_mark_triggered_only_affects_matching_id()]] - code - tests/test_alerts.py
-- [[dot-test_mark_triggered_sets_flag_and_timestamp()]] - code - tests/test_alerts.py
-- [[dot-test_mark_triggered_unknown_id_does_not_raise()]] - code - tests/test_alerts.py
-- [[Redirect alerts._DATA_PATH to a per-test temp file so tests never touch the…]] - rationale - tests/test_alerts.py
-- [[TestMarkTriggered]] - code - tests/test_alerts.py
-- [[fixture_10]] - code
-- [[isolate_alerts_data()]] - code - tests/test_alerts.py
+- [[dot-test_cycle_boundaries()]] - code - tests/test_forecasting.py
+- [[dot-test_cycle_labels_cover_all_hours()]] - code - tests/test_forecasting.py
+- [[dot-test_log_prediction_called_with_forecast_cycle()]] - code - tests/test_forecasting.py
+- [[Boundary hours map to the correct cycle, including the date prefix.]] - rationale - tests/test_forecasting.py
+- [[Every UTC hour maps to a valid, date-prefixed cycle label.]] - rationale - tests/test_forecasting.py
+- [[Retargeted 2026-07-18 (backlog.txt TWO FUNCTIONS NAMED…]] - rationale - tests/test_forecasting.py
+- [[TestForecastCycle]] - code - tests/test_forecasting.py
+- [[main.py's log_prediction calls must carry forecast_cycle metadata, either as a…]] - rationale - tests/test_forecasting.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,8 +27,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 94]]
+- 2 edges to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 38]]
+- 1 edge to [[_COMMUNITY_Community 9]]
 
 ## Top bridge nodes
-- [[TestMarkTriggered]] - degree 4, connects to 1 community
-- [[isolate_alerts_data()]] - degree 3, connects to 1 community
+- [[TestForecastCycle]] - degree 6, connects to 2 communities
+- [[dot-test_cycle_boundaries()]] - degree 3, connects to 1 community
+- [[dot-test_cycle_labels_cover_all_hours()]] - degree 3, connects to 1 community

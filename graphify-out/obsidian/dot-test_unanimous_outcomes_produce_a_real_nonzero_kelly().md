@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Hurricane Market Season Signals"
+community: "Community 19"
 location: "L1456"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Hurricane_Market_Season_Signals
+  - community/Community_19
 ---
 
 # .test_unanimous_outcomes_produce_a_real_nonzero_kelly()
@@ -17,4 +17,4 @@ tags:
 - [[Opus-review-caught (2026-08-07, HIGH), verified end-to-end at the analyzer…]] - `rationale_for` [EXTRACTED]
 - [[TestAnalyzeHurricaneNextEventTrade]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Hurricane_Market_Season_Signals
+#graphify/code #graphify/EXTRACTED #community/Community_19

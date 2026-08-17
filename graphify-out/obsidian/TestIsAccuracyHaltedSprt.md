@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_sprt.py"
 type: "code"
-community: "Community 380"
+community: "Community 472"
 location: "L115"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_380
+  - community/Community_472
 ---
 
 # TestIsAccuracyHaltedSprt
@@ -18,4 +18,4 @@ tags:
 - [[Tests for SPRT wired into paper.is_accuracy_halted().]] - `rationale_for` [EXTRACTED]
 - [[test_sprt.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_380
+#graphify/code #graphify/EXTRACTED #community/Community_472

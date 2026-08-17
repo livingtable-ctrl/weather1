@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_safe_io.py"
 type: "rationale"
-community: "Community 610"
+community: "Community 85"
 location: "L284"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_610
+  - community/Community_85
 ---
 
 # Matches atomic_write_json's own path.parent.mkdir(parents=True, exist_ok=True)…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_atomic_write_text_creates_parent_dirs()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_610
+#graphify/rationale #graphify/EXTRACTED #community/Community_85

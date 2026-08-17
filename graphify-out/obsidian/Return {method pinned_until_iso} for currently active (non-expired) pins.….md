@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Community 583"
-location: "L5970"
+community: "Community 269"
+location: "L6025"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_583
+  - community/Community_269
 ---
 
 # Return {method: pinned_until_iso} for currently active (non-expired) pins.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_get_strategy_pins()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_583
+#graphify/rationale #graphify/EXTRACTED #community/Community_269

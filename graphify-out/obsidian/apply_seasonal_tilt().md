@@ -1,12 +1,12 @@
 ---
 source_file: "acis_precip.py"
 type: "code"
-community: "Community 62"
+community: "Community 23"
 location: "L463"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_62
+  - community/Community_23
 ---
 
 # apply_seasonal_tilt()
@@ -17,4 +17,4 @@ tags:
 - [[acis_snow.py]] - `imports` [EXTRACTED]
 - [[fetch_seasonal_snow_mean_cm()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_62
+#graphify/code #graphify/EXTRACTED #community/Community_23

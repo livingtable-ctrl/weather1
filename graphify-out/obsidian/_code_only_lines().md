@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_date_today_guard.py"
 type: "code"
-community: "Community 202"
+community: "Community 33"
 location: "L67"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_202
+  - community/Community_33
 ---
 
 # _code_only_lines()
@@ -19,4 +19,4 @@ tags:
 - [[test_fstring_prose_mention_is_not_a_false_positive()]] - `calls` [EXTRACTED]
 - [[test_fstring_real_call_is_still_caught()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_202
+#graphify/code #graphify/EXTRACTED #community/Community_33

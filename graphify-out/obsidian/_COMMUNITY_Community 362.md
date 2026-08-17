@@ -10,16 +10,16 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-test_full_sizing_near_peak()]] - code - tests/test_drawdown_tiers.py
-- [[dot-test_halt_at_20pct_drawdown()]] - code - tests/test_drawdown_tiers.py
-- [[dot-test_tier_constants_are_absolute()]] - code - tests/test_drawdown_tiers.py
-- [[dot-test_tier_constants_are_ordered()]] - code - tests/test_drawdown_tiers.py
-- [[Above TIER_4, full sizing (1.0) is returned.]] - rationale - tests/test_drawdown_tiers.py
-- [[At 20% drawdown, scaling factor should be 0.0.]] - rationale - tests/test_drawdown_tiers.py
-- [[P2-2 Tiers must be absolute constants, not derived from DRAWDOWN_HALT_PCT.]] - rationale - tests/test_drawdown_tiers.py
-- [[P2-2 tiers must not shift when DRAWDOWN_HALT_PCT is non-default.]] - rationale - tests/test_drawdown_tiers.py
-- [[TestDrawdownTiersRelativeToHalt]] - code - tests/test_drawdown_tiers.py
-- [[Tier ordering invariant TIER_1  TIER_2  TIER_3  TIER_4 = 1.0.]] - rationale - tests/test_drawdown_tiers.py
+- [[Admin (use with care)]] - document - COMMANDS.md
+- [[Analysis & Calibration]] - document - COMMANDS.md
+- [[COMMANDS]] - document - COMMANDS.md
+- [[Daily Use]] - document - COMMANDS.md
+- [[Kalshi Weather Bot — Command Reference]] - document - COMMANDS.md
+- [[Reporting]] - document - COMMANDS.md
+- [[Setup & Config]] - document - COMMANDS.md
+- [[Subcommand Notes]] - document - COMMANDS.md
+- [[System & Safety]] - document - COMMANDS.md
+- [[Trading]] - document - COMMANDS.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,9 +27,3 @@ members: 10
 TABLE source_file, type FROM #community/Community_362
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 273]]
-
-## Top bridge nodes
-- [[TestDrawdownTiersRelativeToHalt]] - degree 6, connects to 1 community

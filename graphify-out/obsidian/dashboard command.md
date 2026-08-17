@@ -1,11 +1,11 @@
 ---
 source_file: "COMMANDS.md"
 type: "document"
-community: "Community 693"
+community: "Community 18"
 tags:
   - graphify/document
   - graphify/AMBIGUOUS
-  - community/Community_693
+  - community/Community_18
 ---
 
 # dashboard command
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[web command]] - `conceptually_related_to` [AMBIGUOUS]
 
-#graphify/document #graphify/AMBIGUOUS #community/Community_693
+#graphify/document #graphify/AMBIGUOUS #community/Community_18

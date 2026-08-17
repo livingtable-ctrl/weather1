@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_config_divergence_guard.py"
 type: "code"
-community: "Community 243"
+community: "Community 47"
 location: "L32"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_243
+  - community/Community_47
 ---
 
 # _scan_env_defaults()
@@ -16,4 +16,4 @@ tags:
 - [[test_config_divergence_guard.py]] - `contains` [EXTRACTED]
 - [[test_no_env_var_has_conflicting_hardcoded_defaults()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_243
+#graphify/code #graphify/EXTRACTED #community/Community_47

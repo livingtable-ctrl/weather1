@@ -1,23 +1,27 @@
 ---
 source_file: "ml_bias.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L489"
+community: "Community 3"
+location: "L708"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # train_all_temperature_scaling()
 
 ## Connections
+- [[TestTrainAllTemperatureScalingHourlyPool]] - `calls` [EXTRACTED]
+- [[TestTrainAllTemperatureScalingRainExclusion]] - `calls` [EXTRACTED]
 - [[Train T for the global pool and for each condition type that has enough data.…]] - `rationale_for` [EXTRACTED]
+- [[_KXTEMP_HOURLY_CITY]] - `references` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
-- [[apply_temperature_scaling()]] - `shares_data_with` [EXTRACTED]
 - [[atomic_write_json_with_history()]] - `calls` [EXTRACTED]
+- [[cmd_calibrate()]] - `calls` [EXTRACTED]
+- [[cmd_train_bias()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[ml_bias.py]] - `contains` [EXTRACTED]
-- [[test_ml_bias.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_3

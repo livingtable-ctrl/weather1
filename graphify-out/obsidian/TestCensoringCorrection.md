@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 191"
+community: "Community 175"
 location: "L944"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_191
+  - community/Community_175
 ---
 
 # TestCensoringCorrection
@@ -22,4 +22,4 @@ tags:
 - [[Tests for censoring_correction() in weather_markets (23).]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_191
+#graphify/code #graphify/EXTRACTED #community/Community_175

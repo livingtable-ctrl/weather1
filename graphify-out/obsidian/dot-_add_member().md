@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 264"
+community: "Community 260"
 location: "L1427"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_264
+  - community/Community_260
 ---
 
 # ._add_member()
@@ -19,4 +19,4 @@ tags:
 - [[dot-test_season_filter_winter_vs_summer_different_mae()]] - `calls` [EXTRACTED]
 - [[TestEnsembleMemberAccuracy]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_264
+#graphify/code #graphify/EXTRACTED #community/Community_260

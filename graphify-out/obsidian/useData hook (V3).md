@@ -1,12 +1,12 @@
 ---
 source_file: "weather app site V_3 (3)/src/useData.js"
 type: "code"
-community: "Community 692"
+community: "Community 496"
 location: "411"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_692
+  - community/Community_496
 ---
 
 # useData hook (V3)
@@ -17,4 +17,4 @@ tags:
 - [[startSSE (V3)]] - `calls` [EXTRACTED]
 - [[useData (hook)]] - `semantically_similar_to` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_692
+#graphify/code #graphify/EXTRACTED #community/Community_496

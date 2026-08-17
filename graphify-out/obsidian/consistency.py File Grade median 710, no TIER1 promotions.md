@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/outputs/consistency.py.md"
 type: "document"
-community: "Community 32"
+community: "Community 81"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_32
+  - community/Community_81
 ---
 
 # consistency.py File Grade: median 7/10, no TIER1 promotions
@@ -14,4 +14,4 @@ tags:
 - [[consistency.py]] - `references` [EXTRACTED]
 - [[consistency.py Grade Audit]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_32
+#graphify/document #graphify/EXTRACTED #community/Community_81

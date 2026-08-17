@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 65"
+community: "Community 63"
 location: "L6194"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_65
+  - community/Community_63
 ---
 
 # .test_min_excludes_next_day_readings_spring_forward()
@@ -16,4 +16,4 @@ tags:
 - [[Same-day-only rule on a 23-hour local day (US DST spring-forward, 2026-03-08 —…]] - `rationale_for` [EXTRACTED]
 - [[TestFetchAsosDailyTemp]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_65
+#graphify/code #graphify/EXTRACTED #community/Community_63

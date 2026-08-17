@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Community 504"
+community: "Community 565"
 location: "L1074"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_504
+  - community/Community_565
 ---
 
 # When the forecast is already cached, data_fetched_at must equal the original…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_enrich_uses_cache_timestamp_not_current_time()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_504
+#graphify/rationale #graphify/EXTRACTED #community/Community_565

@@ -1,20 +1,20 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 67"
+community: "Community 74"
 location: "L2141"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_67
+  - community/Community_74
 ---
 
 # TestRepriceOrCancelPendingOrders
 
 ## Connections
 - [[dot-_seed_pending()]] - `method` [EXTRACTED]
-- [[dot-setup_method()_37]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_29]] - `method` [EXTRACTED]
+- [[dot-setup_method()_40]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_31]] - `method` [EXTRACTED]
 - [[dot-test_amend_exchange_success_survives_bookkeeping_failure()]] - `method` [EXTRACTED]
 - [[dot-test_amend_failure_leaves_old_row_pending_not_amended()]] - `method` [EXTRACTED]
 - [[dot-test_amend_success_logs_new_row_and_marks_old_row_amended()]] - `method` [EXTRACTED]
@@ -32,4 +32,4 @@ tags:
 - [[The core reprice-or-cancel policy cancel on edge decay, cancel+ replace as…]] - `rationale_for` [EXTRACTED]
 - [[test_live_execution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_67
+#graphify/code #graphify/EXTRACTED #community/Community_74

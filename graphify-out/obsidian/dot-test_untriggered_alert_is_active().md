@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts.py"
 type: "code"
-community: "Community 419"
+community: "Community 32"
 location: "L88"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_419
+  - community/Community_32
 ---
 
 # .test_untriggered_alert_is_active()
@@ -16,4 +16,4 @@ tags:
 - [[add_alert()]] - `calls` [EXTRACTED]
 - [[get_alerts()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_419
+#graphify/code #graphify/EXTRACTED #community/Community_32

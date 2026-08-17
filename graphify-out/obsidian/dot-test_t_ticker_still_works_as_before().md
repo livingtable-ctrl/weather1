@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_settlement_monitor.py"
 type: "code"
-community: "Community 262"
+community: "Community 51"
 location: "L436"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_262
+  - community/Community_51
 ---
 
 # .test_t_ticker_still_works_as_before()
@@ -15,4 +15,4 @@ tags:
 - [[T-ticker (abovebelow) markets are unaffected by the B-ticker changes.]] - `rationale_for` [EXTRACTED]
 - [[TestBTickerParsing]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_262
+#graphify/code #graphify/EXTRACTED #community/Community_51

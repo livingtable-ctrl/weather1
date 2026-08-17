@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 102"
-location: "L2782"
+community: "Community 123"
+location: "L3151"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_102
+  - community/Community_123
 ---
 
 # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1: KXRAIN*M monthly rain-…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMonthlyRainCityDetection]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_102
+#graphify/rationale #graphify/EXTRACTED #community/Community_123

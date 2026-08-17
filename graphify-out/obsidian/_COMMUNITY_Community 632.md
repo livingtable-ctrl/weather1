@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 632
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_la_renamed_low_ticker()]] - code - tests/test_weather_markets.py
-- [[KXLOWLAX (renamed from KXLOWLA, itself later retired for KXLOWTLAX — still…]] - rationale - tests/test_weather_markets.py
+- [[dot-test_does_not_refuse_when_gate_active()_3]] - code - tests/test_snow_markets.py
+- [[dot-test_refuses_when_gate_inactive()_3]] - code - tests/test_snow_markets.py
+- [[Mutation-test proof the conditional is real -- once _snow_gates_active() is…]] - rationale - tests/test_snow_markets.py
+- [[TestCmdOrderSnowGuard]] - code - tests/test_snow_markets.py
+- [[backlog.txt Snow Step 2 main.py's cmd_order kept its own explicit refuse-…]] - rationale - tests/test_snow_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 116]]
-- 1 edge to [[_COMMUNITY_Community 102]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[dot-test_la_renamed_low_ticker()]] - degree 3, connects to 2 communities
+- [[TestCmdOrderSnowGuard]] - degree 4, connects to 1 community

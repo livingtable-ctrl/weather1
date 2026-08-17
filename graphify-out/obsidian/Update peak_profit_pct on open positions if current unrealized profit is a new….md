@@ -1,12 +1,12 @@
 ---
 source_file: "positions.py"
 type: "rationale"
-community: "Community 45"
+community: "Community 12"
 location: "L272"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Community_12
 ---
 
 # Update peak_profit_pct on open positions if current unrealized profit is a new…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[update_peak_profits()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_45
+#graphify/rationale #graphify/EXTRACTED #community/Community_12

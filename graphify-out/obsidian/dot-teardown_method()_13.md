@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_live_execution.py"
+source_file: "tests/test_regression.py"
 type: "code"
-community: "Community 337"
-location: "L50"
+community: "Community 287"
+location: "L90"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_337
+  - community/Community_287
 ---
 
 # .teardown_method()
 
 ## Connections
-- [[TestPlaceLiveOrder]] - `method` [EXTRACTED]
+- [[TestBrierScoreComputation]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_337
+#graphify/code #graphify/EXTRACTED #community/Community_287

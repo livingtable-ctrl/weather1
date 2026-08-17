@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_j.py"
 type: "code"
-community: "Community 205"
+community: "Community 210"
 location: "L159"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_205
+  - community/Community_210
 ---
 
 # TestMetarStationForCityAllCities
@@ -22,6 +22,6 @@ tags:
 - [[dot-test_station_ids_are_correct()]] - `method` [EXTRACTED]
 - [[dot-test_station_map_matches_metar_module()]] - `method` [EXTRACTED]
 - [[All 18 Kalshi cities must map to a METAR station and timezone.]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Batch J Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_j.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_205
+#graphify/code #graphify/EXTRACTED #community/Community_210

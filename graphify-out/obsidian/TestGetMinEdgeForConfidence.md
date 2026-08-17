@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_confidence_tiers.py"
 type: "code"
-community: "Community 252"
+community: "Community 305"
 location: "L13"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_252
+  - community/Community_305
 ---
 
 # TestGetMinEdgeForConfidence
@@ -21,4 +21,4 @@ tags:
 - [[dot-test_zero_spread_is_high()]] - `method` [EXTRACTED]
 - [[test_confidence_tiers.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_252
+#graphify/code #graphify/EXTRACTED #community/Community_305

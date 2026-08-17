@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 545"
+community: "Community 614"
 location: "L1141"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_545
+  - community/Community_614
 ---
 
 # .test_fetch_forecast_false_skips_get_weather_forecast()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestEnrichWithForecastSkipsFetch]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_545
+#graphify/code #graphify/EXTRACTED #community/Community_614

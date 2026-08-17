@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_ws.py"
 type: "code"
-community: "Community 130"
+community: "Community 618"
 location: "L306"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_130
+  - community/Community_618
 ---
 
 # .test_get_ws_health_initially_not_alive()
@@ -15,4 +15,4 @@ tags:
 - [[Fresh import ws not alive, no messages recorded.]] - `rationale_for` [EXTRACTED]
 - [[TestWsHealth]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_130
+#graphify/code #graphify/EXTRACTED #community/Community_618

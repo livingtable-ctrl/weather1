@@ -1,49 +1,48 @@
 ---
 type: community
 cohesion: 0.08
-members: 34
+members: 33
 ---
 
 # Community 68
 
 **Cohesion:** 0.08 - loosely connected
-**Members:** 34 nodes
+**Members:** 33 nodes
 
 ## Members
-- [[dot-setup_method()_38]] - code - tests/test_nws_afd.py
-- [[dot-test_caches_per_office_not_per_city()]] - code - tests/test_nws_afd.py
-- [[dot-test_empty_present_section_returns_none()]] - code - tests/test_nws_afd.py
-- [[dot-test_every_city_coords_city_has_an_entry()]] - code - tests/test_nws_afd.py
-- [[dot-test_extracts_bare_discussion_section()]] - code - tests/test_nws_afd.py
-- [[dot-test_extracts_qualifier_discussion_section()]] - code - tests/test_nws_afd.py
-- [[dot-test_fetch_exception_returns_none()_1]] - code - tests/test_nws_afd.py
-- [[dot-test_negative_result_is_cached_not_refetched_every_call()]] - code - tests/test_nws_afd.py
-- [[dot-test_no_extra_entries_beyond_city_coords()]] - code - tests/test_nws_afd.py
-- [[dot-test_no_narrative_section_returns_none()]] - code - tests/test_nws_afd.py
-- [[dot-test_office_codes_are_three_uppercase_letters()]] - code - tests/test_nws_afd.py
-- [[dot-test_pil_built_from_office_code()]] - code - tests/test_nws_afd.py
-- [[dot-test_section_with_no_closing_terminator_returns_none()]] - code - tests/test_nws_afd.py
-- [[dot-test_service_notice_page_returns_none()]] - code - tests/test_nws_afd.py
-- [[dot-test_synopsis_short_long_term_fallback()]] - code - tests/test_nws_afd.py
-- [[dot-test_terminator_between_nested_sub_headers_truncates()]] - code - tests/test_nws_afd.py
-- [[dot-test_ttl_cache_prevents_refetch()]] - code - tests/test_nws_afd.py
-- [[dot-test_unknown_city_returns_none_without_network_call()]] - code - tests/test_nws_afd.py
-- [[A .DISCUSSION section that's the last thing in the bulletin (no trailing &&…]] - rationale - tests/test_nws_afd.py
-- [[Documented, not fixed if a && ever appears BETWEEN nested .KEY MESSAGE…]] - rationale - tests/test_nws_afd.py
-- [[Live check (run with `-m integration`, matches test_integration_live.py's…]] - rationale - tests/test_nws_afd.py
-- [[Regression guard for a bug caught during the ForecastCache swap (self-caught,…]] - rationale - tests/test_nws_afd.py
-- [[Regression guard for the real HIGH bug a bracketed qualifier on the…]] - rationale - tests/test_nws_afd.py
-- [[Regression guard for the real HIGH gap offices with no .DISCUSSION section at…]] - rationale - tests/test_nws_afd.py
-- [[Regression guard for the real MEDIUM bug a present-but-empty section (header…]] - rationale - tests/test_nws_afd.py
-- [[Synthetic (not a real captured bulletin, since a live check 2026-07-30 found…]] - rationale - tests/test_nws_afd.py
-- [[TestCityWfoOffice]] - code - tests/test_nws_afd.py
-- [[TestFetchAfdDiscussion]] - code - tests/test_nws_afd.py
-- [[Tests for nws_afd.py -- backlog.txt NWS AFD (AREA FORECAST DISCUSSION)…]] - rationale - tests/test_nws_afd.py
-- [[_wrap_html()_1]] - code - tests/test_nws_afd.py
-- [[integration_2]] - code
-- [[test_city_wfo_office_matches_live_api()]] - code - tests/test_nws_afd.py
-- [[test_nws_afd.py]] - code - tests/test_nws_afd.py
-- [[weather_markets.CITY_COORDS]] - code - weather_markets.py
+- [[31 _blend_weights scaled by inverse ensemble variance.]] - rationale - weather_markets.py
+- [[dot-test_analyze_precip_trade_does_not_set_time_risk()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_analyze_snow_trade_does_not_set_time_risk()]] - code - tests/test_phase2_batch_k.py
+- [[dot-test_high_ens_std_reduces_ensemble_weight()]] - code - tests/test_forecasting.py
+- [[dot-test_low_ens_std_increases_ensemble_weight()]] - code - tests/test_forecasting.py
+- [[dot-test_none_ens_std_returns_base_weights()]] - code - tests/test_forecasting.py
+- [[dot-test_nws_weight_long_horizon()]] - code - tests/test_forecasting.py
+- [[dot-test_nws_weight_medium_horizon()]] - code - tests/test_forecasting.py
+- [[dot-test_nws_weight_redistributed_when_unavailable()]] - code - tests/test_forecasting.py
+- [[dot-test_nws_weight_short_horizon()]] - code - tests/test_forecasting.py
+- [[dot-test_weights_sum_to_one()_3]] - code - tests/test_forecasting.py
+- [[dot-test_weights_sum_to_one()_4]] - code - tests/test_forecasting.py
+- [[Decay NWS weight at longer horizons; preserve calibrated weights at days_out=1.…]] - rationale - weather_markets.py
+- [[Phase 2 Batch K regression tests P2-24P2-26P2-36P2-39P2-45 —…]] - rationale - tests/test_phase2_batch_k.py
+- [[Return (w_ensemble, w_climatology, w_nws). Priority regime override (highest,…]] - rationale - weather_markets.py
+- [[TestBlendWeights]] - code - tests/test_forecasting.py
+- [[TestConfidenceScaledBlendWeights]] - code - tests/test_forecasting.py
+- [[TestPrecipSnowOmitTimeRisk]] - code - tests/test_phase2_batch_k.py
+- [[When NWS unavailable, its weight redistributed to ens+clim.]] - rationale - tests/test_forecasting.py
+- [[_analyze_precip_trade_analyze_snow_trade must NOT set their own time_risk --…]] - rationale - tests/test_phase2_batch_k.py
+- [[_blend_weights()]] - code - weather_markets.py
+- [[_confidence_scaled_blend_weights()]] - code - weather_markets.py
+- [[_nws_days_out_scale()]] - code - weather_markets.py
+- [[days_out 4-7 NWS weight must be 0.25.]] - rationale - tests/test_forecasting.py
+- [[days_out = 3 NWS weight must be 0.35.]] - rationale - tests/test_forecasting.py
+- [[days_out  7 NWS weight must be 0.10.]] - rationale - tests/test_forecasting.py
+- [[ens_std = 2Â°F (tight spread) must increase w_ens vs baseline.]] - rationale - tests/test_forecasting.py
+- [[ens_std  8Â°F (high uncertainty) must reduce w_ens vs baseline.]] - rationale - tests/test_forecasting.py
+- [[ens_std=None â†’ identical result to _blend_weights.]] - rationale - tests/test_forecasting.py
+- [[test_ensemble_confidence_scale_clamped()]] - code - tests/test_weather_markets.py
+- [[test_ensemble_confidence_scale_high_std_reduces_ens_weight()]] - code - tests/test_weather_markets.py
+- [[test_ensemble_confidence_scale_no_std_unchanged()]] - code - tests/test_weather_markets.py
+- [[test_phase2_batch_k.py]] - code - tests/test_phase2_batch_k.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -53,9 +52,20 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_Community 123]]
-- 1 edge to [[_COMMUNITY_Community 182]]
+- 8 edges to [[_COMMUNITY_Community 5]]
+- 5 edges to [[_COMMUNITY_Community 11]]
+- 4 edges to [[_COMMUNITY_Community 38]]
+- 3 edges to [[_COMMUNITY_Community 77]]
+- 3 edges to [[_COMMUNITY_Community 4]]
+- 3 edges to [[_COMMUNITY_Community 89]]
+- 2 edges to [[_COMMUNITY_Community 218]]
+- 2 edges to [[_COMMUNITY_Community 9]]
+- 1 edge to [[_COMMUNITY_Community 387]]
+- 1 edge to [[_COMMUNITY_Community 183]]
 
 ## Top bridge nodes
-- [[test_nws_afd.py]] - degree 9, connects to 3 communities
+- [[test_phase2_batch_k.py]] - degree 13, connects to 6 communities
+- [[_confidence_scaled_blend_weights()]] - degree 19, connects to 5 communities
+- [[_blend_weights()]] - degree 18, connects to 4 communities
+- [[TestBlendWeights]] - degree 7, connects to 2 communities
+- [[TestConfidenceScaledBlendWeights]] - degree 6, connects to 2 communities

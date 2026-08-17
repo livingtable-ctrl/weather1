@@ -1,12 +1,12 @@
 ---
 source_file: "metar.py"
 type: "code"
-community: "Community 211"
+community: "Community 51"
 location: "L310"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_211
+  - community/Community_51
 ---
 
 # _fetch_daily_temps_f()
@@ -16,8 +16,8 @@ tags:
 - [[ZoneInfo]] - `calls` [INFERRED]
 - [[_extract_obs_time()]] - `calls` [EXTRACTED]
 - [[_extract_temp_f()]] - `calls` [EXTRACTED]
-- [[date_1]] - `references` [EXTRACTED]
+- [[date_10]] - `references` [EXTRACTED]
 - [[fetch_metar_daily_extreme()]] - `calls` [EXTRACTED]
 - [[metar.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_211
+#graphify/code #graphify/EXTRACTED #community/Community_51

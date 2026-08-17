@@ -1,18 +1,17 @@
 ---
-source_file: "tests/test_calibration.py"
+source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 69"
-location: "L306"
+community: "Community 73"
+location: "L1246"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_69
+  - community/Community_73
 ---
 
 # .setup_method()
 
 ## Connections
-- [[Path_1]] - `calls` [EXTRACTED]
-- [[TestCalibrateCLI]] - `method` [EXTRACTED]
+- [[TestFinalizeCancelReturnValue]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_69
+#graphify/code #graphify/EXTRACTED #community/Community_73

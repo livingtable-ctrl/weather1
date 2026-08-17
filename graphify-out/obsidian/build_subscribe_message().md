@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 130"
+community: "Community 30"
 location: "L273"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_130
+  - community/Community_30
 ---
 
 # build_subscribe_message()
@@ -18,4 +18,4 @@ tags:
 - [[kalshi_ws.py]] - `contains` [EXTRACTED]
 - [[test_kalshi_ws.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_130
+#graphify/code #graphify/EXTRACTED #community/Community_30

@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Community 269"
-location: "L7341"
+community: "Community 264"
+location: "L7443"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_269
+  - community/Community_264
 ---
 
 # Bootstrap 90% confidence interval on the ensemble probability estimate. #114:…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_bootstrap_ci()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_269
+#graphify/rationale #graphify/EXTRACTED #community/Community_264

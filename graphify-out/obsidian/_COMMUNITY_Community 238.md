@@ -1,30 +1,30 @@
 ---
 type: community
-cohesion: 0.13
+cohesion: 0.17
 members: 15
 ---
 
 # Community 238
 
-**Cohesion:** 0.13 - loosely connected
+**Cohesion:** 0.17 - loosely connected
 **Members:** 15 nodes
 
 ## Members
-- [[dot-test_fetch_exception_returns_false_not_raise()]] - code - tests/test_snow_markets.py
-- [[dot-test_finalized_writes_settled_value_not_settled_var()]] - code - tests/test_snow_markets.py
-- [[dot-test_missing_expiration_value_returns_false()]] - code - tests/test_snow_markets.py
-- [[dot-test_no_matching_outcomes_row_returns_false()]] - code - tests/test_snow_markets.py
-- [[dot-test_non_numeric_expiration_value_returns_false()]] - code - tests/test_snow_markets.py
-- [[dot-test_not_finalized_returns_false_no_write()]] - code - tests/test_snow_markets.py
-- [[dot-test_rain_and_snow_registries_are_prefix_disjoint()]] - code - tests/test_snow_markets.py
-- [[dot-test_rain_settlement_still_works_alongside_snow_branch()]] - code - tests/test_snow_markets.py
-- [[dot-test_snow_branch_reached_before_parse_city_date_early_return()]] - code - tests/test_snow_markets.py
-- [[Real regression-control invariant _KXRAIN_MONTHLY_CITY and…]] - rationale - tests/test_snow_markets.py
-- [[Review-caught gap the UPDATE could match zero rows (no prior outcomes row for…]] - rationale - tests/test_snow_markets.py
-- [[Settlement smoke test a rain ticker still takes the rain branch (checked first…]] - rationale - tests/test_snow_markets.py
-- [[TestAuditSettlementMonthlySnow]] - code - tests/test_snow_markets.py
-- [[The real regression this fix targets parse_city_date() returns (city, None)…]] - rationale - tests/test_snow_markets.py
-- [[backlog.txt Snow Step 2 audit_settlement()'s new snow branch reads Kalshi's…]] - rationale - tests/test_snow_markets.py
+- [[dot-_enriched()_5]] - code - tests/test_signal_quality.py
+- [[dot-_enriched()_6]] - code - tests/test_signal_quality.py
+- [[dot-test_narrow_spread_allows_signal()]] - code - tests/test_signal_quality.py
+- [[dot-test_passes_sufficient_volume()]] - code - tests/test_signal_quality.py
+- [[dot-test_skips_low_volume_market()]] - code - tests/test_signal_quality.py
+- [[dot-test_strong_edge_above_med_edge()]] - code - tests/test_signal_quality.py
+- [[dot-test_strong_edge_default_is_0_30()]] - code - tests/test_signal_quality.py
+- [[dot-test_wide_spread_suppresses_signal()]] - code - tests/test_signal_quality.py
+- [[TestMaxModelSpreadGate]] - code - tests/test_signal_quality.py
+- [[TestMinSignalVolume]] - code - tests/test_signal_quality.py
+- [[TestStrongEdgeThreshold]] - code - tests/test_signal_quality.py
+- [[Tests for Group 2 signal quality improvements.]] - rationale - tests/test_signal_quality.py
+- [[analyze_trade() returns None when model spread exceeds MAX_MODEL_SPREAD_F.]] - rationale - tests/test_signal_quality.py
+- [[analyze_trade() skips markets below MIN_SIGNAL_VOLUME.]] - rationale - tests/test_signal_quality.py
+- [[test_signal_quality.py]] - code - tests/test_signal_quality.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,7 +34,18 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 174]]
+- 2 edges to [[_COMMUNITY_Community 132]]
+- 2 edges to [[_COMMUNITY_Community 174]]
+- 2 edges to [[_COMMUNITY_Community 335]]
+- 2 edges to [[_COMMUNITY_Community 2]]
+- 2 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 438]]
+- 1 edge to [[_COMMUNITY_Community 631]]
+- 1 edge to [[_COMMUNITY_Community 303]]
+- 1 edge to [[_COMMUNITY_Community 6]]
+- 1 edge to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 33]]
+- 1 edge to [[_COMMUNITY_Community 75]]
 
 ## Top bridge nodes
-- [[TestAuditSettlementMonthlySnow]] - degree 11, connects to 1 community
+- [[test_signal_quality.py]] - degree 21, connects to 12 communities

@@ -1,18 +1,18 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 110"
+community: "Community 119"
 location: "L1182"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_110
+  - community/Community_119
 ---
 
 # _exit_live_position()
 
 ## Connections
-- [[dot-exit()]] - `calls` [EXTRACTED]
+- [[dot-exit()_1]] - `calls` [EXTRACTED]
 - [[dot-test_full_fill_exit_order_not_treated_as_new_open_position()]] - `calls` [EXTRACTED]
 - [[dot-test_full_fill_records_fee_adjusted_pnl()]] - `calls` [EXTRACTED]
 - [[dot-test_gain_case_applies_fee_discount()]] - `calls` [EXTRACTED]
@@ -36,4 +36,4 @@ tags:
 - [[record_live_partial_exit()]] - `calls` [EXTRACTED]
 - [[test_live_execution.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_110
+#graphify/code #graphify/EXTRACTED #community/Community_119

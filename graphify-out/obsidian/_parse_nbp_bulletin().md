@@ -1,12 +1,12 @@
 ---
 source_file: "mos.py"
 type: "code"
-community: "Community 99"
+community: "Community 15"
 location: "L456"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_99
+  - community/Community_15
 ---
 
 # _parse_nbp_bulletin()
@@ -21,4 +21,4 @@ tags:
 - [[parse_hurdat2 Function]] - `semantically_similar_to` [INFERRED]
 - [[test_mos_nbp.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_99
+#graphify/code #graphify/EXTRACTED #community/Community_15

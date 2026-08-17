@@ -1,18 +1,18 @@
 ---
 source_file: "forecast_cache.py"
 type: "code"
-community: "Community 51"
+community: "Community 9"
 location: "L16"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_51
+  - community/Community_9
 ---
 
 # ForecastCache
 
 ## Connections
-- [[dot-__init__()_8]] - `method` [EXTRACTED]
+- [[dot-__init__()_12]] - `method` [EXTRACTED]
 - [[dot-__len__()]] - `method` [EXTRACTED]
 - [[dot-_effective_ttl()]] - `method` [EXTRACTED]
 - [[dot-_evict_oldest()]] - `method` [EXTRACTED]
@@ -47,9 +47,6 @@ tags:
 - [[BotConfig]] - `uses` [INFERRED]
 - [[CircuitBreaker]] - `semantically_similar_to` [INFERRED]
 - [[PersistentForecastCache]] - `implements` [EXTRACTED]
-- [[Phase 2 Batch C Regression Tests]] - `imports` [EXTRACTED]
-- [[Phase 2 Batch D Regression Tests]] - `imports` [EXTRACTED]
-- [[Phase 2 Batch M Regression Tests]] - `imports` [EXTRACTED]
 - [[TestAbTestMaxTradesMeta]] - `uses` [INFERRED]
 - [[TestBetweenLockInDynamicConfidence]] - `uses` [INFERRED]
 - [[TestBimodalEnsemble]] - `uses` [INFERRED]
@@ -109,7 +106,7 @@ tags:
 - [[nws.py]] - `imports` [EXTRACTED]
 - [[nws_afd.py]] - `imports` [EXTRACTED]
 - [[test_clear_empties_cache()]] - `calls` [EXTRACTED]
-- [[test_ecmwf.py]] - `calls` [EXTRACTED]
+- [[test_ecmwf.py]] - `imports` [EXTRACTED]
 - [[test_forecast_cache.py]] - `imports` [EXTRACTED]
 - [[test_forecasting.py]] - `imports` [EXTRACTED]
 - [[test_get_returns_none_after_ttl()]] - `calls` [EXTRACTED]
@@ -122,6 +119,9 @@ tags:
 - [[test_get_with_ts_wall_clock_reflects_original_store_time()]] - `calls` [EXTRACTED]
 - [[test_metar.py]] - `imports` [EXTRACTED]
 - [[test_nbm.py]] - `imports` [EXTRACTED]
+- [[test_phase2_batch_c.py]] - `imports` [EXTRACTED]
+- [[test_phase2_batch_d.py]] - `imports` [EXTRACTED]
+- [[test_phase2_batch_m.py]] - `imports` [EXTRACTED]
 - [[test_prune_expired_empty_cache()]] - `calls` [EXTRACTED]
 - [[test_prune_expired_leaves_non_expired()]] - `calls` [EXTRACTED]
 - [[test_prune_expired_removes_expired_returns_count()]] - `calls` [EXTRACTED]
@@ -132,4 +132,4 @@ tags:
 - [[tracker.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_51
+#graphify/code #graphify/EXTRACTED #community/Community_9

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker SQLite Storage Tests"
+community: "Community 35"
 location: "L6886"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_SQLite_Storage_Tests
+  - community/Community_35
 ---
 
 # TestLogPredictionLiquidityEdgeScale
@@ -17,4 +17,4 @@ tags:
 - [[log_prediction() must persist liquidity_edge_scalegated_edge (backlog.txt…]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_SQLite_Storage_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_35

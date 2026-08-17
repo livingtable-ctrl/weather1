@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 467
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-_make_client()_7]] - code - tests/test_kalshi_client.py
-- [[dot-test_calls_correct_path_and_params()_1]] - code - tests/test_kalshi_client.py
-- [[dot-test_defaults_period_interval_to_one_minute()]] - code - tests/test_kalshi_client.py
-- [[dot-test_missing_candlesticks_key_returns_empty_list()]] - code - tests/test_kalshi_client.py
-- [[dot-test_returns_candlesticks_list()]] - code - tests/test_kalshi_client.py
-- [[TestGetCandlesticks]] - code - tests/test_kalshi_client.py
-- [[price_history backlog item — OHLC candlestick fetch.]] - rationale - tests/test_kalshi_client.py
+- [[dot-test_detect_brier_drift_detects_degradation()]] - code - tests/test_p9_p10.py
+- [[dot-test_detect_brier_drift_improvement_not_flagged()]] - code - tests/test_p9_p10.py
+- [[dot-test_detect_brier_drift_insufficient_data()]] - code - tests/test_p9_p10.py
+- [[dot-test_detect_brier_drift_no_drift()]] - code - tests/test_p9_p10.py
+- [[Early Brier=0.12, recent Brier=0.22 → delta=0.10  threshold=0.05 → drifting.]] - rationale - tests/test_p9_p10.py
+- [[If Brier improves (negative delta) it is not flagged as drift.]] - rationale - tests/test_p9_p10.py
+- [[Stable Brier over time should not trigger drift.]] - rationale - tests/test_p9_p10.py
+- [[TestDriftDetection]] - code - tests/test_p9_p10.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,12 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 100]]
-- 1 edge to [[_COMMUNITY_Community 225]]
+- 1 edge to [[_COMMUNITY_Community 54]]
 
 ## Top bridge nodes
-- [[TestGetCandlesticks]] - degree 7, connects to 1 community
-- [[dot-test_calls_correct_path_and_params()_1]] - degree 2, connects to 1 community
-- [[dot-test_defaults_period_interval_to_one_minute()]] - degree 2, connects to 1 community
-- [[dot-test_missing_candlesticks_key_returns_empty_list()]] - degree 2, connects to 1 community
-- [[dot-test_returns_candlesticks_list()]] - degree 2, connects to 1 community
+- [[TestDriftDetection]] - degree 5, connects to 1 community

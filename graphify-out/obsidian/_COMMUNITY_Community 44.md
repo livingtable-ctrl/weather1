@@ -1,58 +1,59 @@
 ---
 type: community
-cohesion: 0.07
-members: 43
+cohesion: 0.11
+members: 44
 ---
 
 # Community 44
 
-**Cohesion:** 0.07 - loosely connected
-**Members:** 43 nodes
+**Cohesion:** 0.11 - loosely connected
+**Members:** 44 nodes
 
 ## Members
-- [[dot-__init__()_6]] - code - circuit_breaker.py
-- [[dot-_load_state()]] - code - circuit_breaker.py
-- [[dot-_save_state()]] - code - circuit_breaker.py
-- [[dot-execute()]] - code - circuit_breaker.py
-- [[dot-failure_count()]] - code - circuit_breaker.py
-- [[dot-is_open()]] - code - circuit_breaker.py
-- [[dot-record_failure()]] - code - circuit_breaker.py
-- [[dot-record_success()]] - code - circuit_breaker.py
-- [[dot-seconds_open()]] - code - circuit_breaker.py
-- [[dot-seconds_until_retry()]] - code - circuit_breaker.py
-- [[dot-suppress_probe()]] - code - circuit_breaker.py
-- [[dot-test_backoff_capped_at_24h()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_backoff_persists_through_success()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_failure_count_property()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_first_trip_uses_base_timeout()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_half_open_after_timeout()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_initially_closed()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_multiplier_1_gives_constant_timeout()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_opens_after_threshold()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_second_trip_doubles_timeout()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_seconds_open_increases_when_open()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_seconds_open_is_zero_when_closed()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_seconds_until_retry_positive_when_open()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_seconds_until_retry_zero_when_closed()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_success_resets_to_closed()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_third_trip_quadruples_timeout()]] - code - tests/test_circuit_breaker.py
-- [[A network error inside get_live_observation increments the CB failure count.]] - rationale - tests/test_infrastructure.py
-- [[Any_2]] - code
-- [[Backoff accumulates across openclose cycles — success does not reset it.]] - rationale - tests/test_circuit_breaker.py
-- [[Call fn(args, kwargs) with automatic circuit protection. Raises…]] - rationale - circuit_breaker.py
-- [[CircuitBreaker]] - code - circuit_breaker.py
-- [[Prevent automatic probing for the rest of this process lifetime. Call this…]] - rationale - circuit_breaker.py
-- [[Seconds remaining before the circuit allows a probe; 0.0 if closed or half-open.]] - rationale - circuit_breaker.py
-- [[TestCircuitBreakerBackoff]] - code - tests/test_circuit_breaker.py
-- [[TestCircuitBreakerBasic]] - code - tests/test_circuit_breaker.py
-- [[Wall-clock seconds since the circuit opened; 0.0 if currently closed.]] - rationale - circuit_breaker.py
-- [[_SignalRegistryEntry]] - code - weather_markets.py
-- [[backoff_multiplier=1.0 (default) never changes recovery_timeout.]] - rationale - tests/test_circuit_breaker.py
-- [[climatological_prob returns None immediately when its CB is open.]] - rationale - tests/test_infrastructure.py
-- [[get_live_observation returns None immediately when its CB is open.]] - rationale - tests/test_infrastructure.py
-- [[test_climatology_cb_skips_when_open()]] - code - tests/test_infrastructure.py
-- [[test_nws_cb_records_failure_on_exception()]] - code - tests/test_infrastructure.py
-- [[test_nws_cb_skips_when_open()]] - code - tests/test_infrastructure.py
+- [[A hurricane season-count (KXHURCTOT) opp must be shadow-logged, not placed,…]] - rationale - tests/test_shadow_predictions.py
+- [[A monthly-rain (KXRAINM) opp must be shadow-logged, not placed, when…]] - rationale - tests/test_shadow_predictions.py
+- [[A signal that _validate_trade_opportunity would reject (here non-positive…]] - rationale - tests/test_shadow_predictions.py
+- [[A ticker with an existing open position must not get re-logged every cron cycle…]] - rationale - tests/test_shadow_predictions.py
+- [[All 3 hurricane sub-models' gates are independent -- a sibling model's gate…]] - rationale - tests/test_shadow_predictions.py
+- [[Auto-place paper or live trades for signals not already held. Called from…]] - rationale - order_executor.py
+- [[Drawdown halt causes the identical 'no trade placed' staleness problem as…]] - rationale - tests/test_shadow_predictions.py
+- [[If the gate's underlying value changed mid-batch (settled count crossing the…]] - rationale - tests/test_shadow_predictions.py
+- [[Multiple opps in one call share a single batched DB connection — confirm both…]] - rationale - tests/test_shadow_predictions.py
+- [[Once _hourly_gates_active() is True, an hourly opp places exactly like any…]] - rationale - tests/test_shadow_predictions.py
+- [[Once _hurricane_count_gates_active() is True, a hurricane-count opp places…]] - rationale - tests/test_shadow_predictions.py
+- [[Once _rain_gates_active() is True, a rain opp places exactly like any other…]] - rationale - tests/test_shadow_predictions.py
+- [[Once _snow_gates_active() is True, a snow opp places exactly like any other…]] - rationale - tests/test_shadow_predictions.py
+- [[Once _storm_order_gates_active() is True, a storm-order opp places exactly like…]] - rationale - tests/test_shadow_predictions.py
+- [[Regression test each shadow-only gate must be evaluated ONCE per…]] - rationale - tests/test_shadow_predictions.py
+- [[Sanity check for the is_shadow column itself a real, successfully placed trade…]] - rationale - tests/test_shadow_predictions.py
+- [[Shadow logging must never place an actual order — only observe.]] - rationale - tests/test_shadow_predictions.py
+- [[Tests for _log_shadow_predictions when a trade would have been placed but…]] - rationale - tests/test_shadow_predictions.py
+- [[The core routing guarantee in one batch, an hourly opp (gate inactive) is…]] - rationale - tests/test_shadow_predictions.py
+- [[The two hurricane sub-models' gates are independent -- the count model's gate…]] - rationale - tests/test_shadow_predictions.py
+- [[_auto_place_trades()]] - code - order_executor.py
+- [[_fetch()]] - code - tests/test_shadow_predictions.py
+- [[_make_flat_opp()]] - code - tests/test_shadow_predictions.py
+- [[test_drawdown_halt_also_logs_shadow_prediction()]] - code - tests/test_shadow_predictions.py
+- [[test_hourly_ticker_places_normally_when_gate_active()]] - code - tests/test_shadow_predictions.py
+- [[test_hurricane_count_gate_evaluated_once_per_batch()]] - code - tests/test_shadow_predictions.py
+- [[test_hurricane_count_gate_stable_within_batch_despite_stateful_mock()]] - code - tests/test_shadow_predictions.py
+- [[test_hurricane_count_gate_state_does_not_affect_next_event_routing()]] - code - tests/test_shadow_predictions.py
+- [[test_hurricane_count_ticker_places_normally_when_gate_active()]] - code - tests/test_shadow_predictions.py
+- [[test_hurricane_count_ticker_shadow_only_when_gate_inactive()]] - code - tests/test_shadow_predictions.py
+- [[test_mixed_batch_hourly_shadow_daily_places_normally()]] - code - tests/test_shadow_predictions.py
+- [[test_rain_ticker_places_normally_when_gate_active()]] - code - tests/test_shadow_predictions.py
+- [[test_rain_ticker_shadow_only_when_gate_inactive()]] - code - tests/test_shadow_predictions.py
+- [[test_real_placement_logs_is_shadow_false()]] - code - tests/test_shadow_predictions.py
+- [[test_shadow_predictions.py]] - code - tests/test_shadow_predictions.py
+- [[test_sibling_hurricane_gate_state_does_not_affect_storm_order_routing()]] - code - tests/test_shadow_predictions.py
+- [[test_snow_ticker_places_normally_when_gate_active()]] - code - tests/test_shadow_predictions.py
+- [[test_storm_order_ticker_places_normally_when_gate_active()]] - code - tests/test_shadow_predictions.py
+- [[test_trading_paused_does_not_place_trade()]] - code - tests/test_shadow_predictions.py
+- [[test_trading_paused_logs_multiple_opps_in_one_batch()]] - code - tests/test_shadow_predictions.py
+- [[test_trading_paused_logs_shadow_prediction()]] - code - tests/test_shadow_predictions.py
+- [[test_trading_paused_logs_shadow_prediction_tuple_format()]] - code - tests/test_shadow_predictions.py
+- [[test_trading_paused_skips_already_open_ticker()]] - code - tests/test_shadow_predictions.py
+- [[test_trading_paused_skips_invalid_opp()]] - code - tests/test_shadow_predictions.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -62,22 +63,32 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 8 edges to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
-- 6 edges to [[_COMMUNITY_Community 293]]
-- 6 edges to [[_COMMUNITY_Community 84]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 2 edges to [[_COMMUNITY_Community 226]]
-- 2 edges to [[_COMMUNITY_Community 62]]
-- 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Community 351]]
-- 1 edge to [[_COMMUNITY_Community 167]]
+- 37 edges to [[_COMMUNITY_Community 258]]
+- 28 edges to [[_COMMUNITY_Community 1]]
+- 5 edges to [[_COMMUNITY_Community 0]]
+- 5 edges to [[_COMMUNITY_Community 2]]
+- 4 edges to [[_COMMUNITY_Community 703]]
+- 4 edges to [[_COMMUNITY_Community 704]]
+- 3 edges to [[_COMMUNITY_Community 42]]
+- 2 edges to [[_COMMUNITY_Community 220]]
+- 2 edges to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 189]]
+- 1 edge to [[_COMMUNITY_Community 21]]
+- 1 edge to [[_COMMUNITY_Community 110]]
+- 1 edge to [[_COMMUNITY_Community 329]]
+- 1 edge to [[_COMMUNITY_Community 335]]
+- 1 edge to [[_COMMUNITY_Community 404]]
+- 1 edge to [[_COMMUNITY_Community 75]]
+- 1 edge to [[_COMMUNITY_Community 60]]
+- 1 edge to [[_COMMUNITY_Community 76]]
+- 1 edge to [[_COMMUNITY_Community 81]]
+- 1 edge to [[_COMMUNITY_Community 726]]
+- 1 edge to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 5]]
 
 ## Top bridge nodes
-- [[CircuitBreaker]] - degree 59, connects to 12 communities
-- [[_SignalRegistryEntry]] - degree 4, connects to 3 communities
-- [[TestCircuitBreakerBasic]] - degree 11, connects to 1 community
-- [[TestCircuitBreakerBackoff]] - degree 8, connects to 1 community
-- [[dot-execute()]] - degree 7, connects to 1 community
+- [[_auto_place_trades()]] - degree 85, connects to 22 communities
+- [[test_shadow_predictions.py]] - degree 35, connects to 5 communities
+- [[_fetch()]] - degree 28, connects to 4 communities
+- [[_make_flat_opp()]] - degree 28, connects to 3 communities
+- [[test_hourly_ticker_places_normally_when_gate_active()]] - degree 6, connects to 1 community

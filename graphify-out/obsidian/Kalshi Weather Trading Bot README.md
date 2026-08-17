@@ -1,11 +1,11 @@
 ---
 source_file: "README.md"
 type: "document"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 5"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_5
 ---
 
 # Kalshi Weather Trading Bot README
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[weather_markets.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/document #graphify/EXTRACTED #community/Community_5

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 178"
+community: "Community 159"
 location: "L233"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_178
+  - community/Community_159
 ---
 
 # Empty market dict has no liquidity.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_illiquid_market_empty_dict()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_178
+#graphify/rationale #graphify/EXTRACTED #community/Community_159

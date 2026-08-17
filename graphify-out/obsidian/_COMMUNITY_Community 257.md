@@ -1,29 +1,29 @@
 ---
 type: community
-cohesion: 0.18
+cohesion: 0.14
 members: 14
 ---
 
 # Community 257
 
-**Cohesion:** 0.18 - loosely connected
+**Cohesion:** 0.14 - loosely connected
 **Members:** 14 nodes
 
 ## Members
-- [[dot-_make_enriched()]] - code - tests/test_gaussian_prob.py
-- [[dot-_make_enriched()_1]] - code - tests/test_gaussian_prob.py
-- [[dot-test_blend_sources_reports_gaussian_separately()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_blend_sources_weights_sum_to_one_with_mos()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_blend_sources_weights_sum_to_one_without_mos()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_ensemble_prob_is_raw_member_fraction()]] - code - tests/test_gaussian_prob.py
-- [[L6-E after MOS injection blend_sources weights must still sum to 1.0 (within…]] - rationale - tests/test_gaussian_prob.py
-- [[L6-E without MOS the normalisation guard must not break the normal blend path…]] - rationale - tests/test_gaussian_prob.py
-- [[Regression for L6-B blend_sources must contain 'gaussian' as its own key when…]] - rationale - tests/test_gaussian_prob.py
-- [[Regression for L6-B result'ensemble_prob' must be the raw member-count…]] - rationale - tests/test_gaussian_prob.py
-- [[Regression tests for L6-B Gaussian contribution must appear in blend_sources…]] - rationale - tests/test_gaussian_prob.py
-- [[Regression tests for L6-E MOS injection must not push blend_sources weights…]] - rationale - tests/test_gaussian_prob.py
-- [[TestBlendSourcesNormalisation]] - code - tests/test_gaussian_prob.py
-- [[TestGaussianBlendSeparateSource]] - code - tests/test_gaussian_prob.py
+- [[dot-test_default_halt_no_warning()]] - code - tests/test_phase2_batch_b.py
+- [[dot-test_non_default_halt_emits_warning()]] - code - tests/test_phase2_batch_b.py
+- [[dot-test_scaling_at_tier_boundaries()]] - code - tests/test_phase2_batch_b.py
+- [[dot-test_tier1_is_0_80()]] - code - tests/test_phase2_batch_b.py
+- [[dot-test_tier2_is_0_85()]] - code - tests/test_phase2_batch_b.py
+- [[dot-test_tier3_is_0_90()]] - code - tests/test_phase2_batch_b.py
+- [[dot-test_tier4_is_0_95()]] - code - tests/test_phase2_batch_b.py
+- [[dot-test_tiers_unchanged_with_non_default_halt()]] - code - tests/test_phase2_batch_b.py
+- [[Default DRAWDOWN_HALT_PCT=0.20 must NOT emit the tier warning.]] - rationale - tests/test_phase2_batch_b.py
+- [[Non-default DRAWDOWN_HALT_PCT must log a warning about tier misalignment.]] - rationale - tests/test_phase2_batch_b.py
+- [[P2-2 root cause old code shifted all boundaries when halt% changed.]] - rationale - tests/test_phase2_batch_b.py
+- [[P2-2 _DRAWDOWN_TIER_ constants must be hardcoded absolute values.]] - rationale - tests/test_phase2_batch_b.py
+- [[Spot-check the step function at each canonical boundary.]] - rationale - tests/test_phase2_batch_b.py
+- [[TestDrawdownTierAbsolute]] - code - tests/test_phase2_batch_b.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,8 +33,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 26]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestBlendSourcesNormalisation]] - degree 5, connects to 1 community
-- [[TestGaussianBlendSeparateSource]] - degree 5, connects to 1 community
+- [[TestDrawdownTierAbsolute]] - degree 10, connects to 1 community

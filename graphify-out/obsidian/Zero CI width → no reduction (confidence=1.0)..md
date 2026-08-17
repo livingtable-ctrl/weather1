@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Community 323"
+community: "Community 330"
 location: "L435"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_323
+  - community/Community_330
 ---
 
 # Zero CI width → no reduction (confidence=1.0).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_ci_adjusted_kelly_no_reduction_on_zero_ci()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_323
+#graphify/rationale #graphify/EXTRACTED #community/Community_330

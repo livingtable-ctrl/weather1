@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 258"
-location: "L1938"
+community: "Community 180"
+location: "L2079"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_258
+  - community/Community_180
 ---
 
 # .test_no_open_trades_returns_empty_list()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCheckPaperPositionExits]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_258
+#graphify/code #graphify/EXTRACTED #community/Community_180

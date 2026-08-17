@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "rationale"
-community: "Community 407"
+community: "Community 434"
 location: "L377"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_407
+  - community/Community_434
 ---
 
 # Chicago must map to Midway (KMDW) — confirmed from Kalshi series API…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_chicago_station_is_kmdw()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_407
+#graphify/rationale #graphify/EXTRACTED #community/Community_434

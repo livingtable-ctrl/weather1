@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 40"
+community: "Community 1"
 location: "L2050"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_40
+  - community/Community_1
 ---
 
 # _unpack_opp()
@@ -14,7 +14,7 @@ tags:
 ## Connections
 - [[Extract (ticker, city, target_date, analysis_dict, market_dict) from an opp…]] - `rationale_for` [EXTRACTED]
 - [[_log_shadow_predictions()]] - `calls` [EXTRACTED]
-- [[date_4]] - `references` [EXTRACTED]
+- [[date]] - `references` [EXTRACTED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_40
+#graphify/code #graphify/EXTRACTED #community/Community_1

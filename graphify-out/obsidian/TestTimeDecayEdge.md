@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Community 240"
+community: "Community 212"
 location: "L126"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_240
+  - community/Community_212
 ---
 
 # TestTimeDecayEdge
@@ -21,4 +21,4 @@ tags:
 - [[dot-test_zero_at_close_time()]] - `method` [EXTRACTED]
 - [[test_trading.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_240
+#graphify/code #graphify/EXTRACTED #community/Community_212

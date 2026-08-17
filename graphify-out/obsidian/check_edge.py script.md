@@ -1,16 +1,13 @@
 ---
 source_file: "check_edge.py"
 type: "code"
-community: "Community 118"
+community: "Community 781"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_118
+  - community/Community_781
 ---
 
 # check_edge.py script
 
-## Connections
-- [[tracker.DB_PATH  predictions DB]] - `shares_data_with` [EXTRACTED]
-
-#graphify/code #graphify/EXTRACTED #community/Community_118
+#graphify/code #graphify/EXTRACTED #community/Community_781

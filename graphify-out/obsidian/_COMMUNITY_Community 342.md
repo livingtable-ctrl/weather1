@@ -10,17 +10,17 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-test_get_mean_slippage_respects_days_window()]] - code - tests/test_p9_p10.py
-- [[dot-test_log_and_retrieve_slippage()]] - code - tests/test_p9_p10.py
-- [[dot-test_mean_slippage_averages_multiple()]] - code - tests/test_p9_p10.py
-- [[dot-test_mean_slippage_none_when_empty()]] - code - tests/test_p9_p10.py
-- [[dot-test_slippage_negative_when_fill_below_paper()]] - code - tests/test_p9_p10.py
-- [[dot-tmp_tracker()]] - code - tests/test_p9_p10.py
-- [[Fills older than the window should be excluded.]] - rationale - tests/test_p9_p10.py
-- [[TestLiveFillSlippage]] - code - tests/test_p9_p10.py
-- [[Tracker backed by a temp DB.]] - rationale - tests/test_p9_p10.py
-- [[fixture_8]] - code
-- [[tmp_tracker()]] - code - tests/test_p9_p10.py
+- [[dot-test_clear_missing_flag_is_noop()]] - code - tests/test_execution_stability.py
+- [[dot-test_flag_cleared_at_end()]] - code - tests/test_execution_stability.py
+- [[dot-test_flag_written_at_start()]] - code - tests/test_execution_stability.py
+- [[dot-test_fresh_flag_triggers_warning()]] - code - tests/test_execution_stability.py
+- [[dot-test_stale_flag_no_warning()]] - code - tests/test_execution_stability.py
+- [[A flag older than 600 s must NOT trigger a warning.]] - rationale - tests/test_execution_stability.py
+- [[A flag younger than 600 s must trigger a WARNING.]] - rationale - tests/test_execution_stability.py
+- [[TestWriteCronRunningFlag]] - code - tests/test_execution_stability.py
+- [[_clear_cron_running_flag() must not raise when flag does not exist.]] - rationale - tests/test_execution_stability.py
+- [[_clear_cron_running_flag() removes the flag file.]] - rationale - tests/test_execution_stability.py
+- [[_write_cron_running_flag() creates the flag file with a UTC ISO timestamp.]] - rationale - tests/test_execution_stability.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,8 +30,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 50]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestLiveFillSlippage]] - degree 7, connects to 1 community
-- [[tmp_tracker()]] - degree 3, connects to 1 community
+- [[TestWriteCronRunningFlag]] - degree 6, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "rationale"
-community: "Community 113"
-location: "L296"
+community: "Community 101"
+location: "L507"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_113
+  - community/Community_101
 ---
 
 # No 'hourly' key yet (fewer than 20 settled hourly predictions) must return prob…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_hourly_pool_no_fallback_to_sameday_or_global()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_113
+#graphify/rationale #graphify/EXTRACTED #community/Community_101

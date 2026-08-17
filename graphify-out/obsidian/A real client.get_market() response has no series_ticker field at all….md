@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Community 184"
-location: "L4610"
+community: "Community 2"
+location: "L4665"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_184
+  - community/Community_2
 ---
 
 # A real client.get_market() response has no "series_ticker" field at all…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_derive_series_ticker()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_184
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

@@ -1,21 +1,17 @@
 ---
 source_file: "paths.py"
 type: "code"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 6"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_6
 ---
 
 # paths.py
 
 ## Connections
-- [[Grade Audit Module Doc TIER 2 Files]] - `references` [EXTRACTED]
-- [[Missing EXECUTION_LOG_PATH Centralization (Possible)]] - `references` [EXTRACTED]
-- [[No _DATA.is_dir() Guard at Import Time]] - `references` [EXTRACTED]
-- [[Phase 2 Batch C Regression Tests]] - `imports_from` [EXTRACTED]
 - [[Single source of truth for all data and state file paths. Import from here…]] - `rationale_for` [EXTRACTED]
 - [[ab_test.py]] - `imports_from` [EXTRACTED]
 - [[acis_precip.py]] - `imports_from` [EXTRACTED]
@@ -34,24 +30,22 @@ tags:
 - [[feature_importance.py]] - `imports_from` [EXTRACTED]
 - [[hurricane_climatology.py]] - `imports_from` [EXTRACTED]
 - [[kalshi_ws.py]] - `imports_from` [EXTRACTED]
+- [[main.py]] - `imports_from` [EXTRACTED]
 - [[ml_bias.py]] - `imports_from` [EXTRACTED]
 - [[monte_carlo.py]] - `imports_from` [EXTRACTED]
 - [[notify.py]] - `imports_from` [EXTRACTED]
 - [[nws.py]] - `imports_from` [EXTRACTED]
 - [[param_sweep.py]] - `imports_from` [EXTRACTED]
-- [[paths.py File Grade 810, pure constants module]] - `references` [EXTRACTED]
-- [[paths.py Grade Audit]] - `references` [EXTRACTED]
 - [[pdf_report.py]] - `imports_from` [EXTRACTED]
 - [[project_root()]] - `imports` [EXTRACTED]
 - [[safe_io.py]] - `imports_from` [EXTRACTED]
 - [[sigma_audit.py]] - `imports_from` [EXTRACTED]
-- [[test_alerts_side.py]] - `references` [EXTRACTED]
-- [[test_config_validation.py]] - `calls` [EXTRACTED]
-- [[test_cron_group_c.py]] - `references` [EXTRACTED]
+- [[test_phase2_batch_c.py]] - `imports_from` [EXTRACTED]
 - [[tracker.py]] - `imports_from` [EXTRACTED]
 - [[trading_gates.py]] - `imports_from` [EXTRACTED]
 - [[utils.py]] - `imports_from` [EXTRACTED]
 - [[watchdog.py]] - `imports_from` [EXTRACTED]
 - [[weather_markets.py]] - `imports_from` [EXTRACTED]
+- [[web_app.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/code #graphify/EXTRACTED #community/Community_6

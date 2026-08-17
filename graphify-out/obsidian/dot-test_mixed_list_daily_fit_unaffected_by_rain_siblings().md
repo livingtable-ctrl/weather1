@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 139"
+community: "Community 16"
 location: "L1490"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_139
+  - community/Community_16
 ---
 
 # .test_mixed_list_daily_fit_unaffected_by_rain_siblings()
@@ -17,4 +17,4 @@ tags:
 - [[Rain siblings must not leak into the temperature event's own fit -- they're…]] - `rationale_for` [EXTRACTED]
 - [[TestComputeMarketImpliedGroupsMonthlyRain]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_139
+#graphify/code #graphify/EXTRACTED #community/Community_16

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 635"
-location: "L2710"
+community: "Community 734"
+location: "L3079"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_635
+  - community/Community_734
 ---
 
 # KXHIGHTLV → LasVegas (previously untracked city).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_las_vegas_high_ticker_detected()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_635
+#graphify/rationale #graphify/EXTRACTED #community/Community_734

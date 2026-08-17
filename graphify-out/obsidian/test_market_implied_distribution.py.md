@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_market_implied_distribution.py"
 type: "code"
-community: "Community 41"
+community: "Community 4"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_41
+  - community/Community_4
 ---
 
 # test_market_implied_distribution.py
@@ -22,7 +23,10 @@ tags:
 - [[_rain_ladder()]] - `contains` [EXTRACTED]
 - [[_rain_market()_2]] - `contains` [EXTRACTED]
 - [[fit_market_implied_distribution()]] - `references` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[test_gaussian_prob.py]] - `semantically_similar_to` [INFERRED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_41
+#graphify/code #graphify/EXTRACTED #community/Community_4

@@ -1,24 +1,24 @@
 ---
 type: community
-cohesion: 0.31
+cohesion: 0.33
 members: 9
 ---
 
 # Community 406
 
-**Cohesion:** 0.31 - loosely connected
+**Cohesion:** 0.33 - loosely connected
 **Members:** 9 nodes
 
 ## Members
-- [[dot-_make_condition_db()]] - code - tests/test_phase3_batch_c.py
-- [[dot-test_accepts_cutoff_date_kwarg()]] - code - tests/test_phase3_batch_c.py
-- [[dot-test_cutoff_date_with_min_samples()]] - code - tests/test_phase3_batch_c.py
-- [[dot-test_no_market_date_rows_handled_gracefully()]] - code - tests/test_phase3_batch_c.py
-- [[dot-test_weights_sum_to_one()_4]] - code - tests/test_phase3_batch_c.py
-- [[P3-16 calibrate_condition_weights accepts cutoff_date; no look-ahead bias.]] - rationale - tests/test_phase3_batch_c.py
-- [[Path_17]] - code
-- [[Rows with NULL market_date fall back to empty-string cutoff comparison.]] - rationale - tests/test_phase3_batch_c.py
-- [[TestTemporalIsolationCondition]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_falls_back_to_rest_when_ws_cache_missing()]] - code - tests/test_live_execution.py
+- [[dot-test_falls_back_to_rest_when_ws_entry_one_sided()]] - code - tests/test_live_execution.py
+- [[dot-test_returns_none_when_both_sources_unavailable()]] - code - tests/test_live_execution.py
+- [[dot-test_returns_none_when_rest_market_has_no_quote()]] - code - tests/test_live_execution.py
+- [[dot-test_uses_ws_cache_when_fresh_and_complete()]] - code - tests/test_live_execution.py
+- [[A one-sided WS book (no real ask) must not be treated as usable -- falls…]] - rationale - tests/test_live_execution.py
+- [[Return a market-price-shaped dict ({yes_bid ..., yes_ask ...}) with the…]] - rationale - order_executor.py
+- [[TestGetCurrentBook]] - code - tests/test_live_execution.py
+- [[_get_current_book()]] - code - order_executor.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,12 +28,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 72]]
-- 4 edges to [[_COMMUNITY_Community 118]]
+- 4 edges to [[_COMMUNITY_Community 12]]
+- 4 edges to [[_COMMUNITY_Community 3]]
+- 2 edges to [[_COMMUNITY_Community 30]]
+- 1 edge to [[_COMMUNITY_Community 74]]
+- 1 edge to [[_COMMUNITY_Community 81]]
+- 1 edge to [[_COMMUNITY_Community 1]]
 
 ## Top bridge nodes
-- [[dot-test_no_market_date_rows_handled_gracefully()]] - degree 4, connects to 2 communities
-- [[TestTemporalIsolationCondition]] - degree 7, connects to 1 community
-- [[dot-_make_condition_db()]] - degree 6, connects to 1 community
-- [[dot-test_accepts_cutoff_date_kwarg()]] - degree 3, connects to 1 community
-- [[dot-test_cutoff_date_with_min_samples()]] - degree 3, connects to 1 community
+- [[_get_current_book()]] - degree 16, connects to 6 communities
+- [[TestGetCurrentBook]] - degree 8, connects to 1 community

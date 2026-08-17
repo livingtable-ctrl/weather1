@@ -1,20 +1,23 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.32
+members: 8
 ---
 
 # Community 459
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.32 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_minimum_is_0_25()]] - code - tests/test_paper.py
-- [[dot-test_no_open_trades_returns_one()]] - code - tests/test_paper.py
-- [[dot-test_same_city_same_date_reduces_to_0_25()]] - code - tests/test_paper.py
-- [[dot-test_uncorrelated_cities_returns_0_90()]] - code - tests/test_paper.py
-- [[TestCorrKellyScale]] - code - tests/test_paper.py
+- [[dot-test_already_sqlite_format_passes_through_unchanged()]] - code - tests/test_execution_log.py
+- [[dot-test_normalized_value_compares_correctly_against_datetime_now()]] - code - tests/test_execution_log.py
+- [[dot-test_normalizes_iso_t_format_to_sqlite_format()]] - code - tests/test_execution_log.py
+- [[Return a SQL expression normalizing a mixed-format timestamp column for…]] - rationale - utils.py
+- [[TestSqlNormalizeIsoColumn]] - code - tests/test_execution_log.py
+- [[The actual bug this exists to prevent an unnormalized ISO-T value sorts higher…]] - rationale - tests/test_execution_log.py
+- [[sql_normalize_iso_column()]] - code - utils.py
+- [[utils.sql_normalize_iso_column() -- the shared helper both call sites above…]] - rationale - tests/test_execution_log.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,8 +27,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 56]]
+- 5 edges to [[_COMMUNITY_Community 42]]
+- 1 edge to [[_COMMUNITY_Community 2]]
+- 1 edge to [[_COMMUNITY_Community 6]]
+- 1 edge to [[_COMMUNITY_Community 66]]
 
 ## Top bridge nodes
-- [[TestCorrKellyScale]] - degree 6, connects to 2 communities
+- [[sql_normalize_iso_column()]] - degree 11, connects to 4 communities
+- [[TestSqlNormalizeIsoColumn]] - degree 5, connects to 1 community

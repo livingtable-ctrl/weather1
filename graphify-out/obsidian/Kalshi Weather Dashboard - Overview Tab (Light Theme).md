@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/screenshots/light.png"
 type: "image"
-community: "Community 192"
+community: "Community 197"
 tags:
   - graphify/image
   - graphify/EXTRACTED
-  - community/Community_192
+  - community/Community_197
 ---
 
 # Kalshi Weather Dashboard - Overview Tab (Light Theme)
@@ -19,4 +19,4 @@ tags:
 - [[Metric Cards Row (Paper balance, Open positions, Win rate, Brier score)]] - `references` [EXTRACTED]
 - [[Top Navigation Bar (Overview, Positions, Signals, Forecast, Analytics, Risk, Trades)]] - `references` [EXTRACTED]
 
-#graphify/image #graphify/EXTRACTED #community/Community_192
+#graphify/image #graphify/EXTRACTED #community/Community_197

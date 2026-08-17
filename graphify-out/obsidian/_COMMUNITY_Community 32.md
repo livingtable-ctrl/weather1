@@ -1,65 +1,66 @@
 ---
 type: community
-cohesion: 0.05
-members: 50
+cohesion: 0.07
+members: 51
 ---
 
 # Community 32
 
-**Cohesion:** 0.05 - loosely connected
-**Members:** 50 nodes
+**Cohesion:** 0.07 - loosely connected
+**Members:** 51 nodes
 
 ## Members
-- [[dot-_make_trades()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_fewer_than_20_returns_error()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_reduced_hyperparams()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_results_not_saved_when_holdout_fails()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_skips_city_when_holdout_mse_not_better()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_sweep_parameter_unchanged()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_sweep_source_has_split()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_too_few_trades_returns_error()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_train_source_has_holdout_split()]] - code - tests/test_phase2_batch_m.py
-- [[City model must not be added when holdout MSE = baseline.]] - rationale - tests/test_phase2_batch_m.py
-- [[Cross-Cutting DEBUG-Only Exception Suppression (4 fns)]] - document - docs/grade_audit/outputs/feature_importance.py.md
-- [[Cross-market consistency checker. For a given city + date, temperature…]] - rationale - consistency.py
-- [[For each value in `values`, simulate applying that parameter value to the…]] - rationale - param_sweep.py
-- [[Grade Audit Module Doc TIER 2 Files]] - document - docs/grade_audit/modules/tier2.md
-- [[GradientBoostingRegressor must use n_estimators=50, max_depth=2.]] - rationale - tests/test_phase2_batch_m.py
-- [[Group markets by (series_ticker, date_str). Returns dict key - list of…]] - rationale - consistency.py
-- [[If holdout win rate  baseline, results must NOT be saved.]] - rationale - tests/test_phase2_batch_m.py
-- [[Phase 2 Batch M Regression Tests]] - code - tests/test_phase2_batch_m.py
-- [[Phase 2 Batch M regression tests P2-353738424446.]] - rationale - tests/test_phase2_batch_m.py
-- [[Record which features were present for a trade and (optionally) the outcome.…]] - rationale - feature_importance.py
-- [[Run a sweep across key parameters using historical paper trades. Uses a 7030…]] - rationale - param_sweep.py
-- [[TestGbmHoldoutValidation]] - code - tests/test_phase2_batch_m.py
-- [[TestParamSweepTemporalSplit]] - code - tests/test_phase2_batch_m.py
-- [[Train a bias correction model per city from tracker DB data. Saves models to…]] - rationale - ml_bias.py
-- [[_group_markets()]] - code - consistency.py
-- [[_group_markets() No tryexcept Aborts Whole Scan (710)]] - document - docs/grade_audit/outputs/consistency.py.md
-- [[consistency.py]] - code - consistency.py
-- [[consistency.py Detect-Only, No Enforcement Path (INFO)]] - document - docs/grade_audit/outputs/consistency.py.md
-- [[consistency.py File Grade median 710, no TIER1 promotions]] - document - docs/grade_audit/outputs/consistency.py.md
-- [[consistency.py Grade Audit]] - document - docs/grade_audit/outputs/consistency.py.md
-- [[cron ML retrain marker (LAST_ML_RETRAIN_PATH)]] - code - cron.py
-- [[feature_importance.py]] - code - feature_importance.py
-- [[feature_importance.py File Grade 6-710, no TIER1 (analytics side-car)]] - document - docs/grade_audit/outputs/feature_importance.py.md
-- [[feature_importance.py Grade Audit]] - document - docs/grade_audit/outputs/feature_importance.py.md
-- [[feature_importance.py — Track which forecast signals contribute most to correct…]] - rationale - feature_importance.py
-- [[hurricanestorm ticker helpers]] - code - weather_markets.py
-- [[param_sweep.py]] - code - param_sweep.py
-- [[param_sweep.py Called Dead-Code Candidate (contested)]] - document - docs/grade_audit/outputs/config.py.md
-- [[param_sweep.py File Grade not dead code, 1 RF1 promotion]] - document - docs/grade_audit/outputs/param_sweep.py.md
-- [[param_sweep.py Grade Audit]] - document - docs/grade_audit/outputs/param_sweep.py.md
-- [[param_sweep.py — Auto-test threshold ranges against historical outcomes. Usage…]] - rationale - param_sweep.py
-- [[record_feature_contribution()]] - code - feature_importance.py
-- [[run_sweep Function]] - code - param_sweep.py
-- [[run_sweep must split data 7030 and only save when holdout passes.]] - rationale - tests/test_phase2_batch_m.py
-- [[run_sweep source must contain 7030 split logic.]] - rationale - tests/test_phase2_batch_m.py
-- [[run_sweep()]] - code - param_sweep.py
-- [[sweep_parameter itself must still work on arbitrary lists.]] - rationale - tests/test_phase2_batch_m.py
-- [[sweep_parameter()]] - code - param_sweep.py
-- [[train_bias_model source must contain 8020 holdout logic.]] - rationale - tests/test_phase2_batch_m.py
-- [[train_bias_model()]] - code - ml_bias.py
+- [[dot-__init__()_5]] - code - tests/test_alerts.py
+- [[dot-get_market()_3]] - code - tests/test_alerts.py
+- [[dot-test_above_direction_does_not_fire_when_price_below_target()]] - code - tests/test_alerts.py
+- [[dot-test_above_direction_fires_when_price_at_or_over_target()]] - code - tests/test_alerts.py
+- [[dot-test_add_alert_defaults_direction_below_cooldown_60()]] - code - tests/test_alerts.py
+- [[dot-test_add_alert_invalid_direction_raises()]] - code - tests/test_alerts.py
+- [[dot-test_add_alert_invalid_target_price_raises()]] - code - tests/test_alerts.py
+- [[dot-test_add_alert_persists_and_increments_id()]] - code - tests/test_alerts.py
+- [[dot-test_add_alert_returns_expected_fields()]] - code - tests/test_alerts.py
+- [[dot-test_below_direction_does_not_fire_when_price_above_target()]] - code - tests/test_alerts.py
+- [[dot-test_below_direction_fires_when_price_at_or_under_target()]] - code - tests/test_alerts.py
+- [[dot-test_mark_triggered_only_affects_matching_id()]] - code - tests/test_alerts.py
+- [[dot-test_mark_triggered_sets_flag_and_timestamp()]] - code - tests/test_alerts.py
+- [[dot-test_mark_triggered_unknown_id_does_not_raise()]] - code - tests/test_alerts.py
+- [[dot-test_no_active_alerts_returns_empty_without_fetching()]] - code - tests/test_alerts.py
+- [[dot-test_remove_existing_alert_returns_true_and_removes()]] - code - tests/test_alerts.py
+- [[dot-test_remove_nonexistent_alert_returns_false()]] - code - tests/test_alerts.py
+- [[dot-test_save_propagates_atomic_write_failure()]] - code - tests/test_alerts.py
+- [[dot-test_triggered_alert_after_cooldown_elapses_is_rearmed()]] - code - tests/test_alerts.py
+- [[dot-test_triggered_alert_with_zero_cooldown_never_rearms()]] - code - tests/test_alerts.py
+- [[dot-test_triggered_alert_within_cooldown_is_excluded()]] - code - tests/test_alerts.py
+- [[dot-test_untriggered_alert_is_active()]] - code - tests/test_alerts.py
+- [[A triggered alert whose cooldown has NOT yet elapsed must not reappear in the…]] - rationale - tests/test_alerts.py
+- [[Add a price alert. Args ticker Market ticker (e.g. KXHIGHNY-26APR09-T72)…]] - rationale - alerts.py
+- [[Correctness tests for alerts.py — addremovegetcheckmark_triggered.…]] - rationale - tests/test_alerts.py
+- [[Fetch current YES prices for all alert tickers and check which alerts have been…]] - rationale - alerts.py
+- [[Mark an alert as triggered. 91 Records triggered_at timestamp for cooldown…]] - rationale - alerts.py
+- [[P91 once the cooldown period has passed, the alert must be reset to…]] - rationale - tests/test_alerts.py
+- [[Redirect alerts._DATA_PATH to a per-test temp file so tests never touch the…]] - rationale - tests/test_alerts.py
+- [[Regression coverage for the OTHER bare os.replace() CALL SITES backlog entry…_1]] - rationale - tests/test_alerts.py
+- [[Remove an alert by ID. Returns True if found and removed, False otherwise.]] - rationale - alerts.py
+- [[Return all active alerts. 91 An alert with a cooldown is re-armed after the…]] - rationale - alerts.py
+- [[TestAddAlert]] - code - tests/test_alerts.py
+- [[TestCheckAlerts]] - code - tests/test_alerts.py
+- [[TestGetAlertsCooldownRearm]] - code - tests/test_alerts.py
+- [[TestMarkTriggered]] - code - tests/test_alerts.py
+- [[TestRemoveAlert]] - code - tests/test_alerts.py
+- [[TestSaveRoutesThroughSafeIO]] - code - tests/test_alerts.py
+- [[_FakeClient_1]] - code - tests/test_alerts.py
+- [[_load()_1]] - code - alerts.py
+- [[_save()_1]] - code - alerts.py
+- [[add_alert()]] - code - alerts.py
+- [[check_alerts()]] - code - alerts.py
+- [[cooldown_minutes=0 means never re-arm — must stay excluded even long after…]] - rationale - tests/test_alerts.py
+- [[fixture_10]] - code
+- [[get_alerts()]] - code - alerts.py
+- [[isolate_alerts_data()]] - code - tests/test_alerts.py
+- [[mark_triggered()]] - code - alerts.py
+- [[parametrize_3]] - code
+- [[remove_alert()]] - code - alerts.py
+- [[test_alerts.py]] - code - tests/test_alerts.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -69,36 +70,16 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 10 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 9 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 6 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 4 edges to [[_COMMUNITY_Community 51]]
-- 4 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 3 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
-- 3 edges to [[_COMMUNITY_Community 35]]
-- 3 edges to [[_COMMUNITY_Community 109]]
-- 2 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 2 edges to [[_COMMUNITY_Community 96]]
-- 1 edge to [[_COMMUNITY_Community 33]]
-- 1 edge to [[_COMMUNITY_Community 345]]
-- 1 edge to [[_COMMUNITY_Community 374]]
-- 1 edge to [[_COMMUNITY_Community 555]]
-- 1 edge to [[_COMMUNITY_Community 184]]
-- 1 edge to [[_COMMUNITY_Community 186]]
-- 1 edge to [[_COMMUNITY_Community 151]]
-- 1 edge to [[_COMMUNITY_Community 454]]
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Community 129]]
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 1 edge to [[_COMMUNITY_Community 198]]
-- 1 edge to [[_COMMUNITY_Community 296]]
-- 1 edge to [[_COMMUNITY_Community 195]]
-- 1 edge to [[_COMMUNITY_Community 567]]
+- 9 edges to [[_COMMUNITY_Community 8]]
+- 8 edges to [[_COMMUNITY_Community 0]]
+- 2 edges to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 13]]
+- 1 edge to [[_COMMUNITY_Community 81]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[Grade Audit Module Doc TIER 2 Files]] - degree 20, connects to 12 communities
-- [[Phase 2 Batch M Regression Tests]] - degree 15, connects to 7 communities
-- [[consistency.py]] - degree 17, connects to 5 communities
-- [[_group_markets()]] - degree 11, connects to 5 communities
-- [[param_sweep.py]] - degree 11, connects to 4 communities
+- [[check_alerts()]] - degree 12, connects to 4 communities
+- [[add_alert()]] - degree 20, connects to 3 communities
+- [[mark_triggered()]] - degree 6, connects to 3 communities
+- [[test_alerts.py]] - degree 16, connects to 2 communities
+- [[get_alerts()]] - degree 12, connects to 2 communities

@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/preamble.md"
 type: "document"
-community: "Community 59"
+community: "Community 6"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_59
+  - community/Community_6
 ---
 
 # Grade Audit Preamble
@@ -18,7 +18,5 @@ tags:
 - [[Tracker Grade Audit]] - `cites` [EXTRACTED]
 - [[Weather Markets Grade Audit]] - `cites` [EXTRACTED]
 - [[atomic_write_json()]] - `references` [EXTRACTED]
-- [[cron.py_2]] - `references` [EXTRACTED]
-- [[ml_bias.py_2]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_59
+#graphify/document #graphify/EXTRACTED #community/Community_6

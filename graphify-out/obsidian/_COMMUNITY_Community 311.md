@@ -10,18 +10,18 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[dot-test_fetch_exception_returns_false_not_raise()_1]] - code - tests/test_rain_markets.py
-- [[dot-test_finalized_writes_settled_value_not_settled_var()_1]] - code - tests/test_rain_markets.py
-- [[dot-test_missing_expiration_value_returns_false()_1]] - code - tests/test_rain_markets.py
-- [[dot-test_no_matching_outcomes_row_returns_false()_1]] - code - tests/test_rain_markets.py
-- [[dot-test_non_numeric_expiration_value_returns_false()_1]] - code - tests/test_rain_markets.py
-- [[dot-test_not_finalized_returns_false_no_write()_1]] - code - tests/test_rain_markets.py
-- [[dot-test_rain_branch_reached_before_parse_city_date_early_return()]] - code - tests/test_rain_markets.py
-- [[A market with a VALID expiration_value but status != 'finalized' must still be…]] - rationale - tests/test_rain_markets.py
-- [[Review-caught gap the UPDATE could match zero rows (no prior outcomes row for…_1]] - rationale - tests/test_rain_markets.py
-- [[TestAuditSettlementMonthlyRain]] - code - tests/test_rain_markets.py
-- [[The real regression this fix targets parse_city_date() returns (city, None)…_1]] - rationale - tests/test_rain_markets.py
-- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 handoff item 5…]] - rationale - tests/test_rain_markets.py
+- [[-10°F threshold must also pass the gate.]] - rationale - tests/test_phase2_batch_j.py
+- [[dot-test_above_below_are_the_only_gated_types()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_condition_missing_threshold_is_none()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_condition_zero_is_not_none()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_negative_threshold_is_not_none()]] - code - tests/test_phase2_batch_j.py
+- [[dot-test_source_uses_is_not_none()]] - code - tests/test_phase2_batch_j.py
+- [[Freeze markets (threshold=0°F) must not silently skip METAR lock-in.]] - rationale - tests/test_phase2_batch_j.py
+- [[Missing threshold must be None — the gate correctly blocks it.]] - rationale - tests/test_phase2_batch_j.py
+- [[Only 'above' and 'between' types are gated — 'range' with threshold=0 works.]] - rationale - tests/test_phase2_batch_j.py
+- [[Source code must use 'is not None', not a bare truthiness check.]] - rationale - tests/test_phase2_batch_j.py
+- [[TestMetarLockInZeroThreshold]] - code - tests/test_phase2_batch_j.py
+- [[threshold=0.0 must pass the 'is not None' gate.]] - rationale - tests/test_phase2_batch_j.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,7 +31,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 237]]
+- 1 edge to [[_COMMUNITY_Community 303]]
 
 ## Top bridge nodes
-- [[TestAuditSettlementMonthlyRain]] - degree 9, connects to 1 community
+- [[TestMetarLockInZeroThreshold]] - degree 7, connects to 1 community

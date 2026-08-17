@@ -1,12 +1,12 @@
 ---
 source_file: "positions.py"
 type: "code"
-community: "Community 158"
+community: "Community 161"
 location: "L122"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_158
+  - community/Community_161
 ---
 
 # _passes_exit_gates()
@@ -30,8 +30,9 @@ tags:
 - [[_check_live_model_exits Function]] - `calls` [EXTRACTED]
 - [[_check_live_model_exits()]] - `calls` [EXTRACTED]
 - [[check_breakeven_stops()]] - `calls` [EXTRACTED]
+- [[check_model_exits()]] - `calls` [EXTRACTED]
 - [[check_stop_losses()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
 - [[positions.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Community_158
+#graphify/code #graphify/INFERRED #community/Community_161

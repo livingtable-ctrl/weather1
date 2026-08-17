@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 126"
 location: "L25"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_126
 ---
 
 # TestKellyFraction
@@ -20,4 +20,4 @@ tags:
 - [[dot-test_positive_edge()]] - `method` [EXTRACTED]
 - [[test_weather.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_126

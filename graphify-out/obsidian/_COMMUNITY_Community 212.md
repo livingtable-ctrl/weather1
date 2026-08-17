@@ -1,31 +1,32 @@
 ---
 type: community
-cohesion: 0.14
-members: 16
+cohesion: 0.16
+members: 17
 ---
 
 # Community 212
 
-**Cohesion:** 0.14 - loosely connected
-**Members:** 16 nodes
+**Cohesion:** 0.16 - loosely connected
+**Members:** 17 nodes
 
 ## Members
-- [[dot-from_env()]] - code - config.py
-- [[Create a BotConfig reading all env vars fresh. Clears the mtime-gated…]] - rationale - config.py
-- [[Create a BotConfig, validate it, and return it. Call at startup.]] - rationale - config.py
-- [[Reset the singleton and env-var cache — used in tests between runs.]] - rationale - config.py
-- [[Return the global BotConfig singleton, loading from env on first call. Must be…]] - rationale - config.py
-- [[breakeven_trigger_pct and max_days_out both read their env var fresh from the…]] - rationale - tests/test_config_validation.py
-- [[get_config()]] - code - config.py
-- [[load_and_validate()]] - code - config.py
-- [[reset_config()]] - code - config.py
-- [[test_bot_config_defaults_are_sane()]] - code - tests/test_config_validation.py
-- [[test_bot_config_loads_from_env()]] - code - tests/test_config_validation.py
-- [[test_config_validation.py]] - code - tests/test_config_validation.py
-- [[test_paths_module_exports_critical_paths()]] - code - tests/test_config_validation.py
-- [[test_validate_config_does_not_exit_in_demo_when_keys_missing()]] - code - tests/test_config_validation.py
-- [[test_validate_config_exits_in_prod_when_keys_missing()]] - code - tests/test_config_validation.py
-- [[test_validate_config_passes_in_prod_with_keys()]] - code - tests/test_config_validation.py
+- [[63 Scale edge linearly to zero as the market approaches close. At…]] - rationale - weather_markets.py
+- [[dot-test_edge_decays_as_close_approaches()]] - code - tests/test_trading.py
+- [[dot-test_full_edge_beyond_reference_hours()]] - code - tests/test_trading.py
+- [[dot-test_full_edge_far_from_close()]] - code - tests/test_trading.py
+- [[dot-test_half_edge_at_half_reference_hours()]] - code - tests/test_trading.py
+- [[dot-test_half_edge_at_half_time()]] - code - tests/test_trading.py
+- [[dot-test_near_close_retains_meaningful_edge()]] - code - tests/test_trading.py
+- [[dot-test_zero_at_close_time()]] - code - tests/test_trading.py
+- [[At 10h before close with 8h reference full edge returned.]] - rationale - tests/test_trading.py
+- [[At 2h before close with 8h reference 5% edge retained (was 4% with 48h).]] - rationale - tests/test_trading.py
+- [[At 4h before close with 8h reference ~50% of edge returned.]] - rationale - tests/test_trading.py
+- [[At exactly half of reference_hours remaining, edge should be halved.]] - rationale - tests/test_trading.py
+- [[At or past close_time, edge should be 0.]] - rationale - tests/test_trading.py
+- [[Edge at 6h remaining  edge at 3h remaining (within 8h reference window).]] - rationale - tests/test_trading.py
+- [[TestTimeDecayEdge]] - code - tests/test_trading.py
+- [[Well before close (= reference_hours), edge should be unchanged.]] - rationale - tests/test_trading.py
+- [[time_decay_edge()]] - code - weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -35,14 +36,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 5 edges to [[_COMMUNITY_Community 297]]
-- 4 edges to [[_COMMUNITY_Community 129]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Community 243]]
+- 3 edges to [[_COMMUNITY_Community 418]]
+- 3 edges to [[_COMMUNITY_Community 5]]
+- 2 edges to [[_COMMUNITY_Community 86]]
+- 1 edge to [[_COMMUNITY_Community 38]]
 
 ## Top bridge nodes
-- [[test_config_validation.py]] - degree 11, connects to 4 communities
-- [[get_config()]] - degree 4, connects to 2 communities
-- [[load_and_validate()]] - degree 4, connects to 2 communities
-- [[dot-from_env()]] - degree 5, connects to 1 community
-- [[reset_config()]] - degree 5, connects to 1 community
+- [[time_decay_edge()]] - degree 16, connects to 4 communities
+- [[TestTimeDecayEdge]] - degree 8, connects to 1 community

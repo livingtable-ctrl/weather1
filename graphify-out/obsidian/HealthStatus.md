@@ -1,12 +1,12 @@
 ---
 source_file: "system_health.py"
 type: "code"
-community: "Community 296"
+community: "Community 245"
 location: "L22"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_296
+  - community/Community_245
 ---
 
 # HealthStatus
@@ -18,4 +18,4 @@ tags:
 - [[check_system_health()]] - `references` [EXTRACTED]
 - [[system_health.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_296
+#graphify/code #graphify/EXTRACTED #community/Community_245

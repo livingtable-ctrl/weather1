@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Tracker P&L Attribution Tests"
+community: "Community 2"
 location: "L2575"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_2
 ---
 
 # Count DISTINCT settled storm-order tickers -- backlog.txt "HURRICANE MARKETS"…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[count_settled_storm_order_predictions()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

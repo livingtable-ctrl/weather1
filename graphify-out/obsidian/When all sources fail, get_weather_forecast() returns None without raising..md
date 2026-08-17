@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecast_accuracy.py"
 type: "rationale"
-community: "Community 232"
+community: "Community 234"
 location: "L170"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_232
+  - community/Community_234
 ---
 
 # When all sources fail, get_weather_forecast() returns None without raising.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_forecast_gracefully_handles_api_failure()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_232
+#graphify/rationale #graphify/EXTRACTED #community/Community_234

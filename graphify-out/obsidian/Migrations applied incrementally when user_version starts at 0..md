@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_infrastructure.py"
 type: "rationale"
-community: "Circuit Breaker & Session Retry Infrastructure"
+community: "Community 7"
 location: "L502"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Circuit_Breaker__Session_Retry_Infrastructure
+  - community/Community_7
 ---
 
 # Migrations applied incrementally when user_version starts at 0.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_pragma_migrations_incremental()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Circuit_Breaker__Session_Retry_Infrastructure
+#graphify/rationale #graphify/EXTRACTED #community/Community_7

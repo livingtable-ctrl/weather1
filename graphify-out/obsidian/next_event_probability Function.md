@@ -1,11 +1,11 @@
 ---
 source_file: "hurricane_climatology.py"
 type: "code"
-community: "Community 587"
+community: "Community 663"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_587
+  - community/Community_663
 ---
 
 # next_event_probability Function
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[next_event_outcomes Function]] - `shares_data_with` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_587
+#graphify/code #graphify/INFERRED #community/Community_663

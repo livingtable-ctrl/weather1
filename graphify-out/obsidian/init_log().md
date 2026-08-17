@@ -1,19 +1,19 @@
 ---
 source_file: "execution_log.py"
 type: "code"
-community: "Execution Log Live-Loss Tracking"
+community: "Community 42"
 location: "L116"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Execution_Log_Live-Loss_Tracking
+  - community/Community_42
 ---
 
 # init_log()
 
 ## Connections
-- [[_conn()]] - `calls` [EXTRACTED]
-- [[_run_migrations()]] - `calls` [EXTRACTED]
+- [[_conn()_1]] - `calls` [EXTRACTED]
+- [[_run_migrations()_1]] - `calls` [EXTRACTED]
 - [[add_live_loss()]] - `calls` [EXTRACTED]
 - [[execution_log.py]] - `contains` [EXTRACTED]
 - [[export_live_tax_csv()]] - `calls` [EXTRACTED]
@@ -34,4 +34,4 @@ tags:
 - [[was_recently_ordered()]] - `calls` [EXTRACTED]
 - [[was_traded_today()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking
+#graphify/code #graphify/EXTRACTED #community/Community_42

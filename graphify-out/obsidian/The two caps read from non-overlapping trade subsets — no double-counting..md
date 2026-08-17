@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_o.py"
 type: "rationale"
-community: "Community 63"
+community: "Community 60"
 location: "L92"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_63
+  - community/Community_60
 ---
 
 # The two caps read from non-overlapping trade subsets — no double-counting.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCapIndependence]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_63
+#graphify/rationale #graphify/EXTRACTED #community/Community_60

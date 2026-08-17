@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ecmwf.py"
 type: "code"
-community: "Community 255"
+community: "Community 252"
 location: "L119"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_255
+  - community/Community_252
 ---
 
 # .test_ecmwf_spread_computation()
@@ -16,4 +16,4 @@ tags:
 - [[_compute_ensemble_spread()]] - `calls` [EXTRACTED]
 - [[ensemble_spread computed when ECMWF included raises no error.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_255
+#graphify/code #graphify/EXTRACTED #community/Community_252

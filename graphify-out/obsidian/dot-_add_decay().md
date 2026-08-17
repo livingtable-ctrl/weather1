@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 315"
+community: "Community 320"
 location: "L1527"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_315
+  - community/Community_320
 ---
 
 # ._add_decay()
@@ -20,4 +20,4 @@ tags:
 - [[Add n predictions with a given edge size and days_out.]] - `rationale_for` [EXTRACTED]
 - [[TestEdgeDecayCurveConditionType]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_315
+#graphify/code #graphify/EXTRACTED #community/Community_320

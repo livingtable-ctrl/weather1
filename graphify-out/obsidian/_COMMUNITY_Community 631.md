@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 631
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[cmd_watch's automated loop must also run paper stop-lossbreakeven protection,…]] - rationale - tests/test_trading.py
-- [[test_cmd_watch_auto_executes_paper_stop_loss()]] - code - tests/test_trading.py
+- [[dot-setup_method()_35]] - code - tests/test_signal_quality.py
+- [[dot-teardown_method()_27]] - code - tests/test_signal_quality.py
+- [[dot-test_get_member_accuracy_respects_days_back()]] - code - tests/test_signal_quality.py
+- [[Old scores (90 days ago) are excluded; recent scores (10 days ago) are included.]] - rationale - tests/test_signal_quality.py
+- [[TestGetMemberAccuracyDaysBack]] - code - tests/test_signal_quality.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,7 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 92]]
+- 1 edge to [[_COMMUNITY_Community 238]]
 
 ## Top bridge nodes
-- [[test_cmd_watch_auto_executes_paper_stop_loss()]] - degree 2, connects to 1 community
+- [[TestGetMemberAccuracyDaysBack]] - degree 4, connects to 1 community

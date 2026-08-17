@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 524"
+community: "Community 583"
 location: "L6478"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_524
+  - community/Community_583
 ---
 
 # TestFetchPreviousRunDailyUsesUtcToday
@@ -17,4 +17,4 @@ tags:
 - [[backlog.txt utils.utc_today() SAYS 'USE EVERYWHERE INSTEAD OF date.today()' --…]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_524
+#graphify/code #graphify/EXTRACTED #community/Community_583

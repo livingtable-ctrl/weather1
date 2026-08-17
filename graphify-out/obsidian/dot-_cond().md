@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Weather Probability Math Tests"
+community: "Community 203"
 location: "L460"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_203
 ---
 
 # ._cond()
@@ -17,4 +17,4 @@ tags:
 - [[dot-test_temp_outside_bucket_gives_low_probability()]] - `calls` [EXTRACTED]
 - [[TestObsProbBetweenSigma]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_203

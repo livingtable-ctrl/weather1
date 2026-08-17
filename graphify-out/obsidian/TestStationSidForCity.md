@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_acis_precip.py"
 type: "code"
-community: "Community 539"
+community: "Community 141"
 location: "L34"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_539
+  - community/Community_141
 ---
 
 # TestStationSidForCity
@@ -18,4 +18,4 @@ tags:
 - [[dot-test_unmapped_city_returns_none()]] - `method` [EXTRACTED]
 - [[test_acis_precip.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_539
+#graphify/code #graphify/EXTRACTED #community/Community_141

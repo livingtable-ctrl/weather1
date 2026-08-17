@@ -1,20 +1,17 @@
 ---
-source_file: "kalshi_client.py"
+source_file: "tests/test_alerts.py"
 type: "code"
-community: "Community 86"
-location: "L339"
+community: "Community 32"
+location: "L215"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_86
+  - community/Community_32
 ---
 
 # .get_market()
 
 ## Connections
-- [[dot-_get()]] - `calls` [EXTRACTED]
-- [[dot-_validate()]] - `calls` [EXTRACTED]
-- [[KalshiClient]] - `method` [EXTRACTED]
-- [[validate_market()]] - `calls` [EXTRACTED]
+- [[_FakeClient_1]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_86
+#graphify/code #graphify/EXTRACTED #community/Community_32

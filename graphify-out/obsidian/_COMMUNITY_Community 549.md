@@ -1,20 +1,21 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.33
+members: 6
 ---
 
 # Community 549
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_no_warning_on_private_key()]] - code - tests/test_kalshi_client.py
-- [[dot-test_warns_on_world_readable_key()]] - code - tests/test_kalshi_client.py
-- [[Loading a key file with 0600 permissions emits no warning (Unix only).]] - rationale - tests/test_kalshi_client.py
-- [[Loading a key file with groupother read bits set emits a warning (Unix only).]] - rationale - tests/test_kalshi_client.py
-- [[TestKeyPermissions]] - code - tests/test_kalshi_client.py
+- [[59.1 Add `_websocket_listener(markets, callback)` to `kalshi_client.py`]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[59.2 Wire callback into same-day certainty scanner]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[59.3 Write tests]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[59.4 Verify & Commit]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[Background_12]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[Task 59 (P11.J) — WebSocket monitoring for same-day markets]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,7 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 225]]
+- 1 edge to [[_COMMUNITY_Community 543]]
 
 ## Top bridge nodes
-- [[TestKeyPermissions]] - degree 3, connects to 1 community
+- [[Task 59 (P11.J) — WebSocket monitoring for same-day markets]] - degree 6, connects to 1 community

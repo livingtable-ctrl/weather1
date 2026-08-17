@@ -1,46 +1,47 @@
 ---
 type: community
 cohesion: 0.08
-members: 31
+members: 32
 ---
 
 # Community 79
 
 **Cohesion:** 0.08 - loosely connected
-**Members:** 31 nodes
+**Members:** 32 nodes
 
 ## Members
-- [[dot-_seed()_5]] - code - tests/test_ml_bias.py
-- [[dot-_seed()_6]] - code - tests/test_ml_bias.py
-- [[dot-_seed()_7]] - code - tests/test_ml_bias.py
-- [[dot-_seed()_8]] - code - tests/test_ml_bias.py
-- [[dot-test_directional_bias_warning_labels_global_and_condition()]] - code - tests/test_ml_bias.py
-- [[dot-test_directional_bias_warning_labels_sameday_and_hourly()]] - code - tests/test_ml_bias.py
-- [[dot-test_hourly_pool_below_min_samples_not_trained()]] - code - tests/test_ml_bias.py
-- [[dot-test_hourly_rows_excluded_from_sameday_pool()]] - code - tests/test_ml_bias.py
-- [[dot-test_hurricane_rows_excluded_from_global_pool()]] - code - tests/test_ml_bias.py
-- [[dot-test_only_daily_rows_reach_the_fit_call()]] - code - tests/test_ml_bias.py
-- [[dot-test_only_daily_rows_reach_the_fit_call_snow()]] - code - tests/test_ml_bias.py
-- [[dot-test_rain_rows_excluded_from_global_pool()]] - code - tests/test_ml_bias.py
-- [[dot-test_snow_rows_excluded_from_global_pool()]] - code - tests/test_ml_bias.py
-- [[dot-test_snow_rows_excluded_from_sameday_pool()]] - code - tests/test_ml_bias.py
-- [[dot-test_sql_paren_regression_multiday_hourly_row_excluded_from_sameday()]] - code - tests/test_ml_bias.py
-- [[24 rows all predicting 0.4 while the actual settle rate is 0.75 -- unfixable by…]] - rationale - tests/test_ml_bias.py
-- [[Directly inspects what train_bias_model() actually fits on -- decoupled from…]] - rationale - tests/test_ml_bias.py
-- [[Opus-review-caught (2026-08-07) this exclusion list was never extended for…]] - rationale - tests/test_ml_bias.py
-- [[Opus-review-caught gap the global pool's exclusion above (line ~604 in…]] - rationale - tests/test_ml_bias.py
-- [[Regression test _fit_T's callers used to log a generic T fit no better than…]] - rationale - tests/test_ml_bias.py
-- [[Same directional-bias shape as above, seeded into the sameday and hourly pools…]] - rationale - tests/test_ml_bias.py
-- [[Targets the exact SQL operator-precedence risk directly SQL's AND binds…]] - rationale - tests/test_ml_bias.py
-- [[TestTrainAllTemperatureScalingHourlyPool]] - code - tests/test_ml_bias.py
-- [[TestTrainAllTemperatureScalingRainExclusion]] - code - tests/test_ml_bias.py
-- [[TestTrainAllTemperatureScalingSkipLogging]] - code - tests/test_ml_bias.py
-- [[TestTrainBiasModelRainExclusion]] - code - tests/test_ml_bias.py
-- [[backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 2 handoff item 4…]] - rationale - tests/test_ml_bias.py
-- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 (review-caught gap)…]] - rationale - tests/test_ml_bias.py
-- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 handoff item (ml_bias.py…]] - rationale - tests/test_ml_bias.py
-- [[backlog.txt Snow Step 2 mirrors the rain test above exactly for…]] - rationale - tests/test_ml_bias.py
-- [[backlog.txt Snow Step 2 the identical leak-prevention check, mirrored for…]] - rationale - tests/test_ml_bias.py
+- [[13 - get_market_calibration() must use equal-frequency buckets and accept…]] - rationale - tests/test_tracker.py
+- [[dot-_seed()_4]] - code - tests/test_tracker.py
+- [[dot-_seed()_5]] - code - tests/test_tracker.py
+- [[dot-setUp()_40]] - code - tests/test_tracker.py
+- [[dot-setUp()_41]] - code - tests/test_tracker.py
+- [[dot-tearDown()_39]] - code - tests/test_tracker.py
+- [[dot-tearDown()_40]] - code - tests/test_tracker.py
+- [[dot-test_city_isolation()_1]] - code - tests/test_tracker.py
+- [[dot-test_falls_back_to_global_when_quintile_empty()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_calibration_bucket_fields()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_calibration_buckets_equal_frequency()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_calibration_default_n_buckets_is_10()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_calibration_empty_returns_empty_buckets()]] - code - tests/test_tracker.py
+- [[dot-test_grpb_calibration_n_buckets_param_accepted()]] - code - tests/test_tracker.py
+- [[dot-test_quintile_boundary_0_maps_to_first_bucket()]] - code - tests/test_tracker.py
+- [[dot-test_quintile_boundary_1_maps_to_last_bucket()]] - code - tests/test_tracker.py
+- [[dot-test_quintile_specific_bias_returned()]] - code - tests/test_tracker.py
+- [[dot-test_returns_zero_when_no_data_at_all()]] - code - tests/test_tracker.py
+- [[Bias for a well-populated quintile differs from the global bias.]] - rationale - tests/test_tracker.py
+- [[Buckets should be roughly equal in count (quantile, not equal-width).]] - rationale - tests/test_tracker.py
+- [[Default call (no args) should use 10 buckets.]] - rationale - tests/test_tracker.py
+- [[E1 per-quintile bias correction.]] - rationale - tests/test_tracker.py
+- [[Each bucket must have the required keys.]] - rationale - tests/test_tracker.py
+- [[Empty DB → both global and quintile bias return 0.0.]] - rationale - tests/test_tracker.py
+- [[Insert n settled predictions at our_prob in quintile of our_prob.]] - rationale - tests/test_tracker.py
+- [[Quintile bias for NYC does not bleed into CHI.]] - rationale - tests/test_tracker.py
+- [[TestGetQuintileBias]] - code - tests/test_tracker.py
+- [[TestMarketCalibrationQuantile]] - code - tests/test_tracker.py
+- [[With no data in the target quintile, returns global bias.]] - rationale - tests/test_tracker.py
+- [[forecast_prob=0.0 maps to quintile 0 (0.0–0.20).]] - rationale - tests/test_tracker.py
+- [[forecast_prob=1.0 maps to quintile 4 (0.80–1.0).]] - rationale - tests/test_tracker.py
+- [[n_buckets parameter should control number of output buckets.]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -50,12 +51,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
-- 3 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
+- 2 edges to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[TestTrainAllTemperatureScalingRainExclusion]] - degree 7, connects to 1 community
-- [[TestTrainAllTemperatureScalingHourlyPool]] - degree 6, connects to 1 community
-- [[TestTrainAllTemperatureScalingSkipLogging]] - degree 5, connects to 1 community
-- [[TestTrainBiasModelRainExclusion]] - degree 5, connects to 1 community
-- [[dot-test_snow_rows_excluded_from_sameday_pool()]] - degree 4, connects to 1 community
+- [[TestGetQuintileBias]] - degree 11, connects to 1 community
+- [[TestMarketCalibrationQuantile]] - degree 10, connects to 1 community

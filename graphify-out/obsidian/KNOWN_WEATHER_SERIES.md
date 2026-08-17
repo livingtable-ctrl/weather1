@@ -1,16 +1,18 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 602"
+location: "L4026"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_602
 ---
 
 # KNOWN_WEATHER_SERIES
 
 ## Connections
-- [[run_backtest()]] - `shares_data_with` [EXTRACTED]
+- [[TestCitySeriesTickerDerivation]] - `references` [EXTRACTED]
+- [[_CITY_SERIES_TICKER]] - `shares_data_with` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/code #graphify/EXTRACTED #community/Community_602

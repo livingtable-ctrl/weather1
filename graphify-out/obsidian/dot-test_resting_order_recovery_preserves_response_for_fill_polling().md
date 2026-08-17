@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 3"
 location: "L596"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # .test_resting_order_recovery_preserves_response_for_fill_polling()
@@ -17,4 +17,4 @@ tags:
 - [[_poll_pending_orders()]] - `calls` [EXTRACTED]
 - [[_recover_pending_orders()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_3

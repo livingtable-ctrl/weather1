@@ -1,18 +1,18 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-lv-visionary.md"
 type: "document"
-community: "Community 249"
+community: "Community 231"
 location: "LV4"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_249
+  - community/Community_231
 ---
 
 # LV4: Market Microstructure Scoring
 
 ## Connections
-- [[tracker.py Module]] - `references` [EXTRACTED]
+- [[tracker.py Module_1]] - `references` [EXTRACTED]
 - [[weather_markets.py Module_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_249
+#graphify/document #graphify/EXTRACTED #community/Community_231

@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_near_settlement_log.py"
 type: "code"
-community: "Community 196"
+community: "Community 199"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_196
+  - community/Community_199
 ---
 
 # test_near_settlement_log.py
@@ -16,6 +17,7 @@ tags:
 - [[_log_near_settlement_trades()]] - `imports` [EXTRACTED]
 - [[_near()]] - `contains` [EXTRACTED]
 - [[_real_trade()]] - `contains` [EXTRACTED]
-- [[order_executor.py_1]] - `conceptually_related_to` [EXTRACTED]
+- [[order_executor.py]] - `conceptually_related_to` [EXTRACTED]
+- [[sqlite3]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_196
+#graphify/code #graphify/EXTRACTED #community/Community_199

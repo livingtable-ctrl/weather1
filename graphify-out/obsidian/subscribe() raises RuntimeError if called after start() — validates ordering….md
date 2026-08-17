@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_e.py"
 type: "rationale"
-community: "Community 261"
+community: "Community 201"
 location: "L31"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_261
+  - community/Community_201
 ---
 
 # subscribe() raises RuntimeError if called after start() — validates ordering…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_subscribe_after_start_raises()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_261
+#graphify/rationale #graphify/EXTRACTED #community/Community_201

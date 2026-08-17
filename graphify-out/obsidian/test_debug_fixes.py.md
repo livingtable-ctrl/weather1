@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_debug_fixes.py"
 type: "code"
-community: "Community 78"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_78
+  - community/Community_4
 ---
 
 # test_debug_fixes.py
@@ -19,11 +19,11 @@ tags:
 - [[TestLogPredictionWarning]] - `contains` [EXTRACTED]
 - [[TestPlacePaperOrderValidation]] - `contains` [EXTRACTED]
 - [[TestSyncOutcomesWarning]] - `contains` [EXTRACTED]
-- [[batch_log_analysis_attempts()]] - `calls` [EXTRACTED]
-- [[log_analysis_attempt()]] - `calls` [EXTRACTED]
-- [[log_prediction()]] - `calls` [EXTRACTED]
-- [[sync_outcomes()]] - `calls` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[tmp_paper()]] - `contains` [EXTRACTED]
 - [[tmp_tracker()_2]] - `contains` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_78
+#graphify/code #graphify/EXTRACTED #community/Community_4

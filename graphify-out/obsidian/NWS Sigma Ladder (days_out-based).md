@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/modules/nws.md"
 type: "document"
-community: "Community 26"
+community: "Community 539"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_26
+  - community/Community_539
 ---
 
 # NWS Sigma Ladder (days_out-based)
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[Grade Audit Module Doc nws.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_26
+#graphify/document #graphify/EXTRACTED #community/Community_539

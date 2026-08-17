@@ -1,17 +1,19 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.50
+members: 4
 ---
 
 # Community 646
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.50 - moderately connected
+**Members:** 4 nodes
 
 ## Members
-- [[TermVar]] - code - updated frontend/variation-terminal.jsx
-- [[variation-terminal.jsx]] - code - updated frontend/variation-terminal.jsx
+- [[_collect_data Function]] - code - pdf_report.py
+- [[_generate_html Function]] - code - pdf_report.py
+- [[_generate_pdf Function]] - code - pdf_report.py
+- [[generate_weekly_report Function]] - code - pdf_report.py
 
 ## Live Query (requires Dataview plugin)
 

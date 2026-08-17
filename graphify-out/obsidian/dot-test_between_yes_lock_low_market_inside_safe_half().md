@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_d.py"
 type: "code"
-community: "METAR Lock-In Confidence Tests"
+community: "Community 22"
 location: "L400"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Lock-In_Confidence_Tests
+  - community/Community_22
 ---
 
 # .test_between_yes_lock_low_market_inside_safe_half()
@@ -16,4 +16,4 @@ tags:
 - [[LOW-var between market daily-low-so-far in the band's safer half (closer to…]] - `rationale_for` [EXTRACTED]
 - [[TestBetweenLockInDynamicConfidence]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Lock-In_Confidence_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_22

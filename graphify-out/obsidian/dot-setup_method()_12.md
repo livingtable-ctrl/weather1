@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_live_execution.py"
+source_file: "tests/test_mos_nbp.py"
 type: "code"
-community: "Community 171"
-location: "L820"
+community: "Community 145"
+location: "L238"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_171
+  - community/Community_145
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestPollPendingOrdersExtended]] - `method` [EXTRACTED]
+- [[TestFetchNbpPercentiles]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_171
+#graphify/code #graphify/EXTRACTED #community/Community_145

@@ -1,27 +1,28 @@
 ---
 type: community
-cohesion: 0.18
-members: 12
+cohesion: 0.19
+members: 13
 ---
 
 # Community 294
 
-**Cohesion:** 0.18 - loosely connected
-**Members:** 12 nodes
+**Cohesion:** 0.19 - loosely connected
+**Members:** 13 nodes
 
 ## Members
-- [[B5 Break-Even Stop-Loss (tests only)]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
-- [[Bug Fixes April 30 2026 Plan]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
-- [[Fix Cron Lock File Leak]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
-- [[Fix Cron Trade Updates Plan]] - document - docs/superpowers/plans/2026-04-25-fix-cron-trade-updates.md
-- [[Fix False-Positive Placed Trade Prints]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
-- [[Fix Signals Page Plan]] - document - docs/superpowers/plans/2026-04-25-fix-signals-page.md
-- [[Fix Silent Briefing Failures]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
-- [[Fix Validate Blank Output]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
-- [[Monte Carlo Clamping Explanation]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
-- [[Print Placed Trade Tickers]] - document - docs/superpowers/plans/2026-04-25-fix-cron-trade-updates.md
-- [[auto_settle_paper_trades Cron Call]] - document - docs/superpowers/plans/2026-04-25-fix-cron-trade-updates.md
-- [[cron.py module_1]] - code - docs/superpowers/plans/2026-04-18-remediation.md
+- [[dot-_mixed_violations()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_banner_not_suppressed_at_exactly_five_real_violations()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_banner_not_suppressed_when_violations_are_all_shadow()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_banner_not_suppressed_with_few_real_violations_and_many_shadow()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_banner_suppressed_when_consistency_skipped()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_banner_suppressed_when_trading_paused()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_banner_suppressed_with_many_real_violations_despite_shadow_present()]] - code - tests/test_trade_cycle_engine.py
+- [[Boundary case for the pre-existing (not newly introduced) ` 5` threshold…]] - rationale - tests/test_trade_cycle_engine.py
+- [[Mirror of the above enough REAL violations to trip the breaker must still trip…]] - rationale - tests/test_trade_cycle_engine.py
+- [[TestPlacementAttemptedBannerAllConditions]] - code - tests/test_trade_cycle_engine.py
+- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…_1]] - rationale - tests/test_trade_cycle_engine.py
+- [[cron.py's _placement_was_attempted gate has three independent conditions…]] - rationale - tests/test_trade_cycle_engine.py
+- [[opus-review-caught only the all-shadow (0 real) and all-real (6 real) shapes…]] - rationale - tests/test_trade_cycle_engine.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,17 +32,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 210]]
-- 3 edges to [[_COMMUNITY_Community 224]]
-- 2 edges to [[_COMMUNITY_Community 452]]
-- 2 edges to [[_COMMUNITY_Community 386]]
-- 1 edge to [[_COMMUNITY_Community 117]]
-- 1 edge to [[_COMMUNITY_Community 295]]
-- 1 edge to [[_COMMUNITY_Community 453]]
+- 6 edges to [[_COMMUNITY_Community 25]]
+- 3 edges to [[_COMMUNITY_Community 17]]
+- 1 edge to [[_COMMUNITY_Community 134]]
 
 ## Top bridge nodes
-- [[Bug Fixes April 30 2026 Plan]] - degree 10, connects to 4 communities
-- [[cron.py module_1]] - degree 8, connects to 3 communities
-- [[B5 Break-Even Stop-Loss (tests only)]] - degree 3, connects to 2 communities
-- [[auto_settle_paper_trades Cron Call]] - degree 3, connects to 1 community
-- [[Monte Carlo Clamping Explanation]] - degree 2, connects to 1 community
+- [[TestPlacementAttemptedBannerAllConditions]] - degree 12, connects to 2 communities
+- [[dot-test_banner_not_suppressed_at_exactly_five_real_violations()]] - degree 4, connects to 1 community
+- [[dot-test_banner_not_suppressed_with_few_real_violations_and_many_shadow()]] - degree 4, connects to 1 community
+- [[dot-test_banner_suppressed_with_many_real_violations_despite_shadow_present()]] - degree 4, connects to 1 community
+- [[dot-test_banner_not_suppressed_when_violations_are_all_shadow()]] - degree 3, connects to 1 community

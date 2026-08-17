@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.33
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 451
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[apianomaly-status route]] - code - web_app.py
-- [[apicalibration-status route]] - code - web_app.py
-- [[apistatus route]] - code - web_app.py
-- [[AI Hallucination Code Audit Prompt]] - document - ai_code_hallucination_audit_prompt.md
-- [[Full System Audit Prompt]] - document - docs/full_system_audit_prompt.md
-- [[Full System Grade Prompt]] - document - docs/full_system_grade_prompt.md
-- [[multiday_predictions SQLite view]] - code - tracker.py
+- [[2026-04-15-p12-signal-calibration-intelligence]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[P12 Signal Calibration & Market Intelligence — Implementation Plan]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Summary of Changes_1]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Tier 1 — Probability Calibration (Highest EV, Implement First)]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Tier 2 — New Data Sources]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Tier 3 — Risk & Sizing Improvements]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Tier 4 — Market Intelligence & Execution]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Tier 5 — Advanced (Implement Last)]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,10 +27,24 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 109]]
-- 1 edge to [[_COMMUNITY_Community 565]]
+- 1 edge to [[_COMMUNITY_Community 556]]
+- 1 edge to [[_COMMUNITY_Community 596]]
+- 1 edge to [[_COMMUNITY_Community 557]]
+- 1 edge to [[_COMMUNITY_Community 597]]
+- 1 edge to [[_COMMUNITY_Community 558]]
+- 1 edge to [[_COMMUNITY_Community 598]]
+- 1 edge to [[_COMMUNITY_Community 599]]
+- 1 edge to [[_COMMUNITY_Community 600]]
+- 1 edge to [[_COMMUNITY_Community 601]]
+- 1 edge to [[_COMMUNITY_Community 559]]
+- 1 edge to [[_COMMUNITY_Community 494]]
+- 1 edge to [[_COMMUNITY_Community 550]]
+- 1 edge to [[_COMMUNITY_Community 551]]
+- 1 edge to [[_COMMUNITY_Community 552]]
+- 1 edge to [[_COMMUNITY_Community 495]]
+- 1 edge to [[_COMMUNITY_Community 553]]
+- 1 edge to [[_COMMUNITY_Community 554]]
+- 1 edge to [[_COMMUNITY_Community 555]]
 
 ## Top bridge nodes
-- [[Full System Audit Prompt]] - degree 6, connects to 3 communities
-- [[Full System Grade Prompt]] - degree 6, connects to 1 community
+- [[P12 Signal Calibration & Market Intelligence — Implementation Plan]] - degree 25, connects to 18 communities

@@ -10,16 +10,16 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-_make_client()_6]] - code - tests/test_kalshi_client.py
-- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()_1]] - code - tests/test_kalshi_client.py
-- [[dot-test_no_side_place_live_order_calls_buy_not_sell_yes()]] - code - tests/test_kalshi_client.py
-- [[dot-test_yes_side_buy_maps_to_bid_at_same_price()]] - code - tests/test_kalshi_client.py
-- [[L1-A Verify side='no' action='buy' API semantics are correct via the full…]] - rationale - tests/test_kalshi_client.py
-- [[Return a KalshiClient with no auth (we only test body construction).]] - rationale - tests/test_kalshi_client.py
-- [[TestPlaceOrderApiSemantics]] - code - tests/test_kalshi_client.py
-- [[_place_live_order with side='no' must call client.place_order(side='no',…]] - rationale - tests/test_kalshi_client.py
-- [[side='no' action='buy' must send V2 side='ask' at price=1-price.]] - rationale - tests/test_kalshi_client.py
-- [[side='yes' action='buy' must send V2 side='bid' at the same price.]] - rationale - tests/test_kalshi_client.py
+- [[2026-04-10-group-e-calibration-scoring]] - document - docs/superpowers/plans/2026-04-10-group-e-calibration-scoring.md
+- [[Current state (read before starting)]] - document - docs/superpowers/plans/2026-04-10-group-e-calibration-scoring.md
+- [[Final verification_1]] - document - docs/superpowers/plans/2026-04-10-group-e-calibration-scoring.md
+- [[Group E Calibration & Scoring Accuracy Implementation Plan]] - document - docs/superpowers/plans/2026-04-10-group-e-calibration-scoring.md
+- [[Task 1 `brier_skill_score` verification (11)]] - document - docs/superpowers/plans/2026-04-10-group-e-calibration-scoring.md
+- [[Task 2 `censoring_correction` in `weather_markets.py` (23)]] - document - docs/superpowers/plans/2026-04-10-group-e-calibration-scoring.md
+- [[Task 3 Fix `get_calibration_trend` to group by `market_date` not `predicted_at` (54)]] - document - docs/superpowers/plans/2026-04-10-group-e-calibration-scoring.md
+- [[Task 4 `analyze_all_markets` and `get_analysis_bias` (55)]] - document - docs/superpowers/plans/2026-04-10-group-e-calibration-scoring.md
+- [[Task 5 `bayesian_confidence_interval` verification (57)]] - document - docs/superpowers/plans/2026-04-10-group-e-calibration-scoring.md
+- [[Task 6 Fix `get_optimal_threshold` guard from ` 10` to ` 20` (60)]] - document - docs/superpowers/plans/2026-04-10-group-e-calibration-scoring.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,12 +27,3 @@ members: 10
 TABLE source_file, type FROM #community/Community_366
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 100]]
-- 1 edge to [[_COMMUNITY_Community 225]]
-
-## Top bridge nodes
-- [[TestPlaceOrderApiSemantics]] - degree 6, connects to 1 community
-- [[dot-test_no_side_buy_maps_to_ask_at_complementary_price()_1]] - degree 3, connects to 1 community
-- [[dot-test_yes_side_buy_maps_to_bid_at_same_price()]] - degree 3, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "code"
-community: "Community 576"
+community: "Community 426"
 location: "L665"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_576
+  - community/Community_426
 ---
 
 # TestPhase10ConfigKeys
@@ -17,4 +17,4 @@ tags:
 - [[dot-test_fingerprint_includes_micro_live_keys()]] - `method` [EXTRACTED]
 - [[test_p9_p10.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_576
+#graphify/code #graphify/EXTRACTED #community/Community_426

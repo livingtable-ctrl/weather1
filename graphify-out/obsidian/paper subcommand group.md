@@ -1,11 +1,11 @@
 ---
 source_file: "COMMANDS.md"
 type: "document"
-community: "Community 693"
+community: "Community 401"
 tags:
   - graphify/document
   - graphify/INFERRED
-  - community/Community_693
+  - community/Community_401
 ---
 
 # paper subcommand group
@@ -14,4 +14,4 @@ tags:
 - [[TestKellyScalesWithBalance]] - `conceptually_related_to` [INFERRED]
 - [[TestPaperLiveSeparation]] - `conceptually_related_to` [INFERRED]
 
-#graphify/document #graphify/INFERRED #community/Community_693
+#graphify/document #graphify/INFERRED #community/Community_401

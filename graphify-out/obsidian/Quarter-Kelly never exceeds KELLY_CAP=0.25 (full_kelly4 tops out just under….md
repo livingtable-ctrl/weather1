@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 657"
 location: "L822"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_657
 ---
 
 # Quarter-Kelly never exceeds KELLY_CAP=0.25 (full_kelly/4 tops out just under…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_kelly_fraction_caps_at_kelly_cap()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_657

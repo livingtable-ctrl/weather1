@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-g-architecture.md"
 type: "code"
-community: "Community 199"
+community: "Community 202"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_199
+  - community/Community_202
 ---
 
 # paths.py Module
@@ -15,4 +15,4 @@ tags:
 - [[G1 Extract paths.py]] - `references` [EXTRACTED]
 - [[H3 EMOS Calibration Status Card]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_199
+#graphify/code #graphify/EXTRACTED #community/Community_202

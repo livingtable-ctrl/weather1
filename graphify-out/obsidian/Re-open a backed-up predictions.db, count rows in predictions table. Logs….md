@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L809"
+community: "Community 453"
+location: "L811"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_453
 ---
 
 # Re-open a backed-up predictions.db, count rows in predictions table. Logs…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[verify_db_backup()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_453

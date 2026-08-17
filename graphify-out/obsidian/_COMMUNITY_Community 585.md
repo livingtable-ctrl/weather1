@@ -1,18 +1,21 @@
 ---
 type: community
-cohesion: 1.00
-members: 3
+cohesion: 0.33
+members: 6
 ---
 
 # Community 585
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 3 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[Graduation Toast Shows Stale Brier ≤0.20 (L2048)]] - document - docs/grade_audit/outputs/cron.py.md
-- [[Stale Brier Threshold Display Bug]] - document - docs/grade_audit/outputs
-- [[cmd_readiness()cmd_menu() Stale Brier ≤0.20 (L3743,5488)]] - document - docs/grade_audit/outputs/main.py.md
+- [[dot-test_ensemble_guard_uses_two()]] - code - tests/test_trade_improvements.py
+- [[dot-test_model_consensus_guard_uses_two()]] - code - tests/test_trade_improvements.py
+- [[Confirming the = 2 threshold is present in weather_markets.py.]] - rationale - tests/test_trade_improvements.py
+- [[TestEnsembleMemberThreshold]] - code - tests/test_trade_improvements.py
+- [[The model-consensus-check guard (ens_prob + _get_consensus_probs block) must…]] - rationale - tests/test_trade_improvements.py
+- [[_score_ensemble_members must run once at least 2 temp samples exist.]] - rationale - tests/test_trade_improvements.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -22,7 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[Graduation Toast Shows Stale Brier ≤0.20 (L2048)]] - degree 3, connects to 1 community
+- [[TestEnsembleMemberThreshold]] - degree 4, connects to 1 community

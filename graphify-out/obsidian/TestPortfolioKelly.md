@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 107"
+community: "Community 114"
 location: "L415"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_107
+  - community/Community_114
 ---
 
 # TestPortfolioKelly
 
 ## Connections
-- [[dot-setUp()_1]] - `method` [EXTRACTED]
-- [[dot-tearDown()_1]] - `method` [EXTRACTED]
+- [[dot-setUp()_2]] - `method` [EXTRACTED]
+- [[dot-tearDown()_2]] - `method` [EXTRACTED]
 - [[dot-test_exposure_ignores_other_city()]] - `method` [EXTRACTED]
 - [[dot-test_exposure_ignores_settled_trade()]] - `method` [EXTRACTED]
 - [[dot-test_exposure_with_matching_trade()]] - `method` [EXTRACTED]
@@ -29,4 +29,4 @@ tags:
 - [[Position]] - `uses` [INFERRED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_107
+#graphify/code #graphify/EXTRACTED #community/Community_114

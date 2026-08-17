@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 160"
+community: "Community 183"
 location: "L847"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_160
+  - community/Community_183
 ---
 
 # TestEnsembleStats
@@ -18,6 +18,7 @@ tags:
 - [[dot-test_p10_less_than_p90()]] - `method` [EXTRACTED]
 - [[dot-test_returns_all_required_keys()]] - `method` [EXTRACTED]
 - [[dot-test_single_element_std_is_zero()]] - `method` [EXTRACTED]
+- [[ensemble_stats()]] - `calls` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_160
+#graphify/code #graphify/EXTRACTED #community/Community_183

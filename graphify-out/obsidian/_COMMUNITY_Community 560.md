@@ -1,20 +1,21 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.33
+members: 6
 ---
 
 # Community 560
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_all_models_thin_returns_none()]] - code - tests/test_weather_markets.py
-- [[dot-test_thin_model_excluded_not_blocking()]] - code - tests/test_weather_markets.py
-- [[Adjacency finding from the 2026-07-23 opus review of the ECMWF instrumentation…]] - rationale - tests/test_weather_markets.py
-- [[TestWeightsFromMaeThinModelIsolation]] - code - tests/test_weather_markets.py
-- [[Unchanged behavior if every tracked model is thin, still None.]] - rationale - tests/test_weather_markets.py
+- [[dot-constructor()]] - code - frontend/src/App.jsx
+- [[dot-getDerivedStateFromError()]] - code - frontend/src/App.jsx
+- [[dot-render()]] - code - frontend/src/App.jsx
+- [[ErrorBoundary]] - code - frontend/src/App.jsx
+- [[kalshi-dashboard package.json]] - code - frontend/package.json
+- [[main.jsx entry point]] - code - frontend/src/main.jsx
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,7 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 98]]
 
 ## Top bridge nodes
-- [[TestWeightsFromMaeThinModelIsolation]] - degree 4, connects to 1 community
+- [[ErrorBoundary]] - degree 5, connects to 1 community

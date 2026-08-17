@@ -1,39 +1,40 @@
 ---
 type: community
-cohesion: 0.21
-members: 24
+cohesion: 0.08
+members: 25
 ---
 
 # Community 122
 
-**Cohesion:** 0.21 - loosely connected
-**Members:** 24 nodes
+**Cohesion:** 0.08 - loosely connected
+**Members:** 25 nodes
 
 ## Members
-- [[dot-_cache_target_hour()]] - code - tests/test_hourly_markets.py
-- [[dot-_enriched()]] - code - tests/test_hourly_markets.py
-- [[dot-_pin_sources()]] - code - tests/test_hourly_markets.py
-- [[dot-test_consensus_hardcoded_false_no_kelly_bonus()]] - code - tests/test_hourly_markets.py
-- [[dot-test_degenerate_ensemble_gates_out()]] - code - tests/test_hourly_markets.py
-- [[dot-test_empty_ensemble_gates_out()]] - code - tests/test_hourly_markets.py
-- [[dot-test_liquidity_gate_still_applies_to_hourly()]] - code - tests/test_hourly_markets.py
-- [[dot-test_metar_lock_in_never_called_for_hourly()]] - code - tests/test_hourly_markets.py
-- [[dot-test_min_hour_gets_min_role()]] - code - tests/test_hourly_markets.py
-- [[dot-test_non_target_hour_still_gates_out_even_with_good_liquidity()]] - code - tests/test_hourly_markets.py
-- [[dot-test_reaches_real_model_at_target_hour()]] - code - tests/test_hourly_markets.py
-- [[dot-test_recommends_no_when_ensemble_well_below_threshold()]] - code - tests/test_hourly_markets.py
-- [[dot-test_recommends_yes_when_ensemble_well_above_threshold()]] - code - tests/test_hourly_markets.py
-- [[dot-test_result_shape_has_required_downstream_fields()]] - code - tests/test_hourly_markets.py
-- [[dot-test_thin_ensemble_gates_out()]] - code - tests/test_hourly_markets.py
-- [[A KXTEMPH ticker at the cached max_hour must reach the real model (non-None…]] - rationale - tests/test_hourly_markets.py
-- [[All-identical members (=10, so ensemble_stats runs) must be rejected as…]] - rationale - tests/test_hourly_markets.py
-- [[Caught in independent review computing consensus as ensemble_prob vs…]] - rationale - tests/test_hourly_markets.py
-- [[Fewer than 5 ensemble members must skip (hourly_thin_ensemble), not crash or…]] - rationale - tests/test_hourly_markets.py
-- [[Gate-ordering regression from plan review a target-hour hourly market with…]] - rationale - tests/test_hourly_markets.py
-- [[Step 2 the real per-hour probability model, reached only for a city's cached…]] - rationale - tests/test_hourly_markets.py
-- [[TestAnalyzeTradeHourlyModel]] - code - tests/test_hourly_markets.py
-- [[The exact contamination path found during plan review _metar_ lock_in()'s…]] - rationale - tests/test_hourly_markets.py
-- [[order_executor._prediction_kwargs_from_analysis  log_prediction read these…]] - rationale - tests/test_hourly_markets.py
+- [[dot-_city()]] - code - tests/test_weather_markets.py
+- [[dot-test_atlanta_full_name_in_ticker_not_la()]] - code - tests/test_weather_markets.py
+- [[dot-test_dallas_full_name_in_ticker_not_la()]] - code - tests/test_weather_markets.py
+- [[dot-test_la_as_hyphen_segment_detected()]] - code - tests/test_weather_markets.py
+- [[dot-test_la_high_temp_series_detected()]] - code - tests/test_weather_markets.py
+- [[dot-test_la_low_temp_series_detected()]] - code - tests/test_weather_markets.py
+- [[dot-test_la_renamed_high_ticker()]] - code - tests/test_weather_markets.py
+- [[dot-test_la_title_detected()]] - code - tests/test_weather_markets.py
+- [[dot-test_las_vegas_low_ticker_detected()]] - code - tests/test_weather_markets.py
+- [[dot-test_las_vegas_title_detected()]] - code - tests/test_weather_markets.py
+- [[dot-test_new_orleans_low_ticker_detected()]] - code - tests/test_weather_markets.py
+- [[dot-test_philadelphia_renamed_high_ticker_without_t()]] - code - tests/test_weather_markets.py
+- [[Call enrich_with_forecast with a mocked forecast and return _city.]] - rationale - tests/test_weather_markets.py
+- [[KXHIGHLA temperature series → city == 'LA'.]] - rationale - tests/test_weather_markets.py
+- [[KXHIGHLAX (renamed from KXHIGHLA) → LA.]] - rationale - tests/test_weather_markets.py
+- [[KXHIGHPHIL (renamed from KXHIGHTPHIL, dropped the 'T') → Philadelphia.]] - rationale - tests/test_weather_markets.py
+- [[KXLOWLA temperature series → city == 'LA'.]] - rationale - tests/test_weather_markets.py
+- [[KXLOWTNOLA → NewOrleans.]] - rationale - tests/test_weather_markets.py
+- [[KXRAIN-ATLANTA ticker 'ATLANTA' contains 'LA' — must be Atlanta, not LA.]] - rationale - tests/test_weather_markets.py
+- [[KXRAIN-DALLAS ticker 'DALLAS' contains 'LA' — must be Dallas, not LA.]] - rationale - tests/test_weather_markets.py
+- [[L5-B bare 'LA' in ticker_up substring must not misfire on city names that…]] - rationale - tests/test_weather_markets.py
+- [[Rain market with '-LA-' segment (KXRAIN-LA-...) → city == 'LA'.]] - rationale - tests/test_weather_markets.py
+- [[TestCityDetection]] - code - tests/test_weather_markets.py
+- [[las vegas' in title → LasVegas even with a generic ticker.]] - rationale - tests/test_weather_markets.py
+- [[los angeles' in title → city == 'LA' even with generic ticker.]] - rationale - tests/test_weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -43,10 +44,20 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 233]]
-- 1 edge to [[_COMMUNITY_Community 609]]
-- 1 edge to [[_COMMUNITY_Community 64]]
+- 11 edges to [[_COMMUNITY_Community 123]]
+- 2 edges to [[_COMMUNITY_Community 654]]
+- 1 edge to [[_COMMUNITY_Community 11]]
+- 1 edge to [[_COMMUNITY_Community 730]]
+- 1 edge to [[_COMMUNITY_Community 731]]
+- 1 edge to [[_COMMUNITY_Community 732]]
+- 1 edge to [[_COMMUNITY_Community 733]]
+- 1 edge to [[_COMMUNITY_Community 734]]
+- 1 edge to [[_COMMUNITY_Community 735]]
+- 1 edge to [[_COMMUNITY_Community 736]]
 
 ## Top bridge nodes
-- [[TestAnalyzeTradeHourlyModel]] - degree 18, connects to 2 communities
-- [[dot-_enriched()]] - degree 14, connects to 1 community
+- [[TestCityDetection]] - degree 23, connects to 9 communities
+- [[dot-test_atlanta_full_name_in_ticker_not_la()]] - degree 3, connects to 1 community
+- [[dot-test_dallas_full_name_in_ticker_not_la()]] - degree 3, connects to 1 community
+- [[dot-test_la_as_hyphen_segment_detected()]] - degree 3, connects to 1 community
+- [[dot-test_la_high_temp_series_detected()]] - degree 3, connects to 1 community

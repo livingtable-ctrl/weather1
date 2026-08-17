@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "rationale"
-community: "Community 113"
-location: "L130"
+community: "Community 101"
+location: "L341"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_113
+  - community/Community_101
 ---
 
 # Tests for apply_temperature_scaling — the per-condition calibration step. Each…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestApplyTemperatureScaling]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_113
+#graphify/rationale #graphify/EXTRACTED #community/Community_101

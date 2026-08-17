@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 526"
 location: "L293"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_526
 ---
 
 # When KALSHI_ENV=demo the MARKET_BASE_URL must point to demo.kalshi.co.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_demo_env_uses_demo_base_url()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_526

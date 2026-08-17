@@ -1,16 +1,17 @@
 ---
 type: community
 cohesion: 1.00
-members: 1
+members: 2
 ---
 
 # Community 683
 
 **Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Members:** 2 nodes
 
 ## Members
-- [[paper.PaperPositionStore]] - code - paper.py
+- [[paths.py File Grade 810, pure constants module]] - document - docs/grade_audit/outputs/paths.py.md
+- [[paths.py Grade Audit]] - document - docs/grade_audit/outputs/paths.py.md
 
 ## Live Query (requires Dataview plugin)
 

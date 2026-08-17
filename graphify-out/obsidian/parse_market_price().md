@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "ML Bias Correction & Audit Plans"
-location: "L3846"
+community: "Community 81"
+location: "L3948"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_81
 ---
 
 # parse_market_price()
@@ -19,10 +19,12 @@ tags:
 - [[dot-test_mid_falls_back_to_yes_bid_when_no_ask()]] - `calls` [EXTRACTED]
 - [[dot-test_missing_fields_fall_back_to_zero()]] - `calls` [EXTRACTED]
 - [[dot-test_no_entry_side_edge_uses_no_ask()]] - `calls` [EXTRACTED]
-- [[dot-test_returns_dict_with_expected_keys()]] - `calls` [EXTRACTED]
+- [[dot-test_returns_dict_with_expected_keys()_1]] - `calls` [EXTRACTED]
 - [[dot-test_string_prices_parsed()]] - `calls` [EXTRACTED]
 - [[dot-test_yes_entry_side_edge_uses_yes_ask()]] - `calls` [EXTRACTED]
 - [[Extract yesno bid prices and implied probability from a market. API returns…]] - `rationale_for` [EXTRACTED]
+- [[TestEntryEdgeVsMidEdge (L7-C)]] - `calls` [EXTRACTED]
+- [[TestParseMarketPrice]] - `calls` [EXTRACTED]
 - [[_analyze_hourly_trade()]] - `calls` [EXTRACTED]
 - [[_analyze_hurricane_count_trade()]] - `calls` [EXTRACTED]
 - [[_analyze_hurricane_next_event_trade()]] - `calls` [EXTRACTED]
@@ -37,16 +39,26 @@ tags:
 - [[_place_live_order()]] - `calls` [EXTRACTED]
 - [[_poll_pending_orders()]] - `calls` [EXTRACTED]
 - [[_prices()]] - `calls` [EXTRACTED]
+- [[_quick_paper_buy()]] - `calls` [EXTRACTED]
+- [[_resolve_price()]] - `calls` [EXTRACTED]
 - [[_safe_price()]] - `references` [EXTRACTED]
 - [[_validate_trade_opportunity()]] - `calls` [EXTRACTED]
 - [[alerts.py]] - `imports` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[backtest.py]] - `imports` [EXTRACTED]
 - [[check_alerts()]] - `calls` [EXTRACTED]
+- [[check_paper_position_exits()]] - `calls` [INFERRED]
+- [[cmd_browse()]] - `calls` [EXTRACTED]
+- [[cmd_market()]] - `calls` [EXTRACTED]
+- [[cmd_markets()]] - `calls` [EXTRACTED]
+- [[cmd_simulate()]] - `calls` [EXTRACTED]
+- [[cmd_watch()]] - `calls` [EXTRACTED]
 - [[coalesce_market_price()]] - `calls` [EXTRACTED]
 - [[consistency.py]] - `imports` [EXTRACTED]
 - [[fit_market_implied_distribution()]] - `calls` [EXTRACTED]
+- [[get_unrealized_pnl_paper()]] - `calls` [INFERRED]
 - [[is_liquid()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
 - [[run_backtest()]] - `calls` [EXTRACTED]
 - [[run_trade_cycle()]] - `calls` [EXTRACTED]
@@ -55,4 +67,4 @@ tags:
 - [[validate_market()]] - `conceptually_related_to` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/code #graphify/EXTRACTED #community/Community_81

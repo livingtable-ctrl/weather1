@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 153"
+community: "Community 157"
 location: "L2715"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_153
+  - community/Community_157
 ---
 
 # .test_grpb_calib_city_empty_returns_empty_dict()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCalibrationByCityConditionTypeGrpB]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_153
+#graphify/code #graphify/EXTRACTED #community/Community_157

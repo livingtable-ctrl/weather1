@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "code"
-community: "Trade Cycle Engine & Arbitrage Gates"
+community: "Community 17"
 location: "L2174"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Trade_Cycle_Engine__Arbitrage_Gates
+  - community/Community_17
 ---
 
 # .test_partial_placement_names_both_counts()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPlacementOutcomePhrase]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Trade_Cycle_Engine__Arbitrage_Gates
+#graphify/code #graphify/EXTRACTED #community/Community_17

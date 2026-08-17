@@ -1,12 +1,12 @@
 ---
 source_file: "docs/superpowers/specs/2026-04-10-signal-quality-design.md"
 type: "document"
-community: "Community 141"
+community: "Community 231"
 location: "Design 2"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_141
+  - community/Community_231
 ---
 
 # #14 Edge Decay by Condition Type
@@ -16,4 +16,4 @@ tags:
 - [[edge_confidence(days_out) Function]] - `references` [EXTRACTED]
 - [[weather_markets.py Module_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_141
+#graphify/document #graphify/EXTRACTED #community/Community_231

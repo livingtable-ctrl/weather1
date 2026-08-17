@@ -1,54 +1,55 @@
 ---
 type: community
-cohesion: 0.08
-members: 39
+cohesion: 0.06
+members: 40
 ---
 
 # Community 51
 
-**Cohesion:** 0.08 - loosely connected
-**Members:** 39 nodes
+**Cohesion:** 0.06 - loosely connected
+**Members:** 40 nodes
 
 ## Members
-- [[dot-__init__()_8]] - code - forecast_cache.py
-- [[dot-__len__()]] - code - forecast_cache.py
-- [[dot-_effective_ttl()]] - code - forecast_cache.py
-- [[dot-_evict_oldest()]] - code - forecast_cache.py
-- [[dot-clear()]] - code - forecast_cache.py
-- [[dot-get()]] - code - forecast_cache.py
-- [[dot-get_with_ts()]] - code - forecast_cache.py
-- [[dot-prune_expired()]] - code - forecast_cache.py
-- [[dot-set()]] - code - forecast_cache.py
-- [[dot-set_at()]] - code - forecast_cache.py
-- [[dot-set_at_with_ttl()]] - code - forecast_cache.py
-- [[dot-set_with_ttl()]] - code - forecast_cache.py
-- [[dot-test_custom_max_size()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_evicts_oldest_when_full()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_max_size_default_is_500()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_prune_expired_empty_cache()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_prune_expired_removes_stale()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_prune_expired_returns_count()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_set_with_ttl_respects_max_size()]] - code - tests/test_phase2_batch_m.py
-- [[dot-test_update_existing_does_not_evict()]] - code - tests/test_phase2_batch_m.py
-- [[ForecastCache]] - code - forecast_cache.py
-- [[L5-A per-entry TTL of 2s expires before class-default 60s TTL. A cache written…]] - rationale - tests/test_forecast_cache.py
-- [[Remove all expired entries. Returns the number of entries removed.]] - rationale - forecast_cache.py
-- [[Remove the entry with the smallest (oldest) timestamp. Must hold _lock.]] - rationale - forecast_cache.py
-- [[Return (value, hit, wall_clock_fetch_ts). wall_clock_fetch_ts is derived from…]] - rationale - forecast_cache.py
-- [[Return the TTL for an entry per-entry (3-tuple) or class default (2-tuple).]] - rationale - forecast_cache.py
-- [[Store with a per-entry TTL, overriding the class-level default. L5-A used to…]] - rationale - forecast_cache.py
-- [[Store with an explicit monotonic timestamp (e.g. when restoring from disk). ts…]] - rationale - forecast_cache.py
-- [[Store with both an explicit monotonic timestamp AND a per-entry TTL. Use when…]] - rationale - forecast_cache.py
-- [[T]] - code
-- [[TestForecastCacheLRU]] - code - tests/test_phase2_batch_m.py
-- [[Thread-safe dict-based cache with per-entry TTL and LRU eviction. Keys are…]] - rationale - forecast_cache.py
-- [[prune_expired() on an empty cache returns 0 without error.]] - rationale - tests/test_forecast_cache.py
-- [[prune_expired() only removes expired entries — fresh entries survive.]] - rationale - tests/test_forecast_cache.py
-- [[prune_expired() removes all expired entries and returns the correct count.]] - rationale - tests/test_forecast_cache.py
-- [[test_prune_expired_empty_cache()]] - code - tests/test_forecast_cache.py
-- [[test_prune_expired_leaves_non_expired()]] - code - tests/test_forecast_cache.py
-- [[test_prune_expired_removes_expired_returns_count()]] - code - tests/test_forecast_cache.py
-- [[test_set_with_ttl_expires_before_class_default()]] - code - tests/test_forecast_cache.py
+- [[dot-test_b_ticker_locks_yes_from_max_temp_despite_evening_cooling()]] - code - tests/test_settlement_monitor.py
+- [[dot-test_b_ticker_malformed_band_missing_bounds_fails_closed()]] - code - tests/test_settlement_monitor.py
+- [[dot-test_b_ticker_no_signal_when_max_temp_unavailable_despite_in_band_reading()]] - code - tests/test_settlement_monitor.py
+- [[dot-test_b_ticker_outside_near_edge_not_locked()]] - code - tests/test_settlement_monitor.py
+- [[dot-test_b_ticker_yes_signal_when_max_temp_inside()]] - code - tests/test_settlement_monitor.py
+- [[dot-test_t_ticker_still_works_as_before()]] - code - tests/test_settlement_monitor.py
+- [[A between market dict missing 'lower''upper' must be skipped, not silently…]] - rationale - tests/test_settlement_monitor.py
+- [[AC3 regression guard at the check_city_settlement integration level an in-band…]] - rationale - tests/test_settlement_monitor.py
+- [[B-ticker (between-bucket) detection in check_city_settlement.]] - rationale - tests/test_settlement_monitor.py
+- [[B-ticker locked YES when the real daily high (from fetch_metar_daily_extreme,…]] - rationale - tests/test_settlement_monitor.py
+- [[B-ticker market with daily high just outside band (clearance  2°F) → no signal.]] - rationale - tests/test_settlement_monitor.py
+- [[Check METAR for a city and return any new settlement signals. Args city City…]] - rationale - settlement_monitor.py
+- [[Check METAR for a city and return any new settlement signals. Args city City…_1]] - rationale - settlement_monitor.py
+- [[Compute METAR lock-in confidence from temperature clearance and time of day.…]] - rationale - metar.py
+- [[Compute the TRUE running daily extreme (max or min observed temp_f) since LOCAL…]] - rationale - metar.py
+- [[Determine if a METAR reading locks in the trade outcome. Lock-in conditions…]] - rationale - metar.py
+- [[Extract a plausible temp_f from a raw METAR obs dict (prefers tmpf °F, else…]] - rationale - metar.py
+- [[Fetch every METAR temp_f reading for `station` that falls on the LOCAL calendar…]] - rationale - metar.py
+- [[Grade Audit Module Doc metar.py]] - document - docs/grade_audit/modules/metar.md
+- [[Integration-level version of the entry's own failure scenario real daily high…]] - rationale - tests/test_settlement_monitor.py
+- [[METAR Lock-In Module]] - code - metar.py
+- [[METAR same-day lock-in strategy. After ~2 PM local time, if the daily highlow…]] - rationale - metar.py
+- [[Parse a raw METAR obs dict's obsTime (Unix epoch intfloat, or an ISO-8601…]] - rationale - metar.py
+- [[Systemic DEBUG-vs-WARNING Gap on IO Failures (_load_obs_save_obs)]] - document - docs/grade_audit/outputs/metar.py.md
+- [[T-ticker (abovebelow) markets are unaffected by the B-ticker changes.]] - rationale - tests/test_settlement_monitor.py
+- [[TestBTickerParsing]] - code - tests/test_settlement_monitor.py
+- [[_dynamic_lock_in_confidence()]] - code - metar.py
+- [[_extract_obs_time()]] - code - metar.py
+- [[_extract_temp_f()]] - code - metar.py
+- [[_fetch_daily_temps_f()]] - code - metar.py
+- [[check_city_settlement()]] - code - settlement_monitor.py
+- [[check_metar_lockout()]] - code - metar.py
+- [[check_metar_lockout() Silent ZoneInfo Fallback (810)]] - document - docs/grade_audit/outputs/metar.py.md
+- [[date_10]] - code
+- [[datetime_3]] - code
+- [[fetch_metar_daily_extreme()]] - code - metar.py
+- [[get_station_bias() Unconditional NotImplementedError Stub (710)]] - document - docs/grade_audit/outputs/metar.py.md
+- [[metar.py]] - code - metar.py
+- [[metar.py File Grade median 810 T1, systemic DEBUG gap in T2]] - document - docs/grade_audit/outputs/metar.py.md
+- [[metar.py Grade Audit]] - document - docs/grade_audit/outputs/metar.py.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -58,56 +59,23 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 18 edges to [[_COMMUNITY_Forecast Persistent Cache]]
-- 7 edges to [[_COMMUNITY_Community 234]]
-- 6 edges to [[_COMMUNITY_Forecasting Persistence Model Tests]]
-- 5 edges to [[_COMMUNITY_Community 255]]
-- 5 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 4 edges to [[_COMMUNITY_Community 119]]
-- 4 edges to [[_COMMUNITY_Community 32]]
-- 3 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 3 edges to [[_COMMUNITY_Community 182]]
-- 2 edges to [[_COMMUNITY_Community 276]]
-- 2 edges to [[_COMMUNITY_Community 339]]
-- 2 edges to [[_COMMUNITY_Community 44]]
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_Community 62]]
-- 2 edges to [[_COMMUNITY_Community 73]]
-- 1 edge to [[_COMMUNITY_Community 131]]
-- 1 edge to [[_COMMUNITY_Community 169]]
-- 1 edge to [[_COMMUNITY_Community 170]]
-- 1 edge to [[_COMMUNITY_Community 172]]
-- 1 edge to [[_COMMUNITY_METAR Lock-In Confidence Tests]]
-- 1 edge to [[_COMMUNITY_Community 275]]
-- 1 edge to [[_COMMUNITY_Community 297]]
-- 1 edge to [[_COMMUNITY_Community 303]]
-- 1 edge to [[_COMMUNITY_Community 344]]
-- 1 edge to [[_COMMUNITY_Community 345]]
-- 1 edge to [[_COMMUNITY_Community 367]]
-- 1 edge to [[_COMMUNITY_Community 374]]
-- 1 edge to [[_COMMUNITY_Community 394]]
-- 1 edge to [[_COMMUNITY_Community 399]]
-- 1 edge to [[_COMMUNITY_Community 423]]
-- 1 edge to [[_COMMUNITY_Community 424]]
-- 1 edge to [[_COMMUNITY_Community 432]]
-- 1 edge to [[_COMMUNITY_Community 464]]
-- 1 edge to [[_COMMUNITY_Community 504]]
-- 1 edge to [[_COMMUNITY_Community 129]]
-- 1 edge to [[_COMMUNITY_Community 211]]
-- 1 edge to [[_COMMUNITY_Community 99]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Community 545]]
-- 1 edge to [[_COMMUNITY_Community 70]]
-- 1 edge to [[_COMMUNITY_Community 572]]
-- 1 edge to [[_COMMUNITY_Community 91]]
-- 1 edge to [[_COMMUNITY_Community 555]]
-- 1 edge to [[_COMMUNITY_Community 454]]
+- 7 edges to [[_COMMUNITY_Community 4]]
+- 6 edges to [[_COMMUNITY_Community 8]]
+- 5 edges to [[_COMMUNITY_Community 5]]
+- 3 edges to [[_COMMUNITY_Community 88]]
+- 3 edges to [[_COMMUNITY_Community 53]]
+- 3 edges to [[_COMMUNITY_Community 6]]
+- 2 edges to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 9]]
+- 1 edge to [[_COMMUNITY_Community 13]]
+- 1 edge to [[_COMMUNITY_Community 15]]
+- 1 edge to [[_COMMUNITY_Community 23]]
+- 1 edge to [[_COMMUNITY_Community 38]]
+- 1 edge to [[_COMMUNITY_Community 33]]
 
 ## Top bridge nodes
-- [[ForecastCache]] - degree 119, connects to 46 communities
-- [[TestForecastCacheLRU]] - degree 10, connects to 1 community
-- [[test_prune_expired_empty_cache()]] - degree 3, connects to 1 community
-- [[test_prune_expired_leaves_non_expired()]] - degree 3, connects to 1 community
-- [[test_prune_expired_removes_expired_returns_count()]] - degree 3, connects to 1 community
+- [[metar.py]] - degree 25, connects to 9 communities
+- [[check_city_settlement()]] - degree 14, connects to 6 communities
+- [[fetch_metar_daily_extreme()]] - degree 10, connects to 5 communities
+- [[check_metar_lockout()]] - degree 9, connects to 4 communities
+- [[TestBTickerParsing]] - degree 10, connects to 2 communities

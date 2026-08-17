@@ -1,25 +1,25 @@
 ---
 type: community
-cohesion: 0.20
+cohesion: 0.22
 members: 10
 ---
 
 # Community 372
 
-**Cohesion:** 0.20 - loosely connected
+**Cohesion:** 0.22 - loosely connected
 **Members:** 10 nodes
 
 ## Members
-- [[dot-test_precip_fallback_on_exception()]] - code - tests/test_phase2_batch_k.py
-- [[dot-test_precip_uses_clim_prob_when_available()]] - code - tests/test_phase2_batch_k.py
-- [[dot-test_snow_fallback_uses_seasonal_default()]] - code - tests/test_phase2_batch_k.py
-- [[dot-test_snow_uses_clim_prob_when_available()]] - code - tests/test_phase2_batch_k.py
-- [[TestClimPriorUseClimatologicalProb]] - code - tests/test_phase2_batch_k.py
-- [[When climatological_prob raises in snow, fallback is seasonal (0.200.05).]] - rationale - tests/test_phase2_batch_k.py
-- [[When climatological_prob raises, clim_prior falls back to 0.30.]] - rationale - tests/test_phase2_batch_k.py
-- [[_analyze_precip_trade and _analyze_snow_trade must call climatological_prob.]] - rationale - tests/test_phase2_batch_k.py
-- [[_analyze_snow_trade must call climatological_prob.]] - rationale - tests/test_phase2_batch_k.py
-- [[clim_prior in precip blend should be 0.50 when climatological_prob returns 0.50.]] - rationale - tests/test_phase2_batch_k.py
+- [[dot-_minimal_setup()]] - code - tests/test_bug_b_unparseable_date_logging.py
+- [[dot-test_valid_date_no_warning()]] - code - tests/test_bug_b_unparseable_date_logging.py
+- [[dot-test_warns_and_falls_back_to_none()]] - code - tests/test_bug_b_unparseable_date_logging.py
+- [[dot-test_warns_on_unparseable_date_in_batch()]] - code - tests/test_bug_b_unparseable_date_logging.py
+- [[A high-enough-edge opportunity reaches BOTH the pre-pass (_opp_event_key, for…]] - rationale - tests/test_bug_b_unparseable_date_logging.py
+- [[TestOppEventKeyLogsOnUnparseableDate]] - code - tests/test_bug_b_unparseable_date_logging.py
+- [[TestUnpackOppLogsOnUnparseableDate]] - code - tests/test_bug_b_unparseable_date_logging.py
+- [[Tests for Bug B's fix (backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2)…]] - rationale - tests/test_bug_b_unparseable_date_logging.py
+- [[_opp_event_key is a nested closure inside _auto_place_trades(), not module-…]] - rationale - tests/test_bug_b_unparseable_date_logging.py
+- [[test_bug_b_unparseable_date_logging.py]] - code - tests/test_bug_b_unparseable_date_logging.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,7 +29,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 6]]
 
 ## Top bridge nodes
-- [[TestClimPriorUseClimatologicalProb]] - degree 6, connects to 1 community
+- [[test_bug_b_unparseable_date_logging.py]] - degree 5, connects to 2 communities

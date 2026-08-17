@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-a-prediction-pipeline.md"
 type: "document"
-community: "Community 117"
+community: "Community 124"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_117
+  - community/Community_124
 ---
 
 # Category A: Prediction Pipeline Plan
@@ -20,4 +20,4 @@ tags:
 - [[A8 Circuit Breaker Blend Rebalancing]] - `implements` [EXTRACTED]
 - [[Phase C New Data Sources Plan]] - `conceptually_related_to` [INFERRED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_117
+#graphify/document #graphify/EXTRACTED #community/Community_124

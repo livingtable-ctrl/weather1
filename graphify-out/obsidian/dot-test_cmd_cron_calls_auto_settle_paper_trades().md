@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_trade_updates.py"
 type: "code"
-community: "Community 253"
+community: "Community 251"
 location: "L27"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_253
+  - community/Community_251
 ---
 
 # .test_cmd_cron_calls_auto_settle_paper_trades()
@@ -16,4 +16,4 @@ tags:
 - [[_apply_cron_isolation()]] - `calls` [EXTRACTED]
 - [[cmd_cron must call auto_settle_paper_trades so paper trades get marked wonlost.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_253
+#graphify/code #graphify/EXTRACTED #community/Community_251

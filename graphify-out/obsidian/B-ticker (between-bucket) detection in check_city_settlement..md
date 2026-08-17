@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_settlement_monitor.py"
 type: "rationale"
-community: "Community 262"
+community: "Community 51"
 location: "L276"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_262
+  - community/Community_51
 ---
 
 # B-ticker (between-bucket) detection in check_city_settlement.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestBTickerParsing]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_262
+#graphify/rationale #graphify/EXTRACTED #community/Community_51

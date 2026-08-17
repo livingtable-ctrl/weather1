@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climate_indices.py"
 type: "code"
-community: "Community 31"
+community: "Community 373"
 location: "L38"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_31
+  - community/Community_373
 ---
 
 # TestSensitivityTablesCoverage
@@ -21,4 +21,4 @@ tags:
 - [[Which cities have a table entry (key membership) -- the exact fact the…]] - `rationale_for` [EXTRACTED]
 - [[test_climate_indices.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_31
+#graphify/code #graphify/EXTRACTED #community/Community_373

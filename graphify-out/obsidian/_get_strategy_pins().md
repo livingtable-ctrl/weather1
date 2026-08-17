@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Community 583"
-location: "L5969"
+community: "Community 269"
+location: "L6024"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_583
+  - community/Community_269
 ---
 
 # _get_strategy_pins()
@@ -17,4 +17,4 @@ tags:
 - [[tracker.py]] - `contains` [EXTRACTED]
 - [[unretire_strategy()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_583
+#graphify/code #graphify/EXTRACTED #community/Community_269

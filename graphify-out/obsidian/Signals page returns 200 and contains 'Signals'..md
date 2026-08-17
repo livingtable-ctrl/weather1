@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 745"
 location: "L541"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_745
 ---
 
 # Signals page returns 200 and contains 'Signals'.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_signals_route_returns_200_with_title()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_745

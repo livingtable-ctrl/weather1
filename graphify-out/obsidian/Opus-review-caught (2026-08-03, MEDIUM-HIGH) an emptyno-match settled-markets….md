@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "rationale"
-community: "Community 203"
+community: "Community 206"
 location: "L584"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_203
+  - community/Community_206
 ---
 
 # Opus-review-caught (2026-08-03, MEDIUM-HIGH): an empty/no-match settled-markets…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_refresh_leaves_basin_unwritten_when_no_markets_match()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_203
+#graphify/rationale #graphify/EXTRACTED #community/Community_206

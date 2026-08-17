@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 411"
+community: "Community 10"
 location: "L1100"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_411
+  - community/Community_10
 ---
 
 # .test_grpb_bias_unknown_condition_type_returns_zero()
@@ -16,4 +16,4 @@ tags:
 - [[Filtering by a condition_type with no matching rows returns 0.0.]] - `rationale_for` [EXTRACTED]
 - [[TestGetBiasConditionType]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_411
+#graphify/code #graphify/EXTRACTED #community/Community_10

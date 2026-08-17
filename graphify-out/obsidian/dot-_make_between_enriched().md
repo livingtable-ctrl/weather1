@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "code"
-community: "Community 163"
+community: "Community 164"
 location: "L394"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_163
+  - community/Community_164
 ---
 
 # ._make_between_enriched()
@@ -19,4 +19,4 @@ tags:
 - [[TestBetweenMarketGaussian]] - `method` [EXTRACTED]
 - [[Ticker ending -B70.5 → between 70.0 and 71.0.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_163
+#graphify/code #graphify/EXTRACTED #community/Community_164

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 233"
+community: "Community 235"
 location: "L486"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_233
+  - community/Community_235
 ---
 
 # TestComputeMarketImpliedExcludesHourly
@@ -18,4 +18,4 @@ tags:
 - [[compute_market_implied_distributions() groups by (city, target_date)…]] - `rationale_for` [EXTRACTED]
 - [[test_hourly_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_233
+#graphify/code #graphify/EXTRACTED #community/Community_235

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 486"
+community: "Community 529"
 location: "L353"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_486
+  - community/Community_529
 ---
 
 # TestCheckPositionLimitsSnowConditional
@@ -19,4 +19,4 @@ tags:
 - [[backlog.txt Snow Step 2 the Step 1 unconditional block became conditional on…]] - `rationale_for` [EXTRACTED]
 - [[test_snow_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_486
+#graphify/code #graphify/EXTRACTED #community/Community_529

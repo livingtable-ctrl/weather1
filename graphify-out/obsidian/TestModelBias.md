@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 291"
-location: "L4519"
+community: "Community 295"
+location: "L4888"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_291
+  - community/Community_295
 ---
 
 # TestModelBias
@@ -23,4 +23,4 @@ tags:
 - [[_model_bias() must correct each model's raw ensemble members toward its own…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_291
+#graphify/code #graphify/EXTRACTED #community/Community_295

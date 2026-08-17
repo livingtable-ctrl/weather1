@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_circuit_breaker.py"
 type: "code"
-community: "Community 293"
+community: "Community 7"
 location: "L137"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_293
+  - community/Community_7
 ---
 
 # .test_parallel_failures_count_as_one_event()
@@ -16,4 +16,4 @@ tags:
 - [[CircuitBreaker]] - `calls` [EXTRACTED]
 - [[TestCircuitBreakerBurstWindow]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_293
+#graphify/code #graphify/EXTRACTED #community/Community_7

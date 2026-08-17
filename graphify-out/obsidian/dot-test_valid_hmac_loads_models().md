@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hmac_bias.py"
 type: "code"
-community: "Community 120"
+community: "Community 151"
 location: "L36"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_120
+  - community/Community_151
 ---
 
 # .test_valid_hmac_loads_models()
@@ -17,4 +17,4 @@ tags:
 - [[Valid pkl + matching HMAC sidecar → models loaded successfully.]] - `rationale_for` [EXTRACTED]
 - [[_write_valid_pkl()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_120
+#graphify/code #graphify/EXTRACTED #community/Community_151

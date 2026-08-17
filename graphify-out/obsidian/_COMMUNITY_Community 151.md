@@ -1,36 +1,36 @@
 ---
 type: community
-cohesion: 0.11
+cohesion: 0.14
 members: 21
 ---
 
 # Community 151
 
-**Cohesion:** 0.11 - loosely connected
+**Cohesion:** 0.14 - loosely connected
 **Members:** 21 nodes
 
 ## Members
-- [[Create a minimal predictions+outcomes DB with the given row counts.]] - rationale - tests/test_phase2_batch_p.py
-- [[Path_4]] - code
-- [[Phase 2 Batch P Below-Condition Weight Tests]] - code - tests/test_phase2_batch_p.py
-- [[Preservation only activates for uncalibrated entries; between (calibrated)…]] - rationale - tests/test_phase2_batch_p.py
-- [[Tests for below-market condition weight fix. Covers - calibrate_and_save…]] - rationale - tests/test_phase2_batch_p.py
-- [[When N = min_samples, calibrate_condition_weights runs and its result is kept.]] - rationale - tests/test_phase2_batch_p.py
-- [[When above has _uncalibratedtrue and seasonal is also uncalibrated, use…]] - rationale - tests/test_phase2_batch_p.py
-- [[_T_BELOW_PRIOR is 3.0; apply_temperature_scaling compresses less than T=6.]] - rationale - tests/test_phase2_batch_p.py
-- [[_blend_weights for above must use explicit condition weights (ens-heavy), not…]] - rationale - tests/test_phase2_batch_p.py
-- [[_blend_weights for below should use condition_weights, not hardcoded schedule.]] - rationale - tests/test_phase2_batch_p.py
-- [[_make_db()]] - code - tests/test_phase2_batch_p.py
-- [[apply_temperature_scaling must apply _T_ABOVE_PRIOR when scale file missing.]] - rationale - tests/test_phase2_batch_p.py
-- [[calibrate_and_save must keep existing non-neutral below weights when N …]] - rationale - tests/test_phase2_batch_p.py
-- [[test_blend_weights_above_uncalibrated_falls_through_to_hardcoded()]] - code - tests/test_phase2_batch_p.py
-- [[test_blend_weights_above_uses_explicit_condition_weights()]] - code - tests/test_phase2_batch_p.py
-- [[test_blend_weights_below_uses_condition_weights()]] - code - tests/test_phase2_batch_p.py
-- [[test_neutral_below_gets_overwritten_when_n_sufficient()]] - code - tests/test_phase2_batch_p.py
-- [[test_preserve_does_not_touch_between()]] - code - tests/test_phase2_batch_p.py
-- [[test_preserve_non_neutral_below_when_n_too_small()]] - code - tests/test_phase2_batch_p.py
-- [[test_t_above_prior_applied_when_no_scale_file()]] - code - tests/test_phase2_batch_p.py
-- [[test_t_below_prior_reduced_to_3()]] - code - tests/test_phase2_batch_p.py
+- [[dot-_patch_paths()]] - code - tests/test_hmac_bias.py
+- [[dot-test_compare_digest_used_not_equality()]] - code - tests/test_hmac_bias.py
+- [[dot-test_missing_hmac_sidecar_returns_empty()]] - code - tests/test_hmac_bias.py
+- [[dot-test_no_pkl_returns_empty()]] - code - tests/test_hmac_bias.py
+- [[dot-test_no_secret_set_returns_empty()]] - code - tests/test_hmac_bias.py
+- [[dot-test_tampered_pkl_returns_empty()]] - code - tests/test_hmac_bias.py
+- [[dot-test_train_writes_hmac_sidecar()]] - code - tests/test_hmac_bias.py
+- [[dot-test_valid_hmac_loads_models()]] - code - tests/test_hmac_bias.py
+- [[dot-test_wrong_secret_returns_empty()]] - code - tests/test_hmac_bias.py
+- [[HMAC mismatch (tampered pkl) → refuse to load, return {}.]] - rationale - tests/test_hmac_bias.py
+- [[HMAC signed with different secret → mismatch → return {}.]] - rationale - tests/test_hmac_bias.py
+- [[MODEL_HMAC_SECRET not set → skip loading entirely (RCE risk).]] - rationale - tests/test_hmac_bias.py
+- [[Path_6]] - code
+- [[TestHmacVerification]] - code - tests/test_hmac_bias.py
+- [[Valid pkl + matching HMAC sidecar → models loaded successfully.]] - rationale - tests/test_hmac_bias.py
+- [[Write a valid pkl + sidecar and return the raw bytes.]] - rationale - tests/test_hmac_bias.py
+- [[_load_models must use hmac.compare_digest, not == for timing safety.]] - rationale - tests/test_hmac_bias.py
+- [[_write_valid_pkl()]] - code - tests/test_hmac_bias.py
+- [[pkl does not exist → return {} without error.]] - rationale - tests/test_hmac_bias.py
+- [[pkl exists but no .hmac sidecar → refuse to load, return {}.]] - rationale - tests/test_hmac_bias.py
+- [[train_bias_model must write the .hmac sidecar alongside the pkl.]] - rationale - tests/test_hmac_bias.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -40,10 +40,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 118]]
-- 1 edge to [[_COMMUNITY_Community 32]]
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 1 edge to [[_COMMUNITY_Community 72]]
+- 2 edges to [[_COMMUNITY_Community 41]]
 
 ## Top bridge nodes
-- [[Phase 2 Batch P Below-Condition Weight Tests]] - degree 14, connects to 4 communities
+- [[TestHmacVerification]] - degree 10, connects to 1 community
+- [[_write_valid_pkl()]] - degree 7, connects to 1 community

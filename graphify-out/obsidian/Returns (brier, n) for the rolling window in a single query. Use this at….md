@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Black Swan Halt State"
+community: "Community 0"
 location: "L2035"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_0
 ---
 
 # Returns (brier, n) for the rolling window in a single query. Use this at…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[brier_score_rolling_with_n()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

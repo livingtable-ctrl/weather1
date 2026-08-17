@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 178"
+community: "Community 159"
 location: "L208"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_178
+  - community/Community_159
 ---
 
 # A market with both-sided quotes and volume is liquid.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_liquid_market_with_quotes_and_volume()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_178
+#graphify/rationale #graphify/EXTRACTED #community/Community_159

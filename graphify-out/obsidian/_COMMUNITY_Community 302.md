@@ -1,27 +1,27 @@
 ---
 type: community
-cohesion: 0.23
+cohesion: 0.17
 members: 12
 ---
 
 # Community 302
 
-**Cohesion:** 0.23 - loosely connected
+**Cohesion:** 0.17 - loosely connected
 **Members:** 12 nodes
 
 ## Members
-- [[dot-test_empty_when_fetch_historical_returns_none()]] - code - tests/test_climatology.py
-- [[dot-test_ignores_null_values()]] - code - tests/test_climatology.py
-- [[dot-test_min_var_uses_lows_not_highs()]] - code - tests/test_climatology.py
-- [[dot-test_respects_sigma_floor()]] - code - tests/test_climatology.py
-- [[dot-test_returns_per_month_dict()]] - code - tests/test_climatology.py
-- [[dot-test_skips_months_with_fewer_than_30_points()]] - code - tests/test_climatology.py
-- [[Build a fake fetch_historical() response one highlow reading per (year,…]] - rationale - tests/test_climatology.py
-- [[TestComputeSigmaFromClimate]] - code - tests/test_climatology.py
-- [[Tests for climatology.py's climate-derived sigma (restored 2026-07-12 --…]] - rationale - tests/test_climatology.py
-- [[_fake_daily()]] - code - tests/test_climatology.py
-- [[_synthetic_climate_data()]] - code - tests/test_climatology.py
-- [[test_climatology.py]] - code - tests/test_climatology.py
+- [[2026-04-16-master-priority-roadmap]] - document - docs/superpowers/plans/2026-04-16-master-priority-roadmap.md
+- [[Dependency Map]] - document - docs/superpowers/plans/2026-04-16-master-priority-roadmap.md
+- [[Phase Summary]] - document - docs/superpowers/plans/2026-04-16-master-priority-roadmap.md
+- [[Progress Tracker]] - document - docs/superpowers/plans/2026-04-16-master-priority-roadmap.md
+- [[Ranked Backlog (all 20 items)]] - document - docs/superpowers/plans/2026-04-16-master-priority-roadmap.md
+- [[Research Backlog Master Priority Roadmap]] - document - docs/superpowers/plans/2026-04-16-master-priority-roadmap.md
+- [[Status Legend]] - document - docs/superpowers/plans/2026-04-16-master-priority-roadmap.md
+- [[Tier 1 — Highest ROI, Low Effort]] - document - docs/superpowers/plans/2026-04-16-master-priority-roadmap.md
+- [[Tier 2 — High ROI, Moderate Effort]] - document - docs/superpowers/plans/2026-04-16-master-priority-roadmap.md
+- [[Tier 3 — Good ROI, Higher Effort]] - document - docs/superpowers/plans/2026-04-16-master-priority-roadmap.md
+- [[Tier 4 — High Effort, Strong Long-term Value]] - document - docs/superpowers/plans/2026-04-16-master-priority-roadmap.md
+- [[Tier 5 — Long-Term]] - document - docs/superpowers/plans/2026-04-16-master-priority-roadmap.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,17 +29,3 @@ members: 12
 TABLE source_file, type FROM #community/Community_302
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Community 216]]
-- 1 edge to [[_COMMUNITY_Community 251]]
-- 1 edge to [[_COMMUNITY_Community 332]]
-- 1 edge to [[_COMMUNITY_Community 360]]
-- 1 edge to [[_COMMUNITY_Community 392]]
-- 1 edge to [[_COMMUNITY_Community 542]]
-- 1 edge to [[_COMMUNITY_Community 109]]
-- 1 edge to [[_COMMUNITY_Community 31]]
-
-## Top bridge nodes
-- [[test_climatology.py]] - degree 14, connects to 9 communities

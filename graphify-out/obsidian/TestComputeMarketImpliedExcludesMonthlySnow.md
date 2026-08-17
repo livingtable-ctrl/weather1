@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 485"
+community: "Community 528"
 location: "L1617"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_485
+  - community/Community_528
 ---
 
 # TestComputeMarketImpliedExcludesMonthlySnow
@@ -19,4 +19,4 @@ tags:
 - [[compute_market_implied_distributions() groups by (city, target_date)…_1]] - `rationale_for` [EXTRACTED]
 - [[test_snow_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_485
+#graphify/code #graphify/EXTRACTED #community/Community_528

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climatology.py"
 type: "code"
-community: "Community 251"
+community: "Community 250"
 location: "L612"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_251
+  - community/Community_250
 ---
 
 # ._mock_climate_history()
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_sequential_per_city_preload_all_calls_build_full_table()]] - `calls` [EXTRACTED]
 - [[TestPreloadAllSigmaGate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_251
+#graphify/code #graphify/EXTRACTED #community/Community_250

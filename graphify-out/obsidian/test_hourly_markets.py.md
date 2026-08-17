@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 233"
+community: "Community 235"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_233
+  - community/Community_235
 ---
 
 # test_hourly_markets.py
@@ -22,6 +23,9 @@ tags:
 - [[analyze_trade()]] - `references` [EXTRACTED]
 - [[get_live_observation()]] - `imports` [EXTRACTED]
 - [[hourly KXTEMPxxxH model  _hourly_gates_active()  refresh_hourly_target_hours()]] - `references` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[test_snow_markets.py (referenced, not in this chunk)]] - `cites` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_233
+#graphify/code #graphify/EXTRACTED #community/Community_235

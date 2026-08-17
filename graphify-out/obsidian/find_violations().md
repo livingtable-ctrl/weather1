@@ -1,12 +1,12 @@
 ---
 source_file: "consistency.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 48"
 location: "L362"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_48
 ---
 
 # find_violations()
@@ -32,14 +32,17 @@ tags:
 - [[dot-test_storm_order_exclusion_is_mutation_proof()]] - `calls` [EXTRACTED]
 - [[dot-test_storm_order_markets_excluded()]] - `calls` [EXTRACTED]
 - [[dot-test_violation_detected()]] - `calls` [EXTRACTED]
-- [[Phase 3 Batch E AB TestConsistency Tests]] - `imports` [EXTRACTED]
 - [[Scan a list of markets and return all monotonicity violations. Only checks…]] - `rationale_for` [EXTRACTED]
 - [[Violation]] - `references` [EXTRACTED]
 - [[_group_markets()]] - `calls` [EXTRACTED]
+- [[_render_analysis_results()]] - `calls` [EXTRACTED]
+- [[cmd_consistency()]] - `calls` [EXTRACTED]
 - [[consistency.py]] - `contains` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[run_trade_cycle()]] - `calls` [EXTRACTED]
 - [[test_consistency.py]] - `imports` [EXTRACTED]
 - [[test_p1_remaining.py]] - `calls` [EXTRACTED]
+- [[test_phase3_batch_e.py]] - `imports` [EXTRACTED]
 - [[trade_cycle.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_48

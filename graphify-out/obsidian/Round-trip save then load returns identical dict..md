@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Community 276"
+community: "Community 277"
 location: "L682"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_276
+  - community/Community_277
 ---
 
 # Round-trip: save then load returns identical dict.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_save_and_load_learned_weights()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_276
+#graphify/rationale #graphify/EXTRACTED #community/Community_277

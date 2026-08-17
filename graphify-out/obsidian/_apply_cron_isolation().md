@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_trade_updates.py"
 type: "code"
-community: "Community 253"
+community: "Community 251"
 location: "L6"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_253
+  - community/Community_251
 ---
 
 # _apply_cron_isolation()
@@ -17,4 +17,4 @@ tags:
 - [[Stub out all guards that can cause cmd_cron to exit early. Without these stubs,…]] - `rationale_for` [EXTRACTED]
 - [[test_cron_trade_updates.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_253
+#graphify/code #graphify/EXTRACTED #community/Community_251

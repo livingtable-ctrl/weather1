@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/screenshots/dark.png"
 type: "image"
-community: "Community 292"
+community: "Community 296"
 tags:
   - graphify/image
   - graphify/EXTRACTED
-  - community/Community_292
+  - community/Community_296
 ---
 
 # Kalshi Weather Dashboard - Dark Theme
@@ -17,4 +17,4 @@ tags:
 - [[Metric Card Row (Paper Balance, Open Positions, Win Rate, Brier Score)]] - `references` [EXTRACTED]
 - [[Top Navigation Bar (OverviewPositionsSignalsForecastAnalyticsRiskTrades)_1]] - `references` [EXTRACTED]
 
-#graphify/image #graphify/EXTRACTED #community/Community_292
+#graphify/image #graphify/EXTRACTED #community/Community_296

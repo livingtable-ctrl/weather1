@@ -1,13 +1,13 @@
 ---
 source_file: "market_types.py"
 type: "code"
-community: "Community 663"
+community: "Community 805"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_663
+  - community/Community_805
 ---
 
 # AnalysisResult TypedDict
 
-#graphify/code #graphify/EXTRACTED #community/Community_663
+#graphify/code #graphify/EXTRACTED #community/Community_805

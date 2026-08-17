@@ -1,26 +1,26 @@
 ---
 type: community
-cohesion: 0.25
+cohesion: 0.18
 members: 11
 ---
 
 # Community 349
 
-**Cohesion:** 0.25 - loosely connected
+**Cohesion:** 0.18 - loosely connected
 **Members:** 11 nodes
 
 ## Members
-- [[dot-_call()_2]] - code - tests/test_weather_markets.py
-- [[dot-test_low_market_above_already_below_margin_is_locked()]] - code - tests/test_weather_markets.py
-- [[dot-test_low_market_above_still_above_margin_is_not_locked()]] - code - tests/test_weather_markets.py
-- [[dot-test_low_market_below_already_below_margin_is_locked()]] - code - tests/test_weather_markets.py
-- [[dot-test_low_market_below_still_above_margin_is_not_locked()]] - code - tests/test_weather_markets.py
-- [[A LOW market's running daily-min-so-far can only DECREASE as the day progresses…]] - rationale - tests/test_weather_markets.py
-- [[TestMetarLockInLowMarketAsymmetry]] - code - tests/test_weather_markets.py
-- [[low above 40', running min=30 (= 40-3 margin) monotone-safe — the min can…]] - rationale - tests/test_weather_markets.py
-- [[low above 40', running min=45 (= 40+3 margin) NOT monotone-safe — the min…]] - rationale - tests/test_weather_markets.py
-- [[low below 60', running min=50 (= 60-3 margin) monotone-safe — the min already…]] - rationale - tests/test_weather_markets.py
-- [[low below 60', running min=65 (= 60+3 margin) NOT monotone-safe for the NO…]] - rationale - tests/test_weather_markets.py
+- [[dot-setUp()_25]] - code - tests/test_paper.py
+- [[dot-tearDown()_24]] - code - tests/test_paper.py
+- [[dot-test_directional_exposure_other_side()]] - code - tests/test_paper.py
+- [[dot-test_directional_exposure_same_side()]] - code - tests/test_paper.py
+- [[dot-test_directional_penalty_applies_before_city_cap()]] - code - tests/test_paper.py
+- [[dot-test_portfolio_kelly_with_directional_penalty()]] - code - tests/test_paper.py
+- [[Concentrated same-side bets trigger 50% further reduction.]] - rationale - tests/test_paper.py
+- [[NO bets don't count toward YES directional exposure.]] - rationale - tests/test_paper.py
+- [[TestDirectionalExposure]] - code - tests/test_paper.py
+- [[Two YES bets on same citydate sum correctly.]] - rationale - tests/test_paper.py
+- [[When city exposure  max but directional  threshold, penalty applies.]] - rationale - tests/test_paper.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,9 +30,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 1 edge to [[_COMMUNITY_Community 64]]
+- 1 edge to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 21]]
+- 1 edge to [[_COMMUNITY_Community 0]]
 
 ## Top bridge nodes
-- [[TestMetarLockInLowMarketAsymmetry]] - degree 7, connects to 1 community
-- [[dot-_call()_2]] - degree 6, connects to 1 community
+- [[TestDirectionalExposure]] - degree 8, connects to 2 communities
+- [[dot-setUp()_25]] - degree 2, connects to 1 community

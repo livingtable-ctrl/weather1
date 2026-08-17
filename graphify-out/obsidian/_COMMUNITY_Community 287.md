@@ -10,19 +10,19 @@ members: 13
 **Members:** 13 nodes
 
 ## Members
-- [[dot-_log_and_settle()]] - code - tests/test_tracker.py
-- [[dot-setUp()_15]] - code - tests/test_tracker.py
-- [[dot-tearDown()_15]] - code - tests/test_tracker.py
-- [[dot-test_column_exists_after_init()]] - code - tests/test_tracker.py
-- [[dot-test_probation_rolling_isolates_from_non_probation_rows()]] - code - tests/test_tracker.py
-- [[dot-test_probation_rolling_none_below_min_samples()]] - code - tests/test_tracker.py
-- [[dot-test_upsert_min_merge_probation_write_cannot_reflag_real_row()]] - code - tests/test_tracker.py
-- [[dot-test_upsert_min_merge_real_write_clears_probation_flag()]] - code - tests/test_tracker.py
-- [[A later real (is_probation=0) write for the same (ticker, date) must clear an…]] - rationale - tests/test_tracker.py
-- [[A wildly-wrong non-probation row for the same method must not pollute the…]] - rationale - tests/test_tracker.py
-- [[Schema v50 must add is_probation to predictions, and…]] - rationale - tests/test_tracker.py
-- [[TestIsProbationColumn]] - code - tests/test_tracker.py
-- [[The reverse must not happen a probation write after a real write can never re-…]] - rationale - tests/test_tracker.py
+- [[dot-_seed()_3]] - code - tests/test_regression.py
+- [[dot-setup_method()_21]] - code - tests/test_regression.py
+- [[dot-teardown_method()_13]] - code - tests/test_regression.py
+- [[dot-test_brier_score_known_value()]] - code - tests/test_regression.py
+- [[dot-test_brier_score_no_data_returns_none()]] - code - tests/test_regression.py
+- [[dot-test_roc_auc_perfect_classifier()]] - code - tests/test_regression.py
+- [[AUC=1.0 when high probs always - YES and low probs always - NO.]] - rationale - tests/test_regression.py
+- [[BS on 0.9-YES, 0.1-NO, 0.8-YES, 0.2-NO must equal 0.025.]] - rationale - tests/test_regression.py
+- [[Deterministic regression tests using a seeded in-memory DB (113). These tests…]] - rationale - tests/test_regression.py
+- [[Log predictions+outcomes into the temp DB.]] - rationale - tests/test_regression.py
+- [[Redirect tracker to a fresh temp DB before each test.]] - rationale - tests/test_regression.py
+- [[TestBrierScoreComputation]] - code - tests/test_regression.py
+- [[brier_score() on empty DB returns None (not 0.0, not error).]] - rationale - tests/test_regression.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -32,7 +32,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestIsProbationColumn]] - degree 10, connects to 1 community
+- [[TestBrierScoreComputation]] - degree 8, connects to 1 community

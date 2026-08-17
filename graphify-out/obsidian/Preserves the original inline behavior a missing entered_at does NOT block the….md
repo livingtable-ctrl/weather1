@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "rationale"
-community: "Community 158"
+community: "Community 161"
 location: "L210"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_158
+  - community/Community_161
 ---
 
 # Preserves the original inline behavior: a missing entered_at does NOT block the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_hold_gate_fails_open_on_missing_entered_at()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_158
+#graphify/rationale #graphify/EXTRACTED #community/Community_161

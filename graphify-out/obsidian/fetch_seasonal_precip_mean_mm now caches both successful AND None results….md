@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_acis_precip.py"
 type: "rationale"
-community: "Community 271"
+community: "Community 141"
 location: "L19"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_271
+  - community/Community_141
 ---
 
 # fetch_seasonal_precip_mean_mm now caches both successful AND None results…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_clear_seasonal_cache()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_271
+#graphify/rationale #graphify/EXTRACTED #community/Community_141

@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 225"
+community: "Community 229"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_225
+  - community/Community_229
 ---
 
 # test_kalshi_client.py
@@ -26,7 +27,8 @@ tags:
 - [[TestPlaceOrderSurvivesGetOrderFailure]] - `contains` [EXTRACTED]
 - [[TestToV2SidePrice]] - `contains` [EXTRACTED]
 - [[Tests for kalshi_client.py.]] - `rationale_for` [EXTRACTED]
-- [[_place_live_order()_poll_pending_orders()_auto_place_trades()]] - `references` [EXTRACTED]
-- [[_to_v2_side_price()]] - `references` [EXTRACTED]
+- [[_to_v2_side_price()]] - `imports` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_225
+#graphify/code #graphify/EXTRACTED #community/Community_229

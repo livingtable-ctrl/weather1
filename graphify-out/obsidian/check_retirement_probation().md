@@ -1,18 +1,19 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L5192"
+community: "Community 3"
+location: "L5294"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # check_retirement_probation()
 
 ## Connections
 - [[KalshiClient]] - `references` [EXTRACTED]
+- [[KalshiClient_3]] - `references` [EXTRACTED]
 - [[Once per day for each currently-retired forecasting method, sample a handful…]] - `rationale_for` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
@@ -23,8 +24,6 @@ tags:
 - [[get_weather_markets()]] - `calls` [EXTRACTED]
 - [[is_stale()]] - `calls` [EXTRACTED]
 - [[test_retirement_probation.py]] - `calls` [EXTRACTED]
-- [[tracker.py_2]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
-- [[weather_markets.py_1]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_3

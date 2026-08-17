@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L493"
+community: "Community 3"
+location: "L712"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # Train T for the global pool and for each condition type that has enough data.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[train_all_temperature_scaling()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_notify.py"
 type: "rationale"
-community: "Community 149"
+community: "Community 153"
 location: "L201"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_149
+  - community/Community_153
 ---
 
 # The lock's actual job (thread-level, not cross-process -- see…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_concurrent_threads_only_one_fires()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_149
+#graphify/rationale #graphify/EXTRACTED #community/Community_153

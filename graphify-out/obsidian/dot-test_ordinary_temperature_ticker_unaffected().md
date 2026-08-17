@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 377"
+community: "Community 391"
 location: "L166"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_377
+  - community/Community_391
 ---
 
 # .test_ordinary_temperature_ticker_unaffected()
@@ -15,4 +15,4 @@ tags:
 - [[Regression control branch ordering must not swallow a normal temperature…]] - `rationale_for` [EXTRACTED]
 - [[TestParseMarketConditionMonthlySnow]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_377
+#graphify/code #graphify/EXTRACTED #community/Community_391

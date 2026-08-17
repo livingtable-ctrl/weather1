@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "rationale"
-community: "Community 122"
+community: "Community 128"
 location: "L364"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_122
+  - community/Community_128
 ---
 
 # Gate-ordering regression from plan review: a target-hour hourly market with…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_liquidity_gate_still_applies_to_hourly()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_122
+#graphify/rationale #graphify/EXTRACTED #community/Community_128

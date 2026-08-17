@@ -1,11 +1,11 @@
 ---
 source_file: "templates/risk.html"
 type: "code"
-community: "Community 147"
+community: "Community 204"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_147
+  - community/Community_204
 ---
 
 # Risk Template Page
@@ -14,4 +14,4 @@ tags:
 - [[Risk Page Spec (risk)]] - `implements` [EXTRACTED]
 - [[staticrisk.js_1]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_147
+#graphify/code #graphify/EXTRACTED #community/Community_204

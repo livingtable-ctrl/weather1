@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-b-risk-management.md"
 type: "document"
-community: "Community 210"
+community: "Community 217"
 tags:
   - graphify/document
   - graphify/INFERRED
-  - community/Community_210
+  - community/Community_217
 ---
 
 # B6: Tail-Risk Stress Testing
@@ -15,4 +15,4 @@ tags:
 - [[Category B Risk Management Plan]] - `implements` [EXTRACTED]
 - [[Monte Carlo Clamping Explanation]] - `semantically_similar_to` [INFERRED]
 
-#graphify/document #graphify/INFERRED #community/Community_210
+#graphify/document #graphify/INFERRED #community/Community_217

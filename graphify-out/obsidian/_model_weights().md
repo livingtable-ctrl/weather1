@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 137"
-location: "L3424"
+community: "Community 127"
+location: "L3526"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_137
+  - community/Community_127
 ---
 
 # _model_weights()
@@ -22,6 +22,7 @@ tags:
 - [[dot-test_tier3_seasonal_baseline_stays_fixed_to_3_models()]] - `calls` [EXTRACTED]
 - [[dot-test_tracked_but_non_ensemble_model_never_leaks_in()]] - `calls` [EXTRACTED]
 - [[Return per-model weights for the ensemble blend. Priority order — tier 1 is…]] - `rationale_for` [EXTRACTED]
+- [[TestModelWeights (ensemble blend weight tiers)]] - `calls` [EXTRACTED]
 - [[_weights_from_mae()]] - `calls` [EXTRACTED]
 - [[backfill_emos_data()]] - `calls` [EXTRACTED]
 - [[batch_prewarm_ensemble()]] - `calls` [EXTRACTED]
@@ -32,4 +33,4 @@ tags:
 - [[tracker.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_137
+#graphify/code #graphify/EXTRACTED #community/Community_127

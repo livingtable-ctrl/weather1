@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_tracker.py"
+source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 239"
-location: "L2429"
+community: "Community 194"
+location: "L865"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_239
+  - community/Community_194
 ---
 
 # .tearDown()
 
 ## Connections
-- [[TestGetMemberBias]] - `method` [EXTRACTED]
+- [[TestDrawdownScaling]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_239
+#graphify/code #graphify/EXTRACTED #community/Community_194

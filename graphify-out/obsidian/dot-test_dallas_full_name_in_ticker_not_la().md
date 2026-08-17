@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 116"
-location: "L2659"
+community: "Community 122"
+location: "L3028"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_116
+  - community/Community_122
 ---
 
 # .test_dallas_full_name_in_ticker_not_la()
 
 ## Connections
-- [[dot-_city()]] - `calls` [EXTRACTED]
+- [[dot-_city()_1]] - `calls` [EXTRACTED]
 - [[KXRAIN-DALLAS ticker 'DALLAS' contains 'LA' — must be Dallas, not LA.]] - `rationale_for` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_116
+#graphify/code #graphify/EXTRACTED #community/Community_122

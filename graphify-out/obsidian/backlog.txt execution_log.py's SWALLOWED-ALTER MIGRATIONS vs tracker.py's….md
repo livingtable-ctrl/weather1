@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "rationale"
-community: "Community 256"
+community: "Community 253"
 location: "L99"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_256
+  - community/Community_253
 ---
 
 # backlog.txt "execution_log.py's SWALLOWED-ALTER MIGRATIONS vs tracker.py's…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestSchemaVersionMatchesMigrations]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_256
+#graphify/rationale #graphify/EXTRACTED #community/Community_253

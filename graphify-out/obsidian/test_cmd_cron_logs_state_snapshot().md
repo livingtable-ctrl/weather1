@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_state_consistency.py"
 type: "code"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 1"
 location: "L51"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_1
 ---
 
 # test_cmd_cron_logs_state_snapshot()
@@ -15,4 +15,4 @@ tags:
 - [[cmd_cron must log a state snapshot line on each run.]] - `rationale_for` [EXTRACTED]
 - [[test_state_consistency.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/code #graphify/EXTRACTED #community/Community_1

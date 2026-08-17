@@ -1,11 +1,11 @@
 ---
 source_file: "COMMANDS.md"
 type: "document"
-community: "Community 693"
+community: "Community 675"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_675
 ---
 
 # retire-strategies command
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[unretire-strategy command]] - `conceptually_related_to` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_693
+#graphify/document #graphify/EXTRACTED #community/Community_675

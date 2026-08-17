@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker Disputed Outcome Restoration"
+community: "Community 28"
 location: "L4535"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Disputed_Outcome_Restoration
+  - community/Community_28
 ---
 
 # .test_brier_score_excludes_disputed()
@@ -16,4 +16,4 @@ tags:
 - [[dot-_seed_baseline()]] - `calls` [EXTRACTED]
 - [[TestDisputedOutcomeTracking]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Disputed_Outcome_Restoration
+#graphify/code #graphify/EXTRACTED #community/Community_28

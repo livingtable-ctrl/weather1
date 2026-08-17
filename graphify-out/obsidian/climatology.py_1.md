@@ -1,20 +1,17 @@
 ---
 source_file: "climatology.py"
 type: "code"
-community: "Community 109"
+community: "Community 7"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_109
+  - community/Community_7
 ---
 
 # climatology.py
 
 ## Connections
-- [[Grade Audit Module Doc TIER 2 Files]] - `references` [EXTRACTED]
-- [[Grade Audit Output climatology.py]] - `references` [EXTRACTED]
-- [[fetch_historical() RF1 Silent API-Failure Swallow]] - `references` [EXTRACTED]
-- [[load_all_sigmas()]] - `implements` [EXTRACTED]
-- [[test_climatology.py]] - `calls` [EXTRACTED]
+- [[CircuitBreaker class_1]] - `shares_data_with` [EXTRACTED]
+- [[test_infrastructure.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_109
+#graphify/code #graphify/EXTRACTED #community/Community_7

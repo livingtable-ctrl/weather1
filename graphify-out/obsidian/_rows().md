@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_c.py"
 type: "code"
-community: "Community 72"
+community: "Community 125"
 location: "L57"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_72
+  - community/Community_125
 ---
 
 # _rows()
@@ -20,9 +20,9 @@ tags:
 - [[dot-test_city_accepts_cutoff_date_kwarg()]] - `calls` [EXTRACTED]
 - [[dot-test_cutoff_excludes_future_rows_from_training()]] - `calls` [EXTRACTED]
 - [[dot-test_seasonal_accepts_cutoff_date_kwarg()]] - `calls` [EXTRACTED]
-- [[dot-test_weights_sum_to_one()_5]] - `calls` [EXTRACTED]
+- [[dot-test_weights_sum_to_one()]] - `calls` [EXTRACTED]
 - [[dot-test_weights_with_explicit_cutoff_sum_to_one()]] - `calls` [EXTRACTED]
 - [[Generate n rows with spread-out dates for stable 8020 splits.]] - `rationale_for` [EXTRACTED]
-- [[Phase 3 Batch C Calibration Tests]] - `contains` [EXTRACTED]
+- [[test_phase3_batch_c.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_72
+#graphify/code #graphify/EXTRACTED #community/Community_125

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 263"
+community: "Community 259"
 location: "L199"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_263
+  - community/Community_259
 ---
 
 # TestAnalyzeTradeMonthlySnowGating
@@ -22,4 +22,4 @@ tags:
 - [[Snow Step 2 Step 1's unconditional return-None guard is gone. Snow tickers now…]] - `rationale_for` [EXTRACTED]
 - [[test_snow_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_263
+#graphify/code #graphify/EXTRACTED #community/Community_259

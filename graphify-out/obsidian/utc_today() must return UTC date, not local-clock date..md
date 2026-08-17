@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_h.py"
 type: "rationale"
-community: "Climatology & Climate Index Fetching"
+community: "Community 23"
 location: "L16"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_23
 ---
 
 # utc_today() must return UTC date, not local-clock date.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestUtcToday]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/rationale #graphify/EXTRACTED #community/Community_23

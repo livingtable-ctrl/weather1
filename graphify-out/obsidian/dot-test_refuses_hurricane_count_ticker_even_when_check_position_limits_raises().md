@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 38"
+community: "Community 36"
 location: "L1186"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_38
+  - community/Community_36
 ---
 
 # .test_refuses_hurricane_count_ticker_even_when_check_position_limits_raises()
@@ -14,8 +14,8 @@ tags:
 ## Connections
 - [[dot-_analysis()_4]] - `calls` [EXTRACTED]
 - [[dot-_market()_5]] - `calls` [EXTRACTED]
-- [[dot-_run()_4]] - `calls` [EXTRACTED]
+- [[dot-_run()_5]] - `calls` [EXTRACTED]
 - [[TestCmdTodayPlacementGates]] - `method` [EXTRACTED]
 - [[The real point of the round-2 fix check_position_limits() itself raising must…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_38
+#graphify/code #graphify/EXTRACTED #community/Community_36

@@ -1,36 +1,37 @@
 ---
 type: community
-cohesion: 0.12
-members: 21
+cohesion: 0.09
+members: 22
 ---
 
 # Community 141
 
-**Cohesion:** 0.12 - loosely connected
-**Members:** 21 nodes
+**Cohesion:** 0.09 - loosely connected
+**Members:** 22 nodes
 
 ## Members
-- [[14 Edge Decay by Condition Type]] - document - docs/superpowers/specs/2026-04-10-signal-quality-design.md
-- [[39 Kelly Sizing by Condition Type]] - document - docs/superpowers/specs/2026-04-10-signal-quality-design.md
-- [[1c Split weather_markets.py (3,700 lines)]] - document - docs/superpowers/plans/do-after-graduation.md
-- [[3b Near-Threshold Detection]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
-- [[3c Blend Weight Review]] - document - docs/superpowers/plans/do-after-graduation.md
-- [[3d analyze_trade Refactor]] - document - docs/superpowers/plans/do-after-graduation.md
-- [[4b Ensemble Blend Math Unit Tests]] - document - docs/superpowers/plans/do-after-graduation.md
-- [[Financial Safety Audit Scope (Kelly, drawdown, fees)]] - document - system_audit_prompt.txt
-- [[G2 Split weather_markets.py]] - document - docs/superpowers/plans/2026-06-27-category-g-architecture.md
-- [[LV1 Settlement-Time Temperature Model]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
-- [[LV5 Ensemble Member Clustering]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
-- [[LV6 Regime-Based Strategy Switching]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
-- [[System Audit Prompt (Enterprise Audit)]] - document - system_audit_prompt.txt
-- [[_blend_weights() Priority Logic]] - document - docs/superpowers/specs/2026-04-10-model-signal-calibration-design.md
-- [[edge_confidence(days_out) Function]] - document - docs/superpowers/specs/2026-04-10-model-signal-calibration-design.md
-- [[feature_importance.py Module]] - code - system_audit_prompt.txt
-- [[kalshi_ws.py Module]] - code - system_audit_prompt.txt
-- [[param_sweep.py Module]] - code - system_audit_prompt.txt
-- [[regime.py Module (detect_regime)]] - code - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
-- [[weather_markets.py Module_1]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[websockets]] - code - requirements.txt
+- [[dot-test_before_first_of_month_returns_none()]] - code - tests/test_acis_precip.py
+- [[dot-test_ci_contains_point_estimate()]] - code - tests/test_acis_precip.py
+- [[dot-test_code_without_leading_k_passed_through()]] - code - tests/test_acis_precip.py
+- [[dot-test_deterministic_point_estimate_hand_check()]] - code - tests/test_acis_precip.py
+- [[dot-test_empty_data_falls_back_to_stale_cache_not_written_as_empty()]] - code - tests/test_acis_precip.py
+- [[dot-test_fetch_exception_returns_none_zero()]] - code - tests/test_acis_precip.py
+- [[dot-test_nyc_case()]] - code - tests/test_acis_precip.py
+- [[dot-test_strips_leading_k()]] - code - tests/test_acis_precip.py
+- [[dot-test_sums_parsed_values_and_counts_missing()]] - code - tests/test_acis_precip.py
+- [[dot-test_too_few_years_returns_wide_ci()]] - code - tests/test_acis_precip.py
+- [[dot-test_unmapped_city_returns_none()]] - code - tests/test_acis_precip.py
+- [[Opus-review-caught gap (round 2) ACIS can return HTTP 200 with an empty data…]] - rationale - tests/test_acis_precip.py
+- [[TestBootstrapCiMonthTotal]] - code - tests/test_acis_precip.py
+- [[TestFetchHistoricalDailyEmptyResponse]] - code - tests/test_acis_precip.py
+- [[TestFetchMonthToDateActual]] - code - tests/test_acis_precip.py
+- [[TestStationSidForCity]] - code - tests/test_acis_precip.py
+- [[Tests for acis_precip.py (backlog.txt RAIN  SNOW  HURRICANE MARKETS Step…]] - rationale - tests/test_acis_precip.py
+- [[_clear_seasonal_cache()]] - code - tests/test_acis_precip.py
+- [[acis_precip.py seasonalbootstrap functions]] - code - acis_precip.py
+- [[fetch_seasonal_precip_mean_mm now caches both successful AND None results…]] - rationale - tests/test_acis_precip.py
+- [[fixture_1]] - code
+- [[test_acis_precip.py]] - code - tests/test_acis_precip.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -40,16 +41,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 249]]
-- 4 edges to [[_COMMUNITY_Community 209]]
-- 3 edges to [[_COMMUNITY_Community 199]]
-- 3 edges to [[_COMMUNITY_Community 179]]
-- 2 edges to [[_COMMUNITY_Community 154]]
-- 1 edge to [[_COMMUNITY_Community 197]]
-- 1 edge to [[_COMMUNITY_Community 156]]
+- 2 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 162]]
+- 1 edge to [[_COMMUNITY_Community 370]]
+- 1 edge to [[_COMMUNITY_Community 410]]
+- 1 edge to [[_COMMUNITY_Community 456]]
+- 1 edge to [[_COMMUNITY_Community 183]]
+- 1 edge to [[_COMMUNITY_Community 23]]
 
 ## Top bridge nodes
-- [[weather_markets.py Module_1]] - degree 22, connects to 5 communities
-- [[System Audit Prompt (Enterprise Audit)]] - degree 12, connects to 4 communities
-- [[_blend_weights() Priority Logic]] - degree 4, connects to 1 community
-- [[websockets]] - degree 2, connects to 1 community
+- [[test_acis_precip.py]] - degree 15, connects to 7 communities

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backtest.py"
 type: "rationale"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 8"
 location: "L482"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_8
 ---
 
 # Unknown city must return empty list (no crash).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_returns_empty_for_unknown_city()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/rationale #graphify/EXTRACTED #community/Community_8

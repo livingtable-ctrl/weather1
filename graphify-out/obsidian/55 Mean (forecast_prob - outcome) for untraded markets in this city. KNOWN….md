@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Tracker SQLite Storage Tests"
-location: "L6503"
+community: "Community 35"
+location: "L6558"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_SQLite_Storage_Tests
+  - community/Community_35
 ---
 
 # #55: Mean (forecast_prob - outcome) for untraded markets in this city. KNOWN…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_unselected_bias()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_SQLite_Storage_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_35

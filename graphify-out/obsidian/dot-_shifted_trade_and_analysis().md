@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "code"
-community: "Community 333"
+community: "Community 340"
 location: "L417"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_333
+  - community/Community_340
 ---
 
 # ._shifted_trade_and_analysis()
@@ -17,6 +17,6 @@ tags:
 - [[dot-test_skips_cycle_on_missing_quote_not_fallback_to_entry_price()]] - `calls` [EXTRACTED]
 - [[dot-test_skips_cycle_when_no_side_liquidation_is_exactly_zero()]] - `calls` [EXTRACTED]
 - [[TestEarlyExitPricingConvention]] - `method` [EXTRACTED]
-- [[_make_trade()_2]] - `calls` [EXTRACTED]
+- [[_make_trade()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_333
+#graphify/code #graphify/EXTRACTED #community/Community_340

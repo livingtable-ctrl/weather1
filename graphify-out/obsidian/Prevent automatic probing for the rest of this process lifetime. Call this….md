@@ -1,12 +1,12 @@
 ---
 source_file: "circuit_breaker.py"
 type: "rationale"
-community: "Community 44"
+community: "Community 7"
 location: "L154"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_44
+  - community/Community_7
 ---
 
 # Prevent automatic probing for the rest of this process lifetime. Call this…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-suppress_probe()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_44
+#graphify/rationale #graphify/EXTRACTED #community/Community_7

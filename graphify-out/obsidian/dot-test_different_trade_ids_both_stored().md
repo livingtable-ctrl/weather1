@@ -12,7 +12,7 @@ tags:
 # .test_different_trade_ids_both_stored()
 
 ## Connections
-- [[dot-_trade()_2]] - `calls` [EXTRACTED]
+- [[dot-_trade()_1]] - `calls` [EXTRACTED]
 - [[TestTradeHistory]] - `method` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/Community_39

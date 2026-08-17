@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_m.py"
 type: "rationale"
-community: "Community 32"
+community: "Community 9"
 location: "L360"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_32
+  - community/Community_9
 ---
 
 # City model must not be added when holdout MSE >= baseline.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_skips_city_when_holdout_mse_not_better()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_32
+#graphify/rationale #graphify/EXTRACTED #community/Community_9

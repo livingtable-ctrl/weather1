@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_city_registry_report_logging.py"
 type: "code"
-community: "Community 89"
+community: "Community 412"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_89
+  - community/Community_412
 ---
 
 # test_city_registry_report_logging.py
@@ -15,6 +15,9 @@ tags:
 - [[Tests for log_city_registry_report() — once-per-day logging wrapper around…]] - `rationale_for` [EXTRACTED]
 - [[_today()_3]] - `contains` [EXTRACTED]
 - [[city_registry_report()]] - `calls` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[test_city_registry_manifest.py]] - `shares_data_with` [INFERRED]
 - [[test_first_run_creates_state_file()_1]] - `contains` [EXTRACTED]
 - [[test_gated_to_run_once_per_day()_2]] - `contains` [EXTRACTED]
@@ -22,4 +25,4 @@ tags:
 - [[test_runs_again_on_a_new_day()_1]] - `contains` [EXTRACTED]
 - [[weather_markets.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_89
+#graphify/code #graphify/EXTRACTED #community/Community_412

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 222"
+community: "Community 185"
 location: "L320"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_222
+  - community/Community_185
 ---
 
 # Real bug found live 2026-07-19, same day and root cause as the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_string_inputs_do_not_crash_via_concatenation()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_222
+#graphify/rationale #graphify/EXTRACTED #community/Community_185

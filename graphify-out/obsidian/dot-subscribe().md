@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 245"
+community: "Community 227"
 location: "L406"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_245
+  - community/Community_227
 ---
 
 # .subscribe()
@@ -15,4 +15,4 @@ tags:
 - [[Add tickers to subscribe to. Must be called before start().]] - `rationale_for` [EXTRACTED]
 - [[KalshiWebSocket]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_245
+#graphify/code #graphify/EXTRACTED #community/Community_227

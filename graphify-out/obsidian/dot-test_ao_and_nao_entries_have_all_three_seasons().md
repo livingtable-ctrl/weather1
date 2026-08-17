@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climate_indices.py"
 type: "code"
-community: "Community 31"
+community: "Community 373"
 location: "L88"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_31
+  - community/Community_373
 ---
 
 # .test_ao_and_nao_entries_have_all_three_seasons()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestSensitivityTablesCoverage]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_31
+#graphify/code #graphify/EXTRACTED #community/Community_373

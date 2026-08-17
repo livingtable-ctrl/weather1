@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "rationale"
-community: "ML Bias Multiday-Predictions Filter"
-location: "L806"
+community: "Community 230"
+location: "L1053"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_230
 ---
 
 # Fit EMOS parameters (a, b, c, d) minimising mean CRPS. Model: T ~ N(mu,…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[fit_emos()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/rationale #graphify/EXTRACTED #community/Community_230

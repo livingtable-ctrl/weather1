@@ -1,27 +1,29 @@
 ---
 type: community
-cohesion: 0.17
-members: 12
+cohesion: 0.16
+members: 14
 ---
 
 # Community 250
 
-**Cohesion:** 0.17 - loosely connected
-**Members:** 12 nodes
+**Cohesion:** 0.16 - loosely connected
+**Members:** 14 nodes
 
 ## Members
-- [[dot-test_current_api_fp_field_names_are_read()]] - code - tests/test_paper.py
-- [[dot-test_fp_field_names_preferred_over_legacy_when_both_present()]] - code - tests/test_paper.py
-- [[dot-test_illiquid_market_returns_0_50()]] - code - tests/test_paper.py
-- [[dot-test_liquid_market_returns_1_0()_1]] - code - tests/test_paper.py
-- [[dot-test_low_liquidity_returns_0_70()]] - code - tests/test_paper.py
-- [[dot-test_medium_liquidity_returns_0_85()]] - code - tests/test_paper.py
-- [[dot-test_missing_fields_treated_as_zero_not_typeerror()]] - code - tests/test_paper.py
-- [[dot-test_tier_boundaries_are_strict_greater_than()]] - code - tests/test_paper.py
-- [[dot-test_volume_and_open_interest_are_summed_not_maxed()]] - code - tests/test_paper.py
-- [[dot-test_zero_liquidity_returns_0_50()]] - code - tests/test_paper.py
-- [[TestLiquidityKellyScale]] - code - tests/test_paper.py
-- [[backlog.txt LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD -- revives the…]] - rationale - tests/test_paper.py
+- [[dot-_mock_climate_history()]] - code - tests/test_climatology.py
+- [[dot-test_missing_cities_helper_returns_empty_when_all_present()]] - code - tests/test_climatology.py
+- [[dot-test_missing_cities_helper_treats_absent_file_as_all_missing()]] - code - tests/test_climatology.py
+- [[dot-test_missing_cities_helper_treats_corrupt_file_as_all_missing()]] - code - tests/test_climatology.py
+- [[dot-test_missing_cities_helper_treats_empty_entry_as_missing()]] - code - tests/test_climatology.py
+- [[dot-test_missing_cities_helper_treats_non_dict_json_as_all_missing()]] - code - tests/test_climatology.py
+- [[dot-test_second_call_for_same_cities_does_not_recompute()]] - code - tests/test_climatology.py
+- [[dot-test_sequential_per_city_preload_all_calls_build_full_table()]] - code - tests/test_climatology.py
+- [[Once a city is already in the fresh cache, a later preload_all() call for that…]] - rationale - tests/test_climatology.py
+- [[TestPreloadAllSigmaGate]] - code - tests/test_climatology.py
+- [[The exact backlog scenario main.py's wizard calls preload_all({city…]] - rationale - tests/test_climatology.py
+- [[backlog.txt PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE…]] - rationale - tests/test_climatology.py
+- [[opus-review-caught 2026-08-07 a city KEY present in the file with no real…]] - rationale - tests/test_climatology.py
+- [[opus-review-caught 2026-08-07 valid JSON that isn't an object (null, a list,…]] - rationale - tests/test_climatology.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,8 +33,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 56]]
-- 1 edge to [[_COMMUNITY_Community 45]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestLiquidityKellyScale]] - degree 13, connects to 2 communities
+- [[TestPreloadAllSigmaGate]] - degree 10, connects to 1 community

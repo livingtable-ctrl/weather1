@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_sprt.py"
 type: "code"
-community: "Community 166"
+community: "Community 167"
 location: "L10"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_166
+  - community/Community_167
 ---
 
 # TestSprtModelHealth
@@ -24,4 +24,4 @@ tags:
 - [[Tests for tracker.sprt_model_health().]] - `rationale_for` [EXTRACTED]
 - [[test_sprt.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_166
+#graphify/code #graphify/EXTRACTED #community/Community_167

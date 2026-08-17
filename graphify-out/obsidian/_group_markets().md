@@ -1,12 +1,12 @@
 ---
 source_file: "consistency.py"
 type: "code"
-community: "Community 32"
+community: "Community 1"
 location: "L115"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_32
+  - community/Community_1
 ---
 
 # _group_markets()
@@ -24,4 +24,4 @@ tags:
 - [[market_implied_rain_event_key()]] - `calls` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_32
+#graphify/code #graphify/EXTRACTED #community/Community_1

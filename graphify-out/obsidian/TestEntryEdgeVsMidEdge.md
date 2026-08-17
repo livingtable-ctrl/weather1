@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 528"
+community: "Community 586"
 location: "L154"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_528
+  - community/Community_586
 ---
 
 # TestEntryEdgeVsMidEdge
@@ -17,4 +17,4 @@ tags:
 - [[L7-C entry_side_edge must use ask price, not mid, for each side.]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_528
+#graphify/code #graphify/EXTRACTED #community/Community_586

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_calibration.py"
 type: "code"
-community: "Community 69"
+community: "Community 58"
 location: "L125"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_69
+  - community/Community_58
 ---
 
 # .test_rows_without_source_probs_not_counted()
@@ -18,4 +18,4 @@ tags:
 - [[_seed_db()]] - `calls` [EXTRACTED]
 - [[calibrate_seasonal_weights()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_69
+#graphify/code #graphify/EXTRACTED #community/Community_58

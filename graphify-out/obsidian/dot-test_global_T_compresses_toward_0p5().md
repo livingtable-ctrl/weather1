@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "code"
-community: "Community 113"
-location: "L159"
+community: "Community 101"
+location: "L370"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_113
+  - community/Community_101
 ---
 
 # .test_global_T_compresses_toward_0p5()
@@ -16,4 +16,4 @@ tags:
 - [[TestApplyTemperatureScaling]] - `method` [EXTRACTED]
 - [[With a global T  1, output is compressed toward 0.5 from both sides.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_113
+#graphify/code #graphify/EXTRACTED #community/Community_101

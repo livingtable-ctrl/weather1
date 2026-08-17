@@ -1,36 +1,36 @@
 ---
 type: community
-cohesion: 0.10
+cohesion: 0.13
 members: 21
 ---
 
 # Community 147
 
-**Cohesion:** 0.10 - loosely connected
+**Cohesion:** 0.13 - loosely connected
 **Members:** 21 nodes
 
 ## Members
-- [[Analytics Page Spec (analytics)]] - document - docs/superpowers/specs/2026-04-10-dashboard-modernization-design.md
-- [[Analytics Page Template (reference)]] - code - updated frontend/reference/analytics.html
-- [[Analytics Template Page]] - code - templates/analytics.html
-- [[Base Page Template (reference)]] - code - updated frontend/reference/base.html
-- [[Dashboard Page Template (reference)]] - code - updated frontend/reference/dashboard.html
-- [[Forecast Page Spec (forecast)]] - document - docs/superpowers/specs/2026-04-10-dashboard-modernization-design.md
-- [[Forecast Page Template (reference)]] - code - updated frontend/reference/forecast.html
-- [[Forecast Template Page]] - code - templates/forecast.html
-- [[Risk Page Spec (risk)]] - document - docs/superpowers/specs/2026-04-10-dashboard-modernization-design.md
-- [[Risk Page Template (reference)]] - code - updated frontend/reference/risk.html
-- [[Risk Template Page]] - code - templates/risk.html
-- [[Signals Page Template (reference)]] - code - updated frontend/reference/signals.html
-- [[Signals Page Template (templates)]] - code - templates/signals.html
-- [[Trades Page Template (reference)]] - code - updated frontend/reference/trades.html
-- [[Trades Page Template (templates)]] - code - templates/trades.html
-- [[signals.js (Flask static)]] - code - static/signals.js
-- [[staticanalytics.js_1]] - code - templates/analytics.html
-- [[staticforecast.js_1]] - code - templates/forecast.html
-- [[staticrisk.js_1]] - code - templates/risk.html
-- [[style.css (Flask static)]] - code - static/style.css
-- [[trades.js (Flask static)]] - code - static/trades.js
+- [[dot-test_all_none_returns_inf()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_brier_gate_constant()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_empty_rows_returns_inf()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_equal_weights_returned_when_gate_fails()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_n_random_search_is_200()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_none_settled_skipped()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_partial_none_skipped()]] - code - tests/test_phase3_batch_c.py
+- [[dot-test_valid_rows_computes_correctly()]] - code - tests/test_phase3_batch_c.py
+- [[Compute weighted Brier score. Rows are (e, c, n, s, weight). Skips None…]] - rationale - calibration.py
+- [[P3-17 _brier must skip rows with any None component.]] - rationale - tests/test_phase3_batch_c.py
+- [[P3-7 _best_weights uses random search; gate returns equal weights when no…]] - rationale - tests/test_phase3_batch_c.py
+- [[Phase 3 Batch C regression tests P3-1, P3-7, P3-16, P3-17, P3-25.]] - rationale - tests/test_phase3_batch_c.py
+- [[Random-search 200 simplex samples on train_rows; gate on val Brier improvement…]] - rationale - calibration.py
+- [[TestBrierNoneFiltering]] - code - tests/test_phase3_batch_c.py
+- [[TestRandomSearchAndGate]] - code - tests/test_phase3_batch_c.py
+- [[When val Brier improvement = 0.001, equal weights are returned.]] - rationale - tests/test_phase3_batch_c.py
+- [[_best_weights()]] - code - calibration.py
+- [[_brier()]] - code - calibration.py
+- [[calibration cutoff_date temporal isolation (seasonalcitycondition)]] - code - calibration.py
+- [[calibration._brier  _CITY_MIN  _best_weights  calibrate_city_weights]] - code - calibration.py
+- [[test_phase3_batch_c.py]] - code - tests/test_phase3_batch_c.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -40,9 +40,15 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 104]]
-- 1 edge to [[_COMMUNITY_Community 249]]
+- 9 edges to [[_COMMUNITY_Community 125]]
+- 7 edges to [[_COMMUNITY_Community 4]]
+- 3 edges to [[_COMMUNITY_Community 266]]
+- 2 edges to [[_COMMUNITY_Community 400]]
+- 1 edge to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 40]]
 
 ## Top bridge nodes
-- [[Analytics Template Page]] - degree 3, connects to 1 community
-- [[Analytics Page Spec (analytics)]] - degree 2, connects to 1 community
+- [[_best_weights()]] - degree 9, connects to 5 communities
+- [[test_phase3_batch_c.py]] - degree 20, connects to 4 communities
+- [[_brier()]] - degree 10, connects to 2 communities
+- [[TestRandomSearchAndGate]] - degree 8, connects to 1 community

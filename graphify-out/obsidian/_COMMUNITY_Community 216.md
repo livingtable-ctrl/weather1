@@ -1,31 +1,31 @@
 ---
 type: community
-cohesion: 0.20
+cohesion: 0.15
 members: 16
 ---
 
 # Community 216
 
-**Cohesion:** 0.20 - loosely connected
+**Cohesion:** 0.15 - loosely connected
 **Members:** 16 nodes
 
 ## Members
-- [[dot-_mock_network()]] - code - tests/test_climatology.py
-- [[dot-_mock_network_failure()]] - code - tests/test_climatology.py
-- [[dot-test_force_true_bypasses_mem_cache()]] - code - tests/test_climatology.py
-- [[dot-test_fresh_disk_cache_read_also_populates_mem_cache()]] - code - tests/test_climatology.py
-- [[dot-test_fresh_disk_cache_serves_without_network_call()]] - code - tests/test_climatology.py
-- [[dot-test_network_failure_fallback_also_populates_mem_cache()]] - code - tests/test_climatology.py
-- [[dot-test_network_failure_falls_back_to_existing_disk_cache()]] - code - tests/test_climatology.py
-- [[dot-test_network_failure_with_no_disk_cache_returns_none()]] - code - tests/test_climatology.py
-- [[dot-test_network_fetch_populates_mem_cache_and_writes_disk()]] - code - tests/test_climatology.py
-- [[dot-test_second_call_same_city_serves_from_mem_cache_not_network()]] - code - tests/test_climatology.py
-- [[dot-test_stale_disk_cache_triggers_network_refetch()]] - code - tests/test_climatology.py
-- [[Deletes the disk cache file between calls so the second call can ONLY succeed…]] - rationale - tests/test_climatology.py
-- [[Targets _MEM_CACHE.set() on the fresh-disk-read branch specifically…]] - rationale - tests/test_climatology.py
-- [[Targets _MEM_CACHE.set() on the network-failure-fallback branch specifically…]] - rationale - tests/test_climatology.py
-- [[TestFetchHistoricalCaching]] - code - tests/test_climatology.py
-- [[fetch_historical()'s _MEM_CACHE memoization -- previously zero direct coverage…]] - rationale - tests/test_climatology.py
+- [[B5 Break-Even Stop-Loss (tests only)]] - document - docs/superpowers/plans/2026-06-27-category-b-risk-management.md
+- [[Brier Alert Actionable Guidance]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
+- [[Bug Fixes April 30 2026 Plan]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
+- [[Cross-Platform Arbitrage Scanner (stretch goal)]] - document - docs/superpowers/plans/2026-04-16-phase-g-long-term.md
+- [[Fix Cron Lock File Leak]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
+- [[Fix False-Positive Placed Trade Prints]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
+- [[Fix Signals Page Plan]] - document - docs/superpowers/plans/2026-04-25-fix-signals-page.md
+- [[Fix Silent Briefing Failures]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
+- [[Fix Validate Blank Output]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
+- [[Monte Carlo Clamping Explanation]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
+- [[Per-City Per-Season Brier Segmentation]] - document - docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md
+- [[Phase G Long-Term Features Plan]] - document - docs/superpowers/plans/2026-04-16-phase-g-long-term.md
+- [[Strategy P&amp;L Attribution]] - document - docs/superpowers/plans/2026-04-16-phase-g-long-term.md
+- [[Tracker DB Retention Policy (purge_old_predictions)]] - document - docs/superpowers/plans/2026-04-18-remediation.md
+- [[cron.py module_1]] - code - docs/superpowers/plans/2026-04-18-remediation.md
+- [[tracker.py module]] - code - docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -35,7 +35,17 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 302]]
+- 5 edges to [[_COMMUNITY_Community 124]]
+- 3 edges to [[_COMMUNITY_Community 217]]
+- 3 edges to [[_COMMUNITY_Community 360]]
+- 2 edges to [[_COMMUNITY_Community 399]]
+- 1 edge to [[_COMMUNITY_Community 297]]
+- 1 edge to [[_COMMUNITY_Community 484]]
+- 1 edge to [[_COMMUNITY_Community 272]]
 
 ## Top bridge nodes
-- [[TestFetchHistoricalCaching]] - degree 13, connects to 1 community
+- [[Bug Fixes April 30 2026 Plan]] - degree 10, connects to 3 communities
+- [[cron.py module_1]] - degree 8, connects to 3 communities
+- [[B5 Break-Even Stop-Loss (tests only)]] - degree 3, connects to 2 communities
+- [[tracker.py module]] - degree 6, connects to 1 community
+- [[Per-City Per-Season Brier Segmentation]] - degree 3, connects to 1 community

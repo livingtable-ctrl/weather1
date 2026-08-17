@@ -10,14 +10,14 @@ members: 8
 **Members:** 8 nodes
 
 ## Members
-- [[dot-test_circuit_breaker_skips_when_open()]] - code - tests/test_weather_markets.py
-- [[dot-test_negative_caches_failure()_1]] - code - tests/test_weather_markets.py
-- [[dot-test_parses_response_correctly()]] - code - tests/test_weather_markets.py
-- [[dot-test_returns_none_on_request_failure()]] - code - tests/test_weather_markets.py
-- [[dot-test_returns_none_when_key_missing()]] - code - tests/test_weather_markets.py
-- [[A failed fetch must be negative-cached -- a second call within the TTL must not…_2]] - rationale - tests/test_weather_markets.py
-- [[TestFetchTemperatureWeatherapi]] - code - tests/test_weather_markets.py
-- [[fetch_temperature_weatherapi() requires WEATHERAPI_KEY to be set.]] - rationale - tests/test_weather_markets.py
+- [[1. suislanchezpolymarket-kalshi-weather-bot]] - document - docs/RESEARCH-FINDINGS.md
+- [[2. OctagonAIkalshi-deep-trading-bot]] - document - docs/RESEARCH-FINDINGS.md
+- [[3. braedonsaundershomerun]] - document - docs/RESEARCH-FINDINGS.md
+- [[4. yllvarKalshi-Quant-TeleBot]] - document - docs/RESEARCH-FINDINGS.md
+- [[5. ImMikepolymarket-arbitrage]] - document - docs/RESEARCH-FINDINGS.md
+- [[6. Weather Edge MCP (RJW34  kalshiweatheredge.com)]] - document - docs/RESEARCH-FINDINGS.md
+- [[7. evan-kolbergprediction-market-backtesting]] - document - docs/RESEARCH-FINDINGS.md
+- [[Part 1 — Similar Open-Source Systems Found]] - document - docs/RESEARCH-FINDINGS.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,7 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 645]]
 
 ## Top bridge nodes
-- [[TestFetchTemperatureWeatherapi]] - degree 7, connects to 1 community
+- [[Part 1 — Similar Open-Source Systems Found]] - degree 8, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "rationale"
-community: "Community 94"
+community: "Community 8"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_94
+  - community/Community_8
 ---
 
 # Price alerts — notify when a market's YES price crosses a user-set threshold.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[alerts.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_94
+#graphify/rationale #graphify/EXTRACTED #community/Community_8

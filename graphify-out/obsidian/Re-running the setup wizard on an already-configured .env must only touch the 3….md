@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cmd_setup.py"
 type: "rationale"
-community: "Community 543"
+community: "Community 608"
 location: "L10"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_543
+  - community/Community_608
 ---
 
 # Re-running the setup wizard on an already-configured .env must only touch the 3…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_rerun_preserves_unrelated_settings()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_543
+#graphify/rationale #graphify/EXTRACTED #community/Community_608

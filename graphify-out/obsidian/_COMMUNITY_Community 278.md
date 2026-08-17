@@ -1,28 +1,28 @@
 ---
 type: community
-cohesion: 0.19
+cohesion: 0.15
 members: 13
 ---
 
 # Community 278
 
-**Cohesion:** 0.19 - loosely connected
+**Cohesion:** 0.15 - loosely connected
 **Members:** 13 nodes
 
 ## Members
-- [[dot-_ladder()]] - code - tests/test_hourly_markets.py
-- [[dot-test_max_and_min_hour_identified_from_averaged_history()]] - code - tests/test_hourly_markets.py
-- [[dot-test_no_data_returns_none_hours()]] - code - tests/test_hourly_markets.py
-- [[dot-test_no_flip_hour_day_skipped_not_guessed()]] - code - tests/test_hourly_markets.py
-- [[dot-test_non_finalized_markets_excluded()]] - code - tests/test_hourly_markets.py
-- [[dot-test_real_nyc_ladder_pulled_live_2026_07_20()]] - code - tests/test_hourly_markets.py
-- [[A ladder that's all yes (true reading above every strike) has no clean flip…]] - rationale - tests/test_hourly_markets.py
-- [[Ground truth the exact ladder pulled live this session (NYC, Jul 19 noon EDT =…]] - rationale - tests/test_hourly_markets.py
-- [[Only status=finalized markets have a real, settled `result` --…]] - rationale - tests/test_hourly_markets.py
-- [[TestHourlyTemperatureProxy]] - code - tests/test_hourly_markets.py
-- [[Two days of an afternoon hour reading ~85 and two days of a pre-dawn hour…]] - rationale - tests/test_hourly_markets.py
-- [[compute_hourly_temperature_proxy  determine_hourly_target_hours -- empirical…]] - rationale - tests/test_hourly_markets.py
-- [[strikes_and_results list of (floor_strike, yesno).]] - rationale - tests/test_hourly_markets.py
+- [[dot-test_falls_back_when_dynamic_missing_for_city()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_falls_back_when_dynamic_missing_for_month()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_lasvegas_falls_back_to_default_without_dynamic_data()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_lasvegas_gets_dynamic_sigma_not_default()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_load_dynamic_sigma_memoizes_within_process()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_load_dynamic_sigma_swallows_exceptions()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_min_var_reads_min_key_not_max()]] - code - tests/test_gaussian_prob.py
+- [[dot-test_prefers_dynamic_value_when_available()]] - code - tests/test_gaussian_prob.py
+- [[A climate-archive fetch failure must degrade to the static table, never crash…]] - rationale - tests/test_gaussian_prob.py
+- [[Climate-derived sigma restored 2026-07-12 (silently lost in the 24559a7…]] - rationale - tests/test_gaussian_prob.py
+- [[Confirms the pre-restoration behavior is still the fallback no dynamic data -…]] - rationale - tests/test_gaussian_prob.py
+- [[TestDynamicSigma]] - code - tests/test_gaussian_prob.py
+- [[The actual backlog payoff LasVegasNewOrleans are absent from the static…]] - rationale - tests/test_gaussian_prob.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -32,7 +32,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 233]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestHourlyTemperatureProxy]] - degree 8, connects to 1 community
+- [[TestDynamicSigma]] - degree 10, connects to 1 community

@@ -1,18 +1,20 @@
 ---
 type: community
-cohesion: 0.67
-members: 3
+cohesion: 0.40
+members: 5
 ---
 
 # Community 594
 
-**Cohesion:** 0.67 - moderately connected
-**Members:** 3 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_auto_kelly_sizing_uses_forecast_bearing_enrichment()]] - code - tests/test_phase2_batch_i.py
-- [[2026-07-09 deep-review followup the 2 citydate-resolution change made the…]] - rationale - tests/test_phase2_batch_i.py
-- [[TestQuickPaperBuyAutoKellySizing]] - code - tests/test_phase2_batch_i.py
+- [[E1. Kalshi WebSocket API (Real-Time Order Book) ✅ IMPLEMENTED]] - document - docs/RESEARCH-FINDINGS.md
+- [[E2. Maker-Mode Limit Orders]] - document - docs/RESEARCH-FINDINGS.md
+- [[E3. Tiered Market Scanning Frequency]] - document - docs/RESEARCH-FINDINGS.md
+- [[E4. Order Fill Timeout Management]] - document - docs/RESEARCH-FINDINGS.md
+- [[Part 6 — Execution Improvements]] - document - docs/RESEARCH-FINDINGS.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -22,7 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 1 edge to [[_COMMUNITY_Community 645]]
 
 ## Top bridge nodes
-- [[TestQuickPaperBuyAutoKellySizing]] - degree 3, connects to 1 community
+- [[Part 6 — Execution Improvements]] - degree 5, connects to 1 community

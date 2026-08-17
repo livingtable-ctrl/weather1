@@ -1,0 +1,17 @@
+---
+source_file: "docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md"
+type: "document"
+community: "Community 557"
+location: "L1131"
+tags:
+  - graphify/document
+  - graphify/EXTRACTED
+  - community/Community_557
+---
+
+# Background
+
+## Connections
+- [[Task 71 (P12.K) — Data Freshness Discounting]] - `contains` [EXTRACTED]
+
+#graphify/document #graphify/EXTRACTED #community/Community_557

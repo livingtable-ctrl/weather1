@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "rationale"
-community: "Community 106"
+community: "Community 113"
 location: "L307"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_106
+  - community/Community_113
 ---
 
 # Balance below 50% of $1000 → drawdown active.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_paused_below_threshold()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_106
+#graphify/rationale #graphify/EXTRACTED #community/Community_113

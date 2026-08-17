@@ -1,12 +1,12 @@
 ---
 source_file: "docs/grade_audit/outputs/nws.py.md"
 type: "document"
-community: "Community 195"
+community: "Community 171"
 location: "L:143-163"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_195
+  - community/Community_171
 ---
 
 # _get_obs_station() RF1: Silent Station Lookup Failure (4/10)
@@ -15,4 +15,4 @@ tags:
 - [[RF1 Silent Exception Swallow]] - `references` [EXTRACTED]
 - [[nws.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_195
+#graphify/document #graphify/EXTRACTED #community/Community_171

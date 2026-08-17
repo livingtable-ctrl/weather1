@@ -1,12 +1,12 @@
 ---
 source_file: "climatology.py"
 type: "code"
-community: "Climatology & Climate Index Fetching"
+community: "Community 102"
 location: "L76"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_102
 ---
 
 # fetch_historical()
@@ -14,8 +14,8 @@ tags:
 ## Connections
 - [[Download 30 years of daily highlow for a city and cache to disk. Auto-…]] - `rationale_for` [EXTRACTED]
 - [[ForecastCache]] - `shares_data_with` [EXTRACTED]
-- [[_cache_is_stale()_3]] - `calls` [EXTRACTED]
-- [[_cache_path()_3]] - `calls` [EXTRACTED]
+- [[_cache_is_stale()]] - `calls` [EXTRACTED]
+- [[_cache_path()]] - `calls` [EXTRACTED]
 - [[_climatological_prob_inner()]] - `calls` [EXTRACTED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]
 - [[climatological_prob()]] - `calls` [EXTRACTED]
@@ -25,4 +25,4 @@ tags:
 - [[preload_all()]] - `calls` [EXTRACTED]
 - [[utc_today()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_102

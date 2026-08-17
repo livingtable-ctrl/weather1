@@ -12,7 +12,7 @@ tags:
 # .test_trades_without_matching_price_history_are_excluded_by_join()
 
 ## Connections
-- [[dot-_trade()_2]] - `calls` [EXTRACTED]
+- [[dot-_trade()_1]] - `calls` [EXTRACTED]
 - [[A ticker with trade_history but no price_history at all must not appear in…]] - `rationale_for` [EXTRACTED]
 - [[TestTradeFlowSettlementCorrelation]] - `method` [EXTRACTED]
 

@@ -1,12 +1,12 @@
 ---
 source_file: "frontend/package.json"
 type: "concept"
-community: "Community 185"
-location: "L12"
+community: "Community 149"
+location: "L13"
 tags:
   - graphify/concept
   - graphify/EXTRACTED
-  - community/Community_185
+  - community/Community_149
 ---
 
 # react-dom
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[react-dom]] - `imports` [EXTRACTED]
 
-#graphify/concept #graphify/EXTRACTED #community/Community_185
+#graphify/concept #graphify/EXTRACTED #community/Community_149

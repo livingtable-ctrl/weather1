@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 515
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_default_path_is_jsonl()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_each_line_is_valid_json()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_two_calls_produce_two_lines()]] - code - tests/test_phase2_batch_g.py
-- [[Default target must be execution_entries.jsonl, not .json.]] - rationale - tests/test_phase2_batch_g.py
-- [[P2-30 append_entry must append to JSONL, not overwrite.]] - rationale - tests/test_phase2_batch_g.py
-- [[TestAppendEntry]] - code - tests/test_phase2_batch_g.py
+- [[dot-test_cap_returns_conservative_when_too_few_samples()]] - code - tests/test_paper.py
+- [[dot-test_cap_uses_brier_when_enough_samples()]] - code - tests/test_paper.py
+- [[dot-test_method_multiplier_returns_neutral_when_too_few_samples()]] - code - tests/test_paper.py
+- [[TestDynamicKellyCapMinSamples]] - code - tests/test_paper.py
+- [[_dynamic_kelly_cap returns $50 (conservative) when  MIN_BRIER_SAMPLES settled.]] - rationale - tests/test_paper.py
+- [[_dynamic_kelly_cap uses Brier scaling when = MIN_BRIER_SAMPLES settled.]] - rationale - tests/test_paper.py
+- [[_method_kelly_multiplier returns 1.0 when  MIN_BRIER_SAMPLES settled.]] - rationale - tests/test_paper.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 248]]
+- 1 edge to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 21]]
 
 ## Top bridge nodes
-- [[TestAppendEntry]] - degree 5, connects to 1 community
+- [[TestDynamicKellyCapMinSamples]] - degree 5, connects to 2 communities

@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_live_execution.py"
+source_file: "tests/test_execution_log.py"
 type: "code"
-community: "Community 300"
-location: "L1560"
+community: "Community 275"
+location: "L202"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_300
+  - community/Community_275
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestCancelAndVerifySafeToReplace]] - `method` [EXTRACTED]
+- [[TestDailyLiveLoss]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_300
+#graphify/code #graphify/EXTRACTED #community/Community_275

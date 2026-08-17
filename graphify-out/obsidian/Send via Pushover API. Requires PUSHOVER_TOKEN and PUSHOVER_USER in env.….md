@@ -1,12 +1,12 @@
 ---
 source_file: "notify.py"
 type: "rationale"
-community: "Community 96"
+community: "Community 3"
 location: "L155"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_96
+  - community/Community_3
 ---
 
 # Send via Pushover API. Requires PUSHOVER_TOKEN and PUSHOVER_USER in env.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_send_pushover()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_96
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

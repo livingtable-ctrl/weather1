@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "rationale"
-community: "Community 173"
+community: "Community 77"
 location: "L197"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_173
+  - community/Community_77
 ---
 
 # Empty input returns empty dict (no degenerate key).
 
 ## Connections
-- [[dot-test_empty_returns_empty()]] - `rationale_for` [EXTRACTED]
+- [[dot-test_empty_returns_empty()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_173
+#graphify/rationale #graphify/EXTRACTED #community/Community_77

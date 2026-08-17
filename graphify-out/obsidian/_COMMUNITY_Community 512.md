@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 512
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_returns_false_for_corrupt_lock_file()]] - code - tests/test_p0_16_cron_endpoint.py
-- [[dot-test_returns_false_for_dead_pid_with_psutil()]] - code - tests/test_p0_16_cron_endpoint.py
-- [[dot-test_returns_false_when_no_lock_file()]] - code - tests/test_p0_16_cron_endpoint.py
-- [[dot-test_returns_true_for_live_pid_with_psutil()]] - code - tests/test_p0_16_cron_endpoint.py
-- [[TestIsCronRunning]] - code - tests/test_p0_16_cron_endpoint.py
-- [[Unit tests for the _is_cron_running() helper in cron.py.]] - rationale - tests/test_p0_16_cron_endpoint.py
+- [[dot-test_insufficient_weeks_no_alert()]] - code - tests/test_p9_p10.py
+- [[dot-test_one_bad_week_does_not_trigger()]] - code - tests/test_p9_p10.py
+- [[dot-test_two_bad_weeks_triggers_alert()]] - code - tests/test_p9_p10.py
+- [[Both recent weeks above threshold → alert should fire.]] - rationale - tests/test_p9_p10.py
+- [[Fewer than 2 weeks → no alert check.]] - rationale - tests/test_p9_p10.py
+- [[Only one of the two recent weeks above threshold → no alert.]] - rationale - tests/test_p9_p10.py
+- [[TestWeeklyBrierAlert]] - code - tests/test_p9_p10.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 566]]
+- 1 edge to [[_COMMUNITY_Community 54]]
 
 ## Top bridge nodes
-- [[TestIsCronRunning]] - degree 6, connects to 1 community
+- [[TestWeeklyBrierAlert]] - degree 4, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climate_indices.py"
 type: "code"
-community: "Community 31"
+community: "Community 61"
 location: "L99"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_31
+  - community/Community_61
 ---
 
 # TestTemperatureAdjustmentComputedValues
@@ -25,4 +25,4 @@ tags:
 - [[Hand-computed expected values from AO_SENSNAO_SENSENSO_SENS directly, with…]] - `rationale_for` [EXTRACTED]
 - [[test_climate_indices.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_31
+#graphify/code #graphify/EXTRACTED #community/Community_61

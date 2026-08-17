@@ -1,25 +1,27 @@
 ---
 type: community
-cohesion: 0.20
-members: 10
+cohesion: 0.17
+members: 12
 ---
 
 # Community 299
 
-**Cohesion:** 0.20 - loosely connected
-**Members:** 10 nodes
+**Cohesion:** 0.17 - loosely connected
+**Members:** 12 nodes
 
 ## Members
-- [[dot-test_boundary_around_today()]] - code - tests/test_target_date_due.py
-- [[dot-test_empty_string_is_not_due()]] - code - tests/test_target_date_due.py
-- [[dot-test_future_date_is_not_due()]] - code - tests/test_target_date_due.py
-- [[dot-test_none_is_not_due()]] - code - tests/test_target_date_due.py
-- [[dot-test_past_date_is_due()]] - code - tests/test_target_date_due.py
-- [[dot-test_today_is_due()]] - code - tests/test_target_date_due.py
-- [[dot-test_unparseable_string_falls_back_to_string_compare_no_crash()]] - code - tests/test_target_date_due.py
-- [[TestTargetDateDue]] - code - tests/test_target_date_due.py
-- [[Tests for main._target_date_due (backlog.txt RAIN  SNOW  HURRICANE MARKETS…]] - rationale - tests/test_target_date_due.py
-- [[test_target_date_due.py]] - code - tests/test_target_date_due.py
+- [[Most Suspicious  Hallucinated Modules]] - document - docs/audit_findings.md
+- [[Overall Codebase Health]] - document - docs/audit_findings.md
+- [[P0 — Stop Bleeding (Fix Today, Real Money Impact)]] - document - docs/audit_findings.md
+- [[P1 — Fix Before Next Cron Run]] - document - docs/audit_findings.md
+- [[P2 — Fix This Week]] - document - docs/audit_findings.md
+- [[P3 — Scheduled Cleanup]] - document - docs/audit_findings.md
+- [[Prioritized Remediation Plan (All Phases)]] - document - docs/audit_findings.md
+- [[Production Readiness Assessment]] - document - docs/audit_findings.md
+- [[Reliability Score 4  10]] - document - docs/audit_findings.md
+- [[Security Score 5  10]] - document - docs/audit_findings.md
+- [[Top Critical Vulnerabilities and Failure Points]] - document - docs/audit_findings.md
+- [[Unified Executive Summary]] - document - docs/audit_findings.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,7 +31,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 1 edge to [[_COMMUNITY_Community 446]]
 
 ## Top bridge nodes
-- [[test_target_date_due.py]] - degree 3, connects to 1 community
+- [[Unified Executive Summary]] - degree 8, connects to 1 community

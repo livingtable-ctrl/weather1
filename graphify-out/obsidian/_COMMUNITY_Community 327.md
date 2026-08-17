@@ -1,23 +1,27 @@
 ---
 type: community
-cohesion: 0.18
-members: 8
+cohesion: 0.17
+members: 12
 ---
 
 # Community 327
 
-**Cohesion:** 0.18 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.17 - loosely connected
+**Members:** 12 nodes
 
 ## Members
-- [[apiclose-position endpoint]] - code - web_app.py
-- [[apihalt endpoint]] - code - web_app.py
-- [[DataContext]] - code - frontend/src/App.jsx
-- [[Nav]] - code - frontend/src/App.jsx
-- [[PositionsTab]] - code - frontend/src/App.jsx
-- [[RiskTab()_1]] - code - frontend/src/App.jsx
-- [[SettingsTab()]] - code - frontend/src/App.jsx
-- [[SignalsTab]] - code - frontend/src/App.jsx
+- [[dot-_city()_2]] - code - tests/test_weather_markets.py
+- [[dot-test_austin_hourly_ticker_detected()]] - code - tests/test_weather_markets.py
+- [[dot-test_chicago_hourly_ticker_detected()]] - code - tests/test_weather_markets.py
+- [[dot-test_la_hourly_ticker_detected()]] - code - tests/test_weather_markets.py
+- [[dot-test_nyc_hourly_ticker_detected()]] - code - tests/test_weather_markets.py
+- [[dot-test_washington_dc_hourly_ticker_detected()]] - code - tests/test_weather_markets.py
+- [[Real ticker pulled live 2026-07-20.]] - rationale - tests/test_weather_markets.py
+- [[Real ticker pulled live 2026-07-20._1]] - rationale - tests/test_weather_markets.py
+- [[TestHourlyDirectionalCityDetection]] - code - tests/test_weather_markets.py
+- [[Would return None without the explicit _KXTEMP_HOURLY_CITY fix -- KXTEMPDCH…]] - rationale - tests/test_weather_markets.py
+- [[Would return None without the explicit _KXTEMP_HOURLY_CITY fix -- none of the…]] - rationale - tests/test_weather_markets.py
+- [[backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 1 KXTEMPxxxH tickers…]] - rationale - tests/test_weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,13 +31,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 9 edges to [[_COMMUNITY_Community 155]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 497]]
+- 5 edges to [[_COMMUNITY_Community 123]]
+- 1 edge to [[_COMMUNITY_Community 11]]
 
 ## Top bridge nodes
-- [[SignalsTab]] - degree 4, connects to 2 communities
-- [[DataContext]] - degree 5, connects to 1 community
-- [[PositionsTab]] - degree 4, connects to 1 community
-- [[Nav]] - degree 3, connects to 1 community
-- [[apiclose-position endpoint]] - degree 2, connects to 1 community
+- [[TestHourlyDirectionalCityDetection]] - degree 8, connects to 1 community
+- [[dot-test_austin_hourly_ticker_detected()]] - degree 3, connects to 1 community
+- [[dot-test_la_hourly_ticker_detected()]] - degree 3, connects to 1 community
+- [[dot-test_nyc_hourly_ticker_detected()]] - degree 3, connects to 1 community
+- [[dot-test_washington_dc_hourly_ticker_detected()]] - degree 3, connects to 1 community

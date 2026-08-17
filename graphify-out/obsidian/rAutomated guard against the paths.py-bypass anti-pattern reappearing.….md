@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paths_bypass_guard.py"
 type: "rationale"
-community: "Community 355"
+community: "Community 33"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_355
+  - community/Community_33
 ---
 
 # r"""Automated guard against the paths.py-bypass anti-pattern reappearing.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_paths_bypass_guard.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_355
+#graphify/rationale #graphify/EXTRACTED #community/Community_33

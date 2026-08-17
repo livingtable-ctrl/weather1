@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cleanup_data_dir.py"
 type: "code"
-community: "Community 47"
+community: "Community 150"
 location: "L25"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_47
+  - community/Community_150
 ---
 
 # _patched_cleanup()
@@ -17,9 +17,9 @@ tags:
 - [[dot-test_fresh_ephemeral_file_is_kept()]] - `calls` [EXTRACTED]
 - [[dot-test_permanent_files_are_never_deleted()]] - `calls` [EXTRACTED]
 - [[dot-test_stale_ephemeral_file_is_deleted()]] - `calls` [EXTRACTED]
-- [[Path_22]] - `references` [EXTRACTED]
+- [[Path_5]] - `references` [EXTRACTED]
 - [[Same logic as main.cleanup_data_dir but using the supplied data_dir.]] - `rationale_for` [EXTRACTED]
 - [[data_dir()]] - `calls` [EXTRACTED]
 - [[test_cleanup_data_dir.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_47
+#graphify/code #graphify/EXTRACTED #community/Community_150

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_ws.py"
 type: "code"
-community: "Community 352"
+community: "Community 30"
 location: "L14"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_352
+  - community/Community_30
 ---
 
 # TestParseOrderbookMessage
@@ -18,4 +18,4 @@ tags:
 - [[dot-test_parse_unknown_type_returns_none()]] - `method` [EXTRACTED]
 - [[test_kalshi_ws.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_352
+#graphify/code #graphify/EXTRACTED #community/Community_30

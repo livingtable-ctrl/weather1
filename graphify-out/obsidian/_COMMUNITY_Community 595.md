@@ -1,18 +1,20 @@
 ---
 type: community
-cohesion: 0.67
-members: 3
+cohesion: 0.40
+members: 5
 ---
 
 # Community 595
 
-**Cohesion:** 0.67 - moderately connected
-**Members:** 3 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_log_prediction_accepts_forecast_cycle()]] - code - tests/test_phase4.py
-- [[TestLogPredictionForecastCycle]] - code - tests/test_phase4.py
-- [[log_prediction should accept forecast_cycle parameter without error.]] - rationale - tests/test_phase4.py
+- [[Immediate (high impact, low effort)]] - document - docs/RESEARCH-FINDINGS.md
+- [[Long-term]] - document - docs/RESEARCH-FINDINGS.md
+- [[Medium-term (high impact, higher effort)]] - document - docs/RESEARCH-FINDINGS.md
+- [[Near-term (high impact, moderate effort)]] - document - docs/RESEARCH-FINDINGS.md
+- [[Part 9 — Prioritized Implementation Backlog]] - document - docs/RESEARCH-FINDINGS.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -22,9 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
+- 1 edge to [[_COMMUNITY_Community 645]]
 
 ## Top bridge nodes
-- [[dot-test_log_prediction_accepts_forecast_cycle()]] - degree 3, connects to 1 community
-- [[TestLogPredictionForecastCycle]] - degree 2, connects to 1 community
+- [[Part 9 — Prioritized Implementation Backlog]] - degree 5, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_retirement_probation.py"
 type: "code"
-community: "Community 140"
+community: "Community 146"
 location: "L122"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_140
+  - community/Community_146
 ---
 
 # test_logs_probation_prediction_for_retired_method()
@@ -17,4 +17,4 @@ tags:
 - [[_mock_client()_2]] - `calls` [EXTRACTED]
 - [[test_retirement_probation.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_140
+#graphify/code #graphify/EXTRACTED #community/Community_146

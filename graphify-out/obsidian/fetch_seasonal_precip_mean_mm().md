@@ -1,12 +1,12 @@
 ---
 source_file: "acis_precip.py"
 type: "code"
-community: "Climatology & Climate Index Fetching"
+community: "Community 23"
 location: "L297"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_23
 ---
 
 # fetch_seasonal_precip_mean_mm()
@@ -19,4 +19,4 @@ tags:
 - [[fetch_seasonal_snow_mean_cm()]] - `conceptually_related_to` [EXTRACTED]
 - [[get_indices()]] - `semantically_similar_to` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_23

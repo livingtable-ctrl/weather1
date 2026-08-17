@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 378"
+community: "Community 392"
 location: "L1440"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_378
+  - community/Community_392
 ---
 
 # TestFetchSeasonalSnowMeanCmUnitValidation
@@ -20,4 +20,4 @@ tags:
 - [[Opus-review-caught gap the cm, not mm claim was inferred from one value…]] - `rationale_for` [EXTRACTED]
 - [[test_snow_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_378
+#graphify/code #graphify/EXTRACTED #community/Community_392

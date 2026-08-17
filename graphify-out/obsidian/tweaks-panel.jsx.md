@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/tweaks-panel.jsx"
 type: "code"
-community: "Community 48"
+community: "Community 50"
 location: "L1"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_48
+  - community/Community_50
 ---
 
 # tweaks-panel.jsx
@@ -28,4 +28,4 @@ tags:
 - [[__twkIsLight()]] - `contains` [EXTRACTED]
 - [[useTweaks()]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_48
+#graphify/code #graphify/INFERRED #community/Community_50

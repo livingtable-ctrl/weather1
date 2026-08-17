@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "code"
-community: "Community 274"
+community: "Community 275"
 location: "L201"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_274
+  - community/Community_275
 ---
 
 # TestDailyLiveLoss
 
 ## Connections
-- [[dot-setup_method()_17]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_10]] - `method` [EXTRACTED]
+- [[dot-setup_method()_19]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_11]] - `method` [EXTRACTED]
 - [[dot-test_add_live_loss_write_failure_fails_closed()]] - `method` [EXTRACTED]
 - [[dot-test_daily_live_loss_accumulates()]] - `method` [EXTRACTED]
 - [[dot-test_daily_live_loss_add_returns_new_total()]] - `method` [EXTRACTED]
@@ -22,4 +22,4 @@ tags:
 - [[dot-test_degraded_flag_from_yesterday_does_not_affect_today()]] - `method` [EXTRACTED]
 - [[test_execution_log.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_274
+#graphify/code #graphify/EXTRACTED #community/Community_275

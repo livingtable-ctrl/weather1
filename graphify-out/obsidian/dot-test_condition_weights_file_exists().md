@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_c.py"
 type: "code"
-community: "Community 119"
+community: "Community 386"
 location: "L31"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_119
+  - community/Community_386
 ---
 
 # .test_condition_weights_file_exists()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestWeightFilesExist]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_119
+#graphify/code #graphify/EXTRACTED #community/Community_386

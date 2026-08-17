@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_forecast_cache.py"
 type: "code"
-community: "Forecast Persistent Cache"
+community: "Community 14"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecast_Persistent_Cache
+  - community/Community_14
 ---
 
 # test_forecast_cache.py
@@ -16,7 +17,7 @@ tags:
 - [[Grade Audit Module Doc forecast_cache.py]] - `references` [EXTRACTED]
 - [[PersistentForecastCache]] - `imports` [EXTRACTED]
 - [[PersistentForecastCache class]] - `references` [EXTRACTED]
-- [[_ttl_until_next_cycle()]] - `references` [EXTRACTED]
+- [[_ttl_until_next_cycle()]] - `imports` [EXTRACTED]
 - [[_tuple_key_to_str()]] - `contains` [EXTRACTED]
 - [[_tuple_str_to_key()]] - `contains` [EXTRACTED]
 - [[forecast_cache.py]] - `imports_from` [EXTRACTED]
@@ -47,5 +48,7 @@ tags:
 - [[test_set_with_ttl_returns_value_within_per_entry_ttl()]] - `contains` [EXTRACTED]
 - [[test_ttl_until_next_cycle_at_cycle_boundary()]] - `contains` [EXTRACTED]
 - [[test_ttl_until_next_cycle_returns_at_least_1800()]] - `contains` [EXTRACTED]
+- [[threading]] - `imports` [EXTRACTED]
+- [[time]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecast_Persistent_Cache
+#graphify/code #graphify/EXTRACTED #community/Community_14

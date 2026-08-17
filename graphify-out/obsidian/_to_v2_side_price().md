@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Community 225"
+community: "Community 229"
 location: "L190"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_225
+  - community/Community_229
 ---
 
 # _to_v2_side_price()
@@ -23,6 +23,6 @@ tags:
 - [[KalshiClient.place_order()_find_order_by_client_id()]] - `calls` [EXTRACTED]
 - [[Map this codebase's (side yesno, action buysell, price) model to Kalshi's…]] - `rationale_for` [EXTRACTED]
 - [[kalshi_client.py]] - `contains` [EXTRACTED]
-- [[test_kalshi_client.py]] - `references` [EXTRACTED]
+- [[test_kalshi_client.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_225
+#graphify/code #graphify/EXTRACTED #community/Community_229

@@ -1,58 +1,59 @@
 ---
 type: community
-cohesion: 0.08
-members: 43
+cohesion: 0.05
+members: 44
 ---
 
 # Community 45
 
-**Cohesion:** 0.08 - loosely connected
-**Members:** 43 nodes
+**Cohesion:** 0.05 - loosely connected
+**Members:** 44 nodes
 
 ## Members
-- [[dot-__init__()_7]] - code - order_executor.py
-- [[dot-exit()]] - code - order_executor.py
-- [[dot-get_open()]] - code - order_executor.py
-- [[dot-get_open()_1]] - code - positions.py
-- [[dot-save_peak()]] - code - order_executor.py
-- [[dot-save_peak()_1]] - code - positions.py
-- [[dot-setup_method()_30]] - code - tests/test_live_execution.py
-- [[dot-setup_method()_31]] - code - tests/test_positions.py
-- [[dot-teardown_method()_22]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_23]] - code - tests/test_positions.py
-- [[dot-test_check_breakeven_stops_is_the_same_object_everywhere()]] - code - tests/test_positions.py
-- [[dot-test_check_stop_losses_is_the_same_object_everywhere()]] - code - tests/test_positions.py
-- [[dot-test_creates_default_if_missing()]] - code - tests/test_live_execution.py
-- [[dot-test_does_not_overwrite_a_higher_stored_peak()]] - code - tests/test_live_execution.py
-- [[dot-test_exit_wraps_exit_live_position()]] - code - tests/test_positions.py
-- [[dot-test_get_open_converts_filled_unsettled_rows_to_positions()]] - code - tests/test_positions.py
-- [[dot-test_records_new_peak_when_higher()]] - code - tests/test_live_execution.py
-- [[dot-test_save_peak_called_once_per_improved_position_not_batched()]] - code - tests/test_positions.py
-- [[dot-test_save_peak_not_called_when_no_position_improves()]] - code - tests/test_positions.py
-- [[dot-test_save_peak_persists_to_execution_log()]] - code - tests/test_positions.py
-- [[dot-test_update_peak_profits_is_the_same_object_everywhere()]] - code - tests/test_positions.py
-- [[Adapt one _get_live_open_positions() dict into the shared Position shape…]] - rationale - order_executor.py
-- [[F6 _open_trades_list.append(trade) only ever ran on the paper branch. A live…]] - rationale - tests/test_live_execution.py
-- [[LivePositionStore]] - code - order_executor.py
-- [[Mutation-testing the peak-profit-fix decision the pre-refactor…]] - rationale - tests/test_positions.py
-- [[Position]] - code - positions.py
-- [[PositionStore backed by execution_log's SQLite rows. See…]] - rationale - order_executor.py
-- [[Shared execution_log DB isolation for the live-position-protection test classes…]] - rationale - tests/test_live_execution.py
-- [[TestLivePositionStore]] - code - tests/test_positions.py
-- [[TestLoadLiveConfig]] - code - tests/test_live_execution.py
-- [[TestOpenTradesListLivePath]] - code - tests/test_live_execution.py
-- [[TestSharedAcrossPaperAndLive]] - code - tests/test_positions.py
-- [[TestUpdateLivePeakProfits]] - code - tests/test_live_execution.py
-- [[TestUpdatePeakProfitsSavesPerPosition]] - code - tests/test_positions.py
-- [[Tests for positions.py -- the shared Position read-model paper.py and…]] - rationale - tests/test_positions.py
-- [[The subset of an open position's fields NOT the full stored record on either…]] - rationale - positions.py
-- [[The whole point of this module paper.py and order_executor.py must be calling…]] - rationale - tests/test_positions.py
-- [[Update peak_profit_pct on open positions if current unrealized profit is a new…]] - rationale - positions.py
-- [[_LiveDBTestBase]] - code - tests/test_live_execution.py
-- [[_live_dict_to_position()]] - code - order_executor.py
-- [[order_executor._update_live_peak_profits was superseded by the shared…]] - rationale - tests/test_live_execution.py
-- [[test_positions.py]] - code - tests/test_positions.py
-- [[update_peak_profits()]] - code - positions.py
+- [[dot-test_cmd_paper_does_not_refuse_when_gate_active()_1]] - code - tests/test_hurricane_markets.py
+- [[dot-test_cmd_paper_does_not_refuse_when_gate_active()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_cmd_paper_refuses_when_gate_inactive()_1]] - code - tests/test_hurricane_markets.py
+- [[dot-test_cmd_paper_refuses_when_gate_inactive()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_does_not_block_when_gate_active()_1]] - code - tests/test_hurricane_markets.py
+- [[dot-test_does_not_refuse_when_gate_active()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_does_not_refuse_when_gate_active()_1]] - code - tests/test_hurricane_markets.py
+- [[dot-test_does_not_refuse_when_gate_active()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_has_its_own_entry_not_the_max_default()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_has_its_own_entry_not_the_max_default()_1]] - code - tests/test_hurricane_markets.py
+- [[dot-test_other_hurricane_shapes_still_unconditionally_blocked()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_other_hurricane_shapes_still_unconditionally_refused()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_other_hurricane_shapes_still_unconditionally_refused()_1]] - code - tests/test_hurricane_markets.py
+- [[dot-test_other_hurricane_shapes_still_unconditionally_refused()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_quick_paper_buy_does_not_refuse_when_gate_active()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_quick_paper_buy_does_not_refuse_when_gate_active()_1]] - code - tests/test_hurricane_markets.py
+- [[dot-test_quick_paper_buy_refuses_when_gate_inactive()_1]] - code - tests/test_hurricane_markets.py
+- [[dot-test_quick_paper_buy_refuses_when_gate_inactive()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_refuses_when_gate_inactive()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_refuses_when_gate_inactive()_1]] - code - tests/test_hurricane_markets.py
+- [[dot-test_refuses_when_gate_inactive()_2]] - code - tests/test_hurricane_markets.py
+- [[dot-test_sibling_gate_state_does_not_affect_this_one()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_still_blocks_when_gate_inactive()_1]] - code - tests/test_hurricane_markets.py
+- [[Mirrors TestQuickPaperBuyAndCmdPaperHurricaneNextEventGuards exactly.]] - rationale - tests/test_hurricane_markets.py
+- [[None of the 3 hurricane sub-models' gates must cross-activate each other.]] - rationale - tests/test_hurricane_markets.py
+- [[Opus-review-caught gap only cmd_order and check_position_limits had direct…]] - rationale - tests/test_hurricane_markets.py
+- [[Opus-review-caught `_analyze_hurricane_next_event_trade` does a bare…]] - rationale - tests/test_hurricane_markets.py
+- [[Opus-review-caught this key was originally missing from _CONDITION_CONFIDENCE…]] - rationale - tests/test_hurricane_markets.py
+- [[Same opus-review-caught concern the sibling next_event entry's own test…]] - rationale - tests/test_hurricane_markets.py
+- [[TestCheckPositionLimitsStormOrderConditional]] - code - tests/test_hurricane_markets.py
+- [[TestCmdOrderHurricaneCountGuard]] - code - tests/test_hurricane_markets.py
+- [[TestCmdOrderHurricaneNextEventGuard]] - code - tests/test_hurricane_markets.py
+- [[TestCmdOrderStormOrderGuard]] - code - tests/test_hurricane_markets.py
+- [[TestHurricaneNextEventConditionConfidence]] - code - tests/test_hurricane_markets.py
+- [[TestQuickPaperBuyAndCmdPaperHurricaneNextEventGuards]] - code - tests/test_hurricane_markets.py
+- [[TestQuickPaperBuyAndCmdPaperStormOrderGuards]] - code - tests/test_hurricane_markets.py
+- [[TestStormOrderConditionConfidence]] - code - tests/test_hurricane_markets.py
+- [[Tests for backlog.txt HURRICANE MARKETS an explicit is_hurricane_ticker()…]] - rationale - tests/test_hurricane_gating.py
+- [[Tests for weather_markets.py's hurricane-season-count model (backlog.txt…]] - rationale - tests/test_hurricane_markets.py
+- [[_analyze_hurricane_next_event_trade()  is_hurricane_next_event_ticker()]] - code - weather_markets.py
+- [[is_hurricane_ticker() blanket guard]] - code - weather_markets.py
+- [[test_hurricane_gating.py]] - code - tests/test_hurricane_gating.py
+- [[test_hurricane_markets.py]] - code - tests/test_hurricane_markets.py
+- [[test_next_event_type_values_are_a_subset_of_climatology_thresholds()]] - code - tests/test_hurricane_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -62,58 +63,26 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 17 edges to [[_COMMUNITY_Community 111]]
-- 9 edges to [[_COMMUNITY_Community 145]]
-- 8 edges to [[_COMMUNITY_Community 110]]
-- 8 edges to [[_COMMUNITY_Community 144]]
-- 5 edges to [[_COMMUNITY_Community 56]]
-- 4 edges to [[_COMMUNITY_Community 157]]
-- 4 edges to [[_COMMUNITY_Community 159]]
-- 4 edges to [[_COMMUNITY_Community 215]]
-- 4 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 4 edges to [[_COMMUNITY_Community 67]]
-- 4 edges to [[_COMMUNITY_Community 484]]
-- 3 edges to [[_COMMUNITY_Community 138]]
-- 3 edges to [[_COMMUNITY_Community 370]]
-- 2 edges to [[_COMMUNITY_Community 171]]
-- 2 edges to [[_COMMUNITY_Community 300]]
-- 2 edges to [[_COMMUNITY_Community 329]]
-- 2 edges to [[_COMMUNITY_Community 337]]
-- 2 edges to [[_COMMUNITY_Community 338]]
-- 2 edges to [[_COMMUNITY_Community 389]]
-- 2 edges to [[_COMMUNITY_Community 429]]
-- 2 edges to [[_COMMUNITY_Community 468]]
-- 2 edges to [[_COMMUNITY_Community 469]]
-- 2 edges to [[_COMMUNITY_Community 40]]
-- 2 edges to [[_COMMUNITY_Community 401]]
-- 1 edge to [[_COMMUNITY_Community 106]]
-- 1 edge to [[_COMMUNITY_Community 107]]
-- 1 edge to [[_COMMUNITY_Community 150]]
-- 1 edge to [[_COMMUNITY_Community 188]]
-- 1 edge to [[_COMMUNITY_Community 250]]
-- 1 edge to [[_COMMUNITY_Community 258]]
-- 1 edge to [[_COMMUNITY_Community 259]]
-- 1 edge to [[_COMMUNITY_Community 280]]
-- 1 edge to [[_COMMUNITY_Community 33]]
-- 1 edge to [[_COMMUNITY_Community 330]]
+- 5 edges to [[_COMMUNITY_Community 43]]
+- 3 edges to [[_COMMUNITY_Community 19]]
+- 3 edges to [[_COMMUNITY_Community 223]]
+- 3 edges to [[_COMMUNITY_Community 34]]
+- 3 edges to [[_COMMUNITY_Community 4]]
+- 2 edges to [[_COMMUNITY_Community 70]]
+- 1 edge to [[_COMMUNITY_Community 206]]
 - 1 edge to [[_COMMUNITY_Community 343]]
-- 1 edge to [[_COMMUNITY_Community 371]]
-- 1 edge to [[_COMMUNITY_Community 402]]
-- 1 edge to [[_COMMUNITY_Community 183]]
-- 1 edge to [[_COMMUNITY_Community 459]]
-- 1 edge to [[_COMMUNITY_Community 478]]
-- 1 edge to [[_COMMUNITY_Community 479]]
-- 1 edge to [[_COMMUNITY_Community 513]]
-- 1 edge to [[_COMMUNITY_Community 87]]
-- 1 edge to [[_COMMUNITY_Community 85]]
+- 1 edge to [[_COMMUNITY_Community 421]]
+- 1 edge to [[_COMMUNITY_Community 422]]
+- 1 edge to [[_COMMUNITY_Community 462]]
 - 1 edge to [[_COMMUNITY_Community 463]]
-- 1 edge to [[_COMMUNITY_Community 272]]
+- 1 edge to [[_COMMUNITY_Community 464]]
+- 1 edge to [[_COMMUNITY_Community 465]]
+- 1 edge to [[_COMMUNITY_Community 567]]
+- 1 edge to [[_COMMUNITY_Community 568]]
+- 1 edge to [[_COMMUNITY_Community 6]]
 - 1 edge to [[_COMMUNITY_Community 235]]
-- 1 edge to [[_COMMUNITY_Community 125]]
 
 ## Top bridge nodes
-- [[Position]] - degree 84, connects to 39 communities
-- [[LivePositionStore]] - degree 51, connects to 21 communities
-- [[update_peak_profits()]] - degree 18, connects to 8 communities
-- [[test_positions.py]] - degree 13, connects to 5 communities
-- [[_LiveDBTestBase]] - degree 11, connects to 3 communities
+- [[test_hurricane_markets.py]] - degree 35, connects to 14 communities
+- [[test_hurricane_gating.py]] - degree 11, connects to 6 communities
+- [[_analyze_hurricane_next_event_trade()  is_hurricane_next_event_ticker()]] - degree 3, connects to 1 community

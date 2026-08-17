@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "code"
-community: "Community 133"
+community: "Community 136"
 location: "L273"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_133
+  - community/Community_136
 ---
 
 # TestLiveSettlement
 
 ## Connections
 - [[dot-setup_method()_9]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_4]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_6]] - `method` [EXTRACTED]
 - [[dot-test_exit_orders_own_filled_row_excluded_from_open_positions()]] - `method` [EXTRACTED]
 - [[dot-test_export_live_tax_csv_filters_by_year()]] - `method` [EXTRACTED]
 - [[dot-test_export_live_tax_csv_labels_early_exit_not_no()]] - `method` [EXTRACTED]
@@ -29,4 +29,4 @@ tags:
 - [[dot-test_update_live_peak_profit_writes_value()]] - `method` [EXTRACTED]
 - [[test_execution_log.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_133
+#graphify/code #graphify/EXTRACTED #community/Community_136

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_retirement_probation.py"
 type: "code"
-community: "Community 140"
+community: "Community 146"
 location: "L30"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_140
+  - community/Community_146
 ---
 
 # _today()
@@ -16,4 +16,4 @@ tags:
 - [[test_retirement_probation.py]] - `contains` [EXTRACTED]
 - [[test_runs_again_on_a_new_day()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_140
+#graphify/code #graphify/EXTRACTED #community/Community_146

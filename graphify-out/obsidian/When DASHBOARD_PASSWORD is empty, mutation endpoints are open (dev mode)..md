@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_auth.py"
 type: "rationale"
-community: "Community 242"
+community: "Community 243"
 location: "L92"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_242
+  - community/Community_243
 ---
 
 # When DASHBOARD_PASSWORD is empty, mutation endpoints are open (dev mode).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_no_password_allows_open_access()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_242
+#graphify/rationale #graphify/EXTRACTED #community/Community_243

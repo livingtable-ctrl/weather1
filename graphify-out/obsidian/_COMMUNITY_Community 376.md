@@ -10,16 +10,16 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-test_condition_reads_floor_strike_directly()]] - code - tests/test_snow_markets.py
-- [[dot-test_dict_lookup_is_actually_consulted_not_just_the_den_coincidence()]] - code - tests/test_snow_markets.py
-- [[dot-test_kxdensnowm_in_known_weather_series()]] - code - tests/test_snow_markets.py
-- [[dot-test_kxdensnowm_resolves_to_denver()]] - code - tests/test_snow_markets.py
-- [[dot-test_other_snow_series_not_in_known_weather_series()]] - code - tests/test_snow_markets.py
-- [[dot-test_unexpected_strike_type_refuses_to_guess()]] - code - tests/test_snow_markets.py
-- [[Must run before the generic SNOW_SERIESis_snow_ticker branch, or this would…]] - rationale - tests/test_snow_markets.py
-- [[Opus-review finding 'DEN' is also a substring fallback match for Denver…]] - rationale - tests/test_snow_markets.py
-- [[Regression control the 32 real-but-excluded series must stay excluded, not…]] - rationale - tests/test_snow_markets.py
-- [[TestSnowTickerDiscovery]] - code - tests/test_snow_markets.py
+- [[dot-test_full_sizing_near_peak()]] - code - tests/test_drawdown_tiers.py
+- [[dot-test_halt_at_20pct_drawdown()]] - code - tests/test_drawdown_tiers.py
+- [[dot-test_tier_constants_are_absolute()]] - code - tests/test_drawdown_tiers.py
+- [[dot-test_tier_constants_are_ordered()]] - code - tests/test_drawdown_tiers.py
+- [[Above TIER_4, full sizing (1.0) is returned.]] - rationale - tests/test_drawdown_tiers.py
+- [[At 20% drawdown, scaling factor should be 0.0.]] - rationale - tests/test_drawdown_tiers.py
+- [[P2-2 Tiers must be absolute constants, not derived from DRAWDOWN_HALT_PCT.]] - rationale - tests/test_drawdown_tiers.py
+- [[P2-2 tiers must not shift when DRAWDOWN_HALT_PCT is non-default.]] - rationale - tests/test_drawdown_tiers.py
+- [[TestDrawdownTiersRelativeToHalt]] - code - tests/test_drawdown_tiers.py
+- [[Tier ordering invariant TIER_1  TIER_2  TIER_3  TIER_4 = 1.0.]] - rationale - tests/test_drawdown_tiers.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,10 +29,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 115]]
-- 1 edge to [[_COMMUNITY_Community 174]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestSnowTickerDiscovery]] - degree 7, connects to 1 community
-- [[dot-test_condition_reads_floor_strike_directly()]] - degree 3, connects to 1 community
-- [[dot-test_unexpected_strike_type_refuses_to_guess()]] - degree 2, connects to 1 community
+- [[TestDrawdownTiersRelativeToHalt]] - degree 6, connects to 1 community

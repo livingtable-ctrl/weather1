@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[dot-_candle()]] - `calls` [EXTRACTED]
-- [[dot-_trade()_2]] - `calls` [EXTRACTED]
+- [[dot-_trade()_1]] - `calls` [EXTRACTED]
 - [[1 early trade (count=100, so early_total  0 on its own) plus 3 late trades -…]] - `rationale_for` [EXTRACTED]
 - [[TestTradeFlowSettlementCorrelation]] - `method` [EXTRACTED]
 

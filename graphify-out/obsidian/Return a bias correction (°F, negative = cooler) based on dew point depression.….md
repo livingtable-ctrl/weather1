@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "ML Bias Correction & Audit Plans"
-location: "L405"
+community: "Community 280"
+location: "L406"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_280
 ---
 
 # Return a bias correction (°F, negative = cooler) based on dew point depression.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_dew_point_temp_correction()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/rationale #graphify/EXTRACTED #community/Community_280

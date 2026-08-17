@@ -1,42 +1,43 @@
 ---
 type: community
-cohesion: 0.11
-members: 27
+cohesion: 0.08
+members: 28
 ---
 
 # Community 99
 
-**Cohesion:** 0.11 - loosely connected
-**Members:** 27 nodes
+**Cohesion:** 0.08 - loosely connected
+**Members:** 28 nodes
 
 ## Members
-- [[B2 Fetch MOS using the best available model for the given days_out. For…]] - rationale - mos.py
-- [[CITY-LOCAL today for the given IANA tz, or UTC today if tz is None or…]] - rationale - mos.py
-- [[Fetch MOS forecast for a station from the IEM API. Args station ASOS station…]] - rationale - mos.py
-- [[Fetch NBM's native probabilistic quantiles ({10,25,50,75,90} temp_f) for a…]] - rationale - mos.py
-- [[Fetch and parse every available NBS txn value for a station into {(local_date,…]] - rationale - mos.py
-- [[Fetch and parse the station's current NBP bulletin into {(local_date,…]] - rationale - mos.py
-- [[Fetch the real NBM daily maxmin for target_date from IEM's NBS bulletin --…]] - rationale - mos.py
-- [[NOAA MOS (Model Output Statistics) via Iowa Environmental Mesonet API. Station-…]] - rationale - mos.py
-- [[NWS AFD FetchParse Module]] - code - nws_afd.py
-- [[Parse a raw NBP (NBM Probabilistic) AFOS text bulletin into {(local_date,…]] - rationale - mos.py
-- [[Return True if a fresh MOS cache entry exists for this stationdate (no network…]] - rationale - mos.py
-- [[Split an NBP data row's pipe-delimited day-groups into a flat list of values,…]] - rationale - mos.py
-- [[_fetch_nbp_percentiles()]] - code - mos.py
-- [[_fetch_nbs_daily_extremes()]] - code - mos.py
-- [[_local_or_utc_today()]] - code - mos.py
-- [[_parse_nbp_bulletin()]] - code - mos.py
-- [[_split_nbp_row()]] - code - mos.py
-- [[date_11]] - code
-- [[fetch_hurdat2_raw Function]] - code - hurricane_climatology.py
-- [[fetch_mos()]] - code - mos.py
-- [[fetch_mos_best()]] - code - mos.py
-- [[fetch_nbm_iem()]] - code - mos.py
-- [[fetch_nbm_quantiles()]] - code - mos.py
-- [[is_mos_cached()]] - code - mos.py
-- [[load_basin_storms Function]] - code - hurricane_climatology.py
-- [[mos.py]] - code - mos.py
-- [[parse_hurdat2 Function]] - code - hurricane_climatology.py
+- [[A corrupted settled_yes value (anything other than exactly 0 or 1) must refuse…]] - rationale - tests/test_ml_bias.py
+- [[A=1.0, B=0.0 (identity) returns approximately the input probability.]] - rationale - tests/test_ml_bias.py
+- [[Floor is on the MINORITY class count (EPV -- events per predictor variable),…]] - rationale - tests/test_ml_bias.py
+- [[Must include only days_out=0, method='metar_lockout', non-excluded…]] - rationale - tests/test_ml_bias.py
+- [[P2-I apply_platt_per_city must preserve monotonic ordering. If raw_p1  raw_p2…]] - rationale - tests/test_ml_bias.py
+- [[Regression test for this repo's real production data (2026-08-16) 27 YES-locks…]] - rationale - tests/test_ml_bias.py
+- [[Synthesize {our_prob, settled_yes} rows shaped like real METAR lock-in data…]] - rationale - tests/test_ml_bias.py
+- [[Tests for ML-based bias correction.]] - rationale - tests/test_ml_bias.py
+- [[The mirror case minority class exactly atabove the floor must succeed --…]] - rationale - tests/test_ml_bias.py
+- [[Unknown city returns raw prob unchanged.]] - rationale - tests/test_ml_bias.py
+- [[When a==b (fit_metar_calibration's Platt-only result is always this form),…]] - rationale - tests/test_ml_bias.py
+- [[_metar_rows()]] - code - tests/test_ml_bias.py
+- [[_sigmoid must not raise OverflowError for a large-magnitude logit -- reachable…]] - rationale - tests/test_ml_bias.py
+- [[numpy_1]] - concept
+- [[test_apply_metar_calibration_matches_hand_computed_value()]] - code - tests/test_ml_bias.py
+- [[test_apply_metar_calibration_platt_special_case_matches_apply_platt()]] - code - tests/test_ml_bias.py
+- [[test_apply_platt_identity_calibration()]] - code - tests/test_ml_bias.py
+- [[test_apply_platt_per_city_monotonicity()]] - code - tests/test_ml_bias.py
+- [[test_apply_platt_per_city_unknown_city_unchanged()]] - code - tests/test_ml_bias.py
+- [[test_fit_metar_calibration_at_epv_floor_succeeds()]] - code - tests/test_ml_bias.py
+- [[test_fit_metar_calibration_below_epv_floor_returns_none()]] - code - tests/test_ml_bias.py
+- [[test_fit_metar_calibration_on_real_repo_data()]] - code - tests/test_ml_bias.py
+- [[test_fit_metar_calibration_rejects_non_binary_labels()]] - code - tests/test_ml_bias.py
+- [[test_get_metar_lockout_calibration_data_scopes_correctly()]] - code - tests/test_ml_bias.py
+- [[test_ml_bias.py]] - code - tests/test_ml_bias.py
+- [[test_sigmoid_does_not_overflow_on_extreme_input()]] - code - tests/test_ml_bias.py
+- [[test_train_platt_per_city_returns_coefficients()]] - code - tests/test_ml_bias.py
+- [[train_platt_per_city returns {city (A, B)} for cities with =200 samples.]] - rationale - tests/test_ml_bias.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -46,21 +47,18 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 168]]
-- 3 edges to [[_COMMUNITY_Community 114]]
-- 3 edges to [[_COMMUNITY_Community 182]]
-- 3 edges to [[_COMMUNITY_Community 123]]
-- 3 edges to [[_COMMUNITY_Community 64]]
-- 2 edges to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 2 edges to [[_COMMUNITY_Community 457]]
-- 2 edges to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Community 131]]
-- 1 edge to [[_COMMUNITY_Community 211]]
+- 7 edges to [[_COMMUNITY_Community 55]]
+- 3 edges to [[_COMMUNITY_Community 96]]
+- 3 edges to [[_COMMUNITY_Community 230]]
+- 3 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 101]]
+- 1 edge to [[_COMMUNITY_Community 226]]
+- 1 edge to [[_COMMUNITY_Community 508]]
+- 1 edge to [[_COMMUNITY_Community 621]]
+- 1 edge to [[_COMMUNITY_Community 622]]
+- 1 edge to [[_COMMUNITY_Community 23]]
+- 1 edge to [[_COMMUNITY_Community 82]]
 
 ## Top bridge nodes
-- [[mos.py]] - degree 20, connects to 9 communities
-- [[fetch_mos()]] - degree 8, connects to 3 communities
-- [[fetch_nbm_quantiles()]] - degree 7, connects to 3 communities
-- [[_fetch_nbs_daily_extremes()]] - degree 7, connects to 3 communities
-- [[_parse_nbp_bulletin()]] - degree 8, connects to 2 communities
+- [[test_ml_bias.py]] - degree 37, connects to 10 communities
+- [[numpy_1]] - degree 2, connects to 1 community

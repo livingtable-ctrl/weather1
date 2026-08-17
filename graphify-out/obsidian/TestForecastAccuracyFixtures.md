@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecast_accuracy.py"
 type: "code"
-community: "Community 232"
+community: "Community 234"
 location: "L91"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_232
+  - community/Community_234
 ---
 
 # TestForecastAccuracyFixtures
@@ -17,4 +17,4 @@ tags:
 - [[dot-test_forecast_within_tolerance()]] - `method` [EXTRACTED]
 - [[test_forecast_accuracy.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_232
+#graphify/code #graphify/EXTRACTED #community/Community_234

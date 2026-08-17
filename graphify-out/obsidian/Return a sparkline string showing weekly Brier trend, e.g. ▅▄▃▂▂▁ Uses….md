@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L361"
+community: "Community 0"
+location: "L362"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_0
 ---
 
 # Return a sparkline string showing weekly Brier trend, e.g. "▅▄▃▂▂▁" Uses…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_brier_sparkline()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

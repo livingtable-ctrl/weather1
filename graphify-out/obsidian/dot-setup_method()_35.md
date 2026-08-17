@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 52"
-location: "L78"
+community: "Community 631"
+location: "L13"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_52
+  - community/Community_631
 ---
 
 # .setup_method()
 
 ## Connections
-- [[TestAnalyzeTradeConditionType]] - `method` [EXTRACTED]
+- [[TestGetMemberAccuracyDaysBack]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_52
+#graphify/code #graphify/EXTRACTED #community/Community_631

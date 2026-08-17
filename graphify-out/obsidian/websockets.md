@@ -1,12 +1,12 @@
 ---
 source_file: "requirements.txt"
 type: "code"
-community: "Community 141"
+community: "Community 94"
 location: "line 20"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_141
+  - community/Community_94
 ---
 
 # websockets
@@ -15,4 +15,4 @@ tags:
 - [[kalshi_ws.py Module]] - `conceptually_related_to` [INFERRED]
 - [[requirements.txt (Python Dependencies)]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_141
+#graphify/code #graphify/EXTRACTED #community/Community_94

@@ -1,18 +1,18 @@
 ---
 source_file: ""
 type: "code"
-community: "Tracker P&L Attribution Tests"
+community: "Community 51"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_51
 ---
 
 # datetime
 
 ## Connections
-- [[_fetch_asos_hour_temp()]] - `calls` [EXTRACTED]
-- [[_fetch_asos_observations()]] - `references` [EXTRACTED]
-- [[tracker.py]] - `imports_from` [EXTRACTED]
+- [[_extract_obs_time()]] - `references` [EXTRACTED]
+- [[check_metar_lockout()]] - `references` [EXTRACTED]
+- [[metar.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_51

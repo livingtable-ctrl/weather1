@@ -1,12 +1,12 @@
 ---
 source_file: "docs/superpowers/specs/2026-04-10-suggested-bets-design.md"
 type: "document"
-community: "Community 104"
+community: "Community 172"
 location: "Architecture 2"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_104
+  - community/Community_172
 ---
 
 # /api/suggested_bets Endpoint
@@ -15,4 +15,4 @@ tags:
 - [[analyze Frontend Additions (Top Bets Card)]] - `references` [EXTRACTED]
 - [[web_app.py Module]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_104
+#graphify/document #graphify/EXTRACTED #community/Community_172

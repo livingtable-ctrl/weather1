@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecast_cache.py"
 type: "code"
-community: "Forecast Persistent Cache"
+community: "Community 14"
 location: "L235"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Forecast_Persistent_Cache
+  - community/Community_14
 ---
 
 # _tuple_str_to_key()
@@ -17,4 +17,4 @@ tags:
 - [[test_load_from_disk_does_not_evict_beyond_max_size()]] - `indirect_call` [INFERRED]
 - [[test_load_from_disk_is_a_noop_when_file_does_not_exist()]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Forecast_Persistent_Cache
+#graphify/code #graphify/INFERRED #community/Community_14

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "code"
-community: "Community 91"
+community: "Community 100"
 location: "L294"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_91
+  - community/Community_100
 ---
 
 # TestFetchMetarDailyExtreme
@@ -30,4 +30,4 @@ tags:
 - [[Tests for fetch_metar_daily_extreme  _fetch_daily_temps_f — the true running-…]] - `rationale_for` [EXTRACTED]
 - [[test_metar.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_91
+#graphify/code #graphify/EXTRACTED #community/Community_100

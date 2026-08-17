@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/screenshots/dark.png"
 type: "image"
-community: "Community 292"
+community: "Community 296"
 tags:
   - graphify/image
   - graphify/EXTRACTED
-  - community/Community_292
+  - community/Community_296
 ---
 
 # Metric Card Row (Paper Balance, Open Positions, Win Rate, Brier Score)
@@ -17,4 +17,4 @@ tags:
 - [[Paper Balance Metric Card ($1247.83, +24.8%)_1]] - `references` [EXTRACTED]
 - [[Win Rate Metric Card (61.2%, +2.3 pts)_1]] - `references` [EXTRACTED]
 
-#graphify/image #graphify/EXTRACTED #community/Community_292
+#graphify/image #graphify/EXTRACTED #community/Community_296

@@ -1,12 +1,12 @@
 ---
 source_file: "static/forecast.js"
 type: "code"
-community: "Legacy Static Dashboard JS Pages"
+community: "Community 369"
 location: "L107"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Legacy_Static_Dashboard_JS_Pages
+  - community/Community_369
 ---
 
 # loadForecast()
@@ -16,6 +16,5 @@ tags:
 - [[renderSourceReliability()]] - `calls` [EXTRACTED]
 - [[renderSourceReliability() (forecast.js)]] - `calls` [EXTRACTED]
 - [[staticforecast.js]] - `contains` [EXTRACTED]
-- [[web_app.py api endpoints]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_369

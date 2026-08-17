@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 524"
+community: "Community 583"
 location: "L6516"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_524
+  - community/Community_583
 ---
 
 # .test_past_days_ge_5_proceeds_past_the_guard()
@@ -15,4 +15,4 @@ tags:
 - [[Sanity check the guard's positive case still works when utc_today() is well…]] - `rationale_for` [EXTRACTED]
 - [[TestFetchPreviousRunDailyUsesUtcToday]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_524
+#graphify/code #graphify/EXTRACTED #community/Community_583

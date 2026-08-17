@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_signal_quality.py"
+source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 127"
-location: "L302"
+community: "Community 12"
+location: "L1978"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_127
+  - community/Community_12
 ---
 
 # .teardown_method()
 
 ## Connections
-- [[TestGetBrierByTier]] - `method` [EXTRACTED]
+- [[TestGetTodayLiveSpendExcludesAmended]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_127
+#graphify/code #graphify/EXTRACTED #community/Community_12

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 394"
+community: "Community 418"
 location: "L483"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_394
+  - community/Community_418
 ---
 
 # TestTimeDecayEdge
@@ -19,4 +19,4 @@ tags:
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[test_forecasting.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_394
+#graphify/code #graphify/EXTRACTED #community/Community_418

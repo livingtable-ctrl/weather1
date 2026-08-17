@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 304"
+community: "Community 308"
 location: "L17"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_304
+  - community/Community_308
 ---
 
 # TestAnalyzeTradeHourlyGuard
@@ -23,4 +23,4 @@ tags:
 - [[analyze_trade() must return None immediately for KXTEMPxxxH tickers at a non-…]] - `rationale_for` [EXTRACTED]
 - [[test_hourly_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_304
+#graphify/code #graphify/EXTRACTED #community/Community_308

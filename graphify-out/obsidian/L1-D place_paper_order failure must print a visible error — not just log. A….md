@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_proof.py"
 type: "rationale"
-community: "Community 105"
+community: "Community 111"
 location: "L166"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_105
+  - community/Community_111
 ---
 
 # L1-D: place_paper_order failure must print a visible error — not just log. A…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_l1d_paper_failure_printed_to_console()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_105
+#graphify/rationale #graphify/EXTRACTED #community/Community_111

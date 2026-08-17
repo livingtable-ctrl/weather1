@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_price_and_size.py"
 type: "code"
-community: "Community 58"
+community: "Community 78"
 location: "L69"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_58
+  - community/Community_78
 ---
 
 # TestPriceAndSizeNoSide
@@ -17,4 +17,4 @@ tags:
 - [[dot-test_entry_price_uses_no_ask_not_no_bid()]] - `method` [EXTRACTED]
 - [[test_price_and_size.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_58
+#graphify/code #graphify/EXTRACTED #community/Community_78

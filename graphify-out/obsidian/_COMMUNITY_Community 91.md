@@ -1,43 +1,45 @@
 ---
 type: community
-cohesion: 0.09
-members: 28
+cohesion: 0.07
+members: 30
 ---
 
 # Community 91
 
-**Cohesion:** 0.09 - loosely connected
-**Members:** 28 nodes
+**Cohesion:** 0.07 - loosely connected
+**Members:** 30 nodes
 
 ## Members
-- [[dot-_epoch()]] - code - tests/test_metar.py
-- [[dot-test_cache_key_includes_target_date_not_just_station()]] - code - tests/test_metar.py
-- [[dot-test_computes_max_across_multiple_readings_same_local_date()]] - code - tests/test_metar.py
-- [[dot-test_computes_min_across_multiple_readings_same_local_date()]] - code - tests/test_metar.py
-- [[dot-test_excludes_readings_from_a_different_local_date()]] - code - tests/test_metar.py
-- [[dot-test_ignores_sparse_synoptic_maxt_field_uses_raw_readings_instead()]] - code - tests/test_metar.py
-- [[dot-test_invalid_extreme_argument_raises()]] - code - tests/test_metar.py
-- [[dot-test_negative_caches_fetch_failure()]] - code - tests/test_metar.py
-- [[dot-test_obs_time_accepts_iso_string_not_only_epoch()]] - code - tests/test_metar.py
-- [[dot-test_requests_a_wide_hours_window_not_just_the_latest_reading()]] - code - tests/test_metar.py
-- [[dot-test_returns_none_on_fetch_failure()]] - code - tests/test_metar.py
-- [[dot-test_returns_none_when_no_readings_match_target_date()]] - code - tests/test_metar.py
-- [[dot-test_second_call_within_ttl_does_not_refetch()]] - code - tests/test_metar.py
-- [[dot-test_uses_celsius_temp_field_when_tmpf_absent()]] - code - tests/test_metar.py
-- [[A failed fetch must be negative-cached — a second call within the TTL must not…]] - rationale - tests/test_metar.py
-- [[A reading from the PRIOR local calendar day (e.g. a UTC obsTime that converts…]] - rationale - tests/test_metar.py
-- [[Cache hit a second call for the same station+date within the TTL must not re-…]] - rationale - tests/test_metar.py
-- [[Daily max is the max of ALL today's readings, not just the latest one or a…]] - rationale - tests/test_metar.py
-- [[Fetch succeeds but every reading is from a different date (e.g. called right…]] - rationale - tests/test_metar.py
-- [[Mutation-tested 2026-08-09 a station-only cache key would leak one date's…]] - rationale - tests/test_metar.py
-- [[Mutation-tested 2026-08-09 without an explicit `hours` param the API returns…]] - rationale - tests/test_metar.py
-- [[Regression guard for the exact bug this function exists to fix even when a…]] - rationale - tests/test_metar.py
-- [[TestFetchMetarDailyExtreme]] - code - tests/test_metar.py
-- [[Tests for fetch_metar_daily_extreme  _fetch_daily_temps_f — the true running-…]] - rationale - tests/test_metar.py
-- [[The REAL aviationweather.gov payload has no tmpf field at all — only temp in…]] - rationale - tests/test_metar.py
-- [[_extract_obs_time must also accept an ISO-8601 string obsTime (test-fixture…]] - rationale - tests/test_metar.py
-- [[extreme must be exactly 'max' or 'min' — a typo like 'MAX' must raise loudly,…]] - rationale - tests/test_metar.py
-- [[extreme='min' returns the lowest reading, not the highest.]] - rationale - tests/test_metar.py
+- [[2026-04-14-p7-market-realism]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[23.1 Add `SIMULATED_LATENCY_MS` constant to `paper.py`]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[23.2 Apply latency in `place_paper_order`]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[23.3 Write tests]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[23.4 Verify Task 23]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[23.5 Commit Task 23]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[24.1 Add `rank_opportunities` to `main.py`]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[24.2 Call `rank_opportunities` in `_auto_place_trades`]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[24.3 Write tests]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[24.4 Verify Task 24]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[24.5 Commit Task 24]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[25.1 Update `place_paper_order` in `paper.py`]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[25.2 Pass `yes_ask` from `_auto_place_trades`]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[25.3 Write tests]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[25.4 Verify Task 25]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[25.5 Full regression check]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[25.6 Commit Task 25]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[39.1 Add `max_quantity_for_market` to `paper.py`]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[39.2 Apply in `place_paper_order`]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[39.3 Pass market depth from `_auto_place_trades`]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[39.4 Write tests]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[39.5 Verify Task 39]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[39.6 Full regression check]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[39.7 Commit Task 39]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[P7 Market Realism Fixes — Implementation Plan]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[Summary of changes_6]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[Task 23 (P7.2) — Latency simulation]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[Task 24 (P7.4) — Execution priority ranking]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[Task 25 (P7.1) — Bid-ask spread capture]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
+- [[Task 39 (P7.3) — Liquidity constraints hard cap]] - document - docs/superpowers/plans/2026-04-14-p7-market-realism.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -45,15 +47,3 @@ members: 28
 TABLE source_file, type FROM #community/Community_91
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 9 edges to [[_COMMUNITY_Community 64]]
-- 1 edge to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Community 73]]
-
-## Top bridge nodes
-- [[TestFetchMetarDailyExtreme]] - degree 17, connects to 2 communities
-- [[dot-test_cache_key_includes_target_date_not_just_station()]] - degree 4, connects to 1 community
-- [[dot-test_computes_max_across_multiple_readings_same_local_date()]] - degree 4, connects to 1 community
-- [[dot-test_computes_min_across_multiple_readings_same_local_date()]] - degree 4, connects to 1 community
-- [[dot-test_excludes_readings_from_a_different_local_date()]] - degree 4, connects to 1 community

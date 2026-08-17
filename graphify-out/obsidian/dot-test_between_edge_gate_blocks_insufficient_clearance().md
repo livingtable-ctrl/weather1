@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "code"
-community: "Community 163"
+community: "Community 164"
 location: "L624"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_163
+  - community/Community_164
 ---
 
 # .test_between_edge_gate_blocks_insufficient_clearance()
@@ -16,4 +16,4 @@ tags:
 - [[Negative control paired with the test above a reading close to the band edge…]] - `rationale_for` [EXTRACTED]
 - [[TestBetweenMarketGaussian]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_163
+#graphify/code #graphify/EXTRACTED #community/Community_164

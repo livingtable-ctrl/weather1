@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_idempotency.py"
 type: "rationale"
-community: "Community 143"
+community: "Community 191"
 location: "L119"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_143
+  - community/Community_191
 ---
 
 # If _post raises but the order exists on exchange, return it without re-raising.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_returns_existing_order_when_post_fails_but_order_landed()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_143
+#graphify/rationale #graphify/EXTRACTED #community/Community_191

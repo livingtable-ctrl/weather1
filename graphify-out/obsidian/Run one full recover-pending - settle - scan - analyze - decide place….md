@@ -1,12 +1,12 @@
 ---
 source_file: "trade_cycle.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 3"
 location: "L132"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # Run one full recover-pending -> settle -> scan -> analyze -> decide/ place…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[run_trade_cycle()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

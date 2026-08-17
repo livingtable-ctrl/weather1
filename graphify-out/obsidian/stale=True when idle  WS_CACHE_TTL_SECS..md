@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_ws.py"
 type: "rationale"
-community: "Community 130"
+community: "Community 618"
 location: "L318"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_130
+  - community/Community_618
 ---
 
 # stale=True when idle > WS_CACHE_TTL_SECS.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_get_ws_health_stale_flag()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_130
+#graphify/rationale #graphify/EXTRACTED #community/Community_618

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_retirement_probation.py"
 type: "rationale"
-community: "Community 140"
+community: "Community 146"
 location: "L58"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_140
+  - community/Community_146
 ---
 
 # No currently-retired method -> must not even fetch markets.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_noop_when_nothing_retired()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_140
+#graphify/rationale #graphify/EXTRACTED #community/Community_146

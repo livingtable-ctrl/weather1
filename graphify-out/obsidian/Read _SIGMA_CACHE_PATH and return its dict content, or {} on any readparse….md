@@ -1,12 +1,12 @@
 ---
 source_file: "climatology.py"
 type: "rationale"
-community: "Climatology & Climate Index Fetching"
+community: "Community 102"
 location: "L316"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_102
 ---
 
 # Read _SIGMA_CACHE_PATH and return its dict content, or {} on any read/parse…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_load_sigma_cache_file()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/rationale #graphify/EXTRACTED #community/Community_102

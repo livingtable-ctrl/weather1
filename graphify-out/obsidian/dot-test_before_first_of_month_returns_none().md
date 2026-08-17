@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_acis_precip.py"
 type: "code"
-community: "Community 571"
+community: "Community 141"
 location: "L298"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_571
+  - community/Community_141
 ---
 
 # .test_before_first_of_month_returns_none()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestFetchMonthToDateActual]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_571
+#graphify/code #graphify/EXTRACTED #community/Community_141

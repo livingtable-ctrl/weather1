@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md"
 type: "code"
-community: "Community 156"
+community: "Community 160"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_156
+  - community/Community_160
 ---
 
 # PositionsTab.jsx Component
@@ -17,4 +17,4 @@ tags:
 - [[H7 Portfolio Expected Value Card]] - `references` [EXTRACTED]
 - [[H8 Model Disagreement Indicator (Positions)]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_156
+#graphify/code #graphify/EXTRACTED #community/Community_160

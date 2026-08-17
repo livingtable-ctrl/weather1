@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 368"
 location: "L129"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_368
 ---
 
 # Serialises read-modify-write cycles on paper_trades.json across BOTH threads…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_CrossProcessDataLock]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_368

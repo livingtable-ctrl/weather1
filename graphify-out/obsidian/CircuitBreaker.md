@@ -1,18 +1,18 @@
 ---
 source_file: "circuit_breaker.py"
 type: "code"
-community: "Community 44"
+community: "Community 7"
 location: "L42"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_44
+  - community/Community_7
 ---
 
 # CircuitBreaker
 
 ## Connections
-- [[dot-__init__()_6]] - `method` [EXTRACTED]
+- [[dot-__init__()_11]] - `method` [EXTRACTED]
 - [[dot-_load_state()]] - `method` [EXTRACTED]
 - [[dot-_save_state()]] - `method` [EXTRACTED]
 - [[dot-execute()]] - `method` [EXTRACTED]
@@ -43,7 +43,6 @@ tags:
 - [[dot-test_third_trip_quadruples_timeout()]] - `calls` [EXTRACTED]
 - [[ForecastCache]] - `semantically_similar_to` [INFERRED]
 - [[KalshiClient]] - `uses` [INFERRED]
-- [[Phase 3 Batch B Circuit Breaker Tests]] - `imports` [EXTRACTED]
 - [[TestCircuitBreakerBackoff]] - `uses` [INFERRED]
 - [[TestCircuitBreakerBasic]] - `uses` [INFERRED]
 - [[TestCircuitBreakerBurstWindow]] - `uses` [INFERRED]
@@ -70,6 +69,7 @@ tags:
 - [[test_infrastructure.py]] - `imports` [EXTRACTED]
 - [[test_nws_cb_records_failure_on_exception()]] - `calls` [EXTRACTED]
 - [[test_nws_cb_skips_when_open()]] - `calls` [EXTRACTED]
+- [[test_phase3_batch_b.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_44
+#graphify/code #graphify/EXTRACTED #community/Community_7

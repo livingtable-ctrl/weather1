@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Community 489"
+community: "Community 530"
 location: "L52"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_489
+  - community/Community_530
 ---
 
 # .test_falls_back_to_hardcoded_when_none()
@@ -15,4 +15,4 @@ tags:
 - [[TestDynamicCorrelationMatrix]] - `method` [EXTRACTED]
 - [[When _load_dynamic_correlations returns None, use _HARDCODED_CORR.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_489
+#graphify/code #graphify/EXTRACTED #community/Community_530

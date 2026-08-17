@@ -1,27 +1,28 @@
 ---
 type: community
-cohesion: 0.21
-members: 12
+cohesion: 0.15
+members: 13
 ---
 
 # Community 293
 
-**Cohesion:** 0.21 - loosely connected
-**Members:** 12 nodes
+**Cohesion:** 0.15 - loosely connected
+**Members:** 13 nodes
 
 ## Members
-- [[dot-test_parallel_failures_count_as_one_event()]] - code - tests/test_circuit_breaker.py
-- [[dot-test_sequential_failures_outside_window_each_count()]] - code - tests/test_circuit_breaker.py
-- [[3 simultaneous failures within burst_window must not count as 3 events.…]] - rationale - tests/test_circuit_breaker.py
-- [[CircuitBreaker class_1]] - code - circuit_breaker.py
-- [[Failures spaced further apart than burst_window each increment the counter.]] - rationale - tests/test_circuit_breaker.py
-- [[Grade Audit Module Doc circuit_breaker.py]] - document - docs/grade_audit/modules/circuit_breaker.md
-- [[Grade Audit Output circuit_breaker.py]] - document - docs/grade_audit/outputs/circuit_breaker.py.md
-- [[OPENHALF-OPENCLOSED State Machine]] - document - docs/grade_audit/modules/circuit_breaker.md
-- [[TestCircuitBreakerBurstWindow]] - code - tests/test_circuit_breaker.py
-- [[Tests for CircuitBreaker — openclosehalf-open, backoff, wall-clock.]] - rationale - tests/test_circuit_breaker.py
-- [[circuit_breaker.py_1]] - code - circuit_breaker.py
-- [[test_circuit_breaker.py]] - code - tests/test_circuit_breaker.py
+- [[dot-_model_response()]] - code - tests/test_tracker.py
+- [[dot-setUp()_20]] - code - tests/test_tracker.py
+- [[dot-test_computes_weighted_delta_and_jumpiness_exactly()]] - code - tests/test_tracker.py
+- [[dot-test_days_out_seven_has_only_one_valid_lead_returns_none()]] - code - tests/test_tracker.py
+- [[dot-test_days_out_zero_returns_none_without_network_call()]] - code - tests/test_tracker.py
+- [[dot-test_never_raises_on_total_network_failure()]] - code - tests/test_tracker.py
+- [[dot-test_second_call_hits_cache_not_network()]] - code - tests/test_tracker.py
+- [[dot-test_unknown_city_returns_none()_2]] - code - tests/test_tracker.py
+- [[Known per-model values at 4 leads, known (unequal) model weights -- assert the…]] - rationale - tests/test_tracker.py
+- [[Same-day markets use the METAR pipeline, not this signal (matches the existing…]] - rationale - tests/test_tracker.py
+- [[TestGetForecastRunTrend]] - code - tests/test_tracker.py
+- [[get_forecast_run_trend() combines all 3 _PREVIOUS_RUN_MODEL_MAP models,…]] - rationale - tests/test_tracker.py
+- [[lead0 = min(days_out, 7) = 7; leads 8-10 are all clamped out by the API's valid…]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,15 +32,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 6 edges to [[_COMMUNITY_Community 44]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
-- 1 edge to [[_COMMUNITY_Community 95]]
-- 1 edge to [[_COMMUNITY_Community 109]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[test_circuit_breaker.py]] - degree 9, connects to 2 communities
-- [[circuit_breaker.py_1]] - degree 5, connects to 1 community
-- [[TestCircuitBreakerBurstWindow]] - degree 4, connects to 1 community
-- [[Grade Audit Module Doc circuit_breaker.py]] - degree 4, connects to 1 community
-- [[dot-test_parallel_failures_count_as_one_event()]] - degree 3, connects to 1 community
+- [[TestGetForecastRunTrend]] - degree 10, connects to 1 community

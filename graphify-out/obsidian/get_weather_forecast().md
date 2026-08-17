@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L1369"
+community: "Community 5"
+location: "L1471"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_5
 ---
 
 # get_weather_forecast()
@@ -19,19 +19,22 @@ tags:
 - [[dot-test_returns_none_when_target_date_missing()]] - `calls` [EXTRACTED]
 - [[dot-test_unknown_city_returns_none()]] - `calls` [EXTRACTED]
 - [[Fetch daily highlowprecip from three forecast models (GFS, ECMWF, ICON) and…]] - `rationale_for` [EXTRACTED]
+- [[_build_cron_context()]] - `indirect_call` [INFERRED]
 - [[_forecast_model_weights()]] - `calls` [EXTRACTED]
 - [[_save_forecast_disk_entry()]] - `calls` [EXTRACTED]
 - [[_ttl_until_next_cycle()]] - `calls` [EXTRACTED]
-- [[date_2]] - `references` [EXTRACTED]
+- [[cmd_forecast()]] - `calls` [EXTRACTED]
+- [[date_9]] - `references` [EXTRACTED]
 - [[enrich_with_forecast()]] - `calls` [EXTRACTED]
 - [[fetch_nbm_forecast()]] - `calls` [EXTRACTED]
 - [[fetch_temperature_pirate_weather()]] - `calls` [EXTRACTED]
 - [[fetch_temperature_weatherapi()]] - `calls` [EXTRACTED]
 - [[is_all_null()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[module-level _forecast_cache_ensemble_cache singletons]] - `calls` [EXTRACTED]
 - [[test_forecast_accuracy.py]] - `calls` [EXTRACTED]
-- [[test_http.py]] - `references` [EXTRACTED]
+- [[test_http.py]] - `imports` [EXTRACTED]
 - [[validate_forecast()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_5

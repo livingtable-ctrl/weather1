@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "code"
-community: "ML Bias Multiday-Predictions Filter"
-location: "L57"
+community: "Community 82"
+location: "L72"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_82
 ---
 
 # _write_hmac()
@@ -17,4 +17,4 @@ tags:
 - [[ml_bias.py]] - `contains` [EXTRACTED]
 - [[train_bias_model()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/code #graphify/EXTRACTED #community/Community_82

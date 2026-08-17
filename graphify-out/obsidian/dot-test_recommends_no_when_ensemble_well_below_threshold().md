@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 122"
+community: "Community 128"
 location: "L206"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_122
+  - community/Community_128
 ---
 
 # .test_recommends_no_when_ensemble_well_below_threshold()
@@ -17,4 +17,4 @@ tags:
 - [[dot-_pin_sources()]] - `calls` [EXTRACTED]
 - [[TestAnalyzeTradeHourlyModel]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_122
+#graphify/code #graphify/EXTRACTED #community/Community_128

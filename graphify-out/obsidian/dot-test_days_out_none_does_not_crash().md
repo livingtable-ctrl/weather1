@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts_side.py"
 type: "code"
-community: "Community 200"
+community: "Community 108"
 location: "L141"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_200
+  - community/Community_108
 ---
 
 # .test_days_out_none_does_not_crash()
@@ -17,4 +17,4 @@ tags:
 - [[_make_trade()_1]] - `calls` [EXTRACTED]
 - [[check_black_swan_conditions()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_200
+#graphify/code #graphify/EXTRACTED #community/Community_108

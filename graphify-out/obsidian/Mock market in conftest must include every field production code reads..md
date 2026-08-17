@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_schema_drift.py"
 type: "rationale"
-community: "Community 538"
+community: "Community 592"
 location: "L24"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_538
+  - community/Community_592
 ---
 
 # Mock market in conftest must include every field production code reads.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_conftest_mock_market_has_all_required_fields()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_538
+#graphify/rationale #graphify/EXTRACTED #community/Community_592

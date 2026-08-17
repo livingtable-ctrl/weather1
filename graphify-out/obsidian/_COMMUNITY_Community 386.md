@@ -1,24 +1,25 @@
 ---
 type: community
-cohesion: 0.25
-members: 9
+cohesion: 0.20
+members: 10
 ---
 
 # Community 386
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 9 nodes
+**Cohesion:** 0.20 - loosely connected
+**Members:** 10 nodes
 
 ## Members
-- [[Fix Backtest Empty Results Diagnostics]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
-- [[Fix BacktestSimulateValidate Plan]] - document - docs/superpowers/plans/2026-04-25-fix-backtest-simulate-validate.md
-- [[Fix Simulate Pagination]] - document - docs/superpowers/plans/2026-04-30-bug-fixes.md
-- [[Fix cmd_simulate Status Param]] - document - docs/superpowers/plans/2026-04-25-fix-backtest-simulate-validate.md
-- [[Phase E Walk-Forward Backtesting Plan]] - document - docs/superpowers/plans/2026-04-16-phase-e-walk-forward-backtest.md
-- [[Walk-Forward Backtesting Engine]] - document - docs/superpowers/plans/2026-04-16-phase-e-walk-forward-backtest.md
-- [[_fetch_settled_markets Pagination Helper]] - document - docs/superpowers/plans/2026-04-25-fix-backtest-simulate-validate.md
-- [[backtest.py module]] - code - docs/superpowers/plans/2026-04-16-phase-e-walk-forward-backtest.md
-- [[cmd_backtestcmd_walkforward Error Handling]] - document - docs/superpowers/plans/2026-04-25-fix-backtest-simulate-validate.md
+- [[dot-test_city_weights_file_exists()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_city_weights_values_sum_to_1()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_condition_weights_file_exists()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_condition_weights_has_all_types()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_condition_weights_sum_to_1()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_seasonal_weights_file_exists()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_seasonal_weights_has_all_seasons()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_seasonal_weights_sum_to_1()]] - code - tests/test_phase2_batch_c.py
+- [[P2-7 seasonal, condition, and city weight files must be present.]] - rationale - tests/test_phase2_batch_c.py
+- [[TestWeightFilesExist]] - code - tests/test_phase2_batch_c.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,10 +29,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 294]]
-- 1 edge to [[_COMMUNITY_Community 295]]
+- 1 edge to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 9]]
 
 ## Top bridge nodes
-- [[Fix Simulate Pagination]] - degree 3, connects to 1 community
-- [[Fix cmd_simulate Status Param]] - degree 3, connects to 1 community
-- [[Fix Backtest Empty Results Diagnostics]] - degree 2, connects to 1 community
+- [[TestWeightFilesExist]] - degree 11, connects to 2 communities

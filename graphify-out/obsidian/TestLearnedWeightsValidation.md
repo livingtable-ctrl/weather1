@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 267"
-location: "L2922"
+community: "Community 262"
+location: "L3291"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_267
+  - community/Community_262
 ---
 
 # TestLearnedWeightsValidation
@@ -21,4 +21,4 @@ tags:
 - [[P1-9 save_learned_weights must reject corrupt data (win-rate floats), and…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_267
+#graphify/code #graphify/EXTRACTED #community/Community_262

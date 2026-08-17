@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 366"
+community: "Community 379"
 location: "L53"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_366
+  - community/Community_379
 ---
 
 # TestPlaceOrderApiSemantics
@@ -19,4 +19,4 @@ tags:
 - [[L1-A Verify side='no' action='buy' API semantics are correct via the full…]] - `rationale_for` [EXTRACTED]
 - [[test_kalshi_client.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_366
+#graphify/code #graphify/EXTRACTED #community/Community_379

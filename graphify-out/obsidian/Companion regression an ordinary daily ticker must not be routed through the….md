@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Tracker Settlement Sigma & Disputed Rows"
+community: "Community 29"
 location: "L4446"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_Settlement_Sigma__Disputed_Rows
+  - community/Community_29
 ---
 
 # Companion regression: an ordinary daily ticker must not be routed through the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_audit_settlement_daily_ticker_still_uses_daily_path()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_Settlement_Sigma__Disputed_Rows
+#graphify/rationale #graphify/EXTRACTED #community/Community_29

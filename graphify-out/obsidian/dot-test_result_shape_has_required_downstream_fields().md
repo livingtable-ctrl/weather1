@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 122"
+community: "Community 128"
 location: "L399"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_122
+  - community/Community_128
 ---
 
 # .test_result_shape_has_required_downstream_fields()
@@ -18,4 +18,4 @@ tags:
 - [[TestAnalyzeTradeHourlyModel]] - `method` [EXTRACTED]
 - [[order_executor._prediction_kwargs_from_analysis  log_prediction read these…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_122
+#graphify/code #graphify/EXTRACTED #community/Community_128

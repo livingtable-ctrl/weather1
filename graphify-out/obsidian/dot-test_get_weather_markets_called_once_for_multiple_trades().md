@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "code"
-community: "Community 231"
+community: "Community 104"
 location: "L101"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_231
+  - community/Community_104
 ---
 
 # .test_get_weather_markets_called_once_for_multiple_trades()
@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[P1-20 get_weather_markets must be called once regardless of N open trades.]] - `rationale_for` [EXTRACTED]
 - [[TestCheckEarlyExitsApiCallCount]] - `method` [EXTRACTED]
-- [[_make_trade()_2]] - `calls` [EXTRACTED]
+- [[_make_trade()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_231
+#graphify/code #graphify/EXTRACTED #community/Community_104

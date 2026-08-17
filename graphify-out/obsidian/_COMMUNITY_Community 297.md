@@ -1,27 +1,27 @@
 ---
 type: community
-cohesion: 0.27
+cohesion: 0.18
 members: 12
 ---
 
 # Community 297
 
-**Cohesion:** 0.27 - loosely connected
+**Cohesion:** 0.18 - loosely connected
 **Members:** 12 nodes
 
 ## Members
-- [[dot-validate()]] - code - config.py
-- [[BotConfig]] - code - config.py
-- [[Raise ValueError for any invalid configuration combination.]] - rationale - config.py
-- [[The rate this bot's own trades actually pay (maker fills are $0 on this bot's…]] - rationale - tests/test_config.py
-- [[test_config.py]] - code - tests/test_config.py
-- [[test_drawdown_halt_out_of_range_raises()]] - code - tests/test_config.py
-- [[test_fee_rate_out_of_range_raises()]] - code - tests/test_config.py
-- [[test_maker_fee_rate_defaults_to_zero()]] - code - tests/test_config.py
-- [[test_maker_fee_rate_negative_raises()]] - code - tests/test_config.py
-- [[test_maker_fee_rate_out_of_range_raises()]] - code - tests/test_config.py
-- [[test_min_edge_above_strong_edge_raises()]] - code - tests/test_config.py
-- [[test_valid_config_passes()]] - code - tests/test_config.py
+- [[A3 Bimodal Ensemble Detection]] - document - docs/superpowers/plans/2026-06-27-category-a-prediction-pipeline.md
+- [[Brief Closeable Fix]] - document - docs/superpowers/plans/2026-04-25-fix-menu-ux.md
+- [[Confidence-Tiered Edge Thresholds]] - document - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
+- [[Ctrl-C Cancel AnalyzeCron]] - document - docs/superpowers/plans/2026-04-25-fix-menu-ux.md
+- [[Extract Cron Runner to cron.py]] - document - docs/superpowers/plans/2026-04-18-remediation.md
+- [[Fix Browse Cities Plan]] - document - docs/superpowers/plans/2026-04-25-fix-browse-cities.md
+- [[FlashCrashCB Circuit Breaker]] - document - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
+- [[Flush stdout Before Cron]] - document - docs/superpowers/plans/2026-04-25-fix-menu-ux.md
+- [[Menu UX Fixes Plan]] - document - docs/superpowers/plans/2026-04-25-fix-menu-ux.md
+- [[Phase B Risk Engine Plan]] - document - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
+- [[main.py module_1]] - code - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
+- [[utils.py module]] - code - docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,14 +31,16 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 5 edges to [[_COMMUNITY_Community 212]]
-- 2 edges to [[_COMMUNITY_Community 243]]
-- 2 edges to [[_COMMUNITY_Community 129]]
-- 1 edge to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_Community 454]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 4 edges to [[_COMMUNITY_Community 124]]
+- 3 edges to [[_COMMUNITY_Community 272]]
+- 2 edges to [[_COMMUNITY_Community 217]]
+- 1 edge to [[_COMMUNITY_Community 216]]
+- 1 edge to [[_COMMUNITY_Community 399]]
+- 1 edge to [[_COMMUNITY_Community 360]]
 
 ## Top bridge nodes
-- [[BotConfig]] - degree 18, connects to 5 communities
-- [[test_config.py]] - degree 10, connects to 2 communities
-- [[dot-validate()]] - degree 3, connects to 1 community
+- [[main.py module_1]] - degree 8, connects to 3 communities
+- [[FlashCrashCB Circuit Breaker]] - degree 4, connects to 2 communities
+- [[Phase B Risk Engine Plan]] - degree 4, connects to 2 communities
+- [[Extract Cron Runner to cron.py]] - degree 3, connects to 2 communities
+- [[Confidence-Tiered Edge Thresholds]] - degree 5, connects to 1 community

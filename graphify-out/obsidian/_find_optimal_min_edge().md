@@ -1,12 +1,12 @@
 ---
 source_file: "backtest.py"
 type: "code"
-community: "Community 37"
+community: "Community 40"
 location: "L887"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_37
+  - community/Community_40
 ---
 
 # _find_optimal_min_edge()
@@ -16,4 +16,4 @@ tags:
 - [[backtest.py]] - `contains` [EXTRACTED]
 - [[walk_forward_backtest()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_37
+#graphify/code #graphify/EXTRACTED #community/Community_40

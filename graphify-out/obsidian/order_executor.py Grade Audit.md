@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/outputs/order_executor.py.md"
 type: "document"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 1"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_1
 ---
 
 # order_executor.py Grade Audit
@@ -14,4 +14,4 @@ tags:
 - [[order_executor.py]] - `references` [EXTRACTED]
 - [[order_executor.py File Grade median 710]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/document #graphify/EXTRACTED #community/Community_1

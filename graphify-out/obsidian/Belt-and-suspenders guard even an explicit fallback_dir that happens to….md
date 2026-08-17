@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_safe_io.py"
 type: "rationale"
-community: "Safe I/O CRC Validation Tests"
+community: "Community 85"
 location: "L682"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Safe_I/O_CRC_Validation_Tests
+  - community/Community_85
 ---
 
 # Belt-and-suspenders guard: even an explicit fallback_dir that happens to…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_atomic_write_skips_fallback_dir_that_collides_with_original()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Safe_I/O_CRC_Validation_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_85

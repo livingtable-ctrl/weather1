@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hmac_bias.py"
 type: "rationale"
-community: "Community 120"
+community: "Community 151"
 location: "L125"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_120
+  - community/Community_151
 ---
 
 # train_bias_model must write the .hmac sidecar alongside the pkl.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_train_writes_hmac_sidecar()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_120
+#graphify/rationale #graphify/EXTRACTED #community/Community_151

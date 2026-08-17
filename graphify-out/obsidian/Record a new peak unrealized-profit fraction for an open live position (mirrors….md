@@ -1,12 +1,12 @@
 ---
 source_file: "execution_log.py"
 type: "rationale"
-community: "Execution Log Live-Loss Tracking"
+community: "Community 42"
 location: "L578"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Execution_Log_Live-Loss_Tracking
+  - community/Community_42
 ---
 
 # Record a new peak unrealized-profit fraction for an open live position (mirrors…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[update_live_peak_profit()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking
+#graphify/rationale #graphify/EXTRACTED #community/Community_42

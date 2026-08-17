@@ -1,11 +1,11 @@
 ---
 source_file: "hurricane_climatology.py"
 type: "code"
-community: "Community 586"
+community: "Community 662"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_586
+  - community/Community_662
 ---
 
 # _named_storms_in_naming_order Function
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[first_hurricane_position Function]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_586
+#graphify/code #graphify/EXTRACTED #community/Community_662

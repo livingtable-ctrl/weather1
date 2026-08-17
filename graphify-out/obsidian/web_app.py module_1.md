@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-16-phase-d-monitoring-settlement.md"
 type: "code"
-community: "Community 453"
+community: "Community 484"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_453
+  - community/Community_484
 ---
 
 # web_app.py module
@@ -19,4 +19,4 @@ tags:
 - [[Top 5 Trades of the Day Plan]] - `references` [EXTRACTED]
 - [[web_app.py XSS Escaping Fix]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_453
+#graphify/code #graphify/EXTRACTED #community/Community_484

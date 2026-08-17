@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_b.py"
 type: "code"
-community: "Community 84"
+community: "Community 139"
 location: "L16"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_84
+  - community/Community_139
 ---
 
 # _cb()
@@ -28,6 +28,6 @@ tags:
 - [[dot-test_trip_count_increments_on_probe_failure()]] - `calls` [EXTRACTED]
 - [[CircuitBreaker]] - `references` [EXTRACTED]
 - [[Create a non-persisting CircuitBreaker for tests.]] - `rationale_for` [EXTRACTED]
-- [[Phase 3 Batch B Circuit Breaker Tests]] - `contains` [EXTRACTED]
+- [[test_phase3_batch_b.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_84
+#graphify/code #graphify/EXTRACTED #community/Community_139

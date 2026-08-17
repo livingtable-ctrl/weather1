@@ -1,27 +1,28 @@
 ---
 type: community
-cohesion: 0.26
-members: 12
+cohesion: 0.21
+members: 13
 ---
 
 # Community 296
 
-**Cohesion:** 0.26 - loosely connected
-**Members:** 12 nodes
+**Cohesion:** 0.21 - loosely connected
+**Members:** 13 nodes
 
 ## Members
-- [[Check CPU, memory, API failure rate, and Platt model sanity. Returns…]] - rationale - system_health.py
-- [[HealthStatus]] - code - system_health.py
-- [[NamedTuple]] - code
-- [[Return unhealthy if any loaded Platt model has A = 0 (signal inversion).]] - rationale - system_health.py
-- [[Return unhealthy if recent Kalshi API calls are failing at a high rate.]] - rationale - system_health.py
-- [[System Health Grade Audit]] - document - docs/grade_audit/outputs/system_health.py.md
-- [[_check_api_failure_rate()]] - code - system_health.py
-- [[_check_platt_sanity()]] - code - system_health.py
-- [[check_system_health()]] - code - system_health.py
-- [[system_health.py]] - code - system_health.py
-- [[system_health.py_1]] - code - system_health.py
-- [[system_health.py — lightweight health checks before trade execution.]] - rationale - system_health.py
+- [[Brier Score Metric Card (0.151, target =0.20)]] - image - updated frontend/screenshots/dark.png
+- [[DateGreeting Header with Daily P&L Summary Sentence]] - image - updated frontend/screenshots/dark.png
+- [[DemoPaper Badge, Live Indicator, Theme Toggle, Kill Switch Button]] - image - updated frontend/screenshots/dark.png
+- [[Graduation Gate - Brier Progress Bar (0.1510.2, partial)]] - image - updated frontend/screenshots/dark.png
+- [[Graduation Gate - P&L Progress Bar ($247.83$50, complete)]] - image - updated frontend/screenshots/dark.png
+- [[Graduation Gate - Trades Progress Bar (56730, complete)]] - image - updated frontend/screenshots/dark.png
+- [[Graduation Progress Panel (TradesP&LBrier gates)_1]] - image - updated frontend/screenshots/dark.png
+- [[Kalshi Weather Dashboard - Dark Theme]] - image - updated frontend/screenshots/dark.png
+- [[Metric Card Row (Paper Balance, Open Positions, Win Rate, Brier Score)]] - image - updated frontend/screenshots/dark.png
+- [[Open Positions Metric Card (8 open, 567 settled)_1]] - image - updated frontend/screenshots/dark.png
+- [[Paper Balance Metric Card ($1247.83, +24.8%)_1]] - image - updated frontend/screenshots/dark.png
+- [[Top Navigation Bar (OverviewPositionsSignalsForecastAnalyticsRiskTrades)_1]] - image - updated frontend/screenshots/dark.png
+- [[Win Rate Metric Card (61.2%, +2.3 pts)_1]] - image - updated frontend/screenshots/dark.png
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,21 +30,3 @@ members: 12
 TABLE source_file, type FROM #community/Community_296
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 36]]
-- 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 2 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Legacy Static Dashboard JS Pages]]
-- 1 edge to [[_COMMUNITY_Community 85]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Community 32]]
-- 1 edge to [[_COMMUNITY_Community 59]]
-
-## Top bridge nodes
-- [[system_health.py]] - degree 9, connects to 4 communities
-- [[_check_api_failure_rate()]] - degree 8, connects to 3 communities
-- [[check_system_health()]] - degree 8, connects to 3 communities
-- [[_check_platt_sanity()]] - degree 6, connects to 1 community
-- [[System Health Grade Audit]] - degree 2, connects to 1 community

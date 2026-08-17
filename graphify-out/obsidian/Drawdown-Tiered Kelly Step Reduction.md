@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md"
 type: "document"
-community: "Community 224"
+community: "Community 360"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_224
+  - community/Community_360
 ---
 
 # Drawdown-Tiered Kelly Step Reduction
@@ -15,4 +15,4 @@ tags:
 - [[Phase B Risk Engine Plan]] - `implements` [EXTRACTED]
 - [[paper.py module_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_224
+#graphify/document #graphify/EXTRACTED #community/Community_360

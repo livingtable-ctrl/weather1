@@ -1,19 +1,18 @@
 ---
-source_file: "updated frontend/reference/forecast.js"
+source_file: "static/risk.js"
 type: "code"
-community: "Community 450"
-location: "L16"
+community: "Community 668"
+location: "L23"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_450
+  - community/Community_668
 ---
 
 # makeLayout()
 
 ## Connections
-- [[referenceforecast.js]] - `contains` [EXTRACTED]
-- [[renderCityHeatmap()_1]] - `calls` [EXTRACTED]
-- [[renderEnsembleChart()_1]] - `calls` [EXTRACTED]
+- [[loadRisk()]] - `calls` [EXTRACTED]
+- [[staticrisk.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_450
+#graphify/code #graphify/EXTRACTED #community/Community_668

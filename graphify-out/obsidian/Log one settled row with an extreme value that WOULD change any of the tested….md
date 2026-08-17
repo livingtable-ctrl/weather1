@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Tracker Disputed Outcome Restoration"
+community: "Community 28"
 location: "L4056"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_Disputed_Outcome_Restoration
+  - community/Community_28
 ---
 
 # Log one settled row with an extreme value that WOULD change any of the tested…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-_add_disputed_outlier()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_Disputed_Outcome_Restoration
+#graphify/rationale #graphify/EXTRACTED #community/Community_28

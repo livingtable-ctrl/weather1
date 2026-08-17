@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 619
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_get_multiday_calibration_cli_excludes_rain()]] - code - tests/test_tracker.py
-- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 (review- caught gap) must…]] - rationale - tests/test_tracker.py
+- [[dot-test_single_bad_market_does_not_abort_scan()]] - code - tests/test_main_cron_smoke.py
+- [[dot-test_top_opportunities_shows_error_reason()]] - code - tests/test_main_cron_smoke.py
+- [[One market failing enrichanalyze should not kill the rest of the scan.]] - rationale - tests/test_main_cron_smoke.py
+- [[TestCmdBrief]] - code - tests/test_main_cron_smoke.py
+- [[When market fetch fails, brief prints a visible warning containing the error.]] - rationale - tests/test_main_cron_smoke.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +24,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
-- 1 edge to [[_COMMUNITY_Tracker Settlement Sigma & Disputed Rows]]
+- 3 edges to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 207]]
 
 ## Top bridge nodes
-- [[dot-test_get_multiday_calibration_cli_excludes_rain()]] - degree 4, connects to 2 communities
+- [[TestCmdBrief]] - degree 4, connects to 2 communities
+- [[dot-test_single_bad_market_does_not_abort_scan()]] - degree 3, connects to 1 community
+- [[dot-test_top_opportunities_shows_error_reason()]] - degree 3, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "code"
-community: "Community 463"
+community: "Community 502"
 location: "L560"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_463
+  - community/Community_502
 ---
 
 # TestBreakevenStops
@@ -17,4 +17,4 @@ tags:
 - [[dot-test_update_peak_profits_sets_peak_on_new_high()]] - `method` [EXTRACTED]
 - [[test_early_exits.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_463
+#graphify/code #graphify/EXTRACTED #community/Community_502

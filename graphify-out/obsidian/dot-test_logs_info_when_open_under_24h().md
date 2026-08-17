@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Ensemble Weight Blending Tests"
-location: "L2597"
+community: "Community 638"
+location: "L2966"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_638
 ---
 
 # .test_logs_info_when_open_under_24h()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestCheckEnsembleCircuitHealth]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_638

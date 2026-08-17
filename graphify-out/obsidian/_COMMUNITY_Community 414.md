@@ -10,15 +10,15 @@ members: 9
 **Members:** 9 nodes
 
 ## Members
-- [[dot-test_days_out_above_two_returns_none()]] - code - tests/test_weather_markets.py
-- [[dot-test_exception_in_lookup_returns_none_not_raises()]] - code - tests/test_weather_markets.py
-- [[dot-test_no_live_observation_returns_none()]] - code - tests/test_weather_markets.py
-- [[dot-test_uses_daily_max_for_max_var_at_days_out_zero()]] - code - tests/test_weather_markets.py
-- [[dot-test_uses_instantaneous_temp_for_min_var()]] - code - tests/test_weather_markets.py
-- [[Dedicated unit tests for _compute_persistence_prob(), the second function…]] - rationale - tests/test_weather_markets.py
-- [[TestComputePersistenceProbRefactorSafetyNet]] - code - tests/test_weather_markets.py
-- [[var='max' at days_out=0 must prefer the observed running daily max over the…]] - rationale - tests/test_weather_markets.py
-- [[var='min' must use the instantaneous current temp, not max_temp_f (the daily-…]] - rationale - tests/test_weather_markets.py
+- [[dot-test_corrupt_existing_file_falls_back_to_fresh_table_without_crashing()]] - code - tests/test_climatology.py
+- [[dot-test_partial_call_preserves_other_cities_in_memory_result()]] - code - tests/test_climatology.py
+- [[dot-test_partial_call_preserves_other_cities_on_disk()]] - code - tests/test_climatology.py
+- [[dot-test_recomputing_a_city_overwrites_only_that_citys_entry()]] - code - tests/test_climatology.py
+- [[dot-test_sequential_partial_calls_accumulate_full_table()]] - code - tests/test_climatology.py
+- [[A city passed again in a later call gets its own entry refreshed (not stuck at…]] - rationale - tests/test_climatology.py
+- [[Simulates main.py's setup wizard calling load_all_sigmas() (via preload_all(),…]] - rationale - tests/test_climatology.py
+- [[TestLoadAllSigmasMerge]] - code - tests/test_climatology.py
+- [[backlog.txt PRELOAD_ALL CAN PERMANENTLY TRUNCATE forecast_sigma.json TO ONE…_1]] - rationale - tests/test_climatology.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,7 +28,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestComputePersistenceProbRefactorSafetyNet]] - degree 7, connects to 1 community
+- [[TestLoadAllSigmasMerge]] - degree 7, connects to 1 community

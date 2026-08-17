@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_idempotency.py"
 type: "code"
-community: "Community 143"
+community: "Community 248"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_143
+  - community/Community_248
 ---
 
 # test_idempotency.py
@@ -18,6 +19,7 @@ tags:
 - [[TestClientOrderId]] - `contains` [EXTRACTED]
 - [[TestPostFailureDedup]] - `contains` [EXTRACTED]
 - [[TestPostRetryExcluded]] - `contains` [EXTRACTED]
-- [[_build_session()]] - `references` [EXTRACTED]
+- [[_build_session()]] - `imports` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_143
+#graphify/code #graphify/EXTRACTED #community/Community_248

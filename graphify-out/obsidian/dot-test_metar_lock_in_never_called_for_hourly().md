@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "code"
-community: "Community 122"
+community: "Community 128"
 location: "L299"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_122
+  - community/Community_128
 ---
 
 # .test_metar_lock_in_never_called_for_hourly()
@@ -18,4 +18,4 @@ tags:
 - [[TestAnalyzeTradeHourlyModel]] - `method` [EXTRACTED]
 - [[The exact contamination path found during plan review _metar_ lock_in()'s…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_122
+#graphify/code #graphify/EXTRACTED #community/Community_128

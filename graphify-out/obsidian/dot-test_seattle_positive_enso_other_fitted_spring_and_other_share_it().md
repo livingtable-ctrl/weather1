@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climate_indices.py"
 type: "code"
-community: "Community 31"
+community: "Community 61"
 location: "L297"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_31
+  - community/Community_61
 ---
 
 # .test_seattle_positive_enso_other_fitted_spring_and_other_share_it()
@@ -16,4 +16,4 @@ tags:
 - [[Seattle's only real cell (ENSO-other, fitted positive) -- winter stays default,…]] - `rationale_for` [EXTRACTED]
 - [[TestRegressionFittedOriginalTen]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_31
+#graphify/code #graphify/EXTRACTED #community/Community_61

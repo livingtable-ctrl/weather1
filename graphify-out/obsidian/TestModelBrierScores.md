@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 572"
+community: "Community 38"
 location: "L1375"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_572
+  - community/Community_38
 ---
 
 # TestModelBrierScores
@@ -18,4 +18,4 @@ tags:
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[test_forecasting.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_572
+#graphify/code #graphify/EXTRACTED #community/Community_38

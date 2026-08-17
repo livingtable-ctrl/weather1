@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 157"
+community: "Community 73"
 location: "L651"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_157
+  - community/Community_73
 ---
 
 # TestFinalizeCancel
 
 ## Connections
-- [[dot-setup_method()_10]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_5]] - `method` [EXTRACTED]
+- [[dot-setup_method()_38]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_29]] - `method` [EXTRACTED]
 - [[dot-test_get_order_failure_falls_back_to_plain_canceled()]] - `method` [EXTRACTED]
 - [[dot-test_partial_fill_cancel_promotes_to_filled()]] - `method` [EXTRACTED]
 - [[dot-test_zero_fill_cancel_stays_canceled()]] - `method` [EXTRACTED]
@@ -22,4 +22,4 @@ tags:
 - [[Position]] - `uses` [INFERRED]
 - [[test_live_execution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_157
+#graphify/code #graphify/EXTRACTED #community/Community_73

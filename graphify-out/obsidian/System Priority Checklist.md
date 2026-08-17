@@ -1,11 +1,11 @@
 ---
 source_file: "docs/PRIORITY-CHECKLIST.md"
 type: "document"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 142"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_142
 ---
 
 # System Priority Checklist
@@ -15,4 +15,4 @@ tags:
 - [[kelly_fraction()]] - `references` [EXTRACTED]
 - [[run_anomaly_check()]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/document #graphify/EXTRACTED #community/Community_142

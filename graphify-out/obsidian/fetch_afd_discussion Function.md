@@ -1,13 +1,13 @@
 ---
 source_file: "nws_afd.py"
 type: "code"
-community: "Black Swan Halt State"
+community: "Community 817"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_817
 ---
 
 # fetch_afd_discussion Function
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_817

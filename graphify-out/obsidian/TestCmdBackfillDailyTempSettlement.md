@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p1_remaining.py"
 type: "code"
-community: "Community 368"
+community: "Community 624"
 location: "L1401"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_368
+  - community/Community_624
 ---
 
 # TestCmdBackfillDailyTempSettlement
@@ -20,4 +20,4 @@ tags:
 - [[main.cmd_backfill_daily_temp_settlement -- the `backfill-daily-temp-settlement`…]] - `rationale_for` [EXTRACTED]
 - [[test_p1_remaining.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_368
+#graphify/code #graphify/EXTRACTED #community/Community_624

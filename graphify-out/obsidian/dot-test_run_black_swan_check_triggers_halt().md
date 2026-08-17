@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "code"
-community: "Community 167"
+community: "Community 170"
 location: "L510"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_167
+  - community/Community_170
 ---
 
 # .test_run_black_swan_check_triggers_halt()
@@ -15,4 +15,4 @@ tags:
 - [[TestBlackSwanMode]] - `method` [EXTRACTED]
 - [[run_black_swan_check activates kill switch when conditions are met.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_167
+#graphify/code #graphify/EXTRACTED #community/Community_170

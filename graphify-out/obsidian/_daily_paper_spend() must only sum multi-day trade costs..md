@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_n.py"
 type: "rationale"
-community: "Community 63"
+community: "Community 60"
 location: "L27"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_63
+  - community/Community_60
 ---
 
 # _daily_paper_spend() must only sum multi-day trade costs.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestDailyPaperSpend]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_63
+#graphify/rationale #graphify/EXTRACTED #community/Community_60

@@ -124,6 +124,7 @@ from tracker import (
 # reload utils because they test utils' own env-parsing directly).
 from utils import MIN_ARB_EDGE, MIN_EDGE, STRONG_EDGE, is_trading_paused
 from weather_markets import (
+    _CITY_TZ,
     _KXRAIN_MONTHLY_CITY,
     _KXSNOW_MONTHLY_CITY,
     _KXTEMP_HOURLY_CITY,
@@ -2536,24 +2537,36 @@ def _quick_paper_buy(client: KalshiClient) -> None:
         print()
 
 
-def _feature_importance_days_out(target_date_str: str | None) -> int:
+def _feature_importance_days_out(target_date_str: str | None, city: str | None) -> int:
     """How many days out a trade was placed, for feature-importance logging.
 
     target_date_str is an ISO date string (weather_markets.py's analyze_trade
     return dict stores target_date.isoformat(), not a date object) -- must be
     parsed before arithmetic, not subtracted directly. Returns 0 if absent or
-    unparseable. Uses utc_today(), not date.today(): target_date is
-    UTC-anchored (backlog.txt "utils.utc_today() SAYS 'USE EVERYWHERE
-    INSTEAD OF date.today()' -- 17 SITES STILL DON'T").
+    unparseable. target_date is CITY-LOCAL (parse_city_date()), not UTC, so
+    "today" here must be too -- mirrors analyze_trade's own local-today fix
+    (weather_markets.py) rather than utils.utc_today(), which would be wrong
+    for the ~4-8h evening window where UTC's calendar date has already rolled
+    over but the city's has not.
     """
     if not target_date_str:
         return 0
-    from datetime import date as _date_fi
+    try:
+        from zoneinfo import ZoneInfo as _ZoneInfoFi
 
-    from utils import utc_today as _utc_today_fi
+        _today_fi = datetime.now(
+            _ZoneInfoFi(_CITY_TZ.get(city or "", "America/New_York"))
+        ).date()
+    except Exception:
+        _log.warning(
+            "_feature_importance_days_out: ZoneInfo unavailable for city=%s — "
+            "falling back to UTC date",
+            city,
+        )
+        _today_fi = datetime.now(UTC).date()
 
     try:
-        return (_date_fi.fromisoformat(target_date_str) - _utc_today_fi()).days
+        return (date.fromisoformat(target_date_str) - _today_fi).days
     except (ValueError, TypeError):
         return 0
 
@@ -2943,7 +2956,7 @@ def cmd_today(client: KalshiClient) -> None:
                         # TypeError, silently swallowed by the except below, so this
                         # call has likely never actually recorded a contribution.
                         _days_out_fi = _feature_importance_days_out(
-                            best_a.get("target_date")
+                            best_a.get("target_date"), best_m.get("_city")
                         )
                         record_feature_contribution(
                             _ticker1,

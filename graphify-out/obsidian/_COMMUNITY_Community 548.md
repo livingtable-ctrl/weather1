@@ -1,20 +1,21 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.33
+members: 6
 ---
 
 # Community 548
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_get_still_retried()]] - code - tests/test_idempotency.py
-- [[dot-test_post_not_in_allowed_methods()]] - code - tests/test_idempotency.py
-- [[GET must remain in allowed_methods.]] - rationale - tests/test_idempotency.py
-- [[TestPostRetryExcluded]] - code - tests/test_idempotency.py
-- [[_build_session must not include POST in allowed_methods.]] - rationale - tests/test_idempotency.py
+- [[58.1 Add `SPREAD_LIMIT_THRESHOLD float` constant to `main.py`]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[58.2 Add `_pending_limit_orders` state and cleanup to `main.py`]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[58.3 Write tests]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[58.4 Verify & Commit]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[Background_11]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[Task 58 (P11.I) — Limit order posting at mid-price for wide-spread markets]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,11 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_Community 143]]
+- 1 edge to [[_COMMUNITY_Community 543]]
 
 ## Top bridge nodes
-- [[TestPostRetryExcluded]] - degree 4, connects to 2 communities
-- [[dot-test_get_still_retried()]] - degree 3, connects to 1 community
-- [[dot-test_post_not_in_allowed_methods()]] - degree 3, connects to 1 community
+- [[Task 58 (P11.I) — Limit order posting at mid-price for wide-spread markets]] - degree 6, connects to 1 community

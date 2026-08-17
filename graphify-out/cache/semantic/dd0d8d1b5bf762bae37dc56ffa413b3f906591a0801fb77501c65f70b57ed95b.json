@@ -1,0 +1,1 @@
+{"nodes": [{"id": "fixtures_sample_forecast_json", "label": "sample_forecast.json (NYC/Chicago forecast fixture)", "file_type": "document", "source_file": "tests/fixtures/sample_forecast.json", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}

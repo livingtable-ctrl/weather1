@@ -1,32 +1,32 @@
 ---
 type: community
-cohesion: 0.12
+cohesion: 0.14
 members: 17
 ---
 
 # Community 205
 
-**Cohesion:** 0.12 - loosely connected
+**Cohesion:** 0.14 - loosely connected
 **Members:** 17 nodes
 
 ## Members
-- [[dot-test_all_cities_return_station()]] - code - tests/test_phase2_batch_j.py
-- [[dot-test_city_tz_covers_all_cities()]] - code - tests/test_phase2_batch_j.py
-- [[dot-test_city_tz_values_are_valid_iana()]] - code - tests/test_phase2_batch_j.py
-- [[dot-test_every_city_coords_entry_has_tz_and_station()]] - code - tests/test_phase2_batch_j.py
-- [[dot-test_old_abbreviations_removed()]] - code - tests/test_phase2_batch_j.py
-- [[dot-test_settlement_monitor_series_tickers_match_known_weather_series()]] - code - tests/test_phase2_batch_j.py
-- [[dot-test_settlement_monitor_stations_match_metar_module()]] - code - tests/test_phase2_batch_j.py
-- [[dot-test_station_ids_are_correct()]] - code - tests/test_phase2_batch_j.py
-- [[dot-test_station_map_matches_metar_module()]] - code - tests/test_phase2_batch_j.py
-- [[All 18 Kalshi cities must map to a METAR station and timezone.]] - rationale - tests/test_phase2_batch_j.py
-- [[All timezone strings must be parseable by zoneinfo.]] - rationale - tests/test_phase2_batch_j.py
-- [[Every CITY_COORDS key must have a _CITY_TZ and metar.MARKET_STATION_MAP entry…]] - rationale - tests/test_phase2_batch_j.py
-- [[Old 3-letter keys (MIA, CHI, LAX, DAL, DEN) must no longer be primary keys.]] - rationale - tests/test_phase2_batch_j.py
-- [[TestMetarStationForCityAllCities]] - code - tests/test_phase2_batch_j.py
-- [[_CITY_METAR_STATION must agree with metar.MARKET_STATION_MAP.]] - rationale - tests/test_phase2_batch_j.py
-- [[_CITY_SERIES_TICKER is now derived from KNOWN_WEATHER_SERIES +…]] - rationale - tests/test_phase2_batch_j.py
-- [[settlement_monitor._MONITOR_CITIES is now derived from metar.MARKET_STATION_MAP…]] - rationale - tests/test_phase2_batch_j.py
+- [[Context manager stack that patches all network calls inside analyze_trade.]] - rationale - tests/test_data_freshness.py
+- [[Enriched dict with correct keys; fetched_at controls freshness.]] - rationale - tests/test_data_freshness.py
+- [[FORECAST_MAX_AGE_SECS must be a positive integer.]] - rationale - tests/test_data_freshness.py
+- [[If data_fetched_at is absent, analyze_trade must not reject the data.]] - rationale - tests/test_data_freshness.py
+- [[Tests for P0.3 — FORECAST_MAX_AGE_SECS and stale data rejection in…]] - rationale - tests/test_data_freshness.py
+- [[_enriched()]] - code - tests/test_data_freshness.py
+- [[_mock_externals()]] - code - tests/test_data_freshness.py
+- [[analyze_trade must not reject data when data_fetched_at is recent.]] - rationale - tests/test_data_freshness.py
+- [[analyze_trade must return None when data_fetched_at is beyond…]] - rationale - tests/test_data_freshness.py
+- [[enrich_with_forecast must add data_fetched_at to the returned dict.]] - rationale - tests/test_data_freshness.py
+- [[test_analyze_trade_accepts_fresh_data()]] - code - tests/test_data_freshness.py
+- [[test_analyze_trade_no_fetched_at_is_treated_as_fresh()]] - code - tests/test_data_freshness.py
+- [[test_analyze_trade_rejects_stale_data()]] - code - tests/test_data_freshness.py
+- [[test_data_freshness.py]] - code - tests/test_data_freshness.py
+- [[test_enrich_with_forecast_stamps_data_fetched_at()]] - code - tests/test_data_freshness.py
+- [[test_forecast_max_age_secs_is_positive_int()]] - code - tests/test_data_freshness.py
+- [[weather_markets.FORECAST_MAX_AGE_SECS]] - code - weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -36,7 +36,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
+- 5 edges to [[_COMMUNITY_Community 5]]
+- 2 edges to [[_COMMUNITY_Community 0]]
+- 2 edges to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestMetarStationForCityAllCities]] - degree 11, connects to 1 community
+- [[test_data_freshness.py]] - degree 14, connects to 3 communities
+- [[test_analyze_trade_accepts_fresh_data()]] - degree 4, connects to 1 community
+- [[test_analyze_trade_no_fetched_at_is_treated_as_fresh()]] - degree 4, connects to 1 community
+- [[test_analyze_trade_rejects_stale_data()]] - degree 4, connects to 1 community
+- [[test_enrich_with_forecast_stamps_data_fetched_at()]] - degree 3, connects to 1 community

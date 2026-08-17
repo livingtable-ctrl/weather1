@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "rationale"
-community: "Community 310"
+community: "Community 315"
 location: "L1316"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_310
+  - community/Community_315
 ---
 
 # Belt-and-suspenders: even if a response's `time` array were genuinely shorter…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_genuinely_short_time_array_treated_same_as_no_coverage()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_310
+#graphify/rationale #graphify/EXTRACTED #community/Community_315

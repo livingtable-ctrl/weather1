@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_starting_balance.py"
 type: "code"
-community: "Community 228"
+community: "Community 289"
 location: "L7"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_228
+  - community/Community_289
 ---
 
 # .test_default_is_1000()
@@ -15,4 +15,4 @@ tags:
 - [[TestStartingBalanceEnvVar]] - `method` [EXTRACTED]
 - [[Without env var, STARTING_BALANCE defaults to 1000.0.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_228
+#graphify/code #graphify/EXTRACTED #community/Community_289

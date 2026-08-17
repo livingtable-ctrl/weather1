@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecast_cache.py"
 type: "rationale"
-community: "Forecast Persistent Cache"
+community: "Community 14"
 location: "L287"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Forecast_Persistent_Cache
+  - community/Community_14
 ---
 
 # Regression: dump_to_disk must write v[0] (the value), not the raw (value, ts)…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_dump_only_persists_values_not_internal_timestamps()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Forecast_Persistent_Cache
+#graphify/rationale #graphify/EXTRACTED #community/Community_14

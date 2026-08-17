@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 288"
+community: "Community 292"
 location: "L3018"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_288
+  - community/Community_292
 ---
 
 # Schema v53 must add predictions.var, purely additive (backlog.txt "HOURLY-…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPredictionsVarColumn]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_288
+#graphify/rationale #graphify/EXTRACTED #community/Community_292

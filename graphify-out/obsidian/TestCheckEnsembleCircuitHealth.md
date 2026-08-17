@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Ensemble Weight Blending Tests"
-location: "L2586"
+community: "Community 638"
+location: "L2955"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_638
 ---
 
 # TestCheckEnsembleCircuitHealth
@@ -18,4 +18,4 @@ tags:
 - [[check_ensemble_circuit_health() warns when circuit has been open 24h.]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_638

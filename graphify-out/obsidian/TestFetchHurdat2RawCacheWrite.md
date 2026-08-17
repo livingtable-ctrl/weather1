@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 466"
+community: "Community 505"
 location: "L745"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_466
+  - community/Community_505
 ---
 
 # TestFetchHurdat2RawCacheWrite
@@ -18,4 +18,4 @@ tags:
 - [[backlog.txt hurricane_climatology.fetch_hurdat2_raw's CACHE WRITE ISN'T…]] - `rationale_for` [EXTRACTED]
 - [[test_hurricane_climatology.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_466
+#graphify/code #graphify/EXTRACTED #community/Community_505

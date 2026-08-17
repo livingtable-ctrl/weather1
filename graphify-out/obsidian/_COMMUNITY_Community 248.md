@@ -1,29 +1,29 @@
 ---
 type: community
-cohesion: 0.15
+cohesion: 0.16
 members: 14
 ---
 
 # Community 248
 
-**Cohesion:** 0.15 - loosely connected
+**Cohesion:** 0.16 - loosely connected
 **Members:** 14 nodes
 
 ## Members
-- [[dot-test_cron_logs_prod_warning()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_main_logs_prod_warning()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_no_warning_in_demo()]] - code - tests/test_phase2_batch_g.py
-- [[P2-16 KALSHI_ENV=prod must log a loud WARNING banner.]] - rationale - tests/test_phase2_batch_g.py
-- [[Phase 2 Batch B Regression Tests]] - code - tests/test_phase2_batch_b.py
-- [[Phase 2 Batch B regression tests P2-2, P2-4, P2-14.]] - rationale - tests/test_phase2_batch_b.py
-- [[Phase 2 Batch G Regression Tests]] - code - tests/test_phase2_batch_g.py
-- [[Phase 2 Batch G regression tests P2-16, P2-20, P2-30, P2-31, P2-41, P2-47.]] - rationale - tests/test_phase2_batch_g.py
-- [[TestProdStartupWarning]] - code - tests/test_phase2_batch_g.py
-- [[_save()_load() SHA-256 checksum]] - code - paper.py
-- [[cloud_backup.backup_data  restore_data]] - code - cloud_backup.py
-- [[paper._DRAWDOWN_TIER_1..4 constants]] - code - paper.py
-- [[test_drawdown_tiers.py_1]] - code - tests/test_drawdown_tiers.py
-- [[tracker._SCHEMA_VERSION  _MIGRATIONS]] - code - tracker.py
+- [[dot-test_get_still_retried()]] - code - tests/test_idempotency.py
+- [[dot-test_post_not_in_allowed_methods()]] - code - tests/test_idempotency.py
+- [[Build a requests Session with automatic retry on transient errors.]] - rationale - kalshi_client.py
+- [[GET must remain in allowed_methods.]] - rationale - tests/test_idempotency.py
+- [[KalshiClient.place_order()_find_order_by_client_id()]] - code - kalshi_client.py
+- [[P0-4 place_order idempotency key and POST retry exclusion.]] - rationale - tests/test_idempotency.py
+- [[Session]] - code
+- [[TestPostRetryExcluded]] - code - tests/test_idempotency.py
+- [[Verify HTTPAdapter Retry has exactly total=3, backoff_factor=1, correct…]] - rationale - tests/test_infrastructure.py
+- [[_build_session must not include POST in allowed_methods.]] - rationale - tests/test_idempotency.py
+- [[_build_session()]] - code - kalshi_client.py
+- [[test_idempotency.py]] - code - tests/test_idempotency.py
+- [[test_session_has_retry_adapter()]] - code - tests/test_infrastructure.py
+- [[test_session_retry_parameters()]] - code - tests/test_infrastructure.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,21 +33,17 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 132]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 260]]
-- 1 edge to [[_COMMUNITY_Community 403]]
-- 1 edge to [[_COMMUNITY_Community 404]]
-- 1 edge to [[_COMMUNITY_Community 514]]
-- 1 edge to [[_COMMUNITY_Community 515]]
-- 1 edge to [[_COMMUNITY_Community 516]]
-- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 1 edge to [[_COMMUNITY_Community 85]]
-- 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
+- 3 edges to [[_COMMUNITY_Community 7]]
+- 2 edges to [[_COMMUNITY_Community 13]]
+- 2 edges to [[_COMMUNITY_Community 191]]
+- 2 edges to [[_COMMUNITY_Community 229]]
+- 2 edges to [[_COMMUNITY_Community 41]]
+- 1 edge to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[Phase 2 Batch G Regression Tests]] - degree 12, connects to 5 communities
-- [[Phase 2 Batch B Regression Tests]] - degree 8, connects to 4 communities
-- [[_save()_load() SHA-256 checksum]] - degree 3, connects to 2 communities
-- [[test_drawdown_tiers.py_1]] - degree 3, connects to 2 communities
+- [[test_idempotency.py]] - degree 9, connects to 4 communities
+- [[_build_session()]] - degree 9, connects to 2 communities
+- [[KalshiClient.place_order()_find_order_by_client_id()]] - degree 4, connects to 2 communities
+- [[TestPostRetryExcluded]] - degree 4, connects to 1 community
+- [[test_session_retry_parameters()]] - degree 3, connects to 1 community

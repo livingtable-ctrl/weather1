@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p0_16_cron_endpoint.py"
 type: "code"
-community: "Community 512"
+community: "Community 571"
 location: "L91"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_512
+  - community/Community_571
 ---
 
 # TestIsCronRunning
@@ -19,4 +19,4 @@ tags:
 - [[Unit tests for the _is_cron_running() helper in cron.py.]] - `rationale_for` [EXTRACTED]
 - [[test_p0_16_cron_endpoint.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_512
+#graphify/code #graphify/EXTRACTED #community/Community_571

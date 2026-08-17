@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 578"
-location: "L2685"
+community: "Community 122"
+location: "L3054"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_578
+  - community/Community_122
 ---
 
 # .test_la_renamed_high_ticker()
 
 ## Connections
-- [[dot-_city()]] - `calls` [EXTRACTED]
+- [[dot-_city()_1]] - `calls` [EXTRACTED]
 - [[KXHIGHLAX (renamed from KXHIGHLA) → LA.]] - `rationale_for` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_578
+#graphify/code #graphify/EXTRACTED #community/Community_122

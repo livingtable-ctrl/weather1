@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.48
+members: 7
 ---
 
 # Community 525
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.48 - moderately connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_signal_values_absent_stores_null()]] - code - tests/test_tracker.py
-- [[dot-test_signal_values_empty_dict_stores_valid_empty_json_not_null()]] - code - tests/test_tracker.py
-- [[dot-test_signal_values_round_trip_through_upsert()]] - code - tests/test_tracker.py
-- [[dot-test_signal_values_updates_on_reupsert()]] - code - tests/test_tracker.py
-- [[TestLogPredictionSignalValues]] - code - tests/test_tracker.py
-- [[log_prediction() must persist `signals` (backlog.txt SIGNAL GRADUATION IS A…]] - rationale - tests/test_tracker.py
+- [[dot-_trade()_3]] - code - tests/test_positions.py
+- [[dot-_write_ledger()]] - code - tests/test_positions.py
+- [[dot-test_exit_wraps_close_paper_early()]] - code - tests/test_positions.py
+- [[dot-test_get_open_converts_every_open_trade_to_a_position()]] - code - tests/test_positions.py
+- [[dot-test_save_peak_writes_only_the_targeted_position()]] - code - tests/test_positions.py
+- [[TestPaperPositionStore]] - code - tests/test_positions.py
+- [[Two open positions on disk; saving one's peak must not touch the other's -- a…]] - rationale - tests/test_positions.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 3 edges to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 57]]
 
 ## Top bridge nodes
-- [[TestLogPredictionSignalValues]] - degree 6, connects to 1 community
+- [[TestPaperPositionStore]] - degree 8, connects to 2 communities
+- [[dot-test_save_peak_writes_only_the_targeted_position()]] - degree 5, connects to 1 community

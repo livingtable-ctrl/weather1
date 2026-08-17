@@ -1,12 +1,12 @@
 ---
 source_file: "climate_indices.py"
 type: "code"
-community: "Climatology & Climate Index Fetching"
+community: "Community 4"
 location: "L196"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_4
 ---
 
 # get_enso_index()
@@ -18,4 +18,4 @@ tags:
 - [[get_indices()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_4

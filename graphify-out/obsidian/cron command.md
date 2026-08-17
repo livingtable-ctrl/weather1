@@ -1,16 +1,16 @@
 ---
 source_file: "COMMANDS.md"
 type: "document"
-community: "Test Fixture Cache Clearing (conftest)"
+community: "Community 18"
 tags:
   - graphify/document
   - graphify/INFERRED
-  - community/Test_Fixture_Cache_Clearing_conftest
+  - community/Community_18
 ---
 
 # cron command
 
 ## Connections
-- [[isolate_cron_generated_files fixture]] - `shares_data_with` [INFERRED]
+- [[isolate_cron_generated_files()]] - `shares_data_with` [INFERRED]
 
-#graphify/document #graphify/INFERRED #community/Test_Fixture_Cache_Clearing_conftest
+#graphify/document #graphify/INFERRED #community/Community_18

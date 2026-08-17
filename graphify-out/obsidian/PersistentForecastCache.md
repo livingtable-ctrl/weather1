@@ -1,12 +1,12 @@
 ---
 source_file: "forecast_cache.py"
 type: "code"
-community: "Forecast Persistent Cache"
+community: "Community 14"
 location: "L133"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecast_Persistent_Cache
+  - community/Community_14
 ---
 
 # PersistentForecastCache
@@ -29,4 +29,4 @@ tags:
 - [[test_persistent_cache_get_set_is_thread_safe()]] - `calls` [EXTRACTED]
 - [[test_persistent_cache_is_a_forecast_cache()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecast_Persistent_Cache
+#graphify/code #graphify/EXTRACTED #community/Community_14

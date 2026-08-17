@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "rationale"
-community: "Community 278"
+community: "Community 279"
 location: "L558"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_278
+  - community/Community_279
 ---
 
 # strikes_and_results: list of (floor_strike, "yes"/"no").
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-_ladder()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_278
+#graphify/rationale #graphify/EXTRACTED #community/Community_279

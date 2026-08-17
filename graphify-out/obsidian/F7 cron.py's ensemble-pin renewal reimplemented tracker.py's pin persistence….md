@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_group_c.py"
 type: "rationale"
-community: "Community 544"
+community: "Community 609"
 location: "L194"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_544
+  - community/Community_609
 ---
 
 # F7: cron.py's ensemble-pin renewal reimplemented tracker.py's pin persistence…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestEnsemblePinRenewalUsesTrackerAccessors]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_544
+#graphify/rationale #graphify/EXTRACTED #community/Community_609

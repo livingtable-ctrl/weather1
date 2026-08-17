@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-25-fix-backtest-simulate-validate.md"
 type: "document"
-community: "Community 386"
+community: "Community 399"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_386
+  - community/Community_399
 ---
 
 # Fix cmd_simulate Status Param
@@ -15,4 +15,4 @@ tags:
 - [[Fix Simulate Pagination]] - `references` [EXTRACTED]
 - [[main.py module_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_386
+#graphify/document #graphify/EXTRACTED #community/Community_399

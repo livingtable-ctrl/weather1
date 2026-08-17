@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_http.py"
 type: "code"
-community: "Community 142"
+community: "Community 165"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_142
+  - community/Community_165
 ---
 
 # test_http.py
@@ -16,7 +17,8 @@ tags:
 - [[TestGetWeatherForecastMocked]] - `contains` [EXTRACTED]
 - [[_forecast_model_weights()]] - `references` [EXTRACTED]
 - [[_open_meteo_payload()]] - `contains` [EXTRACTED]
-- [[get_weather_forecast()]] - `references` [EXTRACTED]
+- [[get_weather_forecast()]] - `imports` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 - [[weather_markets.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_142
+#graphify/code #graphify/EXTRACTED #community/Community_165

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 348"
-location: "L4832"
+community: "Community 353"
+location: "L5201"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_348
+  - community/Community_353
 ---
 
 # TestDetectHedgeOpportunity
@@ -20,4 +20,4 @@ tags:
 - [[analyze_trade must surface 'city' in its result (previously missing entirely)…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_348
+#graphify/code #graphify/EXTRACTED #community/Community_353

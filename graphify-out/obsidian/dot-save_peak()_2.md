@@ -1,21 +1,19 @@
 ---
-source_file: "paper.py"
+source_file: "positions.py"
 type: "code"
-community: "Community 693"
-location: "L1388"
+community: "Community 12"
+location: "L88"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_12
 ---
 
 # .save_peak()
 
 ## Connections
-- [[PaperPositionStore]] - `method` [EXTRACTED]
-- [[Persist one position's new peak. Writes one trade at a time (one _save() per…]] - `rationale_for` [EXTRACTED]
-- [[Position_1]] - `references` [EXTRACTED]
-- [[_load()_1]] - `calls` [EXTRACTED]
-- [[_save()_1]] - `calls` [EXTRACTED]
+- [[Position]] - `references` [EXTRACTED]
+- [[PositionStore]] - `method` [EXTRACTED]
+- [[update_peak_profits()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_12

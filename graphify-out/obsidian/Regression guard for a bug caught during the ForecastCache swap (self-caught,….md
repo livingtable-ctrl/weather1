@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_nws_afd.py"
 type: "rationale"
-community: "Community 68"
+community: "Community 129"
 location: "L386"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_68
+  - community/Community_129
 ---
 
 # Regression guard for a bug caught during the ForecastCache swap (self-caught,…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_negative_result_is_cached_not_refetched_every_call()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_68
+#graphify/rationale #graphify/EXTRACTED #community/Community_129

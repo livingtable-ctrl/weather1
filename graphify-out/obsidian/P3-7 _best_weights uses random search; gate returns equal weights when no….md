@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_c.py"
 type: "rationale"
-community: "Community 72"
+community: "Community 147"
 location: "L158"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_72
+  - community/Community_147
 ---
 
 # P3-7: _best_weights uses random search; gate returns equal weights when no…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestRandomSearchAndGate]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_72
+#graphify/rationale #graphify/EXTRACTED #community/Community_147

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_config_validation.py"
 type: "code"
-community: "Community 212"
+community: "Community 47"
 location: "L54"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_212
+  - community/Community_47
 ---
 
 # test_bot_config_loads_from_env()
@@ -16,4 +16,4 @@ tags:
 - [[reset_config()]] - `calls` [EXTRACTED]
 - [[test_config_validation.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_212
+#graphify/code #graphify/EXTRACTED #community/Community_47

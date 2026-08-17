@@ -1,12 +1,12 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Community 693"
+community: "Community 368"
 location: "L156"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_368
 ---
 
 # .acquire()
@@ -17,4 +17,4 @@ tags:
 - [[Also usable directly (not just via `with`) — a couple of call sites span…]] - `rationale_for` [EXTRACTED]
 - [[_CrossProcessDataLock]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_368

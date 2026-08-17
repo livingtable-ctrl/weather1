@@ -10,21 +10,21 @@ members: 15
 **Members:** 15 nodes
 
 ## Members
-- [[dot-test_edge_decays_as_close_approaches()]] - code - tests/test_trading.py
-- [[dot-test_full_edge_beyond_reference_hours()]] - code - tests/test_trading.py
-- [[dot-test_full_edge_far_from_close()]] - code - tests/test_trading.py
-- [[dot-test_half_edge_at_half_reference_hours()]] - code - tests/test_trading.py
-- [[dot-test_half_edge_at_half_time()]] - code - tests/test_trading.py
-- [[dot-test_near_close_retains_meaningful_edge()]] - code - tests/test_trading.py
-- [[dot-test_zero_at_close_time()]] - code - tests/test_trading.py
-- [[At 10h before close with 8h reference full edge returned.]] - rationale - tests/test_trading.py
-- [[At 2h before close with 8h reference 5% edge retained (was 4% with 48h).]] - rationale - tests/test_trading.py
-- [[At 4h before close with 8h reference ~50% of edge returned.]] - rationale - tests/test_trading.py
-- [[At exactly half of reference_hours remaining, edge should be halved.]] - rationale - tests/test_trading.py
-- [[At or past close_time, edge should be 0.]] - rationale - tests/test_trading.py
-- [[Edge at 6h remaining  edge at 3h remaining (within 8h reference window).]] - rationale - tests/test_trading.py
-- [[TestTimeDecayEdge]] - code - tests/test_trading.py
-- [[Well before close (= reference_hours), edge should be unchanged.]] - rationale - tests/test_trading.py
+- [[dot-test_fetch_exception_returns_false_not_raise()]] - code - tests/test_snow_markets.py
+- [[dot-test_finalized_writes_settled_value_not_settled_var()]] - code - tests/test_snow_markets.py
+- [[dot-test_missing_expiration_value_returns_false()]] - code - tests/test_snow_markets.py
+- [[dot-test_no_matching_outcomes_row_returns_false()]] - code - tests/test_snow_markets.py
+- [[dot-test_non_numeric_expiration_value_returns_false()]] - code - tests/test_snow_markets.py
+- [[dot-test_not_finalized_returns_false_no_write()]] - code - tests/test_snow_markets.py
+- [[dot-test_rain_and_snow_registries_are_prefix_disjoint()]] - code - tests/test_snow_markets.py
+- [[dot-test_rain_settlement_still_works_alongside_snow_branch()]] - code - tests/test_snow_markets.py
+- [[dot-test_snow_branch_reached_before_parse_city_date_early_return()]] - code - tests/test_snow_markets.py
+- [[Real regression-control invariant _KXRAIN_MONTHLY_CITY and…]] - rationale - tests/test_snow_markets.py
+- [[Review-caught gap the UPDATE could match zero rows (no prior outcomes row for…]] - rationale - tests/test_snow_markets.py
+- [[Settlement smoke test a rain ticker still takes the rain branch (checked first…]] - rationale - tests/test_snow_markets.py
+- [[TestAuditSettlementMonthlySnow]] - code - tests/test_snow_markets.py
+- [[The real regression this fix targets parse_city_date() returns (city, None)…]] - rationale - tests/test_snow_markets.py
+- [[backlog.txt Snow Step 2 audit_settlement()'s new snow branch reads Kalshi's…]] - rationale - tests/test_snow_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,12 +34,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 7 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 92]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestTimeDecayEdge]] - degree 8, connects to 1 community
-- [[dot-test_edge_decays_as_close_approaches()]] - degree 3, connects to 1 community
-- [[dot-test_full_edge_beyond_reference_hours()]] - degree 3, connects to 1 community
-- [[dot-test_full_edge_far_from_close()]] - degree 3, connects to 1 community
-- [[dot-test_half_edge_at_half_reference_hours()]] - degree 3, connects to 1 community
+- [[TestAuditSettlementMonthlySnow]] - degree 11, connects to 1 community

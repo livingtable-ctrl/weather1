@@ -1,12 +1,12 @@
 ---
 source_file: "system_health.py"
 type: "code"
-community: "Community 296"
+community: "Community 245"
 location: "L68"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_296
+  - community/Community_245
 ---
 
 # _check_platt_sanity()
@@ -19,4 +19,4 @@ tags:
 - [[system_health.py]] - `contains` [EXTRACTED]
 - [[system_health.py_1]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_296
+#graphify/code #graphify/EXTRACTED #community/Community_245

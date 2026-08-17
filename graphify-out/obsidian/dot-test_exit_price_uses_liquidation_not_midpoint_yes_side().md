@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_early_exits.py"
 type: "code"
-community: "Community 333"
+community: "Community 340"
 location: "L428"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_333
+  - community/Community_340
 ---
 
 # .test_exit_price_uses_liquidation_not_midpoint_yes_side()
@@ -16,4 +16,4 @@ tags:
 - [[TestEarlyExitPricingConvention]] - `method` [EXTRACTED]
 - [[yes_bid=20cyes_ask=40c liquidation (realizable) = 0.20 (the bid). The old…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_333
+#graphify/code #graphify/EXTRACTED #community/Community_340

@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "code"
-community: "Community 256"
+community: "Community 253"
 location: "L98"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_256
+  - community/Community_253
 ---
 
 # TestSchemaVersionMatchesMigrations
 
 ## Connections
-- [[dot-setup_method()_16]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_9]] - `method` [EXTRACTED]
+- [[dot-setup_method()_18]] - `method` [EXTRACTED]
+- [[dot-teardown_method()_10]] - `method` [EXTRACTED]
 - [[dot-test_all_migrated_columns_present_on_fresh_db()]] - `method` [EXTRACTED]
 - [[dot-test_genuine_operational_error_is_not_swallowed()]] - `method` [EXTRACTED]
 - [[dot-test_legacy_db_with_all_columns_but_no_version_self_heals()]] - `method` [EXTRACTED]
@@ -22,4 +22,4 @@ tags:
 - [[backlog.txt execution_log.py's SWALLOWED-ALTER MIGRATIONS vs tracker.py's…]] - `rationale_for` [EXTRACTED]
 - [[test_execution_log.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_256
+#graphify/code #graphify/EXTRACTED #community/Community_253

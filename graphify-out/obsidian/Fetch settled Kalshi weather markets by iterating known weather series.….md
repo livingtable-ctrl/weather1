@@ -1,12 +1,12 @@
 ---
 source_file: "backtest.py"
 type: "rationale"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 0"
 location: "L291"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_0
 ---
 
 # Fetch settled Kalshi weather markets by iterating known weather series.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_fetch_settled_markets()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

@@ -1,23 +1,27 @@
 ---
 source_file: "paper.py"
 type: "code"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 1"
 location: "L2723"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_1
 ---
 
 # is_daily_loss_halted()
 
 ## Connections
+- [[dot-check()]] - `calls` [EXTRACTED]
 - [[Return True if today's P&L is worse than -MAX_DAILY_LOSS_PCT  current balance.…]] - `rationale_for` [EXTRACTED]
+- [[_auto_place_trades()]] - `calls` [EXTRACTED]
 - [[_quick_paper_buy()]] - `calls` [EXTRACTED]
-- [[get_balance()]] - `calls` [EXTRACTED]
 - [[get_daily_pnl()]] - `calls` [EXTRACTED]
-- [[main.py_1]] - `imports` [EXTRACTED]
-- [[paper.py_1]] - `contains` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
+- [[order_executor.py]] - `imports` [EXTRACTED]
+- [[paper.get_balance]] - `calls` [EXTRACTED]
+- [[paper.py]] - `contains` [EXTRACTED]
 - [[place_paper_order()_1]] - `calls` [EXTRACTED]
+- [[trading_gates.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/code #graphify/EXTRACTED #community/Community_1

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_i.py"
 type: "code"
-community: "Community 482"
+community: "Community 520"
 location: "L293"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_482
+  - community/Community_520
 ---
 
 # TestCheckPositionLimitsDenom
@@ -16,6 +16,6 @@ tags:
 - [[dot-test_global_cap_triggers_correctly()]] - `method` [EXTRACTED]
 - [[dot-test_small_order_passes_on_grown_account()]] - `method` [EXTRACTED]
 - [[Global exposure cap must use _exposure_denom(), not STARTING_BALANCE.]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Batch I Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_i.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_482
+#graphify/code #graphify/EXTRACTED #community/Community_520

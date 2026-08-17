@@ -566,12 +566,26 @@ Resolution (2026-08-11):
   tests/test_mos.py, tests/test_tracker.py, tests/test_weather_markets.py,
   tests/test_nws.py).
 
-[OPEN 2026-08-11 -- new, filed by adjacency while resolving the ANALYZE_TRADE'S past_date GATE entry above (an opus effort=high review of that fix traced every consumer of analyze_trade's target_date/days_out and found these 2 non-trading-path sites share the same bug class; deliberately NOT fixed inline there per the same-payload scope test -- these are genuinely separate consumers, not the live trade-entry blend that fix was already touching).] main.py's _feature_importance_days_out AND monte_carlo.py's is-past CHECK STILL COMPARE A CITY-LOCAL target_date/DATE STRING AGAINST UTC TODAY
-Priority: Low -- neither gates a live trade entry. main.py's
-  _feature_importance_days_out feeds model-training feature logging (not a
-  live decision); monte_carlo.py's is-past check gates a standalone
-  simulation. Same bug class and window as the (now-fixed) ANALYZE_TRADE'S
-  past_date GATE entry, just lower-stakes consumers.
+[RESOLVED 2026-08-17 -- re-verified against HEAD before starting (all line numbers had drifted slightly but the bug and both call sites were confirmed unchanged); see resolution note below.] main.py's _feature_importance_days_out AND monte_carlo.py's is-past CHECK STILL COMPARE A CITY-LOCAL target_date/DATE STRING AGAINST UTC TODAY
+Priority: Site 1 (main.py) stays Low -- cmd_today only runs on a human's
+  manual `today`/`t` invocation (main.py:7056, 9365, 9579), never from
+  cron/watch, and feeds only feature_importance's offline training log.
+  Site 2 (monte_carlo.py) is RE-PRIORITIZED to Medium -- re-verification
+  found `simulate_portfolio` is NOT just a standalone simulation as
+  originally framed here: `portfolio_var()` calls it directly, and
+  order_executor.py's `_auto_place_trades` (the function placing every
+  paper AND live trade on each cron/watch cycle) calls `portfolio_var()`
+  as a pre-trade risk gate against `MAX_VAR_DOLLARS` (default $200,
+  enabled unless explicitly overridden) -- so this bug genuinely reached a
+  live-trade-gating decision, not just a reporting inaccuracy. Because the
+  bug always excludes trades in the same direction (UTC-today >=
+  city-local-today, never earlier), the effect was one-directional: during
+  the daily UTC-rollover window, a still-open position could be wrongly
+  dropped from the VaR simulation, UNDERSTATING projected risk and making
+  the gate more permissive than intended for that window -- narrow and
+  one-directional, but a real safety-gate integrity gap, not merely
+  cosmetic. Original filing's "neither gates a live trade entry" framing
+  for Site 2 was wrong; corrected here.
 
 Problem:
   main.py ~line 2552 (_feature_importance_days_out):
@@ -633,6 +647,65 @@ When to revisit:
   No blocking dependency. Low priority -- pick up opportunistically or
   when someone is already touching feature-importance logging or the
   monte carlo simulation for other reasons.
+
+Resolution (2026-08-17):
+  Both sites fixed, mirroring analyze_trade's own established pattern
+  exactly: try a ZoneInfo-based city-local "today" (_CITY_TZ.get(city or
+  "", "America/New_York")), falling back to datetime.now(UTC).date() with
+  a logged warning if ZoneInfo construction fails for any reason.
+
+  main.py: _feature_importance_days_out(target_date_str, city) now takes
+  city as a parameter (added _CITY_TZ to the existing weather_markets
+  import at main.py:127). Its one call site (main.py, inside cmd_today's
+  post-order feature-logging block) now passes `best_m.get("_city")`,
+  which was already in scope 23 lines above -- answers this entry's own
+  open question. Confirmed cmd_today is a human-triggered-only command
+  (menu handler + `today`/`t` CLI dispatch), never reached from cron/
+  watch, so Site 1 stays Low priority as originally filed.
+
+  monte_carlo.py: simulate_portfolio's elif _tdate branch (both the
+  parsed-date comparison and the unparseable-date string-compare fallback
+  -- fixing only one of the two would have left the fallback silently
+  using stale UTC) now computes city-local "today" from `t.get("city")`
+  via a lazy `from weather_markets import _CITY_TZ` (no circular import;
+  weather_markets.py never imports monte_carlo.py or main.py). Re-tracing
+  every caller of simulate_portfolio, NOT done by the original filing,
+  found Site 2 reaches a real live-trade-gating decision via portfolio_var
+  -> order_executor._auto_place_trades' MAX_VAR_DOLLARS check -- see the
+  corrected Priority note above. Treated as Medium-tier for review
+  purposes given this finding, though the actual diff mirrors Site 1's
+  established, low-risk pattern.
+
+  Tests: tests/test_feature_importance_days_out.py gained a `city`
+  parameter to every existing call plus new cases for the unknown-city
+  fallback, the ZoneInfo-failure-falls-back-to-UTC path, and a UTC-
+  rollover-window regression (uses "LA" at a fixed instant where LA's
+  local date genuinely differs from both UTC's and the function's own
+  America/New_York fallback default, proving a real per-city lookup
+  rather than "any non-UTC zone"). tests/test_paper.py's existing
+  test_past_date_trade_excluded_from_simulation needed its "past" offset
+  widened from 1 day to 2 (every US timezone this repo trades lags UTC,
+  so a 1-day-past target_date can coincide with a lagging city's real
+  local-today and no longer count as past post-fix -- caught by actually
+  running the updated test, not anticipated in advance) plus 3 new tests:
+  the UTC-rollover regression (n_clamped as a positive control proving
+  the trade reached the clamping path rather than merely not crashing),
+  the same regression for the unparseable-date string-compare fallback,
+  and a ZoneInfo-failure-falls-back-to-UTC case. All new/changed
+  assertions mutation-tested via Edit (not string-replace scripts):
+  reverting main.py's fix to plain `datetime.now(UTC).date()` and
+  reverting monte_carlo.py's fix the same way both correctly failed their
+  respective new tests; separately mutating monte_carlo.py's UTC-fallback
+  branch to a deliberately wrong date also correctly failed its test.
+  Fresh count at the moment of writing this narrative: 638 passed, 2
+  skipped across the full scoped suite (test_feature_importance_days_out,
+  test_paper, test_live_execution, test_phase2_batch_f, test_phase2_
+  batch_h, test_phase3_batch_a, test_phase3_batch_d, test_signal_quality,
+  test_regression, test_hurricane_markets, test_p1_remaining,
+  test_date_today_guard, test_dedup, test_risk_control). Lint (ruff/
+  ruff-format/mypy via the actual pre-commit hook) is clean across all 4
+  changed files (main.py, monte_carlo.py, tests/test_feature_importance_
+  days_out.py, tests/test_paper.py).
 
 [OPEN 2026-08-10 -- new, filed by adjacency while resolving the SETTLEMENT_MONITOR.PY between-bucket AC3 entry below (second opus review round, spotted in passing while reading weather_markets.py's _persistence_prob for unrelated reasons; independently re-verified against nws.py's actual return shape before filing).] weather_markets.py's persistence_prob "PREFER TODAY'S OBSERVED MAX" BRANCH IS DEAD CODE -- nws.get_live_observation() NEVER RETURNS max_temp_f OR high_f
 Priority: Low-Medium -- affects only the `_persistence_prob` fallback path

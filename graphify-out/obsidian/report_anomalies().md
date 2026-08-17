@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L536"
+community: "Community 3"
+location: "L537"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # report_anomalies()
@@ -15,6 +15,5 @@ tags:
 - [[Print anomaly warnings; no-op when list is empty.]] - `rationale_for` [EXTRACTED]
 - [[_cmd_cron_body()]] - `calls` [EXTRACTED]
 - [[cron.py]] - `contains` [EXTRACTED]
-- [[test_cron_integration.py_1]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_3

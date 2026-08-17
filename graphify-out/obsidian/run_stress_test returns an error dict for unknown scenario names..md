@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "rationale"
-community: "Community 50"
+community: "Community 54"
 location: "L1396"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_50
+  - community/Community_54
 ---
 
 # run_stress_test returns an error dict for unknown scenario names.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_run_stress_test_unknown_scenario_returns_error()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_50
+#graphify/rationale #graphify/EXTRACTED #community/Community_54

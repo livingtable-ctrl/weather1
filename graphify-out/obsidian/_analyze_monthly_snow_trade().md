@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "ML Bias Correction & Audit Plans"
-location: "L8792"
+community: "Community 5"
+location: "L8894"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_5
 ---
 
 # _analyze_monthly_snow_trade()
@@ -18,13 +18,12 @@ tags:
 - [[_price_and_size()]] - `calls` [EXTRACTED]
 - [[acis_snow.py]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
-- [[date_2]] - `calls` [EXTRACTED]
+- [[date_9]] - `calls` [EXTRACTED]
 - [[datetime_2]] - `references` [EXTRACTED]
 - [[edge_confidence()]] - `calls` [EXTRACTED]
 - [[get_quintile_bias()]] - `calls` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 - [[test_snow_markets.py]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
-- [[weather_markets.py_1]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/code #graphify/EXTRACTED #community/Community_5

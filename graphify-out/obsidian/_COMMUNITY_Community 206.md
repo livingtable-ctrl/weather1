@@ -1,32 +1,32 @@
 ---
 type: community
-cohesion: 0.17
+cohesion: 0.12
 members: 17
 ---
 
 # Community 206
 
-**Cohesion:** 0.17 - loosely connected
+**Cohesion:** 0.12 - loosely connected
 **Members:** 17 nodes
 
 ## Members
-- [[(city, _CITY_TZ value) pairs for the 4 representative US timezones this bot…]] - rationale - tests/test_weather_markets.py
-- [[dot-_enriched()_4]] - code - tests/test_weather_markets.py
-- [[dot-now()]] - code - tests/test_weather_markets.py
-- [[dot-test_days_out_ceiling_uses_city_local_today_not_utc()]] - code - tests/test_weather_markets.py
-- [[dot-test_genuinely_past_market_still_gated_during_utc_rollover_window()]] - code - tests/test_weather_markets.py
-- [[dot-test_same_day_market_still_open_during_utc_rollover_window()]] - code - tests/test_weather_markets.py
-- [[dot-test_still_open_local_market_hits_forecast_not_timemachine()]] - code - tests/test_weather_markets.py
-- [[A market that is genuinely one full day in the past for the city (not just UTC)…]] - rationale - tests/test_weather_markets.py
-- [[A market whose target_date is still today in the city's own timezone must NOT…]] - rationale - tests/test_weather_markets.py
-- [[TestFetchTemperaturePirateWeatherHistoricalRouting]] - code - tests/test_weather_markets.py
-- [[TestPastDateGateCityLocal]] - code - tests/test_weather_markets.py
-- [[The generic days_out ceiling gate (MAX_DAYS_OUT) must also key off city-local…]] - rationale - tests/test_weather_markets.py
-- [[_FrozenDatetime]] - code - tests/test_weather_markets.py
-- [[_frozen_datetime_at()]] - code - tests/test_weather_markets.py
-- [[datetime]] - code
-- [[datetime.now(tz) returns _FROZEN_INSTANT converted to tz (or naive…]] - rationale - tests/test_weather_markets.py
-- [[fetch_temperature_pirate_weather must route to the FORECAST endpoint (not the…]] - rationale - tests/test_weather_markets.py
+- [[dot-_settled_market()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_get_cached_accepts_recent_date_within_max_age()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_get_cached_returns_count_for_matching_season()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_get_cached_returns_none_for_corrupt_non_dict_entry()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_get_cached_returns_none_for_non_int_count()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_get_cached_returns_none_for_stale_date()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_get_cached_returns_none_for_wrong_season_year()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_get_cached_returns_none_when_missing()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_refresh_counts_settled_yes_per_basin()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_refresh_leaves_basin_unwritten_when_no_markets_match()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_refresh_never_raises_on_fetch_failure()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_refresh_skips_basin_already_done_today()]] - code - tests/test_hurricane_markets.py
+- [[A stale prior-season cache entry must never silently tilt the CURRENT season's…]] - rationale - tests/test_hurricane_markets.py
+- [[Opus-review-caught (2026-08-03, HIGH) the cache's `date` field was written but…]] - rationale - tests/test_hurricane_markets.py
+- [[Opus-review-caught (2026-08-03, MEDIUM-HIGH) an emptyno-match settled-markets…]] - rationale - tests/test_hurricane_markets.py
+- [[Opus-review-caught a corrupted cache with a non-dict basin entry must fail…]] - rationale - tests/test_hurricane_markets.py
+- [[TestHurricaneCountToDateCache]] - code - tests/test_hurricane_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -36,12 +36,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 5 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 3 edges to [[_COMMUNITY_Community 64]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
-- [[TestPastDateGateCityLocal]] - degree 6, connects to 1 community
-- [[dot-test_days_out_ceiling_uses_city_local_today_not_utc()]] - degree 6, connects to 1 community
-- [[dot-test_genuinely_past_market_still_gated_during_utc_rollover_window()]] - degree 6, connects to 1 community
-- [[dot-test_same_day_market_still_open_during_utc_rollover_window()]] - degree 6, connects to 1 community
-- [[datetime]] - degree 6, connects to 1 community
+- [[TestHurricaneCountToDateCache]] - degree 13, connects to 1 community

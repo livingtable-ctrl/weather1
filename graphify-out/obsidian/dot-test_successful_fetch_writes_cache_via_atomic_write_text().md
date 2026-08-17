@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 466"
+community: "Community 505"
 location: "L769"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_466
+  - community/Community_505
 ---
 
 # .test_successful_fetch_writes_cache_via_atomic_write_text()
@@ -16,4 +16,4 @@ tags:
 - [[TestFetchHurdat2RawCacheWrite]] - `method` [EXTRACTED]
 - [[The real, non-mocked safe_io.atomic_write_text must be what lands the cache…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_466
+#graphify/code #graphify/EXTRACTED #community/Community_505

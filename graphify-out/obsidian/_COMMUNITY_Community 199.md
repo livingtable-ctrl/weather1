@@ -1,32 +1,32 @@
 ---
 type: community
-cohesion: 0.15
+cohesion: 0.22
 members: 17
 ---
 
 # Community 199
 
-**Cohesion:** 0.15 - loosely connected
+**Cohesion:** 0.22 - loosely connected
 **Members:** 17 nodes
 
 ## Members
-- [[1a Extract paths.py (break circular dep)]] - document - docs/superpowers/plans/do-after-graduation.md
-- [[D1 Forecast Source Attribution]] - document - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[D2 Model Disagreement Flag]] - document - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[D3 Trade Timeline View]] - document - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[E10 analysis_attempts Pruning]] - document - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
-- [[E2 Weekly VACUUM Scheduling]] - document - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
-- [[E4 Dead Man's Switch (48h Alert)]] - document - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
-- [[G1 Extract paths.py]] - document - docs/superpowers/plans/2026-06-27-category-g-architecture.md
-- [[H6 Signal Drill-Down Panel]] - document - docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md
-- [[H8 Model Disagreement Indicator (Positions)]] - document - docs/superpowers/plans/2026-06-27-category-h-dashboard-ux.md
-- [[LV3 HRRR Intraday Update]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
-- [[LV8 Natural Language Daily Brief]] - document - docs/superpowers/plans/2026-06-27-category-lv-visionary.md
-- [[Signals Page Spec (signals)]] - document - docs/superpowers/specs/2026-04-10-dashboard-modernization-design.md
-- [[SignalsTab.jsx Component]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[cron.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[paths.py Module]] - code - docs/superpowers/plans/2026-06-27-category-g-architecture.md
-- [[watchdog.py Module]] - code - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
+- [[dot-test_days_out_defaults_to_zero_when_absent()]] - code - tests/test_near_settlement_log.py
+- [[dot-test_dedup_within_same_hour_via_unique_index()]] - code - tests/test_near_settlement_log.py
+- [[dot-test_missing_side_and_entry_prob_reproduces_the_original_silent_failure()]] - code - tests/test_near_settlement_log.py
+- [[dot-test_multiple_trades_all_written()]] - code - tests/test_near_settlement_log.py
+- [[dot-test_writes_row_with_real_trade_field_names()]] - code - tests/test_near_settlement_log.py
+- [[Mutation-style regression a trade record shaped like the analysis dict the old…]] - rationale - tests/test_near_settlement_log.py
+- [[Older trade records (pre-days_out field) must still satisfy the NOT NULL…]] - rationale - tests/test_near_settlement_log.py
+- [[Path_8]] - code
+- [[Regression tests for cron._log_near_settlement_trades. Backstory (backlog.txt…]] - rationale - tests/test_near_settlement_log.py
+- [[Shape of a stored paper-trade record, per paper.place_paper_order.]] - rationale - tests/test_near_settlement_log.py
+- [[Shape of one check_expiring_trades() entry.]] - rationale - tests/test_near_settlement_log.py
+- [[TestLogNearSettlementTrades]] - code - tests/test_near_settlement_log.py
+- [[Write near-settlement snapshot rows for future calibration analysis. `near` is…]] - rationale - cron.py
+- [[_log_near_settlement_trades()]] - code - cron.py
+- [[_near()]] - code - tests/test_near_settlement_log.py
+- [[_real_trade()]] - code - tests/test_near_settlement_log.py
+- [[test_near_settlement_log.py]] - code - tests/test_near_settlement_log.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -36,15 +36,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 249]]
-- 3 edges to [[_COMMUNITY_Community 141]]
-- 3 edges to [[_COMMUNITY_Community 156]]
-- 2 edges to [[_COMMUNITY_Community 179]]
-- 1 edge to [[_COMMUNITY_Community 104]]
+- 2 edges to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[G1 Extract paths.py]] - degree 7, connects to 4 communities
-- [[D1 Forecast Source Attribution]] - degree 5, connects to 1 community
-- [[SignalsTab.jsx Component]] - degree 4, connects to 1 community
-- [[D2 Model Disagreement Flag]] - degree 4, connects to 1 community
-- [[1a Extract paths.py (break circular dep)]] - degree 4, connects to 1 community
+- [[_log_near_settlement_trades()]] - degree 11, connects to 2 communities
+- [[test_near_settlement_log.py]] - degree 7, connects to 2 communities

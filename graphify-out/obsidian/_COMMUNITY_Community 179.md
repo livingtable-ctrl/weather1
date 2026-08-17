@@ -1,33 +1,34 @@
 ---
 type: community
-cohesion: 0.14
-members: 18
+cohesion: 0.11
+members: 19
 ---
 
 # Community 179
 
-**Cohesion:** 0.14 - loosely connected
-**Members:** 18 nodes
+**Cohesion:** 0.11 - loosely connected
+**Members:** 19 nodes
 
 ## Members
-- [[C Automated GTC Cancellation]] - document - docs/superpowers/specs/2026-04-10-live-order-lifecycle-design.md
-- [[--live CLI Flag]] - document - docs/superpowers/specs/2026-04-10-execution-pipeline-design.md
-- [[1b NWP Cycle-Aligned Scanning]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
-- [[3a Model Consensus Gate]] - document - docs/superpowers/specs/2026-04-11-profit-optimization-design.md
-- [[4a Unit Tests for main.py Functions]] - document - docs/superpowers/plans/do-after-graduation.md
-- [[E1 Log Rotation]] - document - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
-- [[E6 Config Validation on Startup]] - document - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
-- [[F1 RSA Private Key Permission Check]] - document - docs/superpowers/plans/2026-06-27-category-f-security.md
-- [[F2 .env World-Readable Warning]] - document - docs/superpowers/plans/2026-06-27-category-f-security.md
-- [[F3 Pickle Type Validation]] - document - docs/superpowers/plans/2026-06-27-category-f-security.md
-- [[G3 Split main.py CLI Commands]] - document - docs/superpowers/plans/2026-06-27-category-g-architecture.md
-- [[Security Audit Scope]] - document - system_audit_prompt.txt
-- [[cli.py Module (extracted CLI dispatch)]] - code - docs/superpowers/plans/2026-06-27-category-g-architecture.md
-- [[databias_models.pkl]] - code - system_audit_prompt.txt
-- [[live_config.json Hard Stops]] - document - docs/superpowers/specs/2026-04-10-execution-pipeline-design.md
-- [[main.py Module]] - code - docs/superpowers/plans/2026-06-27-category-e-infrastructure-ops.md
-- [[ml_bias.py Module]] - code - docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md
-- [[scikit-learn]] - code - requirements.txt
+- [[dot-setup_method()_14]] - code - tests/test_live_execution.py
+- [[dot-teardown_method()_8]] - code - tests/test_live_execution.py
+- [[dot-test_gtc_age_cancel_with_partial_fill_resolves_to_filled()]] - code - tests/test_live_execution.py
+- [[dot-test_gtc_cancel_fires_for_old_pending_order()]] - code - tests/test_live_execution.py
+- [[dot-test_gtc_cancel_skips_fresh_orders()]] - code - tests/test_live_execution.py
+- [[dot-test_no_side_settlement_no_wins()]] - code - tests/test_live_execution.py
+- [[dot-test_no_side_settlement_yes_wins()]] - code - tests/test_live_execution.py
+- [[dot-test_settlement_loss_does_not_double_count()]] - code - tests/test_live_execution.py
+- [[dot-test_settlement_recorded_for_finalized_market()]] - code - tests/test_live_execution.py
+- [[dot-test_settlement_win_credits_the_counter()]] - code - tests/test_live_execution.py
+- [[F7 a losing settlement must add exactly the loss to the daily counter, not…]] - rationale - tests/test_live_execution.py
+- [[F7 a winning settlement must credit (reduce) the daily counter — under the old…]] - rationale - tests/test_live_execution.py
+- [[F9 followup cancel_order() alone doesn't reveal whether the order partially…]] - rationale - tests/test_live_execution.py
+- [[NO bet loses when YES wins pnl = -qty  price (NO contract cost).]] - rationale - tests/test_live_execution.py
+- [[NO bet wins when NO wins pnl = qty  (1 - price)  (1 - fee).]] - rationale - tests/test_live_execution.py
+- [[Orders older than gtc_cancel_hours are cancelled via the API.]] - rationale - tests/test_live_execution.py
+- [[Orders younger than gtc_cancel_hours are not cancelled.]] - rationale - tests/test_live_execution.py
+- [[TestPollPendingOrdersExtended]] - code - tests/test_live_execution.py
+- [[When a filled YES order's market is finalized (YES wins), P&L is computed and…]] - rationale - tests/test_live_execution.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -37,17 +38,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 209]]
-- 3 edges to [[_COMMUNITY_Community 141]]
-- 2 edges to [[_COMMUNITY_Community 156]]
-- 2 edges to [[_COMMUNITY_Community 199]]
-- 1 edge to [[_COMMUNITY_Community 104]]
-- 1 edge to [[_COMMUNITY_Community 154]]
-- 1 edge to [[_COMMUNITY_Community 197]]
+- 3 edges to [[_COMMUNITY_Community 12]]
 
 ## Top bridge nodes
-- [[main.py Module]] - degree 17, connects to 5 communities
-- [[ml_bias.py Module]] - degree 6, connects to 2 communities
-- [[Security Audit Scope]] - degree 5, connects to 2 communities
-- [[databias_models.pkl]] - degree 2, connects to 1 community
-- [[scikit-learn]] - degree 2, connects to 1 community
+- [[TestPollPendingOrdersExtended]] - degree 13, connects to 1 community

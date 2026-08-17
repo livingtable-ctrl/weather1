@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_a.py"
 type: "code"
-community: "Community 168"
+community: "Community 15"
 location: "L372"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_168
+  - community/Community_15
 ---
 
 # .test_all_M_codes_returns_none()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestFetchMosSpecialCodes]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_168
+#graphify/code #graphify/EXTRACTED #community/Community_15

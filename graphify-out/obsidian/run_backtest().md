@@ -1,12 +1,12 @@
 ---
 source_file: "backtest.py"
 type: "code"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 8"
 location: "L332"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_8
 ---
 
 # run_backtest()
@@ -16,21 +16,24 @@ tags:
 - [[dot-test_run_backtest_accepts_use_previous_runs_flag()]] - `indirect_call` [INFERRED]
 - [[CITY_COORDS]] - `calls` [EXTRACTED]
 - [[Fetch finalized weather markets from Kalshi, then simulate our model's…]] - `rationale_for` [EXTRACTED]
-- [[KNOWN_WEATHER_SERIES]] - `shares_data_with` [EXTRACTED]
+- [[KNOWN_WEATHER_SERIES_1]] - `shares_data_with` [EXTRACTED]
 - [[TEMPERATURE_MARKET_CITIES]] - `shares_data_with` [EXTRACTED]
 - [[_fetch_settled_markets()]] - `calls` [EXTRACTED]
 - [[_parse_market_condition()]] - `calls` [EXTRACTED]
 - [[_var_from_ticker_prefix()]] - `calls` [EXTRACTED]
+- [[auto_backtest()]] - `calls` [EXTRACTED]
 - [[backtest.py]] - `contains` [EXTRACTED]
+- [[cmd_backtest()]] - `calls` [EXTRACTED]
 - [[enrich_with_forecast()]] - `calls` [EXTRACTED]
 - [[fetch_archive_precip_prob()]] - `calls` [EXTRACTED]
 - [[fetch_archive_temps()]] - `calls` [EXTRACTED]
 - [[fetch_previous_run_ensemble()]] - `calls` [EXTRACTED]
 - [[kelly_fraction()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 - [[prob_threshold()]] - `calls` [EXTRACTED]
 - [[test_backtest.py]] - `imports` [EXTRACTED]
 - [[test_phase3_batch_a.py]] - `imports` [EXTRACTED]
 - [[utc_today()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/code #graphify/EXTRACTED #community/Community_8

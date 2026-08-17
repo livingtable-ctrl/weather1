@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "rationale"
-community: "Community 113"
-location: "L160"
+community: "Community 101"
+location: "L371"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_113
+  - community/Community_101
 ---
 
 # With a global T > 1, output is compressed toward 0.5 from both sides.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_global_T_compresses_toward_0p5()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_113
+#graphify/rationale #graphify/EXTRACTED #community/Community_101

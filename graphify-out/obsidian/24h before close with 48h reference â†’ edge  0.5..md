@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "rationale"
-community: "Community 394"
+community: "Community 418"
 location: "L505"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_394
+  - community/Community_418
 ---
 
 # 24h before close with 48h reference â†’ edge * 0.5.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_half_edge_at_half_reference()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_394
+#graphify/rationale #graphify/EXTRACTED #community/Community_418

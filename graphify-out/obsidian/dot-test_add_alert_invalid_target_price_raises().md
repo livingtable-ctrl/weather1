@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts.py"
 type: "code"
-community: "Community 94"
+community: "Community 32"
 location: "L62"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_94
+  - community/Community_32
 ---
 
 # .test_add_alert_invalid_target_price_raises()
@@ -16,4 +16,4 @@ tags:
 - [[add_alert()]] - `calls` [EXTRACTED]
 - [[parametrize_3]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_94
+#graphify/code #graphify/EXTRACTED #community/Community_32

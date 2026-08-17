@@ -1,11 +1,11 @@
 ---
 source_file: "system_audit_prompt.txt"
 type: "code"
-community: "Community 141"
+community: "Community 94"
 tags:
   - graphify/code
-  - graphify/INFERRED
-  - community/Community_141
+  - graphify/EXTRACTED
+  - community/Community_94
 ---
 
 # kalshi_ws.py Module
@@ -14,4 +14,4 @@ tags:
 - [[System Audit Prompt (Enterprise Audit)]] - `references` [EXTRACTED]
 - [[websockets]] - `conceptually_related_to` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_141
+#graphify/code #graphify/EXTRACTED #community/Community_94

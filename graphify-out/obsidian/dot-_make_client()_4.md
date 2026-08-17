@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "code"
-community: "Community 283"
+community: "Community 286"
 location: "L270"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_283
+  - community/Community_286
 ---
 
 # ._make_client()
@@ -20,4 +20,4 @@ tags:
 - [[dot-test_post_succeeds_on_clean_response()]] - `calls` [EXTRACTED]
 - [[TestKalshiClientErrorBody]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_283
+#graphify/code #graphify/EXTRACTED #community/Community_286

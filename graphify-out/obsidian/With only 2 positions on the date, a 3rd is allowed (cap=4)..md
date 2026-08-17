@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backlog_batch.py"
 type: "rationale"
-community: "Kelly City Multiplier & Edge Realization"
+community: "Community 24"
 location: "L160"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Kelly_City_Multiplier__Edge_Realization
+  - community/Community_24
 ---
 
 # With only 2 positions on the date, a 3rd is allowed (cap=4).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_allows_when_under_date_cap()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization
+#graphify/rationale #graphify/EXTRACTED #community/Community_24

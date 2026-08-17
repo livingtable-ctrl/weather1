@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_a.py"
 type: "rationale"
-community: "Community 480"
+community: "Community 517"
 location: "L82"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_480
+  - community/Community_517
 ---
 
 # Trades without settled_at fall back to entered_at without crashing.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_sort_key_falls_back_to_entered_at_when_no_settled_at()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_480
+#graphify/rationale #graphify/EXTRACTED #community/Community_517

@@ -1,28 +1,28 @@
 ---
 type: community
-cohesion: 0.18
+cohesion: 0.15
 members: 13
 ---
 
 # Community 288
 
-**Cohesion:** 0.18 - loosely connected
+**Cohesion:** 0.15 - loosely connected
 **Members:** 13 nodes
 
 ## Members
-- [[dot-_analysis()]] - code - tests/test_tracker.py
-- [[dot-_analysis()_1]] - code - tests/test_tracker.py
-- [[dot-setUp()_16]] - code - tests/test_tracker.py
-- [[dot-tearDown()_16]] - code - tests/test_tracker.py
-- [[dot-test_column_exists_after_init()_1]] - code - tests/test_tracker.py
-- [[dot-test_count_settled_signal_rows_multiday_excludes_sameday_rows()]] - code - tests/test_tracker.py
-- [[dot-test_log_prediction_stores_var()]] - code - tests/test_tracker.py
-- [[dot-test_no_var_in_condition_stores_null()]] - code - tests/test_tracker.py
-- [[dot-test_upsert_on_same_day_rescan_updates_var()]] - code - tests/test_tracker.py
-- [[A daily HIGHLOW market's condition dict may not carry a var key (var lives on…]] - rationale - tests/test_tracker.py
-- [[A same-day re-analysis (UPSERT conflict on ticker+predicted_date) must…]] - rationale - tests/test_tracker.py
-- [[Schema v53 must add predictions.var, purely additive (backlog.txt HOURLY-…]] - rationale - tests/test_tracker.py
-- [[TestPredictionsVarColumn]] - code - tests/test_tracker.py
+- [[dot-test_cache_path_is_distinct_from_precip()]] - code - tests/test_snow_markets.py
+- [[dot-test_circuit_breakers_are_isolated_from_precip()]] - code - tests/test_snow_markets.py
+- [[dot-test_math_functions_are_the_same_imported_objects_not_copies()]] - code - tests/test_snow_markets.py
+- [[dot-test_parse_snow_value_accumulated_sentinel()]] - code - tests/test_snow_markets.py
+- [[dot-test_parse_snow_value_missing_sentinel()]] - code - tests/test_snow_markets.py
+- [[dot-test_parse_snow_value_numeric()]] - code - tests/test_snow_markets.py
+- [[dot-test_parse_snow_value_trace_sentinel()]] - code - tests/test_snow_markets.py
+- [[dot-test_parse_snow_value_unparseable_returns_none()]] - code - tests/test_snow_markets.py
+- [[dot-test_seasonal_cache_is_isolated_from_precip()]] - code - tests/test_snow_markets.py
+- [[Confirms the user-confirmed design decision actually landed acis_snow reuses…]] - rationale - tests/test_snow_markets.py
+- [[Real regression both modules cache on the same (lat, lon, tz, year, month) key…]] - rationale - tests/test_snow_markets.py
+- [[TestAcisSnowModule]] - code - tests/test_snow_markets.py
+- [[Unit tests for acis_snow.py's own sentinel-parsing and cache-key isolation from…]] - rationale - tests/test_snow_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -32,12 +32,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 128]]
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
-- 1 edge to [[_COMMUNITY_Tracker Settlement Sigma & Disputed Rows]]
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[dot-_analysis()_1]] - degree 6, connects to 2 communities
-- [[dot-test_count_settled_signal_rows_multiday_excludes_sameday_rows()]] - degree 3, connects to 2 communities
-- [[TestPredictionsVarColumn]] - degree 9, connects to 1 community
+- [[TestAcisSnowModule]] - degree 11, connects to 1 community

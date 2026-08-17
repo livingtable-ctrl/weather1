@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_validation.py"
 type: "code"
-community: "Community 85"
+community: "Community 76"
 location: "L15"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_85
+  - community/Community_76
 ---
 
 # _opp()
@@ -32,4 +32,4 @@ tags:
 - [[test_validate_rejects_zero_kelly()]] - `calls` [EXTRACTED]
 - [[test_zero_edge_group_splits_equally()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_85
+#graphify/code #graphify/EXTRACTED #community/Community_76

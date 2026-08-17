@@ -1,0 +1,383 @@
+---
+type: community
+cohesion: 0.02
+members: 284
+---
+
+# Community 0
+
+**Cohesion:** 0.02 - loosely connected
+**Members:** 284 nodes
+
+## Members
+- [[NOTE these are frozen at process-import time -- if any test ever calls]] - rationale - main.py
+- [[dot-__getattr__()]] - code - colors.py
+- [[5-step interactive onboarding guide for first-time users.]] - rationale - main.py
+- [[5-step interactive onboarding guide for first-time users._1]] - rationale - main.py
+- [[Activate the kill switch — stops all automated trading immediately.]] - rationale - main.py
+- [[Activate the kill switch — stops all automated trading immediately._1]] - rationale - main.py
+- [[Admin commands for paper trading system. Actions reset-loss — waive today's…]] - rationale - main.py
+- [[Admin commands for paper trading system. Actions reset-loss — waive today's…_1]] - rationale - main.py
+- [[Apply color to a signal string based on strength.]] - rationale - colors.py
+- [[Attach forecast data to a market dict. Parses city, date, and (for hourly…]] - rationale - weather_markets.py
+- [[Backfill EMOS training columns for historical settled predictions. Part 1 —…]] - rationale - main.py
+- [[Backfill EMOS training columns for historical settled predictions. Part 1 —…_1]] - rationale - main.py
+- [[Brier score grouped by ISO week of the MARKET DATE for the last N weeks. Groups…]] - rationale - tracker.py
+- [[Browse open markets by city.]] - rationale - main.py
+- [[Browse open markets by city._1]] - rationale - main.py
+- [[Check settled markets in the DB against Kalshi and record outcomes. Returns…]] - rationale - tracker.py
+- [[Check that required .env variables are set before doing anything. Prints a…]] - rationale - main.py
+- [[Check that required .env variables are set before doing anything. Prints a…_1]] - rationale - main.py
+- [[Color a probability bright if extreme (high confidence), dim if near 50%.]] - rationale - colors.py
+- [[Color an edge value green if strong positive, red if strong negative, yellow…]] - rationale - colors.py
+- [[Color helpers for terminal output using colorama. Gracefully falls back to…]] - rationale - colors.py
+- [[Compute average feature values for winning vs losing trades. Returns a dict…]] - rationale - feature_importance.py
+- [[Create a time-limited manual override. Overrides expire automatically after…]] - rationale - main.py
+- [[Create a time-limited manual override. Overrides expire automatically after…_1]] - rationale - main.py
+- [[Daily briefing — fast single-screen summary.]] - rationale - main.py
+- [[Daily briefing — fast single-screen summary._1]] - rationale - main.py
+- [[Delete stale cached data files to prevent unbounded growth. Skips…]] - rationale - main.py
+- [[Delete stale cached data files to prevent unbounded growth. Skips…_1]] - rationale - main.py
+- [[Export prediction history and paper trades to CSV in dataexports.]] - rationale - main.py
+- [[Export prediction history and paper trades to CSV in dataexports._1]] - rationale - main.py
+- [[Export prediction history with outcomes to CSV. Returns row count.]] - rationale - tracker.py
+- [[Fetch and return the current AFD's narrative reasoning text for a city.…]] - rationale - nws_afd.py
+- [[Fetch settled Kalshi weather markets by iterating known weather series.…]] - rationale - backtest.py
+- [[For each open paper trade, re-analyze the market and check whether the model…]] - rationale - paper.py
+- [[Format time remaining until market close '2h 15m', '3d 4h', red if 2h.]] - rationale - main.py
+- [[Format time remaining until market close '2h 15m', '3d 4h', red if 2h._1]] - rationale - main.py
+- [[Generate a plain-text weekly recap saved to dataweekly_summary_{date}.txt.…]] - rationale - main.py
+- [[Generate a plain-text weekly recap saved to dataweekly_summary_{date}.txt.…_1]] - rationale - main.py
+- [[Generate a weekly PDFtext report and print the output path.]] - rationale - main.py
+- [[Generate a weekly PDFtext report and print the output path._1]] - rationale - main.py
+- [[Interactive replay of historical markets — test your instincts.]] - rationale - main.py
+- [[Interactive replay of historical markets — test your instincts._1]] - rationale - main.py
+- [[Interactively settle an open paper trade by choosing from a list.]] - rationale - main.py
+- [[Interactively settle an open paper trade by choosing from a list._1]] - rationale - main.py
+- [[KalshiClient_1]] - code
+- [[Make a lightweight authenticated request to confirm credentials work. Returns…]] - rationale - main.py
+- [[Make a lightweight authenticated request to confirm credentials work. Returns…_1]] - rationale - main.py
+- [[One-off recovery for ensemble_member_scores rows logged before…]] - rationale - main.py
+- [[One-off recovery for ensemble_member_scores rows logged before…_1]] - rationale - main.py
+- [[One-off recovery for outcomes.settled_temp_f rows written before…]] - rationale - main.py
+- [[One-off recovery for outcomes.settled_temp_f rows written before…_1]] - rationale - main.py
+- [[One-off recovery for price_history rows lost to a real bug sync_outcomes'…]] - rationale - main.py
+- [[One-off recovery for price_history rows lost to a real bug sync_outcomes'…_1]] - rationale - main.py
+- [[Output formatting functions extracted from main.py. All functions in this…]] - rationale - output_formatters.py
+- [[P10.1 Show Brier score drift analysis — detects slow performance degradation.]] - rationale - main.py
+- [[P10.1 Show Brier score drift analysis — detects slow performance degradation._1]] - rationale - main.py
+- [[P10.2 Remove black swan state file (called by cmd_resume). Returns True if…]] - rationale - alerts.py
+- [[P10.2 Return active black swan state if any, else None.]] - rationale - alerts.py
+- [[P10.3 Show current config fingerprint and detect cross-run changes.]] - rationale - main.py
+- [[P10.3 Show current config fingerprint and detect cross-run changes._1]] - rationale - main.py
+- [[P10.4 Feature sprawl audit — list file sizes and orphan cmd_ functions.]] - rationale - main.py
+- [[P10.4 Feature sprawl audit — list file sizes and orphan cmd_ functions._1]] - rationale - main.py
+- [[P9.1 Compare Brier scores across strategy versions (edge_calc_version).]] - rationale - main.py
+- [[P9.1 Compare Brier scores across strategy versions (edge_calc_version)._1]] - rationale - main.py
+- [[P9.5 Show retired strategy methods; with --run auto-retires failing ones.]] - rationale - main.py
+- [[P9.5 Show retired strategy methods; with --run auto-retires failing ones._1]] - rationale - main.py
+- [[Parse `py main.py admin accuracy-override minutes reason`'s trailing args…]] - rationale - main.py
+- [[Parse `py main.py admin accuracy-override minutes reason`'s trailing args…_1]] - rationale - main.py
+- [[Path]] - code
+- [[Poll every N minutes until all same-day (and past) open trades are settled.…]] - rationale - main.py
+- [[Poll every N minutes until all same-day (and past) open trades are settled.…_1]] - rationale - main.py
+- [[Price alert manager — used in the Paper submenu.]] - rationale - main.py
+- [[Price alert manager — used in the Paper submenu._1]] - rationale - main.py
+- [[Print Windows Task Scheduler commands to run the cron scan at NWP model cycle…]] - rationale - main.py
+- [[Print Windows Task Scheduler commands to run the cron scan at NWP model cycle…_1]] - rationale - main.py
+- [[Print a prominent warning if cron hasn't run in 48h.]] - rationale - main.py
+- [[Print a prominent warning if cron hasn't run in 48h._1]] - rationale - main.py
+- [[Print a styled section header.]] - rationale - main.py
+- [[Print a styled section header._1]] - rationale - main.py
+- [[Print all paper trades that have a thesis note.]] - rationale - main.py
+- [[Print all paper trades that have a thesis note._1]] - rationale - main.py
+- [[Print compact quick-reference guide.]] - rationale - main.py
+- [[Print compact quick-reference guide._1]] - rationale - main.py
+- [[Print the current NWS Area Forecast Discussion for a city (backlog.txt NWS AFD…]] - rationale - main.py
+- [[Print the current NWS Area Forecast Discussion for a city (backlog.txt NWS AFD…_1]] - rationale - main.py
+- [[Prompt for a price; loops on emptyinvalid input, 'q' to cancel.]] - rationale - main.py
+- [[Prompt for a price; loops on emptyinvalid input, 'q' to cancel._1]] - rationale - main.py
+- [[Read KALSHI_ENV fresh from the environment each call (survives cmd_settings…]] - rationale - main.py
+- [[Read KALSHI_ENV fresh from the environment each call (survives cmd_settings…_1]] - rationale - main.py
+- [[Read-only check return True if a cron process holds the lock right now. Uses…]] - rationale - cron.py
+- [[Register a Windows Task Scheduler job to auto-scan every hour.]] - rationale - main.py
+- [[Register a Windows Task Scheduler job to auto-scan every hour._1]] - rationale - main.py
+- [[Remove the accuracy-halt override flag early, if present -- safe to call…]] - rationale - paper.py
+- [[Remove the kill switch — re-enables automated trading. Also clears black swan…]] - rationale - main.py
+- [[Remove the kill switch — re-enables automated trading. Also clears black swan…_1]] - rationale - main.py
+- [[Render a simple ASCII line chart. Returns a multi-line string. Uses block…]] - rationale - main.py
+- [[Render a simple ASCII line chart. Returns a multi-line string. Uses block…_1]] - rationale - main.py
+- [[Render the interactive analyzewatch table (liquid + no-quote market tables,…]] - rationale - main.py
+- [[Render the interactive analyzewatch table (liquid + no-quote market tables,…_1]] - rationale - main.py
+- [[Replay a single trade decision from stored inputs. Shows inputs at time of…]] - rationale - main.py
+- [[Replay a single trade decision from stored inputs. Shows inputs at time of…_1]] - rationale - main.py
+- [[Return True if this looks like a first run (no .env or no trades ever placed).]] - rationale - main.py
+- [[Return True if this looks like a first run (no .env or no trades ever placed)._1]] - rationale - main.py
+- [[Return a sparkline string showing weekly Brier trend, e.g. ▅▄▃▂▂▁ Uses…]] - rationale - main.py
+- [[Return a sparkline string showing weekly Brier trend, e.g. ▅▄▃▂▂▁ Uses…_1]] - rationale - main.py
+- [[Return per-city, per-source reliability over the last N days. Returns {city…]] - rationale - tracker.py
+- [[Return recent predictions with outcomes where available.]] - rationale - tracker.py
+- [[Return summary stats for all tests found on disk.]] - rationale - ab_test.py
+- [[Return the correct Kalshi base URL based on the current env setting.]] - rationale - main.py
+- [[Return the correct Kalshi base URL based on the current env setting._1]] - rationale - main.py
+- [[Return {active bool, expires_at floatNone, reason strNone,…]] - rationale - paper.py
+- [[Returns (brier, n) for the rolling window in a single query. Use this at…]] - rationale - tracker.py
+- [[Reverse the most recently placed (unsettled) paper trade if it was placed…]] - rationale - main.py
+- [[Reverse the most recently placed (unsettled) paper trade if it was placed…_1]] - rationale - main.py
+- [[Revert EMOS to inactive, restoring the ensembleclimatology blend + T-scaling…]] - rationale - main.py
+- [[Revert EMOS to inactive, restoring the ensembleclimatology blend + T-scaling…_1]] - rationale - main.py
+- [[Run 1000 Monte Carlo simulations on the current open paper positions.]] - rationale - main.py
+- [[Run 1000 Monte Carlo simulations on the current open paper positions._1]] - rationale - main.py
+- [[Run METAR settlement lag monitor (polls from 5-7 PM local time).]] - rationale - main.py
+- [[Run METAR settlement lag monitor (polls from 5-7 PM local time)._1]] - rationale - main.py
+- [[Run a backtest on finalized Kalshi markets. Usage py main.py backtest city…]] - rationale - main.py
+- [[Run a backtest on finalized Kalshi markets. Usage py main.py backtest city…_1]] - rationale - main.py
+- [[Run a parameter sweep against historical paper trades.]] - rationale - main.py
+- [[Run a parameter sweep against historical paper trades._1]] - rationale - main.py
+- [[Run a walk-forward validation and display stability metrics.]] - rationale - main.py
+- [[Run a walk-forward validation and display stability metrics._1]] - rationale - main.py
+- [[Run pre-live-trading checklist. Returns True only if ALL gates pass. Usage py…]] - rationale - main.py
+- [[Run pre-live-trading checklist. Returns True only if ALL gates pass. Usage py…_1]] - rationale - main.py
+- [[Self-scheduling run loop — run cron every N hours, auto-settle after 9 PM.…]] - rationale - main.py
+- [[Self-scheduling run loop — run cron every N hours, auto-settle after 9 PM.…_1]] - rationale - main.py
+- [[Shadow mode show what the bot would trade right now without executing. Does…]] - rationale - main.py
+- [[Shadow mode show what the bot would trade right now without executing. Does…_1]] - rationale - main.py
+- [[Show AB test results for all active tests.]] - rationale - main.py
+- [[Show AB test results for all active tests._1]] - rationale - main.py
+- [[Show P&L attribution by signal source.]] - rationale - output_formatters.py
+- [[Show feature importance summary from historical trades.]] - rationale - main.py
+- [[Show feature importance summary from historical trades._1]] - rationale - main.py
+- [[Show the log-only-signal graduation report (backlog.txt SIGNAL GRADUATION IS A…]] - rationale - main.py
+- [[Show the log-only-signal graduation report (backlog.txt SIGNAL GRADUATION IS A…_1]] - rationale - main.py
+- [[Show whether EMOS is currently the live probability method.]] - rationale - main.py
+- [[Show whether EMOS is currently the live probability method._1]] - rationale - main.py
+- [[Silently sync settled market outcomes in a background thread. Runs on every…]] - rationale - main.py
+- [[Silently sync settled market outcomes in a background thread. Runs on every…_1]] - rationale - main.py
+- [[Single-screen portfolio health view balance, positions, calibration.]] - rationale - main.py
+- [[Single-screen portfolio health view balance, positions, calibration._1]] - rationale - main.py
+- [[Start local web dashboard on httplocalhost5000]] - rationale - main.py
+- [[Start local web dashboard on httplocalhost5000_1]] - rationale - main.py
+- [[Start the Flask web dashboard.]] - rationale - web_app.py
+- [[Sync settled market outcomes from Kalshi and record them in the tracker.…]] - rationale - main.py
+- [[Sync settled market outcomes from Kalshi and record them in the tracker.…_1]] - rationale - main.py
+- [[TestEmosActivationGate (_cmd_emos_train confirm gate)]] - code - tests/test_main_cron_smoke.py
+- [[Two-stage EMOS fit mean calibration (a,b) from all rows, variance (c,d) from…]] - rationale - main.py
+- [[Two-stage EMOS fit mean calibration (a,b) from all rows, variance (c,d) from…_1]] - rationale - main.py
+- [[View and edit configurable settings.]] - rationale - main.py
+- [[View and edit configurable settings._1]] - rationale - main.py
+- [[Waive the daily loss limit for the rest of today (UTC). Writes a flag file…]] - rationale - paper.py
+- [[Walk-forward validation slide a fixed-size window across the history, scoring…]] - rationale - backtest.py
+- [[Wrapper that builds CronContext from the current namespace and delegates to…]] - rationale - main.py
+- [[Wrapper that builds CronContext from the current namespace and delegates to…_1]] - rationale - main.py
+- [[_Stub]] - code - colors.py
+- [[_ascii_chart()]] - code - main.py
+- [[_brier_sparkline()]] - code - main.py
+- [[_check_cron_staleness()]] - code - main.py
+- [[_cmd_alerts()]] - code - main.py
+- [[_cmd_emos_train()]] - code - main.py
+- [[_cmd_settle_open()]] - code - main.py
+- [[_fetch_settled_markets()]] - code - backtest.py
+- [[_format_expiry()]] - code - main.py
+- [[_header()]] - code - main.py
+- [[_is_cron_running()]] - code - cron.py
+- [[_kalshi_env()]] - code - main.py
+- [[_market_base_url()]] - code - main.py
+- [[_needs_onboarding()]] - code - main.py
+- [[_parse_accuracy_override_args()]] - code - main.py
+- [[_prompt_price()]] - code - main.py
+- [[_render_analysis_results()]] - code - main.py
+- [[_setup_logging()]] - code - main.py
+- [[_validate_config()]] - code - main.py
+- [[auto_settle()]] - code - main.py
+- [[bold()]] - code - colors.py
+- [[brier_score_rolling_with_n()]] - code - tracker.py
+- [[build_client()]] - code - main.py
+- [[check_model_exits()]] - code - paper.py
+- [[cleanup_data_dir()]] - code - main.py
+- [[clear_accuracy_halt_override()]] - code - paper.py
+- [[clear_black_swan_state()]] - code - alerts.py
+- [[cmd_ab_summary()]] - code - main.py
+- [[cmd_admin()]] - code - main.py
+- [[cmd_afd()]] - code - main.py
+- [[cmd_analyze()]] - code - main.py
+- [[cmd_backfill_daily_temp_settlement()]] - code - main.py
+- [[cmd_backfill_emos()]] - code - main.py
+- [[cmd_backfill_ensemble_var()]] - code - main.py
+- [[cmd_backfill_price_history()]] - code - main.py
+- [[cmd_backtest()]] - code - main.py
+- [[cmd_balance()]] - code - output_formatters.py
+- [[cmd_brief()]] - code - main.py
+- [[cmd_browse()]] - code - main.py
+- [[cmd_cancel()]] - code - main.py
+- [[cmd_code_audit()]] - code - main.py
+- [[cmd_config_check()]] - code - main.py
+- [[cmd_consistency()]] - code - main.py
+- [[cmd_cron()]] - code - main.py
+- [[cmd_dashboard()]] - code - main.py
+- [[cmd_drift()]] - code - main.py
+- [[cmd_emos_deactivate()]] - code - main.py
+- [[cmd_emos_status()]] - code - main.py
+- [[cmd_export()]] - code - main.py
+- [[cmd_features()]] - code - main.py
+- [[cmd_forecast()]] - code - main.py
+- [[cmd_help()]] - code - main.py
+- [[cmd_history()]] - code - output_formatters.py
+- [[cmd_journal()]] - code - main.py
+- [[cmd_kill()]] - code - main.py
+- [[cmd_loop()]] - code - main.py
+- [[cmd_market()]] - code - main.py
+- [[cmd_markets()]] - code - main.py
+- [[cmd_menu()]] - code - main.py
+- [[cmd_montecarlo()]] - code - main.py
+- [[cmd_onboard()]] - code - main.py
+- [[cmd_override()]] - code - main.py
+- [[cmd_pnl_attribution()]] - code - output_formatters.py
+- [[cmd_positions()]] - code - output_formatters.py
+- [[cmd_readiness()]] - code - main.py
+- [[cmd_replay()]] - code - main.py
+- [[cmd_report()]] - code - main.py
+- [[cmd_resume()]] - code - main.py
+- [[cmd_retire_strategies()]] - code - main.py
+- [[cmd_schedule()]] - code - main.py
+- [[cmd_schedule_cycles()]] - code - main.py
+- [[cmd_settings()]] - code - main.py
+- [[cmd_settle()]] - code - main.py
+- [[cmd_settlement_monitor()]] - code - main.py
+- [[cmd_setup()]] - code - main.py
+- [[cmd_shadow_compare()]] - code - main.py
+- [[cmd_signals()]] - code - main.py
+- [[cmd_simulate()]] - code - main.py
+- [[cmd_sweep()]] - code - main.py
+- [[cmd_sync()]] - code - main.py
+- [[cmd_undo()]] - code - main.py
+- [[cmd_version_compare()]] - code - main.py
+- [[cmd_walkforward()]] - code - main.py
+- [[cmd_watch_settle()]] - code - main.py
+- [[cmd_web()]] - code - main.py
+- [[cmd_weekly_summary()]] - code - main.py
+- [[colors.py]] - code - colors.py
+- [[colors.py File Grade Good, median ~810, no TIER1]] - document - docs/grade_audit/outputs/colors.py.md
+- [[colors.py Grade Audit]] - document - docs/grade_audit/outputs/colors.py.md
+- [[cyan()]] - code - colors.py
+- [[dim()]] - code - colors.py
+- [[dotenv]] - concept
+- [[edge_color()]] - code - colors.py
+- [[edge_color() Dead Branch Bug (610)]] - document - docs/grade_audit/outputs/colors.py.md
+- [[enrich_with_forecast()]] - code - weather_markets.py
+- [[export_predictions_csv()]] - code - tracker.py
+- [[fetch_afd_discussion()]] - code - nws_afd.py
+- [[get_accuracy_halt_override_status()]] - code - paper.py
+- [[get_black_swan_status()]] - code - alerts.py
+- [[get_calibration_trend()]] - code - tracker.py
+- [[get_feature_summary()]] - code - feature_importance.py
+- [[get_history()]] - code - tracker.py
+- [[get_source_reliability()]] - code - tracker.py
+- [[green()]] - code - colors.py
+- [[liquidity_color()]] - code - colors.py
+- [[list_all_summaries()]] - code - ab_test.py
+- [[main()]] - code - main.py
+- [[main.py]] - code - main.py
+- [[output_formatters.py]] - code - output_formatters.py
+- [[output_formatters.py File Grade median 510]] - document - docs/grade_audit/outputs/output_formatters.py.md
+- [[output_formatters.py Grade Audit]] - document - docs/grade_audit/outputs/output_formatters.py.md
+- [[prob_color()]] - code - colors.py
+- [[red()]] - code - colors.py
+- [[reset_daily_loss_limit()]] - code - paper.py
+- [[run_walk_forward()]] - code - backtest.py
+- [[signal_color()]] - code - colors.py
+- [[signal_color() STRONGBUY Redundant Branches (710)]] - document - docs/grade_audit/outputs/colors.py.md
+- [[start_web()]] - code - web_app.py
+- [[sync_outcomes()]] - code - tracker.py
+- [[tabulate_1]] - concept
+- [[traceback]] - concept
+- [[validate_api_key()]] - code - main.py
+- [[validate_env()]] - code - main.py
+- [[white()]] - code - colors.py
+- [[yellow()]] - code - colors.py
+
+## Live Query (requires Dataview plugin)
+
+```dataview
+TABLE source_file, type FROM #community/Community_0
+SORT file.name ASC
+```
+
+## Connections to other communities
+- 162 edges to [[_COMMUNITY_Community 1]]
+- 106 edges to [[_COMMUNITY_Community 3]]
+- 70 edges to [[_COMMUNITY_Community 2]]
+- 40 edges to [[_COMMUNITY_Community 13]]
+- 25 edges to [[_COMMUNITY_Community 5]]
+- 18 edges to [[_COMMUNITY_Community 6]]
+- 12 edges to [[_COMMUNITY_Community 55]]
+- 9 edges to [[_COMMUNITY_Community 81]]
+- 8 edges to [[_COMMUNITY_Community 8]]
+- 8 edges to [[_COMMUNITY_Community 32]]
+- 7 edges to [[_COMMUNITY_Community 269]]
+- 7 edges to [[_COMMUNITY_Community 4]]
+- 6 edges to [[_COMMUNITY_Community 42]]
+- 5 edges to [[_COMMUNITY_Community 23]]
+- 5 edges to [[_COMMUNITY_Community 44]]
+- 5 edges to [[_COMMUNITY_Community 227]]
+- 5 edges to [[_COMMUNITY_Community 453]]
+- 4 edges to [[_COMMUNITY_Community 426]]
+- 4 edges to [[_COMMUNITY_Community 104]]
+- 4 edges to [[_COMMUNITY_Community 516]]
+- 3 edges to [[_COMMUNITY_Community 619]]
+- 3 edges to [[_COMMUNITY_Community 102]]
+- 3 edges to [[_COMMUNITY_Community 48]]
+- 3 edges to [[_COMMUNITY_Community 159]]
+- 3 edges to [[_COMMUNITY_Community 270]]
+- 3 edges to [[_COMMUNITY_Community 303]]
+- 3 edges to [[_COMMUNITY_Community 41]]
+- 3 edges to [[_COMMUNITY_Community 538]]
+- 3 edges to [[_COMMUNITY_Community 171]]
+- 2 edges to [[_COMMUNITY_Community 17]]
+- 2 edges to [[_COMMUNITY_Community 207]]
+- 2 edges to [[_COMMUNITY_Community 255]]
+- 2 edges to [[_COMMUNITY_Community 140]]
+- 2 edges to [[_COMMUNITY_Community 116]]
+- 2 edges to [[_COMMUNITY_Community 230]]
+- 2 edges to [[_COMMUNITY_Community 665]]
+- 2 edges to [[_COMMUNITY_Community 65]]
+- 2 edges to [[_COMMUNITY_Community 20]]
+- 2 edges to [[_COMMUNITY_Community 53]]
+- 2 edges to [[_COMMUNITY_Community 163]]
+- 2 edges to [[_COMMUNITY_Community 232]]
+- 2 edges to [[_COMMUNITY_Community 337]]
+- 2 edges to [[_COMMUNITY_Community 622]]
+- 2 edges to [[_COMMUNITY_Community 205]]
+- 2 edges to [[_COMMUNITY_Community 35]]
+- 1 edge to [[_COMMUNITY_Community 156]]
+- 1 edge to [[_COMMUNITY_Community 382]]
+- 1 edge to [[_COMMUNITY_Community 161]]
+- 1 edge to [[_COMMUNITY_Community 113]]
+- 1 edge to [[_COMMUNITY_Community 114]]
+- 1 edge to [[_COMMUNITY_Community 154]]
+- 1 edge to [[_COMMUNITY_Community 185]]
+- 1 edge to [[_COMMUNITY_Community 194]]
+- 1 edge to [[_COMMUNITY_Community 199]]
+- 1 edge to [[_COMMUNITY_Community 221]]
+- 1 edge to [[_COMMUNITY_Community 256]]
+- 1 edge to [[_COMMUNITY_Community 284]]
+- 1 edge to [[_COMMUNITY_Community 349]]
+- 1 edge to [[_COMMUNITY_Community 353]]
+- 1 edge to [[_COMMUNITY_Community 385]]
+- 1 edge to [[_COMMUNITY_Community 428]]
+- 1 edge to [[_COMMUNITY_Community 47]]
+- 1 edge to [[_COMMUNITY_Community 498]]
+- 1 edge to [[_COMMUNITY_Community 588]]
+- 1 edge to [[_COMMUNITY_Community 74]]
+- 1 edge to [[_COMMUNITY_Community 76]]
+- 1 edge to [[_COMMUNITY_Community 82]]
+- 1 edge to [[_COMMUNITY_Community 245]]
+- 1 edge to [[_COMMUNITY_Community 33]]
+- 1 edge to [[_COMMUNITY_Community 18]]
+- 1 edge to [[_COMMUNITY_Community 226]]
+
+## Top bridge nodes
+- [[main.py]] - degree 326, connects to 44 communities
+- [[Path]] - degree 24, connects to 12 communities
+- [[main()]] - degree 92, connects to 10 communities
+- [[cmd_market()]] - degree 26, connects to 8 communities
+- [[output_formatters.py]] - degree 46, connects to 7 communities

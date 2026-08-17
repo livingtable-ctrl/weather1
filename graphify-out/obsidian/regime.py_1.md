@@ -1,16 +1,16 @@
 ---
 source_file: "regime.py"
 type: "code"
-community: "Community 230"
+community: "Community 6"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_230
+  - community/Community_6
 ---
 
 # regime.py
 
 ## Connections
-- [[detect_regime()]] - `implements` [EXTRACTED]
+- [[Grade Audit Final Report]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_230
+#graphify/code #graphify/EXTRACTED #community/Community_6

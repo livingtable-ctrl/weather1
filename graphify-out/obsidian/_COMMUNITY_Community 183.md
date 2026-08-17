@@ -1,33 +1,34 @@
 ---
 type: community
 cohesion: 0.15
-members: 18
+members: 19
 ---
 
 # Community 183
 
 **Cohesion:** 0.15 - loosely connected
-**Members:** 18 nodes
+**Members:** 19 nodes
 
 ## Members
-- [[dot-test_client_error_falls_back_to_zero()]] - code - tests/test_prelog.py
-- [[dot-test_explicit_live_config_is_respected()]] - code - tests/test_prelog.py
-- [[dot-test_fetches_real_balance_from_client()]] - code - tests/test_prelog.py
-- [[dot-test_missing_balance_key_falls_back_to_zero()]] - code - tests/test_prelog.py
-- [[dot-test_none_live_config_loads_real_config()]] - code - tests/test_prelog.py
-- [[0.0 signals 'use the paper balance' to the caller — must not raise or block…]] - rationale - tests/test_prelog.py
-- [[F2 micro-live's daily-loss limit was silently disabled because it only ever…]] - rationale - tests/test_prelog.py
-- [[F4 live_config never has a balance key, so the CR-4 override for live Kelly…]] - rationale - tests/test_prelog.py
-- [[Fetch the real Kalshi balance (dollars) for live Kelly sizing. F4 live_config…]] - rationale - order_executor.py
-- [[P0-6 execution log entry must be written BEFORE the live order is placed.]] - rationale - tests/test_prelog.py
-- [[Resolve the config micro-live enforces its daily-loss limit against. F2 micro-…]] - rationale - order_executor.py
-- [[TestResolveLiveBalance]] - code - tests/test_prelog.py
-- [[TestResolveMicroLiveConfig]] - code - tests/test_prelog.py
-- [[_place_live_order()_poll_pending_orders()_auto_place_trades()]] - code - main.py
-- [[_resolve_live_balance()]] - code - order_executor.py
-- [[_resolve_micro_live_config()]] - code - order_executor.py
-- [[execution_log.py_1]] - code - execution_log.py
-- [[test_prelog.py]] - code - tests/test_prelog.py
+- [[dot-test_basic()]] - code - tests/test_weather.py
+- [[dot-test_empty()]] - code - tests/test_weather.py
+- [[dot-test_empty_list_returns_empty_dict()]] - code - tests/test_weather_markets.py
+- [[dot-test_mean_std_correct()]] - code - tests/test_weather_markets.py
+- [[dot-test_min_max_correct()]] - code - tests/test_weather_markets.py
+- [[dot-test_p10_less_than_p90()]] - code - tests/test_weather_markets.py
+- [[dot-test_returns_all_required_keys()]] - code - tests/test_weather_markets.py
+- [[dot-test_single()]] - code - tests/test_weather.py
+- [[dot-test_single_element_std_is_zero()]] - code - tests/test_weather_markets.py
+- [[Result must contain n, mean, std, min, max, p10, p90.]] - rationale - tests/test_weather_markets.py
+- [[Single-element ensemble std=0, min=max=mean=the value.]] - rationale - tests/test_weather_markets.py
+- [[Summary statistics for a list of ensemble member temperatures.]] - rationale - weather_markets.py
+- [[TestEnsembleStats]] - code - tests/test_weather_markets.py
+- [[TestEnsembleStats_1]] - code - tests/test_weather.py
+- [[Verify mean and std match statistics module on known data.]] - rationale - tests/test_weather_markets.py
+- [[ensemble_stats()]] - code - weather_markets.py
+- [[ensemble_stats() must return {} not raise.]] - rationale - tests/test_weather_markets.py
+- [[min and max match the actual extremes.]] - rationale - tests/test_weather_markets.py
+- [[p10 = mean = p90 for a non-degenerate ensemble.]] - rationale - tests/test_weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -37,19 +38,17 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 40]]
-- 3 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 1 edge to [[_COMMUNITY_Community 219]]
-- 1 edge to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 111]]
-- 1 edge to [[_COMMUNITY_Community 225]]
+- 3 edges to [[_COMMUNITY_Community 5]]
+- 3 edges to [[_COMMUNITY_Community 89]]
+- 2 edges to [[_COMMUNITY_Community 11]]
+- 2 edges to [[_COMMUNITY_Community 396]]
+- 1 edge to [[_COMMUNITY_Community 77]]
+- 1 edge to [[_COMMUNITY_Community 68]]
+- 1 edge to [[_COMMUNITY_Community 141]]
+- 1 edge to [[_COMMUNITY_Community 303]]
+- 1 edge to [[_COMMUNITY_Community 249]]
 
 ## Top bridge nodes
-- [[_place_live_order()_poll_pending_orders()_auto_place_trades()]] - degree 7, connects to 5 communities
-- [[_resolve_live_balance()]] - degree 8, connects to 3 communities
-- [[_resolve_micro_live_config()]] - degree 7, connects to 3 communities
-- [[test_prelog.py]] - degree 9, connects to 2 communities
-- [[execution_log.py_1]] - degree 4, connects to 2 communities
+- [[ensemble_stats()]] - degree 24, connects to 9 communities
+- [[TestEnsembleStats]] - degree 8, connects to 1 community
+- [[TestEnsembleStats_1]] - degree 4, connects to 1 community

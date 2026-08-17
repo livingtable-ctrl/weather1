@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 370"
-location: "L1724"
+community: "Community 283"
+location: "L1865"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_370
+  - community/Community_283
 ---
 
 # TestLiquidationPriceZeroSide
@@ -18,8 +18,9 @@ tags:
 - [[dot-test_yes_zero_bid_returns_none_not_zero()]] - `method` [EXTRACTED]
 - [[dot-test_zero_ask_no_longer_books_phantom_win()]] - `method` [EXTRACTED]
 - [[dot-test_zero_bid_no_longer_fires_phantom_stop_loss()]] - `method` [EXTRACTED]
+- [[Deep-review followup parse_market_price() coalesces a missing side to 0.0…_1]] - `rationale_for` [EXTRACTED]
 - [[Deep-review followup parse_market_price() coalesces a missing side to 0.0…]] - `rationale_for` [EXTRACTED]
 - [[Position]] - `uses` [INFERRED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_370
+#graphify/code #graphify/EXTRACTED #community/Community_283

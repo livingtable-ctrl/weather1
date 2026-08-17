@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_graduation_gate.py"
 type: "rationale"
-community: "Community 180"
+community: "Community 307"
 location: "L72"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_180
+  - community/Community_307
 ---
 
 # P2-D: Gate must fail-closed when the tracker DB is unavailable. If…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_gate_fails_closed_when_db_unavailable()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_180
+#graphify/rationale #graphify/EXTRACTED #community/Community_307

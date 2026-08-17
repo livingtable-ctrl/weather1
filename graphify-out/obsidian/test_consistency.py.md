@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_consistency.py"
 type: "code"
-community: "Community 35"
+community: "Community 363"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_35
+  - community/Community_363
 ---
 
 # test_consistency.py
@@ -18,7 +18,7 @@ tags:
 - [[_market()_1]] - `contains` [EXTRACTED]
 - [[_parse_threshold()]] - `imports` [EXTRACTED]
 - [[_rain_market()_1]] - `contains` [EXTRACTED]
-- [[consistency.py]] - `calls` [EXTRACTED]
+- [[consistency.py]] - `imports_from` [EXTRACTED]
 - [[find_violations()]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_35
+#graphify/code #graphify/EXTRACTED #community/Community_363

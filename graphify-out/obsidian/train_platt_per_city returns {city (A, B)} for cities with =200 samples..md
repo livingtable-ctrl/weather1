@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "rationale"
-community: "ML Bias Multiday-Predictions Filter"
+community: "Community 99"
 location: "L59"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_99
 ---
 
 # train_platt_per_city returns {city: (A, B)} for cities with >=200 samples.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_train_platt_per_city_returns_coefficients()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/rationale #graphify/EXTRACTED #community/Community_99

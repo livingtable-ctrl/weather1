@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_walk_forward.py"
 type: "code"
-community: "Community 37"
+community: "Community 40"
 location: "L55"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_37
+  - community/Community_40
 ---
 
 # .test_test_period_advances_each_fold()
@@ -17,4 +17,4 @@ tags:
 - [[_make_trade()_4]] - `calls` [EXTRACTED]
 - [[walk_forward_split()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_37
+#graphify/code #graphify/EXTRACTED #community/Community_40

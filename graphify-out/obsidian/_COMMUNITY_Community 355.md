@@ -1,25 +1,26 @@
 ---
 type: community
-cohesion: 0.22
-members: 10
+cohesion: 0.24
+members: 11
 ---
 
 # Community 355
 
-**Cohesion:** 0.22 - loosely connected
-**Members:** 10 nodes
+**Cohesion:** 0.24 - loosely connected
+**Members:** 11 nodes
 
 ## Members
-- [[Every _ALLOWLIST entry must name a real file, a positive expected count, and a…]] - rationale - tests/test_paths_bypass_guard.py
-- [[No .py file anywhere in the repo should construct its own data path locally.…]] - rationale - tests/test_paths_bypass_guard.py
-- [[Path_15]] - code
-- [[_all_source_files()]] - code - tests/test_paths_bypass_guard.py
-- [[paths.py data-path constants]] - code - paths.py
-- [[rAutomated guard against the paths.py-bypass anti-pattern reappearing.…]] - rationale - tests/test_paths_bypass_guard.py
-- [[test_allowlist_entries_still_exist_and_are_justified()]] - code - tests/test_paths_bypass_guard.py
-- [[test_no_new_paths_py_bypass_sites()]] - code - tests/test_paths_bypass_guard.py
-- [[test_paths_bypass_guard.py]] - code - tests/test_paths_bypass_guard.py
-- [[teststest_phase2_batch_c.py]] - code - tests/test_phase2_batch_c.py
+- [[dot-_close_time()]] - code - tests/test_weather.py
+- [[dot-test_far_out_returns_high_risk()]] - code - tests/test_weather.py
+- [[dot-test_missing_close_time_returns_high_risk()]] - code - tests/test_weather.py
+- [[dot-test_near_close_returns_low_risk()]] - code - tests/test_weather.py
+- [[dot-test_within_12_hours_returns_medium_or_low()]] - code - tests/test_weather.py
+- [[Build an ISO close_time string.]] - rationale - tests/test_weather.py
+- [[Empty close_time string → HIGH  1.0 (safe default).]] - rationale - tests/test_weather.py
+- [[Market closing in 48 hours during daytime → HIGH  1.0.]] - rationale - tests/test_weather.py
+- [[Market closing in 6 hours → MEDIUM or LOW.]] - rationale - tests/test_weather.py
+- [[Market closing in 90 minutes → LOW  0.5.]] - rationale - tests/test_weather.py
+- [[TestTimeRisk]] - code - tests/test_weather.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,8 +30,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 162]]
-- 1 edge to [[_COMMUNITY_Community 146]]
+- 4 edges to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 396]]
 
 ## Top bridge nodes
-- [[test_paths_bypass_guard.py]] - degree 8, connects to 2 communities
+- [[TestTimeRisk]] - degree 6, connects to 1 community
+- [[dot-test_far_out_returns_high_risk()]] - degree 4, connects to 1 community
+- [[dot-test_near_close_returns_low_risk()]] - degree 4, connects to 1 community
+- [[dot-test_within_12_hours_returns_medium_or_low()]] - degree 4, connects to 1 community
+- [[dot-test_missing_close_time_returns_high_risk()]] - degree 3, connects to 1 community

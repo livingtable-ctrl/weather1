@@ -1,12 +1,12 @@
 ---
 source_file: "trading_gates.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 1"
 location: "L134"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_1
 ---
 
 # Raise RuntimeError if any live trading gate is not satisfied. Pass the `client`…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[pre_live_trade_check()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_1

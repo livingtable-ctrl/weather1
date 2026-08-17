@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 44"
-location: "L6724"
+community: "Community 5"
+location: "L6826"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_44
+  - community/Community_5
 ---
 
 # _SignalRegistryEntry
@@ -17,4 +17,4 @@ tags:
 - [[KalshiClient]] - `uses` [INFERRED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/Community_44
+#graphify/code #graphify/INFERRED #community/Community_5

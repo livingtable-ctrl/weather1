@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Community 36"
-location: "L5527"
+community: "Community 2"
+location: "L5582"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_36
+  - community/Community_2
 ---
 
 # TP/FP/TN/FN classification of model predictions. Positive = model predicted YES…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_confusion_matrix()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_36
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

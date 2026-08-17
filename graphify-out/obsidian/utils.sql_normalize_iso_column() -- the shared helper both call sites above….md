@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "rationale"
-community: "Community 422"
+community: "Community 459"
 location: "L771"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_422
+  - community/Community_459
 ---
 
 # utils.sql_normalize_iso_column() -- the shared helper both call sites above…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestSqlNormalizeIsoColumn]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_422
+#graphify/rationale #graphify/EXTRACTED #community/Community_459

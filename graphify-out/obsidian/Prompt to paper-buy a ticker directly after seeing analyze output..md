@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
-location: "L2168"
+community: "Community 1"
+location: "L2170"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_1
 ---
 
 # Prompt to paper-buy a ticker directly after seeing analyze output.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_quick_paper_buy()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_1

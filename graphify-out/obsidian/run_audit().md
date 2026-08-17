@@ -1,20 +1,18 @@
 ---
 source_file: "sigma_audit.py"
 type: "code"
-community: "Community 331"
+community: "Community 409"
 location: "L102"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_331
+  - community/Community_409
 ---
 
 # run_audit()
 
 ## Connections
 - [[_implied_sigma()]] - `calls` [EXTRACTED]
-- [[paths.DB_PATH]] - `calls` [EXTRACTED]
 - [[sigma_audit.py]] - `contains` [EXTRACTED]
-- [[tracker predictions table]] - `shares_data_with` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_331
+#graphify/code #graphify/EXTRACTED #community/Community_409

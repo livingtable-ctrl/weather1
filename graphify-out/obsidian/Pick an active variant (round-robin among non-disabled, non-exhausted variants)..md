@@ -1,12 +1,12 @@
 ---
 source_file: "ab_test.py"
 type: "rationale"
-community: "Community 33"
+community: "Community 140"
 location: "L104"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_33
+  - community/Community_140
 ---
 
 # Pick an active variant (round-robin among non-disabled, non-exhausted variants).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-pick_variant()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_33
+#graphify/rationale #graphify/EXTRACTED #community/Community_140

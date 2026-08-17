@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "rationale"
-community: "Community 133"
+community: "Community 136"
 location: "L504"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_133
+  - community/Community_136
 ---
 
 # A partial IOC exit fill must shrink the tracked open quantity by exactly the…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_record_live_partial_exit_reduces_fill_quantity_keeps_open()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_133
+#graphify/rationale #graphify/EXTRACTED #community/Community_136

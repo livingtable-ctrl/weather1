@@ -1,11 +1,11 @@
 ---
 source_file: ""
 type: "code"
-community: "Community 182"
+community: "Community 6"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_182
+  - community/Community_6
 ---
 
 # Pattern
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[_section_header_re()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_182
+#graphify/code #graphify/EXTRACTED #community/Community_6

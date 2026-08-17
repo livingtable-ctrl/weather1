@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Community 36"
-location: "L5270"
+community: "Community 2"
+location: "L5325"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_36
+  - community/Community_2
 ---
 
 # Per-model MAE from ensemble_member_scores, stratified by city and season (#18).…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_ensemble_member_accuracy()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_36
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

@@ -1,16 +1,13 @@
 ---
 source_file: "param_sweep.py"
 type: "code"
-community: "Community 607"
+community: "Community 828"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_607
+  - community/Community_828
 ---
 
 # load_swept_min_edge Function
 
-## Connections
-- [[PARAM_SWEEP_RESULTS_PATH Constant]] - `references` [EXTRACTED]
-
-#graphify/code #graphify/EXTRACTED #community/Community_607
+#graphify/code #graphify/EXTRACTED #community/Community_828

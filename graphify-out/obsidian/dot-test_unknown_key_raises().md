@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 491"
-location: "L3733"
+community: "Community 532"
+location: "L4102"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_491
+  - community/Community_532
 ---
 
 # .test_unknown_key_raises()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestValidateForecastModelKeys]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_491
+#graphify/code #graphify/EXTRACTED #community/Community_532

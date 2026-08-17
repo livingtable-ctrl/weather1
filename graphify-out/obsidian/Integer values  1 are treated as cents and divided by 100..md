@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 207"
+community: "Community 81"
 location: "L87"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_207
+  - community/Community_81
 ---
 
 # Integer values > 1 are treated as cents and divided by 100.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_cents_converted_to_decimal()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_207
+#graphify/rationale #graphify/EXTRACTED #community/Community_81

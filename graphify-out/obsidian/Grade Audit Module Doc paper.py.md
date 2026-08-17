@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/modules/paper.md"
 type: "document"
-community: "Community 180"
+community: "Community 41"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_180
+  - community/Community_41
 ---
 
 # Grade Audit Module Doc: paper.py
@@ -19,4 +19,4 @@ tags:
 - [[test_paper.py]] - `references` [EXTRACTED]
 - [[test_paper_metrics.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_180
+#graphify/document #graphify/EXTRACTED #community/Community_41

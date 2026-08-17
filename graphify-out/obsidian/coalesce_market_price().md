@@ -1,12 +1,12 @@
 ---
 source_file: "utils.py"
 type: "code"
-community: "Community 164"
+community: "Community 20"
 location: "L606"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_164
+  - community/Community_20
 ---
 
 # coalesce_market_price()
@@ -28,7 +28,10 @@ tags:
 - [[_check_live_position_exits()]] - `calls` [EXTRACTED]
 - [[_midpoint_price()]] - `calls` [EXTRACTED]
 - [[_reprice_or_cancel_pending_orders()]] - `calls` [EXTRACTED]
+- [[_safe_market_price()]] - `calls` [INFERRED]
 - [[_safe_price()]] - `calls` [EXTRACTED]
+- [[cmd_menu()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 - [[schema_validator.py]] - `imports` [EXTRACTED]
@@ -37,4 +40,4 @@ tags:
 - [[utils.py]] - `contains` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_164
+#graphify/code #graphify/EXTRACTED #community/Community_20

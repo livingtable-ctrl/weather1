@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "NWS/Circuit-Breaker Data Validation"
-location: "L2298"
+community: "Community 405"
+location: "L2667"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_405
 ---
 
 # fetch_nbm_forecast() wraps get_nws_daily_forecast() into a flat dict.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestFetchNbmForecast]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/rationale #graphify/EXTRACTED #community/Community_405

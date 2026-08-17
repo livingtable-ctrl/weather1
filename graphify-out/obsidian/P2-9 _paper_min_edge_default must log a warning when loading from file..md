@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_a.py"
 type: "rationale"
-community: "Community 281"
+community: "Community 285"
 location: "L148"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_281
+  - community/Community_285
 ---
 
 # P2-9: _paper_min_edge_default must log a warning when loading from file.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPaperMinEdgeWarning]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_281
+#graphify/rationale #graphify/EXTRACTED #community/Community_285

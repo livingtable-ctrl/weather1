@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 560"
-location: "L4347"
+community: "Community 641"
+location: "L4716"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_560
+  - community/Community_641
 ---
 
 # Adjacency finding from the 2026-07-23 opus review of the ECMWF instrumentation…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestWeightsFromMaeThinModelIsolation]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_560
+#graphify/rationale #graphify/EXTRACTED #community/Community_641

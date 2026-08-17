@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Community 347"
+community: "Community 86"
 location: "L1258"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_347
+  - community/Community_86
 ---
 
 # _run_with_captured_kelly()
@@ -20,4 +20,4 @@ tags:
 - [[test_trading.py]] - `contains` [EXTRACTED]
 - [[test_zero_edge_group_splits_equally()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_347
+#graphify/code #graphify/EXTRACTED #community/Community_86

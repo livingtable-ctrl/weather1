@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 439"
+community: "Community 10"
 location: "L2151"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_439
+  - community/Community_10
 ---
 
 # 10 samples (old guard) must now return None (guard raised to 20).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_returns_none_with_10_samples()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_439
+#graphify/rationale #graphify/EXTRACTED #community/Community_10

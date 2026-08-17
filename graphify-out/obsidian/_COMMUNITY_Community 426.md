@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 426
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-test_false_when_env_var_set_but_below_sample_floor()_3]] - code - tests/test_hurricane_markets.py
-- [[dot-test_false_when_env_var_unset()_3]] - code - tests/test_hurricane_markets.py
-- [[dot-test_independent_of_hurricane_count_gate()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_never_raises_on_count_failure()_3]] - code - tests/test_hurricane_markets.py
-- [[dot-test_true_when_env_var_set_and_sample_floor_met()_3]] - code - tests/test_hurricane_markets.py
-- [[Mirrors TestHurricaneCountGatesActive's exact test shape -- own env var, own…]] - rationale - tests/test_hurricane_markets.py
-- [[TestHurricaneNextEventGatesActive]] - code - tests/test_hurricane_markets.py
-- [[The two gates must not share state -- flipping the count model's gateenv var…]] - rationale - tests/test_hurricane_markets.py
+- [[dot-test_brier_alert_threshold_default()]] - code - tests/test_p9_p10.py
+- [[dot-test_enable_micro_live_defaults_false()]] - code - tests/test_p9_p10.py
+- [[dot-test_fingerprint_includes_micro_live_keys()]] - code - tests/test_p9_p10.py
+- [[P10.3 Compare current config against the last-seen fingerprint. Writes the…]] - rationale - utils.py
+- [[P10.3 Return a snapshot of all env-configurable parameters. This is the single…]] - rationale - utils.py
+- [[TestPhase10ConfigKeys]] - code - tests/test_p9_p10.py
+- [[_hash_fingerprint()]] - code - utils.py
+- [[check_config_integrity()]] - code - utils.py
+- [[get_config_fingerprint()]] - code - utils.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,7 +28,15 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 90]]
+- 4 edges to [[_COMMUNITY_Community 0]]
+- 3 edges to [[_COMMUNITY_Community 54]]
+- 3 edges to [[_COMMUNITY_Community 6]]
+- 2 edges to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 163]]
+- 1 edge to [[_COMMUNITY_Community 384]]
 
 ## Top bridge nodes
-- [[TestHurricaneNextEventGatesActive]] - degree 7, connects to 1 community
+- [[get_config_fingerprint()]] - degree 9, connects to 5 communities
+- [[check_config_integrity()]] - degree 9, connects to 4 communities
+- [[TestPhase10ConfigKeys]] - degree 4, connects to 1 community
+- [[_hash_fingerprint()]] - degree 2, connects to 1 community

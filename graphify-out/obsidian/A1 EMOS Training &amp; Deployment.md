@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-a-prediction-pipeline.md"
 type: "document"
-community: "Community 117"
+community: "Community 124"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_117
+  - community/Community_124
 ---
 
 # A1: EMOS Training &amp; Deployment
@@ -15,4 +15,4 @@ tags:
 - [[Category A Prediction Pipeline Plan]] - `implements` [EXTRACTED]
 - [[Gaussian Probability Distribution Method]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_117
+#graphify/document #graphify/EXTRACTED #community/Community_124

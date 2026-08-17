@@ -1,20 +1,21 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.33
+members: 6
 ---
 
 # Community 546
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_ci_brackets_point_estimate()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_too_few_outcomes_returns_degenerate_ci()]] - code - tests/test_hurricane_climatology.py
-- [[dot-test_unanimous_outcomes_clamped_not_degenerate()]] - code - tests/test_hurricane_climatology.py
-- [[Opus-review-caught (2026-08-07, HIGH) a unanimous outcome set -- the common…]] - rationale - tests/test_hurricane_climatology.py
-- [[TestBootstrapCiNextEvent]] - code - tests/test_hurricane_climatology.py
+- [[54.1 Add `drawdown_kelly_multiplier(current_balance, peak_balance, max_drawdown_pct)` to `paper.py`]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[54.2 Wire into `_auto_place_trades` in `main.py`]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[54.3 Write tests]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[54.4 Verify & Commit]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[Background_9]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
+- [[Task 54 (P11.E) — Gradual Kelly ramp-down on drawdown]] - document - docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,7 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 98]]
+- 1 edge to [[_COMMUNITY_Community 543]]
 
 ## Top bridge nodes
-- [[TestBootstrapCiNextEvent]] - degree 4, connects to 1 community
+- [[Task 54 (P11.E) — Gradual Kelly ramp-down on drawdown]] - degree 6, connects to 1 community

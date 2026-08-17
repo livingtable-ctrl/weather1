@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "rationale"
-community: "Community 408"
+community: "Community 435"
 location: "L1635"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_408
+  - community/Community_435
 ---
 
 # Regression control: an ordinary ticker must reach the real exposure-cap logic…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_daily_ticker_unaffected()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_408
+#graphify/rationale #graphify/EXTRACTED #community/Community_435

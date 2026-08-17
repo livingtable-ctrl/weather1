@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-16-phase-b-risk-engine.md"
 type: "document"
-community: "Community 295"
+community: "Community 297"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_295
+  - community/Community_297
 ---
 
 # Phase B: Risk Engine Plan
@@ -16,4 +16,4 @@ tags:
 - [[Drawdown-Tiered Kelly Step Reduction]] - `implements` [EXTRACTED]
 - [[FlashCrashCB Circuit Breaker]] - `implements` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_295
+#graphify/document #graphify/EXTRACTED #community/Community_297

@@ -1,12 +1,12 @@
 ---
 source_file: "web_app.py"
 type: "rationale"
-community: "Community 693"
-location: "L3290"
+community: "Community 0"
+location: "L3291"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_0
 ---
 
 # Start the Flask web dashboard.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[start_web()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

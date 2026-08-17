@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_markets.py"
 type: "rationale"
-community: "Community 233"
+community: "Community 235"
 location: "L487"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_233
+  - community/Community_235
 ---
 
 # compute_market_implied_distributions() groups by (city, target_date)…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestComputeMarketImpliedExcludesHourly]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_233
+#graphify/rationale #graphify/EXTRACTED #community/Community_235

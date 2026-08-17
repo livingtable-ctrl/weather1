@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 511
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-_make_client()_9]] - code - tests/test_kalshi_client.py
-- [[dot-test_same_cycle_produces_the_same_idempotency_key()]] - code - tests/test_kalshi_client.py
-- [[dot-test_without_cycle_each_call_gets_a_different_key()]] - code - tests/test_kalshi_client.py
-- [[2026-07-09 place_maker_order never forwarded a cycle to place_order, so every…]] - rationale - tests/test_kalshi_client.py
-- [[Documents the pre-existing (and still correct for a genuinely distinct manual…]] - rationale - tests/test_kalshi_client.py
-- [[TestPlaceMakerOrderIdempotency]] - code - tests/test_kalshi_client.py
+- [[dot-test_brier_test_fails_not_skips_on_none_baseline()]] - code - tests/test_p1_remaining.py
+- [[dot-test_brier_test_fails_not_skips_when_file_missing()]] - code - tests/test_p1_remaining.py
+- [[dot-test_roc_test_fails_not_skips_on_none_baseline()]] - code - tests/test_p1_remaining.py
+- [[TestRegressionBaselineFail]] - code - tests/test_p1_remaining.py
+- [[test_brier_score_not_degraded must pytest.fail when baseline file is absent.]] - rationale - tests/test_p1_remaining.py
+- [[test_brier_score_not_degraded must pytest.fail when baseline value is None.]] - rationale - tests/test_p1_remaining.py
+- [[test_roc_auc_not_degraded must pytest.fail when baseline value is None.]] - rationale - tests/test_p1_remaining.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,10 +26,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 100]]
-- 1 edge to [[_COMMUNITY_Community 225]]
+- 2 edges to [[_COMMUNITY_Community 17]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestPlaceMakerOrderIdempotency]] - degree 5, connects to 1 community
-- [[dot-test_without_cycle_each_call_gets_a_different_key()]] - degree 3, connects to 1 community
-- [[dot-test_same_cycle_produces_the_same_idempotency_key()]] - degree 2, connects to 1 community
+- [[TestRegressionBaselineFail]] - degree 6, connects to 2 communities

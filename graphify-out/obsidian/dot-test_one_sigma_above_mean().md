@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 82"
+community: "Community 38"
 location: "L619"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_82
+  - community/Community_38
 ---
 
 # .test_one_sigma_above_mean()
 
 ## Connections
 - [[CDF at +1 sigma ≈ 0.8413.]] - `rationale_for` [EXTRACTED]
-- [[TestNormalCdf_1]] - `method` [EXTRACTED]
+- [[TestNormalCdf]] - `method` [EXTRACTED]
 - [[normal_cdf()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_82
+#graphify/code #graphify/EXTRACTED #community/Community_38

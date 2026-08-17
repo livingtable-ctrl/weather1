@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 530
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_forecast_uncertainty_is_a_pure_function_of_days_out()]] - code - tests/test_weather_markets.py
-- [[dot-test_no_date_today_calls_remain()]] - code - tests/test_weather_markets.py
-- [[L5-E weather_markets must use datetime.now(UTC).date() not date.today() for…]] - rationale - tests/test_weather_markets.py
-- [[TestUtcTodayDate]] - code - tests/test_weather_markets.py
-- [[_forecast_uncertainty(days_out) no longer recomputes today itself (from UTC…]] - rationale - tests/test_weather_markets.py
-- [[weather_markets.py must not contain any date.today() calls.]] - rationale - tests/test_weather_markets.py
+- [[dot-test_falls_back_to_hardcoded_when_none()]] - code - tests/test_trading.py
+- [[dot-test_unknown_pair_returns_zero()]] - code - tests/test_trading.py
+- [[dot-test_uses_dynamic_when_available()]] - code - tests/test_trading.py
+- [[TestDynamicCorrelationMatrix]] - code - tests/test_trading.py
+- [[Unknown city pairs should return 0.0.]] - rationale - tests/test_trading.py
+- [[When _load_dynamic_correlations returns None, use _HARDCODED_CORR.]] - rationale - tests/test_trading.py
+- [[When learned_correlations.json exists, get_city_correlation uses it.]] - rationale - tests/test_trading.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 86]]
 
 ## Top bridge nodes
-- [[TestUtcTodayDate]] - degree 4, connects to 1 community
+- [[TestDynamicCorrelationMatrix]] - degree 4, connects to 1 community

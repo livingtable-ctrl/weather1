@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Community 580"
-location: "L6776"
+community: "Community 13"
+location: "L6878"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_580
+  - community/Community_13
 ---
 
 # Same late-bound-closure shape as _count_signal_column, for the two registry…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_count_model_obs()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_580
+#graphify/rationale #graphify/EXTRACTED #community/Community_13

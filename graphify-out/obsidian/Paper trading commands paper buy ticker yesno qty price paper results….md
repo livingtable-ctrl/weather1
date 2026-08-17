@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L7556"
+community: "Community 1"
+location: "L7807"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_1
 ---
 
 # Paper trading commands: paper buy <ticker> <yes/no> <qty> <price> paper results…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[cmd_paper()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_1

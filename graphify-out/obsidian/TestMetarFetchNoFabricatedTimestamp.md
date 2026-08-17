@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_j.py"
 type: "code"
-community: "Community 236"
+community: "Community 237"
 location: "L59"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_236
+  - community/Community_237
 ---
 
 # TestMetarFetchNoFabricatedTimestamp
@@ -19,7 +19,7 @@ tags:
 - [[dot-test_result_obs_time_is_utc_aware()]] - `method` [EXTRACTED]
 - [[dot-test_unparseable_obs_time_returns_none()]] - `method` [EXTRACTED]
 - [[dot-test_valid_obs_time_returns_result()]] - `method` [EXTRACTED]
-- [[Phase 2 Batch J Regression Tests]] - `contains` [EXTRACTED]
 - [[fetch_metar must return None when obsTime is absent or unparseable.]] - `rationale_for` [EXTRACTED]
+- [[test_phase2_batch_j.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_236
+#graphify/code #graphify/EXTRACTED #community/Community_237

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_e.py"
 type: "code"
-community: "Community 261"
+community: "Community 201"
 location: "L47"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_261
+  - community/Community_201
 ---
 
 # .test_subscribe_receives_market_tickers()
@@ -15,4 +15,4 @@ tags:
 - [[TestWebSocketSubscribeOrder]] - `method` [EXTRACTED]
 - [[The subscribe call in cron must pass tickers from the market list, not an empty…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_261
+#graphify/code #graphify/EXTRACTED #community/Community_201

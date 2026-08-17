@@ -1,17 +1,18 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 52"
+community: "Community 238"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_52
+  - community/Community_238
 ---
 
 # test_signal_quality.py
 
 ## Connections
+- [[Grade Audit Module Doc weather_markets.py]] - `references` [EXTRACTED]
 - [[TestAnalyzeTradeConditionType]] - `contains` [EXTRACTED]
 - [[TestEdgeConfidenceConditionType]] - `contains` [EXTRACTED]
 - [[TestGetBrierByTier]] - `contains` [EXTRACTED]
@@ -24,13 +25,13 @@ tags:
 - [[Tests for Group 2 signal quality improvements.]] - `rationale_for` [EXTRACTED]
 - [[edge_confidence()]] - `imports` [EXTRACTED]
 - [[get_bias()]] - `imports` [EXTRACTED]
-- [[get_model_weights()]] - `calls` [EXTRACTED]
-- [[portfolio_var()]] - `calls` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[portfolio_var()]] - `imports` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[simulate_portfolio()]] - `imports` [EXTRACTED]
 - [[test_sameday_reserve.py]] - `semantically_similar_to` [INFERRED]
 - [[tracker.py]] - `imports` [EXTRACTED]
-- [[tracker.py_2]] - `calls` [EXTRACTED]
-- [[utils.py_1]] - `calls` [EXTRACTED]
-- [[weather_markets.py_1]] - `calls` [EXTRACTED]
+- [[utils.py]] - `calls` [EXTRACTED]
+- [[weather_markets.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_52
+#graphify/code #graphify/EXTRACTED #community/Community_238

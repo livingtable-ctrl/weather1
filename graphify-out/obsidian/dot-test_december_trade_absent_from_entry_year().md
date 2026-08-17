@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_i.py"
 type: "code"
-community: "Community 189"
+community: "Community 195"
 location: "L173"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_189
+  - community/Community_195
 ---
 
 # .test_december_trade_absent_from_entry_year()
@@ -16,4 +16,4 @@ tags:
 - [[Trade entered Dec 2025, settled Jan 2026 → must NOT appear in tax_year=2025.]] - `rationale_for` [EXTRACTED]
 - [[_settled_trade()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_189
+#graphify/code #graphify/EXTRACTED #community/Community_195

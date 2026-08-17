@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 504"
+community: "Community 565"
 location: "L1073"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_504
+  - community/Community_565
 ---
 
 # .test_enrich_uses_cache_timestamp_not_current_time()
@@ -15,4 +15,4 @@ tags:
 - [[TestEnrichWithForecastCacheTimestamp]] - `method` [EXTRACTED]
 - [[When the forecast is already cached, data_fetched_at must equal the original…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_504
+#graphify/code #graphify/EXTRACTED #community/Community_565

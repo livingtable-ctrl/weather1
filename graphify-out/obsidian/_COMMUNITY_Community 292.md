@@ -1,28 +1,28 @@
 ---
 type: community
-cohesion: 0.21
+cohesion: 0.18
 members: 13
 ---
 
 # Community 292
 
-**Cohesion:** 0.21 - loosely connected
+**Cohesion:** 0.18 - loosely connected
 **Members:** 13 nodes
 
 ## Members
-- [[Brier Score Metric Card (0.151, target =0.20)]] - image - updated frontend/screenshots/dark.png
-- [[DateGreeting Header with Daily P&L Summary Sentence]] - image - updated frontend/screenshots/dark.png
-- [[DemoPaper Badge, Live Indicator, Theme Toggle, Kill Switch Button]] - image - updated frontend/screenshots/dark.png
-- [[Graduation Gate - Brier Progress Bar (0.1510.2, partial)]] - image - updated frontend/screenshots/dark.png
-- [[Graduation Gate - P&L Progress Bar ($247.83$50, complete)]] - image - updated frontend/screenshots/dark.png
-- [[Graduation Gate - Trades Progress Bar (56730, complete)]] - image - updated frontend/screenshots/dark.png
-- [[Graduation Progress Panel (TradesP&LBrier gates)_1]] - image - updated frontend/screenshots/dark.png
-- [[Kalshi Weather Dashboard - Dark Theme]] - image - updated frontend/screenshots/dark.png
-- [[Metric Card Row (Paper Balance, Open Positions, Win Rate, Brier Score)]] - image - updated frontend/screenshots/dark.png
-- [[Open Positions Metric Card (8 open, 567 settled)_1]] - image - updated frontend/screenshots/dark.png
-- [[Paper Balance Metric Card ($1247.83, +24.8%)_1]] - image - updated frontend/screenshots/dark.png
-- [[Top Navigation Bar (OverviewPositionsSignalsForecastAnalyticsRiskTrades)_1]] - image - updated frontend/screenshots/dark.png
-- [[Win Rate Metric Card (61.2%, +2.3 pts)_1]] - image - updated frontend/screenshots/dark.png
+- [[dot-_analysis()]] - code - tests/test_tracker.py
+- [[dot-_analysis()_1]] - code - tests/test_tracker.py
+- [[dot-setUp()_19]] - code - tests/test_tracker.py
+- [[dot-tearDown()_19]] - code - tests/test_tracker.py
+- [[dot-test_column_exists_after_init()_1]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_signal_rows_multiday_excludes_sameday_rows()]] - code - tests/test_tracker.py
+- [[dot-test_log_prediction_stores_var()]] - code - tests/test_tracker.py
+- [[dot-test_no_var_in_condition_stores_null()]] - code - tests/test_tracker.py
+- [[dot-test_upsert_on_same_day_rescan_updates_var()]] - code - tests/test_tracker.py
+- [[A daily HIGHLOW market's condition dict may not carry a var key (var lives on…]] - rationale - tests/test_tracker.py
+- [[A same-day re-analysis (UPSERT conflict on ticker+predicted_date) must…]] - rationale - tests/test_tracker.py
+- [[Schema v53 must add predictions.var, purely additive (backlog.txt HOURLY-…]] - rationale - tests/test_tracker.py
+- [[TestPredictionsVarColumn]] - code - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,3 +30,14 @@ members: 13
 TABLE source_file, type FROM #community/Community_292
 SORT file.name ASC
 ```
+
+## Connections to other communities
+- 2 edges to [[_COMMUNITY_Community 133]]
+- 1 edge to [[_COMMUNITY_Community 35]]
+- 1 edge to [[_COMMUNITY_Community 23]]
+- 1 edge to [[_COMMUNITY_Community 29]]
+
+## Top bridge nodes
+- [[dot-_analysis()_1]] - degree 6, connects to 2 communities
+- [[dot-test_count_settled_signal_rows_multiday_excludes_sameday_rows()]] - degree 3, connects to 2 communities
+- [[TestPredictionsVarColumn]] - degree 9, connects to 1 community

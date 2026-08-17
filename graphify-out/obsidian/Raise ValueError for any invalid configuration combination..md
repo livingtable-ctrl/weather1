@@ -1,12 +1,12 @@
 ---
 source_file: "config.py"
 type: "rationale"
-community: "Community 297"
+community: "Community 47"
 location: "L314"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_297
+  - community/Community_47
 ---
 
 # Raise ValueError for any invalid configuration combination.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-validate()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_297
+#graphify/rationale #graphify/EXTRACTED #community/Community_47

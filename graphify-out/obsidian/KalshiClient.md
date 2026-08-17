@@ -1,18 +1,18 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Black Swan Halt State"
+community: "Community 13"
 location: "L210"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_13
 ---
 
 # KalshiClient
 
 ## Connections
-- [[dot-__init__()_5]] - `method` [EXTRACTED]
+- [[dot-__init__()_7]] - `method` [EXTRACTED]
 - [[dot-_check_error_body()]] - `method` [EXTRACTED]
 - [[dot-_delete()]] - `method` [EXTRACTED]
 - [[dot-_find_order_by_client_id()]] - `method` [EXTRACTED]
@@ -26,7 +26,7 @@ tags:
 - [[dot-get_balance()]] - `method` [EXTRACTED]
 - [[dot-get_candlesticks()]] - `method` [EXTRACTED]
 - [[dot-get_events()]] - `method` [EXTRACTED]
-- [[dot-get_market()_3]] - `method` [EXTRACTED]
+- [[dot-get_market()_2]] - `method` [EXTRACTED]
 - [[dot-get_markets()]] - `method` [EXTRACTED]
 - [[dot-get_open_orders()]] - `method` [EXTRACTED]
 - [[dot-get_order()]] - `method` [EXTRACTED]
@@ -39,7 +39,6 @@ tags:
 - [[CircuitBreaker]] - `uses` [INFERRED]
 - [[CircuitOpenError]] - `uses` [INFERRED]
 - [[CronContext]] - `uses` [INFERRED]
-- [[Phase 2 Batch L Regression Tests]] - `imports` [EXTRACTED]
 - [[TestBacktestBrierKeyNaming]] - `uses` [INFERRED]
 - [[TestClientOrderId]] - `uses` [INFERRED]
 - [[TestCronUsesAnomalyTuple]] - `uses` [INFERRED]
@@ -58,27 +57,65 @@ tags:
 - [[TestValidateMarketPriceRange]] - `uses` [INFERRED]
 - [[TradeCycleResult]] - `uses` [INFERRED]
 - [[_SignalRegistryEntry]] - `uses` [INFERRED]
+- [[_analyze_once()]] - `references` [EXTRACTED]
 - [[_cmd_cron_body()]] - `references` [EXTRACTED]
+- [[_cmd_settle_open()]] - `references` [EXTRACTED]
 - [[_demo_client()]] - `calls` [EXTRACTED]
 - [[_get_settlement_kalshi_client()]] - `calls` [EXTRACTED]
+- [[_menu_watch()]] - `references` [EXTRACTED]
+- [[_quick_paper_buy()]] - `references` [EXTRACTED]
+- [[_render_analysis_results()]] - `references` [EXTRACTED]
+- [[_resolve_price()]] - `references` [EXTRACTED]
+- [[auto_backtest()]] - `references` [EXTRACTED]
+- [[auto_settle()]] - `references` [EXTRACTED]
+- [[build_client()]] - `references` [EXTRACTED]
 - [[check_retirement_probation()]] - `references` [EXTRACTED]
 - [[check_series_drift()]] - `references` [EXTRACTED]
+- [[cmd_analyze()]] - `references` [EXTRACTED]
+- [[cmd_backfill_price_history()]] - `references` [EXTRACTED]
+- [[cmd_backtest()]] - `references` [EXTRACTED]
 - [[cmd_balance()]] - `references` [EXTRACTED]
-- [[cmd_cron()]] - `references` [EXTRACTED]
+- [[cmd_brief()]] - `references` [EXTRACTED]
+- [[cmd_browse()]] - `references` [EXTRACTED]
+- [[cmd_cancel()]] - `references` [EXTRACTED]
+- [[cmd_consistency()]] - `references` [EXTRACTED]
+- [[cmd_cron()_1]] - `references` [EXTRACTED]
+- [[cmd_dashboard()]] - `references` [EXTRACTED]
 - [[cmd_history()]] - `references` [EXTRACTED]
+- [[cmd_loop()]] - `references` [EXTRACTED]
+- [[cmd_market()]] - `references` [EXTRACTED]
+- [[cmd_markets()]] - `references` [EXTRACTED]
+- [[cmd_menu()]] - `references` [EXTRACTED]
+- [[cmd_montecarlo()]] - `references` [EXTRACTED]
+- [[cmd_order()]] - `references` [EXTRACTED]
+- [[cmd_paper()]] - `references` [EXTRACTED]
 - [[cmd_positions()]] - `references` [EXTRACTED]
+- [[cmd_settings()]] - `references` [EXTRACTED]
+- [[cmd_settle()]] - `references` [EXTRACTED]
+- [[cmd_settlement_monitor()]] - `references` [EXTRACTED]
+- [[cmd_shadow_compare()]] - `references` [EXTRACTED]
+- [[cmd_simulate()]] - `references` [EXTRACTED]
+- [[cmd_sync()]] - `references` [EXTRACTED]
+- [[cmd_today()]] - `references` [EXTRACTED]
+- [[cmd_walkforward()]] - `references` [EXTRACTED]
+- [[cmd_watch()]] - `references` [EXTRACTED]
+- [[cmd_watch_settle()]] - `references` [EXTRACTED]
+- [[cmd_web()]] - `references` [EXTRACTED]
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[get_weather_markets()]] - `references` [EXTRACTED]
 - [[kalshi_client.py]] - `contains` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[output_formatters.py]] - `imports` [EXTRACTED]
 - [[refresh_hourly_target_hours()]] - `references` [EXTRACTED]
 - [[refresh_hurricane_count_to_date()]] - `references` [EXTRACTED]
 - [[run_trade_cycle()]] - `references` [EXTRACTED]
 - [[test_idempotency.py]] - `imports` [EXTRACTED]
 - [[test_integration_live.py]] - `imports` [EXTRACTED]
+- [[test_phase2_batch_l.py]] - `imports` [EXTRACTED]
 - [[test_phase3_batch_a.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `imports` [EXTRACTED]
 - [[trade_cycle.py]] - `imports` [EXTRACTED]
+- [[validate_api_key()]] - `references` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_13

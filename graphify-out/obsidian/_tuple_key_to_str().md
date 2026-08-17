@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecast_cache.py"
 type: "code"
-community: "Forecast Persistent Cache"
+community: "Community 14"
 location: "L231"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Forecast_Persistent_Cache
+  - community/Community_14
 ---
 
 # _tuple_key_to_str()
@@ -19,4 +19,4 @@ tags:
 - [[test_forecast_cache.py]] - `contains` [EXTRACTED]
 - [[test_load_from_disk_does_not_evict_beyond_max_size()]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Forecast_Persistent_Cache
+#graphify/code #graphify/INFERRED #community/Community_14

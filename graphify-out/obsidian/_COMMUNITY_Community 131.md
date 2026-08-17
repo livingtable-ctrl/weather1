@@ -1,38 +1,39 @@
 ---
 type: community
-cohesion: 0.11
-members: 23
+cohesion: 0.14
+members: 24
 ---
 
 # Community 131
 
-**Cohesion:** 0.11 - loosely connected
-**Members:** 23 nodes
+**Cohesion:** 0.14 - loosely connected
+**Members:** 24 nodes
 
 ## Members
-- [[dot-test_nws_prob_at_median_is_near_half()]] - code - tests/test_nbm.py
-- [[dot-test_nws_prob_below_is_complement_of_above()]] - code - tests/test_nbm.py
-- [[dot-test_nws_prob_empty_quantiles_returns_half()]] - code - tests/test_nbm.py
-- [[dot-test_nws_prob_uses_quantiles_above()]] - code - tests/test_nbm.py
-- [[A live-network exception inside the NBM-quantile fetch must not take down the…]] - rationale - tests/test_weather_markets.py
-- [[Compute probability from NBM native quantiles using linear ECDF interpolation.…]] - rationale - nws.py
-- [[Empty quantile dict should return 0.5 as a safe fallback.]] - rationale - tests/test_nbm.py
-- [[No NBP coverage for this stationdate (mos.fetch_nbm_quantiles returns None)…]] - rationale - tests/test_weather_markets.py
-- [[P(T  threshold) + P(T  threshold) should approximately equal 1.]] - rationale - tests/test_nbm.py
-- [[P(T  median) should be ~0.50 by definition.]] - rationale - tests/test_nbm.py
-- [[Regression guard for backlog.txt SEVERAL test_weather_markets.py analyze_trade…]] - rationale - tests/test_weather_markets.py
-- [[Shared enriched-market fixture for the nbm_quantile_prob tests below (paired…]] - rationale - tests/test_weather_markets.py
-- [[Shared mocks for the nbm_quantile_prob tests below -- same baseline as the…]] - rationale - tests/test_weather_markets.py
-- [[TestNBMQuantiles]] - code - tests/test_nbm.py
-- [[_analyze_trade_base_mocks()]] - code - tests/test_weather_markets.py
-- [[_analyze_trade_enriched_fixture()]] - code - tests/test_weather_markets.py
-- [[backlog.txt NBM PROBABILISTIC QUANTILES when mos.fetch_nbm_quantiles returns…]] - rationale - tests/test_weather_markets.py
-- [[nws_prob_from_quantiles uses ECDF interpolation for above condition.]] - rationale - tests/test_nbm.py
-- [[nws_prob_from_quantiles()]] - code - nws.py
-- [[test_analyze_trade_makes_no_real_nws_mos_or_climate_indices_calls()]] - code - tests/test_weather_markets.py
-- [[test_analyze_trade_nbm_quantile_fetch_exception_does_not_break_analysis()]] - code - tests/test_weather_markets.py
-- [[test_analyze_trade_result_nbm_quantile_prob_none_when_no_coverage()]] - code - tests/test_weather_markets.py
-- [[test_analyze_trade_result_surfaces_nbm_quantile_prob()]] - code - tests/test_weather_markets.py
+- [[Exact-membership matching (not substring) is deliberate, mirroring the…]] - rationale - tests/test_series_drift.py
+- [[Known-dead placeholder series (KNOWN_DEAD_WEATHER_SERIES) must not trigger the…]] - rationale - tests/test_series_drift.py
+- [[Matches check_series_drift's own datetime.now(UTC).date() — using local…]] - rationale - tests/test_series_drift.py
+- [[Tests for check_series_drift() — once-per-day detection of Kalshi ticker drift…]] - rationale - tests/test_series_drift.py
+- [[The real subtlety found on plan review client.get_series_list() returns ALL…]] - rationale - tests/test_series_drift.py
+- [[_mock_client()_1]] - code - tests/test_series_drift.py
+- [[_today()_1]] - code - tests/test_series_drift.py
+- [[backlog.txt HURRICANE MARKETS -- storm-order model (2026-08-07) the 1 new…]] - rationale - tests/test_series_drift.py
+- [[backlog.txt HURRICANE MARKETS -- time-to-next-event model (2026-08-07) the 2…]] - rationale - tests/test_series_drift.py
+- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 1 a genuinely novelunknown…]] - rationale - tests/test_series_drift.py
+- [[test_first_run_creates_state_file()]] - code - tests/test_series_drift.py
+- [[test_gated_to_run_once_per_day()]] - code - tests/test_series_drift.py
+- [[test_hurricane_next_event_series_present_does_not_warn()]] - code - tests/test_series_drift.py
+- [[test_known_dead_series_suppressed()]] - code - tests/test_series_drift.py
+- [[test_known_untracked_rain_series_suppressed()]] - code - tests/test_series_drift.py
+- [[test_missing_ticker_counter_increments_and_warns_at_three()]] - code - tests/test_series_drift.py
+- [[test_missing_ticker_does_not_warn_before_three_days()]] - code - tests/test_series_drift.py
+- [[test_never_raises_when_get_series_list_throws()]] - code - tests/test_series_drift.py
+- [[test_recovered_ticker_resets_counter()]] - code - tests/test_series_drift.py
+- [[test_series_drift.py]] - code - tests/test_series_drift.py
+- [[test_storm_order_series_present_does_not_warn()]] - code - tests/test_series_drift.py
+- [[test_unknown_live_ticker_warns_immediately()]] - code - tests/test_series_drift.py
+- [[test_unknown_rain_ticker_warns_immediately()]] - code - tests/test_series_drift.py
+- [[test_unrecognized_hurricane_series_deliberately_not_flagged()]] - code - tests/test_series_drift.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -42,18 +43,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 7 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 6 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_Community 182]]
-- 2 edges to [[_COMMUNITY_Community 123]]
-- 1 edge to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Community 331]]
-- 1 edge to [[_COMMUNITY_Community 99]]
+- 4 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 3]]
 
 ## Top bridge nodes
-- [[nws_prob_from_quantiles()]] - degree 15, connects to 7 communities
-- [[TestNBMQuantiles]] - degree 6, connects to 2 communities
-- [[test_analyze_trade_result_surfaces_nbm_quantile_prob()]] - degree 6, connects to 2 communities
-- [[test_analyze_trade_makes_no_real_nws_mos_or_climate_indices_calls()]] - degree 5, connects to 2 communities
-- [[test_analyze_trade_nbm_quantile_fetch_exception_does_not_break_analysis()]] - degree 5, connects to 2 communities
+- [[test_series_drift.py]] - degree 21, connects to 2 communities

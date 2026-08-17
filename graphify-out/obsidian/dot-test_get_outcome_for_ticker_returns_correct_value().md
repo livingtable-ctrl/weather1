@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 259"
+community: "Community 256"
 location: "L1011"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_259
+  - community/Community_256
 ---
 
 # .test_get_outcome_for_ticker_returns_correct_value()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestAutoSettlePaperTrades]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_259
+#graphify/code #graphify/EXTRACTED #community/Community_256

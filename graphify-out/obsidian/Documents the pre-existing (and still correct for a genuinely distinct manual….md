@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "rationale"
-community: "Community 511"
+community: "Community 570"
 location: "L464"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_511
+  - community/Community_570
 ---
 
 # Documents the pre-existing (and still correct for a genuinely distinct manual…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_without_cycle_each_call_gets_a_different_key()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_511
+#graphify/rationale #graphify/EXTRACTED #community/Community_570

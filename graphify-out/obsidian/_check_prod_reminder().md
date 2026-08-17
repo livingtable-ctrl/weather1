@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
-location: "L447"
+community: "Community 3"
+location: "L448"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_3
 ---
 
 # _check_prod_reminder()
@@ -17,4 +17,4 @@ tags:
 - [[cron.py]] - `contains` [EXTRACTED]
 - [[send_system_alert()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_3

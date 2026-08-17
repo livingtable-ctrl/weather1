@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 60"
+community: "Community 59"
 location: "L255"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_60
+  - community/Community_59
 ---
 
 # .test_end_year_defaults_to_last_year_from_real_clock()
@@ -16,4 +16,4 @@ tags:
 - [[TestSeasonEndTotalDistribution]] - `method` [EXTRACTED]
 - [[_fixture_storms()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_60
+#graphify/code #graphify/EXTRACTED #community/Community_59

@@ -1,16 +1,16 @@
 ---
 source_file: ""
 type: "code"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 8"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_8
 ---
 
 # Path
 
 ## Connections
-- [[_all_source_files()_1]] - `references` [EXTRACTED]
+- [[save_alerts()]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/code #graphify/EXTRACTED #community/Community_8

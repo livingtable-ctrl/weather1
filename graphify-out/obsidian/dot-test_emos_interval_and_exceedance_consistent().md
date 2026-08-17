@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ml_bias.py"
 type: "code"
-community: "ML Bias Multiday-Predictions Filter"
-location: "L1005"
+community: "Community 230"
+location: "L1216"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/ML_Bias_Multiday-Predictions_Filter
+  - community/Community_230
 ---
 
 # .test_emos_interval_and_exceedance_consistent()
@@ -17,4 +17,4 @@ tags:
 - [[emos_exceedance_prob()]] - `calls` [EXTRACTED]
 - [[emos_interval_prob()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/ML_Bias_Multiday-Predictions_Filter
+#graphify/code #graphify/EXTRACTED #community/Community_230

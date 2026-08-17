@@ -1,27 +1,27 @@
 ---
 type: community
-cohesion: 0.26
+cohesion: 0.17
 members: 12
 ---
 
 # Community 304
 
-**Cohesion:** 0.26 - loosely connected
+**Cohesion:** 0.17 - loosely connected
 **Members:** 12 nodes
 
 ## Members
-- [[dot-_analyze()]] - code - tests/test_hourly_markets.py
-- [[dot-test_austin_hourly_ticker_returns_none()]] - code - tests/test_hourly_markets.py
-- [[dot-test_chicago_hourly_ticker_returns_none()]] - code - tests/test_hourly_markets.py
-- [[dot-test_daily_ticker_unaffected_by_hourly_guard()]] - code - tests/test_hourly_markets.py
-- [[dot-test_dc_hourly_ticker_returns_none()]] - code - tests/test_hourly_markets.py
-- [[dot-test_hourly_gate_counted()]] - code - tests/test_hourly_markets.py
-- [[dot-test_la_hourly_ticker_returns_none()]] - code - tests/test_hourly_markets.py
-- [[dot-test_nyc_hourly_ticker_returns_none()]] - code - tests/test_hourly_markets.py
-- [[Regression an ordinary daily-market enriched dict that would otherwise pass…]] - rationale - tests/test_hourly_markets.py
-- [[TestAnalyzeTradeHourlyGuard]] - code - tests/test_hourly_markets.py
-- [[The skip is counted via the existing _count_gate mechanism (same pattern every…]] - rationale - tests/test_hourly_markets.py
-- [[analyze_trade() must return None immediately for KXTEMPxxxH tickers at a non-…]] - rationale - tests/test_hourly_markets.py
+- [[P1-5 1-char checksum must raise CorruptionError (was passing 116 of…]] - rationale - tests/test_safe_io.py
+- [[P1-5 16-char checksums (prior format) must still pass validation.]] - rationale - tests/test_safe_io.py
+- [[P1-5 empty checksum string must raise CorruptionError (was silently passing).]] - rationale - tests/test_safe_io.py
+- [[P1-5 no _checksum field means no validation (legacy files without checksum).]] - rationale - tests/test_safe_io.py
+- [[P1-5 tampered data must raise CorruptionError.]] - rationale - tests/test_safe_io.py
+- [[Validate SHA-256 checksum in data dict. Raises CorruptionError on mismatch.…]] - rationale - paper.py
+- [[_validate_checksum()]] - code - paper.py
+- [[test_validate_checksum_accepts_legacy_16char()]] - code - tests/test_safe_io.py
+- [[test_validate_checksum_rejects_empty_string()]] - code - tests/test_safe_io.py
+- [[test_validate_checksum_rejects_mismatch()]] - code - tests/test_safe_io.py
+- [[test_validate_checksum_rejects_one_char()]] - code - tests/test_safe_io.py
+- [[test_validate_checksum_skips_when_absent()]] - code - tests/test_safe_io.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,7 +31,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 233]]
+- 6 edges to [[_COMMUNITY_Community 85]]
+- 3 edges to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 336]]
+- 1 edge to [[_COMMUNITY_Community 498]]
 
 ## Top bridge nodes
-- [[TestAnalyzeTradeHourlyGuard]] - degree 10, connects to 1 community
+- [[_validate_checksum()]] - degree 12, connects to 4 communities
+- [[test_validate_checksum_accepts_legacy_16char()]] - degree 3, connects to 1 community
+- [[test_validate_checksum_rejects_empty_string()]] - degree 3, connects to 1 community
+- [[test_validate_checksum_rejects_mismatch()]] - degree 3, connects to 1 community
+- [[test_validate_checksum_rejects_one_char()]] - degree 3, connects to 1 community

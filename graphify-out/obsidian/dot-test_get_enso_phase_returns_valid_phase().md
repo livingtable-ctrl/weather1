@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "code"
-community: "Forecasting Persistence Model Tests"
+community: "Community 26"
 location: "L122"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_26
 ---
 
 # .test_get_enso_phase_returns_valid_phase()
@@ -16,4 +16,4 @@ tags:
 - [[_get_enso_phase always returns one of three valid values.]] - `rationale_for` [EXTRACTED]
 - [[_get_enso_phase()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_26

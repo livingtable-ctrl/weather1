@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 65"
+community: "Community 63"
 location: "L6287"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_65
+  - community/Community_63
 ---
 
 # .test_picks_reading_at_exact_hour_when_available()
@@ -15,4 +15,4 @@ tags:
 - [[dot-_mock_response()_3]] - `calls` [EXTRACTED]
 - [[TestFetchAsosHourTemp]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_65
+#graphify/code #graphify/EXTRACTED #community/Community_63

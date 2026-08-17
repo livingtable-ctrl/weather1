@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/synthesis.md"
 type: "document"
-community: "Community 59"
+community: "Community 6"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_59
+  - community/Community_6
 ---
 
 # Grade Audit Synthesis Prompt
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[Grade Audit Final Report]] - `implements` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_59
+#graphify/document #graphify/EXTRACTED #community/Community_6

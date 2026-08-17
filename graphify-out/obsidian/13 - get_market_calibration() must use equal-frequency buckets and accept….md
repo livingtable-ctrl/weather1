@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 76"
+community: "Community 79"
 location: "L2208"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_76
+  - community/Community_79
 ---
 
 # #13 - get_market_calibration() must use equal-frequency buckets and accept…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMarketCalibrationQuantile]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_76
+#graphify/rationale #graphify/EXTRACTED #community/Community_79

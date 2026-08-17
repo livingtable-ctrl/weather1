@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Community 86"
+community: "Community 13"
 location: "L610"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_86
+  - community/Community_13
 ---
 
 # .get_order()
@@ -17,4 +17,4 @@ tags:
 - [[Fetch a single order by ID from the Kalshi portfolio API. Returns the inner…]] - `rationale_for` [EXTRACTED]
 - [[KalshiClient]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_86
+#graphify/code #graphify/EXTRACTED #community/Community_13

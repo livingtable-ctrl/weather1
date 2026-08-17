@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 126"
 location: "L26"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_126
 ---
 
 # .test_no_edge_returns_zero()
@@ -16,4 +16,4 @@ tags:
 - [[When our probability matches market price, Kelly = 0.]] - `rationale_for` [EXTRACTED]
 - [[kelly_fraction()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_126

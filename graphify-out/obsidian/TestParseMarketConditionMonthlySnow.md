@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 377"
+community: "Community 391"
 location: "L116"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_377
+  - community/Community_391
 ---
 
 # TestParseMarketConditionMonthlySnow
@@ -21,4 +21,4 @@ tags:
 - [[backlog.txt Snow Step 2 the real per-bracket threshold, read from…]] - `rationale_for` [EXTRACTED]
 - [[test_snow_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_377
+#graphify/code #graphify/EXTRACTED #community/Community_391

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 558"
-location: "L3742"
+community: "Community 639"
+location: "L4111"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_558
+  - community/Community_639
 ---
 
 # TestGetConsensusProbsEcmwf
@@ -17,4 +17,4 @@ tags:
 - [[backlog.txt 'TRACK ECMWF FORECAST ACCURACY' _get_consensus_probs must also…]] - `rationale_for` [EXTRACTED]
 - [[test_weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_558
+#graphify/code #graphify/EXTRACTED #community/Community_639

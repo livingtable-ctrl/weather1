@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Community 500"
+community: "Community 2"
 location: "L626"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_500
+  - community/Community_2
 ---
 
 # Record a micro live fill for slippage tracking (#P10.4).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[log_live_fill()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_500
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

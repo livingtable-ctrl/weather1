@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_analytics.py"
 type: "rationale"
-community: "Community 71"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_71
+  - community/Community_4
 ---
 
 # Tests for web analytics API shape contracts.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_web_analytics.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_71
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

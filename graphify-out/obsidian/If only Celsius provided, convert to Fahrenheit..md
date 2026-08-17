@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "rationale"
-community: "Community 73"
+community: "Community 95"
 location: "L58"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_73
+  - community/Community_95
 ---
 
 # If only Celsius provided, convert to Fahrenheit.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_celsius_converted_to_fahrenheit()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_73
+#graphify/rationale #graphify/EXTRACTED #community/Community_95

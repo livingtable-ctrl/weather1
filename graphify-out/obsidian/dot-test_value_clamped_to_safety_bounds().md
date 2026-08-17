@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_a.py"
 type: "code"
-community: "Community 281"
+community: "Community 285"
 location: "L218"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_281
+  - community/Community_285
 ---
 
 # .test_value_clamped_to_safety_bounds()
@@ -15,4 +15,4 @@ tags:
 - [[TestPaperMinEdgeWarning]] - `method` [EXTRACTED]
 - [[Value from file is returned as-is (within 0.03–0.15 bounds already enforced).]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_281
+#graphify/code #graphify/EXTRACTED #community/Community_285

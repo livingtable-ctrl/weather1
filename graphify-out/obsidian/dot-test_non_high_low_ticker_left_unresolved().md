@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 177"
+community: "Community 182"
 location: "L2625"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_177
+  - community/Community_182
 ---
 
 # .test_non_high_low_ticker_left_unresolved()
@@ -17,4 +17,4 @@ tags:
 - [[A rainprecip market at that citydate has neither prefix -- must not be…]] - `rationale_for` [EXTRACTED]
 - [[TestBackfillEnsembleMemberScoresVar]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_177
+#graphify/code #graphify/EXTRACTED #community/Community_182

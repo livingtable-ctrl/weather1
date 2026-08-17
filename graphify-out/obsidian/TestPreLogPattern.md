@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_prelog.py"
 type: "code"
-community: "Community 219"
+community: "Community 224"
 location: "L8"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_219
+  - community/Community_224
 ---
 
 # TestPreLogPattern
@@ -22,4 +22,4 @@ tags:
 - [[_place_live_order must pre-log with status='pending' before calling place_order.]] - `rationale_for` [EXTRACTED]
 - [[test_prelog.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_219
+#graphify/code #graphify/EXTRACTED #community/Community_224

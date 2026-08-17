@@ -10,16 +10,16 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-test_confidence_increases_with_clearance()]] - code - tests/test_metar.py
-- [[dot-test_confidence_increases_with_hour()]] - code - tests/test_metar.py
-- [[dot-test_large_clearance_late_evening_gets_high_confidence()]] - code - tests/test_metar.py
-- [[dot-test_near_threshold_early_afternoon_confidence_below_old_hardcoded()]] - code - tests/test_metar.py
-- [[Confidence must be strictly higher for a later observation time with the same…]] - rationale - tests/test_metar.py
-- [[Confidence must be strictly higher for larger temperature clearance at the same…]] - rationale - tests/test_metar.py
-- [[Regression for L6-D 15°F clearance at 10 PM must yield confidence = 0.90.…]] - rationale - tests/test_metar.py
-- [[Regression for L6-D 3°F clearance at 2 PM must yield confidence  0.90. Before…]] - rationale - tests/test_metar.py
-- [[Regression tests for L6-D METAR lock-in confidence must scale with temperature…]] - rationale - tests/test_metar.py
-- [[TestDynamicLockInConfidence]] - code - tests/test_metar.py
+- [[2026-04-10-model-signal-calibration]] - document - docs/superpowers/plans/2026-04-10-model-signal-calibration.md
+- [[Model Signal Calibration Implementation Plan]] - document - docs/superpowers/plans/2026-04-10-model-signal-calibration.md
+- [[Self-Review]] - document - docs/superpowers/plans/2026-04-10-model-signal-calibration.md
+- [[Task 1 `edge_confidence()` function]] - document - docs/superpowers/plans/2026-04-10-model-signal-calibration.md
+- [[Task 2 Wire `edge_confidence` into `analyze_trade()`]] - document - docs/superpowers/plans/2026-04-10-model-signal-calibration.md
+- [[Task 3 Schema migration v9 — per-source probability columns]] - document - docs/superpowers/plans/2026-04-10-model-signal-calibration.md
+- [[Task 4 Pass per-source probs from `analyze_trade()` through to `log_prediction()`]] - document - docs/superpowers/plans/2026-04-10-model-signal-calibration.md
+- [[Task 5 `calibration.py` — grid-search and loaders]] - document - docs/superpowers/plans/2026-04-10-model-signal-calibration.md
+- [[Task 6 Wire calibration into `_blend_weights()`]] - document - docs/superpowers/plans/2026-04-10-model-signal-calibration.md
+- [[Task 7 `calibrate` CLI command in `main.py`]] - document - docs/superpowers/plans/2026-04-10-model-signal-calibration.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,10 +27,3 @@ members: 10
 TABLE source_file, type FROM #community/Community_367
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 73]]
-- 1 edge to [[_COMMUNITY_Community 51]]
-
-## Top bridge nodes
-- [[TestDynamicLockInConfidence]] - degree 7, connects to 2 communities

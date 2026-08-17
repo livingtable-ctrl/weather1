@@ -1,12 +1,12 @@
 ---
 source_file: "positions.py"
 type: "rationale"
-community: "Community 45"
+community: "Community 12"
 location: "L36"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Community_12
 ---
 
 # The subset of an open position's fields NOT the full stored record on either…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[Position]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_45
+#graphify/rationale #graphify/EXTRACTED #community/Community_12

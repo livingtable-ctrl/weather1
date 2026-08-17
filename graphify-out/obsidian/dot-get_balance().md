@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Community 86"
+community: "Community 13"
 location: "L447"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_86
+  - community/Community_13
 ---
 
 # .get_balance()
@@ -14,5 +14,6 @@ tags:
 ## Connections
 - [[dot-_get()]] - `calls` [EXTRACTED]
 - [[KalshiClient]] - `method` [EXTRACTED]
+- [[_build_stream_data()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_86
+#graphify/code #graphify/EXTRACTED #community/Community_13

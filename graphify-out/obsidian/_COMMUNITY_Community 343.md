@@ -10,17 +10,17 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-setUp()_25]] - code - tests/test_paper.py
-- [[dot-tearDown()_24]] - code - tests/test_paper.py
-- [[dot-test_directional_exposure_other_side()]] - code - tests/test_paper.py
-- [[dot-test_directional_exposure_same_side()]] - code - tests/test_paper.py
-- [[dot-test_directional_penalty_applies_before_city_cap()]] - code - tests/test_paper.py
-- [[dot-test_portfolio_kelly_with_directional_penalty()]] - code - tests/test_paper.py
-- [[Concentrated same-side bets trigger 50% further reduction.]] - rationale - tests/test_paper.py
-- [[NO bets don't count toward YES directional exposure.]] - rationale - tests/test_paper.py
-- [[TestDirectionalExposure]] - code - tests/test_paper.py
-- [[Two YES bets on same citydate sum correctly.]] - rationale - tests/test_paper.py
-- [[When city exposure  max but directional  threshold, penalty applies.]] - rationale - tests/test_paper.py
+- [[dot-test_atl_series_map_to_correct_basin_and_count_type()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_kxhurricane_resolves_basin_and_maj_suffix_from_event_middle()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_kxnamedstorm_is_always_tropical_storm_count_type()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_returns_none_for_malformed_ticker()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_returns_none_for_missing_basin_infix()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_returns_none_for_unexpected_count_type_suffix()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_returns_none_for_unrelated_ticker()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_season_year_derived_from_2_digit_prefix()]] - code - tests/test_hurricane_markets.py
+- [[KXHURRICANEKXNAMEDSTORM without a real EPACCPAC infix in the event-ticker…]] - rationale - tests/test_hurricane_markets.py
+- [[Opus-review-caught (2026-08-03) the original `else hurricane` fallback…]] - rationale - tests/test_hurricane_markets.py
+- [[TestHurricaneCountKeyFromTicker]] - code - tests/test_hurricane_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,8 +30,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 56]]
 - 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
-- [[TestDirectionalExposure]] - degree 8, connects to 2 communities
+- [[TestHurricaneCountKeyFromTicker]] - degree 9, connects to 1 community

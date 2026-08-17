@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 447"
-location: "L2441"
+community: "Community 479"
+location: "L2810"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_447
+  - community/Community_479
 ---
 
 # .test_circuit_breaker_skips_when_open()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestFetchTemperatureWeatherapi]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_447
+#graphify/code #graphify/EXTRACTED #community/Community_479

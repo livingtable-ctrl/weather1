@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/reference/analytics.js"
 type: "code"
-community: "Community 448"
+community: "Community 481"
 location: "L154"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_448
+  - community/Community_481
 ---
 
 # loadModelAccuracy()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[referenceanalytics.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_448
+#graphify/code #graphify/EXTRACTED #community/Community_481

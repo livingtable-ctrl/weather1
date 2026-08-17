@@ -1,12 +1,12 @@
 ---
 source_file: "docs/grade_audit/outputs/order_executor.py.md"
 type: "document"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 1"
 location: "L:209-341"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_1
 ---
 
 # _poll_pending_orders() DEBUG/print Instead of WARNING (6/10)
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[order_executor.py]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/document #graphify/EXTRACTED #community/Community_1

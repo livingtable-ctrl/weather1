@@ -1,32 +1,33 @@
 ---
 type: community
-cohesion: 0.16
-members: 17
+cohesion: 0.11
+members: 18
 ---
 
 # Community 194
 
-**Cohesion:** 0.16 - loosely connected
-**Members:** 17 nodes
+**Cohesion:** 0.11 - loosely connected
+**Members:** 18 nodes
 
 ## Members
-- [[dot-test_missing_side_defaults_to_yes()]] - code - tests/test_alerts_side.py
-- [[dot-test_no_side_no_outcome_is_win()]] - code - tests/test_alerts_side.py
-- [[dot-test_no_side_yes_outcome_is_loss()]] - code - tests/test_alerts_side.py
-- [[dot-test_yes_side_no_outcome_is_loss()]] - code - tests/test_alerts_side.py
-- [[dot-test_yes_side_yes_outcome_is_win()]] - code - tests/test_alerts_side.py
-- [[apianomaly-status endpoint]] - code - web_app.py
-- [[Return True if the trade was a net loss (pnl  0). Breakeven (pnl == 0) is…]] - rationale - alerts.py
-- [[Return True if the trade was profitable (pnl  0). Matches paper.py's…]] - rationale - alerts.py
-- [[Return the `limit` most recently settled trades, sorted by settled_at. Pass…]] - rationale - alerts.py
-- [[Return the exact win-rate window check_anomalies()'s WIN RATE COLLAPSE gate…]] - rationale - alerts.py
-- [[TestTradeWon]] - code - tests/test_alerts_side.py
-- [[Tests for P1-14 — alerts winloss side confusion fix.]] - rationale - tests/test_alerts_side.py
-- [[_recent_settled()]] - code - alerts.py
-- [[_trade_lost()]] - code - alerts.py
-- [[_trade_won()]] - code - alerts.py
-- [[get_win_rate_window()]] - code - alerts.py
-- [[test_alerts_side.py]] - code - tests/test_alerts_side.py
+- [[dot-setUp()_10]] - code - tests/test_paper.py
+- [[dot-tearDown()_10]] - code - tests/test_paper.py
+- [[dot-test_full_scaling_at_peak()]] - code - tests/test_paper.py
+- [[dot-test_kelly_scaled_at_partial_recovery()]] - code - tests/test_paper.py
+- [[dot-test_kelly_zero_below_20_pct()]] - code - tests/test_paper.py
+- [[dot-test_tier2_scaling_between_80_and_85_pct()]] - code - tests/test_paper.py
+- [[dot-test_tier3_scaling_between_85_and_90_pct()]] - code - tests/test_paper.py
+- [[dot-test_tier4_scaling_between_90_and_95_pct()]] - code - tests/test_paper.py
+- [[dot-test_zero_scaling_below_20_pct()]] - code - tests/test_paper.py
+- [[At full balance, scaling factor is 1.0.]] - rationale - tests/test_paper.py
+- [[Balance at 82% of peak → step tier = 0.10 (TIER_1–TIER_2 with 20% halt).]] - rationale - tests/test_paper.py
+- [[Balance at 87% of peak → step tier = 0.30 (TIER_2–TIER_3 with 20% halt).]] - rationale - tests/test_paper.py
+- [[Balance at 92% of peak → step tier = 0.70 (TIER_3–TIER_4 with 20% halt).]] - rationale - tests/test_paper.py
+- [[Below 20% of peak → scale = 0.0 (fully paused).]] - rationale - tests/test_paper.py
+- [[Kelly dollars are scaled by recovery factor, not all-or-nothing.]] - rationale - tests/test_paper.py
+- [[Kelly still returns 0.0 when fully in drawdown (scale=0.0).]] - rationale - tests/test_paper.py
+- [[TestDrawdownScaling]] - code - tests/test_paper.py
+- [[Tests for the gradual drawdown recovery sizing feature.]] - rationale - tests/test_paper.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -36,20 +37,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 7 edges to [[_COMMUNITY_Community 208]]
-- 4 edges to [[_COMMUNITY_Community 167]]
-- 4 edges to [[_COMMUNITY_Community 94]]
-- 1 edge to [[_COMMUNITY_Community 200]]
-- 1 edge to [[_COMMUNITY_Community 223]]
-- 1 edge to [[_COMMUNITY_Climatology & Climate Index Fetching]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_Community 109]]
-- 1 edge to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 1 edge to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 21]]
+- 1 edge to [[_COMMUNITY_Community 0]]
 
 ## Top bridge nodes
-- [[test_alerts_side.py]] - degree 15, connects to 8 communities
-- [[_trade_lost()]] - degree 6, connects to 3 communities
-- [[_recent_settled()]] - degree 5, connects to 3 communities
-- [[get_win_rate_window()]] - degree 7, connects to 2 communities
-- [[_trade_won()]] - degree 10, connects to 1 community
+- [[TestDrawdownScaling]] - degree 12, connects to 2 communities
+- [[dot-setUp()_10]] - degree 2, connects to 1 community

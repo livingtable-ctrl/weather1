@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_improvements.py"
 type: "code"
-community: "Community 444"
+community: "Community 477"
 location: "L33"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_444
+  - community/Community_477
 ---
 
 # ._make_opp()
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_trades_placed_below_cap()]] - `calls` [EXTRACTED]
 - [[TestMaxConcurrentPositions]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_444
+#graphify/code #graphify/EXTRACTED #community/Community_477

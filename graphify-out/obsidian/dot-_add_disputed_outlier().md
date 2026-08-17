@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker Disputed Outcome Restoration"
+community: "Community 28"
 location: "L4055"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Disputed_Outcome_Restoration
+  - community/Community_28
 ---
 
 # ._add_disputed_outlier()
@@ -50,4 +50,4 @@ tags:
 - [[Log one settled row with an extreme value that WOULD change any of the tested…]] - `rationale_for` [EXTRACTED]
 - [[TestDisputedOutcomeTracking]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Disputed_Outcome_Restoration
+#graphify/code #graphify/EXTRACTED #community/Community_28

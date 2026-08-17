@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_a.py"
 type: "code"
-community: "Community 57"
+community: "Community 41"
 location: "L21"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_57
+  - community/Community_41
 ---
 
 # .test_pragma_is_full()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestExecutionLogSynchronousFull]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_57
+#graphify/code #graphify/EXTRACTED #community/Community_41

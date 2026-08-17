@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 524
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_past_days_computed_from_utc_today_not_local_date()]] - code - tests/test_tracker.py
-- [[dot-test_past_days_ge_5_proceeds_past_the_guard()]] - code - tests/test_tracker.py
-- [[Mock utc_today() to a date BEFORE target_date, so the fixed function's own…]] - rationale - tests/test_tracker.py
-- [[Sanity check the guard's positive case still works when utc_today() is well…]] - rationale - tests/test_tracker.py
-- [[TestFetchPreviousRunDailyUsesUtcToday]] - code - tests/test_tracker.py
-- [[backlog.txt utils.utc_today() SAYS 'USE EVERYWHERE INSTEAD OF date.today()' --…]] - rationale - tests/test_tracker.py
+- [[dot-test_get_pnl_by_signal_source_groups_correctly()]] - code - tests/test_pnl_attribution.py
+- [[dot-test_get_pnl_by_signal_source_has_required_keys()]] - code - tests/test_pnl_attribution.py
+- [[dot-test_log_prediction_accepts_signal_source()]] - code - tests/test_pnl_attribution.py
+- [[Each entry has brier, n, win_rate keys.]] - rationale - tests/test_pnl_attribution.py
+- [[TestPnLAttribution]] - code - tests/test_pnl_attribution.py
+- [[get_pnl_by_signal_source returns per-source stats.]] - rationale - tests/test_pnl_attribution.py
+- [[log_prediction stores signal_source kwarg.]] - rationale - tests/test_pnl_attribution.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestFetchPreviousRunDailyUsesUtcToday]] - degree 4, connects to 1 community
+- [[TestPnLAttribution]] - degree 4, connects to 1 community

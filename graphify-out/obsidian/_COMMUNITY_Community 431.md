@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.36
+members: 9
 ---
 
 # Community 431
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.36 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-test_detect_brier_drift_detects_degradation()]] - code - tests/test_p9_p10.py
-- [[dot-test_detect_brier_drift_improvement_not_flagged()]] - code - tests/test_p9_p10.py
-- [[dot-test_detect_brier_drift_insufficient_data()]] - code - tests/test_p9_p10.py
-- [[dot-test_detect_brier_drift_no_drift()]] - code - tests/test_p9_p10.py
-- [[Early Brier=0.12, recent Brier=0.22 → delta=0.10  threshold=0.05 → drifting.]] - rationale - tests/test_p9_p10.py
-- [[If Brier improves (negative delta) it is not flagged as drift.]] - rationale - tests/test_p9_p10.py
-- [[Stable Brier over time should not trigger drift.]] - rationale - tests/test_p9_p10.py
-- [[TestDriftDetection]] - code - tests/test_p9_p10.py
+- [[2 citydate, directional, and correlated-group exposure caps were previously…]] - rationale - tests/test_phase2_batch_i.py
+- [[dot-_base_state()]] - code - tests/test_phase2_batch_i.py
+- [[dot-test_all_caps_pass_within_limits()]] - code - tests/test_phase2_batch_i.py
+- [[dot-test_city_date_cap_blocks_when_no_city_date_given()]] - code - tests/test_phase2_batch_i.py
+- [[dot-test_city_date_cap_triggers_when_exceeded()]] - code - tests/test_phase2_batch_i.py
+- [[dot-test_correlated_cap_triggers_when_exceeded()]] - code - tests/test_phase2_batch_i.py
+- [[dot-test_directional_cap_triggers_when_exceeded()]] - code - tests/test_phase2_batch_i.py
+- [[TestCheckPositionLimitsExposureCaps]] - code - tests/test_phase2_batch_i.py
+- [[Without citytarget_date_str, the 3 new checks are skipped entirely (backward…]] - rationale - tests/test_phase2_batch_i.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,7 +28,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 50]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestDriftDetection]] - degree 5, connects to 1 community
+- [[TestCheckPositionLimitsExposureCaps]] - degree 8, connects to 1 community

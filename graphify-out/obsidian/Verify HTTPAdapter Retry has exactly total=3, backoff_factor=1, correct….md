@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_infrastructure.py"
 type: "rationale"
-community: "Circuit Breaker & Session Retry Infrastructure"
+community: "Community 248"
 location: "L427"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Circuit_Breaker__Session_Retry_Infrastructure
+  - community/Community_248
 ---
 
 # Verify HTTPAdapter Retry has exactly total=3, backoff_factor=1, correct…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_session_retry_parameters()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Circuit_Breaker__Session_Retry_Infrastructure
+#graphify/rationale #graphify/EXTRACTED #community/Community_248

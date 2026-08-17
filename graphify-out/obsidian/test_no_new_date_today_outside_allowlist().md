@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_date_today_guard.py"
 type: "code"
-community: "Community 202"
+community: "Community 33"
 location: "L137"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_202
+  - community/Community_33
 ---
 
 # test_no_new_date_today_outside_allowlist()
@@ -16,4 +16,4 @@ tags:
 - [[_iter_date_today_sites()]] - `calls` [EXTRACTED]
 - [[test_date_today_guard.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_202
+#graphify/code #graphify/EXTRACTED #community/Community_33

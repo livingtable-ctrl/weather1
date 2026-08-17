@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts_side.py"
 type: "code"
-community: "Community 167"
+community: "Community 170"
 location: "L105"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_167
+  - community/Community_170
 ---
 
 # TestCheckBlackSwanNoSide
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_no_side_consecutive_wins_not_black_swan()]] - `method` [EXTRACTED]
 - [[test_alerts_side.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_167
+#graphify/code #graphify/EXTRACTED #community/Community_170

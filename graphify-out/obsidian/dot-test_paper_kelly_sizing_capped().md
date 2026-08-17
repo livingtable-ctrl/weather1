@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_a.py"
 type: "code"
-community: "Community 57"
+community: "Community 629"
 location: "L108"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_57
+  - community/Community_629
 ---
 
 # .test_paper_kelly_sizing_capped()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestKellyCapConstant]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_57
+#graphify/code #graphify/EXTRACTED #community/Community_629

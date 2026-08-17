@@ -10,17 +10,17 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-test_builds_per_city_max_and_min_structure()]] - code - tests/test_climatology.py
-- [[dot-test_concurrent_cold_cache_calls_compute_only_once()]] - code - tests/test_climatology.py
-- [[dot-test_covers_lasvegas_and_neworleans()]] - code - tests/test_climatology.py
-- [[dot-test_force_bypasses_memoization()]] - code - tests/test_climatology.py
-- [[dot-test_memoizes_in_process()]] - code - tests/test_climatology.py
-- [[dot-test_reads_fresh_cache_without_recompute()]] - code - tests/test_climatology.py
-- [[dot-test_recomputes_stale_cache()]] - code - tests/test_climatology.py
-- [[dot-test_writes_cache_file()]] - code - tests/test_climatology.py
-- [[TestLoadAllSigmasBehavior]] - code - tests/test_climatology.py
-- [[The actual backlog payoff cities absent from weather_markets' static…]] - rationale - tests/test_climatology.py
-- [[backlog.txt FORECAST_SIGMA.JSON ATOMIC WRITE CONTENTION cron.py's…]] - rationale - tests/test_climatology.py
+- [[dot-test_halt_creates_kill_switch_file()]] - code - tests/test_web_app.py
+- [[dot-test_halt_no_leftover_tmp_file()]] - code - tests/test_web_app.py
+- [[dot-test_resume_removes_kill_switch_file()]] - code - tests/test_web_app.py
+- [[dot-test_status_includes_kill_switch_active()]] - code - tests/test_web_app.py
+- [[GET apistatus includes kill_switch_active field (False when no file).]] - rationale - tests/test_web_app.py
+- [[P1-16 atomic write must not leave a .tmp file after successful halt.]] - rationale - tests/test_web_app.py
+- [[POST apihalt writes the kill-switch file with reason and timestamp.]] - rationale - tests/test_web_app.py
+- [[POST apiresume removes the kill-switch file.]] - rationale - tests/test_web_app.py
+- [[TestKillSwitchAPI]] - code - tests/test_web_app.py
+- [[kill command]] - document - COMMANDS.md
+- [[resume command]] - document - COMMANDS.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,7 +30,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 302]]
+- 1 edge to [[_COMMUNITY_Community 115]]
+- 1 edge to [[_COMMUNITY_Community 338]]
 
 ## Top bridge nodes
-- [[TestLoadAllSigmasBehavior]] - degree 9, connects to 1 community
+- [[TestKillSwitchAPI]] - degree 8, connects to 2 communities

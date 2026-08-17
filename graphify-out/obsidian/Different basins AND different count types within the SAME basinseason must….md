@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Community 624"
+community: "Community 715"
 location: "L5086"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_624
+  - community/Community_715
 ---
 
 # Different basins AND different count types within the SAME basin/season must…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_count_settled_hurricane_predictions_distinguishes_basins_and_count_types()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_624
+#graphify/rationale #graphify/EXTRACTED #community/Community_715

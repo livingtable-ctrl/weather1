@@ -1,29 +1,30 @@
 ---
 type: community
-cohesion: 0.20
-members: 14
+cohesion: 0.25
+members: 15
 ---
 
 # Community 243
 
-**Cohesion:** 0.20 - loosely connected
-**Members:** 14 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 15 nodes
 
 ## Members
-- [[Automated guard against the config-divergencedead-field bug class. This…]] - rationale - tests/test_config_divergence_guard.py
-- [[BotConfig class]] - code - config.py
-- [[Every BotConfig field must either be read somewhere outside config.py itself,…]] - rationale - tests/test_config_divergence_guard.py
-- [[Fails if the same env var is read via _env_float()_env_int()…]] - rationale - tests/test_config_divergence_guard.py
-- [[Map env var name - {(filename, default_literal), ...} across every top-level…]] - rationale - tests/test_config_divergence_guard.py
-- [[The inverse check every allowlisted field must still be an actual BotConfig…]] - rationale - tests/test_config_divergence_guard.py
-- [[_botconfig_field_names()]] - code - tests/test_config_divergence_guard.py
-- [[_has_real_call_site()]] - code - tests/test_config_divergence_guard.py
-- [[_numeric_or_str()]] - code - tests/test_config_divergence_guard.py
-- [[_scan_env_defaults()]] - code - tests/test_config_divergence_guard.py
-- [[test_config_divergence_guard.py]] - code - tests/test_config_divergence_guard.py
-- [[test_dead_field_allowlist_has_no_stale_entries()]] - code - tests/test_config_divergence_guard.py
-- [[test_every_botconfig_field_has_a_call_site_or_a_documented_reason()]] - code - tests/test_config_divergence_guard.py
-- [[test_no_env_var_has_conflicting_hardcoded_defaults()]] - code - tests/test_config_divergence_guard.py
+- [[dot-test_halt_with_correct_auth_succeeds()]] - code - tests/test_web_auth.py
+- [[dot-test_halt_with_wrong_password_returns_401()]] - code - tests/test_web_auth.py
+- [[dot-test_halt_without_auth_returns_401()]] - code - tests/test_web_auth.py
+- [[dot-test_no_password_allows_open_access()]] - code - tests/test_web_auth.py
+- [[dot-test_resume_with_correct_auth_succeeds()]] - code - tests/test_web_auth.py
+- [[dot-test_resume_without_auth_returns_401()]] - code - tests/test_web_auth.py
+- [[dot-test_run_cron_rate_limited_after_first_spawn()]] - code - tests/test_web_auth.py
+- [[dot-test_run_cron_without_auth_returns_401()]] - code - tests/test_web_auth.py
+- [[Create a test Flask app in demo mode.]] - rationale - tests/test_web_auth.py
+- [[P0-8 mutation endpoints must require authentication.]] - rationale - tests/test_web_auth.py
+- [[TestMutationEndpointsRequireAuth]] - code - tests/test_web_auth.py
+- [[When DASHBOARD_PASSWORD is empty, mutation endpoints are open (dev mode).]] - rationale - tests/test_web_auth.py
+- [[_basic_auth()]] - code - tests/test_web_auth.py
+- [[_make_app()]] - code - tests/test_web_auth.py
+- [[test_web_auth.py]] - code - tests/test_web_auth.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,11 +34,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 297]]
-- 2 edges to [[_COMMUNITY_Community 129]]
-- 1 edge to [[_COMMUNITY_Community 212]]
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
+- 1 edge to [[_COMMUNITY_Community 41]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[test_config_divergence_guard.py]] - degree 13, connects to 4 communities
-- [[BotConfig class]] - degree 3, connects to 2 communities
+- [[test_web_auth.py]] - degree 6, connects to 2 communities

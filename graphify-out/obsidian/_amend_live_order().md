@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 67"
+community: "Community 1"
 location: "L790"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_67
+  - community/Community_1
 ---
 
 # _amend_live_order()
@@ -22,4 +22,4 @@ tags:
 - [[pre_live_trade_check()]] - `calls` [EXTRACTED]
 - [[test_live_execution.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_67
+#graphify/code #graphify/EXTRACTED #community/Community_1

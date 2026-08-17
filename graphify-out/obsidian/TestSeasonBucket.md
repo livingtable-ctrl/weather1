@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climate_indices.py"
 type: "code"
-community: "Community 31"
+community: "Community 648"
 location: "L22"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_31
+  - community/Community_648
 ---
 
 # TestSeasonBucket
@@ -17,4 +17,4 @@ tags:
 - [[dot-test_march_april_may_are_spring()]] - `method` [EXTRACTED]
 - [[test_climate_indices.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_31
+#graphify/code #graphify/EXTRACTED #community/Community_648

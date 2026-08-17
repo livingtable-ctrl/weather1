@@ -1,20 +1,20 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker Brier Score & Outcome Logging"
+community: "Community 27"
 location: "L27"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Brier_Score__Outcome_Logging
+  - community/Community_27
 ---
 
 # TestTracker
 
 ## Connections
 - [[dot-_fake_analysis()]] - `method` [EXTRACTED]
-- [[dot-setUp()_13]] - `method` [EXTRACTED]
-- [[dot-tearDown()_13]] - `method` [EXTRACTED]
+- [[dot-setUp()_14]] - `method` [EXTRACTED]
+- [[dot-tearDown()_14]] - `method` [EXTRACTED]
 - [[dot-test_bias_insufficient_data()]] - `method` [EXTRACTED]
 - [[dot-test_brier_returns_none_when_empty()]] - `method` [EXTRACTED]
 - [[dot-test_brier_score()]] - `method` [EXTRACTED]
@@ -42,4 +42,4 @@ tags:
 - [[dot-test_sync_outcomes_survives_trade_history_backfill_failure()]] - `method` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Brier_Score__Outcome_Logging
+#graphify/code #graphify/EXTRACTED #community/Community_27

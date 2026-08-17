@@ -1,19 +1,21 @@
 ---
 type: community
-cohesion: 0.50
-members: 4
+cohesion: 0.33
+members: 6
 ---
 
 # Community 569
 
-**Cohesion:** 0.50 - moderately connected
-**Members:** 4 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[paper._DATA_LOCK]] - code - paper.py
-- [[paper._DATA_LOCK must serialise the ledger read-modify-write cycle across…]] - rationale - tests/test_paper_cross_process_lock.py
-- [[test_paper_cross_process_lock.py]] - code - tests/test_paper_cross_process_lock.py
-- [[test_second_process_blocks_until_first_releases()]] - code - tests/test_paper_cross_process_lock.py
+- [[dot-_make_client()_8]] - code - tests/test_kalshi_client.py
+- [[dot-test_raises_and_checks_recovery_only_when_post_itself_fails()]] - code - tests/test_kalshi_client.py
+- [[dot-test_returns_raw_create_response_when_get_order_fails()]] - code - tests/test_kalshi_client.py
+- [[A successful POST already confirms the order is live on the exchange -- if the…]] - rationale - tests/test_kalshi_client.py
+- [[TestPlaceOrderSurvivesGetOrderFailure]] - code - tests/test_kalshi_client.py
+- [[The get_order-failure fallback must not mask a genuine POST failure -- that…]] - rationale - tests/test_kalshi_client.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -23,7 +25,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 96]]
+- 2 edges to [[_COMMUNITY_Community 106]]
+- 1 edge to [[_COMMUNITY_Community 229]]
 
 ## Top bridge nodes
-- [[test_paper_cross_process_lock.py]] - degree 4, connects to 1 community
+- [[TestPlaceOrderSurvivesGetOrderFailure]] - degree 5, connects to 1 community
+- [[dot-test_raises_and_checks_recovery_only_when_post_itself_fails()]] - degree 3, connects to 1 community
+- [[dot-test_returns_raw_create_response_when_get_order_fails()]] - degree 2, connects to 1 community

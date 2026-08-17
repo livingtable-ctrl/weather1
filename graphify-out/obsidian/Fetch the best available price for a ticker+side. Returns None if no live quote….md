@@ -1,12 +1,12 @@
 ---
 source_file: "main.py"
 type: "rationale"
-community: "Community 693"
-location: "L2122"
+community: "Community 81"
+location: "L2124"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_81
 ---
 
 # Fetch the best available price for a ticker+side. Returns None if no live quote…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_resolve_price()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_81

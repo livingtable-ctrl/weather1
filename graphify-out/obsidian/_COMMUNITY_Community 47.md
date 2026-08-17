@@ -1,56 +1,57 @@
 ---
 type: community
 cohesion: 0.07
-members: 41
+members: 42
 ---
 
 # Community 47
 
 **Cohesion:** 0.07 - loosely connected
-**Members:** 41 nodes
+**Members:** 42 nodes
 
 ## Members
-- [[dot-test_climate_files_are_never_deleted()]] - code - tests/test_cleanup_data_dir.py
-- [[dot-test_dot_files_are_never_deleted()]] - code - tests/test_cleanup_data_dir.py
-- [[dot-test_fresh_ephemeral_file_is_kept()]] - code - tests/test_cleanup_data_dir.py
-- [[dot-test_permanent_file_set_covers_expected_names()]] - code - tests/test_cleanup_data_dir.py
-- [[dot-test_permanent_files_are_never_deleted()]] - code - tests/test_cleanup_data_dir.py
-- [[dot-test_stale_ephemeral_file_is_deleted()]] - code - tests/test_cleanup_data_dir.py
-- [[A stale non-permanent JSON file older than 2 days must be removed.]] - rationale - tests/test_cleanup_data_dir.py
-- [[An ephemeral file modified within 2 days must not be deleted.]] - rationale - tests/test_cleanup_data_dir.py
-- [[Does not expose emergency_copy -- this function exists specifically to preserve…]] - rationale - safe_io.py
-- [[Every file in _PERMANENT_DATA_FILES must survive cleanup even if stale.]] - rationale - tests/test_cleanup_data_dir.py
-- [[Files starting with '.' must survive cleanup.]] - rationale - tests/test_cleanup_data_dir.py
-- [[Files starting with climate_ must survive cleanup.]] - rationale - tests/test_cleanup_data_dir.py
-- [[P0-15 cleanup_data_dir must not delete permanent calibration files.]] - rationale - tests/test_cleanup_data_dir.py
-- [[Path_21]] - code
-- [[Path_22]] - code
-- [[Redirect main.DATA_DIR (via __file__ resolution) to a temp directory.]] - rationale - tests/test_cleanup_data_dir.py
-- [[Return info about any real recovery copies sitting in the emergency- copy…]] - rationale - safe_io.py
-- [[Return the main project root directory, resolving git worktrees correctly. When…]] - rationale - safe_io.py
-- [[Same logic as main.cleanup_data_dir but using the supplied data_dir.]] - rationale - tests/test_cleanup_data_dir.py
-- [[Shared write-tempfsyncrenameretryemergency-copy core for atomic_write_json…]] - rationale - safe_io.py
-- [[TestCleanupDataDir]] - code - tests/test_cleanup_data_dir.py
-- [[Write a JSON file and backdate its mtime by 3 days.]] - rationale - tests/test_cleanup_data_dir.py
-- [[Write raw text to path atomically -- same write-tempfsyncrename, retry, and…]] - rationale - safe_io.py
-- [[_PERMANENT_DATA_FILES must include the key calibration files.]] - rationale - tests/test_cleanup_data_dir.py
-- [[_atomic_write_payload()]] - code - safe_io.py
-- [[_patched_cleanup()]] - code - tests/test_cleanup_data_dir.py
-- [[_replace_with_retry()]] - code - safe_io.py
-- [[_write_stale()]] - code - tests/test_cleanup_data_dir.py
-- [[atomic_write_json_with_history()]] - code - safe_io.py
-- [[atomic_write_text()]] - code - safe_io.py
-- [[check_emergency_copies()]] - code - safe_io.py
-- [[cron.py emergency-copy monitor call site]] - code - cron.py
-- [[data_dir()]] - code - tests/test_cleanup_data_dir.py
-- [[fixture_11]] - code
-- [[os.replace(src, dst), retrying briefly on PermissionError. Self-caught…]] - rationale - safe_io.py
-- [[paper._acquire_file_lock()  msvcrt retry loop]] - code - paper.py
-- [[project_root()]] - code - safe_io.py
-- [[test_atomic_write_json_with_history_keeps_previous_versions()]] - code - tests/test_cleanup_data_dir.py
-- [[test_cleanup_data_dir.py]] - code - tests/test_cleanup_data_dir.py
-- [[test_prune_old_analysis_attempts_removes_stale_rows()]] - code - tests/test_cleanup_data_dir.py
-- [[test_vacuum_database_runs_without_error()]] - code - tests/test_cleanup_data_dir.py
+- [[dot-from_env()]] - code - config.py
+- [[dot-validate()]] - code - config.py
+- [[Automated guard against the config-divergencedead-field bug class. This…]] - rationale - tests/test_config_divergence_guard.py
+- [[BotConfig]] - code - config.py
+- [[BotConfig class]] - code - config.py
+- [[Create a BotConfig reading all env vars fresh. Clears the mtime-gated…]] - rationale - config.py
+- [[Create a BotConfig, validate it, and return it. Call at startup.]] - rationale - config.py
+- [[Every BotConfig field must either be read somewhere outside config.py itself,…]] - rationale - tests/test_config_divergence_guard.py
+- [[Fails if the same env var is read via _env_float()_env_int()…]] - rationale - tests/test_config_divergence_guard.py
+- [[Map env var name - {(filename, default_literal), ...} across every top-level…]] - rationale - tests/test_config_divergence_guard.py
+- [[Raise ValueError for any invalid configuration combination.]] - rationale - config.py
+- [[Reset the singleton and env-var cache — used in tests between runs.]] - rationale - config.py
+- [[Return the global BotConfig singleton, loading from env on first call. Must be…]] - rationale - config.py
+- [[The inverse check every allowlisted field must still be an actual BotConfig…]] - rationale - tests/test_config_divergence_guard.py
+- [[The rate this bot's own trades actually pay (maker fills are $0 on this bot's…]] - rationale - tests/test_config.py
+- [[_botconfig_field_names()]] - code - tests/test_config_divergence_guard.py
+- [[_has_real_call_site()]] - code - tests/test_config_divergence_guard.py
+- [[_numeric_or_str()]] - code - tests/test_config_divergence_guard.py
+- [[_scan_env_defaults()]] - code - tests/test_config_divergence_guard.py
+- [[breakeven_trigger_pct and max_days_out both read their env var fresh from the…]] - rationale - tests/test_config_validation.py
+- [[get_config()]] - code - config.py
+- [[load_and_validate()]] - code - config.py
+- [[reset_config()]] - code - config.py
+- [[test_bot_config_defaults_are_sane()]] - code - tests/test_config_validation.py
+- [[test_bot_config_loads_from_env()]] - code - tests/test_config_validation.py
+- [[test_config.py]] - code - tests/test_config.py
+- [[test_config_divergence_guard.py]] - code - tests/test_config_divergence_guard.py
+- [[test_config_validation.py]] - code - tests/test_config_validation.py
+- [[test_dead_field_allowlist_has_no_stale_entries()]] - code - tests/test_config_divergence_guard.py
+- [[test_drawdown_halt_out_of_range_raises()]] - code - tests/test_config.py
+- [[test_every_botconfig_field_has_a_call_site_or_a_documented_reason()]] - code - tests/test_config_divergence_guard.py
+- [[test_fee_rate_out_of_range_raises()]] - code - tests/test_config.py
+- [[test_maker_fee_rate_defaults_to_zero()]] - code - tests/test_config.py
+- [[test_maker_fee_rate_negative_raises()]] - code - tests/test_config.py
+- [[test_maker_fee_rate_out_of_range_raises()]] - code - tests/test_config.py
+- [[test_min_edge_above_strong_edge_raises()]] - code - tests/test_config.py
+- [[test_no_env_var_has_conflicting_hardcoded_defaults()]] - code - tests/test_config_divergence_guard.py
+- [[test_paths_module_exports_critical_paths()]] - code - tests/test_config_validation.py
+- [[test_valid_config_passes()]] - code - tests/test_config.py
+- [[test_validate_config_does_not_exit_in_demo_when_keys_missing()]] - code - tests/test_config_validation.py
+- [[test_validate_config_exits_in_prod_when_keys_missing()]] - code - tests/test_config_validation.py
+- [[test_validate_config_passes_in_prod_with_keys()]] - code - tests/test_config_validation.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -60,23 +61,17 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 7 edges to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
-- 5 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 4 edges to [[_COMMUNITY_Community 59]]
-- 2 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
-- 2 edges to [[_COMMUNITY_Community 118]]
-- 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Community 145]]
-- 1 edge to [[_COMMUNITY_Community 385]]
-- 1 edge to [[_COMMUNITY_Community 55]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
-- 1 edge to [[_COMMUNITY_METAR Settlement Monitoring]]
-- 1 edge to [[_COMMUNITY_Safe IO CRC Validation Tests]]
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 9 edges to [[_COMMUNITY_Community 6]]
+- 3 edges to [[_COMMUNITY_Community 33]]
+- 3 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 9]]
+- 1 edge to [[_COMMUNITY_Community 13]]
+- 1 edge to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 8]]
 
 ## Top bridge nodes
-- [[project_root()]] - degree 11, connects to 6 communities
-- [[atomic_write_json_with_history()]] - degree 13, connects to 5 communities
-- [[_atomic_write_payload()]] - degree 8, connects to 3 communities
-- [[_replace_with_retry()]] - degree 7, connects to 3 communities
-- [[atomic_write_text()]] - degree 6, connects to 3 communities
+- [[test_config_divergence_guard.py]] - degree 17, connects to 4 communities
+- [[BotConfig]] - degree 18, connects to 2 communities
+- [[test_config.py]] - degree 11, connects to 2 communities
+- [[test_config_validation.py]] - degree 11, connects to 2 communities
+- [[load_and_validate()]] - degree 5, connects to 2 communities

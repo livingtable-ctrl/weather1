@@ -1,12 +1,12 @@
 ---
 source_file: "mos.py"
 type: "code"
-community: "Community 99"
+community: "Community 15"
 location: "L570"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_99
+  - community/Community_15
 ---
 
 # _fetch_nbp_percentiles()
@@ -18,4 +18,4 @@ tags:
 - [[fetch_nbm_quantiles()]] - `calls` [EXTRACTED]
 - [[mos.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_99
+#graphify/code #graphify/EXTRACTED #community/Community_15

@@ -1,12 +1,12 @@
 ---
 source_file: "acis_snow.py"
 type: "code"
-community: "Community 62"
+community: "Community 23"
 location: "L119"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_62
+  - community/Community_23
 ---
 
 # fetch_month_to_date_actual_snow()
@@ -17,4 +17,4 @@ tags:
 - [[_station_sid_for_city()]] - `calls` [EXTRACTED]
 - [[acis_snow.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_62
+#graphify/code #graphify/EXTRACTED #community/Community_23

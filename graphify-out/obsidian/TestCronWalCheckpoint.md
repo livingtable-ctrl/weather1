@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_a.py"
 type: "code"
-community: "Community 57"
+community: "Community 41"
 location: "L128"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_57
+  - community/Community_41
 ---
 
 # TestCronWalCheckpoint
@@ -17,4 +17,4 @@ tags:
 - [[P3-15 cmd_cron must execute PRAGMA wal_checkpoint(PASSIVE) at end of run.]] - `rationale_for` [EXTRACTED]
 - [[test_phase3_batch_a.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_57
+#graphify/code #graphify/EXTRACTED #community/Community_41

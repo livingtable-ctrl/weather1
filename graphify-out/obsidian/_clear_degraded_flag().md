@@ -1,12 +1,12 @@
 ---
 source_file: "execution_log.py"
 type: "code"
-community: "Execution Log Live-Loss Tracking"
+community: "Community 42"
 location: "L396"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Execution_Log_Live-Loss_Tracking
+  - community/Community_42
 ---
 
 # _clear_degraded_flag()
@@ -16,4 +16,4 @@ tags:
 - [[add_live_loss()]] - `calls` [EXTRACTED]
 - [[execution_log.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking
+#graphify/code #graphify/EXTRACTED #community/Community_42

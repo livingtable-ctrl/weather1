@@ -10,18 +10,18 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[5 negative effective_edge (spread eats MORE than the full edge — genuinely…]] - rationale - tests/test_paper_metrics.py
-- [[5 was floored at 0.5 — a trade with exactly zero effective edge after…]] - rationale - tests/test_paper_metrics.py
-- [[dot-test_medium_spread_moderate_reduction()]] - code - tests/test_paper_metrics.py
-- [[dot-test_negative_net_edge_returns_one()]] - code - tests/test_paper_metrics.py
-- [[dot-test_no_spread_returns_one()]] - code - tests/test_paper_metrics.py
-- [[dot-test_plan_example_six_cent_spread_eight_edge()]] - code - tests/test_paper_metrics.py
-- [[dot-test_plan_example_six_cent_spread_fifteen_edge()]] - code - tests/test_paper_metrics.py
-- [[dot-test_small_spread_minimal_reduction()]] - code - tests/test_paper_metrics.py
-- [[dot-test_spread_eats_entire_edge_floors_at_zero()]] - code - tests/test_paper_metrics.py
-- [[dot-test_spread_larger_than_edge_floors_at_zero()]] - code - tests/test_paper_metrics.py
-- [[dot-test_zero_net_edge_returns_one()]] - code - tests/test_paper_metrics.py
-- [[TestSpreadKellyMultiplier]] - code - tests/test_paper_metrics.py
+- [[dot-_restore_module_caches()]] - code - tests/test_forecasting.py
+- [[dot-test_cache_hit_returns_ensemble_without_fetch()]] - code - tests/test_forecasting.py
+- [[dot-test_cache_hit_returns_forecast_without_fetch()]] - code - tests/test_forecasting.py
+- [[dot-test_ttl_until_next_cycle_before_02z()]] - code - tests/test_forecasting.py
+- [[dot-test_ttl_until_next_cycle_minimum()]] - code - tests/test_forecasting.py
+- [[At 0100 UTC, next cycle is 0200 UTC â†’ ~3600s.]] - rationale - tests/test_forecasting.py
+- [[TTL is at least 1800 seconds.]] - rationale - tests/test_forecasting.py
+- [[TestDynamicCacheTTL]] - code - tests/test_forecasting.py
+- [[fixture_8]] - code
+- [[get_ensemble_temps returns cached data without making API calls.]] - rationale - tests/test_forecasting.py
+- [[get_weather_forecast returns cached data without making API calls.]] - rationale - tests/test_forecasting.py
+- [[test_cache_hit_returns_forecast_without_fetch and…]] - rationale - tests/test_forecasting.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,7 +31,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 235]]
+- 2 edges to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 38]]
+- 1 edge to [[_COMMUNITY_Community 9]]
 
 ## Top bridge nodes
-- [[TestSpreadKellyMultiplier]] - degree 10, connects to 1 community
+- [[TestDynamicCacheTTL]] - degree 7, connects to 2 communities
+- [[dot-test_ttl_until_next_cycle_before_02z()]] - degree 3, connects to 1 community
+- [[dot-test_ttl_until_next_cycle_minimum()]] - degree 3, connects to 1 community

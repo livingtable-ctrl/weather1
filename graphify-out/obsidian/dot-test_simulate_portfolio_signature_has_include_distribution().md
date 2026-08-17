@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_d.py"
 type: "code"
-community: "Community 246"
+community: "Community 523"
 location: "L247"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_246
+  - community/Community_523
 ---
 
 # .test_simulate_portfolio_signature_has_include_distribution()
@@ -15,4 +15,4 @@ tags:
 - [[TestPnlDistributionGated]] - `method` [EXTRACTED]
 - [[simulate_portfolio()]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_246
+#graphify/code #graphify/EXTRACTED #community/Community_523

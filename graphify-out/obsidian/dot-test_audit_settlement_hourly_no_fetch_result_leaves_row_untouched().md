@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Tracker Disputed Outcome Restoration"
+community: "Community 28"
 location: "L4414"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Tracker_Disputed_Outcome_Restoration
+  - community/Community_28
 ---
 
 # .test_audit_settlement_hourly_no_fetch_result_leaves_row_untouched()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestDisputedOutcomeTracking]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Tracker_Disputed_Outcome_Restoration
+#graphify/code #graphify/EXTRACTED #community/Community_28

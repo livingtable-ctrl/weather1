@@ -1,42 +1,43 @@
 ---
 type: community
-cohesion: 0.10
-members: 27
+cohesion: 0.07
+members: 28
 ---
 
 # Community 97
 
-**Cohesion:** 0.10 - loosely connected
-**Members:** 27 nodes
+**Cohesion:** 0.07 - loosely connected
+**Members:** 28 nodes
 
 ## Members
-- [[A canceled (no-fill) order today must not block re-entry -- same reasoning as…]] - rationale - tests/test_dedup.py
-- [[A pendingsentfilled order today must still block re-entry (P1-13).]] - rationale - tests/test_dedup.py
-- [[A ticker logged via log_order today must return True for the same side.]] - rationale - tests/test_dedup.py
-- [[A ticker never traded today must return False.]] - rationale - tests/test_dedup.py
-- [[A ticker with only a failed order today must return False (P1-13).]] - rationale - tests/test_dedup.py
-- [[British cancelled spelling (written by older GTC-timer paths) must also be…]] - rationale - tests/test_dedup.py
-- [[P1-11 target_date fixture must always return a future date, not a hardcoded…]] - rationale - tests/test_dedup.py
-- [[P2-A dedup guard must fire in live=True mode, not just paper mode. When a…]] - rationale - tests/test_dedup.py
-- [[Return True if this ticker+side was successfully ordered today (UTC). Excludes…]] - rationale - execution_log.py
-- [[Tests for P1.5 — was_traded_today() daily dedup guard in execution_log.]] - rationale - tests/test_dedup.py
-- [[Traded KXTEST must not block a different ticker.]] - rationale - tests/test_dedup.py
-- [[Traded yes must not block a separate no trade on the same ticker.]] - rationale - tests/test_dedup.py
-- [[_auto_place_trades must skip an opp if was_traded_today returns True.]] - rationale - tests/test_dedup.py
-- [[test_auto_place_trades_skips_already_traded_today()]] - code - tests/test_dedup.py
-- [[test_dedup.py]] - code - tests/test_dedup.py
-- [[test_dedup.py_1]] - code - tests/test_dedup.py
-- [[test_live_mode_dedup_blocks_already_traded_ticker()]] - code - tests/test_dedup.py
-- [[test_target_date_fixture_is_future()]] - code - tests/test_dedup.py
-- [[test_was_traded_today_false_for_canceled_order()]] - code - tests/test_dedup.py
-- [[test_was_traded_today_false_for_different_side()]] - code - tests/test_dedup.py
-- [[test_was_traded_today_false_for_different_ticker()]] - code - tests/test_dedup.py
-- [[test_was_traded_today_false_for_legacy_cancelled_spelling()]] - code - tests/test_dedup.py
-- [[test_was_traded_today_false_for_new_ticker()]] - code - tests/test_dedup.py
-- [[test_was_traded_today_ignores_failed_orders()]] - code - tests/test_dedup.py
-- [[test_was_traded_today_true_after_order()]] - code - tests/test_dedup.py
-- [[test_was_traded_today_true_for_non_failed_status()]] - code - tests/test_dedup.py
-- [[was_traded_today()]] - code - execution_log.py
+- [[15.1 Add `_log_decision` helper to `main.py`]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[15.2 Call `_log_decision` in `_auto_place_trades`]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[15.3 Write tests]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[15.4 Verify Task 15]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[15.5 Commit Task 15]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[16.1 Add `_write_cron_metrics` to `main.py`]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[16.2 Wire into `cmd_cron`]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[16.3 Write tests]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[16.4 Verify Task 16]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[16.5 Commit Task 16]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[17.1 Add `replay_trade` to `execution_log.py`]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[17.2 Ensure `tracker.get_predictions_for_ticker` exists]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[17.3 Write tests]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[17.4 Verify Task 17]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[17.5 Full regression check]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[17.6 Commit Task 17]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[2026-04-14-p4-logging-foundation]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[35.1 Add `validate_metrics_consistency` to `execution_log.py`]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[35.2 Call `validate_metrics_consistency` in `cmd_cron`]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[35.3 Write tests]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[35.4 Verify Task 35]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[35.5 Commit Task 35]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[P4 Logging & Debugging Foundation — Implementation Plan]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[Summary of changes_7]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[Task 15 (P4.1) — Per-decision reasoning JSONL log]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[Task 16 (P4.1 supplement) — Per-cron metrics summary]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[Task 17 (P4.3) — Trade replay function]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
+- [[Task 35 (P4.4) — Metrics validation cross-check dashboard vs raw logs]] - document - docs/superpowers/plans/2026-04-14-p4-logging-foundation.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -44,14 +45,3 @@ members: 27
 TABLE source_file, type FROM #community/Community_97
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 4 edges to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
-- 3 edges to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Shadow Predictions Auto-Place Trades]]
-- 1 edge to [[_COMMUNITY_Community 180]]
-
-## Top bridge nodes
-- [[was_traded_today()]] - degree 17, connects to 3 communities
-- [[test_dedup.py_1]] - degree 3, connects to 2 communities
-- [[test_dedup.py]] - degree 14, connects to 1 community

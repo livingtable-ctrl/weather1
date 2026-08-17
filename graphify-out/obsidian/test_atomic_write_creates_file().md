@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_infrastructure.py"
 type: "code"
-community: "Circuit Breaker & Session Retry Infrastructure"
+community: "Community 7"
 location: "L52"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Circuit_Breaker__Session_Retry_Infrastructure
+  - community/Community_7
 ---
 
 # test_atomic_write_creates_file()
 
 ## Connections
-- [[Path_6]] - `references` [EXTRACTED]
+- [[Path_26]] - `references` [EXTRACTED]
 - [[atomic_write_json()]] - `calls` [EXTRACTED]
 - [[test_infrastructure.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Circuit_Breaker__Session_Retry_Infrastructure
+#graphify/code #graphify/EXTRACTED #community/Community_7

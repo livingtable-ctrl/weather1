@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "code"
-community: "Community 431"
+community: "Community 467"
 location: "L358"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_431
+  - community/Community_467
 ---
 
 # TestDriftDetection
@@ -18,4 +18,4 @@ tags:
 - [[dot-test_detect_brier_drift_no_drift()]] - `method` [EXTRACTED]
 - [[test_p9_p10.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_431
+#graphify/code #graphify/EXTRACTED #community/Community_467

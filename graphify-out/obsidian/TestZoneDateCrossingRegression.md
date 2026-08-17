@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cmd_schedule_settlement_monitor.py"
 type: "code"
-community: "Community 64"
+community: "Community 53"
 location: "L151"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_64
+  - community/Community_53
 ---
 
 # TestZoneDateCrossingRegression
@@ -16,4 +16,4 @@ tags:
 - [[Regression coverage for a real bug hit while implementing this an earlier…]] - `rationale_for` [EXTRACTED]
 - [[test_cmd_schedule_settlement_monitor.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_64
+#graphify/code #graphify/EXTRACTED #community/Community_53

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Community 427"
+community: "Community 464"
 location: "L1958"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_427
+  - community/Community_464
 ---
 
 # TestStormOrderGatesActive
@@ -20,4 +20,4 @@ tags:
 - [[Mirrors TestHurricaneNextEventGatesActive's exact test shape -- own env var,…]] - `rationale_for` [EXTRACTED]
 - [[test_hurricane_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_427
+#graphify/code #graphify/EXTRACTED #community/Community_464

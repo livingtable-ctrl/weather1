@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_mos_nbp.py"
 type: "rationale"
-community: "Community 123"
+community: "Community 145"
 location: "L327"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_123
+  - community/Community_145
 ---
 
 # End-to-end: the fetcher's output shape must be directly consumable by…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestNbpFeedsNwsProbFromQuantiles]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_123
+#graphify/rationale #graphify/EXTRACTED #community/Community_145

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "code"
-community: "Community 399"
+community: "Community 424"
 location: "L650"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_399
+  - community/Community_424
 ---
 
 # TestCheckMetarLockout
@@ -19,4 +19,4 @@ tags:
 - [[ForecastCache]] - `uses` [INFERRED]
 - [[test_metar.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_399
+#graphify/code #graphify/EXTRACTED #community/Community_424

@@ -10,24 +10,24 @@ members: 18
 **Members:** 18 nodes
 
 ## Members
-- [[dot-test_censoring_at_one_shrinks_toward_half()]] - code - tests/test_weather_markets.py
-- [[dot-test_censoring_at_zero_shrinks_toward_half()]] - code - tests/test_weather_markets.py
-- [[dot-test_correction_formula_values()]] - code - tests/test_weather_markets.py
-- [[dot-test_empty_list_returns_half()]] - code - tests/test_weather_markets.py
-- [[dot-test_exactly_at_threshold_applies_correction()]] - code - tests/test_weather_markets.py
-- [[dot-test_no_censoring_returns_mean_unchanged()]] - code - tests/test_weather_markets.py
-- [[dot-test_result_clamped_between_zero_and_one()]] - code - tests/test_weather_markets.py
-- [[5% zeros  1% censor_pct threshold → correction applies (result != raw mean).]] - rationale - tests/test_weather_markets.py
-- [[Correct ensemble probability for member censoring at 0 or 1 (23). When …]] - rationale - weather_markets.py
-- [[Corrected probability must always be in 0, 1.]] - rationale - tests/test_weather_markets.py
-- [[Empty prob list returns 0.5 (maximally uncertain).]] - rationale - tests/test_weather_markets.py
-- [[Many ones (5% censored at 1) → result  raw mean (pulled toward 0.5).]] - rationale - tests/test_weather_markets.py
-- [[Many zeros (5% censored at 0) → result  raw mean (pulled toward 0.5).]] - rationale - tests/test_weather_markets.py
-- [[Probs spread across (0, 1) with no censoring → corrected == raw mean.]] - rationale - tests/test_weather_markets.py
-- [[TestCensoringCorrection]] - code - tests/test_weather_markets.py
-- [[Tests for censoring_correction() in weather_markets (23).]] - rationale - tests/test_weather_markets.py
-- [[Verify the Tobit-style formula numerically.]] - rationale - tests/test_weather_markets.py
-- [[censoring_correction()]] - code - weather_markets.py
+- [[dot-_make_client()_2]] - code - tests/test_idempotency.py
+- [[dot-_make_client()_3]] - code - tests/test_idempotency.py
+- [[dot-test_client_order_id_differs_across_cycles()]] - code - tests/test_idempotency.py
+- [[dot-test_client_order_id_in_request_body()]] - code - tests/test_idempotency.py
+- [[dot-test_client_order_id_is_deterministic()]] - code - tests/test_idempotency.py
+- [[dot-test_find_order_by_client_id_returns_none_on_api_error()]] - code - tests/test_idempotency.py
+- [[dot-test_no_cycle_uses_random_id()]] - code - tests/test_idempotency.py
+- [[dot-test_reraises_when_post_fails_and_order_not_found()]] - code - tests/test_idempotency.py
+- [[dot-test_returns_existing_order_when_post_fails_but_order_landed()]] - code - tests/test_idempotency.py
+- [[Different cycle → different client_order_id.]] - rationale - tests/test_idempotency.py
+- [[If _post raises and no matching order exists, the exception must propagate.]] - rationale - tests/test_idempotency.py
+- [[If _post raises but the order exists on exchange, return it without re-raising.…]] - rationale - tests/test_idempotency.py
+- [[Omitting cycle produces a random (non-deterministic) client_order_id.]] - rationale - tests/test_idempotency.py
+- [[Same inputs + same cycle → same client_order_id.]] - rationale - tests/test_idempotency.py
+- [[TestClientOrderId]] - code - tests/test_idempotency.py
+- [[TestPostFailureDedup]] - code - tests/test_idempotency.py
+- [[_find_order_by_client_id must swallow exceptions and return None.]] - rationale - tests/test_idempotency.py
+- [[client_order_id must appear in the POST body.]] - rationale - tests/test_idempotency.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -37,10 +37,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Ensemble Weight Blending Tests]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 146]]
+- 2 edges to [[_COMMUNITY_Community 13]]
+- 2 edges to [[_COMMUNITY_Community 248]]
 
 ## Top bridge nodes
-- [[censoring_correction()]] - degree 11, connects to 3 communities
-- [[TestCensoringCorrection]] - degree 9, connects to 1 community
+- [[TestClientOrderId]] - degree 7, connects to 2 communities
+- [[TestPostFailureDedup]] - degree 6, connects to 2 communities

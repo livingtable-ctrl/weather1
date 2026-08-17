@@ -10,16 +10,16 @@ members: 10
 **Members:** 10 nodes
 
 ## Members
-- [[dot-setup_method()_24]] - code - tests/test_flash_crash_cb.py
-- [[dot-test_cooldown_expires()]] - code - tests/test_flash_crash_cb.py
-- [[dot-test_cooldown_prevents_trading()]] - code - tests/test_flash_crash_cb.py
-- [[dot-test_crash_on_large_move()]] - code - tests/test_flash_crash_cb.py
-- [[dot-test_different_tickers_independent()]] - code - tests/test_flash_crash_cb.py
-- [[dot-test_no_cooldown_on_clean_ticker()]] - code - tests/test_flash_crash_cb.py
-- [[dot-test_no_crash_on_first_observation()]] - code - tests/test_flash_crash_cb.py
-- [[dot-test_no_crash_on_small_move()]] - code - tests/test_flash_crash_cb.py
-- [[dot-test_upward_spike_also_triggers()]] - code - tests/test_flash_crash_cb.py
-- [[TestFlashCrashCB]] - code - tests/test_flash_crash_cb.py
+- [[Phase 2 HIGH Issues Summary]] - document - docs/audit_findings.md
+- [[`alerts.py`]] - document - docs/audit_findings.md
+- [[`circuit_breaker.py`]] - document - docs/audit_findings.md
+- [[`consistency.py`]] - document - docs/audit_findings.md
+- [[`metar.py`]] - document - docs/audit_findings.md
+- [[`nws.py`]] - document - docs/audit_findings.md
+- [[`settlement_monitor.py`]] - document - docs/audit_findings.md
+- [[`system_health.py`]] - document - docs/audit_findings.md
+- [[`trading_gates.py`]] - document - docs/audit_findings.md
+- [[`weather_markets.py`]] - document - docs/audit_findings.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,9 +29,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Community 95]]
+- 1 edge to [[_COMMUNITY_Community 446]]
 
 ## Top bridge nodes
-- [[TestFlashCrashCB]] - degree 11, connects to 1 community
-- [[dot-setup_method()_24]] - degree 2, connects to 1 community
-- [[dot-test_cooldown_expires()]] - degree 2, connects to 1 community
+- [[Phase 2 HIGH Issues Summary]] - degree 10, connects to 1 community

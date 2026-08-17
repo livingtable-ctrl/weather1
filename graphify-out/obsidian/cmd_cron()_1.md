@@ -1,21 +1,26 @@
 ---
-source_file: "main.py"
+source_file: "cron.py"
 type: "code"
-community: "Community 693"
-location: "L266"
+community: "Community 3"
+location: "L2385"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_3
 ---
 
 # cmd_cron()
 
 ## Connections
-- [[Wrapper that builds CronContext from the current namespace and delegates to…]] - `rationale_for` [EXTRACTED]
-- [[_build_cron_context()]] - `calls` [EXTRACTED]
-- [[cmd_menu()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `calls` [EXTRACTED]
-- [[main.py_1]] - `contains` [EXTRACTED]
+- [[CronContext]] - `references` [EXTRACTED]
+- [[KalshiClient_2]] - `references` [EXTRACTED]
+- [[KalshiClient]] - `references` [EXTRACTED]
+- [[Silent background scan — writes to datacron.log, auto-places strong paper…]] - `rationale_for` [EXTRACTED]
+- [[_acquire_cron_lock()]] - `calls` [EXTRACTED]
+- [[_cmd_cron_body()]] - `indirect_call` [INFERRED]
+- [[_install_cron_watchdog()]] - `calls` [EXTRACTED]
+- [[cmd_cron()]] - `calls` [EXTRACTED]
+- [[cron.py]] - `contains` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_3

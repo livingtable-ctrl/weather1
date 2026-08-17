@@ -1,12 +1,12 @@
 ---
 source_file: "mos.py"
 type: "code"
-community: "Community 457"
+community: "Community 15"
 location: "L71"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_457
+  - community/Community_15
 ---
 
 # get_mos_station()
@@ -16,4 +16,4 @@ tags:
 - [[mos.py]] - `contains` [EXTRACTED]
 - [[test_mos.py]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_457
+#graphify/code #graphify/EXTRACTED #community/Community_15

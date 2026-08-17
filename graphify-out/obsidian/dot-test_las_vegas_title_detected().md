@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 116"
-location: "L2717"
+community: "Community 122"
+location: "L3086"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_116
+  - community/Community_122
 ---
 
 # .test_las_vegas_title_detected()
 
 ## Connections
-- [[dot-_city()]] - `calls` [EXTRACTED]
+- [[dot-_city()_1]] - `calls` [EXTRACTED]
 - [[TestCityDetection]] - `method` [EXTRACTED]
 - [[las vegas' in title → LasVegas even with a generic ticker.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_116
+#graphify/code #graphify/EXTRACTED #community/Community_122

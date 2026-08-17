@@ -1,11 +1,11 @@
 ---
 source_file: "docs/plans/2026-04-10-phase1-testing-foundation.md"
 type: "document"
-community: "Community 36"
+community: "Community 89"
 tags:
   - graphify/document
   - graphify/INFERRED
-  - community/Community_36
+  - community/Community_89
 ---
 
 # Phase 1 Testing Foundation Plan
@@ -18,7 +18,6 @@ tags:
 - [[Phase 5 Trading Portfolio Plan]] - `references` [INFERRED]
 - [[Phase 6 Dashboard Plan]] - `references` [INFERRED]
 - [[Phase 7 Data Safety Plan]] - `references` [INFERRED]
-- [[tracker.py_1]] - `references` [EXTRACTED]
-- [[weather_markets.py_2]] - `references` [EXTRACTED]
+- [[weather_markets.py_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/INFERRED #community/Community_36
+#graphify/document #graphify/INFERRED #community/Community_89

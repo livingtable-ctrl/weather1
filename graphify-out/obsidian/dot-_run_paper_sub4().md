@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_menu_ux.py"
 type: "code"
-community: "Community 305"
+community: "Community 309"
 location: "L112"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_305
+  - community/Community_309
 ---
 
 # ._run_paper_sub4()
@@ -18,4 +18,4 @@ tags:
 - [[Helper drive cmd_menu → P(aper) → 4(exit signals), capturing stdout.…]] - `rationale_for` [EXTRACTED]
 - [[TestExitSignals]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_305
+#graphify/code #graphify/EXTRACTED #community/Community_309

@@ -1,12 +1,12 @@
 ---
 source_file: "climate_indices.py"
 type: "code"
-community: "Climatology & Climate Index Fetching"
+community: "Community 4"
 location: "L422"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_4
 ---
 
 # _season_bucket()
@@ -16,4 +16,4 @@ tags:
 - [[climate_indices.py]] - `contains` [EXTRACTED]
 - [[temperature_adjustment()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_4

@@ -1,24 +1,25 @@
 ---
 type: community
-cohesion: 0.22
-members: 9
+cohesion: 0.27
+members: 10
 ---
 
 # Community 397
 
-**Cohesion:** 0.22 - loosely connected
-**Members:** 9 nodes
+**Cohesion:** 0.27 - loosely connected
+**Members:** 10 nodes
 
 ## Members
-- [[dot-test_daily_ticker_unaffected_reaches_gate_check()]] - code - tests/test_hurricane_gating.py
-- [[dot-test_refuses_kxtropstorm_too()]] - code - tests/test_hurricane_gating.py
-- [[dot-test_refuses_monthly_snow_ticker()]] - code - tests/test_hurricane_gating.py
-- [[dot-test_refuses_without_fetching_market_or_placing_order()]] - code - tests/test_hurricane_gating.py
-- [[Regression control an ordinary ticker must still reach past this guard…]] - rationale - tests/test_hurricane_gating.py
-- [[TestCmdOrderRefusesHurricane]] - code - tests/test_hurricane_gating.py
-- [[The broadened-marker-set finding applies to cmd_order's own direct check too,…]] - rationale - tests/test_hurricane_gating.py
-- [[cmd_order's snow guard, mirroring the hurricane one -- added same session so…]] - rationale - tests/test_hurricane_gating.py
-- [[main.py cmd_order is a confirmed, real bypass of analyze_trade()'s gates for…]] - rationale - tests/test_hurricane_gating.py
+- [[LOWER contains LOW -- confirms the substring check (not an exact-…]] - rationale - tests/test_weather.py
+- [[dot-test_high_series_returns_max()]] - code - tests/test_weather.py
+- [[dot-test_low_must_be_exact_substring_match()_1]] - code - tests/test_weather.py
+- [[dot-test_low_series_returns_min()]] - code - tests/test_weather.py
+- [[dot-test_no_low_substring_defaults_to_max()]] - code - tests/test_weather.py
+- [[Matches the original literal's exact fallback behavior — anything without LOW…]] - rationale - tests/test_weather.py
+- [[Single source of truth for analyze_trade()'s own two var-derivation call sites…]] - rationale - weather_markets.py
+- [[TestDailyVarFromSeries]] - code - tests/test_weather.py
+- [[_daily_var_from_series()]] - code - weather_markets.py
+- [[backlog.txt NO MARKET-TYPE SEAM -- single source of truth for the…]] - rationale - tests/test_weather.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,7 +29,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 61]]
+- 2 edges to [[_COMMUNITY_Community 396]]
+- 2 edges to [[_COMMUNITY_Community 5]]
+- 1 edge to [[_COMMUNITY_Community 329]]
 
 ## Top bridge nodes
-- [[TestCmdOrderRefusesHurricane]] - degree 6, connects to 1 community
+- [[_daily_var_from_series()]] - degree 9, connects to 3 communities
+- [[TestDailyVarFromSeries]] - degree 6, connects to 1 community

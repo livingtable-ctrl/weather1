@@ -10,19 +10,19 @@ members: 13
 **Members:** 13 nodes
 
 ## Members
-- [[dot-test_cache_path_is_distinct_from_precip()]] - code - tests/test_snow_markets.py
-- [[dot-test_circuit_breakers_are_isolated_from_precip()]] - code - tests/test_snow_markets.py
-- [[dot-test_math_functions_are_the_same_imported_objects_not_copies()]] - code - tests/test_snow_markets.py
-- [[dot-test_parse_snow_value_accumulated_sentinel()]] - code - tests/test_snow_markets.py
-- [[dot-test_parse_snow_value_missing_sentinel()]] - code - tests/test_snow_markets.py
-- [[dot-test_parse_snow_value_numeric()]] - code - tests/test_snow_markets.py
-- [[dot-test_parse_snow_value_trace_sentinel()]] - code - tests/test_snow_markets.py
-- [[dot-test_parse_snow_value_unparseable_returns_none()]] - code - tests/test_snow_markets.py
-- [[dot-test_seasonal_cache_is_isolated_from_precip()]] - code - tests/test_snow_markets.py
-- [[Confirms the user-confirmed design decision actually landed acis_snow reuses…]] - rationale - tests/test_snow_markets.py
-- [[Real regression both modules cache on the same (lat, lon, tz, year, month) key…]] - rationale - tests/test_snow_markets.py
-- [[TestAcisSnowModule]] - code - tests/test_snow_markets.py
-- [[Unit tests for acis_snow.py's own sentinel-parsing and cache-key isolation from…]] - rationale - tests/test_snow_markets.py
+- [[dot-test_fingerprint_survives_same_mtime_different_content()]] - code - tests/test_phase2_batch_a.py
+- [[dot-test_no_warning_when_env_var_set()]] - code - tests/test_phase2_batch_a.py
+- [[dot-test_no_warning_when_no_file_exists()]] - code - tests/test_phase2_batch_a.py
+- [[dot-test_stat_race_does_not_crash()]] - code - tests/test_phase2_batch_a.py
+- [[dot-test_value_clamped_to_safety_bounds()]] - code - tests/test_phase2_batch_a.py
+- [[dot-test_warns_when_loaded_from_walk_forward_json()]] - code - tests/test_phase2_batch_a.py
+- [[A file that disappears between the existence check and the stat call must not…]] - rationale - tests/test_phase2_batch_a.py
+- [[No file warning when PAPER_MIN_EDGE is set via env var.]] - rationale - tests/test_phase2_batch_a.py
+- [[No warning when neither file nor env var — returns hardcoded 0.05.]] - rationale - tests/test_phase2_batch_a.py
+- [[P2-9 _paper_min_edge_default must log a warning when loading from file.]] - rationale - tests/test_phase2_batch_a.py
+- [[TestPaperMinEdgeWarning]] - code - tests/test_phase2_batch_a.py
+- [[Two different file contents that happen to land on the same mtime must NOT…]] - rationale - tests/test_phase2_batch_a.py
+- [[Value from file is returned as-is (within 0.03–0.15 bounds already enforced).]] - rationale - tests/test_phase2_batch_a.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -32,7 +32,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 174]]
+- 1 edge to [[_COMMUNITY_Community 15]]
 
 ## Top bridge nodes
-- [[TestAcisSnowModule]] - degree 11, connects to 1 community
+- [[TestPaperMinEdgeWarning]] - degree 8, connects to 1 community

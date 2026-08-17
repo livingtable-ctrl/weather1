@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 165"
+community: "Community 16"
 location: "L1094"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_165
+  - community/Community_16
 ---
 
 # .test_after_month_end_any_missing_day_fails_closed()
 
 ## Connections
-- [[dot-_history_all_years_value()_2]] - `calls` [EXTRACTED]
+- [[dot-_history_all_years_value()_1]] - `calls` [EXTRACTED]
 - [[Opus-review-caught test gap (round 2) the already past month-end branch…]] - `rationale_for` [EXTRACTED]
 - [[TestRainForecastBlendSignal]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_165
+#graphify/code #graphify/EXTRACTED #community/Community_16

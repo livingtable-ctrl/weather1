@@ -1,11 +1,11 @@
 ---
 source_file: "updated frontend/screenshots/dark.png"
 type: "image"
-community: "Community 192"
+community: "Community 197"
 tags:
   - graphify/image
   - graphify/INFERRED
-  - community/Community_192
+  - community/Community_197
 ---
 
 # Kalshi Weather Dashboard - Overview Tab (Dark Theme)
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[Kalshi Weather Dashboard - Overview Tab (Light Theme)]] - `conceptually_related_to` [INFERRED]
 
-#graphify/image #graphify/INFERRED #community/Community_192
+#graphify/image #graphify/INFERRED #community/Community_197

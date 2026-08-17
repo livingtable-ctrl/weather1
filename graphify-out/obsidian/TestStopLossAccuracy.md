@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 318"
+community: "Community 323"
 location: "L5837"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_318
+  - community/Community_323
 ---
 
 # TestStopLossAccuracy
@@ -25,4 +25,4 @@ tags:
 - [[Restored backlog piece (mystery-revert 24559a7, piece 3) stop-loss exit audit.…]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_318
+#graphify/code #graphify/EXTRACTED #community/Community_323

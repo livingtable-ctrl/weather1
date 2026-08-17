@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 186"
 location: "L169"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_186
 ---
 
 # A single trade whose cost would breach MAX_DAILY_SPEND must be skipped.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_per_trade_overage_skips_trade()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_186

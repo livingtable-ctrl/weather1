@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 523"
+community: "Community 582"
 location: "L5807"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_523
+  - community/Community_582
 ---
 
 # TestClampLastCalibrationCount
@@ -19,4 +19,4 @@ tags:
 - [[backlog.txt COUNT_SETTLED_PREDICTIONS() HAS NO CONDITION_TYPE FILTER…]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_523
+#graphify/code #graphify/EXTRACTED #community/Community_582

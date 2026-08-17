@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_idempotency.py"
 type: "code"
-community: "Community 143"
+community: "Community 191"
 location: "L81"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_143
+  - community/Community_191
 ---
 
 # .test_client_order_id_in_request_body()
@@ -16,4 +16,4 @@ tags:
 - [[TestClientOrderId]] - `method` [EXTRACTED]
 - [[client_order_id must appear in the POST body.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_143
+#graphify/code #graphify/EXTRACTED #community/Community_191

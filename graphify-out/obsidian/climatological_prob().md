@@ -1,12 +1,12 @@
 ---
 source_file: "climatology.py"
 type: "code"
-community: "Climatology & Climate Index Fetching"
+community: "Community 102"
 location: "L144"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_102
 ---
 
 # climatological_prob()
@@ -18,9 +18,9 @@ tags:
 - [[_climatological_prob_inner()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[climatology.py]] - `contains` [EXTRACTED]
-- [[date_9]] - `references` [EXTRACTED]
+- [[date_1]] - `references` [EXTRACTED]
 - [[fetch_archive_temps()]] - `semantically_similar_to` [INFERRED]
 - [[fetch_historical()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_102

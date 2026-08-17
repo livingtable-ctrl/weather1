@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 348"
-location: "L4881"
+community: "Community 353"
+location: "L5250"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_348
+  - community/Community_353
 ---
 
 # .test_missing_city_returns_false()
@@ -15,4 +15,4 @@ tags:
 - [[TestDetectHedgeOpportunity]] - `method` [EXTRACTED]
 - [[detect_hedge_opportunity()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_348
+#graphify/code #graphify/EXTRACTED #community/Community_353

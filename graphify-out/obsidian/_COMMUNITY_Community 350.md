@@ -1,26 +1,26 @@
 ---
 type: community
-cohesion: 0.24
+cohesion: 0.18
 members: 11
 ---
 
 # Community 350
 
-**Cohesion:** 0.24 - loosely connected
+**Cohesion:** 0.18 - loosely connected
 **Members:** 11 nodes
 
 ## Members
-- [[dot-_close_time()]] - code - tests/test_weather.py
-- [[dot-test_far_out_returns_high_risk()]] - code - tests/test_weather.py
-- [[dot-test_missing_close_time_returns_high_risk()]] - code - tests/test_weather.py
-- [[dot-test_near_close_returns_low_risk()]] - code - tests/test_weather.py
-- [[dot-test_within_12_hours_returns_medium_or_low()]] - code - tests/test_weather.py
-- [[Build an ISO close_time string.]] - rationale - tests/test_weather.py
-- [[Empty close_time string → HIGH  1.0 (safe default).]] - rationale - tests/test_weather.py
-- [[Market closing in 48 hours during daytime → HIGH  1.0.]] - rationale - tests/test_weather.py
-- [[Market closing in 6 hours → MEDIUM or LOW.]] - rationale - tests/test_weather.py
-- [[Market closing in 90 minutes → LOW  0.5.]] - rationale - tests/test_weather.py
-- [[TestTimeRisk]] - code - tests/test_weather.py
+- [[dot-test_cache_is_thread_safe()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_cache_refreshes_after_ttl()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_cache_served_within_ttl()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_different_target_months_do_not_clobber_each_other()]] - code - tests/test_phase2_batch_c.py
+- [[dot-test_ttl_constant_is_24_hours()]] - code - tests/test_phase2_batch_c.py
+- [[2026-07-19 fix get_indices() must key its cache by (year, month), not a single…]] - rationale - tests/test_phase2_batch_c.py
+- [[A second call within TTL must not hit the network.]] - rationale - tests/test_phase2_batch_c.py
+- [[After TTL expires, the next call must re-fetch.]] - rationale - tests/test_phase2_batch_c.py
+- [[Concurrent calls must not raise and must each return a dict.]] - rationale - tests/test_phase2_batch_c.py
+- [[P2-12 get_indices must refresh after TTL expires, not cache forever.]] - rationale - tests/test_phase2_batch_c.py
+- [[TestClimateIndicesTTL]] - code - tests/test_phase2_batch_c.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,12 +30,11 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Weather Probability Math Tests]]
+- 2 edges to [[_COMMUNITY_Community 23]]
+- 1 edge to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 9]]
 
 ## Top bridge nodes
-- [[TestTimeRisk]] - degree 6, connects to 1 community
-- [[dot-test_far_out_returns_high_risk()]] - degree 4, connects to 1 community
-- [[dot-test_near_close_returns_low_risk()]] - degree 4, connects to 1 community
-- [[dot-test_within_12_hours_returns_medium_or_low()]] - degree 4, connects to 1 community
-- [[dot-test_missing_close_time_returns_high_risk()]] - degree 3, connects to 1 community
+- [[TestClimateIndicesTTL]] - degree 8, connects to 2 communities
+- [[dot-test_cache_refreshes_after_ttl()]] - degree 3, connects to 1 community
+- [[dot-test_cache_served_within_ttl()]] - degree 3, connects to 1 community

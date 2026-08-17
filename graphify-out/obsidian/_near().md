@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_near_settlement_log.py"
 type: "code"
-community: "Community 196"
+community: "Community 199"
 location: "L37"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_196
+  - community/Community_199
 ---
 
 # _near()
@@ -20,4 +20,4 @@ tags:
 - [[Shape of one check_expiring_trades() entry.]] - `rationale_for` [EXTRACTED]
 - [[test_near_settlement_log.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_196
+#graphify/code #graphify/EXTRACTED #community/Community_199

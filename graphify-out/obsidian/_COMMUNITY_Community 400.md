@@ -1,24 +1,24 @@
 ---
 type: community
-cohesion: 0.22
+cohesion: 0.25
 members: 9
 ---
 
 # Community 400
 
-**Cohesion:** 0.22 - loosely connected
+**Cohesion:** 0.25 - loosely connected
 **Members:** 9 nodes
 
 ## Members
-- [[dot-setup_method()_27]] - code - tests/test_p1_remaining.py
-- [[dot-teardown_method()_19]] - code - tests/test_p1_remaining.py
-- [[dot-test_returns_empty_string_when_not_halted()]] - code - tests/test_p1_remaining.py
-- [[dot-test_returns_sprt_reason_when_degraded()]] - code - tests/test_p1_remaining.py
-- [[dot-test_returns_string_when_win_rate_low()]] - code - tests/test_p1_remaining.py
-- [[TestGetAccuracyHaltReason]] - code - tests/test_p1_remaining.py
-- [[get_accuracy_halt_reason returns '' when win rate is healthy.]] - rationale - tests/test_p1_remaining.py
-- [[get_accuracy_halt_reason returns SPRT info when SPRT signals degradation.]] - rationale - tests/test_p1_remaining.py
-- [[get_accuracy_halt_reason returns non-empty string when rolling win rate is low.]] - rationale - tests/test_p1_remaining.py
+- [[Exponential decay weight so recent settled trades count more in calibration.]] - rationale - calibration.py
+- [[Grid-search optimal blend weights per season. Returns {season {ensemble,…]] - rationale - calibration.py
+- [[Path_16]] - code
+- [[Row_2]] - code
+- [[Split (date_str, e, c, n, s, weight) rows into (train, val) tuples (date…]] - rationale - calibration.py
+- [[_compute_recency_weight()]] - code - calibration.py
+- [[_load_rows()]] - code - calibration.py
+- [[_split_rows()]] - code - calibration.py
+- [[calibrate_seasonal_weights()]] - code - calibration.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,8 +28,16 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 1 edge to [[_COMMUNITY_Community 96]]
+- 7 edges to [[_COMMUNITY_Community 4]]
+- 6 edges to [[_COMMUNITY_Community 125]]
+- 5 edges to [[_COMMUNITY_Community 58]]
+- 4 edges to [[_COMMUNITY_Community 109]]
+- 3 edges to [[_COMMUNITY_Community 266]]
+- 2 edges to [[_COMMUNITY_Community 147]]
 
 ## Top bridge nodes
-- [[TestGetAccuracyHaltReason]] - degree 8, connects to 2 communities
+- [[calibrate_seasonal_weights()]] - degree 18, connects to 5 communities
+- [[Path_16]] - degree 8, connects to 4 communities
+- [[_compute_recency_weight()]] - degree 5, connects to 3 communities
+- [[_split_rows()]] - degree 5, connects to 3 communities
+- [[_load_rows()]] - degree 5, connects to 2 communities

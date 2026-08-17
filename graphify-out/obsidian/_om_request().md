@@ -1,18 +1,19 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "ML Bias Correction & Audit Plans"
-location: "L583"
+community: "Community 5"
+location: "L584"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/ML_Bias_Correction__Audit_Plans
+  - community/Community_5
 ---
 
 # _om_request()
 
 ## Connections
 - [[Rate-limited wrapper for all Open-Meteo API calls. On 429 returns immediately…]] - `rationale_for` [EXTRACTED]
+- [[Response_2]] - `references` [EXTRACTED]
 - [[Response_1]] - `references` [EXTRACTED]
 - [[_fetch_model_ensemble()]] - `calls` [EXTRACTED]
 - [[_model_prob_and_mean()]] - `calls` [EXTRACTED]
@@ -23,4 +24,4 @@ tags:
 - [[fetch_temperature_nbm()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/ML_Bias_Correction__Audit_Plans
+#graphify/code #graphify/EXTRACTED #community/Community_5

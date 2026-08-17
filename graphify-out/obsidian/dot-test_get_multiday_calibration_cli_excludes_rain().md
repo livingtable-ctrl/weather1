@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 619"
+community: "Community 710"
 location: "L4633"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_619
+  - community/Community_710
 ---
 
 # .test_get_multiday_calibration_cli_excludes_rain()
@@ -17,4 +17,4 @@ tags:
 - [[TestDisputedOutcomeTracking]] - `method` [EXTRACTED]
 - [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 (review- caught gap) must…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_619
+#graphify/code #graphify/EXTRACTED #community/Community_710

@@ -1,19 +1,21 @@
 ---
-source_file: "hurricane_climatology.py"
+source_file: "climatology.py"
 type: "code"
-community: "Community 55"
-location: "L102"
+community: "Community 102"
+location: "L44"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_55
+  - community/Community_102
 ---
 
 # _cache_is_stale()
 
 ## Connections
-- [[Path_23]] - `references` [EXTRACTED]
-- [[fetch_hurdat2_raw()]] - `calls` [EXTRACTED]
-- [[hurricane_climatology.py]] - `contains` [EXTRACTED]
+- [[Path_2]] - `references` [EXTRACTED]
+- [[Return True if the cache file is missing or older than CACHE_MAX_AGE seconds.]] - `rationale_for` [EXTRACTED]
+- [[climatology.py]] - `contains` [EXTRACTED]
+- [[fetch_historical()]] - `calls` [EXTRACTED]
+- [[preload_all()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_55
+#graphify/code #graphify/EXTRACTED #community/Community_102

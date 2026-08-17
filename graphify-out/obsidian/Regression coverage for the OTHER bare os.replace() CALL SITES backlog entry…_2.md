@@ -1,17 +1,17 @@
 ---
-source_file: "tests/test_alerts.py"
+source_file: "tests/test_p9_p10.py"
 type: "rationale"
-community: "Community 591"
-location: "L176"
+community: "Community 54"
+location: "L301"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_591
+  - community/Community_54
 ---
 
 # Regression coverage for the OTHER bare os.replace() CALL SITES backlog entry…
 
 ## Connections
-- [[TestSaveRoutesThroughSafeIO]] - `rationale_for` [EXTRACTED]
+- [[TestPersistenceRoutesThroughSafeIO]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_591
+#graphify/rationale #graphify/EXTRACTED #community/Community_54

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 207"
+community: "Community 81"
 location: "L95"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_207
+  - community/Community_81
 ---
 
 # implied_prob equals the mid-price of yes_bid and yes_ask.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_implied_prob_is_midpoint()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_207
+#graphify/rationale #graphify/EXTRACTED #community/Community_81

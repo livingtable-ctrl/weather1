@@ -1,24 +1,20 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Community 36"
-location: "L5266"
+community: "Community 2"
+location: "L5321"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_36
+  - community/Community_2
 ---
 
 # get_ensemble_member_accuracy()
 
 ## Connections
-- [[Group B Data Integrity Plan]] - `implements` [EXTRACTED]
 - [[Per-model MAE from ensemble_member_scores, stratified by city and season (18).…]] - `rationale_for` [EXTRACTED]
-- [[Phase 3 Tracker Analytics Plan]] - `implements` [EXTRACTED]
-- [[Tracker Grade Audit]] - `references` [EXTRACTED]
-- [[_conn()_1]] - `calls` [EXTRACTED]
+- [[_conn()]] - `calls` [EXTRACTED]
 - [[init_db()]] - `calls` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
-- [[tracker.py_1]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_36
+#graphify/code #graphify/EXTRACTED #community/Community_2

@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.43
+members: 7
 ---
 
 # Community 523
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.43 - moderately connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_clamps_down_when_sentinel_exceeds_current()]] - code - tests/test_tracker.py
-- [[dot-test_equal_values_unchanged()]] - code - tests/test_tracker.py
-- [[dot-test_leaves_sentinel_unchanged_when_current_is_higher()]] - code - tests/test_tracker.py
-- [[dot-test_zero_sentinel_unaffected()]] - code - tests/test_tracker.py
-- [[TestClampLastCalibrationCount]] - code - tests/test_tracker.py
-- [[backlog.txt COUNT_SETTLED_PREDICTIONS() HAS NO CONDITION_TYPE FILTER…]] - rationale - tests/test_tracker.py
+- [[dot-_run_sim()_1]] - code - tests/test_phase3_batch_d.py
+- [[dot-test_core_keys_always_present()]] - code - tests/test_phase3_batch_d.py
+- [[dot-test_distribution_absent_by_default()]] - code - tests/test_phase3_batch_d.py
+- [[dot-test_distribution_present_when_requested()]] - code - tests/test_phase3_batch_d.py
+- [[dot-test_simulate_portfolio_signature_has_include_distribution()]] - code - tests/test_phase3_batch_d.py
+- [[P3-23 pnl_distribution must only appear in output when…]] - rationale - tests/test_phase3_batch_d.py
+- [[TestPnlDistributionGated]] - code - tests/test_phase3_batch_d.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
+- 2 edges to [[_COMMUNITY_Community 303]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestClampLastCalibrationCount]] - degree 6, connects to 1 community
+- [[TestPnlDistributionGated]] - degree 7, connects to 1 community
+- [[dot-_run_sim()_1]] - degree 5, connects to 1 community
+- [[dot-test_simulate_portfolio_signature_has_include_distribution()]] - degree 2, connects to 1 community

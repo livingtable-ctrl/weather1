@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "code"
-community: "Community 422"
+community: "Community 459"
 location: "L770"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_422
+  - community/Community_459
 ---
 
 # TestSqlNormalizeIsoColumn
@@ -18,4 +18,4 @@ tags:
 - [[test_execution_log.py]] - `contains` [EXTRACTED]
 - [[utils.sql_normalize_iso_column() -- the shared helper both call sites above…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_422
+#graphify/code #graphify/EXTRACTED #community/Community_459

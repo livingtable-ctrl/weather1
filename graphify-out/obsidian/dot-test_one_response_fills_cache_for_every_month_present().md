@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_acis_precip.py"
 type: "code"
-community: "Community 161"
+community: "Community 162"
 location: "L475"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_161
+  - community/Community_162
 ---
 
 # .test_one_response_fills_cache_for_every_month_present()
@@ -15,4 +15,4 @@ tags:
 - [[One response covers ~6 months of data -- every (year, month) actually present…]] - `rationale_for` [EXTRACTED]
 - [[TestFetchSeasonalPrecipMeanMm]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_161
+#graphify/code #graphify/EXTRACTED #community/Community_162

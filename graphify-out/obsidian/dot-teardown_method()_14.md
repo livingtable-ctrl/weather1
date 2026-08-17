@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 338"
-location: "L458"
+community: "Community 345"
+location: "L50"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_338
+  - community/Community_345
 ---
 
 # .teardown_method()
 
 ## Connections
-- [[TestRecoverPendingOrders]] - `method` [EXTRACTED]
+- [[TestPlaceLiveOrder]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_338
+#graphify/code #graphify/EXTRACTED #community/Community_345

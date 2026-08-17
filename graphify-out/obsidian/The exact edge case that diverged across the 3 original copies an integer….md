@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "rationale"
-community: "Community 164"
+community: "Community 20"
 location: "L1417"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_164
+  - community/Community_20
 ---
 
 # The exact edge case that diverged across the 3 original copies: an integer…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_one_cent_int_normalized_not_misread_as_one_dollar()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_164
+#graphify/rationale #graphify/EXTRACTED #community/Community_20

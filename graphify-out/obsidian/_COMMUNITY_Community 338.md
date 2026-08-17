@@ -10,17 +10,17 @@ members: 11
 **Members:** 11 nodes
 
 ## Members
-- [[dot-setup_method()_21]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_14]] - code - tests/test_live_execution.py
-- [[dot-test_canceled_order_resolves_to_canceled()]] - code - tests/test_live_execution.py
-- [[dot-test_executed_order_resolves_to_internal_filled_status()]] - code - tests/test_live_execution.py
-- [[dot-test_partial_fill_then_cancel_resolves_to_filled()]] - code - tests/test_live_execution.py
-- [[dot-test_resting_order_resolves_to_pending()]] - code - tests/test_live_execution.py
-- [[2026-07-09 Kalshi's real order-status enum is restingcanceledexecuted --…]] - rationale - tests/test_live_execution.py
-- [[A pending row whose order actually executed must resolve to this bot's internal…]] - rationale - tests/test_live_execution.py
-- [[A resting order must land on status='pending' — the only status every…]] - rationale - tests/test_live_execution.py
-- [[F9 Kalshi has no distinct 'partially filled' status -- an order that fills…]] - rationale - tests/test_live_execution.py
-- [[TestRecoverPendingOrders]] - code - tests/test_live_execution.py
+- [[dot-test_halted_when_tracker_raises()]] - code - tests/test_risk_control.py
+- [[dot-test_halted_when_win_rate_below_threshold()]] - code - tests/test_risk_control.py
+- [[dot-test_not_halted_when_sample_too_small()]] - code - tests/test_risk_control.py
+- [[dot-test_not_halted_when_win_rate_acceptable()]] - code - tests/test_risk_control.py
+- [[2026-07-09 fail closed, not open, on an internal check failure -- a DB read…]] - rationale - tests/test_risk_control.py
+- [[Redirect tracker.DB_PATH to a per-test temp DB and initialize the schema.…]] - rationale - tests/conftest.py
+- [[TestAccuracyCircuitBreaker]] - code - tests/test_risk_control.py
+- [[is_accuracy_halted returns False when fewer than ACCURACY_MIN_SAMPLE trades…]] - rationale - tests/test_risk_control.py
+- [[is_accuracy_halted returns False when win rate is 55% over 20 trades.]] - rationale - tests/test_risk_control.py
+- [[is_accuracy_halted returns True when win rate is 30% over 20 trades.]] - rationale - tests/test_risk_control.py
+- [[isolate_tracker_db()]] - code - tests/conftest.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -30,13 +30,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 5 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 2 edges to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 111]]
+- 2 edges to [[_COMMUNITY_Community 18]]
+- 1 edge to [[_COMMUNITY_Community 332]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestRecoverPendingOrders]] - degree 11, connects to 3 communities
-- [[dot-test_executed_order_resolves_to_internal_filled_status()]] - degree 3, connects to 1 community
-- [[dot-test_partial_fill_then_cancel_resolves_to_filled()]] - degree 3, connects to 1 community
-- [[dot-test_resting_order_resolves_to_pending()]] - degree 3, connects to 1 community
-- [[dot-test_canceled_order_resolves_to_canceled()]] - degree 2, connects to 1 community
+- [[isolate_tracker_db()]] - degree 5, connects to 2 communities
+- [[TestAccuracyCircuitBreaker]] - degree 6, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase4.py"
 type: "rationale"
-community: "Forecasting Persistence Model Tests"
+community: "Community 26"
 location: "L275"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_26
 ---
 
 # No city → seasonal fallback (no learned weights lookup).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_no_city_falls_back_to_seasonal()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_26

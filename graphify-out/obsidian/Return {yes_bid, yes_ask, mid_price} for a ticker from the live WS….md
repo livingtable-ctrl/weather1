@@ -1,12 +1,12 @@
 ---
 source_file: "kalshi_ws.py"
 type: "rationale"
-community: "Community 198"
+community: "Community 30"
 location: "L251"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_198
+  - community/Community_30
 ---
 
 # Return {"yes_bid", "yes_ask", "mid_price"} for a ticker from the live WS…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[get_cached_book()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_198
+#graphify/rationale #graphify/EXTRACTED #community/Community_30

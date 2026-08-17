@@ -1,30 +1,31 @@
 ---
 type: community
-cohesion: 0.19
-members: 15
+cohesion: 0.15
+members: 16
 ---
 
 # Community 225
 
-**Cohesion:** 0.19 - loosely connected
-**Members:** 15 nodes
+**Cohesion:** 0.15 - loosely connected
+**Members:** 16 nodes
 
 ## Members
-- [[dot-test_no_buy_and_yes_sell_are_never_confused()]] - code - tests/test_kalshi_client.py
-- [[dot-test_no_buy_maps_to_ask_at_complementary_price()]] - code - tests/test_kalshi_client.py
-- [[dot-test_no_sell_maps_to_bid_at_complementary_price()]] - code - tests/test_kalshi_client.py
-- [[dot-test_yes_buy_maps_to_bid_at_same_price()]] - code - tests/test_kalshi_client.py
-- [[dot-test_yes_sell_maps_to_ask_at_same_price()]] - code - tests/test_kalshi_client.py
-- [[Buying NO at $0.35 is economically equivalent to selling YES at $0.65 (1 -…]] - rationale - tests/test_kalshi_client.py
-- [[KalshiClient.amend_order()]] - code - kalshi_client.py
-- [[KalshiClient.get_markets()get_candlesticks()get_trades() pagination]] - code - kalshi_client.py
-- [[L1-A's original invariant, restated for the V2 mapping a NO buy and a YES sell…]] - rationale - tests/test_kalshi_client.py
-- [[Map this codebase's (side yesno, action buysell, price) model to Kalshi's…]] - rationale - kalshi_client.py
-- [[TestToV2SidePrice]] - code - tests/test_kalshi_client.py
-- [[Tests for kalshi_client.py.]] - rationale - tests/test_kalshi_client.py
-- [[V2 order-endpoint migration Kalshi's legacy POST portfolioorders (side…]] - rationale - tests/test_kalshi_client.py
-- [[_to_v2_side_price()]] - code - kalshi_client.py
-- [[test_kalshi_client.py]] - code - tests/test_kalshi_client.py
+- [[dot-test_empty_when_no_opportunities()]] - code - tests/test_suggested_bets.py
+- [[dot-test_market_fetch_failure_returns_500()]] - code - tests/test_suggested_bets.py
+- [[dot-test_returns_top_n_sorted_by_ev()]] - code - tests/test_suggested_bets.py
+- [[Ensure KALSHI_ENV=demo so _build_app doesn't require DASHBOARD_PASSWORD.]] - rationale - tests/test_suggested_bets.py
+- [[Returns 500 with error key when get_weather_markets raises.]] - rationale - tests/test_suggested_bets.py
+- [[Returns empty bets list when analyze_trade returns None for all markets.]] - rationale - tests/test_suggested_bets.py
+- [[Returns top-n opportunities ranked by EV = net_edge × kelly_dollars.]] - rationale - tests/test_suggested_bets.py
+- [[TestSuggestedBetsEndpoint]] - code - tests/test_suggested_bets.py
+- [[Tests for apisuggested_bets.]] - rationale - tests/test_suggested_bets.py
+- [[_force_demo_env()]] - code - tests/test_suggested_bets.py
+- [[_make_analysis()_1]] - code - tests/test_suggested_bets.py
+- [[_make_market()]] - code - tests/test_suggested_bets.py
+- [[_no_dashboard_password()]] - code - tests/test_suggested_bets.py
+- [[fixture_7]] - code
+- [[patch_1]] - code
+- [[utils.DASHBOARD_PASSWORD is cached at import time (conftest.py imports main,…]] - rationale - tests/test_suggested_bets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -34,21 +35,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 100]]
-- 2 edges to [[_COMMUNITY_Community 143]]
-- 1 edge to [[_COMMUNITY_Community 336]]
-- 1 edge to [[_COMMUNITY_Community 366]]
-- 1 edge to [[_COMMUNITY_Community 467]]
-- 1 edge to [[_COMMUNITY_Community 510]]
-- 1 edge to [[_COMMUNITY_Community 511]]
-- 1 edge to [[_COMMUNITY_Community 549]]
-- 1 edge to [[_COMMUNITY_Community 86]]
-- 1 edge to [[_COMMUNITY_Community 298]]
-- 1 edge to [[_COMMUNITY_Community 351]]
-- 1 edge to [[_COMMUNITY_Community 142]]
-- 1 edge to [[_COMMUNITY_Community 183]]
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
+- 5 edges to [[_COMMUNITY_Community 4]]
+- 3 edges to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[test_kalshi_client.py]] - degree 17, connects to 11 communities
-- [[_to_v2_side_price()]] - degree 12, connects to 4 communities
+- [[dot-test_returns_top_n_sorted_by_ev()]] - degree 6, connects to 1 community
+- [[TestSuggestedBetsEndpoint]] - degree 5, connects to 1 community
+- [[dot-test_empty_when_no_opportunities()]] - degree 5, connects to 1 community
+- [[_force_demo_env()]] - degree 4, connects to 1 community
+- [[dot-test_market_fetch_failure_returns_500()]] - degree 4, connects to 1 community

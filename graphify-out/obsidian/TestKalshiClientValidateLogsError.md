@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_a.py"
 type: "code"
-community: "Community 86"
+community: "Community 13"
 location: "L281"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_86
+  - community/Community_13
 ---
 
 # TestKalshiClientValidateLogsError
@@ -18,4 +18,4 @@ tags:
 - [[P3-21 _validate must log an error, not emit a warning.]] - `rationale_for` [EXTRACTED]
 - [[test_phase3_batch_a.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_86
+#graphify/code #graphify/EXTRACTED #community/Community_13

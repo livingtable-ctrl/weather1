@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.32
+members: 8
 ---
 
 # Community 457
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.32 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_analyze_trade_includes_mos_field()]] - code - tests/test_mos.py
-- [[Return the ASOS station code for a city, or None if unknown.]] - rationale - mos.py
-- [[TestMosIntegration]] - code - tests/test_mos.py
-- [[Tests for NOAA MOS via IEM API.]] - rationale - tests/test_mos.py
-- [[analyze_trade result dict contains mos_max_temp key.]] - rationale - tests/test_mos.py
-- [[get_mos_station()]] - code - mos.py
-- [[test_mos.py]] - code - tests/test_mos.py
+- [[dot-_run_fetch()]] - code - tests/test_backtest_stratified.py
+- [[dot-test_ensemble_centred_near_forecast()]] - code - tests/test_backtest_stratified.py
+- [[dot-test_ensemble_not_centred_on_actual()]] - code - tests/test_backtest_stratified.py
+- [[Ensemble mean must NOT be within 1°F of the actual temperature (exact_val).…]] - rationale - tests/test_backtest_stratified.py
+- [[Ensemble mean must be within 5°F of the surrounding-day average (proxy…]] - rationale - tests/test_backtest_stratified.py
+- [[L6-A synthetic ensemble must be centred on a forecast, not the actual outcome.]] - rationale - tests/test_backtest_stratified.py
+- [[Monkeypatch requests.get so fetch_archive_temps uses controlled data, then…]] - rationale - tests/test_backtest_stratified.py
+- [[TestFetchArchiveTempsEnsembleCenter]] - code - tests/test_backtest_stratified.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,11 +27,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 99]]
-- 1 edge to [[_COMMUNITY_Community 187]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 73]]
+- 2 edges to [[_COMMUNITY_Community 8]]
 
 ## Top bridge nodes
-- [[test_mos.py]] - degree 7, connects to 4 communities
-- [[get_mos_station()]] - degree 3, connects to 1 community
+- [[TestFetchArchiveTempsEnsembleCenter]] - degree 5, connects to 1 community
+- [[dot-_run_fetch()]] - degree 5, connects to 1 community

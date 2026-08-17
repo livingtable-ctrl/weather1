@@ -1,13 +1,13 @@
 ---
 source_file: "kalshi_ws.py"
 type: "code"
-community: "Community 661"
+community: "Community 802"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_661
+  - community/Community_802
 ---
 
 # KalshiWebSocket Class
 
-#graphify/code #graphify/EXTRACTED #community/Community_661
+#graphify/code #graphify/EXTRACTED #community/Community_802

@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 157"
+community: "Community 73"
 location: "L367"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_157
+  - community/Community_73
 ---
 
 # _finalize_cancel()
@@ -29,4 +29,4 @@ tags:
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[test_live_execution.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_157
+#graphify/code #graphify/EXTRACTED #community/Community_73

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_prelog.py"
 type: "code"
-community: "Community 219"
+community: "Community 224"
 location: "L121"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_219
+  - community/Community_224
 ---
 
 # .test_status_updated_to_failed_on_exception()
@@ -16,4 +16,4 @@ tags:
 - [[After place_order raises, status must be updated to 'failed'.]] - `rationale_for` [EXTRACTED]
 - [[TestPreLogPattern]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_219
+#graphify/code #graphify/EXTRACTED #community/Community_224

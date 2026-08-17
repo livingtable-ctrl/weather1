@@ -1,12 +1,12 @@
 ---
 source_file: "pdf_report.py"
 type: "code"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 1"
 location: "L61"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_1
 ---
 
 # _pdf()
@@ -16,4 +16,4 @@ tags:
 - [[_generate_pdf()]] - `calls` [EXTRACTED]
 - [[pdf_report.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/code #graphify/EXTRACTED #community/Community_1

@@ -1,23 +1,24 @@
 ---
 type: community
-cohesion: 0.25
-members: 8
+cohesion: 0.22
+members: 9
 ---
 
 # Community 423
 
-**Cohesion:** 0.25 - loosely connected
-**Members:** 8 nodes
+**Cohesion:** 0.22 - loosely connected
+**Members:** 9 nodes
 
 ## Members
-- [[dot-test_bimodal_kelly_returns_one_when_unimodal()]] - code - tests/test_forecasting.py
-- [[dot-test_bimodal_kelly_returns_point_one_when_bimodal()]] - code - tests/test_forecasting.py
-- [[dot-test_bimodal_reduces_ci_adjusted_kelly()]] - code - tests/test_forecasting.py
-- [[dot-test_detect_bimodal_ensemble()]] - code - tests/test_forecasting.py
-- [[TestBimodalEnsemble]] - code - tests/test_forecasting.py
-- [[When _detect_bimodal_ensemble returns False, multiplier must be 1.0.]] - rationale - tests/test_forecasting.py
-- [[When _detect_bimodal_ensemble returns True, multiplier must be 0.10.]] - rationale - tests/test_forecasting.py
-- [[When bimodal detected, ci_adjusted_kelly in analyze_trade result is reduced.]] - rationale - tests/test_forecasting.py
+- [[dot-test_no_remaining_count_means_pure_price_change_pending()]] - code - tests/test_live_execution.py
+- [[dot-test_remaining_count_positive_means_still_pending()]] - code - tests/test_live_execution.py
+- [[dot-test_remaining_count_zero_means_filled()]] - code - tests/test_live_execution.py
+- [[dot-test_unparseable_remaining_count_fails_to_pending()]] - code - tests/test_live_execution.py
+- [[Amend caused a partial fill (2 of 5) but 3 are still resting -- must stay…]] - rationale - tests/test_live_execution.py
+- [[Fail toward the safer assumption (still resting, will be re-verified by the…]] - rationale - tests/test_live_execution.py
+- [[TestResolveAmendStatus]] - code - tests/test_live_execution.py
+- [[order_executor._resolve_amend_status -- translates an amend_order() response…]] - rationale - tests/test_live_execution.py
+- [[remaining_countfill_count absent (both None) -- Kalshi's docs say these are…]] - rationale - tests/test_live_execution.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -27,10 +28,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
-- 1 edge to [[_COMMUNITY_Community 51]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 4 edges to [[_COMMUNITY_Community 1]]
+- 3 edges to [[_COMMUNITY_Community 12]]
 
 ## Top bridge nodes
-- [[TestBimodalEnsemble]] - degree 6, connects to 2 communities
-- [[dot-test_detect_bimodal_ensemble()]] - degree 2, connects to 1 community
+- [[TestResolveAmendStatus]] - degree 8, connects to 1 community
+- [[dot-test_no_remaining_count_means_pure_price_change_pending()]] - degree 3, connects to 1 community
+- [[dot-test_remaining_count_positive_means_still_pending()]] - degree 3, connects to 1 community
+- [[dot-test_unparseable_remaining_count_fails_to_pending()]] - degree 3, connects to 1 community
+- [[dot-test_remaining_count_zero_means_filled()]] - degree 2, connects to 1 community

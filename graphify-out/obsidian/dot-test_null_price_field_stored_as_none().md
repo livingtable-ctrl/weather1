@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 317"
+community: "Community 322"
 location: "L3430"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_317
+  - community/Community_322
 ---
 
 # .test_null_price_field_stored_as_none()
@@ -15,4 +15,4 @@ tags:
 - [[A candle with no trades in-period has price=None (only bidask quotes).]] - `rationale_for` [EXTRACTED]
 - [[TestPriceHistory]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_317
+#graphify/code #graphify/EXTRACTED #community/Community_322

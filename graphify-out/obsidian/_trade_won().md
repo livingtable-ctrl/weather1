@@ -1,12 +1,12 @@
 ---
 source_file: "alerts.py"
 type: "code"
-community: "Community 194"
+community: "Community 359"
 location: "L203"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_194
+  - community/Community_359
 ---
 
 # _trade_won()
@@ -23,4 +23,4 @@ tags:
 - [[get_win_rate_window()]] - `calls` [EXTRACTED]
 - [[test_alerts_side.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_194
+#graphify/code #graphify/EXTRACTED #community/Community_359

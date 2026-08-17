@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_h.py"
 type: "code"
-community: "Community 519"
+community: "Community 577"
 location: "L45"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_519
+  - community/Community_577
 ---
 
 # .test_days_out_uses_utc()
@@ -15,4 +15,4 @@ tags:
 - [[Patching _utc_today in nws changes the days_out computation.]] - `rationale_for` [EXTRACTED]
 - [[TestNwsUtcDate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_519
+#graphify/code #graphify/EXTRACTED #community/Community_577

@@ -10,19 +10,19 @@ members: 13
 **Members:** 13 nodes
 
 ## Members
-- [[dot-test_heat_dome_overrides_weights()]] - code - tests/test_forecasting.py
-- [[dot-test_normal_regime_uses_existing_weights()]] - code - tests/test_forecasting.py
-- [[dot-test_notify_does_not_overwrite_existing_key()]] - code - tests/test_forecasting.py
-- [[dot-test_notify_writes_feature_activations_file()]] - code - tests/test_forecasting.py
-- [[dot-test_regime_blend_active_above_threshold()]] - code - tests/test_forecasting.py
-- [[dot-test_regime_blend_inactive_below_threshold()]] - code - tests/test_forecasting.py
-- [[TestRegimeBlend]] - code - tests/test_forecasting.py
-- [[_notify_feature_activation is idempotent -- does not rewrite if key exists.]] - rationale - tests/test_forecasting.py
-- [[_notify_feature_activation writes datafeature_activations.json on first call.]] - rationale - tests/test_forecasting.py
-- [[_regime_blend_active returns False when settled count  30.]] - rationale - tests/test_forecasting.py
-- [[_regime_blend_active returns True when settled count = 30.]] - rationale - tests/test_forecasting.py
-- [[heat_dome regime - ens=0.70, nws=0.25, clim=0.05 (after active).]] - rationale - tests/test_forecasting.py
-- [[normal regime - existing conditionseasonal weights unchanged.]] - rationale - tests/test_forecasting.py
+- [[dot-setup_method()_19]] - code - tests/test_execution_log.py
+- [[dot-teardown_method()_11]] - code - tests/test_execution_log.py
+- [[dot-test_add_live_loss_write_failure_fails_closed()]] - code - tests/test_execution_log.py
+- [[dot-test_daily_live_loss_accumulates()]] - code - tests/test_execution_log.py
+- [[dot-test_daily_live_loss_add_returns_new_total()]] - code - tests/test_execution_log.py
+- [[dot-test_daily_live_loss_returns_zero_for_new_day()]] - code - tests/test_execution_log.py
+- [[dot-test_degraded_flag_clears_on_next_successful_write()]] - code - tests/test_execution_log.py
+- [[dot-test_degraded_flag_from_yesterday_does_not_affect_today()]] - code - tests/test_execution_log.py
+- [[A DB write that raises must not silently report 0.0 (the old bug) — it should…]] - rationale - tests/test_execution_log.py
+- [[Once the DB recovers, a real write should clear the fail-closed flag.]] - rationale - tests/test_execution_log.py
+- [[Seeding yesterday's row should not affect today's total.]] - rationale - tests/test_execution_log.py
+- [[TestDailyLiveLoss]] - code - tests/test_execution_log.py
+- [[The flag is date-keyed and should not linger past the day it was set.]] - rationale - tests/test_execution_log.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -32,8 +32,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Forecasting Persistence Model Tests]]
-- 1 edge to [[_COMMUNITY_Community 51]]
+- 1 edge to [[_COMMUNITY_Community 42]]
 
 ## Top bridge nodes
-- [[TestRegimeBlend]] - degree 8, connects to 2 communities
+- [[TestDailyLiveLoss]] - degree 9, connects to 1 community

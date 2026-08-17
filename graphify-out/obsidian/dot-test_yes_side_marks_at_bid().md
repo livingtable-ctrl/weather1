@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 138"
-location: "L2646"
+community: "Community 107"
+location: "L2787"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_138
+  - community/Community_107
 ---
 
 # .test_yes_side_marks_at_bid()
@@ -14,7 +14,8 @@ tags:
 ## Connections
 - [[dot-_write_open_trades()_1]] - `calls` [EXTRACTED]
 - [[TestGetUnrealizedPnlPaper]] - `method` [EXTRACTED]
+- [[YES holder can only realize the bid — mark_pnl = (bid - entry)  qty._1]] - `rationale_for` [EXTRACTED]
 - [[YES holder can only realize the bid — mark_pnl = (bid - entry)  qty.]] - `rationale_for` [EXTRACTED]
 - [[_FakeMarketClient]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_138
+#graphify/code #graphify/EXTRACTED #community/Community_107

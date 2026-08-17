@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_config.py"
 type: "code"
-community: "Community 297"
+community: "Community 47"
 location: "L19"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_297
+  - community/Community_47
 ---
 
 # test_fee_rate_out_of_range_raises()
@@ -15,4 +15,4 @@ tags:
 - [[BotConfig]] - `calls` [EXTRACTED]
 - [[test_config.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_297
+#graphify/code #graphify/EXTRACTED #community/Community_47

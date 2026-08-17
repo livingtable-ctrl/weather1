@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 614
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-_seed_baseline()_1]] - code - tests/test_tracker.py
-- [[Log n diverse trusted (non-disputed) settled predictions — enough to clear…]] - rationale - tests/test_tracker.py
+- [[dot-test_fetch_forecast_default_true_still_calls_get_weather_forecast()]] - code - tests/test_forecasting.py
+- [[dot-test_fetch_forecast_false_skips_get_weather_forecast()]] - code - tests/test_forecasting.py
+- [[Regression default behavior (every other existing caller) is unchanged.]] - rationale - tests/test_forecasting.py
+- [[TestEnrichWithForecastSkipsFetch]] - code - tests/test_forecasting.py
+- [[fetch_forecast=False must skip get_weather_forecast() entirely (used by…]] - rationale - tests/test_forecasting.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +24,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
-- 1 edge to [[_COMMUNITY_Tracker Settlement Sigma & Disputed Rows]]
+- 1 edge to [[_COMMUNITY_Community 38]]
+- 1 edge to [[_COMMUNITY_Community 9]]
 
 ## Top bridge nodes
-- [[dot-_seed_baseline()_1]] - degree 3, connects to 2 communities
+- [[TestEnrichWithForecastSkipsFetch]] - degree 5, connects to 2 communities

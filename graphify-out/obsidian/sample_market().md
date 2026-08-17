@@ -1,12 +1,12 @@
 ---
 source_file: "tests/conftest.py"
 type: "code"
-community: "Test Fixture Cache Clearing (conftest)"
+community: "Community 18"
 location: "L450"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Test_Fixture_Cache_Clearing_conftest
+  - community/Community_18
 ---
 
 # sample_market()
@@ -14,6 +14,6 @@ tags:
 ## Connections
 - [[Minimal market dict that passes is_liquid and parse_market_price.]] - `rationale_for` [EXTRACTED]
 - [[conftest.py]] - `contains` [EXTRACTED]
-- [[fixture]] - `references` [EXTRACTED]
+- [[fixture_5]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Test_Fixture_Cache_Clearing_conftest
+#graphify/code #graphify/EXTRACTED #community/Community_18

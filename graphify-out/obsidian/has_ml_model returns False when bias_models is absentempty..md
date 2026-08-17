@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "rationale"
-community: "Community 214"
+community: "Community 218"
 location: "L230"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_214
+  - community/Community_218
 ---
 
 # has_ml_model returns False when bias_models is absent/empty.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_has_ml_model_false_when_no_models()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_214
+#graphify/rationale #graphify/EXTRACTED #community/Community_218

@@ -1,20 +1,20 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 381"
+community: "Community 394"
 location: "L2016"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_381
+  - community/Community_394
 ---
 
 # TestGetAnalysisBias
 
 ## Connections
 - [[dot-_make_attempt()]] - `method` [EXTRACTED]
-- [[dot-setUp()_27]] - `method` [EXTRACTED]
-- [[dot-tearDown()_26]] - `method` [EXTRACTED]
+- [[dot-setUp()_29]] - `method` [EXTRACTED]
+- [[dot-tearDown()_28]] - `method` [EXTRACTED]
 - [[dot-test_batch_log_empty_list_is_noop()]] - `method` [EXTRACTED]
 - [[dot-test_batch_log_logs_all_items()]] - `method` [EXTRACTED]
 - [[dot-test_batch_log_stores_correct_probs()]] - `method` [EXTRACTED]
@@ -23,4 +23,4 @@ tags:
 - [[Tests for get_analysis_bias() (55). Rewritten 2026-07-12 previously populated…]] - `rationale_for` [EXTRACTED]
 - [[test_tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_381
+#graphify/code #graphify/EXTRACTED #community/Community_394

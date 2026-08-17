@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 434"
+community: "Community 471"
 location: "L168"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_434
+  - community/Community_471
 ---
 
 # .test_false_when_sample_floor_met_but_env_var_unset()
@@ -15,4 +15,4 @@ tags:
 - [[Both conditions are required -- neither alone suffices._2]] - `rationale_for` [EXTRACTED]
 - [[TestRainGatesActive]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_434
+#graphify/code #graphify/EXTRACTED #community/Community_471

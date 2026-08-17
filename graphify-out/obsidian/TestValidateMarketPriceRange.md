@@ -1,18 +1,18 @@
 ---
 source_file: "tests/test_phase2_batch_l.py"
 type: "code"
-community: "Community 80"
+community: "Community 20"
 location: "L14"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_80
+  - community/Community_20
 ---
 
 # TestValidateMarketPriceRange
 
 ## Connections
-- [[dot-_call()_5]] - `method` [EXTRACTED]
+- [[dot-_call()]] - `method` [EXTRACTED]
 - [[dot-_valid()]] - `method` [EXTRACTED]
 - [[dot-test_alias_field_names_validated()]] - `method` [EXTRACTED]
 - [[dot-test_ask_100_cents_accepted()]] - `method` [EXTRACTED]
@@ -32,7 +32,7 @@ tags:
 - [[dot-test_validate_market_survives_unparseable_price_without_crashing()]] - `method` [EXTRACTED]
 - [[dot-test_zero_bid_zero_ask_accepted()]] - `method` [EXTRACTED]
 - [[KalshiClient]] - `uses` [INFERRED]
-- [[Phase 2 Batch L Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_l.py]] - `contains` [EXTRACTED]
 - [[validate_market must reject out-of-range and inverted prices.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_80
+#graphify/code #graphify/EXTRACTED #community/Community_20

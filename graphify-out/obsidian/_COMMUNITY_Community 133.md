@@ -1,38 +1,39 @@
 ---
 type: community
-cohesion: 0.09
-members: 23
+cohesion: 0.08
+members: 24
 ---
 
 # Community 133
 
-**Cohesion:** 0.09 - loosely connected
-**Members:** 23 nodes
+**Cohesion:** 0.08 - loosely connected
+**Members:** 24 nodes
 
 ## Members
-- [[dot-setup_method()_9]] - code - tests/test_execution_log.py
-- [[dot-teardown_method()_4]] - code - tests/test_execution_log.py
-- [[dot-test_exit_orders_own_filled_row_excluded_from_open_positions()]] - code - tests/test_execution_log.py
-- [[dot-test_export_live_tax_csv_filters_by_year()]] - code - tests/test_execution_log.py
-- [[dot-test_export_live_tax_csv_labels_early_exit_not_no()]] - code - tests/test_execution_log.py
-- [[dot-test_get_filled_unsettled_excludes_settled_orders()]] - code - tests/test_execution_log.py
-- [[dot-test_get_live_pnl_summary_correct()]] - code - tests/test_execution_log.py
-- [[dot-test_log_order_persists_entry_prob()]] - code - tests/test_execution_log.py
-- [[dot-test_record_live_early_exit_leaves_outcome_yes_null()]] - code - tests/test_execution_log.py
-- [[dot-test_record_live_partial_exit_decrements_relatively_not_absolutely()]] - code - tests/test_execution_log.py
-- [[dot-test_record_live_partial_exit_reduces_fill_quantity_keeps_open()]] - code - tests/test_execution_log.py
-- [[dot-test_record_live_settlement_writes_outcome()]] - code - tests/test_execution_log.py
-- [[dot-test_update_live_peak_profit_does_not_lower_an_already_higher_peak()]] - code - tests/test_execution_log.py
-- [[dot-test_update_live_peak_profit_skips_a_settled_row()]] - code - tests/test_execution_log.py
-- [[dot-test_update_live_peak_profit_writes_value()]] - code - tests/test_execution_log.py
-- [[A concurrent writer's fresher, higher peak must survive a stalelower write…]] - rationale - tests/test_execution_log.py
-- [[A partial IOC exit fill must shrink the tracked open quantity by exactly the…]] - rationale - tests/test_execution_log.py
-- [[A position closed by another process between the caller's price snapshot and…]] - rationale - tests/test_execution_log.py
-- [[An early exit closes the position (settled_at set, excluded from…]] - rationale - tests/test_execution_log.py
-- [[Regression `yes if rowoutcome_yes else no` silently wrote no…]] - rationale - tests/test_execution_log.py
-- [[Regression a filled exit (SELL) order's own row is live=1, status='filled',…]] - rationale - tests/test_execution_log.py
-- [[TestLiveSettlement]] - code - tests/test_execution_log.py
-- [[The UPDATE must compute fill_quantity - filled_count IN SQL, not have the…]] - rationale - tests/test_execution_log.py
+- [[dot-setUp()_3]] - code - tests/test_tracker.py
+- [[dot-tearDown()_3]] - code - tests/test_tracker.py
+- [[dot-test_count_model_observations_counts_settled_rows_for_model_only()]] - code - tests/test_tracker.py
+- [[dot-test_count_model_observations_excludes_unsettled_rows()]] - code - tests/test_tracker.py
+- [[dot-test_count_model_observations_zero_for_unknown_model()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_market_implied_rain_events_counts_events_not_ladder_rows()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_market_implied_rain_events_counts_only_rain_tickers()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_market_implied_rain_events_excludes_disputed()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_market_implied_rain_events_requires_implied_mean()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_market_implied_rain_events_warns_on_unparseable_ticker()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_market_implied_rain_events_zero_when_nothing_logged()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_signal_rows_column_counts_non_null_only()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_signal_rows_excludes_disputed()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_signal_rows_json_key_counts_present_key_only()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_signal_rows_require_settled_temp_false_counts_rows_without_temp()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_signal_rows_requires_exactly_one_of_column_json_key()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_signal_rows_requires_settled_temp_f()]] - code - tests/test_tracker.py
+- [[dot-test_count_settled_signal_rows_zero_when_nothing_logged()]] - code - tests/test_tracker.py
+- [[New generic counters backing backlog.txt's SIGNAL GRADUATION IS A CONVENTION…]] - rationale - tests/test_tracker.py
+- [[Opus-review-caught (2026-08-01) resolve_market_implied_for_analysis() hands…]] - rationale - tests/test_tracker.py
+- [[Opus-review-caught bug (2026-07-28) the default require_settled_temp=True…]] - rationale - tests/test_tracker.py
+- [[Opus-review-caught gap (matches count_settled_snow_predictions()'s own…]] - rationale - tests/test_tracker.py
+- [[TestSignalGraduationCounters]] - code - tests/test_tracker.py
+- [[backlog.txt RAIN'S MARKET-IMPLIED DISTRIBUTION ... HAS NO GRADUATIONSAMPLE-…]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -42,7 +43,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
+- 11 edges to [[_COMMUNITY_Community 29]]
+- 2 edges to [[_COMMUNITY_Community 292]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[TestLiveSettlement]] - degree 16, connects to 1 community
+- [[TestSignalGraduationCounters]] - degree 23, connects to 3 communities
+- [[dot-test_count_settled_market_implied_rain_events_counts_events_not_ladder_rows()]] - degree 3, connects to 1 community
+- [[dot-test_count_settled_market_implied_rain_events_counts_only_rain_tickers()]] - degree 3, connects to 1 community
+- [[dot-test_count_settled_market_implied_rain_events_warns_on_unparseable_ticker()]] - degree 3, connects to 1 community
+- [[dot-test_count_settled_signal_rows_require_settled_temp_false_counts_rows_without_temp()]] - degree 3, connects to 1 community

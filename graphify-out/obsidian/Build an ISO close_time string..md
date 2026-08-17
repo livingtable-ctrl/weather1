@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Community 350"
+community: "Community 355"
 location: "L293"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_350
+  - community/Community_355
 ---
 
 # Build an ISO close_time string.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-_close_time()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_350
+#graphify/rationale #graphify/EXTRACTED #community/Community_355

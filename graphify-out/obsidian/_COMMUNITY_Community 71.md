@@ -1,48 +1,47 @@
 ---
 type: community
 cohesion: 0.07
-members: 33
+members: 32
 ---
 
 # Community 71
 
 **Cohesion:** 0.07 - loosely connected
-**Members:** 33 nodes
+**Members:** 32 nodes
 
 ## Members
-- [[dot-test_component_attribution_key_is_brier_not_brier_score()]] - code - tests/test_web_analytics.py
-- [[dot-test_model_calibration_buckets_has_buckets_key()]] - code - tests/test_web_analytics.py
-- [[dot-test_roc_auc_has_points_array()]] - code - tests/test_web_analytics.py
-- [[Brier score = mean((our_prob - outcome)²). Lower is better. 0.25 = random, 0.0…]] - rationale - tracker.py
-- [[Brier score over the most recent `weeks` weeks of settled multi-day predictions.]] - rationale - tracker.py
-- [[Ensure KALSHI_ENV=demo so _build_app doesn't require DASHBOARD_PASSWORD._1]] - rationale - tests/test_web_analytics.py
-- [[How well-calibrated is OUR MODEL (not market prices) Groups settled…]] - rationale - tracker.py
-- [[ROC curve and AUC score for the model. Returns {auc, n, points {fpr, tpr}}…]] - rationale - tracker.py
-- [[Regression test Brier score must not degrade more than 1% after refactors.]] - rationale - tests/test_regression.py
-- [[TestAnalyticsApiShape]] - code - tests/test_web_analytics.py
-- [[Tests for web analytics API shape contracts.]] - rationale - tests/test_web_analytics.py
-- [[When MC clamps a probability, the UI should explain this is expecteddefensive.]] - rationale - tests/test_regression.py
-- [[_force_demo_env()_1]] - code - tests/test_web_analytics.py
-- [[_no_dashboard_password()_1]] - code - tests/test_web_analytics.py
-- [[analytics_client()]] - code - tests/test_web_analytics.py
-- [[api_analytics component_attribution must use 'brier' key, not 'brier_score'.]] - rationale - tests/test_web_analytics.py
-- [[api_analytics must return model_calibration_buckets with a .buckets array whose…]] - rationale - tests/test_web_analytics.py
-- [[api_analytics must return roc_auc with points{fpr,tpr} — NOT top-level…]] - rationale - tests/test_web_analytics.py
-- [[brier_score()]] - code - tracker.py
-- [[brier_score_rolling()]] - code - tracker.py
-- [[cmd_simulate must call backtest._fetch_settled_markets (series-based), not…]] - rationale - tests/test_regression.py
-- [[fixture_16]] - code
-- [[get_model_calibration_buckets()]] - code - tracker.py
-- [[get_roc_auc()]] - code - tracker.py
-- [[get_weather_markets must not call client.get_markets() without series_ticker.…]] - rationale - tests/test_regression.py
-- [[test_brier_score_not_degraded()]] - code - tests/test_regression.py
-- [[test_get_weather_markets_does_not_call_global_get_markets()]] - code - tests/test_regression.py
-- [[test_montecarlo_explains_clamping_in_output()]] - code - tests/test_regression.py
-- [[test_regression.py]] - code - tests/test_regression.py
-- [[test_roc_auc_not_degraded()]] - code - tests/test_regression.py
-- [[test_simulate_uses_series_fetch_not_global_pagination()]] - code - tests/test_regression.py
-- [[test_web_analytics.py]] - code - tests/test_web_analytics.py
-- [[utils.DASHBOARD_PASSWORD is cached at import time (conftest.py imports main,…_1]] - rationale - tests/test_web_analytics.py
+- [[F8 regression the check used to read os.getenv(MAX_DAILY_SPEND, 0)…]] - rationale - tests/test_spend_validation.py
+- [[F8 _check_spend_cap_vs_balance() itself has no internal guard (a…]] - rationale - tests/test_spend_validation.py
+- [[If _get_consensus_probs raises, it must be logged — not silently defaulted.]] - rationale - tests/test_silent_failures.py
+- [[If climatological_prob raises, the failure must be logged.]] - rationale - tests/test_silent_failures.py
+- [[If log_api_request raises inside _request_with_retry, it must be logged.]] - rationale - tests/test_silent_failures.py
+- [[If log_price_improvement raises after a paper order, it must be logged.]] - rationale - tests/test_silent_failures.py
+- [[If nws_prob raises, the failure must be logged.]] - rationale - tests/test_silent_failures.py
+- [[Minimal enriched dict that passes all analyze_trade gates.]] - rationale - tests/test_silent_failures.py
+- [[No warning when MAX_DAILY_SPEND is 0 (disabled).]] - rationale - tests/test_spend_validation.py
+- [[No warning when MAX_DAILY_SPEND is below current balance.]] - rationale - tests/test_spend_validation.py
+- [[Paper Trading Ledger Module]] - code - paper.py
+- [[Return a stack of patches that let analyze_trade reach the risky sections.]] - rationale - tests/test_silent_failures.py
+- [[STARTING_BALANCE]] - code - paper.py
+- [[Tests for P0.4 — Silent failure elimination. Every failure in the trading path…]] - rationale - tests/test_silent_failures.py
+- [[Tests for the MAX_DAILY_SPEND vs balance validation check in cron.py (re-…]] - rationale - tests/test_spend_validation.py
+- [[Warning logged when MAX_DAILY_SPEND exceeds current paper balance.]] - rationale - tests/test_spend_validation.py
+- [[_DEFAULT_CORRELATIONS Dict]] - code - monte_carlo.py
+- [[_make_enriched()_2]] - code - tests/test_silent_failures.py
+- [[_patch_analyze_prereqs()]] - code - tests/test_silent_failures.py
+- [[alerts.py_1]] - code - alerts.py
+- [[test_analyze_trade_logs_climatological_failure()]] - code - tests/test_silent_failures.py
+- [[test_analyze_trade_logs_consensus_failure()]] - code - tests/test_silent_failures.py
+- [[test_analyze_trade_logs_nws_prob_failure()]] - code - tests/test_silent_failures.py
+- [[test_balance_fetch_failure_does_not_crash_full_cron_cycle()]] - code - tests/test_spend_validation.py
+- [[test_kalshi_client_api_log_failure_is_logged()]] - code - tests/test_silent_failures.py
+- [[test_no_warning_when_spend_cap_below_balance()]] - code - tests/test_spend_validation.py
+- [[test_no_warning_when_spend_cap_zero()]] - code - tests/test_spend_validation.py
+- [[test_paper_price_improvement_log_failure_is_logged()]] - code - tests/test_silent_failures.py
+- [[test_silent_failures.py]] - code - tests/test_silent_failures.py
+- [[test_spend_cap_warning_logged_when_exceeds_balance()]] - code - tests/test_spend_validation.py
+- [[test_spend_validation.py]] - code - tests/test_spend_validation.py
+- [[test_uses_real_utils_default_not_a_second_zero_default()]] - code - tests/test_spend_validation.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -52,21 +51,21 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 9 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 5 edges to [[_COMMUNITY_Community 36]]
-- 2 edges to [[_COMMUNITY_Black Swan Halt State]]
-- 2 edges to [[_COMMUNITY_Community 52]]
-- 2 edges to [[_COMMUNITY_Community 40]]
-- 1 edge to [[_COMMUNITY_Community 284]]
-- 1 edge to [[_COMMUNITY_Community 167]]
-- 1 edge to [[_COMMUNITY_Community 94]]
-- 1 edge to [[_COMMUNITY_Community 59]]
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 176]]
+- 4 edges to [[_COMMUNITY_Community 5]]
+- 4 edges to [[_COMMUNITY_Community 4]]
+- 4 edges to [[_COMMUNITY_Community 6]]
+- 1 edge to [[_COMMUNITY_Community 75]]
+- 1 edge to [[_COMMUNITY_Community 289]]
+- 1 edge to [[_COMMUNITY_Community 41]]
+- 1 edge to [[_COMMUNITY_Community 7]]
+- 1 edge to [[_COMMUNITY_Community 8]]
+- 1 edge to [[_COMMUNITY_Community 85]]
+- 1 edge to [[_COMMUNITY_Community 86]]
+- 1 edge to [[_COMMUNITY_Community 57]]
 
 ## Top bridge nodes
-- [[brier_score()]] - degree 14, connects to 6 communities
-- [[test_regression.py]] - degree 13, connects to 4 communities
-- [[get_roc_auc()]] - degree 10, connects to 4 communities
-- [[test_web_analytics.py]] - degree 10, connects to 2 communities
-- [[get_model_calibration_buckets()]] - degree 5, connects to 2 communities
+- [[Paper Trading Ledger Module]] - degree 11, connects to 6 communities
+- [[test_silent_failures.py]] - degree 13, connects to 4 communities
+- [[test_spend_validation.py]] - degree 11, connects to 2 communities
+- [[STARTING_BALANCE]] - degree 3, connects to 2 communities
+- [[test_analyze_trade_logs_consensus_failure()]] - degree 5, connects to 1 community

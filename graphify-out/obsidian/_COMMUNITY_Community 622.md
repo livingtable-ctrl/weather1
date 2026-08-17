@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.60
+members: 5
 ---
 
 # Community 622
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.60 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_count_settled_snow_predictions_counts_only_snow_tickers()]] - code - tests/test_tracker.py
-- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Snow Step 2 must count…]] - rationale - tests/test_tracker.py
+- [[dot-_seed_metar_rows()]] - code - tests/test_ml_bias.py
+- [[dot-test_no_file_written_below_floor()]] - code - tests/test_ml_bias.py
+- [[dot-test_writes_calibration_file_when_enough_data()]] - code - tests/test_ml_bias.py
+- [[TestCmdCalibrateMetarBlock]] - code - tests/test_ml_bias.py
+- [[cmd_calibrate()'s new METAR lock-in beta-calibration block, mirroring the…]] - rationale - tests/test_ml_bias.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +24,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
-- 1 edge to [[_COMMUNITY_Tracker Settlement Sigma & Disputed Rows]]
+- 2 edges to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 99]]
 
 ## Top bridge nodes
-- [[dot-test_count_settled_snow_predictions_counts_only_snow_tickers()]] - degree 3, connects to 2 communities
+- [[TestCmdCalibrateMetarBlock]] - degree 5, connects to 1 community
+- [[dot-test_no_file_written_below_floor()]] - degree 3, connects to 1 community
+- [[dot-test_writes_calibration_file_when_enough_data()]] - degree 3, connects to 1 community

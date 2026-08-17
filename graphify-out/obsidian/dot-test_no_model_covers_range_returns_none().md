@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 310"
+community: "Community 315"
 location: "L1417"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_310
+  - community/Community_315
 ---
 
 # .test_no_model_covers_range_returns_none()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestFetchEnsemblePrecipMultiday]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_310
+#graphify/code #graphify/EXTRACTED #community/Community_315

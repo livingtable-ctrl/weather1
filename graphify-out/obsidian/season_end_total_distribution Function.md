@@ -1,11 +1,11 @@
 ---
 source_file: "hurricane_climatology.py"
 type: "code"
-community: "Community 568"
+community: "Community 452"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_568
+  - community/Community_452
 ---
 
 # season_end_total_distribution Function
@@ -15,4 +15,4 @@ tags:
 - [[season_end_counts Function]] - `calls` [EXTRACTED]
 - [[simulate_portfolio Function]] - `semantically_similar_to` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_568
+#graphify/code #graphify/EXTRACTED #community/Community_452

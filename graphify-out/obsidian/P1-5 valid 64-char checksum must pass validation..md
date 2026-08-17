@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_safe_io.py"
 type: "rationale"
-community: "Safe I/O CRC Validation Tests"
+community: "Community 694"
 location: "L113"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Safe_I/O_CRC_Validation_Tests
+  - community/Community_694
 ---
 
 # P1-5: valid 64-char checksum must pass validation.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_validate_checksum_passes_on_valid_64char()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Safe_I/O_CRC_Validation_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_694

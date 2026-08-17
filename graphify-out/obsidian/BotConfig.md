@@ -1,12 +1,12 @@
 ---
 source_file: "config.py"
 type: "code"
-community: "Community 297"
+community: "Community 47"
 location: "L234"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_297
+  - community/Community_47
 ---
 
 # BotConfig
@@ -31,4 +31,4 @@ tags:
 - [[test_min_edge_above_strong_edge_raises()]] - `calls` [EXTRACTED]
 - [[test_valid_config_passes()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_297
+#graphify/code #graphify/EXTRACTED #community/Community_47

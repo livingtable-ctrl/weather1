@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 52"
+community: "Community 438"
 location: "L104"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_52
+  - community/Community_438
 ---
 
 # .test_condition_type_scale_in_kelly()
@@ -15,4 +15,4 @@ tags:
 - [[TestAnalyzeTradeConditionType]] - `method` [EXTRACTED]
 - [[_CONDITION_CONFIDENCE values correctly rank precip_snow  precip_any  above.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_52
+#graphify/code #graphify/EXTRACTED #community/Community_438

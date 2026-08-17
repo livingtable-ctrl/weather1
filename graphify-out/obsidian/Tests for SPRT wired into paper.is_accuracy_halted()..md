@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_sprt.py"
 type: "rationale"
-community: "Community 380"
+community: "Community 472"
 location: "L116"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_380
+  - community/Community_472
 ---
 
 # Tests for SPRT wired into paper.is_accuracy_halted().
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestIsAccuracyHaltedSprt]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_380
+#graphify/rationale #graphify/EXTRACTED #community/Community_472

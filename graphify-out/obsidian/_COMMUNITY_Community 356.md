@@ -1,25 +1,26 @@
 ---
 type: community
-cohesion: 0.29
-members: 10
+cohesion: 0.25
+members: 11
 ---
 
 # Community 356
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 10 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 11 nodes
 
 ## Members
-- [[dot-test_all_none_is_true()]] - code - tests/test_phase2_batch_l.py
-- [[dot-test_all_real_values_is_false()]] - code - tests/test_phase2_batch_l.py
-- [[dot-test_empty_list_is_false()]] - code - tests/test_phase2_batch_l.py
-- [[dot-test_mixed_none_and_real_values_is_false()]] - code - tests/test_phase2_batch_l.py
-- [[dot-test_none_input_is_false()]] - code - tests/test_phase2_batch_l.py
-- [[An empty list means 'no data for this range yet' — a normal condition distinct…]] - rationale - tests/test_phase2_batch_l.py
-- [[Detects the 'dead model' signature Open-Meteo returns HTTP 200 with a well-…]] - rationale - tests/test_phase2_batch_l.py
-- [[TestIsAllNull]] - code - tests/test_phase2_batch_l.py
-- [[True if values is a non-empty list where every element is None. This is the…]] - rationale - schema_validator.py
-- [[is_all_null()]] - code - schema_validator.py
+- [[dot-test_above_condition()]] - code - tests/test_weather.py
+- [[dot-test_above_uses_prob_threshold_not_raw_threshold()]] - code - tests/test_weather.py
+- [[dot-test_below_condition()]] - code - tests/test_weather.py
+- [[dot-test_below_uses_prob_threshold_not_raw_threshold()]] - code - tests/test_weather.py
+- [[dot-test_between_condition()]] - code - tests/test_weather.py
+- [[A very wide range around the forecast should have high probability.]] - rationale - tests/test_weather.py
+- [[Estimate probability of the market condition given a forecast temperature.]] - rationale - weather_markets.py
+- [[If forecast equals threshold exactly, P(above) ~ 0.5.]] - rationale - tests/test_weather.py
+- [[If forecast is much higher than threshold, P(below) ~ 0.]] - rationale - tests/test_weather.py
+- [[TestForecastProbability]] - code - tests/test_weather.py
+- [[_forecast_probability()]] - code - weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,12 +30,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 6 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_Community 417]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Black Swan Halt State]]
-- 1 edge to [[_COMMUNITY_NWSCircuit-Breaker Data Validation]]
+- 3 edges to [[_COMMUNITY_Community 5]]
+- 2 edges to [[_COMMUNITY_Community 396]]
+- 1 edge to [[_COMMUNITY_Community 38]]
+- 1 edge to [[_COMMUNITY_Community 6]]
+- 1 edge to [[_COMMUNITY_Community 409]]
 
 ## Top bridge nodes
-- [[is_all_null()]] - degree 16, connects to 4 communities
-- [[TestIsAllNull]] - degree 8, connects to 2 communities
+- [[_forecast_probability()]] - degree 13, connects to 5 communities
+- [[TestForecastProbability]] - degree 6, connects to 1 community

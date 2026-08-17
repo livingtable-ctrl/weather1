@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_settlement_monitor.py"
 type: "code"
-community: "METAR Settlement Monitoring"
+community: "Community 8"
 location: "L69"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_8
 ---
 
 # .test_write_settlement_signals_creates_file()
@@ -17,4 +17,4 @@ tags:
 - [[write_settlement_signals writes JSON to signals file.]] - `rationale_for` [EXTRACTED]
 - [[write_settlement_signals()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/code #graphify/EXTRACTED #community/Community_8

@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-16-phase-g-long-term.md"
 type: "document"
-community: "Community 452"
+community: "Community 216"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_452
+  - community/Community_216
 ---
 
 # Cross-Platform Arbitrage Scanner (stretch goal)
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[Phase G Long-Term Features Plan]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_452
+#graphify/document #graphify/EXTRACTED #community/Community_216

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_pnl_attribution.py"
 type: "rationale"
-community: "Community 483"
+community: "Community 524"
 location: "L83"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_483
+  - community/Community_524
 ---
 
 # Each entry has brier, n, win_rate keys.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_get_pnl_by_signal_source_has_required_keys()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_483
+#graphify/rationale #graphify/EXTRACTED #community/Community_524

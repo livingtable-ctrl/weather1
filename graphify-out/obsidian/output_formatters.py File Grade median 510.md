@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/outputs/output_formatters.py.md"
 type: "document"
-community: "Black Swan Halt State"
+community: "Community 0"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_0
 ---
 
 # output_formatters.py File Grade: median 5/10
@@ -14,4 +14,4 @@ tags:
 - [[output_formatters.py]] - `references` [EXTRACTED]
 - [[output_formatters.py Grade Audit]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/document #graphify/EXTRACTED #community/Community_0

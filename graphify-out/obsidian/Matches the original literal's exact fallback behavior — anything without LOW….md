@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Weather Probability Math Tests"
+community: "Community 397"
 location: "L340"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_397
 ---
 
 # Matches the original literal's exact fallback behavior — anything without "LOW"…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_no_low_substring_defaults_to_max()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_397

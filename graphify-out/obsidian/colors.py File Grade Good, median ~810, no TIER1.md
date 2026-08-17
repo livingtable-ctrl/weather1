@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/outputs/colors.py.md"
 type: "document"
-community: "Black Swan Halt State"
+community: "Community 0"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_0
 ---
 
 # colors.py File Grade: Good, median ~8/10, no TIER1
@@ -14,4 +14,4 @@ tags:
 - [[colors.py]] - `references` [EXTRACTED]
 - [[colors.py Grade Audit]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/document #graphify/EXTRACTED #community/Community_0

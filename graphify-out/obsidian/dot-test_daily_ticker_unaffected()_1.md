@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 408"
+community: "Community 435"
 location: "L1634"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_408
+  - community/Community_435
 ---
 
 # .test_daily_ticker_unaffected()
@@ -15,4 +15,4 @@ tags:
 - [[Regression control an ordinary ticker must reach the real exposure-cap logic…]] - `rationale_for` [EXTRACTED]
 - [[TestCheckPositionLimitsBlocksMonthlyRain]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_408
+#graphify/code #graphify/EXTRACTED #community/Community_435

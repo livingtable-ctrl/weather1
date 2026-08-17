@@ -1,12 +1,12 @@
 ---
 source_file: "colors.py"
 type: "rationale"
-community: "Black Swan Halt State"
+community: "Community 0"
 location: "L78"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_0
 ---
 
 # Color a probability: bright if extreme (high confidence), dim if near 50%.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[prob_color()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/rationale #graphify/EXTRACTED #community/Community_0

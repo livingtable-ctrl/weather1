@@ -1,19 +1,21 @@
 ---
 type: community
-cohesion: 0.50
-members: 4
+cohesion: 0.33
+members: 6
 ---
 
 # Community 581
 
-**Cohesion:** 0.50 - moderately connected
-**Members:** 4 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[Count DISTINCT settled monthly-rain accrual events (ticker prefix, year, month)…]] - rationale - tracker.py
-- [[Same late-bound-closure factory shape as _count_signal_column _count_model_obs…]] - rationale - weather_markets.py
-- [[_count_market_implied_rain()]] - code - weather_markets.py
-- [[count_settled_market_implied_rain_events()]] - code - tracker.py
+- [[dot-setUp()_39]] - code - tests/test_tracker.py
+- [[dot-tearDown()_38]] - code - tests/test_tracker.py
+- [[dot-test_missing_source_probs_stored_as_null()]] - code - tests/test_tracker.py
+- [[Calling log_prediction without source probs stores NULL (old callers safe).]] - rationale - tests/test_tracker.py
+- [[TestSourceProbsPassthrough]] - code - tests/test_tracker.py
+- [[log_prediction called without source probs must store NULLs (backward compat).]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -23,10 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Community 36]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[count_settled_market_implied_rain_events()]] - degree 7, connects to 3 communities
-- [[_count_market_implied_rain()]] - degree 3, connects to 1 community
+- [[TestSourceProbsPassthrough]] - degree 5, connects to 1 community

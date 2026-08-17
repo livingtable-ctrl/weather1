@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_flash_crash_cb.py"
 type: "rationale"
-community: "Community 95"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_95
+  - community/Community_4
 ---
 
 # Tests for per-market flash crash circuit breaker.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_flash_crash_cb.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_95
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

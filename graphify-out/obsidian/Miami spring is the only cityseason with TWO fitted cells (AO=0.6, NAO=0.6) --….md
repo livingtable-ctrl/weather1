@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_climate_indices.py"
 type: "rationale"
-community: "Community 31"
+community: "Community 61"
 location: "L123"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_31
+  - community/Community_61
 ---
 
 # Miami spring is the only city/season with TWO fitted cells (AO=0.6, NAO=0.6) --…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_covered_city_spring_isolates_ao_and_nao_separately()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_31
+#graphify/rationale #graphify/EXTRACTED #community/Community_61

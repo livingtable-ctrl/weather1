@@ -1,12 +1,12 @@
 ---
 source_file: "execution_log.py"
 type: "rationale"
-community: "Execution Log Live-Loss Tracking"
+community: "Community 42"
 location: "L344"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Execution_Log_Live-Loss_Tracking
+  - community/Community_42
 ---
 
 # Return True if a filled order for this ticker was placed within the last N…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[was_ordered_recently()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Execution_Log_Live-Loss_Tracking
+#graphify/rationale #graphify/EXTRACTED #community/Community_42

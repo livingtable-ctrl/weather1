@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_auth.py"
 type: "code"
-community: "Community 242"
+community: "Community 243"
 location: "L27"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_242
+  - community/Community_243
 ---
 
 # TestMutationEndpointsRequireAuth
@@ -22,4 +22,4 @@ tags:
 - [[dot-test_run_cron_without_auth_returns_401()]] - `method` [EXTRACTED]
 - [[test_web_auth.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_242
+#graphify/code #graphify/EXTRACTED #community/Community_243

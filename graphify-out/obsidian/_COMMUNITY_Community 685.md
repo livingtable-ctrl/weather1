@@ -1,16 +1,17 @@
 ---
 type: community
 cohesion: 1.00
-members: 1
+members: 2
 ---
 
 # Community 685
 
 **Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Members:** 2 nodes
 
 ## Members
-- [[sweep_parameter Function]] - code - param_sweep.py
+- [[_get_current_book Function]] - code - order_executor.py
+- [[get_cached_book Function]] - code - kalshi_ws.py
 
 ## Live Query (requires Dataview plugin)
 

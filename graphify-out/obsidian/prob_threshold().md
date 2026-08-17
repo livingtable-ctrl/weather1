@@ -1,12 +1,12 @@
 ---
 source_file: "utils.py"
 type: "code"
-community: "Weather Probability Math Tests"
+community: "Community 6"
 location: "L394"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_6
 ---
 
 # prob_threshold()
@@ -32,4 +32,4 @@ tags:
 - [[utils.py]] - `contains` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_6

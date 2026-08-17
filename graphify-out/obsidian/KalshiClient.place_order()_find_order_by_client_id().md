@@ -1,11 +1,11 @@
 ---
 source_file: "kalshi_client.py"
 type: "code"
-community: "Community 143"
+community: "Community 248"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_143
+  - community/Community_248
 ---
 
 # KalshiClient.place_order()/_find_order_by_client_id()
@@ -16,4 +16,4 @@ tags:
 - [[test_idempotency.py]] - `references` [EXTRACTED]
 - [[test_kalshi_client.py]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_143
+#graphify/code #graphify/EXTRACTED #community/Community_248

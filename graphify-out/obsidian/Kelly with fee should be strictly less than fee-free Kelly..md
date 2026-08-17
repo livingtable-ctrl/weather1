@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "rationale"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 126"
 location: "L52"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_126
 ---
 
 # Kelly with fee should be strictly less than fee-free Kelly.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_fee_reduces_kelly()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_126

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 312"
+community: "Community 318"
 location: "L286"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_312
+  - community/Community_318
 ---
 
 # TestSnowGatesActive
@@ -22,4 +22,4 @@ tags:
 - [[backlog.txt Snow Step 2 shadow-only rollout _snow_gates_active() mirrors…]] - `rationale_for` [EXTRACTED]
 - [[test_snow_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_312
+#graphify/code #graphify/EXTRACTED #community/Community_318

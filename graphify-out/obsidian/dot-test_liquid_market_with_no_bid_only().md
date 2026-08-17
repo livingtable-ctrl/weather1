@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 178"
+community: "Community 159"
 location: "L222"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_178
+  - community/Community_159
 ---
 
 # .test_liquid_market_with_no_bid_only()
@@ -16,4 +16,4 @@ tags:
 - [[TestIsLiquid]] - `method` [EXTRACTED]
 - [[is_liquid()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_178
+#graphify/code #graphify/EXTRACTED #community/Community_159

@@ -1,19 +1,21 @@
 ---
 type: community
-cohesion: 0.50
-members: 4
+cohesion: 0.33
+members: 6
 ---
 
 # Community 580
 
-**Cohesion:** 0.50 - moderately connected
-**Members:** 4 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[Count settled (predicted_temp AND actual_temp populated) rows in…]] - rationale - tracker.py
-- [[Same late-bound-closure shape as _count_signal_column, for the two registry…]] - rationale - weather_markets.py
-- [[_count_model_obs()]] - code - weather_markets.py
-- [[count_model_observations()]] - code - tracker.py
+- [[dot-test_cmd_paper_does_not_refuse_rain_when_gate_active()]] - code - tests/test_rain_markets.py
+- [[dot-test_cmd_paper_refuses_rain_when_gate_inactive()]] - code - tests/test_rain_markets.py
+- [[dot-test_quick_paper_buy_does_not_refuse_rain_when_gate_active()]] - code - tests/test_rain_markets.py
+- [[dot-test_quick_paper_buy_refuses_rain_when_gate_inactive()]] - code - tests/test_rain_markets.py
+- [[Opus-review-caught gap (Snow Step 2 round-2 review) the new hurricanesnow…]] - rationale - tests/test_rain_markets.py
+- [[TestQuickPaperBuyAndCmdPaperRainGuards]] - code - tests/test_rain_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -23,10 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 2 edges to [[_COMMUNITY_Tracker P&L Attribution Tests]]
-- 1 edge to [[_COMMUNITY_Community 36]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[count_model_observations()]] - degree 6, connects to 3 communities
-- [[_count_model_obs()]] - degree 4, connects to 1 community
+- [[TestQuickPaperBuyAndCmdPaperRainGuards]] - degree 6, connects to 1 community

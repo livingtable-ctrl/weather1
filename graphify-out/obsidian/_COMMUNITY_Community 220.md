@@ -1,31 +1,31 @@
 ---
 type: community
-cohesion: 0.16
+cohesion: 0.17
 members: 16
 ---
 
 # Community 220
 
-**Cohesion:** 0.16 - loosely connected
+**Cohesion:** 0.17 - loosely connected
 **Members:** 16 nodes
 
 ## Members
-- [[If _get_consensus_probs raises, it must be logged — not silently defaulted.]] - rationale - tests/test_silent_failures.py
-- [[If climatological_prob raises, the failure must be logged.]] - rationale - tests/test_silent_failures.py
-- [[If log_api_request raises inside _request_with_retry, it must be logged.]] - rationale - tests/test_silent_failures.py
-- [[If log_price_improvement raises after a paper order, it must be logged.]] - rationale - tests/test_silent_failures.py
-- [[If nws_prob raises, the failure must be logged.]] - rationale - tests/test_silent_failures.py
-- [[Minimal enriched dict that passes all analyze_trade gates.]] - rationale - tests/test_silent_failures.py
-- [[Return a stack of patches that let analyze_trade reach the risky sections.]] - rationale - tests/test_silent_failures.py
-- [[Tests for P0.4 — Silent failure elimination. Every failure in the trading path…]] - rationale - tests/test_silent_failures.py
-- [[_make_enriched()_1]] - code - tests/test_silent_failures.py
-- [[_patch_analyze_prereqs()]] - code - tests/test_silent_failures.py
-- [[test_analyze_trade_logs_climatological_failure()]] - code - tests/test_silent_failures.py
-- [[test_analyze_trade_logs_consensus_failure()]] - code - tests/test_silent_failures.py
-- [[test_analyze_trade_logs_nws_prob_failure()]] - code - tests/test_silent_failures.py
-- [[test_kalshi_client_api_log_failure_is_logged()]] - code - tests/test_silent_failures.py
-- [[test_paper_price_improvement_log_failure_is_logged()]] - code - tests/test_silent_failures.py
-- [[test_silent_failures.py]] - code - tests/test_silent_failures.py
+- [[dot-test_client_error_falls_back_to_zero()]] - code - tests/test_prelog.py
+- [[dot-test_explicit_live_config_is_respected()]] - code - tests/test_prelog.py
+- [[dot-test_fetches_real_balance_from_client()]] - code - tests/test_prelog.py
+- [[dot-test_missing_balance_key_falls_back_to_zero()]] - code - tests/test_prelog.py
+- [[dot-test_none_live_config_loads_real_config()]] - code - tests/test_prelog.py
+- [[0.0 signals 'use the paper balance' to the caller — must not raise or block…]] - rationale - tests/test_prelog.py
+- [[F2 micro-live's daily-loss limit was silently disabled because it only ever…]] - rationale - tests/test_prelog.py
+- [[F4 live_config never has a balance key, so the CR-4 override for live Kelly…]] - rationale - tests/test_prelog.py
+- [[Fetch the real Kalshi balance (dollars) for live Kelly sizing. F4 live_config…]] - rationale - order_executor.py
+- [[P0-6 execution log entry must be written BEFORE the live order is placed.]] - rationale - tests/test_prelog.py
+- [[Resolve the config micro-live enforces its daily-loss limit against. F2 micro-…]] - rationale - order_executor.py
+- [[TestResolveLiveBalance]] - code - tests/test_prelog.py
+- [[TestResolveMicroLiveConfig]] - code - tests/test_prelog.py
+- [[_resolve_live_balance()]] - code - order_executor.py
+- [[_resolve_micro_live_config()]] - code - order_executor.py
+- [[test_prelog.py]] - code - tests/test_prelog.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -35,12 +35,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
-- 1 edge to [[_COMMUNITY_Community 52]]
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 3 edges to [[_COMMUNITY_Community 1]]
+- 2 edges to [[_COMMUNITY_Community 44]]
+- 2 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 224]]
+- 1 edge to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 42]]
 
 ## Top bridge nodes
-- [[test_silent_failures.py]] - degree 11, connects to 3 communities
-- [[test_analyze_trade_logs_consensus_failure()]] - degree 5, connects to 1 community
-- [[test_analyze_trade_logs_climatological_failure()]] - degree 4, connects to 1 community
-- [[test_analyze_trade_logs_nws_prob_failure()]] - degree 4, connects to 1 community
+- [[test_prelog.py]] - degree 10, connects to 4 communities
+- [[_resolve_micro_live_config()]] - degree 7, connects to 3 communities
+- [[_resolve_live_balance()]] - degree 7, connects to 2 communities

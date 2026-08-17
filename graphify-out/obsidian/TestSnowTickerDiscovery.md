@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 376"
+community: "Community 390"
 location: "L66"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_376
+  - community/Community_390
 ---
 
 # TestSnowTickerDiscovery
@@ -20,4 +20,4 @@ tags:
 - [[dot-test_unexpected_strike_type_refuses_to_guess()]] - `method` [EXTRACTED]
 - [[test_snow_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_376
+#graphify/code #graphify/EXTRACTED #community/Community_390

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p9_p10.py"
 type: "code"
-community: "Community 101"
+community: "Community 62"
 location: "L173"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_101
+  - community/Community_62
 ---
 
 # .test_auto_retire_skips_insufficient_samples()
@@ -16,4 +16,4 @@ tags:
 - [[TestStrategyRetirement]] - `method` [EXTRACTED]
 - [[_log_and_settle()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_101
+#graphify/code #graphify/EXTRACTED #community/Community_62

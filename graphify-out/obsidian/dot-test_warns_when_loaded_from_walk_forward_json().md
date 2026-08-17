@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_a.py"
 type: "code"
-community: "Community 281"
+community: "Community 285"
 location: "L150"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_281
+  - community/Community_285
 ---
 
 # .test_warns_when_loaded_from_walk_forward_json()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestPaperMinEdgeWarning]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_281
+#graphify/code #graphify/EXTRACTED #community/Community_285

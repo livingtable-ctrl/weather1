@@ -1,0 +1,466 @@
+---
+type: community
+cohesion: 0.02
+members: 207
+---
+
+# Community 4
+
+**Cohesion:** 0.02 - loosely connected
+**Members:** 207 nodes
+
+## Members
+- [[NOTE KXHIGHDEN ticker used here maps to Denver via]] - rationale - tests/test_market_implied_distribution.py
+- [[28 Return the current ONI (ENSO) index value, or None if unavailable.…]] - rationale - climate_indices.py
+- [[dot-test_all_readers_use_the_same_canonical_path()]] - code - tests/test_cron_group_c.py
+- [[dot-test_anomaly_check_call_exception_halts_placement()]] - code - tests/test_cron_group_c.py
+- [[dot-test_auto_kelly_sizing_uses_forecast_bearing_enrichment()]] - code - tests/test_phase2_batch_i.py
+- [[dot-test_empty_data_falls_back_to_stale_cache_not_written_as_empty()_1]] - code - tests/test_snow_markets.py
+- [[dot-test_keyboard_interrupt_in_analyze_returns_to_menu()]] - code - tests/test_menu_ux.py
+- [[dot-test_log_prediction_failure_emits_warning()]] - code - tests/test_debug_fixes.py
+- [[dot-test_sync_outcomes_logs_on_client_error()]] - code - tests/test_debug_fixes.py
+- [[2026-07-09 deep-review followup the 2 citydate-resolution change made the…]] - rationale - tests/test_phase2_batch_i.py
+- [[50th-percentile threshold → P(above) near 0.50.]] - rationale - tests/test_gaussian_prob.py
+- [[CircuitBreaker class]] - code - circuit_breaker.py
+- [[Climate indices from NOAA Climate Prediction Center. Fetches AO (Arctic…]] - rationale - climate_indices.py
+- [[Ensure KALSHI_ENV=demo so _build_app doesn't require DASHBOARD_PASSWORD._1]] - rationale - tests/test_web_analytics.py
+- [[Estimate temperature adjustment (°F) to apply to the climatological baseline…]] - rationale - climate_indices.py
+- [[F5-adjacent the manual-override path was hardcoded independently in cron.py,…]] - rationale - tests/test_cron_group_c.py
+- [[Grade Audit Module Doc calibration.py]] - document - docs/grade_audit/modules/calibration.md
+- [[Grade Audit Module Doc circuit_breaker.py]] - document - docs/grade_audit/modules/circuit_breaker.md
+- [[Grade Audit Output calibration.py]] - document - docs/grade_audit/outputs/calibration.py.md
+- [[Grade Audit Output circuit_breaker.py]] - document - docs/grade_audit/outputs/circuit_breaker.py.md
+- [[If balance drops below HALT mid-cycle, _auto_place_trades must stop placing.…]] - rationale - tests/test_drawdown_tiers.py
+- [[Integration tests for the analyze_trade pipeline (112). Tests verify that…]] - rationale - tests/test_integration.py
+- [[KeyboardInterrupt inside cmd_analyze must not kill the menu.]] - rationale - tests/test_menu_ux.py
+- [[Northern Hemisphere season category used to key AO_SENSNAO_SENS.]] - rationale - climate_indices.py
+- [[OPENHALF-OPENCLOSED State Machine]] - document - docs/grade_audit/modules/circuit_breaker.md
+- [[Offline blend-weight calibration for seasonal and per-city model optimization.…]] - rationale - calibration.py
+- [[Opus-review-caught gap (round 2, identical to acis_precip.py's cloned bug)…]] - rationale - tests/test_snow_markets.py
+- [[P(between) counts members in range.]] - rationale - tests/test_gaussian_prob.py
+- [[P0-15 cleanup_data_dir must not delete permanent calibration files.]] - rationale - tests/test_cleanup_data_dir.py
+- [[P0-5 _acquire_cron_lock must fail closed and use PID-aware stale detection.]] - rationale - tests/test_cron_lock.py
+- [[P2 Risk Control verification tests. No production code is modified — all tests…]] - rationale - tests/test_risk_control.py
+- [[Parse a NOAA CPC monthly index table (year + up to 12 monthly values per row).…]] - rationale - climate_indices.py
+- [[Parse the ONI (Oceanic Niño Index) from NOAA CPC. Returns dict keyed by (year,…]] - rationale - climate_indices.py
+- [[Phase 2 Batch B regression tests P2-2, P2-4, P2-14.]] - rationale - tests/test_phase2_batch_b.py
+- [[Phase 2 Batch C regression tests P2-7, P2-10, P2-12, P2-13.]] - rationale - tests/test_phase2_batch_c.py
+- [[Phase 2 Batch D regression tests P2-6, P2-15.]] - rationale - tests/test_phase2_batch_d.py
+- [[Phase 2 Batch F regression tests P2-1 (monte_carlo correlation_applied flag).]] - rationale - tests/test_phase2_batch_f.py
+- [[Phase 2 Batch G regression tests P2-16, P2-20, P2-30, P2-31, P2-41, P2-47.]] - rationale - tests/test_phase2_batch_g.py
+- [[Phase 2 Batch I regression tests P2-28P2-29P2-32P2-33 — paper.py financial…]] - rationale - tests/test_phase2_batch_i.py
+- [[Phase 3 Batch B regression tests P3-4, P3-5, P3-6.]] - rationale - tests/test_phase3_batch_b.py
+- [[Phase 3 Batch D regression tests P3-3, P3-18, P3-22, P3-23.]] - rationale - tests/test_phase3_batch_d.py
+- [[Regression test Brier score must not degrade more than 1% after refactors.]] - rationale - tests/test_regression.py
+- [[Regression tests for cron.py's Group C Fable findings manual-override fail-…]] - rationale - tests/test_cron_group_c.py
+- [[Regression tests for the full-program debug session fixes. Covers A —…]] - rationale - tests/test_debug_fixes.py
+- [[Return current (or specified) AO, NAO, ENSO values. Results are cached with a…]] - rationale - climate_indices.py
+- [[Run all three blend-weight calibrations and write results atomically to disk.…]] - rationale - calibration.py
+- [[Simple per-source circuit breaker. States CLOSED — normal operation OPEN —…]] - rationale - circuit_breaker.py
+- [[TestAnomalyBlackSwanCallsFailClosed]] - code - tests/test_cron_group_c.py
+- [[TestCancelAnalyze]] - code - tests/test_menu_ux.py
+- [[TestFetchHistoricalDailySnowEmptyResponse]] - code - tests/test_snow_markets.py
+- [[TestLogPredictionWarning]] - code - tests/test_debug_fixes.py
+- [[TestManualOverridePathConsistency]] - code - tests/test_cron_group_c.py
+- [[TestQuickPaperBuyAutoKellySizing]] - code - tests/test_phase2_batch_i.py
+- [[TestSyncOutcomesWarning]] - code - tests/test_debug_fixes.py
+- [[Tests for 3 approved trading improvements 1. MAX_CONCURRENT_POSITIONS cap (20)…]] - rationale - tests/test_trade_improvements.py
+- [[Tests for CircuitBreaker — openclosehalf-open, backoff, wall-clock.]] - rationale - tests/test_circuit_breaker.py
+- [[Tests for ECMWF AIFS ensemble data source.]] - rationale - tests/test_ecmwf.py
+- [[Tests for Gaussian probability distribution method.]] - rationale - tests/test_gaussian_prob.py
+- [[Tests for METAR same-day lock-in strategy.]] - rationale - tests/test_metar.py
+- [[Tests for METAR settlement lag monitoring.]] - rationale - tests/test_settlement_monitor.py
+- [[Tests for NOAA MOS via IEM API.]] - rationale - tests/test_mos.py
+- [[Tests for P1-3, P1-4, P1-7, P1-8, P1-10, P1-18 fixes.]] - rationale - tests/test_p1_remaining.py
+- [[Tests for P3 Execution Stability Task 12 (P3.1) — graceful shutdown flag Task…]] - rationale - tests/test_execution_stability.py
+- [[Tests for Phase 4 improvements (tasks 21, 25, 26, 28, 29, 33, 37, 122,…]] - rationale - tests/test_phase4.py
+- [[Tests for backlog.txt RAIN  SNOW  HURRICANE MARKETS Snow Step 1 (schema +…]] - rationale - tests/test_snow_markets.py
+- [[Tests for backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 1 (schema + safe…]] - rationale - tests/test_rain_markets.py
+- [[Tests for below-market condition weight fix. Covers - calibrate_and_save…]] - rationale - tests/test_phase2_batch_p.py
+- [[Tests for calibration.py — seasonal and per-city blend weight calibration.]] - rationale - tests/test_calibration.py
+- [[Tests for climate_indices.py's per-city AONAOENSO sensitivity tables.…]] - rationale - tests/test_climate_indices.py
+- [[Tests for climatology.py's climate-derived sigma (restored 2026-07-12 --…]] - rationale - tests/test_climatology.py
+- [[Tests for confidence-tiered edge thresholds.]] - rationale - tests/test_confidence_tiers.py
+- [[Tests for main.py's _feature_importance_days_out helper. Extracted from…]] - rationale - tests/test_feature_importance_days_out.py
+- [[Tests for menu UX fixes.]] - rationale - tests/test_menu_ux.py
+- [[Tests for notify.py's system-alert cooldown persistence. backlog.txt…]] - rationale - tests/test_notify.py
+- [[Tests for nws.py's nws_prob() days_outsigma ladder.]] - rationale - tests/test_nws.py
+- [[Tests for per-market flash crash circuit breaker.]] - rationale - tests/test_flash_crash_cb.py
+- [[Tests for step-function drawdown-tiered Kelly reduction.]] - rationale - tests/test_drawdown_tiers.py
+- [[Tests for strategy P&L attribution by signal source.]] - rationale - tests/test_pnl_attribution.py
+- [[Tests for the apisuggested_bets endpoint.]] - rationale - tests/test_suggested_bets.py
+- [[Tests for the per-city static station-bias tables. Rewritten 2026-07-12…]] - rationale - tests/test_station_bias.py
+- [[Tests for weather_markets.fit_market_implied_distribution and…]] - rationale - tests/test_market_implied_distribution.py
+- [[Tests for web analytics API shape contracts.]] - rationale - tests/test_web_analytics.py
+- [[Three-Layer Defense (Condition Weight Auto-Calibration)]] - document - docs/grade_audit/modules/calibration.md
+- [[Threshold below all members → P(above) near 1.0.]] - rationale - tests/test_gaussian_prob.py
+- [[When MC clamps a probability, the UI should explain this is expecteddefensive.]] - rationale - tests/test_regression.py
+- [[When above has _uncalibratedtrue and seasonal is also uncalibrated, use…]] - rationale - tests/test_phase2_batch_p.py
+- [[When get_ensemble_members succeeds, blend_sources includes 'ensemble_cdf'.]] - rationale - tests/test_gaussian_prob.py
+- [[When log_prediction raises, cmd_analyze logs a warning.]] - rationale - tests/test_debug_fixes.py
+- [[_CONDITION_WEIGHTS cache]] - code - weather_markets.py
+- [[_SHORT_CODE_TO_CITY map]] - code - settlement_monitor.py
+- [[_T_BELOW_PRIOR is 3.0; apply_temperature_scaling compresses less than T=6.]] - rationale - tests/test_phase2_batch_p.py
+- [[_blend_weights for above must use explicit condition weights (ens-heavy), not…]] - rationale - tests/test_phase2_batch_p.py
+- [[_blend_weights for below should use condition_weights, not hardcoded schedule.]] - rationale - tests/test_phase2_batch_p.py
+- [[_fake_daily()]] - code - tests/test_climatology.py
+- [[_fetch_enso()]] - code - climate_indices.py
+- [[_fetch_monthly_index()]] - code - climate_indices.py
+- [[_force_demo_env()_1]] - code - tests/test_web_analytics.py
+- [[_no_dashboard_password()_1]] - code - tests/test_web_analytics.py
+- [[_rain_market()]] - code - tests/test_rain_markets.py
+- [[_season_bucket()]] - code - climate_indices.py
+- [[`now`, if given, anchors close_time instead of real wall-clock time -- required…_1]] - rationale - tests/test_rain_markets.py
+- [[analytics_client()]] - code - tests/test_web_analytics.py
+- [[apply_temperature_scaling must apply _T_ABOVE_PRIOR when scale file missing.]] - rationale - tests/test_phase2_batch_p.py
+- [[backtest.stratified_train_test_split (removed dead code)]] - code - backtest.py
+- [[calibrate_and_save()]] - code - calibration.py
+- [[calibrate_and_save() RF1 Silent Preservation Failure]] - document - docs/grade_audit/outputs/calibration.py.md
+- [[calibration.py]] - code - calibration.py
+- [[circuit_breaker.py]] - code - circuit_breaker.py
+- [[climate_indices.py]] - code - climate_indices.py
+- [[cloud_backup.backup_data  restore_data]] - code - cloud_backup.py
+- [[cmd_simulate must call backtest._fetch_settled_markets (series-based), not…]] - rationale - tests/test_regression.py
+- [[date_7]] - code
+- [[fixture_14]] - code
+- [[fixture_13]] - code
+- [[fixture_15]] - code
+- [[get_ensemble_members returns None when the API errors.]] - rationale - tests/test_gaussian_prob.py
+- [[get_ensemble_members returns a list of ≥10 floats on success.]] - rationale - tests/test_gaussian_prob.py
+- [[get_enso_index()]] - code - climate_indices.py
+- [[get_indices()]] - code - climate_indices.py
+- [[get_weather_markets must not call client.get_markets() without series_ticker.…]] - rationale - tests/test_regression.py
+- [[json]] - concept
+- [[metar.MARKET_STATION_MAP]] - code - metar.py
+- [[nws.nws_prob]] - code - nws.py
+- [[paper._DATA_LOCK]] - code - paper.py
+- [[paper._DATA_LOCK must serialise the ledger read-modify-write cycle across…]] - rationale - tests/test_paper_cross_process_lock.py
+- [[paper._DRAWDOWN_TIER_1..4 constants]] - code - paper.py
+- [[pathlib]] - concept
+- [[pytest_1]] - concept
+- [[run_backtest result includes brier_by_condition dict.]] - rationale - tests/test_calibration.py
+- [[sqlite3]] - concept
+- [[subprocess]] - concept
+- [[sync_outcomes logs a warning when client.get_market raises.]] - rationale - tests/test_debug_fixes.py
+- [[sys]] - concept
+- [[temperature_adjustment()]] - code - climate_indices.py
+- [[test_analyze_trade_includes_ensemble_cdf_in_blend_sources()]] - code - tests/test_gaussian_prob.py
+- [[test_blend_weights_above_uncalibrated_falls_through_to_hardcoded()]] - code - tests/test_phase2_batch_p.py
+- [[test_blend_weights_above_uses_explicit_condition_weights()]] - code - tests/test_phase2_batch_p.py
+- [[test_blend_weights_below_uses_condition_weights()]] - code - tests/test_phase2_batch_p.py
+- [[test_brier_score_not_degraded()]] - code - tests/test_regression.py
+- [[test_calibration.py]] - code - tests/test_calibration.py
+- [[test_circuit_breaker.py]] - code - tests/test_circuit_breaker.py
+- [[test_cleanup_data_dir.py]] - code - tests/test_cleanup_data_dir.py
+- [[test_climate_indices.py]] - code - tests/test_climate_indices.py
+- [[test_climatology.py]] - code - tests/test_climatology.py
+- [[test_confidence_tiers.py]] - code - tests/test_confidence_tiers.py
+- [[test_cron_group_c.py]] - code - tests/test_cron_group_c.py
+- [[test_cron_lock.py]] - code - tests/test_cron_lock.py
+- [[test_debug_fixes.py]] - code - tests/test_debug_fixes.py
+- [[test_drawdown_tiers.py]] - code - tests/test_drawdown_tiers.py
+- [[test_ecmwf.py]] - code - tests/test_ecmwf.py
+- [[test_ensemble_cdf_prob_above_at_median()]] - code - tests/test_gaussian_prob.py
+- [[test_ensemble_cdf_prob_below_threshold_below_all()]] - code - tests/test_gaussian_prob.py
+- [[test_ensemble_cdf_prob_between()]] - code - tests/test_gaussian_prob.py
+- [[test_execution_stability.py]] - code - tests/test_execution_stability.py
+- [[test_feature_importance_days_out.py]] - code - tests/test_feature_importance_days_out.py
+- [[test_fetch_ensemble_members_returns_list()]] - code - tests/test_gaussian_prob.py
+- [[test_flash_crash_cb.py]] - code - tests/test_flash_crash_cb.py
+- [[test_gaussian_prob.py]] - code - tests/test_gaussian_prob.py
+- [[test_get_ensemble_members_returns_none_on_failure()]] - code - tests/test_gaussian_prob.py
+- [[test_get_weather_markets_does_not_call_global_get_markets()]] - code - tests/test_regression.py
+- [[test_integration.py]] - code - tests/test_integration.py
+- [[test_market_implied_distribution.py]] - code - tests/test_market_implied_distribution.py
+- [[test_menu_ux.py]] - code - tests/test_menu_ux.py
+- [[test_metar.py]] - code - tests/test_metar.py
+- [[test_montecarlo_explains_clamping_in_output()]] - code - tests/test_regression.py
+- [[test_mos.py]] - code - tests/test_mos.py
+- [[test_no_trades_placed_when_drawdown_breached_mid_cycle()]] - code - tests/test_drawdown_tiers.py
+- [[test_notify.py]] - code - tests/test_notify.py
+- [[test_nws.py]] - code - tests/test_nws.py
+- [[test_p1_remaining.py]] - code - tests/test_p1_remaining.py
+- [[test_paper_cross_process_lock.py]] - code - tests/test_paper_cross_process_lock.py
+- [[test_phase2_batch_b.py]] - code - tests/test_phase2_batch_b.py
+- [[test_phase2_batch_c.py]] - code - tests/test_phase2_batch_c.py
+- [[test_phase2_batch_d.py]] - code - tests/test_phase2_batch_d.py
+- [[test_phase2_batch_f.py]] - code - tests/test_phase2_batch_f.py
+- [[test_phase2_batch_g.py]] - code - tests/test_phase2_batch_g.py
+- [[test_phase2_batch_i.py]] - code - tests/test_phase2_batch_i.py
+- [[test_phase2_batch_p.py]] - code - tests/test_phase2_batch_p.py
+- [[test_phase3_batch_b.py]] - code - tests/test_phase3_batch_b.py
+- [[test_phase3_batch_d.py]] - code - tests/test_phase3_batch_d.py
+- [[test_phase4.py]] - code - tests/test_phase4.py
+- [[test_pnl_attribution.py]] - code - tests/test_pnl_attribution.py
+- [[test_prune_old_analysis_attempts_removes_stale_rows()]] - code - tests/test_cleanup_data_dir.py
+- [[test_rain_markets.py]] - code - tests/test_rain_markets.py
+- [[test_regression.py]] - code - tests/test_regression.py
+- [[test_risk_control.py]] - code - tests/test_risk_control.py
+- [[test_roc_auc_not_degraded()]] - code - tests/test_regression.py
+- [[test_run_backtest_reports_per_condition_type()]] - code - tests/test_calibration.py
+- [[test_second_process_blocks_until_first_releases()]] - code - tests/test_paper_cross_process_lock.py
+- [[test_settlement_monitor.py]] - code - tests/test_settlement_monitor.py
+- [[test_simulate_uses_series_fetch_not_global_pagination()]] - code - tests/test_regression.py
+- [[test_snow_markets.py]] - code - tests/test_snow_markets.py
+- [[test_station_bias.py]] - code - tests/test_station_bias.py
+- [[test_suggested_bets.py]] - code - tests/test_suggested_bets.py
+- [[test_t_above_prior_applied_when_no_scale_file()]] - code - tests/test_phase2_batch_p.py
+- [[test_t_below_prior_reduced_to_3()]] - code - tests/test_phase2_batch_p.py
+- [[test_trade_improvements.py]] - code - tests/test_trade_improvements.py
+- [[test_vacuum_database_runs_without_error()]] - code - tests/test_cleanup_data_dir.py
+- [[test_web_analytics.py]] - code - tests/test_web_analytics.py
+- [[teststest_regression.py baseline gate]] - code - tests/test_regression.py
+- [[threading]] - concept
+- [[time]] - concept
+- [[tmp_paper()]] - code - tests/test_debug_fixes.py
+- [[tmp_tracker()_2]] - code - tests/test_debug_fixes.py
+- [[tmp_tracker()_1]] - code - tests/test_pnl_attribution.py
+- [[unittest_mock]] - concept
+- [[utils.DASHBOARD_PASSWORD is cached at import time (conftest.py imports main,…_1]] - rationale - tests/test_web_analytics.py
+
+## Live Query (requires Dataview plugin)
+
+```dataview
+TABLE source_file, type FROM #community/Community_4
+SORT file.name ASC
+```
+
+## Connections to other communities
+- 42 edges to [[_COMMUNITY_Community 6]]
+- 29 edges to [[_COMMUNITY_Community 8]]
+- 25 edges to [[_COMMUNITY_Community 5]]
+- 24 edges to [[_COMMUNITY_Community 23]]
+- 19 edges to [[_COMMUNITY_Community 41]]
+- 18 edges to [[_COMMUNITY_Community 7]]
+- 15 edges to [[_COMMUNITY_Community 3]]
+- 13 edges to [[_COMMUNITY_Community 15]]
+- 11 edges to [[_COMMUNITY_Community 102]]
+- 10 edges to [[_COMMUNITY_Community 109]]
+- 10 edges to [[_COMMUNITY_Community 9]]
+- 10 edges to [[_COMMUNITY_Community 1]]
+- 8 edges to [[_COMMUNITY_Community 35]]
+- 8 edges to [[_COMMUNITY_Community 30]]
+- 8 edges to [[_COMMUNITY_Community 42]]
+- 7 edges to [[_COMMUNITY_Community 51]]
+- 7 edges to [[_COMMUNITY_Community 84]]
+- 7 edges to [[_COMMUNITY_Community 147]]
+- 7 edges to [[_COMMUNITY_Community 2]]
+- 7 edges to [[_COMMUNITY_Community 400]]
+- 7 edges to [[_COMMUNITY_Community 0]]
+- 6 edges to [[_COMMUNITY_Community 38]]
+- 6 edges to [[_COMMUNITY_Community 40]]
+- 6 edges to [[_COMMUNITY_Community 303]]
+- 6 edges to [[_COMMUNITY_Community 33]]
+- 5 edges to [[_COMMUNITY_Community 17]]
+- 5 edges to [[_COMMUNITY_Community 225]]
+- 5 edges to [[_COMMUNITY_Community 26]]
+- 5 edges to [[_COMMUNITY_Community 58]]
+- 5 edges to [[_COMMUNITY_Community 64]]
+- 5 edges to [[_COMMUNITY_Community 89]]
+- 5 edges to [[_COMMUNITY_Community 361]]
+- 5 edges to [[_COMMUNITY_Community 146]]
+- 5 edges to [[_COMMUNITY_Community 54]]
+- 4 edges to [[_COMMUNITY_Community 150]]
+- 4 edges to [[_COMMUNITY_Community 16]]
+- 4 edges to [[_COMMUNITY_Community 221]]
+- 4 edges to [[_COMMUNITY_Community 266]]
+- 4 edges to [[_COMMUNITY_Community 432]]
+- 4 edges to [[_COMMUNITY_Community 76]]
+- 4 edges to [[_COMMUNITY_Community 120]]
+- 4 edges to [[_COMMUNITY_Community 131]]
+- 4 edges to [[_COMMUNITY_Community 18]]
+- 4 edges to [[_COMMUNITY_Community 21]]
+- 4 edges to [[_COMMUNITY_Community 71]]
+- 4 edges to [[_COMMUNITY_Community 86]]
+- 3 edges to [[_COMMUNITY_Community 105]]
+- 3 edges to [[_COMMUNITY_Community 112]]
+- 3 edges to [[_COMMUNITY_Community 139]]
+- 3 edges to [[_COMMUNITY_Community 155]]
+- 3 edges to [[_COMMUNITY_Community 186]]
+- 3 edges to [[_COMMUNITY_Community 188]]
+- 3 edges to [[_COMMUNITY_Community 195]]
+- 3 edges to [[_COMMUNITY_Community 305]]
+- 3 edges to [[_COMMUNITY_Community 36]]
+- 3 edges to [[_COMMUNITY_Community 61]]
+- 3 edges to [[_COMMUNITY_Community 125]]
+- 3 edges to [[_COMMUNITY_Community 13]]
+- 3 edges to [[_COMMUNITY_Community 68]]
+- 3 edges to [[_COMMUNITY_Community 11]]
+- 3 edges to [[_COMMUNITY_Community 14]]
+- 3 edges to [[_COMMUNITY_Community 190]]
+- 3 edges to [[_COMMUNITY_Community 235]]
+- 3 edges to [[_COMMUNITY_Community 60]]
+- 3 edges to [[_COMMUNITY_Community 412]]
+- 3 edges to [[_COMMUNITY_Community 43]]
+- 3 edges to [[_COMMUNITY_Community 45]]
+- 3 edges to [[_COMMUNITY_Community 47]]
+- 3 edges to [[_COMMUNITY_Community 57]]
+- 3 edges to [[_COMMUNITY_Community 78]]
+- 3 edges to [[_COMMUNITY_Community 85]]
+- 3 edges to [[_COMMUNITY_Community 99]]
+- 2 edges to [[_COMMUNITY_Community 181]]
+- 2 edges to [[_COMMUNITY_Community 254]]
+- 2 edges to [[_COMMUNITY_Community 280]]
+- 2 edges to [[_COMMUNITY_Community 317]]
+- 2 edges to [[_COMMUNITY_Community 351]]
+- 2 edges to [[_COMMUNITY_Community 383]]
+- 2 edges to [[_COMMUNITY_Community 401]]
+- 2 edges to [[_COMMUNITY_Community 413]]
+- 2 edges to [[_COMMUNITY_Community 500]]
+- 2 edges to [[_COMMUNITY_Community 519]]
+- 2 edges to [[_COMMUNITY_Community 527]]
+- 2 edges to [[_COMMUNITY_Community 65]]
+- 2 edges to [[_COMMUNITY_Community 69]]
+- 2 edges to [[_COMMUNITY_Community 88]]
+- 2 edges to [[_COMMUNITY_Community 95]]
+- 2 edges to [[_COMMUNITY_Community 104]]
+- 2 edges to [[_COMMUNITY_Community 115]]
+- 2 edges to [[_COMMUNITY_Community 12]]
+- 2 edges to [[_COMMUNITY_Community 141]]
+- 2 edges to [[_COMMUNITY_Community 187]]
+- 2 edges to [[_COMMUNITY_Community 201]]
+- 2 edges to [[_COMMUNITY_Community 205]]
+- 2 edges to [[_COMMUNITY_Community 207]]
+- 2 edges to [[_COMMUNITY_Community 220]]
+- 2 edges to [[_COMMUNITY_Community 229]]
+- 2 edges to [[_COMMUNITY_Community 238]]
+- 2 edges to [[_COMMUNITY_Community 24]]
+- 2 edges to [[_COMMUNITY_Community 31]]
+- 2 edges to [[_COMMUNITY_Community 312]]
+- 2 edges to [[_COMMUNITY_Community 341]]
+- 2 edges to [[_COMMUNITY_Community 382]]
+- 2 edges to [[_COMMUNITY_Community 539]]
+- 2 edges to [[_COMMUNITY_Community 53]]
+- 1 edge to [[_COMMUNITY_Community 100]]
+- 1 edge to [[_COMMUNITY_Community 117]]
+- 1 edge to [[_COMMUNITY_Community 144]]
+- 1 edge to [[_COMMUNITY_Community 153]]
+- 1 edge to [[_COMMUNITY_Community 156]]
+- 1 edge to [[_COMMUNITY_Community 164]]
+- 1 edge to [[_COMMUNITY_Community 193]]
+- 1 edge to [[_COMMUNITY_Community 208]]
+- 1 edge to [[_COMMUNITY_Community 211]]
+- 1 edge to [[_COMMUNITY_Community 22]]
+- 1 edge to [[_COMMUNITY_Community 222]]
+- 1 edge to [[_COMMUNITY_Community 239]]
+- 1 edge to [[_COMMUNITY_Community 240]]
+- 1 edge to [[_COMMUNITY_Community 250]]
+- 1 edge to [[_COMMUNITY_Community 252]]
+- 1 edge to [[_COMMUNITY_Community 257]]
+- 1 edge to [[_COMMUNITY_Community 259]]
+- 1 edge to [[_COMMUNITY_Community 278]]
+- 1 edge to [[_COMMUNITY_Community 287]]
+- 1 edge to [[_COMMUNITY_Community 288]]
+- 1 edge to [[_COMMUNITY_Community 309]]
+- 1 edge to [[_COMMUNITY_Community 315]]
+- 1 edge to [[_COMMUNITY_Community 316]]
+- 1 edge to [[_COMMUNITY_Community 318]]
+- 1 edge to [[_COMMUNITY_Community 338]]
+- 1 edge to [[_COMMUNITY_Community 339]]
+- 1 edge to [[_COMMUNITY_Community 342]]
+- 1 edge to [[_COMMUNITY_Community 350]]
+- 1 edge to [[_COMMUNITY_Community 352]]
+- 1 edge to [[_COMMUNITY_Community 373]]
+- 1 edge to [[_COMMUNITY_Community 374]]
+- 1 edge to [[_COMMUNITY_Community 375]]
+- 1 edge to [[_COMMUNITY_Community 376]]
+- 1 edge to [[_COMMUNITY_Community 380]]
+- 1 edge to [[_COMMUNITY_Community 381]]
+- 1 edge to [[_COMMUNITY_Community 386]]
+- 1 edge to [[_COMMUNITY_Community 390]]
+- 1 edge to [[_COMMUNITY_Community 391]]
+- 1 edge to [[_COMMUNITY_Community 392]]
+- 1 edge to [[_COMMUNITY_Community 393]]
+- 1 edge to [[_COMMUNITY_Community 414]]
+- 1 edge to [[_COMMUNITY_Community 415]]
+- 1 edge to [[_COMMUNITY_Community 424]]
+- 1 edge to [[_COMMUNITY_Community 425]]
+- 1 edge to [[_COMMUNITY_Community 429]]
+- 1 edge to [[_COMMUNITY_Community 430]]
+- 1 edge to [[_COMMUNITY_Community 431]]
+- 1 edge to [[_COMMUNITY_Community 433]]
+- 1 edge to [[_COMMUNITY_Community 434]]
+- 1 edge to [[_COMMUNITY_Community 435]]
+- 1 edge to [[_COMMUNITY_Community 436]]
+- 1 edge to [[_COMMUNITY_Community 437]]
+- 1 edge to [[_COMMUNITY_Community 469]]
+- 1 edge to [[_COMMUNITY_Community 470]]
+- 1 edge to [[_COMMUNITY_Community 471]]
+- 1 edge to [[_COMMUNITY_Community 477]]
+- 1 edge to [[_COMMUNITY_Community 499]]
+- 1 edge to [[_COMMUNITY_Community 501]]
+- 1 edge to [[_COMMUNITY_Community 504]]
+- 1 edge to [[_COMMUNITY_Community 509]]
+- 1 edge to [[_COMMUNITY_Community 510]]
+- 1 edge to [[_COMMUNITY_Community 511]]
+- 1 edge to [[_COMMUNITY_Community 518]]
+- 1 edge to [[_COMMUNITY_Community 520]]
+- 1 edge to [[_COMMUNITY_Community 523]]
+- 1 edge to [[_COMMUNITY_Community 524]]
+- 1 edge to [[_COMMUNITY_Community 526]]
+- 1 edge to [[_COMMUNITY_Community 528]]
+- 1 edge to [[_COMMUNITY_Community 529]]
+- 1 edge to [[_COMMUNITY_Community 534]]
+- 1 edge to [[_COMMUNITY_Community 562]]
+- 1 edge to [[_COMMUNITY_Community 564]]
+- 1 edge to [[_COMMUNITY_Community 572]]
+- 1 edge to [[_COMMUNITY_Community 573]]
+- 1 edge to [[_COMMUNITY_Community 574]]
+- 1 edge to [[_COMMUNITY_Community 578]]
+- 1 edge to [[_COMMUNITY_Community 580]]
+- 1 edge to [[_COMMUNITY_Community 585]]
+- 1 edge to [[_COMMUNITY_Community 602]]
+- 1 edge to [[_COMMUNITY_Community 607]]
+- 1 edge to [[_COMMUNITY_Community 609]]
+- 1 edge to [[_COMMUNITY_Community 610]]
+- 1 edge to [[_COMMUNITY_Community 611]]
+- 1 edge to [[_COMMUNITY_Community 612]]
+- 1 edge to [[_COMMUNITY_Community 613]]
+- 1 edge to [[_COMMUNITY_Community 620]]
+- 1 edge to [[_COMMUNITY_Community 624]]
+- 1 edge to [[_COMMUNITY_Community 625]]
+- 1 edge to [[_COMMUNITY_Community 626]]
+- 1 edge to [[_COMMUNITY_Community 630]]
+- 1 edge to [[_COMMUNITY_Community 632]]
+- 1 edge to [[_COMMUNITY_Community 648]]
+- 1 edge to [[_COMMUNITY_Community 650]]
+- 1 edge to [[_COMMUNITY_Community 651]]
+- 1 edge to [[_COMMUNITY_Community 669]]
+- 1 edge to [[_COMMUNITY_Community 670]]
+- 1 edge to [[_COMMUNITY_Community 671]]
+- 1 edge to [[_COMMUNITY_Community 20]]
+- 1 edge to [[_COMMUNITY_Community 335]]
+- 1 edge to [[_COMMUNITY_Community 404]]
+- 1 edge to [[_COMMUNITY_Community 44]]
+- 1 edge to [[_COMMUNITY_Community 48]]
+- 1 edge to [[_COMMUNITY_Community 81]]
+- 1 edge to [[_COMMUNITY_Community 121]]
+- 1 edge to [[_COMMUNITY_Community 138]]
+- 1 edge to [[_COMMUNITY_Community 140]]
+- 1 edge to [[_COMMUNITY_Community 148]]
+- 1 edge to [[_COMMUNITY_Community 165]]
+- 1 edge to [[_COMMUNITY_Community 199]]
+- 1 edge to [[_COMMUNITY_Community 234]]
+- 1 edge to [[_COMMUNITY_Community 236]]
+- 1 edge to [[_COMMUNITY_Community 243]]
+- 1 edge to [[_COMMUNITY_Community 248]]
+- 1 edge to [[_COMMUNITY_Community 251]]
+- 1 edge to [[_COMMUNITY_Community 281]]
+- 1 edge to [[_COMMUNITY_Community 307]]
+- 1 edge to [[_COMMUNITY_Community 32]]
+- 1 edge to [[_COMMUNITY_Community 359]]
+- 1 edge to [[_COMMUNITY_Community 245]]
+- 1 edge to [[_COMMUNITY_Community 409]]
+- 1 edge to [[_COMMUNITY_Community 49]]
+- 1 edge to [[_COMMUNITY_Community 537]]
+- 1 edge to [[_COMMUNITY_Community 608]]
+- 1 edge to [[_COMMUNITY_Community 649]]
+- 1 edge to [[_COMMUNITY_Community 66]]
+- 1 edge to [[_COMMUNITY_Community 82]]
+
+## Top bridge nodes
+- [[unittest_mock]] - degree 78, connects to 44 communities
+- [[pytest_1]] - degree 76, connects to 40 communities
+- [[pathlib]] - degree 80, connects to 39 communities
+- [[json]] - degree 57, connects to 30 communities
+- [[sys]] - degree 55, connects to 25 communities

@@ -1,16 +1,21 @@
 ---
 type: community
-cohesion: 1.00
-members: 1
+cohesion: 0.40
+members: 6
 ---
 
 # Community 579
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 6 nodes
 
 ## Members
-- [[_force_demo_env()_2]] - code - tests/test_web_app.py
+- [[dot-test_no_side_empty_bid_book_entry_side_edge_bugfix()]] - code - tests/test_price_and_size.py
+- [[dot-test_yes_side_normal_book()_2]] - code - tests/test_price_and_size.py
+- [[TestTemperatureTradeWiring]] - code - tests/test_price_and_size.py
+- [[The consolidation's one deliberate behavior change temperature's NO-side…]] - rationale - tests/test_price_and_size.py
+- [[Uses the METAR-locked branch to put blended_prob under direct control,…]] - rationale - tests/test_price_and_size.py
+- [[_metar_locked_temp_result()]] - code - tests/test_price_and_size.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -20,7 +25,9 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 693]]
+- 2 edges to [[_COMMUNITY_Community 78]]
+- 1 edge to [[_COMMUNITY_Community 5]]
 
 ## Top bridge nodes
-- [[_force_demo_env()_2]] - degree 3, connects to 1 community
+- [[_metar_locked_temp_result()]] - degree 4, connects to 2 communities
+- [[TestTemperatureTradeWiring]] - degree 4, connects to 1 community

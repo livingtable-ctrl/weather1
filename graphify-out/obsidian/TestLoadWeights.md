@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_calibration.py"
 type: "code"
-community: "Community 103"
+community: "Community 109"
 location: "L217"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_103
+  - community/Community_109
 ---
 
 # TestLoadWeights
 
 ## Connections
-- [[dot-setup_method()_1]] - `method` [EXTRACTED]
-- [[dot-teardown_method()_1]] - `method` [EXTRACTED]
+- [[dot-setup_method()]] - `method` [EXTRACTED]
+- [[dot-teardown_method()]] - `method` [EXTRACTED]
 - [[dot-test_load_city_missing_file_returns_empty()]] - `method` [EXTRACTED]
 - [[dot-test_load_city_valid_json_returns_dict()]] - `method` [EXTRACTED]
 - [[dot-test_load_condition_corrupt_json_returns_empty()]] - `method` [EXTRACTED]
@@ -25,4 +25,4 @@ tags:
 - [[load_seasonal_weights and load_city_weights must handle missingvalidcorrupt…]] - `rationale_for` [EXTRACTED]
 - [[test_calibration.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_103
+#graphify/code #graphify/EXTRACTED #community/Community_109

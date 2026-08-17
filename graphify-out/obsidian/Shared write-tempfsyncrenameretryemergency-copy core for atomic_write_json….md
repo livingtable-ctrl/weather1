@@ -1,12 +1,12 @@
 ---
 source_file: "safe_io.py"
 type: "rationale"
-community: "Community 47"
+community: "Community 8"
 location: "L190"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_47
+  - community/Community_8
 ---
 
 # Shared write-temp/fsync/rename/retry/emergency-copy core for atomic_write_json…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_atomic_write_payload()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_47
+#graphify/rationale #graphify/EXTRACTED #community/Community_8

@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/specs/2026-04-10-execution-pipeline-design.md"
 type: "code"
-community: "Community 154"
+community: "Community 184"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_154
+  - community/Community_184
 ---
 
 # execution_log.py Module
@@ -19,4 +19,4 @@ tags:
 - [[Reliability  Silent Failures Audit Scope]] - `references` [EXTRACTED]
 - [[_place_live_order() Function]] - `references` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_154
+#graphify/code #graphify/EXTRACTED #community/Community_184

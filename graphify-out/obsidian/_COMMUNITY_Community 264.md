@@ -10,20 +10,20 @@ members: 14
 **Members:** 14 nodes
 
 ## Members
-- [[dot-_add_member()]] - code - tests/test_tracker.py
-- [[dot-test_basic_accuracy()]] - code - tests/test_tracker.py
-- [[dot-test_city_filter()]] - code - tests/test_tracker.py
-- [[dot-test_returns_none_when_empty()]] - code - tests/test_tracker.py
-- [[dot-test_season_filter_summer()]] - code - tests/test_tracker.py
-- [[dot-test_season_filter_winter()]] - code - tests/test_tracker.py
-- [[dot-test_season_filter_winter_vs_summer_different_mae()]] - code - tests/test_tracker.py
-- [[City filter returns only data for that city.]] - rationale - tests/test_tracker.py
-- [[Returns model MAE dict for available data.]] - rationale - tests/test_tracker.py
-- [[Summer filter returns only Apr-Sep data.]] - rationale - tests/test_tracker.py
-- [[TestEnsembleMemberAccuracy]] - code - tests/test_tracker.py
-- [[Tests for get_ensemble_member_accuracy() (18).]] - rationale - tests/test_tracker.py
-- [[Winter and summer MAEs differ for the same model.]] - rationale - tests/test_tracker.py
-- [[Winter filter returns only Oct-Mar data.]] - rationale - tests/test_tracker.py
+- [[dot-test_above_condition_clear_outcome()]] - code - tests/test_weather_markets.py
+- [[dot-test_below_condition_returns_valid_tuple()]] - code - tests/test_weather_markets.py
+- [[dot-test_between_condition_returns_valid_tuple()]] - code - tests/test_weather_markets.py
+- [[dot-test_small_n_under_30_returns_wide_ci()]] - code - tests/test_weather_markets.py
+- [[dot-test_too_few_members_returns_wide_ci()]] - code - tests/test_weather_markets.py
+- [[Bootstrap 90% confidence interval on the ensemble probability estimate. 114…]] - rationale - weather_markets.py
+- [[N  30 but = 5 → also returns (0.0, 1.0) per 114.]] - rationale - tests/test_weather_markets.py
+- [[N  5 → maximally uncertain (0.0, 1.0).]] - rationale - tests/test_weather_markets.py
+- [[N = 30, all temps above threshold → CI near (1.0, 1.0).]] - rationale - tests/test_weather_markets.py
+- [[TestBootstrapCI]] - code - tests/test_weather_markets.py
+- [[Tests for _bootstrap_ci — bootstrap 90% CI on ensemble probability.]] - rationale - tests/test_weather_markets.py
+- [[_bootstrap_ci()]] - code - weather_markets.py
+- [[below' condition returns (lo, hi) with 0 = lo = hi = 1.]] - rationale - tests/test_weather_markets.py
+- [[between' condition returns (lo, hi) with 0 = lo = hi = 1.]] - rationale - tests/test_weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -33,8 +33,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker SQLite Storage Tests]]
-- 1 edge to [[_COMMUNITY_Community 313]]
+- 3 edges to [[_COMMUNITY_Community 5]]
+- 2 edges to [[_COMMUNITY_Community 11]]
+- 1 edge to [[_COMMUNITY_Community 6]]
 
 ## Top bridge nodes
-- [[TestEnsembleMemberAccuracy]] - degree 10, connects to 2 communities
+- [[_bootstrap_ci()]] - degree 12, connects to 3 communities
+- [[TestBootstrapCI]] - degree 8, connects to 1 community

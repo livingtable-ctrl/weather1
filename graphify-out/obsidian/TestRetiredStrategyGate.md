@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_p0_11_retired_strategy.py"
 type: "code"
-community: "Community 124"
+community: "Community 138"
 location: "L101"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_124
+  - community/Community_138
 ---
 
 # TestRetiredStrategyGate
@@ -18,4 +18,4 @@ tags:
 - [[dot-test_retired_gate_fires_before_kelly()]] - `method` [EXTRACTED]
 - [[test_p0_11_retired_strategy.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_124
+#graphify/code #graphify/EXTRACTED #community/Community_138

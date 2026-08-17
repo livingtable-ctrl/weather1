@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Community 489"
+community: "Community 530"
 location: "L70"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_489
+  - community/Community_530
 ---
 
 # Unknown city pairs should return 0.0.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_unknown_pair_returns_zero()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_489
+#graphify/rationale #graphify/EXTRACTED #community/Community_530

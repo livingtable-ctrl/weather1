@@ -1,28 +1,28 @@
 ---
 type: community
-cohesion: 0.18
+cohesion: 0.26
 members: 13
 ---
 
 # Community 284
 
-**Cohesion:** 0.18 - loosely connected
+**Cohesion:** 0.26 - loosely connected
 **Members:** 13 nodes
 
 ## Members
-- [[dot-_seed()_2]] - code - tests/test_regression.py
-- [[dot-setup_method()_18]] - code - tests/test_regression.py
-- [[dot-teardown_method()_11]] - code - tests/test_regression.py
-- [[dot-test_brier_score_known_value()]] - code - tests/test_regression.py
-- [[dot-test_brier_score_no_data_returns_none()]] - code - tests/test_regression.py
-- [[dot-test_roc_auc_perfect_classifier()]] - code - tests/test_regression.py
-- [[AUC=1.0 when high probs always - YES and low probs always - NO.]] - rationale - tests/test_regression.py
-- [[BS on 0.9-YES, 0.1-NO, 0.8-YES, 0.2-NO must equal 0.025.]] - rationale - tests/test_regression.py
-- [[Deterministic regression tests using a seeded in-memory DB (113). These tests…]] - rationale - tests/test_regression.py
-- [[Log predictions+outcomes into the temp DB.]] - rationale - tests/test_regression.py
-- [[Redirect tracker to a fresh temp DB before each test.]] - rationale - tests/test_regression.py
-- [[TestBrierScoreComputation]] - code - tests/test_regression.py
-- [[brier_score() on empty DB returns None (not 0.0, not error).]] - rationale - tests/test_regression.py
+- [[dot-test_current_api_open_interest_fp_prevents_false_stale()]] - code - tests/test_paper.py
+- [[dot-test_current_api_volume_fp_prevents_false_stale()]] - code - tests/test_paper.py
+- [[dot-test_market_no_volume_closing_soon_is_stale()]] - code - tests/test_paper.py
+- [[dot-test_market_no_volume_far_future_not_stale()]] - code - tests/test_paper.py
+- [[dot-test_market_with_open_interest_not_stale()]] - code - tests/test_paper.py
+- [[dot-test_market_with_volume_not_stale()]] - code - tests/test_paper.py
+- [[dot-test_missing_close_time_not_stale()]] - code - tests/test_paper.py
+- [[dot-test_string_volume_fp_does_not_crash()]] - code - tests/test_paper.py
+- [[dot-test_string_zero_volume_fp_still_stale_when_closing_soon()]] - code - tests/test_paper.py
+- [[A genuinely-zero string volume_fp (0.00) must still correctly report stale --…]] - rationale - tests/test_paper.py
+- [[Returns True if a market has no volume AND no open interest AND closes within…]] - rationale - weather_markets.py
+- [[TestIsStale]] - code - tests/test_paper.py
+- [[is_stale()]] - code - weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -32,7 +32,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 71]]
+- 4 edges to [[_COMMUNITY_Community 3]]
+- 2 edges to [[_COMMUNITY_Community 21]]
+- 1 edge to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 5]]
 
 ## Top bridge nodes
-- [[TestBrierScoreComputation]] - degree 8, connects to 1 community
+- [[is_stale()]] - degree 17, connects to 4 communities
+- [[TestIsStale]] - degree 11, connects to 2 communities

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_a.py"
 type: "rationale"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 126"
 location: "L126"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_126
 ---
 
 # Fee-adjusted Kelly must be strictly smaller than fee-free Kelly.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_default_smaller_than_zero_fee()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_126

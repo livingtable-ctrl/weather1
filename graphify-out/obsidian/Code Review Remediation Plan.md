@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-18-remediation.md"
 type: "document"
-community: "Community 224"
+community: "Community 272"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_224
+  - community/Community_272
 ---
 
 # Code Review Remediation Plan
@@ -28,4 +28,4 @@ tags:
 - [[main.py Coverage + cmd_cron Smoke Tests]] - `implements` [EXTRACTED]
 - [[web_app.py XSS Escaping Fix]] - `implements` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_224
+#graphify/document #graphify/EXTRACTED #community/Community_272

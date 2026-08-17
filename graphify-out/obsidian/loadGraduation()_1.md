@@ -1,12 +1,12 @@
 ---
 source_file: "updated frontend/reference/dashboard.js"
 type: "code"
-community: "Community 449"
+community: "Community 482"
 location: "L69"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_449
+  - community/Community_482
 ---
 
 # loadGraduation()
@@ -15,4 +15,4 @@ tags:
 - [[referencedashboard.js]] - `contains` [EXTRACTED]
 - [[renderFearGreed()_1]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_449
+#graphify/code #graphify/EXTRACTED #community/Community_482

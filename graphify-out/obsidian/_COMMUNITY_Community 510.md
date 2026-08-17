@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 510
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-_make_client()_8]] - code - tests/test_kalshi_client.py
-- [[dot-test_raises_and_checks_recovery_only_when_post_itself_fails()]] - code - tests/test_kalshi_client.py
-- [[dot-test_returns_raw_create_response_when_get_order_fails()]] - code - tests/test_kalshi_client.py
-- [[A successful POST already confirms the order is live on the exchange -- if the…]] - rationale - tests/test_kalshi_client.py
-- [[TestPlaceOrderSurvivesGetOrderFailure]] - code - tests/test_kalshi_client.py
-- [[The get_order-failure fallback must not mask a genuine POST failure -- that…]] - rationale - tests/test_kalshi_client.py
+- [[dot-setup_method()_31]] - code - tests/test_p1_remaining.py
+- [[dot-teardown_method()_23]] - code - tests/test_p1_remaining.py
+- [[dot-test_settlement_pnl_consistent_with_entry_deduction()]] - code - tests/test_p1_remaining.py
+- [[dot-test_settlement_uses_entry_price_not_actual_fill()]] - code - tests/test_p1_remaining.py
+- [[P&L on a won YES trade reflects only the cost paid at entry_price.]] - rationale - tests/test_p1_remaining.py
+- [[TestSettlementCostBasis]] - code - tests/test_p1_remaining.py
+- [[settle_paper_trade uses entry_price (what was deducted at entry) for P&L.]] - rationale - tests/test_p1_remaining.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,10 +26,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 100]]
-- 1 edge to [[_COMMUNITY_Community 225]]
+- 2 edges to [[_COMMUNITY_Community 17]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestPlaceOrderSurvivesGetOrderFailure]] - degree 5, connects to 1 community
-- [[dot-test_raises_and_checks_recovery_only_when_post_itself_fails()]] - degree 3, connects to 1 community
-- [[dot-test_returns_raw_create_response_when_get_order_fails()]] - degree 2, connects to 1 community
+- [[TestSettlementCostBasis]] - degree 7, connects to 2 communities

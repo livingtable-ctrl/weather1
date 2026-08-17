@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_h.py"
 type: "code"
-community: "Climatology & Climate Index Fetching"
+community: "Community 627"
 location: "L95"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_627
 ---
 
 # .test_mos_imports_utc_today()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestMosUtcDate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_627

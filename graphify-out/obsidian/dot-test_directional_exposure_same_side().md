@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 343"
+community: "Community 349"
 location: "L692"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_343
+  - community/Community_349
 ---
 
 # .test_directional_exposure_same_side()
@@ -15,4 +15,4 @@ tags:
 - [[TestDirectionalExposure]] - `method` [EXTRACTED]
 - [[Two YES bets on same citydate sum correctly.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_343
+#graphify/code #graphify/EXTRACTED #community/Community_349

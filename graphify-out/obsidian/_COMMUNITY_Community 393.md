@@ -1,24 +1,25 @@
 ---
 type: community
-cohesion: 0.31
-members: 9
+cohesion: 0.20
+members: 10
 ---
 
 # Community 393
 
-**Cohesion:** 0.31 - loosely connected
-**Members:** 9 nodes
+**Cohesion:** 0.20 - loosely connected
+**Members:** 10 nodes
 
 ## Members
-- [[dot-_insert()]] - code - tests/test_execution_log.py
-- [[dot-setup_method()_26]] - code - tests/test_execution_log.py
-- [[dot-teardown_method()_18]] - code - tests/test_execution_log.py
-- [[dot-test_row_1_hour_past_the_7_day_cutoff_does_not_block_reentry()]] - code - tests/test_execution_log.py
-- [[dot-test_row_older_than_7_days_does_not_block_reentry()]] - code - tests/test_execution_log.py
-- [[dot-test_row_within_7_days_blocks_reentry()]] - code - tests/test_execution_log.py
-- [[H-21 followup was_ordered_recently() compared raw ISO-T placed_at against…]] - rationale - tests/test_execution_log.py
-- [[TestWasOrderedRecentlyTimestampBoundary]] - code - tests/test_execution_log.py
-- [[The exact bug scenario a row on the same calendar day as the cutoff, but…]] - rationale - tests/test_execution_log.py
+- [[dot-test_cmd_paper_does_not_refuse_snow_when_gate_active()]] - code - tests/test_snow_markets.py
+- [[dot-test_cmd_paper_refuses_hurricane_unconditionally()]] - code - tests/test_snow_markets.py
+- [[dot-test_cmd_paper_refuses_snow_when_gate_inactive()]] - code - tests/test_snow_markets.py
+- [[dot-test_quick_paper_buy_does_not_refuse_snow_when_gate_active()]] - code - tests/test_snow_markets.py
+- [[dot-test_quick_paper_buy_refuses_hurricane_unconditionally()]] - code - tests/test_snow_markets.py
+- [[dot-test_quick_paper_buy_refuses_snow_when_gate_inactive()]] - code - tests/test_snow_markets.py
+- [[Mutation-test proof proceeds past THIS guard once the gate is active (may…]] - rationale - tests/test_snow_markets.py
+- [[Mutation-test proof proceeds past THIS guard once the gate is active.]] - rationale - tests/test_snow_markets.py
+- [[Opus-review-caught gap (round 2) _quick_paper_buy() and cmd_paper() got the…]] - rationale - tests/test_snow_markets.py
+- [[TestQuickPaperBuyAndCmdPaperSnowGuards]] - code - tests/test_snow_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,7 +29,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Execution Log Live-Loss Tracking]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestWasOrderedRecentlyTimestampBoundary]] - degree 8, connects to 1 community
+- [[TestQuickPaperBuyAndCmdPaperSnowGuards]] - degree 8, connects to 1 community

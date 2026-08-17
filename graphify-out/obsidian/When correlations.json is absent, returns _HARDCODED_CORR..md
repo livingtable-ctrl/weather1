@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "rationale"
-community: "Community 383"
+community: "Community 395"
 location: "L248"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_383
+  - community/Community_395
 ---
 
 # When correlations.json is absent, returns _HARDCODED_CORR.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_fallback_to_hardcoded_when_file_missing()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_383
+#graphify/rationale #graphify/EXTRACTED #community/Community_395

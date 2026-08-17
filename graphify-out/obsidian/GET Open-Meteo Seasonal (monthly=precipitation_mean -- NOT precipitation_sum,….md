@@ -1,12 +1,12 @@
 ---
 source_file: "acis_precip.py"
 type: "rationale"
-community: "Climatology & Climate Index Fetching"
+community: "Community 23"
 location: "L300"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_23
 ---
 
 # GET Open-Meteo Seasonal (monthly=precipitation_mean -- NOT precipitation_sum,…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[fetch_seasonal_precip_mean_mm()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/rationale #graphify/EXTRACTED #community/Community_23

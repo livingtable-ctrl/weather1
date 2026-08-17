@@ -1,12 +1,12 @@
 ---
 source_file: "climate_indices.py"
 type: "code"
-community: "Climatology & Climate Index Fetching"
+community: "Community 4"
 location: "L431"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Climatology__Climate_Index_Fetching
+  - community/Community_4
 ---
 
 # temperature_adjustment()
@@ -16,8 +16,8 @@ tags:
 - [[_season_bucket()]] - `calls` [EXTRACTED]
 - [[analyze_trade()]] - `calls` [EXTRACTED]
 - [[climate_indices.py]] - `contains` [EXTRACTED]
-- [[date_8]] - `references` [EXTRACTED]
+- [[date_7]] - `references` [EXTRACTED]
 - [[get_indices()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Climatology__Climate_Index_Fetching
+#graphify/code #graphify/EXTRACTED #community/Community_4

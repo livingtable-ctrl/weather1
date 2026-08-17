@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 379"
+community: "Community 393"
 location: "L541"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_379
+  - community/Community_393
 ---
 
 # .test_cmd_paper_refuses_snow_when_gate_inactive()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestQuickPaperBuyAndCmdPaperSnowGuards]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_379
+#graphify/code #graphify/EXTRACTED #community/Community_393

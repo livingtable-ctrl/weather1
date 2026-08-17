@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_improvements.py"
 type: "code"
-community: "Community 346"
+community: "Community 352"
 location: "L138"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_346
+  - community/Community_352
 ---
 
 # ._make_enriched()
@@ -16,4 +16,4 @@ tags:
 - [[dot-test_sufficient_prob_edge_signal_passes()]] - `calls` [EXTRACTED]
 - [[TestMinProbEdgeGate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_346
+#graphify/code #graphify/EXTRACTED #community/Community_352

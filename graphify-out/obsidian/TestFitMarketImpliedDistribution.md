@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_market_implied_distribution.py"
 type: "code"
-community: "Community 41"
+community: "Community 84"
 location: "L72"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_41
+  - community/Community_84
 ---
 
 # TestFitMarketImpliedDistribution
@@ -24,4 +24,4 @@ tags:
 - [[dot-test_zero_volume_brackets_excluded_from_thin_book_count()]] - `method` [EXTRACTED]
 - [[test_market_implied_distribution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_41
+#graphify/code #graphify/EXTRACTED #community/Community_84

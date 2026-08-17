@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_i.py"
 type: "code"
-community: "Community 189"
+community: "Community 195"
 location: "L214"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_189
+  - community/Community_195
 ---
 
 # .test_date_sold_differs_from_date_acquired()
@@ -16,4 +16,4 @@ tags:
 - [[When entry and settlement are on different dates, Date Sold != Date Acquired.]] - `rationale_for` [EXTRACTED]
 - [[_settled_trade()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_189
+#graphify/code #graphify/EXTRACTED #community/Community_195

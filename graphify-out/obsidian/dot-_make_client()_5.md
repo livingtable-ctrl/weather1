@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 336"
+community: "Community 344"
 location: "L520"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_336
+  - community/Community_344
 ---
 
 # ._make_client()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestGetMarketsPagination]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_336
+#graphify/code #graphify/EXTRACTED #community/Community_344

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "rationale"
-community: "Community 372"
+community: "Community 387"
 location: "L80"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_372
+  - community/Community_387
 ---
 
 # clim_prior in precip blend should be 0.50 when climatological_prob returns 0.50.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_precip_uses_clim_prob_when_available()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_372
+#graphify/rationale #graphify/EXTRACTED #community/Community_387

@@ -1,12 +1,12 @@
 ---
 source_file: "cron.py"
 type: "rationale"
-community: "Community 455"
-location: "L2302"
+community: "Community 3"
+location: "L2347"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_455
+  - community/Community_3
 ---
 
 # Start a daemon thread that hard-kills the process if cron hangs > timeout_secs.…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_install_cron_watchdog()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_455
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

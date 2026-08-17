@@ -1,12 +1,12 @@
 ---
 source_file: "utils.py"
 type: "rationale"
-community: "Weather Probability Math Tests"
+community: "Community 6"
 location: "L395"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Weather_Probability_Math_Tests
+  - community/Community_6
 ---
 
 # Continuous-space decision boundary for probability math (Gaussian CDF, ensemble…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[prob_threshold()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Weather_Probability_Math_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_6

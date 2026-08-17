@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "code"
-community: "Community 52"
-location: "L83"
+community: "Community 631"
+location: "L18"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_52
+  - community/Community_631
 ---
 
 # .teardown_method()
 
 ## Connections
-- [[TestAnalyzeTradeConditionType]] - `method` [EXTRACTED]
+- [[TestGetMemberAccuracyDaysBack]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_52
+#graphify/code #graphify/EXTRACTED #community/Community_631

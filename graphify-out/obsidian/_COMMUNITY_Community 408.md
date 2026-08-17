@@ -10,15 +10,15 @@ members: 9
 **Members:** 9 nodes
 
 ## Members
-- [[dot-test_blocks_even_for_tiny_order()]] - code - tests/test_rain_markets.py
-- [[dot-test_blocks_even_when_city_and_date_are_present()]] - code - tests/test_rain_markets.py
-- [[dot-test_blocks_regardless_of_qty_and_price()]] - code - tests/test_rain_markets.py
-- [[dot-test_daily_ticker_unaffected()_1]] - code - tests/test_rain_markets.py
-- [[A single $0.01 contract must still be blocked -- this is a no-model gate, not a…]] - rationale - tests/test_rain_markets.py
-- [[Regression control an ordinary ticker must reach the real exposure-cap logic…]] - rationale - tests/test_rain_markets.py
-- [[TestCheckPositionLimitsBlocksMonthlyRain]] - code - tests/test_rain_markets.py
-- [[The guard must fire before the `if city and target_date_str` exposure-cap…]] - rationale - tests/test_rain_markets.py
-- [[paper.check_position_limits() must refuse ANY qtyprice for a monthly-rain…]] - rationale - tests/test_rain_markets.py
+- [[ActivityTab.jsx (V3)]] - code - weather app site V_3 (3)/src/tabs/ActivityTab.jsx
+- [[App.jsx (V3 React app shell)]] - code - weather app site V_3 (3)/src/App.jsx
+- [[ForecastTab.jsx (V3)]] - code - weather app site V_3 (3)/src/tabs/ForecastTab.jsx
+- [[RiskTab.jsx (V3)]] - code - weather app site V_3 (3)/src/tabs/RiskTab.jsx
+- [[analytics.js (dashboard analytics page)]] - code - updated frontend/reference/analytics.js
+- [[forecast.js (forecast page)]] - code - updated frontend/reference/forecast.js
+- [[mockData.js (V3 temporary API scaffold)]] - code - weather app site V_3 (3)/src/mockData.js
+- [[risk.js (risk page)]] - code - updated frontend/reference/risk.js
+- [[signals.js (signals + cron log page)]] - code - updated frontend/reference/signals.js
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,7 +28,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 237]]
+- 1 edge to [[_COMMUNITY_Community 6]]
 
 ## Top bridge nodes
-- [[TestCheckPositionLimitsBlocksMonthlyRain]] - degree 6, connects to 1 community
+- [[RiskTab.jsx (V3)]] - degree 4, connects to 1 community

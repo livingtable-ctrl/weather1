@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.33
-members: 7
+cohesion: 0.32
+members: 8
 ---
 
 # Community 481
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.32 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_exposure_denom_called()]] - code - tests/test_phase2_batch_i.py
-- [[dot-test_scale_less_aggressive_on_grown_account()]] - code - tests/test_phase2_batch_i.py
-- [[Position weight w_i must use _exposure_denom(), not STARTING_BALANCE.]] - rationale - tests/test_phase2_batch_i.py
-- [[TestCovarianceKellyScaleDenom]] - code - tests/test_phase2_batch_i.py
-- [[With $5000 balance, $50 position is smaller fraction → less corr penalty.]] - rationale - tests/test_phase2_batch_i.py
-- [[_open_trade()]] - code - tests/test_phase2_batch_i.py
-- [[covariance_kelly_scale must call _exposure_denom() for w_i.]] - rationale - tests/test_phase2_batch_i.py
+- [[loadAnalytics()_1]] - code - updated frontend/reference/analytics.js
+- [[loadBrierHistory()_1]] - code - updated frontend/reference/analytics.js
+- [[loadModelAccuracy()_1]] - code - updated frontend/reference/analytics.js
+- [[loadModelAttribution()_1]] - code - updated frontend/reference/analytics.js
+- [[loadPriceImprovement()_1]] - code - updated frontend/reference/analytics.js
+- [[loadSourceReliability()_1]] - code - updated frontend/reference/analytics.js
+- [[makeLayout()_2]] - code - updated frontend/reference/analytics.js
+- [[referenceanalytics.js]] - code - updated frontend/reference/analytics.js
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,10 +25,3 @@ members: 7
 TABLE source_file, type FROM #community/Community_481
 SORT file.name ASC
 ```
-
-## Connections to other communities
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-
-## Top bridge nodes
-- [[TestCovarianceKellyScaleDenom]] - degree 4, connects to 1 community
-- [[_open_trade()]] - degree 3, connects to 1 community

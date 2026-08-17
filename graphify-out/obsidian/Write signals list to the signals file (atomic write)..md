@@ -1,12 +1,12 @@
 ---
 source_file: "settlement_monitor.py"
 type: "rationale"
-community: "METAR Settlement Monitoring"
+community: "Community 8"
 location: "L122"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/METAR_Settlement_Monitoring
+  - community/Community_8
 ---
 
 # Write signals list to the signals file (atomic write).
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[write_settlement_signals()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/METAR_Settlement_Monitoring
+#graphify/rationale #graphify/EXTRACTED #community/Community_8

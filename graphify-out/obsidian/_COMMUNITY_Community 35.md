@@ -1,65 +1,65 @@
 ---
 type: community
-cohesion: 0.06
+cohesion: 0.05
 members: 50
 ---
 
 # Community 35
 
-**Cohesion:** 0.06 - loosely connected
+**Cohesion:** 0.05 - loosely connected
 **Members:** 50 nodes
 
 ## Members
-- [[dot-test_above_condition_derived_from_title_with_no_series_ticker()]] - code - tests/test_consistency.py
-- [[dot-test_below_condition_derived_from_title_with_no_series_ticker()]] - code - tests/test_consistency.py
-- [[dot-test_different_series_not_compared()]] - code - tests/test_consistency.py
-- [[dot-test_hourly_directional_markets_excluded()]] - code - tests/test_consistency.py
-- [[dot-test_hurricane_count_markets_excluded()]] - code - tests/test_consistency.py
-- [[dot-test_hurricane_next_event_exclusion_is_mutation_proof()]] - code - tests/test_consistency.py
-- [[dot-test_hurricane_next_event_markets_excluded()]] - code - tests/test_consistency.py
-- [[dot-test_monthly_rain_different_cities_not_compared()]] - code - tests/test_consistency.py
-- [[dot-test_monthly_rain_different_months_not_compared()]] - code - tests/test_consistency.py
-- [[dot-test_monthly_rain_irregular_ladder_size_matches_real_st_petersburg_shape()]] - code - tests/test_consistency.py
-- [[dot-test_monthly_rain_markets_do_not_log_date_extraction_warning()]] - code - tests/test_consistency.py
-- [[dot-test_monthly_rain_markets_grouped_by_city_and_month_no_violation_when_monotone()]] - code - tests/test_consistency.py
-- [[dot-test_monthly_rain_missing_floor_strike_excluded()]] - code - tests/test_consistency.py
-- [[dot-test_monthly_rain_unexpected_strike_type_excluded()]] - code - tests/test_consistency.py
-- [[dot-test_monthly_rain_violation_detected_and_flagged_shadow()]] - code - tests/test_consistency.py
-- [[dot-test_no_violation_when_monotone()]] - code - tests/test_consistency.py
-- [[dot-test_series_prefix_would_invert_these_two_real_ladders()]] - code - tests/test_consistency.py
-- [[dot-test_single_market_no_violation()]] - code - tests/test_consistency.py
-- [[dot-test_storm_order_exclusion_is_mutation_proof()]] - code - tests/test_consistency.py
-- [[dot-test_storm_order_markets_excluded()]] - code - tests/test_consistency.py
-- [[dot-test_violation_detected()]] - code - tests/test_consistency.py
-- [[A rain market missing floor_strike (malformedunexpected API shape) must be…]] - rationale - tests/test_consistency.py
-- [[A rain market with strike_type != greater (never observed live, but a real…]] - rationale - tests/test_consistency.py
-- [[A single market in a series can't violate monotonicity.]] - rationale - tests/test_consistency.py
-- [[Extract (condition_type, threshold) from a market ticker. Returns (above,…]] - rationale - consistency.py
-- [[If P(70)  P(65) we have a monotonicity violation (free arbitrage).]] - rationale - tests/test_consistency.py
-- [[Inverted rain ladder (floor_strike=7 priced HIGHER than floor_strike=1) is a…]] - rationale - tests/test_consistency.py
-- [[KXRAINM monthly rain-total ladder market. floor_strikestrike_type shape…]] - rationale - tests/test_consistency.py
-- [[Markets from different series should never be compared.]] - rationale - tests/test_consistency.py
-- [[Opus-review-caught (2026-08-07, MEDIUM) the test above is NOT actually…]] - rationale - tests/test_consistency.py
-- [[Rain markets take a dedicated early branch in _group_markets (see the KXRAINM…]] - rationale - tests/test_consistency.py
-- [[Regression guard for the exact bug an independent review found if a…]] - rationale - tests/test_consistency.py
-- [[Same city, different accrual months must never be pooled -- rain-specific case…]] - rationale - tests/test_consistency.py
-- [[Same not-actually-mutation-proof concern the sibling hurricane_next_event test…]] - rationale - tests/test_consistency.py
-- [[St. Petersburg's real July 2026 ladder (live-checked 2026-08-06) has exactly 10…]] - rationale - tests/test_consistency.py
-- [[TestConsistency]] - code - tests/test_consistency.py
-- [[TestParseThresholdRealApiShape]] - code - tests/test_consistency.py
-- [[Thresholds T60, T65, T70 should be monotone (higher temp = lower prob of…]] - rationale - tests/test_consistency.py
-- [[Two different rain cities in the same month must never be pooled into one group…]] - rationale - tests/test_consistency.py
-- [[Unit tests for consistency.py — monotonicity  arbitrage detection.]] - rationale - tests/test_consistency.py
-- [[_market()_1]] - code - tests/test_consistency.py
-- [[_parse_threshold()]] - code - consistency.py
-- [[_parse_threshold() with market.get(series_ticker) absent -- the real Kalshi…]] - rationale - tests/test_consistency.py
-- [[_rain_market()_1]] - code - tests/test_consistency.py
-- [[backlog.txt HOURLY-DIRECTIONAL TEMPERATURE MARKETS Step 1 KXTEMPxxxH…]] - rationale - tests/test_consistency.py
-- [[backlog.txt HURRICANE MARKETS -- season-count model (2026-08-03, opus-review-…]] - rationale - tests/test_consistency.py
-- [[backlog.txt HURRICANE MARKETS -- storm-order model (2026-08-07)…]] - rationale - tests/test_consistency.py
-- [[backlog.txt HURRICANE MARKETS -- time-to-next-event model (2026-08-07)…]] - rationale - tests/test_consistency.py
-- [[backlog.txt RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…_2]] - rationale - tests/test_consistency.py
-- [[test_consistency.py]] - code - tests/test_consistency.py
+- [[55 Mean (forecast_prob - outcome) for untraded markets in this city. KNOWN…]] - rationale - tracker.py
+- [[55 Record the outcome for a previously logged analysis attempt.]] - rationale - tracker.py
+- [[dot-_log_n()]] - code - tests/test_tracker.py
+- [[dot-test_empty_dict_returns_none_not_raise()]] - code - tests/test_tracker.py
+- [[dot-test_extracts_fields_and_delegates()]] - code - tests/test_tracker.py
+- [[dot-test_gem_presence_does_not_change_baseline_models_softmax()]] - code - tests/test_tracker.py
+- [[dot-test_liquidity_edge_scale_absent_stores_null_columns()]] - code - tests/test_tracker.py
+- [[dot-test_liquidity_edge_scale_round_trips_through_upsert()]] - code - tests/test_tracker.py
+- [[dot-test_malformed_target_date_returns_none_not_raise()]] - code - tests/test_tracker.py
+- [[dot-test_market_implied_absent_stores_null_columns()]] - code - tests/test_tracker.py
+- [[dot-test_market_implied_round_trips_through_upsert()]] - code - tests/test_tracker.py
+- [[dot-test_missing_city_returns_none_without_calling_through()]] - code - tests/test_tracker.py
+- [[dot-test_nbm_quantile_prob_absent_stores_null()]] - code - tests/test_tracker.py
+- [[dot-test_nbm_quantile_prob_round_trips_through_upsert()]] - code - tests/test_tracker.py
+- [[dot-test_nbm_quantile_prob_updates_on_reupsert()]] - code - tests/test_tracker.py
+- [[dot-test_run_trend_none_stores_null_columns()]] - code - tests/test_tracker.py
+- [[dot-test_run_trend_round_trips_through_upsert()]] - code - tests/test_tracker.py
+- [[dot-test_upsert_updates_market_implied_on_conflict()]] - code - tests/test_tracker.py
+- [[dot-test_var_defaults_to_max_when_condition_missing_var()]] - code - tests/test_tracker.py
+- [[Build and return the Flask app.]] - rationale - web_app.py
+- [[Opus review finding on the GENERALIZED PER-MODEL ACCURACY TRACKING Pass 2 diff…]] - rationale - tests/test_tracker.py
+- [[Redirect tracker DB to a temp file for pytest-style tests.]] - rationale - tests/test_tracker.py
+- [[SQL = NULL never matches, even a NULL column -- settle_analysis_ attempt must…]] - rationale - tests/test_tracker.py
+- [[TestGetForecastRunTrendFromAnalysis]] - code - tests/test_tracker.py
+- [[TestGetModelWeightsExcludesTrackingOnlyModels]] - code - tests/test_tracker.py
+- [[TestLogPredictionLiquidityEdgeScale]] - code - tests/test_tracker.py
+- [[TestLogPredictionMarketImplied]] - code - tests/test_tracker.py
+- [[TestLogPredictionNbmQuantileProb]] - code - tests/test_tracker.py
+- [[TestLogPredictionRunTrend]] - code - tests/test_tracker.py
+- [[Unit tests for tracker.py — SQLite prediction logging, bias, and Brier scoring.…]] - rationale - tests/test_tracker.py
+- [[_build_app()]] - code - web_app.py
+- [[_in_memory_conn()]] - code - tests/test_tracker.py
+- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 (review-caught) the…]] - rationale - tests/test_tracker.py
+- [[fixture_12]] - code
+- [[get_forecast_run_trend_from_analysis() extracts citytarget_date days_outvar…]] - rationale - tests/test_tracker.py
+- [[get_unselected_bias()]] - code - tracker.py
+- [[log_prediction() must persist implied_meanimplied_sigmafit_residual…]] - rationale - tests/test_tracker.py
+- [[log_prediction() must persist liquidity_edge_scalegated_edge (backlog.txt…]] - rationale - tests/test_tracker.py
+- [[log_prediction() must persist nbm_quantile_prob (backlog.txt NBM PROBABILISTIC…]] - rationale - tests/test_tracker.py
+- [[log_prediction() must persist run_trend's pointsdeltajumpy through the UPSERT…]] - rationale - tests/test_tracker.py
+- [[settle_analysis_attempt()]] - code - tracker.py
+- [[test_api_edge_realization_returns_list()]] - code - tests/test_tracker.py
+- [[test_api_reliability_returns_empty_for_unknown_city()]] - code - tests/test_tracker.py
+- [[test_get_unselected_bias_excludes_traded_markets()]] - code - tests/test_tracker.py
+- [[test_get_unselected_bias_returns_zero_when_no_data()]] - code - tests/test_tracker.py
+- [[test_health_endpoint_returns_ok()]] - code - tests/test_tracker.py
+- [[test_settle_analysis_attempt_matches_null_target_date_via_is_null()]] - code - tests/test_tracker.py
+- [[test_settlement_client_rebuilds_on_env_change()]] - code - tests/test_tracker.py
+- [[test_tracker.py]] - code - tests/test_tracker.py
+- [[tmp_db()]] - code - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -69,12 +69,56 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 19 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 3 edges to [[_COMMUNITY_Community 32]]
+- 24 edges to [[_COMMUNITY_Community 2]]
+- 10 edges to [[_COMMUNITY_Community 10]]
+- 8 edges to [[_COMMUNITY_Community 4]]
+- 4 edges to [[_COMMUNITY_Community 46]]
+- 3 edges to [[_COMMUNITY_Community 63]]
+- 3 edges to [[_COMMUNITY_Community 225]]
+- 2 edges to [[_COMMUNITY_Community 157]]
+- 2 edges to [[_COMMUNITY_Community 39]]
+- 2 edges to [[_COMMUNITY_Community 79]]
+- 2 edges to [[_COMMUNITY_Community 80]]
+- 2 edges to [[_COMMUNITY_Community 0]]
+- 2 edges to [[_COMMUNITY_Community 590]]
+- 1 edge to [[_COMMUNITY_Community 133]]
+- 1 edge to [[_COMMUNITY_Community 182]]
+- 1 edge to [[_COMMUNITY_Community 241]]
+- 1 edge to [[_COMMUNITY_Community 260]]
+- 1 edge to [[_COMMUNITY_Community 261]]
+- 1 edge to [[_COMMUNITY_Community 27]]
+- 1 edge to [[_COMMUNITY_Community 28]]
+- 1 edge to [[_COMMUNITY_Community 29]]
+- 1 edge to [[_COMMUNITY_Community 290]]
+- 1 edge to [[_COMMUNITY_Community 291]]
+- 1 edge to [[_COMMUNITY_Community 292]]
+- 1 edge to [[_COMMUNITY_Community 293]]
+- 1 edge to [[_COMMUNITY_Community 319]]
+- 1 edge to [[_COMMUNITY_Community 320]]
+- 1 edge to [[_COMMUNITY_Community 321]]
+- 1 edge to [[_COMMUNITY_Community 322]]
+- 1 edge to [[_COMMUNITY_Community 323]]
+- 1 edge to [[_COMMUNITY_Community 324]]
+- 1 edge to [[_COMMUNITY_Community 394]]
+- 1 edge to [[_COMMUNITY_Community 439]]
+- 1 edge to [[_COMMUNITY_Community 440]]
+- 1 edge to [[_COMMUNITY_Community 473]]
+- 1 edge to [[_COMMUNITY_Community 474]]
+- 1 edge to [[_COMMUNITY_Community 581]]
+- 1 edge to [[_COMMUNITY_Community 582]]
+- 1 edge to [[_COMMUNITY_Community 583]]
+- 1 edge to [[_COMMUNITY_Community 584]]
+- 1 edge to [[_COMMUNITY_Community 633]]
+- 1 edge to [[_COMMUNITY_Community 634]]
+- 1 edge to [[_COMMUNITY_Community 635]]
+- 1 edge to [[_COMMUNITY_Community 23]]
+- 1 edge to [[_COMMUNITY_Community 41]]
+- 1 edge to [[_COMMUNITY_Community 42]]
+- 1 edge to [[_COMMUNITY_Community 592]]
 
 ## Top bridge nodes
-- [[test_consistency.py]] - degree 8, connects to 2 communities
-- [[_parse_threshold()]] - degree 7, connects to 1 community
-- [[dot-test_different_series_not_compared()]] - degree 4, connects to 1 community
-- [[dot-test_hourly_directional_markets_excluded()]] - degree 4, connects to 1 community
-- [[dot-test_hurricane_count_markets_excluded()]] - degree 4, connects to 1 community
+- [[test_tracker.py]] - degree 96, connects to 42 communities
+- [[_build_app()]] - degree 15, connects to 5 communities
+- [[settle_analysis_attempt()]] - degree 8, connects to 2 communities
+- [[get_unselected_bias()]] - degree 7, connects to 1 community
+- [[test_settle_analysis_attempt_matches_null_target_date_via_is_null()]] - degree 5, connects to 1 community

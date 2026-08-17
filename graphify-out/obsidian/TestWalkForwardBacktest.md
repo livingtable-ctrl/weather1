@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_walk_forward.py"
 type: "code"
-community: "Community 37"
+community: "Community 40"
 location: "L81"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_37
+  - community/Community_40
 ---
 
 # TestWalkForwardBacktest
@@ -18,4 +18,4 @@ tags:
 - [[dot-test_returns_results_dict()]] - `method` [EXTRACTED]
 - [[test_walk_forward.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_37
+#graphify/code #graphify/EXTRACTED #community/Community_40

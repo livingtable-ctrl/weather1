@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_signal_quality.py"
 type: "rationale"
-community: "Community 190"
+community: "Community 174"
 location: "L60"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_190
+  - community/Community_174
 ---
 
 # days_out=10, precip_snow: horizon≈0.7143, × 0.80 ≈ 0.5714.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_condition_compounds_horizon()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_190
+#graphify/rationale #graphify/EXTRACTED #community/Community_174

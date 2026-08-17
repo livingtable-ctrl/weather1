@@ -1,12 +1,12 @@
 ---
 source_file: "colors.py"
 type: "code"
-community: "Black Swan Halt State"
+community: "Community 0"
 location: "L49"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_0
 ---
 
 # white()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[colors.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_0

@@ -1,11 +1,11 @@
 ---
 source_file: "docs/grade_audit/outputs/safe_io.py.md"
 type: "document"
-community: "Community 59"
+community: "Community 6"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_59
+  - community/Community_6
 ---
 
 # Safe IO Grade Audit
@@ -13,6 +13,6 @@ tags:
 ## Connections
 - [[Grade Audit Final Report]] - `cites` [EXTRACTED]
 - [[Grade Audit Preamble]] - `cites` [EXTRACTED]
-- [[safe_io.py_2]] - `references` [EXTRACTED]
+- [[safe_io.py_1]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_59
+#graphify/document #graphify/EXTRACTED #community/Community_6

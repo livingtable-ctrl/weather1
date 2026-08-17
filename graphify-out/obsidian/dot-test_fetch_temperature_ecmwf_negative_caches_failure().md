@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ecmwf.py"
 type: "code"
-community: "Community 255"
+community: "Community 252"
 location: "L86"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_255
+  - community/Community_252
 ---
 
 # .test_fetch_temperature_ecmwf_negative_caches_failure()
@@ -16,4 +16,4 @@ tags:
 - [[ForecastCache]] - `calls` [EXTRACTED]
 - [[TestECMWFAIFS]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_255
+#graphify/code #graphify/EXTRACTED #community/Community_252

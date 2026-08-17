@@ -1,12 +1,12 @@
 ---
 source_file: "notify.py"
 type: "code"
-community: "Community 96"
+community: "Community 3"
 location: "L207"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_96
+  - community/Community_3
 ---
 
 # _send_discord()
@@ -19,4 +19,4 @@ tags:
 - [[notify.py]] - `contains` [EXTRACTED]
 - [[send_system_alert()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_96
+#graphify/code #graphify/EXTRACTED #community/Community_3

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather.py"
 type: "code"
-community: "Community 323"
+community: "Community 330"
 location: "L414"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_323
+  - community/Community_330
 ---
 
 # TestCIAdjustedKelly
@@ -20,4 +20,4 @@ tags:
 - [[Tests that CI width correctly scales the fee-adjusted Kelly fraction.]] - `rationale_for` [EXTRACTED]
 - [[test_weather.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_323
+#graphify/code #graphify/EXTRACTED #community/Community_330

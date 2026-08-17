@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_snow_markets.py"
 type: "code"
-community: "Community 238"
+community: "Community 240"
 location: "L715"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_238
+  - community/Community_240
 ---
 
 # .test_snow_branch_reached_before_parse_city_date_early_return()
@@ -15,4 +15,4 @@ tags:
 - [[TestAuditSettlementMonthlySnow]] - `method` [EXTRACTED]
 - [[The real regression this fix targets parse_city_date() returns (city, None)…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_238
+#graphify/code #graphify/EXTRACTED #community/Community_240

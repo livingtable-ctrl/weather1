@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backlog_batch.py"
 type: "code"
-community: "Kelly City Multiplier & Edge Realization"
+community: "Community 24"
 location: "L493"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Kelly_City_Multiplier__Edge_Realization
+  - community/Community_24
 ---
 
 # ._make_multiday_trade()
@@ -18,4 +18,4 @@ tags:
 - [[dot-test_multiday_directional_accuracy_window_param_controls_size()]] - `calls` [EXTRACTED]
 - [[TestEdgeRealizationRate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization
+#graphify/code #graphify/EXTRACTED #community/Community_24

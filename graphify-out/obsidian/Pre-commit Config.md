@@ -1,11 +1,11 @@
 ---
 source_file: ".pre-commit-config.yaml"
 type: "code"
-community: "Community 600"
+community: "Community 684"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_600
+  - community/Community_684
 ---
 
 # Pre-commit Config
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[CI Workflow]] - `semantically_similar_to` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_600
+#graphify/code #graphify/INFERRED #community/Community_684

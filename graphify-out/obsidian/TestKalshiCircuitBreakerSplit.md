@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase3_batch_b.py"
 type: "code"
-community: "Community 226"
+community: "Community 7"
 location: "L75"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_226
+  - community/Community_7
 ---
 
 # TestKalshiCircuitBreakerSplit
@@ -21,6 +21,6 @@ tags:
 - [[CircuitBreaker]] - `uses` [INFERRED]
 - [[CircuitOpenError]] - `uses` [INFERRED]
 - [[P3-5 Read failures must not block write operations.]] - `rationale_for` [EXTRACTED]
-- [[Phase 3 Batch B Circuit Breaker Tests]] - `contains` [EXTRACTED]
+- [[test_phase3_batch_b.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_226
+#graphify/code #graphify/EXTRACTED #community/Community_7

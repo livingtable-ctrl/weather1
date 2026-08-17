@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cleanup_data_dir.py"
 type: "code"
-community: "Community 47"
+community: "Community 150"
 location: "L117"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_47
+  - community/Community_150
 ---
 
 # .test_permanent_file_set_covers_expected_names()
@@ -15,4 +15,4 @@ tags:
 - [[TestCleanupDataDir]] - `method` [EXTRACTED]
 - [[_PERMANENT_DATA_FILES must include the key calibration files.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_47
+#graphify/code #graphify/EXTRACTED #community/Community_150

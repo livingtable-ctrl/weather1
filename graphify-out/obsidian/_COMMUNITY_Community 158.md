@@ -1,35 +1,36 @@
 ---
 type: community
-cohesion: 0.16
-members: 20
+cohesion: 0.14
+members: 21
 ---
 
 # Community 158
 
-**Cohesion:** 0.16 - loosely connected
-**Members:** 20 nodes
+**Cohesion:** 0.14 - loosely connected
+**Members:** 21 nodes
 
 ## Members
-- [[dot-test_both_gates_hold_blocks_even_if_settlement_would_pass()]] - code - tests/test_early_exits.py
-- [[dot-test_both_gates_pass_together()]] - code - tests/test_early_exits.py
-- [[dot-test_both_gates_settlement_blocks_even_if_hold_would_pass()]] - code - tests/test_early_exits.py
-- [[dot-test_hold_gate_blocks_when_too_soon()]] - code - tests/test_early_exits.py
-- [[dot-test_hold_gate_fails_open_on_missing_entered_at()]] - code - tests/test_early_exits.py
-- [[dot-test_hold_gate_fails_open_on_unparseable_entered_at()]] - code - tests/test_early_exits.py
-- [[dot-test_hold_gate_passes_when_past_threshold()]] - code - tests/test_early_exits.py
-- [[dot-test_no_gates_requested_passes()]] - code - tests/test_early_exits.py
-- [[dot-test_settlement_gate_blocks_within_window()]] - code - tests/test_early_exits.py
-- [[dot-test_settlement_gate_fails_closed_on_missing_close_time()]] - code - tests/test_early_exits.py
-- [[dot-test_settlement_gate_fails_closed_on_unparseable_close_time()]] - code - tests/test_early_exits.py
-- [[dot-test_settlement_gate_passes_outside_window()]] - code - tests/test_early_exits.py
-- [[Preserves the original inline behavior a missing close_time DOES block the…]] - rationale - tests/test_early_exits.py
-- [[Preserves the original inline behavior a missing entered_at does NOT block the…]] - rationale - tests/test_early_exits.py
-- [[Shared timing gates for early-exit checks (stop-lossbreakevenmodel-exit),…]] - rationale - positions.py
-- [[TestPassesExitGates]] - code - tests/test_early_exits.py
-- [[Tests for paper._passes_exit_gates, the shared timing-gate helper extracted…]] - rationale - tests/test_early_exits.py
-- [[_check_early_exits Function]] - code - order_executor.py
-- [[_check_live_model_exits Function]] - code - order_executor.py
-- [[_passes_exit_gates()]] - code - positions.py
+- [[ActivityTab()]] - code - weather app site V_3 (3)/src/tabs/ActivityTab.jsx
+- [[ActivityTab.jsx]] - code - weather app site V_3 (3)/src/tabs/ActivityTab.jsx
+- [[App()]] - code - weather app site V_3 (3)/src/App.jsx
+- [[BrierAlertCard()]] - code - weather app site V_3 (3)/src/tabs/RiskTab.jsx
+- [[FILTERS]] - code - weather app site V_3 (3)/src/tabs/ActivityTab.jsx
+- [[KillSwitchCriteriaCard()]] - code - weather app site V_3 (3)/src/tabs/RiskTab.jsx
+- [[LEVEL]] - code - weather app site V_3 (3)/src/tabs/ActivityTab.jsx
+- [[Nav()]] - code - weather app site V_3 (3)/src/App.jsx
+- [[RiskTab()]] - code - weather app site V_3 (3)/src/tabs/RiskTab.jsx
+- [[RiskTab.jsx]] - code - weather app site V_3 (3)/src/tabs/RiskTab.jsx
+- [[SettingsTab()]] - code - weather app site V_3 (3)/src/tabs/SettingsTab.jsx
+- [[SettingsTab.jsx]] - code - weather app site V_3 (3)/src/tabs/SettingsTab.jsx
+- [[StatCard()]] - code - weather app site V_3 (3)/src/shared.jsx
+- [[TABS]] - code - weather app site V_3 (3)/src/App.jsx
+- [[THEMES]] - code - weather app site V_3 (3)/src/App.jsx
+- [[ToastContainer()]] - code - weather app site V_3 (3)/src/App.jsx
+- [[VALID_TABS]] - code - weather app site V_3 (3)/src/App.jsx
+- [[applyTheme()]] - code - weather app site V_3 (3)/src/App.jsx
+- [[authHeader()]] - code - weather app site V_3 (3)/src/useData.js
+- [[getStoredPwd()]] - code - weather app site V_3 (3)/src/useData.js
+- [[weather app site V_3 (3)srcApp.jsx]] - code - weather app site V_3 (3)/src/App.jsx
 
 ## Live Query (requires Dataview plugin)
 
@@ -39,12 +40,15 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 145]]
-- 2 edges to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
-- 1 edge to [[_COMMUNITY_Community 272]]
-- 1 edge to [[_COMMUNITY_Community 159]]
-- 1 edge to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
+- 10 edges to [[_COMMUNITY_Community 265]]
+- 9 edges to [[_COMMUNITY_Community 215]]
+- 9 edges to [[_COMMUNITY_Community 169]]
+- 8 edges to [[_COMMUNITY_Community 358]]
+- 1 edge to [[_COMMUNITY_Community 660]]
 
 ## Top bridge nodes
-- [[_passes_exit_gates()]] - degree 21, connects to 4 communities
-- [[TestPassesExitGates]] - degree 14, connects to 1 community
+- [[weather app site V_3 (3)srcApp.jsx]] - degree 32, connects to 5 communities
+- [[authHeader()]] - degree 19, connects to 4 communities
+- [[RiskTab.jsx]] - degree 8, connects to 2 communities
+- [[StatCard()]] - degree 4, connects to 2 communities
+- [[App()]] - degree 4, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hourly_target_hours.py"
 type: "code"
-community: "Community 112"
+community: "Community 120"
 location: "L56"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_112
+  - community/Community_120
 ---
 
 # test_first_run_creates_cache_for_all_cities()
@@ -17,4 +17,4 @@ tags:
 - [[_today()]] - `calls` [EXTRACTED]
 - [[test_hourly_target_hours.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_112
+#graphify/code #graphify/EXTRACTED #community/Community_120

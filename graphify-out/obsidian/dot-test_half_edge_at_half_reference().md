@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_forecasting.py"
 type: "code"
-community: "Community 394"
+community: "Community 418"
 location: "L504"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_394
+  - community/Community_418
 ---
 
 # .test_half_edge_at_half_reference()
@@ -16,4 +16,4 @@ tags:
 - [[TestTimeDecayEdge_1]] - `method` [EXTRACTED]
 - [[time_decay_edge()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_394
+#graphify/code #graphify/EXTRACTED #community/Community_418

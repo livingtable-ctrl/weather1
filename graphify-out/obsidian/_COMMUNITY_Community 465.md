@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.38
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 465
 
-**Cohesion:** 0.38 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-_make_between_enriched_same_day()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_between_obs_not_in_blend_sources()]] - code - tests/test_gaussian_prob.py
-- [[dot-test_between_obs_suppressed_forecast_prob_is_low()]] - code - tests/test_gaussian_prob.py
-- [[For same-day 'between' markets, blend_sources must NOT contain 'obs' even when…]] - rationale - tests/test_gaussian_prob.py
-- [[Obs suppression is the mechanism keeping 'between' probability calibrated.…]] - rationale - tests/test_gaussian_prob.py
-- [[TestBetweenObsDisabled]] - code - tests/test_gaussian_prob.py
-- [[obs_override is suppressed for 'between' condition markets. Historical…]] - rationale - tests/test_gaussian_prob.py
+- [[dot-test_get_cached_storms_named_returns_none_for_non_int()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_get_cached_storms_named_returns_none_when_missing()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_get_cached_storms_named_round_trips_through_real_refresh()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_get_cached_storms_named_shares_staleness_guard_with_count()]] - code - tests/test_hurricane_markets.py
+- [[dot-test_refresh_writes_storms_named_per_basin()]] - code - tests/test_hurricane_markets.py
+- [[Both readers delegate to the same _get_cached_hurricane_names_ entry helper --…]] - rationale - tests/test_hurricane_markets.py
+- [[TestStormsNamedToDateCache]] - code - tests/test_hurricane_markets.py
+- [[The real end-to-end path refresh_hurricane_count_to_date's actual write, read…]] - rationale - tests/test_hurricane_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,7 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 26]]
+- 1 edge to [[_COMMUNITY_Community 45]]
 
 ## Top bridge nodes
-- [[TestBetweenObsDisabled]] - degree 5, connects to 1 community
+- [[TestStormsNamedToDateCache]] - degree 6, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 70"
+community: "Community 65"
 location: "L67"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_70
+  - community/Community_65
 ---
 
 # .test_default_params_used()
@@ -16,4 +16,4 @@ tags:
 - [[TestFeelsLike_1]] - `method` [EXTRACTED]
 - [[_feels_like()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_70
+#graphify/code #graphify/EXTRACTED #community/Community_65

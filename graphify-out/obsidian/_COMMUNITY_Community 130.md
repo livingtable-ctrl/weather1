@@ -1,38 +1,39 @@
 ---
 type: community
-cohesion: 0.09
-members: 23
+cohesion: 0.14
+members: 24
 ---
 
 # Community 130
 
-**Cohesion:** 0.09 - loosely connected
-**Members:** 23 nodes
+**Cohesion:** 0.14 - loosely connected
+**Members:** 24 nodes
 
 ## Members
-- [[dot-test_fresh_entry_returns_price()]] - code - tests/test_kalshi_ws.py
-- [[dot-test_get_ws_health_initially_not_alive()]] - code - tests/test_kalshi_ws.py
-- [[dot-test_get_ws_health_stale_flag()]] - code - tests/test_kalshi_ws.py
-- [[dot-test_missing_ts_returns_none()]] - code - tests/test_kalshi_ws.py
-- [[dot-test_stale_entry_returns_none()]] - code - tests/test_kalshi_ws.py
-- [[dot-test_stop_cancels_task_and_thread_exits_cleanly()]] - code - tests/test_kalshi_ws.py
-- [[dot-test_subscribe_message_structure()]] - code - tests/test_kalshi_ws.py
-- [[An entry timestamped 15 min ago is returned normally.]] - rationale - tests/test_kalshi_ws.py
-- [[An entry timestamped WS_CACHE_TTL_SECS ago returns None.]] - rationale - tests/test_kalshi_ws.py
-- [[An entry with no ts field is treated as stale.]] - rationale - tests/test_kalshi_ws.py
-- [[Build a Kalshi WebSocket subscribe command payload.]] - rationale - kalshi_ws.py
-- [[Fresh import ws not alive, no messages recorded.]] - rationale - tests/test_kalshi_ws.py
-- [[KalshiWebSocket class  get_ws_health()]] - code - kalshi_ws.py
-- [[TestBuildSubscribeMessage]] - code - tests/test_kalshi_ws.py
-- [[TestCacheStaleness]] - code - tests/test_kalshi_ws.py
-- [[TestKalshiWebSocketLifecycle]] - code - tests/test_kalshi_ws.py
-- [[TestWsHealth]] - code - tests/test_kalshi_ws.py
-- [[Tests for Kalshi WebSocket client.]] - rationale - tests/test_kalshi_ws.py
-- [[build_subscribe_message returns a valid Kalshi WS subscribe payload.]] - rationale - tests/test_kalshi_ws.py
-- [[build_subscribe_message()]] - code - kalshi_ws.py
-- [[stale=True when idle  WS_CACHE_TTL_SECS.]] - rationale - tests/test_kalshi_ws.py
-- [[stop() must cancel the running task (not just stop the loop) so the async-with-…]] - rationale - tests/test_kalshi_ws.py
-- [[test_kalshi_ws.py]] - code - tests/test_kalshi_ws.py
+- [[dot-test_calibration_covariate_fields_absent_gives_none_not_keyerror()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_calibration_covariate_fields_derived_when_present()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_derives_all_fields_correctly()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_ecmwf_consensus_gap_prob_absent_gives_none_not_keyerror()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_ecmwf_consensus_gap_prob_derived_when_present()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_ens_var_is_variance_not_std()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_liquidity_edge_fields_absent_gives_none_not_keyerror()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_liquidity_edge_fields_derived_when_present()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_main_imports_the_real_shared_function()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_market_implied_absent_gives_none_not_keyerror()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_market_implied_fields_derived_when_present()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_market_implied_none_gives_none_not_attributeerror()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_missing_ensemble_stats_gives_none_mean_and_var()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_missing_std_gives_none_var_not_typeerror()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_nbm_quantile_prob_absent_gives_none_not_keyerror()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_nbm_quantile_prob_derived_when_present()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_signals_absent_gives_none_not_keyerror()]] - code - tests/test_prediction_kwargs.py
+- [[dot-test_signals_derived_when_present()]] - code - tests/test_prediction_kwargs.py
+- [[2026-07-17 main.py's cmd_market and cmd_order log_prediction call sites were…]] - rationale - tests/test_prediction_kwargs.py
+- [[TestMainPyUsesSharedHelper]] - code - tests/test_prediction_kwargs.py
+- [[TestPredictionKwargsFromAnalysis]] - code - tests/test_prediction_kwargs.py
+- [[Tests for order_executor._prediction_kwargs_from_analysis -- the single shared…]] - rationale - tests/test_prediction_kwargs.py
+- [[_make_analysis()]] - code - tests/test_prediction_kwargs.py
+- [[test_prediction_kwargs.py]] - code - tests/test_prediction_kwargs.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -42,11 +43,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_Community 227]]
-- 2 edges to [[_COMMUNITY_Community 352]]
-- 2 edges to [[_COMMUNITY_Community 198]]
-- 1 edge to [[_COMMUNITY_Circuit Breaker & Session Retry Infrastructure]]
+- 2 edges to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 57]]
 
 ## Top bridge nodes
-- [[test_kalshi_ws.py]] - degree 13, connects to 3 communities
-- [[build_subscribe_message()]] - degree 5, connects to 1 community
+- [[test_prediction_kwargs.py]] - degree 7, connects to 2 communities

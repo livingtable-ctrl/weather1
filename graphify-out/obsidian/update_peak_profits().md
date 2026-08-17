@@ -1,18 +1,18 @@
 ---
 source_file: "positions.py"
 type: "code"
-community: "Community 45"
+community: "Community 12"
 location: "L267"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Community_12
 ---
 
 # update_peak_profits()
 
 ## Connections
-- [[dot-save_peak()_1]] - `calls` [EXTRACTED]
+- [[dot-save_peak()_2]] - `calls` [EXTRACTED]
 - [[dot-test_does_not_overwrite_a_higher_stored_peak()]] - `calls` [EXTRACTED]
 - [[dot-test_records_new_peak_when_higher()]] - `calls` [EXTRACTED]
 - [[dot-test_save_peak_called_once_per_improved_position_not_batched()]] - `calls` [EXTRACTED]
@@ -26,9 +26,9 @@ tags:
 - [[liquidation_price()]] - `calls` [EXTRACTED]
 - [[order_executor.py]] - `imports` [EXTRACTED]
 - [[positions.py]] - `contains` [EXTRACTED]
-- [[test_early_exits.py]] - `calls` [EXTRACTED]
+- [[test_early_exits.py]] - `imports` [EXTRACTED]
 - [[test_live_execution.py]] - `imports` [EXTRACTED]
 - [[test_paper_metrics.py]] - `imports` [EXTRACTED]
-- [[test_positions.py]] - `calls` [EXTRACTED]
+- [[test_positions.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_45
+#graphify/code #graphify/EXTRACTED #community/Community_12

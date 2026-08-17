@@ -1,12 +1,12 @@
 ---
 source_file: "tracker.py"
 type: "rationale"
-community: "Tracker P&L Attribution Tests"
-location: "L3630"
+community: "Community 2"
+location: "L3685"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_PL_Attribution_Tests
+  - community/Community_2
 ---
 
 # Fetch the ASOS reading nearest local `hour` on `target_date`, for KXTEMPxxxH…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_fetch_asos_hour_temp()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_PL_Attribution_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

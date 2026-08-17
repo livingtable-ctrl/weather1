@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "rationale"
-community: "Ensemble Weight Blending Tests"
-location: "L7041"
+community: "Community 68"
+location: "L7143"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Ensemble_Weight_Blending_Tests
+  - community/Community_68
 ---
 
 # Return (w_ensemble, w_climatology, w_nws). Priority: regime override (highest,…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_blend_weights()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Ensemble_Weight_Blending_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_68

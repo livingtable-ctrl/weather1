@@ -1,12 +1,12 @@
 ---
 source_file: "monte_carlo.py"
 type: "rationale"
-community: "Community 181"
+community: "Community 148"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_181
+  - community/Community_148
 ---
 
 # Monte Carlo simulation for paper trading portfolio. Simulates N random outcome…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[monte_carlo.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_181
+#graphify/rationale #graphify/EXTRACTED #community/Community_148

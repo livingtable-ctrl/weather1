@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "rationale"
-community: "Tracker SQLite Storage Tests"
+community: "Community 2"
 location: "L1802"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Tracker_SQLite_Storage_Tests
+  - community/Community_2
 ---
 
 # Bug C fix (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2):…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_log_analysis_attempt_none_target_date_writes_null_not_string()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Tracker_SQLite_Storage_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_2

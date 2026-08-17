@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 468
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-setup_method()_32]] - code - tests/test_live_execution.py
-- [[dot-teardown_method()_24]] - code - tests/test_live_execution.py
-- [[dot-test_amended_row_excluded_new_row_counted_once()]] - code - tests/test_live_execution.py
-- [[dot-test_mutation_amended_included_would_double_count()]] - code - tests/test_live_execution.py
-- [[AMEND ORDER (V2) get_today_live_spend() must exclude 'amended' rows the same…]] - rationale - tests/test_live_execution.py
-- [[Direct proof the exclusion is load-bearing temporarily querying with 'amended'…]] - rationale - tests/test_live_execution.py
-- [[TestGetTodayLiveSpendExcludesAmended]] - code - tests/test_live_execution.py
+- [[dot-test_fewer_than_five_days_returns_none()]] - code - tests/test_paper.py
+- [[dot-test_known_daily_pnl_produces_expected_sharpe()]] - code - tests/test_paper.py
+- [[dot-test_zero_variance_returns_none()]] - code - tests/test_paper.py
+- [[5 days of known P&L - exact annualized Sharpe (sqrt(252)).]] - rationale - tests/test_paper.py
+- [[5 days of known P&L - exact annualized Sharpe (sqrt(252))._1]] - rationale - tests/test_paper.py
+- [[Identical daily P&L - stdev=0 - must not divide by zero.]] - rationale - tests/test_paper.py
+- [[Identical daily P&L - stdev=0 - must not divide by zero._1]] - rationale - tests/test_paper.py
+- [[TestGetRollingSharpe]] - code - tests/test_paper.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,8 +27,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 45]]
-- 1 edge to [[_COMMUNITY_Community 111]]
+- 1 edge to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 21]]
 
 ## Top bridge nodes
-- [[TestGetTodayLiveSpendExcludesAmended]] - degree 8, connects to 2 communities
+- [[TestGetRollingSharpe]] - degree 5, connects to 2 communities

@@ -1,12 +1,12 @@
 ---
 source_file: "metar.py"
 type: "rationale"
-community: "Community 211"
+community: "Community 51"
 location: "L265"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_211
+  - community/Community_51
 ---
 
 # Extract a plausible temp_f from a raw METAR obs dict (prefers tmpf °F, else…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_extract_temp_f()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_211
+#graphify/rationale #graphify/EXTRACTED #community/Community_51

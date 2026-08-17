@@ -1,11 +1,11 @@
 ---
 source_file: "weather app site V_3 (3)/src/tabs/RiskTab.jsx"
 type: "code"
-community: "Community 229"
+community: "Community 408"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/Community_229
+  - community/Community_408
 ---
 
 # RiskTab.jsx (V3)
@@ -16,4 +16,4 @@ tags:
 - [[risk.js (risk page)]] - `semantically_similar_to` [INFERRED]
 - [[utils.py]] - `conceptually_related_to` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/Community_229
+#graphify/code #graphify/INFERRED #community/Community_408

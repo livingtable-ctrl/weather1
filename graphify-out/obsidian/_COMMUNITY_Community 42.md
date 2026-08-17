@@ -1,59 +1,59 @@
 ---
 type: community
-cohesion: 0.06
+cohesion: 0.09
 members: 44
 ---
 
 # Community 42
 
-**Cohesion:** 0.06 - loosely connected
+**Cohesion:** 0.09 - loosely connected
 **Members:** 44 nodes
 
 ## Members
-- [[dot-test_accuracy_halt_blocks_placement()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_both_kelly_keys_missing_defaults_to_zero_and_untiers()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_consistency_skip_blocks_placement_with_no_shadow_log()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_cron_batch_log_receives_rejected_tickers()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_default_threshold_classifies_as_strong()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_divergence_rejected_market_still_reaches_all_results()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_external_halted_reason_blocks_placement()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_kelly_at_floor_boundary_still_clears_gate()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_kill_switch_hard_aborts_before_any_scan()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_low_kelly_untiers_an_otherwise_strong_candidate()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_manual_override_skips_placement_not_scan()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_missing_ci_kelly_falls_back_to_fee_adjusted_kelly()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_missing_raw_edge_key_defaults_to_clearing_gate()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_mkt_prob_rejected_market_still_reaches_all_results()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_negative_net_edge_untiers_a_wide_spread_candidate()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_none_adjusted_edge_value_does_not_crash_the_scan()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_none_net_edge_value_does_not_crash_the_scan()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_raw_edge_at_min_edge_boundary_still_clears_gate()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_raw_edge_below_min_edge_untiers_an_otherwise_strong_candidate()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_raw_edge_wrong_sign_untiers_an_otherwise_strong_candidate()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_reproduces_live_kxhightsea_incident_no_side_magnitude_failure()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_tiered_candidate_clears_validates_own_edge_gates()]] - code - tests/test_trade_cycle_engine.py
-- [[dot-test_tightened_threshold_demotes_to_med()]] - code - tests/test_trade_cycle_engine.py
-- [[Consistency-skip is a stricter halt than the others no shadow logging either…]] - rationale - tests/test_trade_cycle_engine.py
-- [[End-to-end cron.py's rebuilt _analysis_batch must include a market the…]] - rationale - tests/test_trade_cycle_engine.py
-- [[Every market that reaches a real analysis -- including ones later rejected by…]] - rationale - tests/test_trade_cycle_engine.py
-- [[Matches validate()'s own `if edge in opp` guard -- a caller that never…]] - rationale - tests/test_trade_cycle_engine.py
-- [[Opus review (2026-08-07) HIGH finding the first version of this fix mirrored…]] - rationale - tests/test_trade_cycle_engine.py
-- [[TestAnalysisAttemptDataLoss]] - code - tests/test_trade_cycle_engine.py
-- [[TestEffectiveStrongEdgeThreading]] - code - tests/test_trade_cycle_engine.py
-- [[TestGateUnification]] - code - tests/test_trade_cycle_engine.py
-- [[TestPlacementEdgeGateTierClassification]] - code - tests/test_trade_cycle_engine.py
-- [[TestPlacementKellyFloorGateTierClassification]] - code - tests/test_trade_cycle_engine.py
-- [[The actual backlog.txt reproduction case recommended_side=no,…]] - rationale - tests/test_trade_cycle_engine.py
-- [[The unified gate set must block placement identically for both…]] - rationale - tests/test_trade_cycle_engine.py
-- [[_strong_market_analysis()]] - code - tests/test_trade_cycle_engine.py
-- [[backlog.txt 'STRONGMED TIER CLASSIFICATION AND FINAL PLACEMENT VALIDATION USE…]] - rationale - tests/test_trade_cycle_engine.py
-- [[backlog.txt 'STRONGMED TIER REMAINING VALIDATE() GATES NOT MIRRORED (KELLY…]] - rationale - tests/test_trade_cycle_engine.py
-- [[cron.py's Brier-drift-tightened threshold must actually change tier…]] - rationale - tests/test_trade_cycle_engine.py
-- [[cron.py's anomaly-detection  black-swan-check-error halt reason, computed…]] - rationale - tests/test_trade_cycle_engine.py
-- [[oppadjusted_edge present but None must not raise TypeError from…]] - rationale - tests/test_trade_cycle_engine.py
-- [[oppnet_edge present but None (as opposed to simply absent) must not raise…]] - rationale - tests/test_trade_cycle_engine.py
-- [[parametrize_2]] - code
-- [[validate() rejects strictly-below 0.002, so exactly 0.002 clears.]] - rationale - tests/test_trade_cycle_engine.py
+- [[Add amount to today's live loss total and return the new total. amount  0…]] - rationale - execution_log.py
+- [[Apply any pending schema migrations and advance PRAGMA user_version. Mirrors…]] - rationale - execution_log.py
+- [[Connection_2]] - code
+- [[Execution log — SQLite-backed audit trail of every live order attempt. Prevents…]] - rationale - execution_log.py
+- [[Export settled live orders to CSV for tax reporting. Filters to live=1,…]] - rationale - execution_log.py
+- [[Fetch a single order record by id from execution_log.db.]] - rationale - execution_log.py
+- [[Mark an open live position closed via an early protective exit (stop-…]] - rationale - execution_log.py
+- [[Missing EXECUTION_LOG_PATH Centralization (Possible)]] - document - docs/grade_audit/outputs/paths.py.md
+- [[PaperPositionStore.save_peak]] - code - paper.py
+- [[Reconcile an open live position's tracked size after an IOC exit order only…]] - rationale - execution_log.py
+- [[Record a live order attempt. Returns the new row ID. Call with status='sent'…]] - rationale - execution_log.py
+- [[Record a new peak unrealized-profit fraction for an open live position (mirrors…]] - rationale - execution_log.py
+- [[Return True if a filled order for this ticker was placed within the last N…]] - rationale - execution_log.py
+- [[Return True if an order for this ticker+side was placed within the last N…]] - rationale - execution_log.py
+- [[Return True if an order for ticker+side was placed on this forecast cycle.]] - rationale - execution_log.py
+- [[Return live filled orders that have not yet had their settlement outcome…]] - rationale - execution_log.py
+- [[Return live order P&L summary for the dashboard. Returns today_pnl sum of pnl…]] - rationale - execution_log.py
+- [[Return today's cumulative live order spend in dollars (UTC date), across every…]] - rationale - execution_log.py
+- [[Tests for execution_log schema migration and cycle-aware deduplication.]] - rationale - tests/test_execution_log.py
+- [[Write settlement outcome to an order row. outcome_yes=True means the YES side…]] - rationale - execution_log.py
+- [[_clear_degraded_flag()]] - code - execution_log.py
+- [[_conn()_1]] - code - execution_log.py
+- [[_run_migrations()_1]] - code - execution_log.py
+- [[add_live_loss()]] - code - execution_log.py
+- [[execution_log._MIGRATIONS  _SCHEMA_VERSION]] - code - execution_log.py
+- [[execution_log.py]] - code - execution_log.py
+- [[execution_log.py File Grade median 7-810, 2 RF1 promotions]] - document - docs/grade_audit/outputs/execution_log.py.md
+- [[execution_log.py Grade Audit]] - document - docs/grade_audit/outputs/execution_log.py.md
+- [[export_live_tax_csv()]] - code - execution_log.py
+- [[get_filled_unsettled_live_orders()]] - code - execution_log.py
+- [[get_live_pnl_summary()]] - code - execution_log.py
+- [[get_order_by_id()]] - code - execution_log.py
+- [[get_today_live_spend()]] - code - execution_log.py
+- [[init_log()]] - code - execution_log.py
+- [[log_order()]] - code - execution_log.py
+- [[log_order() json.dumps Failure Returns id=0 (710)]] - document - docs/grade_audit/outputs/execution_log.py.md
+- [[record_live_early_exit()]] - code - execution_log.py
+- [[record_live_partial_exit()]] - code - execution_log.py
+- [[record_live_settlement()]] - code - execution_log.py
+- [[test_execution_log.py]] - code - tests/test_execution_log.py
+- [[update_live_peak_profit()]] - code - execution_log.py
+- [[was_ordered_recently()]] - code - execution_log.py
+- [[was_ordered_this_cycle()]] - code - execution_log.py
+- [[was_recently_ordered()]] - code - execution_log.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -63,18 +63,34 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 23 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 7 edges to [[_COMMUNITY_Community 136]]
-- 6 edges to [[_COMMUNITY_Community 290]]
-- 5 edges to [[_COMMUNITY_Community 266]]
-- 4 edges to [[_COMMUNITY_Community 382]]
-- 3 edges to [[_COMMUNITY_Community 443]]
-- 2 edges to [[_COMMUNITY_Community 556]]
-- 1 edge to [[_COMMUNITY_Community 85]]
+- 11 edges to [[_COMMUNITY_Community 1]]
+- 9 edges to [[_COMMUNITY_Community 3]]
+- 9 edges to [[_COMMUNITY_Community 404]]
+- 8 edges to [[_COMMUNITY_Community 4]]
+- 6 edges to [[_COMMUNITY_Community 0]]
+- 6 edges to [[_COMMUNITY_Community 119]]
+- 5 edges to [[_COMMUNITY_Community 459]]
+- 4 edges to [[_COMMUNITY_Community 110]]
+- 4 edges to [[_COMMUNITY_Community 6]]
+- 3 edges to [[_COMMUNITY_Community 44]]
+- 2 edges to [[_COMMUNITY_Community 12]]
+- 2 edges to [[_COMMUNITY_Community 171]]
+- 1 edge to [[_COMMUNITY_Community 136]]
+- 1 edge to [[_COMMUNITY_Community 253]]
+- 1 edge to [[_COMMUNITY_Community 275]]
+- 1 edge to [[_COMMUNITY_Community 377]]
+- 1 edge to [[_COMMUNITY_Community 416]]
+- 1 edge to [[_COMMUNITY_Community 458]]
+- 1 edge to [[_COMMUNITY_Community 407]]
+- 1 edge to [[_COMMUNITY_Community 220]]
+- 1 edge to [[_COMMUNITY_Community 281]]
+- 1 edge to [[_COMMUNITY_Community 35]]
+- 1 edge to [[_COMMUNITY_Community 33]]
+- 1 edge to [[_COMMUNITY_Community 41]]
 
 ## Top bridge nodes
-- [[_strong_market_analysis()]] - degree 56, connects to 7 communities
-- [[dot-test_tiered_candidate_clears_validates_own_edge_gates()]] - degree 4, connects to 2 communities
-- [[TestPlacementEdgeGateTierClassification]] - degree 12, connects to 1 community
-- [[TestGateUnification]] - degree 9, connects to 1 community
-- [[TestPlacementKellyFloorGateTierClassification]] - degree 8, connects to 1 community
+- [[execution_log.py]] - degree 48, connects to 11 communities
+- [[test_execution_log.py]] - degree 25, connects to 10 communities
+- [[log_order()]] - degree 15, connects to 8 communities
+- [[_conn()_1]] - degree 21, connects to 4 communities
+- [[init_log()]] - degree 21, connects to 4 communities

@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 626
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_count_settled_hurricane_next_event_predictions_distinct_ticker_not_raw_rows()]] - code - tests/test_tracker.py
-- [[Confirmed live (not assumed) during implementation log_prediction()'s own…]] - rationale - tests/test_tracker.py
+- [[dot-test_cron_logs_prod_warning()]] - code - tests/test_phase2_batch_g.py
+- [[dot-test_main_logs_prod_warning()]] - code - tests/test_phase2_batch_g.py
+- [[dot-test_no_warning_in_demo()]] - code - tests/test_phase2_batch_g.py
+- [[P2-16 KALSHI_ENV=prod must log a loud WARNING banner.]] - rationale - tests/test_phase2_batch_g.py
+- [[TestProdStartupWarning]] - code - tests/test_phase2_batch_g.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
-- 1 edge to [[_COMMUNITY_Tracker Settlement Sigma & Disputed Rows]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[dot-test_count_settled_hurricane_next_event_predictions_distinct_ticker_not_raw_rows()]] - degree 3, connects to 2 communities
+- [[TestProdStartupWarning]] - degree 5, connects to 1 community

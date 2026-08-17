@@ -1,39 +1,40 @@
 ---
 type: community
 cohesion: 0.12
-members: 24
+members: 25
 ---
 
 # Community 120
 
 **Cohesion:** 0.12 - loosely connected
-**Members:** 24 nodes
+**Members:** 25 nodes
 
 ## Members
-- [[dot-_patch_paths()]] - code - tests/test_hmac_bias.py
-- [[dot-test_compare_digest_used_not_equality()]] - code - tests/test_hmac_bias.py
-- [[dot-test_missing_hmac_sidecar_returns_empty()]] - code - tests/test_hmac_bias.py
-- [[dot-test_no_pkl_returns_empty()]] - code - tests/test_hmac_bias.py
-- [[dot-test_no_secret_set_returns_empty()]] - code - tests/test_hmac_bias.py
-- [[dot-test_tampered_pkl_returns_empty()]] - code - tests/test_hmac_bias.py
-- [[dot-test_train_writes_hmac_sidecar()]] - code - tests/test_hmac_bias.py
-- [[dot-test_valid_hmac_loads_models()]] - code - tests/test_hmac_bias.py
-- [[dot-test_wrong_secret_returns_empty()]] - code - tests/test_hmac_bias.py
-- [[Grade Audit Module Doc ml_bias.py]] - document - docs/grade_audit/modules/ml_bias.md
-- [[HMAC mismatch (tampered pkl) → refuse to load, return {}.]] - rationale - tests/test_hmac_bias.py
-- [[HMAC signed with different secret → mismatch → return {}.]] - rationale - tests/test_hmac_bias.py
-- [[MODEL_HMAC_SECRET not set → skip loading entirely (RCE risk).]] - rationale - tests/test_hmac_bias.py
-- [[P0-9 bias_models.pkl must be HMAC-verified before deserialization.]] - rationale - tests/test_hmac_bias.py
-- [[Path_3]] - code
-- [[TestHmacVerification]] - code - tests/test_hmac_bias.py
-- [[Valid pkl + matching HMAC sidecar → models loaded successfully.]] - rationale - tests/test_hmac_bias.py
-- [[Write a valid pkl + sidecar and return the raw bytes.]] - rationale - tests/test_hmac_bias.py
-- [[_load_models must use hmac.compare_digest, not == for timing safety.]] - rationale - tests/test_hmac_bias.py
-- [[_write_valid_pkl()]] - code - tests/test_hmac_bias.py
-- [[pkl does not exist → return {} without error.]] - rationale - tests/test_hmac_bias.py
-- [[pkl exists but no .hmac sidecar → refuse to load, return {}.]] - rationale - tests/test_hmac_bias.py
-- [[test_hmac_bias.py]] - code - tests/test_hmac_bias.py
-- [[train_bias_model must write the .hmac sidecar alongside the pkl.]] - rationale - tests/test_hmac_bias.py
+- [[Confirmed live 2026-07-20 a transient fetchparse hiccup can return markets…]] - rationale - tests/test_hourly_target_hours.py
+- [[If max_hour and min_hour ever coincide (degenerate data), behavior must be…]] - rationale - tests/test_hourly_target_hours.py
+- [[One city already refreshed today, the rest weren't — only the stale ones should…]] - rationale - tests/test_hourly_target_hours.py
+- [[One finalized ladder whose close_time, converted to `city_tz`, lands on…]] - rationale - tests/test_hourly_target_hours.py
+- [[Tests for refresh_hourly_target_hours()get_hourly_target_hour_role() — once-…]] - rationale - tests/test_hourly_target_hours.py
+- [[Ticker hour-parse failure must gate out safely, not crash.]] - rationale - tests/test_hourly_target_hours.py
+- [[_finalized_market()]] - code - tests/test_hourly_target_hours.py
+- [[_ladder_at_local_hour()]] - code - tests/test_hourly_target_hours.py
+- [[_mock_client()]] - code - tests/test_hourly_target_hours.py
+- [[_today()]] - code - tests/test_hourly_target_hours.py
+- [[test_first_run_creates_cache_for_all_cities()]] - code - tests/test_hourly_target_hours.py
+- [[test_gated_to_run_once_per_city_per_day()]] - code - tests/test_hourly_target_hours.py
+- [[test_hourly_target_hours.py]] - code - tests/test_hourly_target_hours.py
+- [[test_never_raises_when_fetch_throws()]] - code - tests/test_hourly_target_hours.py
+- [[test_no_usable_data_not_cached_as_done_for_today()]] - code - tests/test_hourly_target_hours.py
+- [[test_one_city_fetch_failure_does_not_block_others()]] - code - tests/test_hourly_target_hours.py
+- [[test_role_degenerate_max_equals_min_prefers_max()]] - code - tests/test_hourly_target_hours.py
+- [[test_role_returns_max_for_cached_max_hour()]] - code - tests/test_hourly_target_hours.py
+- [[test_role_returns_min_for_cached_min_hour()]] - code - tests/test_hourly_target_hours.py
+- [[test_role_returns_none_for_non_target_hour()]] - code - tests/test_hourly_target_hours.py
+- [[test_role_returns_none_when_cache_missing()]] - code - tests/test_hourly_target_hours.py
+- [[test_role_returns_none_when_city_not_cached()]] - code - tests/test_hourly_target_hours.py
+- [[test_role_returns_none_when_hour_is_none()]] - code - tests/test_hourly_target_hours.py
+- [[test_series_drift.py (referenced, not in this chunk)]] - code - tests/test_series_drift.py
+- [[test_stale_city_refreshed_others_untouched()]] - code - tests/test_hourly_target_hours.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -43,9 +44,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 3 edges to [[_COMMUNITY_ML Bias Multiday-Predictions Filter]]
-- 1 edge to [[_COMMUNITY_Community 109]]
+- 4 edges to [[_COMMUNITY_Community 4]]
+- 1 edge to [[_COMMUNITY_Community 53]]
+- 1 edge to [[_COMMUNITY_Community 235]]
 
 ## Top bridge nodes
-- [[Grade Audit Module Doc ml_bias.py]] - degree 4, connects to 2 communities
-- [[test_hmac_bias.py]] - degree 5, connects to 1 community
+- [[test_hourly_target_hours.py]] - degree 24, connects to 2 communities
+- [[_ladder_at_local_hour()]] - degree 7, connects to 1 community

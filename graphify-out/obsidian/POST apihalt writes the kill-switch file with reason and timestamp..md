@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_web_app.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 332"
 location: "L740"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_332
 ---
 
 # POST /api/halt writes the kill-switch file with reason and timestamp.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_halt_creates_kill_switch_file()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_332

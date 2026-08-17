@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_safe_io.py"
 type: "rationale"
-community: "Safe I/O CRC Validation Tests"
+community: "Community 85"
 location: "L548"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Safe_I/O_CRC_Validation_Tests
+  - community/Community_85
 ---
 
 # P1-6: emergency copy is written to fallback_dir before raising.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_atomic_write_emergency_copy_written_on_failure()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Safe_I/O_CRC_Validation_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_85

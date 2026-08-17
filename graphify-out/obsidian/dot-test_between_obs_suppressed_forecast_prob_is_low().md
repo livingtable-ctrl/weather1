@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "code"
-community: "Community 465"
+community: "Community 504"
 location: "L1036"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_465
+  - community/Community_504
 ---
 
 # .test_between_obs_suppressed_forecast_prob_is_low()
@@ -16,4 +16,4 @@ tags:
 - [[Obs suppression is the mechanism keeping 'between' probability calibrated.…]] - `rationale_for` [EXTRACTED]
 - [[TestBetweenObsDisabled]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_465
+#graphify/code #graphify/EXTRACTED #community/Community_504

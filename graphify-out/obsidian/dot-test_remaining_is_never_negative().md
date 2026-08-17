@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_climatology.py"
 type: "code"
-community: "Community 60"
+community: "Community 59"
 location: "L287"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_60
+  - community/Community_59
 ---
 
 # .test_remaining_is_never_negative()
@@ -16,4 +16,4 @@ tags:
 - [[_fixture_storms()]] - `calls` [EXTRACTED]
 - [[count_as_of_day is always = season_end_counts by construction, so remaining =…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_60
+#graphify/code #graphify/EXTRACTED #community/Community_59

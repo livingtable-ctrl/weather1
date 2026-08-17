@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_execution_log.py"
 type: "rationale"
-community: "Community 393"
+community: "Community 416"
 location: "L715"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_393
+  - community/Community_416
 ---
 
 # H-21 followup: was_ordered_recently() compared raw ISO-T placed_at against…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestWasOrderedRecentlyTimestampBoundary]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_393
+#graphify/rationale #graphify/EXTRACTED #community/Community_416

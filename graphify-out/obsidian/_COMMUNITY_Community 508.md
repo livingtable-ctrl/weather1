@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.33
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 508
 
-**Cohesion:** 0.33 - loosely connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-test_does_not_block_when_gate_active()_4]] - code - tests/test_hurricane_markets.py
-- [[dot-test_other_hurricane_shapes_still_unconditionally_blocked()_1]] - code - tests/test_hurricane_markets.py
-- [[dot-test_sibling_gate_state_does_not_affect_this_one()]] - code - tests/test_hurricane_markets.py
-- [[dot-test_still_blocks_when_gate_inactive()_4]] - code - tests/test_hurricane_markets.py
-- [[None of the 3 hurricane sub-models' gates must cross-activate each other.]] - rationale - tests/test_hurricane_markets.py
-- [[TestCheckPositionLimitsStormOrderConditional]] - code - tests/test_hurricane_markets.py
+- [[dot-test_apply_ml_prob_correction_adjusts_probability()]] - code - tests/test_ml_bias.py
+- [[dot-test_apply_ml_prob_correction_falls_back_when_no_model()]] - code - tests/test_ml_bias.py
+- [[dot-test_train_bias_model_returns_dict()]] - code - tests/test_ml_bias.py
+- [[TestMLBias]] - code - tests/test_ml_bias.py
+- [[apply_ml_prob_correction returns adjusted prob when model is available.]] - rationale - tests/test_ml_bias.py
+- [[apply_ml_prob_correction returns our_prob unchanged if no trained model exists.]] - rationale - tests/test_ml_bias.py
+- [[train_bias_model returns a dict with per-city models.]] - rationale - tests/test_ml_bias.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 90]]
+- 1 edge to [[_COMMUNITY_Community 99]]
 
 ## Top bridge nodes
-- [[TestCheckPositionLimitsStormOrderConditional]] - degree 5, connects to 1 community
+- [[TestMLBias]] - degree 4, connects to 1 community

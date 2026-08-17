@@ -1,12 +1,12 @@
 ---
 source_file: "utils.py"
 type: "code"
-community: "Community 82"
+community: "Community 38"
 location: "L378"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_82
+  - community/Community_38
 ---
 
 # normal_cdf()
@@ -30,11 +30,11 @@ tags:
 - [[nws_prob()]] - `calls` [EXTRACTED]
 - [[obs_prob()]] - `calls` [EXTRACTED]
 - [[persistence_prob()]] - `calls` [EXTRACTED]
-- [[test_forecasting.py]] - `references` [EXTRACTED]
+- [[test_forecasting.py]] - `imports` [EXTRACTED]
 - [[test_nws.py]] - `imports` [EXTRACTED]
 - [[test_weather.py]] - `imports` [EXTRACTED]
 - [[test_weather_markets.py]] - `imports` [EXTRACTED]
 - [[utils.py]] - `contains` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_82
+#graphify/code #graphify/EXTRACTED #community/Community_38

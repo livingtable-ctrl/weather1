@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_alerts_side.py"
 type: "code"
-community: "Community 200"
+community: "Community 274"
 location: "L135"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_200
+  - community/Community_274
 ---
 
 # TestGroupCFixes
@@ -23,4 +23,4 @@ tags:
 - [[Regression tests for the lower-severity Fable findings fixed alongside the…]] - `rationale_for` [EXTRACTED]
 - [[test_alerts_side.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_200
+#graphify/code #graphify/EXTRACTED #community/Community_274

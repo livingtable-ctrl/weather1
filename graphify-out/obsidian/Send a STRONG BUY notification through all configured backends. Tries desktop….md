@@ -1,12 +1,12 @@
 ---
 source_file: "notify.py"
 type: "rationale"
-community: "Community 96"
+community: "Community 3"
 location: "L275"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_96
+  - community/Community_3
 ---
 
 # Send a STRONG BUY notification through all configured backends. Tries desktop…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[alert_strong_signal()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_96
+#graphify/rationale #graphify/EXTRACTED #community/Community_3

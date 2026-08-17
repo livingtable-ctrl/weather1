@@ -1,25 +1,25 @@
 ---
 type: community
-cohesion: 0.20
+cohesion: 0.29
 members: 10
 ---
 
 # Community 368
 
-**Cohesion:** 0.20 - loosely connected
+**Cohesion:** 0.29 - loosely connected
 **Members:** 10 nodes
 
 ## Members
-- [[(backlog.txt THE ONLY LIVE-ORDER PATH...) cron.py trades days_out==0 markets…]] - rationale - tests/test_p1_remaining.py
-- [[dot-_base_analysis()]] - code - tests/test_p1_remaining.py
-- [[dot-test_prints_corrected_count()]] - code - tests/test_p1_remaining.py
-- [[dot-test_prints_error_and_reraises_on_failure()_1]] - code - tests/test_p1_remaining.py
-- [[dot-test_prints_failed_count_when_nonzero()_1]] - code - tests/test_p1_remaining.py
-- [[dot-test_same_day_market_reaches_liquid_opps_out()]] - code - tests/test_p1_remaining.py
-- [[A days_out == 0 market with a real qualifying edge must reach _liquid_opps_out…]] - rationale - tests/test_p1_remaining.py
-- [[TestAnalyzeOnceSameDayParity]] - code - tests/test_p1_remaining.py
-- [[TestCmdBackfillDailyTempSettlement]] - code - tests/test_p1_remaining.py
-- [[main.cmd_backfill_daily_temp_settlement -- the `backfill-daily-temp-settlement`…]] - rationale - tests/test_p1_remaining.py
+- [[dot-__enter__()]] - code - paper.py
+- [[dot-__exit__()]] - code - paper.py
+- [[dot-__init__()_6]] - code - paper.py
+- [[dot-_acquire_file_lock()]] - code - paper.py
+- [[dot-_release_file_lock()]] - code - paper.py
+- [[dot-acquire()]] - code - paper.py
+- [[dot-release()]] - code - paper.py
+- [[Also usable directly (not just via `with`) — a couple of call sites span…]] - rationale - paper.py
+- [[Serialises read-modify-write cycles on paper_trades.json across BOTH threads…]] - rationale - paper.py
+- [[_CrossProcessDataLock]] - code - paper.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -29,9 +29,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 4 edges to [[_COMMUNITY_Trade Cycle Engine & Arbitrage Gates]]
-- 2 edges to [[_COMMUNITY_Community 96]]
+- 2 edges to [[_COMMUNITY_Community 12]]
+- 1 edge to [[_COMMUNITY_Community 116]]
+- 1 edge to [[_COMMUNITY_Community 1]]
+- 1 edge to [[_COMMUNITY_Community 8]]
 
 ## Top bridge nodes
-- [[TestCmdBackfillDailyTempSettlement]] - degree 7, connects to 2 communities
-- [[TestAnalyzeOnceSameDayParity]] - degree 6, connects to 2 communities
+- [[_CrossProcessDataLock]] - degree 13, connects to 4 communities

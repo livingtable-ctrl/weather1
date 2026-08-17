@@ -1,21 +1,22 @@
 ---
 type: community
-cohesion: 0.47
-members: 6
+cohesion: 0.29
+members: 7
 ---
 
 # Community 531
 
-**Cohesion:** 0.47 - moderately connected
-**Members:** 6 nodes
+**Cohesion:** 0.29 - loosely connected
+**Members:** 7 nodes
 
 ## Members
-- [[dot-_patch_common()]] - code - tests/test_weather_markets.py
-- [[dot-test_bias_subtracted_from_raw_members_before_blend()]] - code - tests/test_weather_markets.py
-- [[dot-test_hourly_fetch_skips_bias_correction()]] - code - tests/test_weather_markets.py
-- [[TestGetEnsembleTempsBiasCorrection]] - code - tests/test_weather_markets.py
-- [[Wiring test get_ensemble_temps() must subtract each model's bias from its raw…]] - rationale - tests/test_weather_markets.py
-- [[hour is not None - var is semantically meaningless (a daily- extreme…]] - rationale - tests/test_weather_markets.py
+- [[dot-test_chicago_high_bias_applies()]] - code - tests/test_weather_markets.py
+- [[dot-test_denver_high_bias_applies()]] - code - tests/test_weather_markets.py
+- [[dot-test_miami_high_bias_applies()]] - code - tests/test_weather_markets.py
+- [[dot-test_nyc_still_works()]] - code - tests/test_weather_markets.py
+- [[dot-test_unknown_city_returns_unchanged()]] - code - tests/test_weather_markets.py
+- [[Regression bias dict keys must match CITY_COORDS keys exactly. Previously used…]] - rationale - tests/test_weather_markets.py
+- [[TestStationBiasKeys]] - code - tests/test_weather_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -25,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 11]]
 
 ## Top bridge nodes
-- [[TestGetEnsembleTempsBiasCorrection]] - degree 5, connects to 1 community
+- [[TestStationBiasKeys]] - degree 7, connects to 1 community

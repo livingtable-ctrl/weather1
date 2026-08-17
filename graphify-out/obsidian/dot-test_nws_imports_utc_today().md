@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_h.py"
 type: "code"
-community: "Community 519"
+community: "Community 577"
 location: "L82"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_519
+  - community/Community_577
 ---
 
 # .test_nws_imports_utc_today()
@@ -15,4 +15,4 @@ tags:
 - [[TestNwsUtcDate]] - `method` [EXTRACTED]
 - [[nws module must have _utc_today symbol (imported from utils).]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_519
+#graphify/code #graphify/EXTRACTED #community/Community_577

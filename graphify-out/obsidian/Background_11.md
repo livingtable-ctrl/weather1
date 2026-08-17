@@ -1,0 +1,17 @@
+---
+source_file: "docs/superpowers/plans/2026-04-15-p11-signal-execution-intelligence.md"
+type: "document"
+community: "Community 548"
+location: "L654"
+tags:
+  - graphify/document
+  - graphify/EXTRACTED
+  - community/Community_548
+---
+
+# Background
+
+## Connections
+- [[Task 58 (P11.I) — Limit order posting at mid-price for wide-spread markets]] - `contains` [EXTRACTED]
+
+#graphify/document #graphify/EXTRACTED #community/Community_548

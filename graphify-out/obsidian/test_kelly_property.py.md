@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_kelly_property.py"
 type: "code"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 173"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_173
 ---
 
 # test_kelly_property.py
@@ -13,7 +14,7 @@ tags:
 ## Connections
 - [[KELLY_CAP constant]] - `references` [EXTRACTED]
 - [[Property-based tests for Kelly sizing using Hypothesis.]] - `rationale_for` [EXTRACTED]
-- [[kelly_fraction()]] - `references` [EXTRACTED]
+- [[kelly_fraction()]] - `imports` [EXTRACTED]
 - [[test_forecasting.py]] - `semantically_similar_to` [INFERRED]
 - [[test_kelly_bet_dollars_never_exceeds_balance()]] - `contains` [EXTRACTED]
 - [[test_kelly_fraction_never_exceeds_cap()]] - `contains` [EXTRACTED]
@@ -23,4 +24,4 @@ tags:
 - [[test_kelly_positive_edge_gives_nonzero_fraction()]] - `contains` [EXTRACTED]
 - [[test_kelly_quantity_cost_never_exceeds_balance()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_173

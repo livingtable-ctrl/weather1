@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_menu_ux.py"
 type: "rationale"
-community: "Black Swan Halt State"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_4
 ---
 
 # Tests for menu UX fixes.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_menu_ux.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

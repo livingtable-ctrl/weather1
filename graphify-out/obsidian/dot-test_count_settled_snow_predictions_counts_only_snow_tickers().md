@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 622"
+community: "Community 713"
 location: "L4949"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_622
+  - community/Community_713
 ---
 
 # .test_count_settled_snow_predictions_counts_only_snow_tickers()
@@ -16,4 +16,4 @@ tags:
 - [[TestDisputedOutcomeTracking]] - `method` [EXTRACTED]
 - [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Snow Step 2 must count…]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_622
+#graphify/code #graphify/EXTRACTED #community/Community_713

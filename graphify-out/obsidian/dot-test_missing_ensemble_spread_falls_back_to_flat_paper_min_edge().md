@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "code"
-community: "Community 443"
+community: "Community 476"
 location: "L1631"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_443
+  - community/Community_476
 ---
 
 # .test_missing_ensemble_spread_falls_back_to_flat_paper_min_edge()
@@ -16,4 +16,4 @@ tags:
 - [[TestPlacementConfidenceTierGateTierClassification]] - `method` [EXTRACTED]
 - [[_strong_market_analysis()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_443
+#graphify/code #graphify/EXTRACTED #community/Community_476

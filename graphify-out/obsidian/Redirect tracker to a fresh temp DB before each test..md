@@ -1,17 +1,17 @@
 ---
 source_file: "tests/test_regression.py"
 type: "rationale"
-community: "Community 284"
+community: "Community 287"
 location: "L84"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_284
+  - community/Community_287
 ---
 
 # Redirect tracker to a fresh temp DB before each test.
 
 ## Connections
-- [[dot-setup_method()_18]] - `rationale_for` [EXTRACTED]
+- [[dot-setup_method()_21]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_284
+#graphify/rationale #graphify/EXTRACTED #community/Community_287

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "rationale"
-community: "Community 137"
+community: "Community 127"
 location: "L418"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_137
+  - community/Community_127
 ---
 
 # No tracker MAE data, no learned weights → pure seasonal baseline.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_falls_back_to_seasonal_baseline()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_137
+#graphify/rationale #graphify/EXTRACTED #community/Community_127

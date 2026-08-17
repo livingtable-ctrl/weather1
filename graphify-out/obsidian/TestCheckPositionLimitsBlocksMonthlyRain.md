@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_rain_markets.py"
 type: "code"
-community: "Community 408"
+community: "Community 435"
 location: "L1587"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_408
+  - community/Community_435
 ---
 
 # TestCheckPositionLimitsBlocksMonthlyRain
@@ -19,4 +19,4 @@ tags:
 - [[paper.check_position_limits() must refuse ANY qtyprice for a monthly-rain…]] - `rationale_for` [EXTRACTED]
 - [[test_rain_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_408
+#graphify/code #graphify/EXTRACTED #community/Community_435

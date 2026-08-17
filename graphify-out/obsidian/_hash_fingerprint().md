@@ -1,12 +1,12 @@
 ---
 source_file: "utils.py"
 type: "code"
-community: "NWS/Circuit-Breaker Data Validation"
+community: "Community 426"
 location: "L524"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/NWS/Circuit-Breaker_Data_Validation
+  - community/Community_426
 ---
 
 # _hash_fingerprint()
@@ -15,4 +15,4 @@ tags:
 - [[check_config_integrity()]] - `calls` [EXTRACTED]
 - [[utils.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/NWS/Circuit-Breaker_Data_Validation
+#graphify/code #graphify/EXTRACTED #community/Community_426

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_h.py"
 type: "code"
-community: "Community 554"
+community: "Community 628"
 location: "L154"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_554
+  - community/Community_628
 ---
 
 # .test_tracker_imports_utc_today()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestTrackerUtcDate]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_554
+#graphify/code #graphify/EXTRACTED #community/Community_628

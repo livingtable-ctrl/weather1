@@ -1,20 +1,22 @@
 ---
 source_file: "alerts.py"
 type: "code"
-community: "Community 94"
+community: "Community 32"
 location: "L171"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_94
+  - community/Community_32
 ---
 
 # mark_triggered()
 
 ## Connections
 - [[Mark an alert as triggered. 91 Records triggered_at timestamp for cooldown…]] - `rationale_for` [EXTRACTED]
-- [[_load()]] - `calls` [EXTRACTED]
-- [[_save()]] - `calls` [EXTRACTED]
+- [[_load()_1]] - `calls` [EXTRACTED]
+- [[_save()_1]] - `calls` [EXTRACTED]
 - [[alerts.py]] - `contains` [EXTRACTED]
+- [[cmd_watch()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_94
+#graphify/code #graphify/EXTRACTED #community/Community_32

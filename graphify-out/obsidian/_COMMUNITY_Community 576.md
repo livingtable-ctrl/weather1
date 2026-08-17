@@ -1,19 +1,21 @@
 ---
 type: community
-cohesion: 0.50
-members: 4
+cohesion: 0.33
+members: 6
 ---
 
 # Community 576
 
-**Cohesion:** 0.50 - moderately connected
-**Members:** 4 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_brier_alert_threshold_default()]] - code - tests/test_p9_p10.py
-- [[dot-test_enable_micro_live_defaults_false()]] - code - tests/test_p9_p10.py
-- [[dot-test_fingerprint_includes_micro_live_keys()]] - code - tests/test_p9_p10.py
-- [[TestPhase10ConfigKeys]] - code - tests/test_p9_p10.py
+- [[dot-test_monday_check_uses_utc_weekday()]] - code - tests/test_phase2_batch_h.py
+- [[dot-test_naive_timestamp_treated_as_utc()]] - code - tests/test_phase2_batch_h.py
+- [[A naive ISO timestamp from DB must be interpreted as UTC, not local.]] - rationale - tests/test_phase2_batch_h.py
+- [[P2-18 _check_startup_orders must treat naive DB timestamps as UTC.]] - rationale - tests/test_phase2_batch_h.py
+- [[TestCronStartupOrdersUtc]] - code - tests/test_phase2_batch_h.py
+- [[Weekly DB sweep must fire on UTC Monday, not local Monday.]] - rationale - tests/test_phase2_batch_h.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -23,9 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 50]]
-- 1 edge to [[_COMMUNITY_Black Swan Detection & Walk-Forward Backtest]]
+- 1 edge to [[_COMMUNITY_Community 23]]
 
 ## Top bridge nodes
-- [[TestPhase10ConfigKeys]] - degree 4, connects to 1 community
-- [[dot-test_fingerprint_includes_micro_live_keys()]] - degree 2, connects to 1 community
+- [[TestCronStartupOrdersUtc]] - degree 4, connects to 1 community

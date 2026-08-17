@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_menu_ux.py"
 type: "code"
-community: "Black Swan Halt State"
+community: "Community 4"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Halt_State
+  - community/Community_4
 ---
 
 # test_menu_ux.py
@@ -16,6 +17,8 @@ tags:
 - [[TestCronOutputFlush]] - `contains` [EXTRACTED]
 - [[TestExitSignals]] - `contains` [EXTRACTED]
 - [[Tests for menu UX fixes.]] - `rationale_for` [EXTRACTED]
-- [[main._liquidation_price]] - `references` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Halt_State
+#graphify/code #graphify/EXTRACTED #community/Community_4

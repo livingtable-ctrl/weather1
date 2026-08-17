@@ -1,12 +1,12 @@
 ---
 source_file: "ml_bias.py"
 type: "rationale"
-community: "Community 353"
-location: "L276"
+community: "Community 82"
+location: "L300"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_353
+  - community/Community_82
 ---
 
 # Fit Platt scaling (A, B) via cross-entropy minimisation with scipy.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_fit_platt()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_353
+#graphify/rationale #graphify/EXTRACTED #community/Community_82

@@ -1,36 +1,39 @@
 ---
 type: community
-cohesion: 0.09
-members: 21
+cohesion: 0.12
+members: 24
 ---
 
 # Community 132
 
-**Cohesion:** 0.09 - loosely connected
-**Members:** 21 nodes
+**Cohesion:** 0.12 - loosely connected
+**Members:** 24 nodes
 
 ## Members
-- [[dot-test_backup_creates_date_subdir()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_backup_prunes_old_dirs()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_restore_default_raises()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_restore_snapshots_existing_data()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_restore_with_confirm_proceeds()]] - code - tests/test_phase2_batch_g.py
-- [[dot-test_restore_without_confirm_raises()]] - code - tests/test_phase2_batch_g.py
-- [[P2-20 backup_data must write to YYYY-MM-DD subdirectory.]] - rationale - tests/test_phase2_batch_g.py
-- [[P2-47 restore_data must require confirm=True to prevent silent overwrites.]] - rationale - tests/test_phase2_batch_g.py
-- [[TestCloudBackupTimestamped]] - code - tests/test_phase2_batch_g.py
-- [[TestRestoreDataConfirm]] - code - tests/test_phase2_batch_g.py
-- [[backup_to_s3 calls boto3.client('s3').upload_file with correct args.]] - rationale - tests/test_cloud_backup.py
-- [[backup_to_s3 logs a warning and does not raise when boto3 is not installed.]] - rationale - tests/test_cloud_backup.py
-- [[backup_to_s3 with no bucket returns None.]] - rationale - tests/test_cloud_backup.py
-- [[restore_data must snapshot current data before overwriting.]] - rationale - tests/test_phase2_batch_g.py
-- [[test_backup_to_s3_calls_upload()]] - code - tests/test_cloud_backup.py
-- [[test_backup_to_s3_skips_when_boto3_missing()]] - code - tests/test_cloud_backup.py
-- [[test_backup_to_s3_skips_without_env()]] - code - tests/test_cloud_backup.py
-- [[test_cloud_backup.py]] - code - tests/test_cloud_backup.py
-- [[test_cloud_backup_fails_gracefully_on_s3_error()]] - code - tests/test_cloud_backup.py
-- [[test_cloud_backup_skipped_without_env()]] - code - tests/test_cloud_backup.py
-- [[test_cloud_backup_uploads_to_s3()]] - code - tests/test_cloud_backup.py
+- [[dot-_seed()]] - code - tests/test_signal_quality.py
+- [[dot-_seed()_1]] - code - tests/test_signal_quality.py
+- [[dot-setup_method()_7]] - code - tests/test_signal_quality.py
+- [[dot-setup_method()_8]] - code - tests/test_signal_quality.py
+- [[dot-teardown_method()_4]] - code - tests/test_signal_quality.py
+- [[dot-teardown_method()_5]] - code - tests/test_signal_quality.py
+- [[dot-test_city_isolation()]] - code - tests/test_signal_quality.py
+- [[dot-test_empty_returns_empty_dict()]] - code - tests/test_signal_quality.py
+- [[dot-test_empty_tier_returns_none_brier()]] - code - tests/test_signal_quality.py
+- [[dot-test_insufficient_observations_for_all_returns_empty_dict()]] - code - tests/test_signal_quality.py
+- [[dot-test_lower_mae_gets_higher_weight()]] - code - tests/test_signal_quality.py
+- [[dot-test_med_tier_computed()]] - code - tests/test_signal_quality.py
+- [[dot-test_multiple_predictions_averaged()]] - code - tests/test_signal_quality.py
+- [[dot-test_one_thin_model_excluded_not_blocking_the_other()]] - code - tests/test_signal_quality.py
+- [[dot-test_strong_tier_computed()]] - code - tests/test_signal_quality.py
+- [[dot-test_weak_tier_computed()]] - code - tests/test_signal_quality.py
+- [[dot-test_weights_sum_to_one()_1]] - code - tests/test_signal_quality.py
+- [[dot-test_window_days_excludes_old_data()]] - code - tests/test_signal_quality.py
+- [[2026-07-23 (TRACK ECMWF FORECAST ACCURACY adjacency fix) a model below the…]] - rationale - tests/test_signal_quality.py
+- [[2026-07-23 (TRACK ECMWF FORECAST ACCURACY adjacency fix) when every tracked…]] - rationale - tests/test_signal_quality.py
+- [[Point tracker at a fresh temp DB for isolation.]] - rationale - tests/test_signal_quality.py
+- [[TestGetBrierByTier]] - code - tests/test_signal_quality.py
+- [[TestGetModelWeights]] - code - tests/test_signal_quality.py
+- [[get_brier_by_tier() splits Brier score by abs(edge) tier.]] - rationale - tests/test_signal_quality.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -40,10 +43,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Community 248]]
-- 1 edge to [[_COMMUNITY_Community 109]]
+- 2 edges to [[_COMMUNITY_Community 238]]
 
 ## Top bridge nodes
-- [[test_cloud_backup.py]] - degree 7, connects to 1 community
-- [[TestRestoreDataConfirm]] - degree 6, connects to 1 community
-- [[TestCloudBackupTimestamped]] - degree 4, connects to 1 community
+- [[TestGetModelWeights]] - degree 11, connects to 1 community
+- [[TestGetBrierByTier]] - degree 10, connects to 1 community

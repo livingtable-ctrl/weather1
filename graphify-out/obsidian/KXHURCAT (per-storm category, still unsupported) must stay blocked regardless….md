@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "rationale"
-community: "Community 509"
+community: "Community 568"
 location: "L934"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_509
+  - community/Community_568
 ---
 
 # KXHURCAT (per-storm category, still unsupported) must stay blocked regardless…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_other_hurricane_shapes_still_unconditionally_blocked()_2]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_509
+#graphify/rationale #graphify/EXTRACTED #community/Community_568

@@ -1,20 +1,19 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "code"
-community: "Community 693"
+community: "Community 186"
 location: "L127"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_186
 ---
 
 # .test_daily_loss_halted_returns_zero()
 
 ## Connections
 - [[TestAutoPlaceTradeGuards]] - `method` [EXTRACTED]
-- [[_make_opp()_2]] - `calls` [EXTRACTED]
+- [[_make_opp()_1]] - `calls` [EXTRACTED]
 - [[_patch_paper_guards()]] - `calls` [EXTRACTED]
-- [[main()_1]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_693
+#graphify/code #graphify/EXTRACTED #community/Community_186

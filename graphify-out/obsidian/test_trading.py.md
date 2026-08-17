@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trading.py"
 type: "code"
-community: "Community 92"
+community: "Community 86"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_92
+  - community/Community_86
 ---
 
 # test_trading.py
@@ -24,7 +24,12 @@ tags:
 - [[_l7b_common_patches()]] - `contains` [EXTRACTED]
 - [[_run_with_captured_kelly()]] - `contains` [EXTRACTED]
 - [[_sibling_opp()]] - `contains` [EXTRACTED]
-- [[main.py CLI Entrypoint]] - `references` [EXTRACTED]
+- [[paper.get_open_trades]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[place_paper_order()_1]] - `imports` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
+- [[slippage_adjusted_price()]] - `imports` [EXTRACTED]
+- [[sys]] - `imports` [EXTRACTED]
 - [[test_auto_place_trades_logs_paper_order_to_execution_log()]] - `contains` [EXTRACTED]
 - [[test_auto_place_trades_med_tier_uses_20_cap()]] - `contains` [EXTRACTED]
 - [[test_auto_place_trades_none_ci_kelly_falls_back_without_crashing()]] - `contains` [EXTRACTED]
@@ -47,7 +52,6 @@ tags:
 - [[test_was_traded_today_blocks_reentry_after_settlement()]] - `contains` [EXTRACTED]
 - [[test_zero_edge_group_splits_equally()]] - `contains` [EXTRACTED]
 - [[time_decay_edge()]] - `imports` [EXTRACTED]
-- [[tracker.py_2]] - `references` [EXTRACTED]
-- [[trade_cycle.py (headless trade-cycle engine)]] - `conceptually_related_to` [AMBIGUOUS]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_92
+#graphify/code #graphify/EXTRACTED #community/Community_86

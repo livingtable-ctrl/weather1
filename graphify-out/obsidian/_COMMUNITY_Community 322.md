@@ -1,27 +1,27 @@
 ---
 type: community
-cohesion: 0.21
+cohesion: 0.17
 members: 12
 ---
 
 # Community 322
 
-**Cohesion:** 0.21 - loosely connected
+**Cohesion:** 0.17 - loosely connected
 **Members:** 12 nodes
 
 ## Members
-- [[dot-_make_enriched()_2]] - code - tests/test_weather_markets.py
-- [[dot-test_ensemble_excluded_from_blend_when_circuit_open()]] - code - tests/test_weather_markets.py
-- [[dot-test_entry_side_edge_formula_arithmetic()]] - code - tests/test_weather_markets.py
-- [[dot-test_no_trade_entry_side_edge_is_positive()]] - code - tests/test_weather_markets.py
-- [[dot-test_yes_trade_entry_side_edge_positive()]] - code - tests/test_weather_markets.py
-- [[A valid NO trade must have entry_side_edge  0 after P0-14 fix. Market…]] - rationale - tests/test_weather_markets.py
-- [[Build a minimal enriched dict for analyze_trade targeting a NO recommendation.]] - rationale - tests/test_weather_markets.py
-- [[P0-14 — entry_side_edge must be positive for a valid NO trade. Old formula…]] - rationale - tests/test_weather_markets.py
-- [[TestNoSideEntryEdgeSign]] - code - tests/test_weather_markets.py
-- [[Unit test of the P0-14 arithmetic verify corrected formula value.]] - rationale - tests/test_weather_markets.py
-- [[When the ensemble circuit breaker is OPEN, analyze_trade must exclude ens_prob…]] - rationale - tests/test_weather_markets.py
-- [[YES trade entry_side_edge is still positive after the fix (no regression).]] - rationale - tests/test_weather_markets.py
+- [[dot-setUp()_22]] - code - tests/test_tracker.py
+- [[dot-tearDown()_21]] - code - tests/test_tracker.py
+- [[dot-test_candle_missing_end_period_ts_is_skipped()]] - code - tests/test_tracker.py
+- [[dot-test_dedup_via_unique_index_is_idempotent()]] - code - tests/test_tracker.py
+- [[dot-test_empty_candlesticks_list_is_noop()]] - code - tests/test_tracker.py
+- [[dot-test_get_price_history_orders_by_end_period_ts()]] - code - tests/test_tracker.py
+- [[dot-test_logs_and_retrieves_candle()]] - code - tests/test_tracker.py
+- [[dot-test_null_price_field_stored_as_none()]] - code - tests/test_tracker.py
+- [[A candle with no trades in-period has price=None (only bidask quotes).]] - rationale - tests/test_tracker.py
+- [[Re-inserting the same tickerperiodend_ts candle is a no-op.]] - rationale - tests/test_tracker.py
+- [[TestPriceHistory]] - code - tests/test_tracker.py
+- [[log_price_candles  get_price_history — OHLC candlestick storage.]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,7 +31,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[TestNoSideEntryEdgeSign]] - degree 7, connects to 1 community
+- [[TestPriceHistory]] - degree 10, connects to 1 community

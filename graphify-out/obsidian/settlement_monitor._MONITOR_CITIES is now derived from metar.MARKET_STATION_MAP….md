@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_j.py"
 type: "rationale"
-community: "Community 205"
+community: "Community 210"
 location: "L270"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_205
+  - community/Community_210
 ---
 
 # settlement_monitor._MONITOR_CITIES is now derived from metar.MARKET_STATION_MAP…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_settlement_monitor_stations_match_metar_module()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_205
+#graphify/rationale #graphify/EXTRACTED #community/Community_210

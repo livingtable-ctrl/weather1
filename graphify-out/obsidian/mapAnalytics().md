@@ -1,18 +1,19 @@
 ---
-source_file: "weather app site V_3 (3)/src/useData.js"
+source_file: "frontend/src/useData.js"
 type: "code"
-community: "Community 692"
-location: "L298"
+community: "Community 135"
+location: "L273"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_692
+  - community/Community_135
 ---
 
 # mapAnalytics()
 
 ## Connections
-- [[useData()_1]] - `calls` [EXTRACTED]
-- [[weather app site V_3 (3)srcuseData.js]] - `contains` [EXTRACTED]
+- [[fetchAll (inner)]] - `calls` [EXTRACTED]
+- [[frontendsrcuseData.js]] - `contains` [EXTRACTED]
+- [[useData()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_692
+#graphify/code #graphify/EXTRACTED #community/Community_135

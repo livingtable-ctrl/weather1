@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 581"
-location: "L6801"
+community: "Community 5"
+location: "L6903"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_581
+  - community/Community_5
 ---
 
 # _count_market_implied_rain()
@@ -16,4 +16,4 @@ tags:
 - [[count_settled_market_implied_rain_events()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_581
+#graphify/code #graphify/EXTRACTED #community/Community_5

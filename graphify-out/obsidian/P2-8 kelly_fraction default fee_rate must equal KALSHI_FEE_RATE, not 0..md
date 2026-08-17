@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_a.py"
 type: "rationale"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 126"
 location: "L114"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_126
 ---
 
 # P2-8: kelly_fraction default fee_rate must equal KALSHI_FEE_RATE, not 0.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestKellyFractionFeeDefault]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_126

@@ -1,12 +1,12 @@
 ---
 source_file: "climatology.py"
 type: "code"
-community: "Forecasting Persistence Model Tests"
+community: "Community 38"
 location: "L224"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Forecasting_Persistence_Model_Tests
+  - community/Community_38
 ---
 
 # persistence_prob()
@@ -23,11 +23,11 @@ tags:
 - [[dot-test_invalid_std_dev_returns_none()]] - `calls` [EXTRACTED]
 - [[dot-test_returns_none_for_zero_std()]] - `calls` [EXTRACTED]
 - [[dot-test_unknown_condition_returns_none()]] - `calls` [EXTRACTED]
-- [[Phase 4 Improvement Tests]] - `imports` [EXTRACTED]
 - [[_compute_persistence_prob()]] - `calls` [EXTRACTED]
 - [[climatology.py]] - `contains` [EXTRACTED]
 - [[normal_cdf()]] - `calls` [EXTRACTED]
-- [[test_forecasting.py]] - `references` [EXTRACTED]
+- [[test_forecasting.py]] - `imports` [EXTRACTED]
+- [[test_phase4.py]] - `imports` [EXTRACTED]
 - [[weather_markets.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Forecasting_Persistence_Model_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_38

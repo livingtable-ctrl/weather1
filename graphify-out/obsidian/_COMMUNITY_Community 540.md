@@ -1,20 +1,21 @@
 ---
 type: community
-cohesion: 0.40
-members: 5
+cohesion: 0.33
+members: 6
 ---
 
 # Community 540
 
-**Cohesion:** 0.40 - moderately connected
-**Members:** 5 nodes
+**Cohesion:** 0.33 - loosely connected
+**Members:** 6 nodes
 
 ## Members
-- [[dot-test_model_pnl_uses_maker_fee_not_taker_fee()]] - code - tests/test_backtest.py
-- [[dot-test_simulate_uses_series_fetch_not_get_markets()]] - code - tests/test_backtest.py
-- [[TestCmdSimulateStatusParam]] - code - tests/test_backtest.py
-- [[The 'Model' P&L must match what analyze_trade() itself assumes (maker fee, $0…]] - rationale - tests/test_backtest.py
-- [[cmd_simulate must use _fetch_settled_markets (series-based), not get_markets.]] - rationale - tests/test_backtest.py
+- [[Additional HIGH Issues by File]] - document - docs/audit_findings.md
+- [[`calibration.py`]] - document - docs/audit_findings.md
+- [[`ml_bias.py`]] - document - docs/audit_findings.md
+- [[`monte_carlo.py`]] - document - docs/audit_findings.md
+- [[`order_executor.py`]] - document - docs/audit_findings.md
+- [[`tracker.py`]] - document - docs/audit_findings.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -24,7 +25,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Backtest Engine & Atomic Writes]]
+- 1 edge to [[_COMMUNITY_Community 364]]
 
 ## Top bridge nodes
-- [[TestCmdSimulateStatusParam]] - degree 3, connects to 1 community
+- [[Additional HIGH Issues by File]] - degree 6, connects to 1 community

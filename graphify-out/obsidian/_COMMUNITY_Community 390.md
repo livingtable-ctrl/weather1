@@ -1,24 +1,25 @@
 ---
 type: community
-cohesion: 0.22
-members: 9
+cohesion: 0.20
+members: 10
 ---
 
 # Community 390
 
-**Cohesion:** 0.22 - loosely connected
-**Members:** 9 nodes
+**Cohesion:** 0.20 - loosely connected
+**Members:** 10 nodes
 
 ## Members
-- [[dot-test_full_range_ok_but_remaining_range_too_missing_excludes_both()]] - code - tests/test_acis_precip.py
-- [[dot-test_hand_computed_sums()]] - code - tests/test_acis_precip.py
-- [[dot-test_missing_days_excluded_from_sum_not_treated_as_zero()]] - code - tests/test_acis_precip.py
-- [[dot-test_remaining_range_ok_but_full_range_too_missing_excludes_both()]] - code - tests/test_acis_precip.py
-- [[dot-test_year_excluded_when_missing_fraction_too_high()]] - code - tests/test_acis_precip.py
-- [[dot-test_year_included_at_missing_fraction_boundary()]] - code - tests/test_acis_precip.py
-- [[Review-caught coverage gap the remaining_start_day=1 cases above make…]] - rationale - tests/test_acis_precip.py
-- [[TestHistoricalRemainingAndFullMonthSums]] - code - tests/test_acis_precip.py
-- [[The reverse cross-exclusion case full range 1, 31 is fully present (0%…]] - rationale - tests/test_acis_precip.py
+- [[dot-test_condition_reads_floor_strike_directly()]] - code - tests/test_snow_markets.py
+- [[dot-test_dict_lookup_is_actually_consulted_not_just_the_den_coincidence()]] - code - tests/test_snow_markets.py
+- [[dot-test_kxdensnowm_in_known_weather_series()]] - code - tests/test_snow_markets.py
+- [[dot-test_kxdensnowm_resolves_to_denver()]] - code - tests/test_snow_markets.py
+- [[dot-test_other_snow_series_not_in_known_weather_series()]] - code - tests/test_snow_markets.py
+- [[dot-test_unexpected_strike_type_refuses_to_guess()]] - code - tests/test_snow_markets.py
+- [[Must run before the generic SNOW_SERIESis_snow_ticker branch, or this would…]] - rationale - tests/test_snow_markets.py
+- [[Opus-review finding 'DEN' is also a substring fallback match for Denver…]] - rationale - tests/test_snow_markets.py
+- [[Regression control the 32 real-but-excluded series must stay excluded, not…]] - rationale - tests/test_snow_markets.py
+- [[TestSnowTickerDiscovery]] - code - tests/test_snow_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -28,7 +29,10 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 271]]
+- 2 edges to [[_COMMUNITY_Community 317]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestHistoricalRemainingAndFullMonthSums]] - degree 7, connects to 1 community
+- [[TestSnowTickerDiscovery]] - degree 7, connects to 1 community
+- [[dot-test_condition_reads_floor_strike_directly()]] - degree 3, connects to 1 community
+- [[dot-test_unexpected_strike_type_refuses_to_guess()]] - degree 2, connects to 1 community

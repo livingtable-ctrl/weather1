@@ -1,12 +1,12 @@
 ---
 source_file: "climate_indices.py"
 type: "code"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 361"
 location: "L489"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_361
 ---
 
 # fetch_pdo_pna()
@@ -20,4 +20,4 @@ tags:
 - [[cron.py]] - `imports` [EXTRACTED]
 - [[get_pdo_pna()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/code #graphify/EXTRACTED #community/Community_361

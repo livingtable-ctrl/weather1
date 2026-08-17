@@ -1,28 +1,28 @@
 ---
 type: community
-cohesion: 0.21
+cohesion: 0.18
 members: 13
 ---
 
 # Community 291
 
-**Cohesion:** 0.21 - loosely connected
+**Cohesion:** 0.18 - loosely connected
 **Members:** 13 nodes
 
 ## Members
-- [[dot-_fake_bias_acc()]] - code - tests/test_weather_markets.py
-- [[dot-test_cache_key_includes_floors()]] - code - tests/test_weather_markets.py
-- [[dot-test_empty_when_tracker_call_fails()]] - code - tests/test_weather_markets.py
-- [[dot-test_falls_back_to_global_when_city_thin()]] - code - tests/test_weather_markets.py
-- [[dot-test_model_absent_when_both_city_and_global_too_thin()]] - code - tests/test_weather_markets.py
-- [[dot-test_model_with_no_data_for_requested_var_absent()]] - code - tests/test_weather_markets.py
-- [[dot-test_uses_city_specific_bias_when_above_floor()]] - code - tests/test_weather_markets.py
-- [[dot-test_var_split_never_pools_max_and_min()]] - code - tests/test_weather_markets.py
-- [[A model that only has 'min' data must not appear at all when var='max' is…]] - rationale - tests/test_weather_markets.py
-- [[Review-caught (2026-08-13) the cache key omitted min_n_city min_n_global, so…]] - rationale - tests/test_weather_markets.py
-- [[TestModelBias]] - code - tests/test_weather_markets.py
-- [[_model_bias() must correct each model's raw ensemble members toward its own…]] - rationale - tests/test_weather_markets.py
-- [[gfs_seamless's fixture has max bias=4.4 and min bias=0.4 -- these must never…]] - rationale - tests/test_weather_markets.py
+- [[dot-_log_and_settle()]] - code - tests/test_tracker.py
+- [[dot-setUp()_18]] - code - tests/test_tracker.py
+- [[dot-tearDown()_18]] - code - tests/test_tracker.py
+- [[dot-test_column_exists_after_init()]] - code - tests/test_tracker.py
+- [[dot-test_probation_rolling_isolates_from_non_probation_rows()]] - code - tests/test_tracker.py
+- [[dot-test_probation_rolling_none_below_min_samples()]] - code - tests/test_tracker.py
+- [[dot-test_upsert_min_merge_probation_write_cannot_reflag_real_row()]] - code - tests/test_tracker.py
+- [[dot-test_upsert_min_merge_real_write_clears_probation_flag()]] - code - tests/test_tracker.py
+- [[A later real (is_probation=0) write for the same (ticker, date) must clear an…]] - rationale - tests/test_tracker.py
+- [[A wildly-wrong non-probation row for the same method must not pollute the…]] - rationale - tests/test_tracker.py
+- [[Schema v50 must add is_probation to predictions, and…]] - rationale - tests/test_tracker.py
+- [[TestIsProbationColumn]] - code - tests/test_tracker.py
+- [[The reverse must not happen a probation write after a real write can never re-…]] - rationale - tests/test_tracker.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -32,7 +32,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Ensemble Weight Blending Tests]]
+- 1 edge to [[_COMMUNITY_Community 35]]
 
 ## Top bridge nodes
-- [[TestModelBias]] - degree 10, connects to 1 community
+- [[TestIsProbationColumn]] - degree 10, connects to 1 community

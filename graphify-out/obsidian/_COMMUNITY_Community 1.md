@@ -1,0 +1,331 @@
+---
+type: community
+cohesion: 0.02
+members: 233
+---
+
+# Community 1
+
+**Cohesion:** 0.02 - loosely connected
+**Members:** 233 nodes
+
+## Members
+- [[10 sentinel touched on every successful save, checked when DATA_PATH is…]] - rationale - paper.py
+- [[44 Scale down Kelly if we already hold an aging position in this ticker.…]] - rationale - paper.py
+- [[45 Return True if on a 3+ consecutive loss streak AND total streak losses…]] - rationale - paper.py
+- [[50 Compute a slippage-adjusted fill price for a market order. Uses the…]] - rationale - paper.py
+- [[51 Portfolio Kelly covariance adjustment. Computes the marginal increase in…]] - rationale - paper.py
+- [[dot-check()]] - code - trading_gates.py
+- [[dot-exit()]] - code - paper.py
+- [[dot-get_open()]] - code - paper.py
+- [[dot-save_peak()]] - code - paper.py
+- [[Adapt one paper_trades.json trade dict into the shared Position shape…]] - rationale - paper.py
+- [[Alias for get_all_trades — returns all paper trades (open and settled).]] - rationale - paper.py
+- [[Annualised Sharpe ratio over the last window_days calendar days. Uses daily P&L…]] - rationale - paper.py
+- [[Balance plus open same-day trade costs — the value used for drawdown decisions.…]] - rationale - paper.py
+- [[Bool wrapper around trading_gates.pre_live_trade_check() for the micro-live…]] - rationale - order_executor.py
+- [[Build the tracker.log_prediction() keyword args shared by the real post-…]] - rationale - order_executor.py
+- [[Check if paper trading performance warrants going live. Returns a summary dict…]] - rationale - paper.py
+- [[Check paper_trades.json for structural corruption. Returns a list of error…]] - rationale - paper.py
+- [[Check whether adding qty contracts at price would breach position limits.…]] - rationale - paper.py
+- [[Close an open paper trade at current market price instead of waiting for…]] - rationale - paper.py
+- [[Composite 0-100 score. Higher = more confidentgreedy. Components - Current…]] - rationale - paper.py
+- [[Compute full SHA-256 checksum (64 hex chars) of payload excluding '_checksum'…]] - rationale - paper.py
+- [[Count live orders with status 'pending' — enforces max_open_positions limit.]] - rationale - order_executor.py
+- [[Current drawdown from peak as a fraction (0.0 = no drawdown, 1.0 = total loss).…]] - rationale - paper.py
+- [[Decompose P&L into model-edge contribution vs luck (residual). Expected P&L =…]] - rationale - paper.py
+- [[Detect when you have 2+ open positions tied to the same city within a 3-day…]] - rationale - paper.py
+- [[Determine STRONG-tier per-trade cap from current Brier score. Returns a…]] - rationale - paper.py
+- [[Directional bias across open positions. Returns YESNO counts, costs, and which…]] - rationale - paper.py
+- [[Export all paper trades to CSV. Returns number of rows written.]] - rationale - paper.py
+- [[Export settled trades in Schedule D  capital gains format. Columns…]] - rationale - paper.py
+- [[Extract (ticker, city, target_date, analysis_dict, market_dict) from an opp…]] - rationale - order_executor.py
+- [[Gather all data needed for the report.]] - rationale - pdf_report.py
+- [[Generate HTML report as fallback when fpdf2 is not installed.]] - rationale - pdf_report.py
+- [[Generate PDF using fpdf2.]] - rationale - pdf_report.py
+- [[Generate a weekly trading summary report. Creates a PDF if fpdf2 is installed,…]] - rationale - pdf_report.py
+- [[Gross profit  gross loss from settled trades. Profit factor  1.0 means gross…]] - rationale - paper.py
+- [[Group markets by (series_ticker, date_str). Returns dict key - list of…]] - rationale - consistency.py
+- [[Identify dates with 2+ open positions settling — concentration risk. Returns…]] - rationale - paper.py
+- [[If updated prob shifts 25pp against position, close_paper_early is called.]] - rationale - tests/test_trading.py
+- [[Kill Switch Mid-Placement Gap]] - document - docs/grade_audit/outputs
+- [[Log per-model forecast accuracy after settlement for _dynamic_model_weights().…]] - rationale - paper.py
+- [[Log predictions for signals that passed analysis but were never placed…]] - rationale - order_executor.py
+- [[Mark-to-market unrealized P&L for open paper positions. Fetches current YES bid…]] - rationale - paper.py
+- [[Not called by check_paper_position_exits itself (below) -- that function needs…]] - rationale - paper.py
+- [[P0-4 exposure denominator scales with balance so caps stay proportional. 4…]] - rationale - paper.py
+- [[Paper trading commands paper buy ticker yesno qty price paper results…]] - rationale - main.py
+- [[Paper trading commands paper buy ticker yesno qty price paper results…_1]] - rationale - main.py
+- [[Paper trading ledger — simulates trades without using real money. Stored in…]] - rationale - paper.py
+- [[PaperPositionStore]] - code - paper.py
+- [[Parse Kalshi's fill_count_fp field (a fixed-point-formatted string, e.g.…]] - rationale - order_executor.py
+- [[Path_1]] - code
+- [[Persist one position's new peak. Writes one trade at a time (one _save() per…]] - rationale - paper.py
+- [[Place a live Kalshi order with hard-stop guards. Returns (placed, dollar_cost).…]] - rationale - order_executor.py
+- [[Place a paper trade. Deducts quantity  entry_price from balance. thesis…]] - rationale - paper.py
+- [[PositionStore backed by paper.py's own JSON ledger (datapaper_trades.json).…]] - rationale - paper.py
+- [[Pre-trade live safety gate — single call point before every live order.]] - rationale - trading_gates.py
+- [[Price-based stop-loss and breakeven-stop check for every open paper position --…]] - rationale - paper.py
+- [[Prompt to paper-buy a ticker directly after seeing analyze output.]] - rationale - main.py
+- [[Prompt to paper-buy a ticker directly after seeing analyze output._1]] - rationale - main.py
+- [[Raise RuntimeError if any live trading gate is not satisfied. Pass the `client`…]] - rationale - trading_gates.py
+- [[Record settlement for a paper trade. YES wins if outcome_yes=True. Returns the…]] - rationale - paper.py
+- [[Record which features were present for a trade and (optionally) the outcome.…]] - rationale - feature_importance.py
+- [[Replace characters outside Latin-1 so Helvetica doesn't crash.]] - rationale - pdf_report.py
+- [[Reprice a resting live order in place via Kalshi's atomic amend endpoint,…]] - rationale - order_executor.py
+- [[Reset the high-water mark to the current settled balance. Use after a rough…]] - rationale - paper.py
+- [[Return (allowed, reason). Fail-closed any exception → blocked. `client` should…]] - rationale - trading_gates.py
+- [[Return (effective_balance, peak_balance) as a single atomic read. Acquires…]] - rationale - paper.py
+- [[Return True if balance has fallen more than MAX_DRAWDOWN_FRACTION from the peak…]] - rationale - paper.py
+- [[Return True if rolling win rate over last ACCURACY_WINDOW_TRADES is below…]] - rationale - paper.py
+- [[Return True if today's P&L is worse than -MAX_DAILY_LOSS_PCT  current balance.…]] - rationale - paper.py
+- [[Return True only when HOURLY_TRADING_ENABLED=1 AND = 20 settled hourly…]] - rationale - weather_markets.py
+- [[Return True only when HURRICANE_NEXT_EVENT_TRADING_ENABLED=1 AND = 20 settled…]] - rationale - weather_markets.py
+- [[Return True only when HURRICANE_TRADING_ENABLED=1 AND = 20 settled hurricane-…]] - rationale - weather_markets.py
+- [[Return True only when RAIN_TRADING_ENABLED=1 AND = 20 settled monthly-rain…]] - rationale - weather_markets.py
+- [[Return True only when SNOW_TRADING_ENABLED=1 AND = 20 settled monthly-snow…]] - rationale - weather_markets.py
+- [[Return True only when STORM_ORDER_TRADING_ENABLED=1 AND = 20 settled storm-…]] - rationale - weather_markets.py
+- [[Return a 0.0–1.0 Kelly multiplier based on drawdown from peak (high-water…]] - rationale - paper.py
+- [[Return a point-in-time snapshot of the paper trading state. Used for…]] - rationale - paper.py
+- [[Return a time-ordered list of balance snapshots derived from the trade ledger.…]] - rationale - paper.py
+- [[Return fraction of current balance committed to open trades for this ticker…]] - rationale - paper.py
+- [[Return open trades entered more than MAX_POSITION_AGE_DAYS days ago. Each…]] - rationale - paper.py
+- [[Return the dollar amount to bet. 120 Respects STRATEGY env var kelly half-…]] - rationale - paper.py
+- [[Return the fraction of current balance committed to open trades for this city +…]] - rationale - paper.py
+- [[Return the fraction of current balance in open trades for this city + date +…]] - rationale - paper.py
+- [[Return the highest balance ever reached (high-water mark).]] - rationale - paper.py
+- [[Return the sum of expected profit across all open positions.…]] - rationale - paper.py
+- [[Return the total fraction of STARTING_BALANCE committed to open trades in…]] - rationale - paper.py
+- [[Return the total fraction of current balance committed across all open trades.]] - rationale - paper.py
+- [[Returns (win, N) or (loss, N) or (none, 0) based on the last N…]] - rationale - paper.py
+- [[Reverse the most recently placed (unsettled) paper trade if it was placed…_2]] - rationale - paper.py
+- [[Scale Kelly by per-method Brier. Poor method (Brier  0.20) → 0.75×. Uses a…]] - rationale - paper.py
+- [[Scale Kelly down when the bid-ask spread eats a significant fraction of edge.…]] - rationale - paper.py
+- [[Scale down base_fraction based on existing open exposure to this citydate.…]] - rationale - paper.py
+- [[Set needs_manual_settle=True on a trade so the dashboard can flag it.]] - rationale - paper.py
+- [[Show a plain-English 'what should I do today' recommendation.]] - rationale - main.py
+- [[Show a plain-English 'what should I do today' recommendation._1]] - rationale - main.py
+- [[Single source of truth for the TRADING_PAUSED kill-switch. Was previously re-…]] - rationale - utils.py
+- [[Sum of P&L from trades settled today (UTC). 46 If a live client is provided,…]] - rationale - paper.py
+- [[Sum of multi-day paper trade costs placed today (UTC date). Used for daily…]] - rationale - order_executor.py
+- [[Summary stats across all settled trades.]] - rationale - paper.py
+- [[Tests for P0.5 — get_state_snapshot() in paper.py and cron logging.]] - rationale - tests/test_state_consistency.py
+- [[Translate an amend_order() response into this bot's internal status vocabulary…]] - rationale - order_executor.py
+- [[True for any real Kalshi hurricanetropical-storm ticker family -- see…]] - rationale - weather_markets.py
+- [[True only for the 1 storm-order series with a real probability model…]] - rationale - weather_markets.py
+- [[True only for the 2 time-to-next-event series with a real probability model…]] - rationale - weather_markets.py
+- [[True only for the 5 season-total hurricanetropical-storm-count series with a…]] - rationale - weather_markets.py
+- [[Update an existing order log entry with the final statusresponse. Structured…]] - rationale - execution_log.py
+- [[Weekly trading report generator. Produces a PDF (requires fpdf2) or HTML…]] - rationale - pdf_report.py
+- [[Wipe all paper trades and reset balance.]] - rationale - paper.py
+- [[Write atomically with retry via safe_io (8). Embeds SHA-256 checksum (102).]] - rationale - paper.py
+- [[_amend_live_order()]] - code - order_executor.py
+- [[_auto_place_trades() Dedup Pipeline AC1-4 Pass (710)]] - document - docs/grade_audit/outputs/order_executor.py.md
+- [[_cmd_cron_body() AC1 Kill-Switch Mid-Placement Gap (610)]] - document - docs/grade_audit/outputs/cron.py.md
+- [[_collect_data()]] - code - pdf_report.py
+- [[_compute_checksum()]] - code - paper.py
+- [[_count_open_live_orders()]] - code - order_executor.py
+- [[_daily_paper_spend()]] - code - order_executor.py
+- [[_drawdown_snapshot()]] - code - paper.py
+- [[_dynamic_kelly_cap()]] - code - paper.py
+- [[_env_float()]] - code - paper.py
+- [[_env_int()]] - code - paper.py
+- [[_existed_marker_path()]] - code - paper.py
+- [[_exposure_denom()]] - code - paper.py
+- [[_generate_html()]] - code - pdf_report.py
+- [[_generate_pdf()]] - code - pdf_report.py
+- [[_group_markets()]] - code - consistency.py
+- [[_hourly_gates_active()]] - code - weather_markets.py
+- [[_hurricane_count_gates_active()]] - code - weather_markets.py
+- [[_hurricane_next_event_gates_active()]] - code - weather_markets.py
+- [[_load()]] - code - paper.py
+- [[_log_shadow_predictions()]] - code - order_executor.py
+- [[_mark_needs_manual_settle()]] - code - paper.py
+- [[_method_kelly_multiplier()]] - code - paper.py
+- [[_micro_live_gate_ok()]] - code - order_executor.py
+- [[_pdf()]] - code - pdf_report.py
+- [[_place_live_order()]] - code - order_executor.py
+- [[_poll_pending_orders() DEBUGprint Instead of WARNING (610)]] - document - docs/grade_audit/outputs/order_executor.py.md
+- [[_prediction_kwargs_from_analysis()]] - code - order_executor.py
+- [[_quick_paper_buy()]] - code - main.py
+- [[_rain_gates_active()]] - code - weather_markets.py
+- [[_resolve_amend_status()]] - code - order_executor.py
+- [[_save()]] - code - paper.py
+- [[_score_ensemble_members()]] - code - paper.py
+- [[_snow_gates_active()]] - code - weather_markets.py
+- [[_storm_order_gates_active()]] - code - weather_markets.py
+- [[_to_fill_count()]] - code - order_executor.py
+- [[_trade_to_position()]] - code - paper.py
+- [[_unpack_opp()]] - code - order_executor.py
+- [[check_aged_positions()]] - code - paper.py
+- [[check_correlated_event_exposure()]] - code - paper.py
+- [[check_paper_position_exits()]] - code - paper.py
+- [[check_position_limits()]] - code - paper.py
+- [[close_paper_early()]] - code - paper.py
+- [[cmd_cron must log a state snapshot line on each run.]] - rationale - tests/test_state_consistency.py
+- [[cmd_order()]] - code - main.py
+- [[cmd_paper()]] - code - main.py
+- [[cmd_today()]] - code - main.py
+- [[covariance_kelly_scale()]] - code - paper.py
+- [[date]] - code
+- [[drawdown_scaling_factor()]] - code - paper.py
+- [[export_tax_csv()]] - code - paper.py
+- [[export_trades_csv()]] - code - paper.py
+- [[fear_greed_index()]] - code - paper.py
+- [[feature_importance.record_feature_contribution]] - code - feature_importance.py
+- [[generate_weekly_report()]] - code - pdf_report.py
+- [[generate_weekly_report() Silent .pdf→.html Switch (710)]] - document - docs/grade_audit/outputs/pdf_report.py.md
+- [[get_all_trades()]] - code - paper.py
+- [[get_attribution()]] - code - paper.py
+- [[get_balance_history()]] - code - paper.py
+- [[get_city_date_exposure()]] - code - paper.py
+- [[get_correlated_exposure()]] - code - paper.py
+- [[get_current_streak()]] - code - paper.py
+- [[get_daily_pnl()]] - code - paper.py
+- [[get_directional_exposure()]] - code - paper.py
+- [[get_effective_balance()]] - code - paper.py
+- [[get_expiry_date_clustering()]] - code - paper.py
+- [[get_factor_exposure()]] - code - paper.py
+- [[get_max_drawdown_pct()]] - code - paper.py
+- [[get_peak_balance()]] - code - paper.py
+- [[get_performance()]] - code - paper.py
+- [[get_portfolio_expected_value()]] - code - paper.py
+- [[get_profit_factor()]] - code - paper.py
+- [[get_rolling_sharpe()]] - code - paper.py
+- [[get_state_snapshot balance must equal get_balance().]] - rationale - tests/test_state_consistency.py
+- [[get_state_snapshot must return balance, open_trades_count, peak_balance, and…]] - rationale - tests/test_state_consistency.py
+- [[get_state_snapshot peak_balance must equal get_peak_balance().]] - rationale - tests/test_state_consistency.py
+- [[get_state_snapshot()]] - code - paper.py
+- [[get_ticker_exposure()]] - code - paper.py
+- [[get_total_exposure()]] - code - paper.py
+- [[get_unrealized_pnl_paper()]] - code - paper.py
+- [[graduation_check()]] - code - paper.py
+- [[hurricanestorm ticker helpers]] - code - weather_markets.py
+- [[is_accuracy_halted()]] - code - paper.py
+- [[is_daily_loss_halted()]] - code - paper.py
+- [[is_hurricane_count_ticker()]] - code - weather_markets.py
+- [[is_hurricane_next_event_ticker()]] - code - weather_markets.py
+- [[is_hurricane_ticker()]] - code - weather_markets.py
+- [[is_paused_drawdown()]] - code - paper.py
+- [[is_storm_order_ticker()]] - code - weather_markets.py
+- [[is_streak_paused()]] - code - paper.py
+- [[is_trading_paused()]] - code - utils.py
+- [[kelly_bet_dollars()]] - code - paper.py
+- [[kelly_quantity()]] - code - paper.py
+- [[load_paper_trades()]] - code - paper.py
+- [[log_order_result()]] - code - execution_log.py
+- [[order_executor.py]] - code - order_executor.py
+- [[order_executor.py File Grade median 710]] - document - docs/grade_audit/outputs/order_executor.py.md
+- [[order_executor.py Grade Audit]] - document - docs/grade_audit/outputs/order_executor.py.md
+- [[order_executor.py — Automated order placement and lifecycle management.…]] - rationale - order_executor.py
+- [[paper.get_balance]] - code - paper.py
+- [[paper.get_open_trades]] - code - paper.py
+- [[paper.py]] - code - paper.py
+- [[pdf_report.py]] - code - pdf_report.py
+- [[pdf_report.py File Grade median 710, no red flags]] - document - docs/grade_audit/outputs/pdf_report.py.md
+- [[pdf_report.py Grade Audit]] - document - docs/grade_audit/outputs/pdf_report.py.md
+- [[place_paper_order()]] - code - order_executor.py
+- [[place_paper_order()_1]] - code - paper.py
+- [[portfolio_kelly_fraction()]] - code - paper.py
+- [[position_age_kelly_scale()]] - code - paper.py
+- [[pre_live_trade_check()]] - code - trading_gates.py
+- [[reset_paper_account()]] - code - paper.py
+- [[reset_peak_balance()]] - code - paper.py
+- [[settle_paper_trade()]] - code - paper.py
+- [[slippage_adjusted_price()]] - code - paper.py
+- [[spread_kelly_multiplier()]] - code - paper.py
+- [[test_check_early_exits_closes_position_when_prob_flips()]] - code - tests/test_trading.py
+- [[test_cmd_cron_logs_state_snapshot()]] - code - tests/test_state_consistency.py
+- [[test_get_state_snapshot_returns_required_keys()]] - code - tests/test_state_consistency.py
+- [[test_state_consistency.py]] - code - tests/test_state_consistency.py
+- [[test_state_snapshot_balance_matches_get_balance()]] - code - tests/test_state_consistency.py
+- [[test_state_snapshot_peak_matches_get_peak_balance()]] - code - tests/test_state_consistency.py
+- [[trading_gates.py]] - code - trading_gates.py
+- [[undo_last_trade()]] - code - paper.py
+- [[validate_paper_trades_integrity()]] - code - paper.py
+
+## Live Query (requires Dataview plugin)
+
+```dataview
+TABLE source_file, type FROM #community/Community_1
+SORT file.name ASC
+```
+
+## Connections to other communities
+- 162 edges to [[_COMMUNITY_Community 0]]
+- 59 edges to [[_COMMUNITY_Community 3]]
+- 28 edges to [[_COMMUNITY_Community 44]]
+- 26 edges to [[_COMMUNITY_Community 2]]
+- 21 edges to [[_COMMUNITY_Community 5]]
+- 20 edges to [[_COMMUNITY_Community 6]]
+- 15 edges to [[_COMMUNITY_Community 12]]
+- 11 edges to [[_COMMUNITY_Community 13]]
+- 11 edges to [[_COMMUNITY_Community 81]]
+- 11 edges to [[_COMMUNITY_Community 42]]
+- 10 edges to [[_COMMUNITY_Community 4]]
+- 7 edges to [[_COMMUNITY_Community 8]]
+- 7 edges to [[_COMMUNITY_Community 24]]
+- 6 edges to [[_COMMUNITY_Community 148]]
+- 6 edges to [[_COMMUNITY_Community 60]]
+- 5 edges to [[_COMMUNITY_Community 119]]
+- 5 edges to [[_COMMUNITY_Community 74]]
+- 5 edges to [[_COMMUNITY_Community 89]]
+- 4 edges to [[_COMMUNITY_Community 17]]
+- 4 edges to [[_COMMUNITY_Community 336]]
+- 4 edges to [[_COMMUNITY_Community 86]]
+- 4 edges to [[_COMMUNITY_Community 21]]
+- 4 edges to [[_COMMUNITY_Community 73]]
+- 4 edges to [[_COMMUNITY_Community 423]]
+- 4 edges to [[_COMMUNITY_Community 325]]
+- 3 edges to [[_COMMUNITY_Community 189]]
+- 3 edges to [[_COMMUNITY_Community 407]]
+- 3 edges to [[_COMMUNITY_Community 49]]
+- 3 edges to [[_COMMUNITY_Community 57]]
+- 3 edges to [[_COMMUNITY_Community 304]]
+- 3 edges to [[_COMMUNITY_Community 220]]
+- 3 edges to [[_COMMUNITY_Community 30]]
+- 3 edges to [[_COMMUNITY_Community 41]]
+- 2 edges to [[_COMMUNITY_Community 116]]
+- 2 edges to [[_COMMUNITY_Community 303]]
+- 2 edges to [[_COMMUNITY_Community 76]]
+- 2 edges to [[_COMMUNITY_Community 130]]
+- 2 edges to [[_COMMUNITY_Community 498]]
+- 2 edges to [[_COMMUNITY_Community 329]]
+- 2 edges to [[_COMMUNITY_Community 219]]
+- 2 edges to [[_COMMUNITY_Community 245]]
+- 2 edges to [[_COMMUNITY_Community 75]]
+- 1 edge to [[_COMMUNITY_Community 368]]
+- 1 edge to [[_COMMUNITY_Community 48]]
+- 1 edge to [[_COMMUNITY_Community 363]]
+- 1 edge to [[_COMMUNITY_Community 147]]
+- 1 edge to [[_COMMUNITY_Community 404]]
+- 1 edge to [[_COMMUNITY_Community 248]]
+- 1 edge to [[_COMMUNITY_Community 665]]
+- 1 edge to [[_COMMUNITY_Community 102]]
+- 1 edge to [[_COMMUNITY_Community 159]]
+- 1 edge to [[_COMMUNITY_Community 7]]
+- 1 edge to [[_COMMUNITY_Community 110]]
+- 1 edge to [[_COMMUNITY_Community 111]]
+- 1 edge to [[_COMMUNITY_Community 142]]
+- 1 edge to [[_COMMUNITY_Community 232]]
+- 1 edge to [[_COMMUNITY_Community 224]]
+- 1 edge to [[_COMMUNITY_Community 126]]
+- 1 edge to [[_COMMUNITY_Community 161]]
+- 1 edge to [[_COMMUNITY_Community 163]]
+- 1 edge to [[_COMMUNITY_Community 20]]
+- 1 edge to [[_COMMUNITY_Community 221]]
+- 1 edge to [[_COMMUNITY_Community 305]]
+- 1 edge to [[_COMMUNITY_Community 335]]
+- 1 edge to [[_COMMUNITY_Community 406]]
+- 1 edge to [[_COMMUNITY_Community 453]]
+- 1 edge to [[_COMMUNITY_Community 372]]
+- 1 edge to [[_COMMUNITY_Community 199]]
+- 1 edge to [[_COMMUNITY_Community 281]]
+- 1 edge to [[_COMMUNITY_Community 54]]
+
+## Top bridge nodes
+- [[order_executor.py]] - degree 124, connects to 39 communities
+- [[paper.py]] - degree 108, connects to 19 communities
+- [[cmd_today()]] - degree 40, connects to 8 communities
+- [[_place_live_order()]] - degree 16, connects to 8 communities
+- [[load_paper_trades()]] - degree 15, connects to 7 communities

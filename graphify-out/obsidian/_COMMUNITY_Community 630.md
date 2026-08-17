@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 630
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[dot-test_count_settled_storm_order_predictions_distinct_ticker_not_raw_rows()]] - code - tests/test_tracker.py
-- [[Same defense-in-depth-against-raw-row-duplication reasoning as the sibling…]] - rationale - tests/test_tracker.py
+- [[dot-test_does_not_block_when_gate_active()_5]] - code - tests/test_rain_markets.py
+- [[dot-test_still_blocks_when_gate_inactive()_5]] - code - tests/test_rain_markets.py
+- [[Mutation-test proof flipping _rain_gates_active() to True makes the block…]] - rationale - tests/test_rain_markets.py
+- [[TestCheckPositionLimitsRainConditional]] - code - tests/test_rain_markets.py
+- [[backlog.txt RAIN  SNOW  HURRICANE MARKETS Step 2 the Step 1 unconditional…]] - rationale - tests/test_rain_markets.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -21,8 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Tracker Disputed Outcome Restoration]]
-- 1 edge to [[_COMMUNITY_Tracker Settlement Sigma & Disputed Rows]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[dot-test_count_settled_storm_order_predictions_distinct_ticker_not_raw_rows()]] - degree 3, connects to 2 communities
+- [[TestCheckPositionLimitsRainConditional]] - degree 4, connects to 1 community

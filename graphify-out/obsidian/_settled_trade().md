@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_i.py"
 type: "code"
-community: "Community 189"
+community: "Community 195"
 location: "L15"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_189
+  - community/Community_195
 ---
 
 # _settled_trade()
@@ -20,6 +20,6 @@ tags:
 - [[dot-test_settlement_event_not_entered_at_with_z_suffix()]] - `calls` [EXTRACTED]
 - [[dot-test_settlement_event_uses_settled_at()]] - `calls` [EXTRACTED]
 - [[dot-test_settlement_fallback_when_no_settled_at()]] - `calls` [EXTRACTED]
-- [[Phase 2 Batch I Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_i.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_189
+#graphify/code #graphify/EXTRACTED #community/Community_195

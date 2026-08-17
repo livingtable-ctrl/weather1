@@ -1,18 +1,17 @@
 ---
-source_file: "tests/test_snow_markets.py"
+source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Community 174"
-location: "L459"
+community: "Community 45"
+location: "L958"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_174
+  - community/Community_45
 ---
 
 # .test_does_not_refuse_when_gate_active()
 
 ## Connections
-- [[Mutation-test proof the conditional is real -- once _snow_gates_active() is…]] - `rationale_for` [EXTRACTED]
-- [[TestCmdOrderSnowGuard]] - `method` [EXTRACTED]
+- [[TestCmdOrderHurricaneCountGuard]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_174
+#graphify/code #graphify/EXTRACTED #community/Community_45

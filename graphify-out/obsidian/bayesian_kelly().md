@@ -1,12 +1,12 @@
 ---
 source_file: "weather_markets.py"
 type: "code"
-community: "Community 59"
-location: "L7302"
+community: "Community 89"
+location: "L7404"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_59
+  - community/Community_89
 ---
 
 # bayesian_kelly()
@@ -18,6 +18,6 @@ tags:
 - [[_price_and_size()]] - `calls` [EXTRACTED]
 - [[kelly_fraction()]] - `calls` [EXTRACTED]
 - [[weather_markets.py]] - `contains` [EXTRACTED]
-- [[weather_markets.py_2]] - `implements` [EXTRACTED]
+- [[weather_markets.py_1]] - `implements` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_59
+#graphify/code #graphify/EXTRACTED #community/Community_89

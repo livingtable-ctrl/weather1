@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_bare_os_replace_guard.py"
 type: "code"
-community: "Backtest Engine & Atomic Writes"
+community: "Community 8"
 location: "L108"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Backtest_Engine__Atomic_Writes
+  - community/Community_8
 ---
 
 # test_no_new_bare_os_replace_sites()
@@ -16,4 +16,4 @@ tags:
 - [[_all_source_files()_1]] - `calls` [EXTRACTED]
 - [[test_bare_os_replace_guard.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Backtest_Engine__Atomic_Writes
+#graphify/code #graphify/EXTRACTED #community/Community_8

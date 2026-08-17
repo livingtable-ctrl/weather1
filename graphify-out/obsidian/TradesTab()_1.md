@@ -1,21 +1,20 @@
 ---
-source_file: "weather app site V_3 (3)/src/tabs/TradesTab.jsx"
+source_file: "frontend/src/App.jsx"
 type: "code"
-community: "Community 193"
-location: "L5"
+community: "Community 98"
+location: "L1640"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_193
+  - community/Community_98
 ---
 
 # TradesTab()
 
 ## Connections
-- [[TradesTab.jsx]] - `contains` [EXTRACTED]
 - [[fmtEdge()_1]] - `calls` [EXTRACTED]
+- [[frontendsrcApp.jsx]] - `indirect_call` [INFERRED]
 - [[normCity()_1]] - `calls` [EXTRACTED]
 - [[outcomeBadge()_1]] - `calls` [EXTRACTED]
-- [[weather app site V_3 (3)srcApp.jsx]] - `indirect_call` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_193
+#graphify/code #graphify/EXTRACTED #community/Community_98

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_cron_group_c.py"
 type: "rationale"
-community: "Black Swan Detection & Walk-Forward Backtest"
+community: "Community 4"
 location: "L55"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Black_Swan_Detection__Walk-Forward_Backtest
+  - community/Community_4
 ---
 
 # F5-adjacent: the manual-override path was hardcoded independently in cron.py,…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestManualOverridePathConsistency]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Black_Swan_Detection__Walk-Forward_Backtest
+#graphify/rationale #graphify/EXTRACTED #community/Community_4

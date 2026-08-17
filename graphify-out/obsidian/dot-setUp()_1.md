@@ -1,17 +1,18 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 107"
-location: "L416"
+community: "Community 113"
+location: "L289"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_107
+  - community/Community_113
 ---
 
 # .setUp()
 
 ## Connections
-- [[TestPortfolioKelly]] - `method` [EXTRACTED]
+- [[Path]] - `calls` [INFERRED]
+- [[TestMaxDrawdown]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_107
+#graphify/code #graphify/EXTRACTED #community/Community_113

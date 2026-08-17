@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_a.py"
 type: "code"
-community: "Community 168"
+community: "Community 15"
 location: "L300"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_168
+  - community/Community_15
 ---
 
 # TestMosParseTemp
@@ -21,6 +21,6 @@ tags:
 - [[dot-test_valid_float_string_returns_float()]] - `method` [EXTRACTED]
 - [[dot-test_valid_int_returns_float()]] - `method` [EXTRACTED]
 - [[P2-11 _parse_temp must handle ASOS special codes without crashing.]] - `rationale_for` [EXTRACTED]
-- [[Phase 2 Batch A Regression Tests]] - `contains` [EXTRACTED]
+- [[test_phase2_batch_a.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_168
+#graphify/code #graphify/EXTRACTED #community/Community_15

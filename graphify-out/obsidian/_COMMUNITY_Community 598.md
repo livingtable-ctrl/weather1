@@ -1,18 +1,20 @@
 ---
 type: community
-cohesion: 0.67
-members: 3
+cohesion: 0.40
+members: 5
 ---
 
 # Community 598
 
-**Cohesion:** 0.67 - moderately connected
-**Members:** 3 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[Build a dedicated session for Open-Meteo that does NOT auto-retry on 429. 429…]] - rationale - weather_markets.py
-- [[Session_1]] - code
-- [[_build_om_session()]] - code - weather_markets.py
+- [[74.1 Add `get_current_model_cycle()` and `minutes_since_last_major_run()` to `main.py`]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[74.2 Write tests]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[74.3 Verify & Commit]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Background_24]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
+- [[Task 74 (P12.N) — Model Run Timing Alerts]] - document - docs/superpowers/plans/2026-04-15-p12-signal-calibration-intelligence.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -22,7 +24,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_ML Bias Correction & Audit Plans]]
+- 1 edge to [[_COMMUNITY_Community 451]]
 
 ## Top bridge nodes
-- [[_build_om_session()]] - degree 3, connects to 1 community
+- [[Task 74 (P12.N) — Model Run Timing Alerts]] - degree 5, connects to 1 community

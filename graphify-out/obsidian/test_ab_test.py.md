@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_ab_test.py"
 type: "code"
-community: "Community 33"
+community: "Community 140"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_33
+  - community/Community_140
 ---
 
 # test_ab_test.py
@@ -18,9 +18,10 @@ tags:
 - [[_patch_ab_dir()]] - `contains` [EXTRACTED]
 - [[ab_test.ABTest]] - `references` [EXTRACTED]
 - [[ab_test.py]] - `imports_from` [EXTRACTED]
-- [[get_active_variant()]] - `references` [EXTRACTED]
+- [[get_active_variant()]] - `imports` [EXTRACTED]
 - [[list_all_summaries()]] - `imports` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[test_l4a_get_active_variant_returns_value()]] - `contains` [EXTRACTED]
 - [[test_l4a_get_active_variant_value_survives_reload()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_33
+#graphify/code #graphify/EXTRACTED #community/Community_140

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 265"
+community: "Community 261"
 location: "L605"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_265
+  - community/Community_261
 ---
 
 # .test_midpoint_prediction()
@@ -16,4 +16,4 @@ tags:
 - [[TestBrierScore]] - `method` [EXTRACTED]
 - [[forecast_prob=0.5, outcome=NO → Brier = (0.5-0)2 = 0.25.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_265
+#graphify/code #graphify/EXTRACTED #community/Community_261

@@ -1,11 +1,12 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 56"
+community: "Community 21"
+location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_56
+  - community/Community_21
 ---
 
 # test_paper.py
@@ -43,6 +44,13 @@ tags:
 - [[_cholesky()]] - `imports` [EXTRACTED]
 - [[_flat_prices()]] - `contains` [EXTRACTED]
 - [[is_stale()]] - `imports` [EXTRACTED]
+- [[json]] - `imports` [EXTRACTED]
+- [[kelly_bet_dollars()]] - `imports` [EXTRACTED]
+- [[paper.corr_kelly_scale]] - `imports` [EXTRACTED]
+- [[paper.liquidity_kelly_scale]] - `imports` [EXTRACTED]
+- [[paper.position_correlation_matrix]] - `imports` [EXTRACTED]
+- [[pathlib]] - `imports_from` [EXTRACTED]
+- [[pytest_1]] - `imports` [EXTRACTED]
 - [[simulate_portfolio()]] - `imports` [EXTRACTED]
 - [[test_close_paper_early_exit_reason_defaults_to_none()]] - `contains` [EXTRACTED]
 - [[test_close_paper_early_raises_on_unknown_id()]] - `contains` [EXTRACTED]
@@ -56,6 +64,7 @@ tags:
 - [[test_place_paper_order_records_entry_hour()]] - `contains` [EXTRACTED]
 - [[test_portfolio_expected_value_does_not_crash_on_explicit_none_net_edge()]] - `contains` [EXTRACTED]
 - [[test_portfolio_expected_value_positive_for_winning_trades()]] - `contains` [EXTRACTED]
+- [[unittest_mock]] - `imports_from` [EXTRACTED]
 - [[utc_today()]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_56
+#graphify/code #graphify/EXTRACTED #community/Community_21

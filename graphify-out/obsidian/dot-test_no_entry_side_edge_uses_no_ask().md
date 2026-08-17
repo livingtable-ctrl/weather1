@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Community 528"
+community: "Community 586"
 location: "L174"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_528
+  - community/Community_586
 ---
 
 # .test_no_entry_side_edge_uses_no_ask()
@@ -16,4 +16,4 @@ tags:
 - [[TestEntryEdgeVsMidEdge]] - `method` [EXTRACTED]
 - [[parse_market_price()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_528
+#graphify/code #graphify/EXTRACTED #community/Community_586

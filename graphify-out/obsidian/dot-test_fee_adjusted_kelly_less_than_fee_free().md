@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_weather_markets.py"
 type: "code"
-community: "Kelly Sizing Property-Based Tests"
+community: "Community 480"
 location: "L746"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Kelly_Sizing_Property-Based_Tests
+  - community/Community_480
 ---
 
 # .test_fee_adjusted_kelly_less_than_fee_free()
@@ -16,4 +16,4 @@ tags:
 - [[TestKellyFeeRate]] - `method` [EXTRACTED]
 - [[kelly_fraction()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Kelly_Sizing_Property-Based_Tests
+#graphify/code #graphify/EXTRACTED #community/Community_480

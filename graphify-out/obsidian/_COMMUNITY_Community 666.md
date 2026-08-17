@@ -1,16 +1,18 @@
 ---
 type: community
-cohesion: 1.00
-members: 1
+cohesion: 0.67
+members: 3
 ---
 
 # Community 666
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 1 nodes
+**Cohesion:** 0.67 - moderately connected
+**Members:** 3 nodes
 
 ## Members
-- [[MarketDict TypedDict]] - code - market_types.py
+- [[LivePositionStore Class]] - code - order_executor.py
+- [[PaperPositionStore Class]] - code - paper.py
+- [[PositionStore Protocol]] - code - positions.py
 
 ## Live Query (requires Dataview plugin)
 

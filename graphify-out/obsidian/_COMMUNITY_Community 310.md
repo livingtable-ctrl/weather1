@@ -10,18 +10,18 @@ members: 12
 **Members:** 12 nodes
 
 ## Members
-- [[dot-_fake_resp()]] - code - tests/test_rain_markets.py
-- [[dot-test_all_null_model_excluded_via_circuit_breaker_failure()]] - code - tests/test_rain_markets.py
-- [[dot-test_circuit_open_short_circuits_without_network_call()]] - code - tests/test_rain_markets.py
-- [[dot-test_genuinely_short_time_array_treated_same_as_no_coverage()]] - code - tests/test_rain_markets.py
-- [[dot-test_no_model_covers_range_returns_none()]] - code - tests/test_rain_markets.py
-- [[dot-test_partial_coverage_member_excluded_not_truncated()]] - code - tests/test_rain_markets.py
-- [[dot-test_sums_per_member_across_requested_range()]] - code - tests/test_rain_markets.py
-- [[Belt-and-suspenders even if a response's `time` array were genuinely shorter…]] - rationale - tests/test_rain_markets.py
-- [[Opus-review-caught bug (2026-07-28, verified via a live Open-Meteo API call) a…]] - rationale - tests/test_rain_markets.py
-- [[Opus-review-caught gap the original version only made icon_seamless all-null…]] - rationale - tests/test_rain_markets.py
-- [[TestFetchEnsemblePrecipMultiday]] - code - tests/test_rain_markets.py
-- [[Unit tests for _fetch_ensemble_precip_multiday itself, mocking _om_request…]] - rationale - tests/test_rain_markets.py
+- [[5 negative effective_edge (spread eats MORE than the full edge — genuinely…]] - rationale - tests/test_paper_metrics.py
+- [[5 was floored at 0.5 — a trade with exactly zero effective edge after…]] - rationale - tests/test_paper_metrics.py
+- [[dot-test_medium_spread_moderate_reduction()]] - code - tests/test_paper_metrics.py
+- [[dot-test_negative_net_edge_returns_one()]] - code - tests/test_paper_metrics.py
+- [[dot-test_no_spread_returns_one()]] - code - tests/test_paper_metrics.py
+- [[dot-test_plan_example_six_cent_spread_eight_edge()]] - code - tests/test_paper_metrics.py
+- [[dot-test_plan_example_six_cent_spread_fifteen_edge()]] - code - tests/test_paper_metrics.py
+- [[dot-test_small_spread_minimal_reduction()]] - code - tests/test_paper_metrics.py
+- [[dot-test_spread_eats_entire_edge_floors_at_zero()]] - code - tests/test_paper_metrics.py
+- [[dot-test_spread_larger_than_edge_floors_at_zero()]] - code - tests/test_paper_metrics.py
+- [[dot-test_zero_net_edge_returns_one()]] - code - tests/test_paper_metrics.py
+- [[TestSpreadKellyMultiplier]] - code - tests/test_paper_metrics.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -31,7 +31,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 237]]
+- 1 edge to [[_COMMUNITY_Community 236]]
 
 ## Top bridge nodes
-- [[TestFetchEnsemblePrecipMultiday]] - degree 9, connects to 1 community
+- [[TestSpreadKellyMultiplier]] - degree 10, connects to 1 community

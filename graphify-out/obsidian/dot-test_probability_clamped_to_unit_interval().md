@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_gaussian_prob.py"
 type: "code"
-community: "Community 26"
+community: "Community 69"
 location: "L139"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_26
+  - community/Community_69
 ---
 
 # .test_probability_clamped_to_unit_interval()
@@ -16,4 +16,4 @@ tags:
 - [[gaussian_probability always returns a value in 0, 1.]] - `rationale_for` [EXTRACTED]
 - [[gaussian_probability()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_26
+#graphify/code #graphify/EXTRACTED #community/Community_69

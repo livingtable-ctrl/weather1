@@ -1,19 +1,19 @@
 ---
 source_file: "tests/test_paper.py"
 type: "code"
-community: "Community 330"
+community: "Community 189"
 location: "L1337"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_330
+  - community/Community_189
 ---
 
 # TestPositionCorrelationMatrix
 
 ## Connections
 - [[dot-test_diagonal_is_one()]] - `method` [EXTRACTED]
-- [[dot-test_empty_returns_empty()_1]] - `method` [EXTRACTED]
+- [[dot-test_empty_returns_empty()]] - `method` [EXTRACTED]
 - [[dot-test_known_city_pair_uses_lookup()]] - `method` [EXTRACTED]
 - [[dot-test_matrix_is_symmetric()]] - `method` [EXTRACTED]
 - [[dot-test_same_city_adjacent_date_is_0_50()]] - `method` [EXTRACTED]
@@ -21,6 +21,7 @@ tags:
 - [[dot-test_same_city_same_date_is_0_85()]] - `method` [EXTRACTED]
 - [[dot-test_unknown_city_pair_defaults_to_0_10()]] - `method` [EXTRACTED]
 - [[Position]] - `uses` [INFERRED]
+- [[paper.position_correlation_matrix]] - `references` [EXTRACTED]
 - [[test_paper.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_330
+#graphify/code #graphify/EXTRACTED #community/Community_189

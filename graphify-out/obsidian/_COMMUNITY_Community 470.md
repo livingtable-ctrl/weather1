@@ -1,22 +1,23 @@
 ---
 type: community
-cohesion: 0.29
-members: 7
+cohesion: 0.25
+members: 8
 ---
 
 # Community 470
 
-**Cohesion:** 0.29 - loosely connected
-**Members:** 7 nodes
+**Cohesion:** 0.25 - loosely connected
+**Members:** 8 nodes
 
 ## Members
-- [[dot-test_accuracy_halt_skips_placement_but_still_scans()]] - code - tests/test_main_cron_smoke.py
-- [[dot-test_empty_market_list_runs_cleanly()]] - code - tests/test_main_cron_smoke.py
-- [[dot-test_kill_switch_blocks_market_scan()]] - code - tests/test_main_cron_smoke.py
-- [[An accuracy halt must still scansettle — only placement is skipped. Settlement…]] - rationale - tests/test_main_cron_smoke.py
-- [[TestCmdCronGuards]] - code - tests/test_main_cron_smoke.py
-- [[cmd_cron exits early when the kill switch file is present.]] - rationale - tests/test_main_cron_smoke.py
-- [[cmd_cron with no markets returned completes without error.]] - rationale - tests/test_main_cron_smoke.py
+- [[dot-test_max_log_lines_constant_is_50000()]] - code - tests/test_phase3_batch_d.py
+- [[dot-test_prune_called_from_cron_on_monday()]] - code - tests/test_phase3_batch_d.py
+- [[dot-test_prune_feature_log_missing_file_returns_zero()]] - code - tests/test_phase3_batch_d.py
+- [[dot-test_prune_feature_log_no_op_when_under_limit()]] - code - tests/test_phase3_batch_d.py
+- [[dot-test_prune_feature_log_trims_oversized_file()]] - code - tests/test_phase3_batch_d.py
+- [[P3-22 prune_feature_log must keep at most _MAX_LOG_LINES entries.]] - rationale - tests/test_phase3_batch_d.py
+- [[TestFeatureImportancePruning]] - code - tests/test_phase3_batch_d.py
+- [[cron.py must call prune_feature_log() in the Monday weekly sweep.]] - rationale - tests/test_phase3_batch_d.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,7 +27,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 40]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[TestCmdCronGuards]] - degree 4, connects to 1 community
+- [[TestFeatureImportancePruning]] - degree 7, connects to 1 community

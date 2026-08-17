@@ -1,21 +1,22 @@
 ---
 source_file: "tracker.py"
 type: "code"
-community: "Community 36"
+community: "Community 2"
 location: "L422"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_36
+  - community/Community_2
 ---
 
 # init_db()
 
 ## Connections
 - [[_check_api_failure_rate()]] - `calls` [EXTRACTED]
-- [[_conn()_1]] - `calls` [EXTRACTED]
+- [[_conn()]] - `calls` [EXTRACTED]
 - [[_get_recent_win_loss()]] - `calls` [EXTRACTED]
-- [[_run_migrations()_1]] - `calls` [EXTRACTED]
+- [[_run_migrations()]] - `calls` [EXTRACTED]
+- [[_score_ensemble_members()]] - `calls` [INFERRED]
 - [[backfill_daily_temp_settlement()]] - `calls` [EXTRACTED]
 - [[backfill_emos_data()]] - `calls` [EXTRACTED]
 - [[backfill_ensemble_member_scores_var()]] - `calls` [EXTRACTED]
@@ -30,6 +31,7 @@ tags:
 - [[brier_skill_score()]] - `calls` [EXTRACTED]
 - [[check_condition_type_weakness()]] - `calls` [EXTRACTED]
 - [[count_emos_ready_predictions()]] - `calls` [EXTRACTED]
+- [[count_emos_variance_ready_predictions()]] - `calls` [EXTRACTED]
 - [[count_model_observations()]] - `calls` [EXTRACTED]
 - [[count_settled_below_predictions()]] - `calls` [EXTRACTED]
 - [[count_settled_hourly_predictions()]] - `calls` [EXTRACTED]
@@ -67,6 +69,7 @@ tags:
 - [[get_mean_slippage()]] - `calls` [EXTRACTED]
 - [[get_member_accuracy()]] - `calls` [EXTRACTED]
 - [[get_member_bias()]] - `calls` [EXTRACTED]
+- [[get_metar_lockout_calibration_data()]] - `calls` [EXTRACTED]
 - [[get_model_attribution_by_city()]] - `calls` [EXTRACTED]
 - [[get_model_brier_scores()]] - `calls` [EXTRACTED]
 - [[get_model_calibration_buckets()]] - `calls` [EXTRACTED]
@@ -100,6 +103,8 @@ tags:
 - [[log_price_improvement()]] - `calls` [EXTRACTED]
 - [[log_source_attempt()]] - `calls` [EXTRACTED]
 - [[log_trades()]] - `calls` [EXTRACTED]
+- [[main()]] - `calls` [EXTRACTED]
+- [[main.py]] - `imports` [EXTRACTED]
 - [[mark_outcome_disputed()]] - `calls` [EXTRACTED]
 - [[mark_outcome_undisputed()]] - `calls` [EXTRACTED]
 - [[prune_api_requests()]] - `calls` [EXTRACTED]
@@ -113,9 +118,7 @@ tags:
 - [[test_composite_indexes_exist()]] - `calls` [EXTRACTED]
 - [[test_get_component_attribution_returns_per_source_brier()]] - `calls` [EXTRACTED]
 - [[test_get_component_attribution_works()]] - `calls` [EXTRACTED]
-- [[test_infrastructure.py]] - `references` [EXTRACTED]
-- [[test_obs_weight.py]] - `calls` [EXTRACTED]
 - [[test_tracker.py]] - `imports` [EXTRACTED]
 - [[tracker.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_36
+#graphify/code #graphify/EXTRACTED #community/Community_2

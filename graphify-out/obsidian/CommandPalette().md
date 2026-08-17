@@ -1,18 +1,18 @@
 ---
 source_file: "weather app site V_3 (3)/src/App.jsx"
 type: "code"
-community: "Community 93"
+community: "Community 169"
 location: "L231"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_93
+  - community/Community_169
 ---
 
 # CommandPalette()
 
 ## Connections
-- [[normCity()_1]] - `calls` [EXTRACTED]
+- [[normCity()]] - `calls` [EXTRACTED]
 - [[weather app site V_3 (3)srcApp.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_93
+#graphify/code #graphify/EXTRACTED #community/Community_169

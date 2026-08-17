@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_backlog_batch.py"
 type: "code"
-community: "Kelly City Multiplier & Edge Realization"
+community: "Community 24"
 location: "L318"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Kelly_City_Multiplier__Edge_Realization
+  - community/Community_24
 ---
 
 # .test_duplicate_blocked_when_ticker_already_open()
@@ -16,4 +16,4 @@ tags:
 - [[TestPlacePaperOrderDuplicateGuard]] - `method` [EXTRACTED]
 - [[place_paper_order raises ValueError if the same ticker is already open.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Kelly_City_Multiplier__Edge_Realization
+#graphify/code #graphify/EXTRACTED #community/Community_24

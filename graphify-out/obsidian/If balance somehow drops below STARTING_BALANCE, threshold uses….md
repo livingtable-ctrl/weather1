@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_risk_control.py"
 type: "rationale"
-community: "Community 693"
+community: "Community 351"
 location: "L642"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_693
+  - community/Community_351
 ---
 
 # If balance somehow drops below STARTING_BALANCE, threshold uses…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_threshold_never_below_starting_balance()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_693
+#graphify/rationale #graphify/EXTRACTED #community/Community_351

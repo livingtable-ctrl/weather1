@@ -1,26 +1,26 @@
 ---
 source_file: "tests/test_phase2_batch_k.py"
 type: "code"
-community: "Community 173"
+community: "Community 77"
 location: "L168"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_173
+  - community/Community_77
 ---
 
 # TestEnsembleStatsDegenerate
 
 ## Connections
-- [[dot-_call()]] - `method` [EXTRACTED]
+- [[dot-_call()_5]] - `method` [EXTRACTED]
 - [[dot-test_all_identical_flagged_as_degenerate()]] - `method` [EXTRACTED]
 - [[dot-test_analyze_trade_skips_degenerate_ensemble()]] - `method` [EXTRACTED]
 - [[dot-test_degenerate_key_always_present_when_nonempty()]] - `method` [EXTRACTED]
-- [[dot-test_empty_returns_empty()]] - `method` [EXTRACTED]
+- [[dot-test_empty_returns_empty()_1]] - `method` [EXTRACTED]
 - [[dot-test_exactly_5_members_not_degenerate()]] - `method` [EXTRACTED]
 - [[dot-test_six_identical_members_is_degenerate()]] - `method` [EXTRACTED]
 - [[dot-test_varied_temps_not_degenerate()]] - `method` [EXTRACTED]
-- [[Phase 2 Batch K Regression Tests]] - `contains` [EXTRACTED]
 - [[ensemble_stats must flag all-identical members as degenerate.]] - `rationale_for` [EXTRACTED]
+- [[test_phase2_batch_k.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_173
+#graphify/code #graphify/EXTRACTED #community/Community_77

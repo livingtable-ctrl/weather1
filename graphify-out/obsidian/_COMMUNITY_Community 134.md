@@ -1,38 +1,39 @@
 ---
 type: community
-cohesion: 0.12
-members: 23
+cohesion: 0.09
+members: 24
 ---
 
 # Community 134
 
-**Cohesion:** 0.12 - loosely connected
-**Members:** 23 nodes
+**Cohesion:** 0.09 - loosely connected
+**Members:** 24 nodes
 
 ## Members
-- [[dot-_run()]] - code - tests/test_phase2_batch_f.py
-- [[dot-test_cholesky_correlated()]] - code - tests/test_phase2_batch_f.py
-- [[dot-test_cholesky_failure_logs_warning()]] - code - tests/test_phase2_batch_f.py
-- [[dot-test_cholesky_identity()]] - code - tests/test_phase2_batch_f.py
-- [[dot-test_cholesky_returns_none_for_non_pd()]] - code - tests/test_phase2_batch_f.py
-- [[dot-test_correlation_applied_false_when_cholesky_fails()]] - code - tests/test_phase2_batch_f.py
-- [[dot-test_correlation_applied_false_when_no_city()]] - code - tests/test_phase2_batch_f.py
-- [[dot-test_correlation_applied_false_when_no_trades()]] - code - tests/test_phase2_batch_f.py
-- [[dot-test_correlation_applied_true_when_cholesky_succeeds()]] - code - tests/test_phase2_batch_f.py
-- [[dot-test_simulate_result_has_required_keys()]] - code - tests/test_phase2_batch_f.py
-- [[A non-positive-definite matrix must log a WARNING, not fail silently.]] - rationale - tests/test_phase2_batch_f.py
-- [[Empty trade list must return correlation_applied=False (or absent).]] - rationale - tests/test_phase2_batch_f.py
-- [[P2-1 Cholesky decomposition produces correct L @ L.T == mat.]] - rationale - tests/test_phase2_batch_f.py
-- [[P2-1 correlation_applied must reflect whether Cholesky actually succeeded.]] - rationale - tests/test_phase2_batch_f.py
-- [[Phase 2 Batch F Regression Tests]] - code - tests/test_phase2_batch_f.py
-- [[Phase 2 Batch F regression tests P2-1 (monte_carlo correlation_applied flag).]] - rationale - tests/test_phase2_batch_f.py
-- [[TestCorrelationAppliedFlag]] - code - tests/test_phase2_batch_f.py
-- [[TestCorrelationMatrixIntegrity]] - code - tests/test_phase2_batch_f.py
-- [[Trades with no city correlation_applied must be False even if Cholesky would…]] - rationale - tests/test_phase2_batch_f.py
-- [[When Cholesky returns None (not positive-definite), correlation_applied must be…]] - rationale - tests/test_phase2_batch_f.py
-- [[When Cholesky succeeds and trades have cities, correlation_applied must be True.]] - rationale - tests/test_phase2_batch_f.py
-- [[_make_trade()]] - code - tests/test_phase2_batch_f.py
-- [[simulate_portfolio must always return correlation_applied in the result.]] - rationale - tests/test_phase2_batch_f.py
+- [[dot-test_banner_prints_when_nothing_is_halted()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_banner_shows_partial_placement_count_per_tier()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_banner_shows_zero_placed_when_all_candidates_fail_at_placement()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_cmd_watch_threads_load_live_config_through()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_live_and_live_config_reach_auto_place_trades_unchanged()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_real_med_tier_shows_two_stars()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_real_strong_tier_at_low_time_risk_still_shows_three_stars()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_real_strong_tier_at_non_low_time_risk_shows_two_stars()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_signals_cache_entry_carries_tier_for_downstream_summaries()]] - code - tests/test_trade_cycle_engine.py
+- [[dot-test_untiered_strong_text_no_longer_shows_multiple_stars()]] - code - tests/test_trade_cycle_engine.py
+- [[Return the single console line containing `marker` (e.g. STRONG SIGNAL or…]] - rationale - tests/test_trade_cycle_engine.py
+- [[Same shape as test_raw_edge_below_min_edge_untiers_an_otherwise_…]] - rationale - tests/test_trade_cycle_engine.py
+- [[TestBannerReflectsActualPlacementCount]] - code - tests/test_trade_cycle_engine.py
+- [[TestDashboardStarsKeyOffTier]] - code - tests/test_trade_cycle_engine.py
+- [[TestLiveConfigThreading]] - code - tests/test_trade_cycle_engine.py
+- [[The literal path the backlog entry exists to harden -- live=True with a…]] - rationale - tests/test_trade_cycle_engine.py
+- [[The one branch where the ladder's two conditions actually interact tier ==…]] - rationale - tests/test_trade_cycle_engine.py
+- [[_banner_line()]] - code - tests/test_trade_cycle_engine.py
+- [[_med_market_analysis()]] - code - tests/test_trade_cycle_engine.py
+- [[adjusted_edge between MED_EDGE (0.15) and STRONG_EDGE (0.30).]] - rationale - tests/test_trade_cycle_engine.py
+- [[backlog.txt STRONGMED SIGNAL BANNER OVERCLAIMS 'PLACING PAPER TRADES' WHEN 0…]] - rationale - tests/test_trade_cycle_engine.py
+- [[backlog.txt 'DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF SIGNAL TEXT, NOT…]] - rationale - tests/test_trade_cycle_engine.py
+- [[cmd_watch-level confirm live_config actually comes from _load_live_config()…]] - rationale - tests/test_trade_cycle_engine.py
+- [[cron.py's own signals_cache summary (stronglow_risk counts) reads this same…]] - rationale - tests/test_trade_cycle_engine.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -42,8 +43,13 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 1 edge to [[_COMMUNITY_Community 246]]
+- 12 edges to [[_COMMUNITY_Community 17]]
+- 9 edges to [[_COMMUNITY_Community 25]]
+- 1 edge to [[_COMMUNITY_Community 294]]
 
 ## Top bridge nodes
-- [[Phase 2 Batch F Regression Tests]] - degree 7, connects to 2 communities
+- [[_med_market_analysis()]] - degree 8, connects to 2 communities
+- [[dot-test_banner_prints_when_nothing_is_halted()]] - degree 3, connects to 2 communities
+- [[TestDashboardStarsKeyOffTier]] - degree 9, connects to 1 community
+- [[TestBannerReflectsActualPlacementCount]] - degree 6, connects to 1 community
+- [[TestLiveConfigThreading]] - degree 6, connects to 1 community

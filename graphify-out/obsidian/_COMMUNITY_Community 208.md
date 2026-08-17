@@ -1,31 +1,32 @@
 ---
 type: community
-cohesion: 0.18
-members: 16
+cohesion: 0.12
+members: 17
 ---
 
 # Community 208
 
-**Cohesion:** 0.18 - loosely connected
-**Members:** 16 nodes
+**Cohesion:** 0.12 - loosely connected
+**Members:** 17 nodes
 
 ## Members
-- [[dot-test_mixed_sides_correct_win_count()]] - code - tests/test_alerts_side.py
-- [[dot-test_no_side_consecutive_losses_trigger()]] - code - tests/test_alerts_side.py
-- [[dot-test_no_side_losses_trigger_collapse()]] - code - tests/test_alerts_side.py
-- [[dot-test_no_side_wins_not_counted_as_consec_losses()]] - code - tests/test_alerts_side.py
-- [[dot-test_no_side_wins_not_counted_as_losses()]] - code - tests/test_alerts_side.py
-- [[ALERT_HALT_THRESHOLDS]] - code - alerts.py
-- [[Detect anomalous patterns in recent trade history. Returns a list of alert…]] - rationale - alerts.py
-- [[P1-14 5 yes-wins + 5 no-wins = 100% win rate, no alert.]] - rationale - tests/test_alerts_side.py
-- [[P1-14 6 consecutive NO-side losses (outcome='yes') must trigger alert.]] - rationale - tests/test_alerts_side.py
-- [[P1-14 6 consecutive NO-side wins must not trigger consecutive-loss alert.]] - rationale - tests/test_alerts_side.py
-- [[P1-14 8 losing NO-side trades (outcome='yes') must trigger collapse.]] - rationale - tests/test_alerts_side.py
-- [[P1-14 8 winning NO-side trades must not trigger win-rate collapse.]] - rationale - tests/test_alerts_side.py
-- [[TestCheckAnomaliesNoSideConsecutiveLoss]] - code - tests/test_alerts_side.py
-- [[TestCheckAnomaliesNoSideWinRate]] - code - tests/test_alerts_side.py
-- [[_make_trade()_1]] - code - tests/test_alerts_side.py
-- [[check_anomalies()]] - code - alerts.py
+- [[dot-_make_cb()]] - code - tests/test_p1_remaining.py
+- [[dot-setup_method()_17]] - code - tests/test_p1_remaining.py
+- [[dot-teardown_cb()]] - code - tests/test_p1_remaining.py
+- [[dot-teardown_method()_9]] - code - tests/test_p1_remaining.py
+- [[dot-test_expired_open_state_clears_on_reload()]] - code - tests/test_p1_remaining.py
+- [[dot-test_failure_count_persists_across_instances()]] - code - tests/test_p1_remaining.py
+- [[dot-test_load_state_blocks_on_save_lock()]] - code - tests/test_p1_remaining.py
+- [[dot-test_multiple_breakers_share_one_file()]] - code - tests/test_p1_remaining.py
+- [[dot-test_open_state_persists_across_instances()]] - code - tests/test_p1_remaining.py
+- [[dot-test_persist_false_does_not_write_state()]] - code - tests/test_p1_remaining.py
+- [[An open circuit stays open after process restart.]] - rationale - tests/test_p1_remaining.py
+- [[Different circuit breaker names coexist in a single state file.]] - rationale - tests/test_p1_remaining.py
+- [[Failure count survives process restart (simulated by creating a new instance).]] - rationale - tests/test_p1_remaining.py
+- [[If recovery timeout has elapsed since last open, new instance starts closed.]] - rationale - tests/test_p1_remaining.py
+- [[TestCircuitBreakerPersistence]] - code - tests/test_p1_remaining.py
+- [[_load_state() must serialize on _CB_STATE_FILE_LOCK like _save_state().…]] - rationale - tests/test_p1_remaining.py
+- [[persist=False circuit breaker never writes state file.]] - rationale - tests/test_p1_remaining.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -35,15 +36,8 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 7 edges to [[_COMMUNITY_Community 194]]
-- 3 edges to [[_COMMUNITY_Community 200]]
-- 2 edges to [[_COMMUNITY_Anomaly Detection & PDF Reporting]]
-- 2 edges to [[_COMMUNITY_Community 167]]
-- 1 edge to [[_COMMUNITY_Community 94]]
-- 1 edge to [[_COMMUNITY_Community 565]]
+- 2 edges to [[_COMMUNITY_Community 17]]
+- 1 edge to [[_COMMUNITY_Community 4]]
 
 ## Top bridge nodes
-- [[check_anomalies()]] - degree 16, connects to 5 communities
-- [[_make_trade()_1]] - degree 10, connects to 3 communities
-- [[TestCheckAnomaliesNoSideWinRate]] - degree 4, connects to 1 community
-- [[TestCheckAnomaliesNoSideConsecutiveLoss]] - degree 3, connects to 1 community
+- [[TestCircuitBreakerPersistence]] - degree 13, connects to 2 communities

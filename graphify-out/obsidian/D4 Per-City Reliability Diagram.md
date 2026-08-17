@@ -1,12 +1,12 @@
 ---
 source_file: "docs/superpowers/plans/2026-06-27-category-d-analytics-reporting.md"
 type: "document"
-community: "Community 104"
+community: "Community 334"
 location: "D4"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_104
+  - community/Community_334
 ---
 
 # D4: Per-City Reliability Diagram
@@ -19,4 +19,4 @@ tags:
 - [[useData.js Data Fetching Hook]] - `references` [EXTRACTED]
 - [[web_app.py Module]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_104
+#graphify/document #graphify/EXTRACTED #community/Community_334

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "code"
-community: "Community 45"
+community: "Community 12"
 location: "L300"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_45
+  - community/Community_12
 ---
 
 # TestOpenTradesListLivePath
@@ -18,4 +18,4 @@ tags:
 - [[Position]] - `uses` [INFERRED]
 - [[test_live_execution.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_45
+#graphify/code #graphify/EXTRACTED #community/Community_12

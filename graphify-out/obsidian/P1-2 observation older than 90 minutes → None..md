@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_metar.py"
 type: "rationale"
-community: "Community 73"
+community: "Community 95"
 location: "L141"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_73
+  - community/Community_95
 ---
 
 # P1-2: observation older than 90 minutes → None.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_returns_none_when_observation_stale()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_73
+#graphify/rationale #graphify/EXTRACTED #community/Community_95

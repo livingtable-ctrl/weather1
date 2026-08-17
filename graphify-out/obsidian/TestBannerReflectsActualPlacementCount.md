@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "code"
-community: "Community 266"
+community: "Community 134"
 location: "L2189"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_266
+  - community/Community_134
 ---
 
 # TestBannerReflectsActualPlacementCount
@@ -19,4 +19,4 @@ tags:
 - [[backlog.txt STRONGMED SIGNAL BANNER OVERCLAIMS 'PLACING PAPER TRADES' WHEN 0…]] - `rationale_for` [EXTRACTED]
 - [[test_trade_cycle_engine.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_266
+#graphify/code #graphify/EXTRACTED #community/Community_134

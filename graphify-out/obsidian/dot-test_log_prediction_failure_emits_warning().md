@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_debug_fixes.py"
 type: "code"
-community: "Community 78"
+community: "Community 4"
 location: "L342"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_78
+  - community/Community_4
 ---
 
 # .test_log_prediction_failure_emits_warning()
@@ -15,4 +15,4 @@ tags:
 - [[TestLogPredictionWarning]] - `method` [EXTRACTED]
 - [[When log_prediction raises, cmd_analyze logs a warning.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_78
+#graphify/code #graphify/EXTRACTED #community/Community_4

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_hurricane_markets.py"
 type: "code"
-community: "Community 203"
+community: "Community 206"
 location: "L415"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_203
+  - community/Community_206
 ---
 
 # TestHurricaneCountToDateCache
@@ -26,4 +26,4 @@ tags:
 - [[dot-test_refresh_skips_basin_already_done_today()]] - `method` [EXTRACTED]
 - [[test_hurricane_markets.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_203
+#graphify/code #graphify/EXTRACTED #community/Community_206

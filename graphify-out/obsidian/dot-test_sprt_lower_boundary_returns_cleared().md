@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_sprt.py"
 type: "code"
-community: "Community 166"
+community: "Community 167"
 location: "L77"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_166
+  - community/Community_167
 ---
 
 # .test_sprt_lower_boundary_returns_cleared()
@@ -15,4 +15,4 @@ tags:
 - [[P1-17 2950 wins pushes LLR below lower boundary → cleared=True.]] - `rationale_for` [EXTRACTED]
 - [[TestSprtModelHealth]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_166
+#graphify/code #graphify/EXTRACTED #community/Community_167

@@ -1,19 +1,18 @@
 ---
-source_file: "static/signals.js"
+source_file: "static/trades.js"
 type: "code"
-community: "Legacy Static Dashboard JS Pages"
-location: "L24"
+community: "Community 233"
+location: "L21"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Legacy_Static_Dashboard_JS_Pages
+  - community/Community_233
 ---
 
 # renderSummary()
 
 ## Connections
-- [[loadLiveSignals()]] - `calls` [EXTRACTED]
-- [[setText()]] - `calls` [EXTRACTED]
-- [[staticsignals.js]] - `contains` [EXTRACTED]
+- [[loadTrades()]] - `calls` [EXTRACTED]
+- [[statictrades.js]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Legacy_Static_Dashboard_JS_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_233

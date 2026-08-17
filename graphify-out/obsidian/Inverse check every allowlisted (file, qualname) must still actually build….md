@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_isoformat_cutoff_guard.py"
 type: "rationale"
-community: "Community 75"
+community: "Community 66"
 location: "L243"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_75
+  - community/Community_66
 ---
 
 # Inverse check: every allowlisted (file, qualname) must still actually build…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_isoformat_cutoff_allowlist_has_no_stale_entries()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_75
+#graphify/rationale #graphify/EXTRACTED #community/Community_66

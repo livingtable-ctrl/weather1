@@ -1,17 +1,20 @@
 ---
 type: community
-cohesion: 1.00
-members: 2
+cohesion: 0.40
+members: 5
 ---
 
 # Community 605
 
-**Cohesion:** 1.00 - tightly connected
-**Members:** 2 nodes
+**Cohesion:** 0.40 - moderately connected
+**Members:** 5 nodes
 
 ## Members
-- [[MARKET_STATION_MAP Dict]] - code - metar.py
-- [[NOAA MOS Module]] - code - mos.py
+- [[dot-test_survives_write_failure()]] - code - tests/test_backtest.py
+- [[dot-test_writes_via_atomic_helper()]] - code - tests/test_backtest.py
+- [[A failed write (e.g. AtomicWriteError) must be caught, not propagate — this…]] - rationale - tests/test_backtest.py
+- [[TestSaveWalkForwardParams]] - code - tests/test_backtest.py
+- [[save_walk_forward_params must use safe_io's atomic write, not a plain…]] - rationale - tests/test_backtest.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -19,3 +22,9 @@ members: 2
 TABLE source_file, type FROM #community/Community_605
 SORT file.name ASC
 ```
+
+## Connections to other communities
+- 1 edge to [[_COMMUNITY_Community 8]]
+
+## Top bridge nodes
+- [[TestSaveWalkForwardParams]] - degree 3, connects to 1 community

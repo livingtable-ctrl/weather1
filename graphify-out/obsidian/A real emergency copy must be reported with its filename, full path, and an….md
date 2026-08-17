@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_safe_io.py"
 type: "rationale"
-community: "Safe I/O CRC Validation Tests"
+community: "Community 85"
 location: "L865"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Safe_I/O_CRC_Validation_Tests
+  - community/Community_85
 ---
 
 # A real emergency copy must be reported with its filename, full path, and an…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_check_emergency_copies_reports_real_files()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Safe_I/O_CRC_Validation_Tests
+#graphify/rationale #graphify/EXTRACTED #community/Community_85

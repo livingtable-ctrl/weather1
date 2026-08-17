@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_drawdown_tiers.py"
 type: "code"
-community: "Community 273"
+community: "Community 415"
 location: "L15"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_273
+  - community/Community_415
 ---
 
 # .test_no_drawdown_full_kelly()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestDrawdownScalingFactor]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_273
+#graphify/code #graphify/EXTRACTED #community/Community_415

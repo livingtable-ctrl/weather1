@@ -1,25 +1,22 @@
 ---
-source_file: "weather app site V_3 (3)/src/shared.jsx"
+source_file: "frontend/src/App.jsx"
 type: "code"
-community: "Community 93"
-location: "L15"
+community: "Community 98"
+location: "L68"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_93
+  - community/Community_98
 ---
 
 # normCity()
 
 ## Connections
-- [[CommandPalette()]] - `calls` [EXTRACTED]
+- [[AnalyticsTab()_1]] - `calls` [EXTRACTED]
 - [[ForecastTab()_1]] - `calls` [EXTRACTED]
-- [[ForecastTab.jsx]] - `imports` [EXTRACTED]
-- [[SignalsTab()]] - `calls` [EXTRACTED]
-- [[SignalsTab.jsx]] - `imports` [EXTRACTED]
+- [[PositionsTab()_1]] - `calls` [EXTRACTED]
+- [[SignalsTab()_1]] - `calls` [EXTRACTED]
 - [[TradesTab()_1]] - `calls` [EXTRACTED]
-- [[TradesTab.jsx]] - `imports` [EXTRACTED]
-- [[shared.jsx]] - `contains` [EXTRACTED]
-- [[weather app site V_3 (3)srcApp.jsx]] - `imports` [EXTRACTED]
+- [[frontendsrcApp.jsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_93
+#graphify/code #graphify/EXTRACTED #community/Community_98

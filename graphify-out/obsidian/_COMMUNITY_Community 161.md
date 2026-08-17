@@ -1,35 +1,35 @@
 ---
 type: community
-cohesion: 0.10
+cohesion: 0.16
 members: 20
 ---
 
 # Community 161
 
-**Cohesion:** 0.10 - loosely connected
+**Cohesion:** 0.16 - loosely connected
 **Members:** 20 nodes
 
 ## Members
-- [[dot-test_circuit_open_serves_cached_value_instead_of_none()]] - code - tests/test_acis_precip.py
-- [[dot-test_correct_mm_unit_returns_value()]] - code - tests/test_acis_precip.py
-- [[dot-test_different_params_are_not_cache_collisions()]] - code - tests/test_acis_precip.py
-- [[dot-test_fetch_exception_returns_none()]] - code - tests/test_acis_precip.py
-- [[dot-test_month_outside_window_result_is_also_cached()]] - code - tests/test_acis_precip.py
-- [[dot-test_month_outside_window_returns_none()]] - code - tests/test_acis_precip.py
-- [[dot-test_none_result_IS_cached_second_call_skips_http()]] - code - tests/test_acis_precip.py
-- [[dot-test_one_response_fills_cache_for_every_month_present()]] - code - tests/test_acis_precip.py
-- [[dot-test_parses_matching_month()]] - code - tests/test_acis_precip.py
-- [[dot-test_successful_result_is_cached_second_call_skips_http()]] - code - tests/test_acis_precip.py
-- [[dot-test_unexpected_unit_refuses_value()]] - code - tests/test_acis_precip.py
-- [[A different (lat, lon, tz, year, month) must be a real cache miss, not…]] - rationale - tests/test_acis_precip.py
-- [[Control for the guard above an explicit, correct 'mm' unit must not be refused.]] - rationale - tests/test_acis_precip.py
-- [[One response covers ~6 months of data -- every (year, month) actually present…]] - rationale - tests/test_acis_precip.py
-- [[Opus-review-caught gap (Snow Step 2 round-2 review) the mm claim was, like…]] - rationale - tests/test_acis_precip.py
-- [[TestFetchSeasonalPrecipMeanMm]] - code - tests/test_acis_precip.py
-- [[The target-month-absent-from-response None path (a successful HTTP call whose…]] - rationale - tests/test_acis_precip.py
-- [[Unlike a plain .get()-based cache, None results ARE cached here too (via…]] - rationale - tests/test_acis_precip.py
-- [[While the circuit breaker is open, a cache hit must still win -- matches…]] - rationale - tests/test_acis_precip.py
-- [[backlog.txt 'OPEN-METEO SEASONAL API...' research finding this function had…]] - rationale - tests/test_acis_precip.py
+- [[dot-test_both_gates_hold_blocks_even_if_settlement_would_pass()]] - code - tests/test_early_exits.py
+- [[dot-test_both_gates_pass_together()]] - code - tests/test_early_exits.py
+- [[dot-test_both_gates_settlement_blocks_even_if_hold_would_pass()]] - code - tests/test_early_exits.py
+- [[dot-test_hold_gate_blocks_when_too_soon()]] - code - tests/test_early_exits.py
+- [[dot-test_hold_gate_fails_open_on_missing_entered_at()]] - code - tests/test_early_exits.py
+- [[dot-test_hold_gate_fails_open_on_unparseable_entered_at()]] - code - tests/test_early_exits.py
+- [[dot-test_hold_gate_passes_when_past_threshold()]] - code - tests/test_early_exits.py
+- [[dot-test_no_gates_requested_passes()]] - code - tests/test_early_exits.py
+- [[dot-test_settlement_gate_blocks_within_window()]] - code - tests/test_early_exits.py
+- [[dot-test_settlement_gate_fails_closed_on_missing_close_time()]] - code - tests/test_early_exits.py
+- [[dot-test_settlement_gate_fails_closed_on_unparseable_close_time()]] - code - tests/test_early_exits.py
+- [[dot-test_settlement_gate_passes_outside_window()]] - code - tests/test_early_exits.py
+- [[Preserves the original inline behavior a missing close_time DOES block the…]] - rationale - tests/test_early_exits.py
+- [[Preserves the original inline behavior a missing entered_at does NOT block the…]] - rationale - tests/test_early_exits.py
+- [[Shared timing gates for early-exit checks (stop-lossbreakevenmodel-exit),…]] - rationale - positions.py
+- [[TestPassesExitGates]] - code - tests/test_early_exits.py
+- [[Tests for paper._passes_exit_gates, the shared timing-gate helper extracted…]] - rationale - tests/test_early_exits.py
+- [[_check_early_exits Function]] - code - order_executor.py
+- [[_check_live_model_exits Function]] - code - order_executor.py
+- [[_passes_exit_gates()]] - code - positions.py
 
 ## Live Query (requires Dataview plugin)
 
@@ -39,7 +39,12 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 271]]
+- 4 edges to [[_COMMUNITY_Community 3]]
+- 1 edge to [[_COMMUNITY_Community 104]]
+- 1 edge to [[_COMMUNITY_Community 0]]
+- 1 edge to [[_COMMUNITY_Community 57]]
+- 1 edge to [[_COMMUNITY_Community 1]]
 
 ## Top bridge nodes
-- [[TestFetchSeasonalPrecipMeanMm]] - degree 12, connects to 1 community
+- [[_passes_exit_gates()]] - degree 22, connects to 4 communities
+- [[TestPassesExitGates]] - degree 14, connects to 1 community

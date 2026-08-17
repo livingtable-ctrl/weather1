@@ -1,12 +1,12 @@
 ---
 source_file: "utils.py"
 type: "rationale"
-community: "Anomaly Detection & PDF Reporting"
+community: "Community 1"
 location: "L40"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Anomaly_Detection__PDF_Reporting
+  - community/Community_1
 ---
 
 # Single source of truth for the TRADING_PAUSED kill-switch. Was previously re-…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[is_trading_paused()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Anomaly_Detection__PDF_Reporting
+#graphify/rationale #graphify/EXTRACTED #community/Community_1

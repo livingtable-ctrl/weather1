@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_c.py"
 type: "rationale"
-community: "Community 344"
+community: "Community 350"
 location: "L160"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_344
+  - community/Community_350
 ---
 
 # A second call within TTL must not hit the network.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[dot-test_cache_served_within_ttl()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_344
+#graphify/rationale #graphify/EXTRACTED #community/Community_350

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_tracker.py"
 type: "code"
-community: "Community 265"
+community: "Community 261"
 location: "L568"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_265
+  - community/Community_261
 ---
 
 # ._insert_prediction_and_outcome()
@@ -18,4 +18,4 @@ tags:
 - [[Helper log a prediction and its outcome.]] - `rationale_for` [EXTRACTED]
 - [[TestBrierScore]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_265
+#graphify/code #graphify/EXTRACTED #community/Community_261

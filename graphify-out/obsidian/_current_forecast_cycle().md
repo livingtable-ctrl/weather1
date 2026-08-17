@@ -1,12 +1,12 @@
 ---
 source_file: "order_executor.py"
 type: "code"
-community: "Community 40"
+community: "Community 3"
 location: "L79"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_40
+  - community/Community_3
 ---
 
 # _current_forecast_cycle()
@@ -20,10 +20,9 @@ tags:
 - [[_check_live_position_exits()]] - `calls` [EXTRACTED]
 - [[_prediction_kwargs_from_analysis()]] - `calls` [EXTRACTED]
 - [[_reprice_or_cancel_pending_orders()]] - `calls` [EXTRACTED]
-- [[main.py CLI Entrypoint]] - `shares_data_with` [INFERRED]
 - [[order_executor.py]] - `contains` [EXTRACTED]
 - [[test_dead_code_scan.py]] - `references` [EXTRACTED]
-- [[test_execution_proof.py_1]] - `references` [EXTRACTED]
-- [[test_forecasting.py]] - `references` [EXTRACTED]
+- [[test_execution_proof.py]] - `references` [EXTRACTED]
+- [[test_forecasting.py]] - `imports` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_40
+#graphify/code #graphify/EXTRACTED #community/Community_3

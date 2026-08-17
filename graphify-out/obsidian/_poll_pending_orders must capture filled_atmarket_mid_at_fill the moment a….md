@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_live_execution.py"
 type: "rationale"
-community: "Community 429"
+community: "Community 466"
 location: "L1793"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/Community_429
+  - community/Community_466
 ---
 
 # _poll_pending_orders must capture filled_at/market_mid_at_fill the moment a…
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[TestFillInstrumentation]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/Community_429
+#graphify/rationale #graphify/EXTRACTED #community/Community_466

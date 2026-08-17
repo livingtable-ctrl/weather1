@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_trade_cycle_engine.py"
 type: "code"
-community: "Community 290"
+community: "Community 294"
 location: "L1864"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_290
+  - community/Community_294
 ---
 
 # TestPlacementAttemptedBannerAllConditions
@@ -25,4 +25,4 @@ tags:
 - [[cron.py's _placement_was_attempted gate has three independent conditions…]] - `rationale_for` [EXTRACTED]
 - [[test_trade_cycle_engine.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_290
+#graphify/code #graphify/EXTRACTED #community/Community_294

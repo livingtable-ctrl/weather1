@@ -10,13 +10,13 @@ members: 7
 **Members:** 7 nodes
 
 ## Members
-- [[dot-test_blocks_even_when_city_and_date_are_present()_2]] - code - tests/test_snow_markets.py
-- [[dot-test_daily_ticker_unaffected()_3]] - code - tests/test_snow_markets.py
-- [[dot-test_does_not_block_when_gate_active()_2]] - code - tests/test_snow_markets.py
-- [[dot-test_still_blocks_when_gate_inactive()_2]] - code - tests/test_snow_markets.py
-- [[Mutation-test proof flipping _snow_gates_active() to True makes the block…]] - rationale - tests/test_snow_markets.py
-- [[TestCheckPositionLimitsSnowConditional]] - code - tests/test_snow_markets.py
-- [[backlog.txt Snow Step 2 the Step 1 unconditional block became conditional on…]] - rationale - tests/test_snow_markets.py
+- [[ECMWF AIFS Ensemble]] - document - docs/RESEARCH-FINDINGS.md
+- [[HIGH PRIORITY Missing Data Sources]] - document - docs/RESEARCH-FINDINGS.md
+- [[Herbie Python Library]] - document - docs/RESEARCH-FINDINGS.md
+- [[LAMP (Localized Aviation MOS Program)]] - document - docs/RESEARCH-FINDINGS.md
+- [[METAR  Aviation Weather (Real-Time Observations)]] - document - docs/RESEARCH-FINDINGS.md
+- [[NOAA MOS (Model Output Statistics)]] - document - docs/RESEARCH-FINDINGS.md
+- [[National Blend of Models (NBM)]] - document - docs/RESEARCH-FINDINGS.md
 
 ## Live Query (requires Dataview plugin)
 
@@ -26,7 +26,7 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 1 edge to [[_COMMUNITY_Community 174]]
+- 1 edge to [[_COMMUNITY_Community 541]]
 
 ## Top bridge nodes
-- [[TestCheckPositionLimitsSnowConditional]] - degree 6, connects to 1 community
+- [[HIGH PRIORITY Missing Data Sources]] - degree 7, connects to 1 community

@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_phase2_batch_j.py"
 type: "code"
-community: "Community 236"
+community: "Community 237"
 location: "L62"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_236
+  - community/Community_237
 ---
 
 # ._mock_session_get()
@@ -20,4 +20,4 @@ tags:
 - [[dot-test_valid_obs_time_returns_result()]] - `calls` [EXTRACTED]
 - [[TestMetarFetchNoFabricatedTimestamp]] - `method` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_236
+#graphify/code #graphify/EXTRACTED #community/Community_237

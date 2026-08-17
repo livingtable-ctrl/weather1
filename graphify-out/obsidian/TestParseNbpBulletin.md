@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_mos_nbp.py"
 type: "code"
-community: "Community 148"
+community: "Community 152"
 location: "L71"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_148
+  - community/Community_152
 ---
 
 # TestParseNbpBulletin
@@ -26,4 +26,4 @@ tags:
 - [[dot-test_pacific_timezone_shifts_local_dates()]] - `method` [EXTRACTED]
 - [[test_mos_nbp.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_148
+#graphify/code #graphify/EXTRACTED #community/Community_152

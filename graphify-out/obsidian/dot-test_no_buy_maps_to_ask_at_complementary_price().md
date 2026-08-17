@@ -1,12 +1,12 @@
 ---
 source_file: "tests/test_kalshi_client.py"
 type: "code"
-community: "Community 225"
+community: "Community 229"
 location: "L29"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Community_225
+  - community/Community_229
 ---
 
 # .test_no_buy_maps_to_ask_at_complementary_price()
@@ -16,4 +16,4 @@ tags:
 - [[TestToV2SidePrice]] - `method` [EXTRACTED]
 - [[_to_v2_side_price()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Community_225
+#graphify/code #graphify/EXTRACTED #community/Community_229

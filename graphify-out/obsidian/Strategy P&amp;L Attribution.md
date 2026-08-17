@@ -1,11 +1,11 @@
 ---
 source_file: "docs/superpowers/plans/2026-04-16-phase-g-long-term.md"
 type: "document"
-community: "Community 452"
+community: "Community 216"
 tags:
   - graphify/document
   - graphify/EXTRACTED
-  - community/Community_452
+  - community/Community_216
 ---
 
 # Strategy P&amp;L Attribution
@@ -13,6 +13,6 @@ tags:
 ## Connections
 - [[Per-City Per-Season Brier Segmentation]] - `references` [INFERRED]
 - [[Phase G Long-Term Features Plan]] - `implements` [EXTRACTED]
-- [[tracker.py module_1]] - `references` [EXTRACTED]
+- [[tracker.py module]] - `references` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Community_452
+#graphify/document #graphify/EXTRACTED #community/Community_216
