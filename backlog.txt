@@ -1,10 +1,80 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
-[OPEN 2026-08-16 -- found by adjacency while building the METAR lock-in
-  calibration fix below (opus review, live-path-integration lens); not
-  fixed in that same change per the same-payload test -- see "Why not
-  now" below.] SETTLEMENT_MONITOR.PY'S FORCE-CLOSE TRIGGER USES THE SAME
+[OPEN 2026-08-16 -- found by opus review (effort=high) while shipping the
+  settlement-lag METAR calibration fix immediately below this entry; not
+  fixed in that same change -- see "Why not now" below.] METAR
+  SETTLEMENT-LAG CALIBRATION MAKES CRON.PY'S >=0.80 FORCE-CLOSE GATE
+  MATHEMATICALLY UNREACHABLE UNDER THE CURRENT FITTED MODEL -- ALSO, THE
+  MODEL WAS FIT ON A DIFFERENT POPULATION THAN IT'S APPLIED TO HERE
+Priority: Low -- the affected mechanism (settlement_monitor.py's T-ticker
+  force-close) has never actually run in production. Confirmed via
+  `data/cron.log` (1.8MB of real history, zero "SETTLEMENT LAG signal"
+  lines ever) and via `schtasks /Query /TN KalshiWeatherSettlementMonitor`
+  (task not registered on this machine -- cron.py's own comment near
+  line 1444 already notes the 720min staleness default "predates
+  settlement_monitor.py ever actually being scheduled to run"). This is a
+  design gap to close before the mechanism goes live, not an active bug.
+
+Problem:
+  `metar._dynamic_lock_in_confidence()` is hard-bounded to [0.72, 0.97]
+  (its own docstring states this range explicitly). Run through the real
+  fitted calibration model (a=b=0.2262, c=0.4001, n=33 as of this
+  writing -- re-check `data/metar_lockout_calibration.json`, cron.py's
+  D5 weekly block auto-retrains it) across that ENTIRE input range, the
+  calibrated output never exceeds ~0.766 for a YES-lock or ~0.595 for a
+  NO-lock -- both permanently below cron.py:1471's `_sig_conf >= 0.80`
+  force-close gate. Independently verified by hand-computation (not just
+  taking the review's word for it): swept clearance x hour x margin_f=1.0
+  through both the raw formula and `apply_metar_calibration`, confirmed
+  max(calibrated) = 0.7661 (YES) / 0.5954 (NO) < 0.80 with no exceptions.
+
+  Separately: `ml_bias.fit_metar_calibration()` is fit on
+  `tracker.get_metar_lockout_calibration_data()` rows, which come from
+  `weather_markets._metar_lock_in()` -- called with `margin_f=3.0`
+  (default) against the daily running-extreme temperature
+  (`fetch_metar_daily_extreme`). `settlement_monitor.py`'s T-ticker path
+  calls the same underlying `check_metar_lockout()` with
+  `margin_f=_SETTLEMENT_MARGIN_F=1.0` against the INSTANTANEOUS reading
+  (`obs["current_temp_f"]`). The settlement path's raw confidence scores
+  are drawn from a different population (different margin, different
+  temperature basis) than the one the model was fit on -- applying the
+  entry-path model here is an extrapolation, not a like-for-like
+  correction, even though it still moves scores in the right direction.
+
+What it would look like:
+  Two independent pieces of follow-up work, only worth doing once the
+  settlement monitor is actually scheduled and producing real signals:
+  (1) Decide whether/how to rescale cron.py's 0.80 force-close gate for
+  the calibrated scale -- note NO-locks cap at ~0.595 (worse than most
+  reasonable confidence thresholds) even in the best case, so a single
+  shared threshold for both outcomes may not make sense; a real decision
+  needs real settlement-lag outcome data, not this synthetic sweep alone.
+  (2) Consider fitting a settlement-path-specific calibration model
+  (own margin_f/temperature-basis population) rather than reusing the
+  entry-path one, once enough settlement-lag rows with real outcomes
+  exist to fit one.
+
+Why not now:
+  No real settlement-lag data exists yet to inform either fix -- the
+  scheduled task has never run. Rescaling cron.py's gate speculatively,
+  before any real data shows what the calibrated distribution actually
+  looks like in production, risks tuning to the wrong number. Shipping
+  the calibration wiring itself (this file's next entry) with the gate
+  left as-is is the conservative choice: it fixes the two-calibration-
+  regimes disagreement the original entry reported, and the mechanism
+  simply stays dormant (as it already has been) until this is revisited.
+
+When to revisit:
+  As soon as someone runs `py main.py schedule` to actually register the
+  `KalshiWeatherSettlementMonitor` task (or otherwise starts running
+  `settlement-monitor` regularly) and settlement-lag signals start
+  accumulating with real outcomes -- pull real confidence distributions
+  before picking a new threshold, and reconsider whether a
+  settlement-path-specific calibration fit is warranted at that point.
+
+[RESOLVED 2026-08-16 -- see resolution below.]
+  SETTLEMENT_MONITOR.PY'S FORCE-CLOSE TRIGGER USES THE SAME
   RAW, NOW-KNOWN-OVERCONFIDENT METAR LOCK-IN NUMBER THE ENTRY PATH JUST
   GOT CALIBRATED -- THE TWO SIDES OF THE SAME TRADE NOW DISAGREE
 Priority: Medium -- affects paper trades directly (which feed the accuracy
@@ -51,6 +121,37 @@ When to revisit:
   No blocking dependency -- `ml_bias.apply_metar_calibration()` and
   `data/metar_lockout_calibration.json` already exist once the entry-path
   fix ships. Buildable immediately by whoever picks this up.
+
+Resolution (2026-08-16, same session, opus review effort=high on the
+  diff before commit):
+  Added `settlement_monitor._calibrate_metar_settlement_confidence()`,
+  wired in at the T-ticker `check_metar_lockout()` call site (now
+  ~line 440) inside `if lockout["locked"]:`, before `build_settlement_
+  signal()`. Converts the direction-relative `confidence` to P(YES)
+  (mirrors weather_markets.py's exact `outcome=="yes" ? confidence :
+  1-confidence` convention), applies `ml_bias.apply_metar_calibration()`
+  via `weather_markets._load_metar_calibration()` (the same cached
+  loader/model the entry-path fix uses -- not re-implemented), converts
+  back to direction-relative confidence, and applies its own
+  `_METAR_CORRECTION_LIMIT = 0.60` cap (not the generic 0.30 -- reusing
+  0.30 here would silently skip most NO-lock corrections, the same HIGH
+  finding from the entry-path fix's review). Fails closed to the raw
+  confidence on any error or missing model. `between` path untouched, as
+  scoped. 8 new tests in `tests/test_settlement_monitor.py`
+  (`TestMetarSettlementCalibration`), including an orientation
+  round-trip regression test and 2 tight boundary tests pinning the 0.60
+  cap to (0.59, 0.61) rather than a loose bracket. Mutation-tested (both
+  the orientation flip and the cap constant) by injecting the exact bugs
+  and confirming the right tests fail, then reverting.
+
+  Opus review (effort=high) on the diff before commit found the
+  orientation/cap logic itself correct (independently re-verified: hand-
+  computed NO-lock 0.93 -> 0.5461, matches both the review's math and the
+  test), but surfaced one HIGH and one MEDIUM finding that changed how
+  this shipped -- see the new backlog entry below ("METAR SETTLEMENT-LAG
+  CALIBRATION MAKES CRON.PY'S >=0.80 FORCE-CLOSE GATE MATHEMATICALLY
+  UNREACHABLE...") for the full detail and the decision to ship as-is
+  rather than rescale cron.py's threshold speculatively.
 
 [RESOLVED 2026-08-16 -- see resolution below.] METAR SAME-DAY LOCK-IN PREDICTIONS GET ZERO STATISTICAL CALIBRATION CORRECTION -- RAW _dynamic_lock_in_confidence() OUTPUT FEEDS LIVE TRADES UNCORRECTED
 Priority: High -- directly affects real-money live trades. `py main.py

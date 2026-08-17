@@ -433,12 +433,20 @@ class TestBTickerParsing:
 
         assert signals == []
 
-    def test_t_ticker_still_works_as_before(self):
+    def test_t_ticker_still_works_as_before(self, monkeypatch):
         """T-ticker (above/below) markets are unaffected by the B-ticker changes."""
         from datetime import datetime
         from unittest.mock import patch
 
         import settlement_monitor as sm
+
+        # Isolate from the real on-disk calibration model this test doesn't
+        # care about -- otherwise it silently depends on whatever's in the
+        # main clone's data/metar_lockout_calibration.json (opus review
+        # finding, 2026-08-16). This test only checks outcome/count, but a
+        # future assertion on confidence here would be flaky against live
+        # file state without this.
+        monkeypatch.setattr(sm, "_load_metar_calibration", lambda: None)
 
         fake_obs = {
             "current_temp_f": 80.0,
@@ -459,3 +467,174 @@ class TestBTickerParsing:
 
         assert len(signals) == 1
         assert signals[0]["outcome"] == "yes"
+
+
+class TestMetarSettlementCalibration:
+    """backlog.txt L4: settlement_monitor.py's T-ticker force-close path
+    must apply the same METAR beta-calibration weather_markets.py's
+    analyze_trade uses for fresh entries, so cron.py's >=0.80 force-close
+    gate isn't evaluating a known-overconfident raw number while entries
+    are priced under the calibrated one."""
+
+    # Real production coefficients (data/metar_lockout_calibration.json as
+    # of 2026-08-16, n=33) -- same values test_weather_markets.py's own
+    # regression tests use, so a real orientation or cap bug here would
+    # also be caught by hand-computable, cross-checked numbers rather than
+    # an arbitrary toy model.
+    _REAL_PARAMS = (0.22619580826228397, 0.22619580826228397, 0.4000758536385143)
+
+    def _run(
+        self, monkeypatch, outcome, confidence, params, ticker="KXHIGHNY-26MAY17-T72"
+    ):
+        from datetime import datetime
+        from unittest.mock import patch
+
+        import settlement_monitor as sm
+
+        monkeypatch.setattr(sm, "_load_metar_calibration", lambda: params)
+        fake_obs = {"current_temp_f": 80.0, "obs_time": datetime.now(UTC)}
+        fake_lockout = {"locked": True, "outcome": outcome, "confidence": confidence}
+        mock_market = {"direction": "above", "threshold": 72.0, "ticker": ticker}
+
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            patch("metar.check_metar_lockout", return_value=fake_lockout),
+        ):
+            signals = sm.check_city_settlement("NYC", [mock_market])
+
+        assert len(signals) == 1
+        return signals[0]
+
+    def test_no_lock_orientation_round_trip_not_inverted(self, monkeypatch):
+        """Regression guard for the exact bug class two opus reviews caught
+        twice already this session: a NO-lock's confidence is P(NO), not
+        P(YES) -- apply_metar_calibration must see raw_p_yes = 1-confidence,
+        and the result must be converted back the same way. With the real
+        (asymmetric-in-c) coefficients, the naive "apply directly to
+        confidence" computation and the correct orientation-aware one
+        diverge (0.728 vs 0.546) -- if this test only checked "changed from
+        raw," an inverted implementation would pass it too."""
+        signal = self._run(monkeypatch, "no", 0.93, self._REAL_PARAMS)
+        assert signal["confidence"] == pytest.approx(0.5461, abs=1e-3)
+        assert signal["confidence"] != pytest.approx(0.7281, abs=1e-3), (
+            "confidence matches the WRONG (non-orientation-aware) computation "
+            "-- NO-lock correction was applied without flipping to P(YES) first"
+        )
+
+    def test_yes_lock_calibration_crosses_the_080_gate(self, monkeypatch):
+        """cron.py force-closes at confidence >= 0.80. A raw YES-lock
+        confidence of 0.90 clears that gate; the real fitted model corrects
+        it to ~0.71, which does NOT -- this is the actual, measurable
+        behavior change the backlog entry calls out (fewer settlement-lag
+        force-closes firing), not just a magnitude tweak."""
+        signal = self._run(monkeypatch, "yes", 0.90, self._REAL_PARAMS)
+        assert 0.90 >= 0.80, "test setup sanity: raw confidence must clear the gate"
+        assert signal["confidence"] == pytest.approx(0.7103, abs=1e-3)
+        assert signal["confidence"] < 0.80, (
+            "calibrated confidence still clears cron.py's >=0.80 force-close "
+            "gate -- the wiring isn't actually changing gate behavior"
+        )
+
+    def test_no_calibration_model_leaves_confidence_unchanged(self, monkeypatch):
+        """Fresh install / below the fit's data floor -- no calibration file
+        on disk yet must leave the raw confidence untouched, not raise."""
+        signal = self._run(monkeypatch, "yes", 0.95, None)
+        assert signal["confidence"] == pytest.approx(0.95)
+
+    def test_magnitude_cap_uses_metar_limit_not_generic_030(self, monkeypatch):
+        """Regression test for the exact HIGH finding the entry-path fix's
+        review caught: reusing the generic 0.30 cap here would silently
+        skip every real NO-lock correction (delta ~0.375 on this example)
+        while still applying YES-lock ones. Must use the METAR-specific
+        0.60 cap instead, so this correction actually applies."""
+        signal = self._run(monkeypatch, "no", 0.97, self._REAL_PARAMS)
+        assert signal["confidence"] != pytest.approx(0.97, abs=1e-3), (
+            "a real NO-lock correction (delta ~0.375) was skipped -- check "
+            "the cap constant is 0.60, not the generic 0.30"
+        )
+        assert signal["confidence"] == pytest.approx(0.5954, abs=1e-3)
+
+    def test_magnitude_cap_still_skips_pathological_correction(self, monkeypatch):
+        """The cap must still actually cap something -- a correction whose
+        delta exceeds 0.60 (not just 0.30) must still be skipped."""
+        signal = self._run(monkeypatch, "yes", 0.85, (1.0, 1.0, -10.0))
+        assert signal["confidence"] == pytest.approx(0.85)
+
+    def test_magnitude_cap_boundary_just_under_060_applies(self, monkeypatch):
+        """Tighten the cap value itself, not just bracket it loosely: a
+        delta of 0.59 (just under 0.60) must be applied. Opus review found
+        the two tests above only prove the cap sits somewhere in
+        [0.375, 0.85) -- this pins it to (0.59, 0.61), i.e. actually 0.60."""
+        # a=b=1 (Platt identity slope), c solved so apply(0.90, params)
+        # lands at exactly 0.31 -- delta 0.59 from raw 0.90.
+        signal = self._run(monkeypatch, "yes", 0.90, (1.0, 1.0, -2.9973438774483325))
+        assert signal["confidence"] == pytest.approx(0.31, abs=1e-3)
+
+    def test_magnitude_cap_boundary_just_over_060_skips(self, monkeypatch):
+        """Mirror of the test above: a delta of 0.61 (just over 0.60) must
+        be skipped, keeping the raw confidence."""
+        # Same construction, c solved so apply(0.90, params) lands at
+        # exactly 0.29 -- delta 0.61 from raw 0.90.
+        signal = self._run(monkeypatch, "yes", 0.90, (1.0, 1.0, -3.092608624391061))
+        assert signal["confidence"] == pytest.approx(0.90, abs=1e-3)
+
+    def test_between_path_not_calibrated(self, monkeypatch):
+        """Scope boundary: the `between` path uses its own separate
+        confidence formula and must NOT be run through METAR beta-
+        calibration, even when a model is loaded and would otherwise apply."""
+        from datetime import datetime
+        from unittest.mock import patch
+
+        import settlement_monitor as sm
+
+        monkeypatch.setattr(sm, "_load_metar_calibration", lambda: self._REAL_PARAMS)
+        fake_obs = {"current_temp_f": 68.0, "obs_time": datetime.now(UTC)}
+        mock_market = {
+            "direction": "between",
+            "ticker": "KXHIGHNY-26MAY17-B70.5",
+            "lower": 69.5,
+            "upper": 71.5,
+        }
+
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            patch("metar.fetch_metar_daily_extreme", return_value=69.5),
+        ):
+            signals = sm.check_city_settlement("NYC", [mock_market])
+
+        assert len(signals) == 1
+        # _check_between_settlement's own formula: min(0.95, 0.70 + clearance*0.05)
+        # -- known-good value from TestCheckBetweenSettlement's identical inputs.
+        # If calibration had leaked into this path, applying the real model
+        # (a=b=0.226, c=0.400) to 0.80 would instead produce ~0.671.
+        assert signals[0]["confidence"] == pytest.approx(0.80, abs=0.001)
+
+    def test_calibration_failure_fails_closed(self, monkeypatch):
+        """If _load_metar_calibration (or the calibration call itself)
+        raises unexpectedly, the raw confidence must be used, not propagate
+        the exception and drop the settlement signal entirely."""
+        from datetime import datetime
+        from unittest.mock import patch
+
+        import settlement_monitor as sm
+
+        def _boom():
+            raise RuntimeError("disk read failed")
+
+        monkeypatch.setattr(sm, "_load_metar_calibration", _boom)
+        fake_obs = {"current_temp_f": 80.0, "obs_time": datetime.now(UTC)}
+        fake_lockout = {"locked": True, "outcome": "yes", "confidence": 0.88}
+        mock_market = {
+            "direction": "above",
+            "threshold": 72.0,
+            "ticker": "KXHIGHNY-26MAY17-T72",
+        }
+
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            patch("metar.check_metar_lockout", return_value=fake_lockout),
+        ):
+            signals = sm.check_city_settlement("NYC", [mock_market])
+
+        assert len(signals) == 1
+        assert signals[0]["confidence"] == pytest.approx(0.88)
