@@ -6114,12 +6114,31 @@ def _compute_persistence_prob(
         _live = _get_live_obs(city, coords) if days_out <= 1 else None
         # For HIGH/max-role markets at days_out=0 the instantaneous current
         # temp is misleading after noon (the high has already occurred and
-        # is higher). Prefer today's observed max when the observation
-        # includes it.
+        # is higher). Prefer the real running daily max from METAR when a
+        # station is available for this city -- nws.get_live_observation()
+        # itself never returns a daily-high field (backlog.txt L710), so
+        # that source alone can't provide this.
         if var == "max" and days_out == 0 and _live:
-            _live_temp = (
-                _live.get("max_temp_f") or _live.get("high_f") or _live.get("temp_f")
-            )
+            _live_temp = None
+            _station = _metar_station_for_city(city)
+            if _station:
+                _city_tz_str = _CITY_TZ.get(city, "America/New_York")
+                try:
+                    from zoneinfo import ZoneInfo as _ZI_PP
+
+                    _local_today = datetime.now(_ZI_PP(_city_tz_str)).date()
+                except Exception:
+                    _log.warning(
+                        "_compute_persistence_prob: ZoneInfo(%r) unavailable "
+                        "— falling back to UTC date",
+                        _city_tz_str,
+                    )
+                    _local_today = datetime.now(UTC).date()
+                _live_temp = _metar.fetch_metar_daily_extreme(
+                    _station, _city_tz_str, _local_today, "max"
+                )
+            if _live_temp is None:
+                _live_temp = _live.get("temp_f")
         else:
             _live_temp = _live.get("temp_f") if _live else None
         if _live_temp is None:

@@ -5631,16 +5631,66 @@ class TestComputePersistenceProbRefactorSafetyNet:
         )
         assert result is None
 
-    def test_uses_daily_max_for_max_var_at_days_out_zero(self, monkeypatch):
-        """var='max' at days_out=0 must prefer the observed running daily
-        max over the instantaneous current temp (the high may have already
-        occurred and be higher than 'right now')."""
+    def test_no_metar_station_falls_back_to_instantaneous_temp(self, monkeypatch):
+        """Positive control (backlog.txt L710): a REALISTIC get_live_observation
+        fixture -- matching nws.py's actual return shape of exactly
+        {temp_f, timestamp, description}, with no max_temp_f/high_f keys --
+        must fall through to temp_f when no METAR station resolves for the
+        city. Confirms the fallback path is reached and behaves honestly
+        when option (a)'s METAR enhancement can't apply, rather than passing
+        vacuously because the fixture happened to include keys nws.py never
+        actually sets."""
         import weather_markets as wm
 
         monkeypatch.setattr(
             "nws.get_live_observation",
-            lambda *a, **kw: {"max_temp_f": 82.0, "temp_f": 75.0},
+            lambda *a, **kw: {"temp_f": 75.0, "timestamp": "", "description": ""},
         )
+        monkeypatch.setattr(wm, "_metar_station_for_city", lambda city: None)
+        captured = {}
+
+        def _fake_persistence(cond_type, lo, hi, current_temp):
+            captured["current_temp"] = current_temp
+            return 0.77
+
+        monkeypatch.setattr("climatology.persistence_prob", _fake_persistence)
+        result = wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "above", "threshold": 70.0},
+            "max",
+            70.0,
+            days_out=0,
+        )
+        assert result == pytest.approx(0.77)
+        assert captured["current_temp"] == pytest.approx(75.0), (
+            "with no METAR station available, must fall back to the "
+            "instantaneous temp_f (75.0) from the realistic live-obs fixture"
+        )
+
+    def test_uses_metar_daily_extreme_when_station_available(self, monkeypatch):
+        """var='max' at days_out=0 with a resolvable METAR station must
+        prefer the real running daily max from metar.fetch_metar_daily_
+        extreme() over the instantaneous current temp (the high may have
+        already occurred and be higher than 'right now') -- this is the
+        actual fix for backlog.txt L710's dead branch."""
+        import metar as _metar
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "nws.get_live_observation",
+            lambda *a, **kw: {"temp_f": 75.0, "timestamp": "", "description": ""},
+        )
+        monkeypatch.setattr(wm, "_metar_station_for_city", lambda city: "KJFK")
+        captured_extreme_args = {}
+
+        def _fake_daily_extreme(station, city_tz, target_date, extreme):
+            captured_extreme_args["station"] = station
+            captured_extreme_args["city_tz"] = city_tz
+            captured_extreme_args["extreme"] = extreme
+            return 82.0
+
+        monkeypatch.setattr(_metar, "fetch_metar_daily_extreme", _fake_daily_extreme)
         captured = {}
 
         def _fake_persistence(cond_type, lo, hi, current_temp):
@@ -5658,8 +5708,49 @@ class TestComputePersistenceProbRefactorSafetyNet:
         )
         assert result == pytest.approx(0.77)
         assert captured["current_temp"] == pytest.approx(82.0), (
-            "must use the observed daily max (82.0), not the instantaneous "
-            "current temp (75.0), for a var='max' days_out=0 lookup"
+            "must use the real METAR daily max (82.0), not the instantaneous "
+            "current temp (75.0), for a var='max' days_out=0 lookup with a "
+            "resolvable station"
+        )
+        assert captured_extreme_args == {
+            "station": "KJFK",
+            "city_tz": "America/New_York",
+            "extreme": "max",
+        }
+
+    def test_metar_fetch_failure_falls_back_to_instantaneous_temp(self, monkeypatch):
+        """A resolvable station whose daily-extreme fetch fails (returns
+        None, e.g. network error) must still fall back to temp_f rather than
+        propagating None all the way to _compute_persistence_prob's result."""
+        import metar as _metar
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "nws.get_live_observation",
+            lambda *a, **kw: {"temp_f": 75.0, "timestamp": "", "description": ""},
+        )
+        monkeypatch.setattr(wm, "_metar_station_for_city", lambda city: "KJFK")
+        monkeypatch.setattr(_metar, "fetch_metar_daily_extreme", lambda *a, **kw: None)
+        captured = {}
+
+        def _fake_persistence(cond_type, lo, hi, current_temp):
+            captured["current_temp"] = current_temp
+            return 0.77
+
+        monkeypatch.setattr("climatology.persistence_prob", _fake_persistence)
+        result = wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "above", "threshold": 70.0},
+            "max",
+            70.0,
+            days_out=0,
+        )
+        assert result == pytest.approx(0.77)
+        assert captured["current_temp"] == pytest.approx(75.0), (
+            "a failed METAR daily-extreme fetch (None) must fall back to "
+            "the instantaneous temp_f (75.0), not silently drop the "
+            "persistence signal entirely"
         )
 
     def test_uses_instantaneous_temp_for_min_var(self, monkeypatch):

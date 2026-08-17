@@ -707,7 +707,14 @@ Resolution (2026-08-17):
   changed files (main.py, monte_carlo.py, tests/test_feature_importance_
   days_out.py, tests/test_paper.py).
 
-[OPEN 2026-08-10 -- new, filed by adjacency while resolving the SETTLEMENT_MONITOR.PY between-bucket AC3 entry below (second opus review round, spotted in passing while reading weather_markets.py's _persistence_prob for unrelated reasons; independently re-verified against nws.py's actual return shape before filing).] weather_markets.py's persistence_prob "PREFER TODAY'S OBSERVED MAX" BRANCH IS DEAD CODE -- nws.get_live_observation() NEVER RETURNS max_temp_f OR high_f
+[RESOLVED 2026-08-17 -- fixed, see Resolution below. Originally filed
+  2026-08-10 by adjacency while resolving the SETTLEMENT_MONITOR.PY
+  between-bucket AC3 entry below (second opus review round, spotted in
+  passing while reading weather_markets.py's _persistence_prob for
+  unrelated reasons; independently re-verified against nws.py's actual
+  return shape before filing).] weather_markets.py's persistence_prob
+  "PREFER TODAY'S OBSERVED MAX" BRANCH IS DEAD CODE -- nws.
+  get_live_observation() NEVER RETURNS max_temp_f OR high_f
 Priority: Low-Medium -- affects only the `_persistence_prob` fallback path
   (days_out <= 2, live-observation-based), not METAR lock-in or the primary
   ensemble pipeline. Silently degrades to always using the instantaneous
@@ -760,6 +767,72 @@ When to revisit:
   persistence_prob/nws.py maintenance, or whenever fetch_metar_daily_
   extreme's daily-high plumbing is next touched, since option (a) above
   could reuse it directly.
+
+Resolution (2026-08-17): Re-verified the entry against HEAD first -- both
+  cited functions (weather_markets._compute_persistence_prob, now at
+  line 6090; nws.get_live_observation, still at line 432) had moved but
+  their content was unchanged; nws.py's obs dict was reconfirmed to be
+  exactly {temp_f, timestamp, description}, never max_temp_f/high_f.
+  Also found real usage data not in the original filing: the sibling
+  hourly-market path (weather_markets.py:10043) applies this fallback's
+  0.15 blend weight UNCONDITIONALLY whenever available, and hourly HIGH
+  markets are inherently days_out=0 -- so the dead branch wasn't a rare
+  edge case, it was the common case for that path. The main analyze_trade
+  daily path (line 11791) only ever reaches it for condition.type=="between"
+  markets (other types get diverted to a separate obs_override blend
+  first). Presented option (a) (source a real daily-high via
+  metar.fetch_metar_daily_extreme) vs option (b) (remove the dead branch
+  honestly) to the user via AskUserQuestion, framed by that usage data
+  plus a cost check: fetch_metar_daily_extreme is backed by a 900s cache
+  (metar.py) already shared with _metar_lock_in's own calls for the same
+  station+date, so wiring it in here is usually a cache hit, not a fresh
+  network call. User chose option (a).
+  Implemented in _compute_persistence_prob (weather_markets.py:6090):
+  when var=="max" and days_out==0 and a live observation exists, resolve
+  a METAR station via the existing single-source-of-truth
+  _metar_station_for_city(city), compute city-local "today" via ZoneInfo
+  with a UTC fallback (mirroring _metar_lock_in's exact pattern at
+  weather_markets.py:10170-10181), and call
+  metar.fetch_metar_daily_extreme(station, city_tz, local_today, "max").
+  Falls back to the instantaneous temp_f when no station resolves or the
+  METAR fetch itself returns None (network failure) -- never silently
+  drops the persistence signal.
+  Tests: the old test_uses_daily_max_for_max_var_at_days_out_zero was
+  invalid -- it "passed" only by mocking a max_temp_f key into the
+  live-obs fixture that real nws.py never produces, proving nothing about
+  production behavior. Replaced with 3 tests in
+  TestComputePersistenceProbRefactorSafetyNet (tests/test_weather_markets.py):
+  a positive control using a REALISTIC nws-shaped fixture (no
+  max_temp_f/high_f) with no METAR station available, confirming the
+  honest temp_f fallback; the new METAR-daily-extreme behavior with a
+  resolvable station; and a METAR-fetch-failure fallback case. Mutation-
+  tested by reverting the fix to the old dead branch via Edit -- the new
+  "uses_metar_daily_extreme" test failed as expected (82.0 vs 75.0),
+  confirming it actually exercises the fix.
+  270 tests collected in tests/test_weather_markets.py; scoped run (this
+  file + tests/test_metar.py) is 266 passed + 4 skipped and 40 passed
+  respectively, no regressions. ruff/ruff-format/mypy clean via the
+  project's actual pre-commit hook.
+  LOW-tier review ceremony (self-review + one Agent check) applied per
+  the entry's own Low-Medium priority and this workflow's tiering rule --
+  no live-order/live-money gate touched, single file + its test file, no
+  new shared-code surface beyond reusing _metar_station_for_city and
+  fetch_metar_daily_extreme, both already proven elsewhere in this
+  codebase. Agent review (correctness/exception-safety/test-quality/
+  reuse lenses) found the fix's city-local-today computation sound,
+  confirmed the outer try/except is an acceptable safety net (none of
+  the 3 new calls can actually raise past their own internal handling),
+  and validated the tests mock at the correct boundary with a genuinely
+  nws.py-realistic fixture. One real finding, fixed: the ZoneInfo
+  except-block was silent, unlike the _metar_lock_in pattern it mirrors
+  (which logs a warning on fallback) -- added the matching _log.warning
+  call. Two informational-only notes left as-is: metar.py's
+  fetch_metar_daily_extreme docstring listing only 2 callers is now
+  stale (this is a 3rd) -- cosmetic, not worth a separate entry; and the
+  test's "NYC" city key isn't in the real _CITY_TZ dict so its tz lookup
+  falls through to the default rather than testing a real non-default
+  city -- consistent with this test file's existing synthetic-city
+  convention throughout, not a gap introduced by this change.
 
 [RESOLVED 2026-08-10] SETTLEMENT_MONITOR.PY'S OWN BETWEEN-BUCKET LOCK HAS THE SAME AC3 BUG THE JUST-FIXED weather_markets.py ONE HAD -- AND IT AUTO-CLOSES REAL PAPER POSITIONS
 Priority: Medium-High -- not the live-money entry path (that's analyze_trade/
