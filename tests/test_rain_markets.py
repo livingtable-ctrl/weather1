@@ -935,54 +935,104 @@ class TestRainForecastBlendSignal:
         for key in ("forecast_prob", "method", "ci_low", "ci_high", "ci_width"):
             assert result_with_blend[key] == result_no_blend[key], key
 
-    def test_remaining_window_exceeds_16_days_skips_signal(self, monkeypatch):
+    def test_remaining_window_exceeds_16_days_computes_far_blend(self, monkeypatch):
         """Remaining window (Jul 1-31 = 31 days) exceeds the 16-day forecast
-        horizon -- the fetch must never even be attempted this cycle (no
-        partial-coverage complexity in this pass), and no signal is logged.
-
-        Uses a call-counter, not a raising mock: the new block wraps the
-        fetch in a defensive try/except (see test_fetch_exception_fails_
-        open_not_raised), which would silently swallow a raise and make a
-        raising-mock version of this test pass for the wrong reason even if
-        the scope-boundary check were deleted entirely -- mutation-tested
-        and confirmed vacuous in exactly that way before switching to this
-        counter-based version."""
+        horizon -- 2026-08-17 addition: rather than skipping the signal
+        entirely (the original 2026-07-28 scope), the near-forecast-covered
+        prefix (Jul 1-14, a real 14-day window -- see fetch_end_date's own
+        comment on why this is capped tighter than the near-only case's
+        16-day span) is fetched and blended with far-tail climatology (Jul
+        15-31) via an exhaustive cross product. Pins both the near-fetch
+        call args and the tail's historical-sum call args -- an off-by-one
+        on either boundary would otherwise be invisible. Tail is a constant
+        17.0in/year (uniform 1.0in/day history over 17 tail days;
+        tilt no-ops with seasonal_mean_mm=None), so with a constant tail the
+        cross product collapses to the same fraction as a single fixed
+        increment would -- this test pins that fraction; the dedicated
+        cross-product test below (non-uniform tail) is what actually proves
+        every pair is exercised."""
+        import acis_precip
         import weather_markets as wm
 
         frozen_now = self._pin_today(monkeypatch, 1)
         m = _rain_market(
-            ticker="KXRAINDENM-26JUL-7",
-            floor_strike=7,
+            ticker="KXRAINDENM-26JUL-20",
+            floor_strike=20,
             close_hours_from_now=5 * 24,
             now=frozen_now,
         )
         m["_city"] = "Denver"
-        self._mock_acis(monkeypatch)
+        self._mock_acis(monkeypatch)  # seasonal_mean_mm=None -> tail tilt no-ops
 
-        call_count = {"n": 0}
+        members = [2.0 + i * 0.5 for i in range(30)]  # 2.0..16.5in
+        near_calls = []
 
-        def _count_call(*a, **kw):
-            call_count["n"] += 1
-            return [3.0] * 20  # would produce a real signal if reached
+        def _capture_near(*a, **kw):
+            near_calls.append(a)
+            return members
 
-        monkeypatch.setattr(wm, "_fetch_ensemble_precip_multiday", _count_call)
+        monkeypatch.setattr(wm, "_fetch_ensemble_precip_multiday", _capture_near)
+
+        tail_calls = []
+        _real_hist_sums = acis_precip.historical_remaining_and_full_month_sums
+
+        def _spy_hist_sums(history, month, remaining_start_day, days_in_month, **kw):
+            tail_calls.append((month, remaining_start_day, days_in_month))
+            return _real_hist_sums(
+                history, month, remaining_start_day, days_in_month, **kw
+            )
+
+        monkeypatch.setattr(
+            "acis_precip.historical_remaining_and_full_month_sums", _spy_hist_sums
+        )
 
         result = wm.analyze_trade(m)
-        assert result is not None
-        assert call_count["n"] == 0, (
-            "_fetch_ensemble_precip_multiday must not be called when the "
-            "remaining window exceeds the 16-day forecast horizon"
-        )
-        assert "signals" not in result
 
-    def test_boundary_just_over_16_days_skips_fetch(self, monkeypatch):
-        """Opus-review-caught gap: only two widely-separated points (11 and
-        30 days via (remaining_end_date - today_local).days) were tested,
-        so the exact `<= 15` boundary itself had no real coverage
-        (mutation-verified: `<= 14`, `<= 16`, and `<= 25` all previously
-        passed the full suite unnoticed). today=Jul 15 -> remaining_end_date
-        (Jul 31) minus today = 16 days -- one past the boundary, must NOT
-        fetch."""
+        assert len(near_calls) == 1, (
+            "the near-forecast-covered PREFIX must still be fetched even "
+            "though the full remaining window exceeds 16 days"
+        )
+        called_lat, called_lon, called_tz, called_start, called_end = near_calls[0]
+        assert (called_lat, called_lon, called_tz) == wm.CITY_COORDS["Denver"]
+        assert called_start == date(2026, 7, 1)  # today itself, per _pin_today
+        assert called_end == date(2026, 7, 14)  # capped to a real 14-day window
+
+        # First historical-sums call is the pre-existing full-remaining-window
+        # fetch (month=7, day 1-31); second is the new tail-only fetch scoped
+        # to the days beyond the 14-day forecast window (day 15-31).
+        assert len(tail_calls) == 2
+        assert tail_calls[0] == (7, 1, 31)
+        assert tail_calls[1] == (7, 15, 31)
+
+        assert result is not None
+        assert "signals" in result
+        expected_prob = sum(1 for v in members if 0.0 + v + 17.0 > 20.0) / len(members)
+        expected_prob = max(0.01, min(0.99, expected_prob))
+        assert 0.01 < expected_prob < 0.99, (
+            "test fixture itself must land strictly inside the clamp range "
+            "or this assertion can't distinguish a real computation from "
+            "the clamp floor/ceiling"
+        )
+        assert result["signals"]["rain_forecast_blend_prob"] == pytest.approx(
+            expected_prob
+        )
+        assert result["signals"]["rain_forecast_blend_tail_days"] == 17
+        assert result["signals"]["rain_forecast_blend_n_members"] == 30
+
+    def test_boundary_just_over_16_days_fetches_near_prefix_blends_tail(
+        self, monkeypatch
+    ):
+        """Opus-review-caught gap (2026-07-28): only two widely-separated
+        points (11 and 30 days via (remaining_end_date - today_local).days)
+        were tested, so the exact `<= 15` boundary itself had no real
+        coverage. today=Jul 15 -> remaining_end_date (Jul 31) minus today =
+        16 days -- one past the near-only boundary.
+
+        2026-08-17 addition: this no longer means "skip entirely" -- the
+        near-forecast-covered prefix (Jul 15-28, a real 14-day window -- see
+        fetch_end_date's own comment on why this is capped tighter than the
+        near-only case's 16-day span) is still fetched, blended with a
+        3-day historical tail (Jul 29-31, the days beyond that window)."""
         import weather_markets as wm
 
         frozen_now = self._pin_today(monkeypatch, 15)  # (Jul 31 - Jul 15).days == 16
@@ -993,20 +1043,43 @@ class TestRainForecastBlendSignal:
             now=frozen_now,
         )
         m["_city"] = "Denver"
-        self._mock_acis(monkeypatch)
+        self._mock_acis(monkeypatch)  # seasonal_mean_mm=None -> tail tilt no-ops
 
+        members = [4.0 + i * 0.5 for i in range(30)]  # 4.0..18.5in
         call_count = {"n": 0}
+        called_range = {}
 
-        def _count_call(*a, **kw):
+        def _capture(*a, **kw):
             call_count["n"] += 1
-            return None
+            called_range["start"], called_range["end"] = a[3], a[4]
+            return members
 
-        monkeypatch.setattr(wm, "_fetch_ensemble_precip_multiday", _count_call)
+        monkeypatch.setattr(wm, "_fetch_ensemble_precip_multiday", _capture)
 
         result = wm.analyze_trade(m)
+        assert call_count["n"] == 1, (
+            "16 days past today must still fetch the near-forecast-covered "
+            "prefix, not skip entirely"
+        )
+        assert called_range["start"] == date(2026, 7, 15)
+        assert called_range["end"] == date(
+            2026, 7, 28
+        )  # capped to a real 14-day window
+
         assert result is not None
-        assert call_count["n"] == 0, "16 days past today must NOT trigger a fetch"
-        assert "signals" not in result
+        assert "signals" in result
+        # Tail is a constant 3.0in/year (uniform 1.0in/day history over 3
+        # tail days Jul 29-31; tilt no-ops with seasonal_mean_mm=None).
+        expected_prob = sum(1 for v in members if 0.0 + v + 3.0 > 7.0) / len(members)
+        expected_prob = max(0.01, min(0.99, expected_prob))
+        assert 0.01 < expected_prob < 0.99, (
+            "test fixture itself must land strictly inside the clamp range"
+        )
+        assert result["signals"]["rain_forecast_blend_prob"] == pytest.approx(
+            expected_prob
+        )
+        assert result["signals"]["rain_forecast_blend_tail_days"] == 3
+        assert result["signals"]["rain_forecast_blend_n_members"] == 30
 
     def test_boundary_exactly_16_day_horizon_does_fetch(self, monkeypatch):
         """Inverse of the above: today=Jul 16 -> (Jul 31 - Jul 16).days == 15,
@@ -1212,6 +1285,436 @@ class TestRainForecastBlendSignal:
         assert result is not None
         assert "signals" not in result
         assert result["forecast_prob"] is not None  # existing calc unaffected
+
+    def test_far_case_tilt_scoped_to_tail_only_not_full_remaining_window(
+        self, monkeypatch
+    ):
+        """SEAS5-redundancy design decision (AskUserQuestion, 2026-08-17):
+        the tilt applied to the far-case's historical tail must be computed
+        from the TAIL-only sums (days beyond the forecast horizon), not the
+        full remaining-window sums already tilted for blended_prob -- using
+        the full-window sums here would double-apply a directional nudge to
+        the same near-term days a real forecast now covers.
+
+        Opus-review-strengthened (2026-08-17, M2): the original version of
+        this test only recorded the spy's first argument and never asserted
+        on the resulting probability -- mutation-verified 3 real bug shapes
+        survived it: full_month_sums swapped for the tail sums themselves,
+        the wrong (full-window) full_month_sums passed to the tail call, and
+        seasonal_mean_mm dropped to None for the tail call specifically.
+        Now asserts all 3 call args and pins the resulting probability via
+        an INDEPENDENT direct call to the real (unmocked) apply_seasonal_
+        tilt with the same known inputs -- not by reading back whatever the
+        code-under-test itself produced."""
+        import acis_precip
+        import weather_markets as wm
+
+        frozen_now = self._pin_today(monkeypatch, 1)  # Jul 1 -> far case
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-30",
+            floor_strike=30,
+            close_hours_from_now=5 * 24,
+            now=frozen_now,
+        )
+        m["_city"] = "Denver"
+        self._mock_acis(monkeypatch)
+        seasonal_calls = {"n": 0}
+
+        def _seasonal_mock(lat, lon, tz, year, month):
+            seasonal_calls["n"] += 1
+            return 500.0  # real, non-None value
+
+        monkeypatch.setattr("acis_precip.fetch_seasonal_precip_mean_mm", _seasonal_mock)
+        members = [2.0 + i * 1.0 for i in range(30)]  # 2.0..31.0in
+        monkeypatch.setattr(
+            wm, "_fetch_ensemble_precip_multiday", lambda *a, **kw: members
+        )
+
+        tilt_calls = []
+        _real_tilt = acis_precip.apply_seasonal_tilt
+
+        def _spy_tilt(remaining_sums, full_month_sums, seasonal_mean_mm, *a, **kw):
+            tilt_calls.append(
+                (list(remaining_sums), list(full_month_sums), seasonal_mean_mm)
+            )
+            return _real_tilt(
+                remaining_sums, full_month_sums, seasonal_mean_mm, *a, **kw
+            )
+
+        monkeypatch.setattr("acis_precip.apply_seasonal_tilt", _spy_tilt)
+
+        result = wm.analyze_trade(m)
+        assert result is not None
+        assert "signals" in result
+        assert len(tilt_calls) == 2, (
+            "expected one call for blended_prob's pre-existing full "
+            "remaining-window sums, and one for the new far-case "
+            "tail-only sums"
+        )
+        full_window_call, tail_call = tilt_calls
+        # Full-window call sums the entire remaining month (31 days of
+        # 1.0in/day history); tail call sums only the days beyond the
+        # 14-day forecast window (Jul 15-31, 17 days) -- distinguishable by
+        # value since the mocked history is uniform 1.0in/day. Both calls'
+        # full_month_sums are the SAME [1,31] range (32 -> 31 days), so
+        # equal by construction -- the discriminating assertion is that the
+        # tail call's remaining_sums (index 0) is the tail-only 17.0, not
+        # the full-window 31.0.
+        assert full_window_call[0] == [pytest.approx(31.0)] * 20
+        assert tail_call[0] == [pytest.approx(17.0)] * 20
+        assert tail_call[1] == [pytest.approx(31.0)] * 20
+        assert tail_call[2] == 500.0
+        assert seasonal_calls["n"] == 1, (
+            "seasonal_mean_mm must be reused (fetched once), not re-fetched "
+            "for the tail-only tilt"
+        )
+
+        expected_tail_tilted, _ = acis_precip.apply_seasonal_tilt(
+            [17.0] * 20, [31.0] * 20, 500.0
+        )
+        expected_prob = sum(
+            1 for mv in members for tv in expected_tail_tilted if 0.0 + mv + tv > 30.0
+        ) / (len(members) * len(expected_tail_tilted))
+        expected_prob = max(0.01, min(0.99, expected_prob))
+        assert 0.01 < expected_prob < 0.99, (
+            "test fixture must land strictly inside the clamp range"
+        )
+        assert result["signals"]["rain_forecast_blend_prob"] == pytest.approx(
+            expected_prob
+        )
+
+    def test_far_case_failure_fails_open_not_raised(self, monkeypatch):
+        """A raw exception in the NEW far-case tail computation (distinct
+        from test_fetch_exception_fails_open_not_raised's near-case-only
+        coverage -- that mock fails before member_totals is ever produced,
+        never reaching this new code at all) must be caught by the same
+        block-wide try/except -- never propagate up and take down the
+        existing bootstrap-only analysis. Raises on the SECOND call to
+        historical_remaining_and_full_month_sums only, so the pre-existing
+        first call (blended_prob's own remaining_sums/full_month_sums) still
+        succeeds normally -- isolates the failure to the new tail-only call
+        this change actually adds."""
+        import acis_precip
+        import weather_markets as wm
+
+        frozen_now = self._pin_today(monkeypatch, 1)  # Jul 1 -> far case
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-7",
+            floor_strike=7,
+            close_hours_from_now=5 * 24,
+            now=frozen_now,
+        )
+        m["_city"] = "Denver"
+        self._mock_acis(monkeypatch)
+        monkeypatch.setattr(
+            wm, "_fetch_ensemble_precip_multiday", lambda *a, **kw: [5.0] * 30
+        )
+
+        _real_hist_sums = acis_precip.historical_remaining_and_full_month_sums
+        call_n = {"n": 0}
+
+        def _boom_on_second_call(
+            history, month, remaining_start_day, days_in_month, **kw
+        ):
+            call_n["n"] += 1
+            if call_n["n"] >= 2:
+                raise RuntimeError("simulated far-case failure")
+            return _real_hist_sums(
+                history, month, remaining_start_day, days_in_month, **kw
+            )
+
+        monkeypatch.setattr(
+            "acis_precip.historical_remaining_and_full_month_sums",
+            _boom_on_second_call,
+        )
+
+        result = wm.analyze_trade(m)  # must not raise
+        assert call_n["n"] >= 2, "test must actually reach the new tail call"
+        assert result is not None
+        assert "signals" not in result
+        assert result["forecast_prob"] is not None  # existing calc unaffected
+
+    def test_checked_too_early_before_near_window_reaches_month_no_signal(
+        self, monkeypatch
+    ):
+        """Defensive-only edge case (not reachable via the real days_out
+        gate given RAIN_MAX_DAYS_OUT=31, but guarded explicitly rather than
+        assumed -- see the block's own comment): if even the FIRST
+        remaining day is more than 15 days out, near_end_date <
+        remaining_start_date -- there is no near-forecast coverage to blend
+        at all, so the fetch must be skipped entirely and no signal
+        produced, matching the "before month starts" branch's existing
+        no-signal contract.
+
+        Calls _analyze_monthly_rain_trade() directly (bypassing analyze_
+        trade's real days_out gate) with an explicit days_out, matching
+        test_ticket_checked_after_month_end_does_not_crash's own direct-call
+        pattern for the same reason (close_time/wall-clock races)."""
+        import weather_markets as wm
+
+        class _FakeDT(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return (
+                    datetime(2026, 7, 10, 12, 0, tzinfo=tz)
+                    if tz
+                    else datetime(2026, 7, 10, 12, 0, tzinfo=UTC)
+                )
+
+        monkeypatch.setattr("weather_markets.datetime", _FakeDT)
+        self._mock_acis(monkeypatch)
+        monkeypatch.setattr(
+            "acis_precip.fetch_historical_daily",
+            lambda sid: self._history_all_years_value(
+                1.0, years=20, month=8, days_in_month=31
+            ),
+        )
+
+        call_count = {"n": 0}
+
+        def _count_call(*a, **kw):
+            call_count["n"] += 1
+            return [3.0] * 20  # would produce a real signal if reached
+
+        monkeypatch.setattr(wm, "_fetch_ensemble_precip_multiday", _count_call)
+
+        enriched = {
+            "ticker": "KXRAINDENM-26AUG-7",
+            "title": "Rain in Denver in Aug 2026?",
+            "_city": "Denver",
+        }
+        condition = {"type": "precip_month_total", "threshold": 7.0}
+        coords = wm.CITY_COORDS["Denver"]
+        close_dt = datetime(2026, 8, 31, tzinfo=UTC)
+
+        result = wm._analyze_monthly_rain_trade(
+            enriched, condition, "Denver", coords, close_dt, days_out=52
+        )
+        assert result is not None
+        assert call_count["n"] == 0, (
+            "no near-forecast coverage exists this early -- the fetch must "
+            "never be attempted"
+        )
+        assert "signals" not in result
+
+    def test_far_case_cross_product_not_random_sampled(self, monkeypatch):
+        """Blend-shape design decision, REVISED 2026-08-17 (opus review,
+        H2/M1): near members and tail-year climatology must combine via an
+        EXHAUSTIVE cross product, not the originally-chosen per-member
+        random.choice() draw -- with the far case's real near-member count
+        turning out to be only ~30 (see fetch_end_date's own comment: a
+        16-day-out fetch always drops icon_seamless and ecmwf_ifs025's real
+        per-model horizons), one random draw per member injected ~+/-8pp of
+        pure sampling noise into the logged signal on every scan cycle
+        (opus-review 60-repeat repro: stdev 0.084), and leaked global RNG
+        state into the unrelated bootstrap_ci_month_total() call downstream.
+        The cross product is the noise-free exact expected value of that
+        same "pair each member with a tail value" idea.
+
+        Uses two clean value groups on each axis so the resulting fraction
+        is an exact combinatorial value only a true cross product produces
+        -- a fixed-increment implementation collapses each member group to
+        a single pass/fail outcome and cannot land on this exact fraction,
+        and this test also proves random.choice is never called at all."""
+        import weather_markets as wm
+
+        frozen_now = self._pin_today(monkeypatch, 1)  # Jul 1 -> far case
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-500",
+            floor_strike=500,
+            close_hours_from_now=5 * 24,
+            now=frozen_now,
+        )
+        m["_city"] = "Denver"
+        self._mock_acis(monkeypatch)  # seasonal_mean_mm=None -> tail tilt no-ops
+
+        # 15 "low" tail years (17.0in) + 5 "high" tail years (1700.0in) --
+        # tail spans Jul 15-31 (17 days) per fetch_end_date=Jul 14.
+        history = {}
+        for y in range(15):
+            history[2000 + y] = {700 + d: 1.0 for d in range(1, 32)}
+        for y in range(5):
+            history[2100 + y] = {700 + d: 100.0 for d in range(1, 32)}
+        monkeypatch.setattr("acis_precip.fetch_historical_daily", lambda sid: history)
+
+        # 15 "low" members (5.0in) + 15 "high" members (1000.0in).
+        members = [5.0] * 15 + [1000.0] * 15
+        monkeypatch.setattr(
+            wm, "_fetch_ensemble_precip_multiday", lambda *a, **kw: members
+        )
+
+        choice_calls = {"n": 0}
+        _real_choice = wm.random.choice
+
+        def _counting_choice(seq):
+            choice_calls["n"] += 1
+            return _real_choice(seq)
+
+        monkeypatch.setattr(wm.random, "choice", _counting_choice)
+
+        result = wm.analyze_trade(m)
+        assert result is not None
+        assert "signals" in result
+        assert choice_calls["n"] == 0, (
+            "the revised cross-product design must not use random.choice at all"
+        )
+
+        # low member (5.0) + low tail (17.0) = 22.0, never exceeds 500 --
+        # every other combination does. 15*15=225 non-exceeding pairs out of
+        # 30*20=600 total -- a fraction only exact cross-product
+        # combinatorics produce (a fixed increment or single random draw
+        # per member would collapse each 15-member group to one outcome,
+        # landing on 0.5 or 1.0, never exactly 0.625).
+        assert result["signals"]["rain_forecast_blend_prob"] == pytest.approx(375 / 600)
+        assert result["signals"]["rain_forecast_blend_tail_days"] == 17
+        assert result["signals"]["rain_forecast_blend_n_members"] == 30
+
+    def test_far_case_before_month_start_gap_beyond_6_days_skips_fetch(
+        self, monkeypatch
+    ):
+        """Opus-review-caught reachability gap (2026-08-17, L2): before this
+        diff, the "before month starts" branch could never reach the
+        forecast-blend fetch at all (remaining_end_date - today_local was
+        always >= days_in_month, far past the old <=15-day guard). This
+        diff's near_end_date/fetch_end_date restructuring makes it reachable
+        for the first time whenever remaining_start_date (next month's 1st)
+        falls inside the fetch window -- but a gap this large (>6 days)
+        means the request falls entirely past icon_seamless's own real
+        forecast horizon, which _fetch_ensemble_precip_multiday's
+        is_all_null check treats as a dead-model FAILURE on the circuit
+        breaker SHARED with every other market's ensemble fetch, not a
+        benign empty result. Must be skipped entirely -- without the
+        dedicated 6-day guard (as opposed to the general fetch_end_date >=
+        remaining_start_date check alone), this exact scenario would still
+        fetch (Aug 2 >= Aug 1)."""
+        import weather_markets as wm
+
+        class _FakeDT(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return (
+                    datetime(2026, 7, 20, 12, 0, tzinfo=tz)
+                    if tz
+                    else datetime(2026, 7, 20, 12, 0, tzinfo=UTC)
+                )
+
+        monkeypatch.setattr("weather_markets.datetime", _FakeDT)
+        self._mock_acis(monkeypatch)
+        monkeypatch.setattr(
+            "acis_precip.fetch_historical_daily",
+            lambda sid: self._history_all_years_value(
+                1.0, years=20, month=8, days_in_month=31
+            ),
+        )
+
+        call_count = {"n": 0}
+
+        def _count_call(*a, **kw):
+            call_count["n"] += 1
+            return [3.0] * 20
+
+        monkeypatch.setattr(wm, "_fetch_ensemble_precip_multiday", _count_call)
+
+        enriched = {
+            "ticker": "KXRAINDENM-26AUG-7",
+            "title": "Rain in Denver in Aug 2026?",
+            "_city": "Denver",
+        }
+        condition = {"type": "precip_month_total", "threshold": 7.0}
+        coords = wm.CITY_COORDS["Denver"]
+        close_dt = datetime(2026, 8, 31, tzinfo=UTC)
+
+        result = wm._analyze_monthly_rain_trade(
+            enriched, condition, "Denver", coords, close_dt, days_out=42
+        )
+        assert result is not None
+        assert call_count["n"] == 0, (
+            "a >6-day gap to remaining_start_date must never fetch, even "
+            "though fetch_end_date alone would technically allow it"
+        )
+        assert "signals" not in result
+
+    def test_far_case_thin_tail_years_skips_signal(self, monkeypatch):
+        """<15 usable historical tail years (opus-review-caught, M3): must
+        fail open exactly like every other insufficient-data case in this
+        block, not silently fall back to treating the near-only members as
+        if they already covered the full remaining window -- mutation-
+        verified (2026-08-17) that changing this fallback from `None` to
+        `member_totals` passes the whole suite: that mutant would publish a
+        systematically-biased-low probability (missing every tail day's
+        rain) indistinguishable in the stored value from a real
+        full-coverage result.
+
+        Constructs history where every year is missing exactly 4 days, ALL
+        inside the tail range (days 28-31) -- this pushes the tail range's
+        OWN 20%-missing threshold over the edge (4/17 = 23.5%) while
+        staying under it for the full remaining-window range (4/31 =
+        12.9%), so remaining_sums (computed earlier, gating the whole
+        function) stays >= 15 usable years while tail_sums alone drops to
+        0 -- the only way to reach this specific branch without the
+        earlier, unrelated len(remaining_sums) < 15 check firing first."""
+        import weather_markets as wm
+
+        frozen_now = self._pin_today(monkeypatch, 1)  # Jul 1 -> far case
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-7",
+            floor_strike=7,
+            close_hours_from_now=5 * 24,
+            now=frozen_now,
+        )
+        m["_city"] = "Denver"
+        self._mock_acis(monkeypatch)
+        history = {
+            2000 + y: {
+                700 + d: (1.0 if d not in (28, 29, 30, 31) else None)
+                for d in range(1, 32)
+            }
+            for y in range(20)
+        }
+        monkeypatch.setattr("acis_precip.fetch_historical_daily", lambda sid: history)
+        monkeypatch.setattr(
+            wm, "_fetch_ensemble_precip_multiday", lambda *a, **kw: [5.0] * 30
+        )
+
+        result = wm.analyze_trade(m)
+        assert result is not None
+        assert "signals" not in result
+
+    def test_far_case_signal_does_not_change_forecast_prob_or_ci(self, monkeypatch):
+        """Far-case analogue of test_full_coverage_logs_signal_without_
+        changing_forecast_prob (opus-review-requested, L4): forecast_prob/
+        method/ci_low/ci_high/ci_width must be byte-identical whether or
+        not the far-case blend signal is computed -- proves the new
+        cross-product/tail-tilt code (which, unlike the original resample
+        design, no longer touches the shared RNG at all) still cannot
+        perturb the existing bootstrap-only analysis."""
+        import weather_markets as wm
+
+        frozen_now = self._pin_today(monkeypatch, 1)  # Jul 1 -> far case
+        m = _rain_market(
+            ticker="KXRAINDENM-26JUL-7",
+            floor_strike=7,
+            close_hours_from_now=5 * 24,
+            now=frozen_now,
+        )
+        m["_city"] = "Denver"
+        self._mock_acis(monkeypatch)
+        monkeypatch.setattr(
+            wm, "_fetch_ensemble_precip_multiday", lambda *a, **kw: [5.0] * 30
+        )
+        result_with_blend = wm.analyze_trade(m)
+        assert result_with_blend is not None
+        assert "signals" in result_with_blend
+
+        monkeypatch.setattr(
+            wm, "_fetch_ensemble_precip_multiday", lambda *a, **kw: None
+        )
+        result_no_blend = wm.analyze_trade(m)
+        assert result_no_blend is not None
+        assert "signals" not in result_no_blend
+
+        for key in ("forecast_prob", "method", "ci_low", "ci_high", "ci_width"):
+            assert result_with_blend[key] == result_no_blend[key], key
 
 
 class TestFetchEnsemblePrecipMultiday:

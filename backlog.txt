@@ -3458,11 +3458,12 @@ RESOLVED 2026-07-31: scoped via explicit AskUserQuestion decision before
   changed files (notify.py, paths.py, cron.py, safe_io.py,
   tests/test_notify.py).
 
-[PARTIALLY RESOLVED 2026-07-28 -- near-term (<=16-day) ensemble forecast
-  signal shipped, shadow/log-only; see resolution note at the end of this
-  entry. Still open: the >16-day historical-tail-blend case, and the actual
-  graduation decision (does this signal correlate with real settlements
-  well enough to change forecast_prob)]
+[PARTIALLY RESOLVED 2026-07-28 (near-term <=16-day ensemble forecast signal)
+  AND 2026-08-17 (>16-day far-tail blend, this update) -- both shadow/log-
+  only; see resolution notes at the end of this entry. Still open: the
+  actual graduation decision (does this signal correlate with real
+  settlements well enough to change forecast_prob) -- data-gated, currently
+  6 of the 20 settled predictions required, unaffected by this update]
   RAIN MARKETS -- MONTHLY MODEL HAS NO DAY-SPECIFIC FORECAST SIGNAL
 Priority: Medium -- shadow-only today (RAIN_TRADING_ENABLED gate +
   TRADING_PAUSED both mean nothing sizes off this yet), but should be
@@ -3653,6 +3654,200 @@ RESOLVED (partially) 2026-07-28: shipped the near-term case -- when a
   + mypy clean on every touched file (`weather_markets.py`, `tracker.py`,
   `tests/test_rain_markets.py`, `tests/test_forecasting.py`,
   `tests/test_tracker.py`).
+
+RESOLVED (partially) 2026-08-17: shipped the >16-day far-tail-blend case --
+  when a ticket's remaining accrual window EXCEEDS Open-Meteo's 16-day
+  forecast horizon (the gap this entry's own "when to revisit" section
+  called out), `_analyze_monthly_rain_trade()` no longer skips the
+  forecast-blend signal for the whole cycle. It now fetches the near-
+  forecast-covered PREFIX of the remaining window and blends it with a
+  resampled far-tail climatology for the days beyond it, instead of falling
+  back to pure climatology (blended_prob/rec_side/sizing) for the entire
+  remaining window the moment any part of it exceeds the horizon. Still
+  deliberately shadow/log-only, matching the 2026-07-28 near-only case and
+  every other new signal's `SIGNAL_REGISTRY` rollout convention in this
+  codebase -- `forecast_blend_prob` is untouched, only
+  `signals.rain_forecast_blend_prob` (plus 2 new metadata keys, see below)
+  changes.
+
+  Re-verified this entry's remaining claims live before starting (2026-08-
+  17): `RAIN_TRADING_ENABLED` confirmed unset in the real `.env`;
+  `count_settled_signal_rows(json_key="rain_forecast_blend_prob",
+  require_settled_temp=False)` returned 6, confirming the graduation
+  decision stays data-gated (floor is 20) and is genuinely unaffected by
+  this update, per this entry's own explicit scope split.
+
+  Design (2 decisions surfaced via AskUserQuestion before writing code,
+  both later revised in part by the opus review below):
+  - Combine each near-forecast member with far-tail climatology via a
+    per-member `random.choice()` resample draw (matching this entry's own
+    "resample climatology... combining into one distribution per simulated
+    trajectory" language) -- REVISED post-review to a deterministic cross
+    product; see H2 below.
+  - Scope the existing SEAS5 monthly-mean tilt to the tail-only historical
+    sums (a second `acis_precip.apply_seasonal_tilt()` call with a later
+    `remaining_start_day`, mechanically reusing the function as-is) rather
+    than reusing the full-remaining-window tilt already computed for
+    `blended_prob` -- kept as designed; the near days now have a real
+    forecast and don't need SEAS5's mean-only nudge on top of it, while the
+    tail beyond the forecast horizon still does.
+
+  Independent `Agent(opus, effort=high)` review (this entry's 3rd such
+  review, after 2026-07-28's implementation review and its own earlier
+  10-round plan review) found 2 HIGH + 3 MEDIUM + 5 LOW, all addressed:
+  (H1) Verified LIVE against Open-Meteo (Denver, `forecast_days=16`): a
+  16-day-out request falls entirely outside `icon_seamless`'s (~7-day) and
+  `ecmwf_ifs025`'s (~14-day) real per-model horizons, so
+  `_fetch_ensemble_precip_multiday`'s own full-coverage-only rule (the H2
+  fix from 2026-07-28, correctly protecting against biased-low partial
+  members) silently dropped BOTH every time -- the far case's "ensemble"
+  was actually always exactly 30 `gfs_seamless` members, zero ECMWF weight,
+  vs. the near-only case's ~130-member, ~77%-ECMWF-weighted ensemble, with
+  no way to tell from the logged value alone. Fixed by capping the far
+  case's own near-fetch to a real 14-day window (`today + 13`, recovering
+  ECMWF's horizon at the cost of 2 fewer forecast-covered days folded into
+  the tail instead) -- the near-only branch is untouched, still spans up to
+  a genuine 16 days, matching the shipped 2026-07-28 values byte-for-byte
+  (verified directly by reading the partition logic, not just asserted;
+  mutating the near-only case's own boundary still fails its existing
+  tests).
+  (H2) With H1's real near-member count only ~30, the originally-chosen
+  per-member `random.choice()` resample draw injected ~+/-8pp of pure
+  sampling noise into the logged signal on every scan cycle (opus's
+  60-repeat repro on an identical input: stdev 0.084) -- the same ticker
+  would log a different value on consecutive cycles, directly inflating the
+  Brier score this signal will eventually be judged on for graduation.
+  Fixed by switching to a deterministic cross product (every near member
+  paired with every tail-year value) -- the exact noise-free expected value
+  of the same "pair each member with a tail draw" design intent, ~30
+  members x ~15-30 tail years = a few hundred to ~1000 terms, negligible
+  cost. This was a live revision of the AskUserQuestion-answered design
+  mid-session -- surfaced transparently before applying rather than
+  silently overridden, since cross-product had been on the original 3-
+  option menu before a deflected first ask got simplified to 2 options.
+  (M1) The per-member resample's `random.choice()` call consumed the
+  SHARED global RNG stream before `acis_precip.bootstrap_ci_month_total()`
+  ran later in the same function (also global-RNG-based), meaning the far
+  case's own new code could shift the PRE-EXISTING bootstrap CI's stream
+  position -- not wrong today (that CI is already unseeded in production)
+  but it falsified this block's own stated "a bug here must only ever cost
+  this new signal" contract, and would have silently changed sizing under
+  any seeded/reproducible backtest. Resolved as a side effect of H2's
+  cross-product fix, which removes the RNG call entirely from this block.
+  (M2) The tilt-scoping test only recorded the spy's first call argument
+  and never asserted on the resulting probability -- mutation-verified 3
+  real bug shapes survived it (full_month_sums swapped for the tail sums
+  themselves; the wrong full-window full_month_sums passed to the tail
+  call; seasonal_mean_mm silently dropped to None for the tail call only).
+  Fixed: the test now asserts all 3 call args on both the full-window and
+  tail-only `apply_seasonal_tilt()` calls, a call-counter proving
+  `seasonal_mean_mm` is reused not re-fetched, and pins the resulting
+  probability via an INDEPENDENT direct call to the real (unmocked)
+  `apply_seasonal_tilt()` with the same known inputs -- not by reading back
+  whatever the code-under-test itself produced.
+  (M3) The <15-usable-tail-years fallback (`combined_totals = None`) had
+  zero test coverage -- mutation-verified that changing it to
+  `combined_totals = member_totals` (silently treating the near-only
+  members as if they already covered the full remaining window, missing
+  every tail day's rain) passed the entire suite. Fixed with a dedicated
+  test constructing history where every year is missing exactly 4 days,
+  all inside the tail range -- pushes the tail range's own 20%-missing
+  threshold over the edge while staying under it for the full remaining-
+  window range, the only way to reach this branch without the earlier,
+  unrelated `len(remaining_sums) < 15` check firing first. Also added a
+  `_log.debug` on this branch (previously silent, unlike the analogous
+  warning at the `len(remaining_sums) < 15` gate above it).
+  (L1) The stored signal carried no marker of which regime produced it
+  (near-only real-forecast vs. far-case forecast+climatology-blend, and per
+  H1, materially different model composition) -- pooling both into one
+  future Brier/calibration comparison without being able to stratify.
+  Fixed by adding `rain_forecast_blend_tail_days` and
+  `rain_forecast_blend_n_members` to the signal payload (both branches,
+  `tail_days=0` for the near-only case) -- log-only, must ship before rows
+  accumulate since it can't be retrofitted onto already-logged predictions.
+  (L2) Opus review found this diff newly makes the "before month starts"
+  branch reachable for the forecast-blend fetch for the first time (the
+  shipped 2026-07-28 near-only guard structurally could never trigger
+  there, since `remaining_end_date - today_local` was always >= a full
+  month's length in that branch) -- and when `remaining_start_date` is more
+  than ~7 days out, `icon_seamless`'s real horizon (live-probed above)
+  means the ENTIRE requested range returns all-null for that model, which
+  `_fetch_ensemble_precip_multiday`'s `is_all_null` check treats as a dead-
+  model FAILURE recorded on the circuit breaker SHARED with every other
+  market's ensemble fetch, not a benign empty result. Not reachable today
+  given `RAIN_MAX_DAYS_OUT`'s own days_out gate on the caller side (a
+  3-day margin from a plausible future env bump), but this diff's own
+  restructuring is what newly exposes it, so fixed inline rather than
+  filed separately (same-payload test: it's the same `rain_forecast_blend`
+  fetch path this change already touches) with a conservative, explicitly-
+  documented 6-day gap guard plus a dedicated regression test proving the
+  exact previously-open gap (7-13 day gap, where the general fetch_end_date
+  check alone would still have let it through) is now closed.
+  (L3) `apply_seasonal_tilt()`'s additive-shift-then-floor-at-0.0 design
+  assumes a multi-week distribution; a 1-3 day tail (common once a ticket
+  is checked mid-month) is mostly exact zeros, so a dry SEAS5 tilt gets
+  floor-clipped on most samples and is under-applied relative to a wet one.
+  Accepted as a documented no-op: fixing it means changing
+  `apply_seasonal_tilt()`'s own clamp behavior, which also feeds the
+  ALREADY-SHIPPED full-remaining-window tilt `blended_prob`/`rec_side`/
+  sizing depend on -- genuinely separate surgery, out of this change's
+  scope. Magnitude is tiny (a fraction of an inch on a 1-3 day tail) and
+  this signal is shadow-only regardless.
+  (L4) Added a far-case analogue of the near-only case's own "existing
+  calc is byte-identical with vs. without the blend" test
+  (`test_far_case_signal_does_not_change_forecast_prob_or_ci`) --
+  particularly relevant now that H2's cross-product fix removed the shared-
+  RNG risk (M1) the original design carried.
+  (L5) The original resample test's headline probability assertion landed
+  on the clamp ceiling (every forced draw picked a deliberate outlier),
+  the same clamp-collapse shape as 2026-07-28's own H3 finding. Superseded
+  entirely by the new cross-product test
+  (`test_far_case_cross_product_not_random_sampled`), which uses two clean
+  value groups on each axis so the resulting fraction (375/600 = 0.625) is
+  an exact combinatorial value strictly inside the clamp range that only a
+  true cross product produces.
+
+  Every fix (H1, H2, L2, L3-as-no-op-decision) mutation-tested via the Edit
+  tool against a live-reverted version of the real code, confirmed the
+  corresponding test fails, restored. Also mutation-tested the untouched
+  <=16-day near-only branch's own boundary and off-by-one guards to confirm
+  this restructuring didn't relocate a bug into them (it didn't).
+
+  9 new/rewritten tests in `TestRainForecastBlendSignal`
+  (`tests/test_rain_markets.py`; 68 tests collected in that file total, up
+  from 65 after 2026-07-28's own additions): the far-blend/boundary tests
+  updated for the 14-day cap; the tilt-scoping test strengthened (M2); the
+  obsolete per-member-resample test replaced with the cross-product test
+  (H2/L5); new tests for the 6-day gap guard (L2), the thin-tail-years
+  fallback (M3), and the far-case byte-identical regression (L4). Full
+  scoped regression re-run after all review fixes: `test_rain_markets.py`
+  (68 tests) + `test_forecasting.py` + `test_tracker.py` +
+  `test_infrastructure.py` = 600 tests, all pass; ruff + ruff-format +
+  mypy clean on `weather_markets.py` and `tests/test_rain_markets.py`
+  (mypy also re-checks the whole repo's other touched-adjacent files as
+  part of its normal run, all clean).
+
+  Still open, unchanged by this update: the graduation decision itself
+  (data-gated, 6 of 20 settled predictions).
+
+  Origin/master had moved 2 commits since this branch's start
+  (`b0f4cad2` fix(weather_markets): source real daily-high for
+  persistence_prob's dead branch; `e5331a8d` fix(main,order_executor,
+  execution_log): route cmd_order's live fills through execution_log) --
+  file-overlap check found real overlap on `weather_markets.py`,
+  `backlog.txt`, and the generated `graphify-out/` files. Fast-forwarded
+  (0 local commits, clean ff) then re-applied this session's stashed
+  changes; `weather_markets.py`/`backlog.txt`/`tests/test_rain_markets.py`
+  auto-merged with zero conflicts (different functions/regions), only the
+  generated files (`BACKLOG_OPEN.md`, `graphify-out/graph.json`,
+  `GRAPH_REPORT.md`, `cache/stat-index.json`) conflicted -- regenerated
+  rather than hand-merged, per this project's standard convention. Re-ran
+  lint/mypy (clean) and a widened regression sweep covering the merged
+  origin changes' own touched files too (`test_rain_markets.py`,
+  `test_forecasting.py`, `test_tracker.py`, `test_infrastructure.py`,
+  `test_weather_markets.py`, `test_execution_log.py`,
+  `test_live_execution.py`, `test_trading_gates.py`): 1054 passed, 4
+  skipped, 0 failed.
 
 [RESOLVED 2026-07-26 -- explicit guard shipped. UPDATE 2026-08-03: the
   season-total count/category shape now has a real shadow-only model too
