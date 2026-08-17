@@ -599,8 +599,12 @@ def update_live_peak_profit(order_id: int, peak_profit_pct: float) -> None:
 
 
 def record_live_early_exit(
-    order_id: int, exit_price: float, exit_reason: str, pnl: float
-) -> None:
+    order_id: int,
+    exit_price: float,
+    exit_reason: str,
+    pnl: float,
+    expected_quantity: int | None = None,
+) -> bool:
     """Mark an open live position closed via an early protective exit
     (stop-loss/breakeven/model-exit), as opposed to natural market
     settlement. Sets settled_at (so get_filled_unsettled_live_orders() stops
@@ -615,20 +619,69 @@ def record_live_early_exit(
     pnl/exit_price/exit_reason so the sold lot gets counted by
     export_live_tax_csv/get_live_pnl_summary, while the actual position row
     stays open (untouched) for the remainder.
+
+    Guarded on `settled_at IS NULL` and returns whether this call actually
+    applied (True) or lost a race to a concurrent settle (False) --
+    record_live_exit_fill's new caller, main.cmd_order, means a manual sell
+    can now race the automated cron/watch exit scan against the SAME
+    position for the first time; without this guard a second writer would
+    silently overwrite the first's exit_price/pnl and double-count via
+    add_live_loss. Mirrors update_live_peak_profit's existing
+    compare-and-set pattern just above.
+
+    expected_quantity, when given, additionally requires the row's CURRENT
+    tracked open size (fill_quantity, falling back to quantity) to still
+    equal it -- opus review (2026-08-17), NEW-M2: the settled_at guard alone
+    does not stop a caller holding a STALE position snapshot from
+    full-closing a position a concurrent writer already partially reduced
+    (partial exits deliberately leave settled_at NULL). Without this,
+    Writer B computing pnl off a stale larger quantity, after Writer A's
+    partial exit already shrank the real remaining size, would overwrite
+    the row with inflated P&L and no error. record_live_exit_fill always
+    passes this for its full-close branch. Not used by
+    _exit_live_position's own partial-fill-branch call onto the EXIT
+    order's row (see above) -- that row is freshly created earlier in the
+    same call and not shared with any other writer, so the plain
+    settled_at-only guard is sufficient there.
     """
     init_log()
     with _conn() as con:
-        con.execute(
-            """
-            UPDATE orders
-            SET settled_at = ?, exit_price = ?, exit_reason = ?, pnl = ?
-            WHERE id = ?
-            """,
-            (datetime.now(UTC).isoformat(), exit_price, exit_reason, pnl, order_id),
-        )
+        if expected_quantity is None:
+            cur = con.execute(
+                """
+                UPDATE orders
+                SET settled_at = ?, exit_price = ?, exit_reason = ?, pnl = ?
+                WHERE id = ? AND settled_at IS NULL
+                """,
+                (
+                    datetime.now(UTC).isoformat(),
+                    exit_price,
+                    exit_reason,
+                    pnl,
+                    order_id,
+                ),
+            )
+        else:
+            cur = con.execute(
+                """
+                UPDATE orders
+                SET settled_at = ?, exit_price = ?, exit_reason = ?, pnl = ?
+                WHERE id = ? AND settled_at IS NULL
+                  AND COALESCE(fill_quantity, quantity) = ?
+                """,
+                (
+                    datetime.now(UTC).isoformat(),
+                    exit_price,
+                    exit_reason,
+                    pnl,
+                    order_id,
+                    expected_quantity,
+                ),
+            )
+    return cur.rowcount > 0
 
 
-def record_live_partial_exit(order_id: int, filled_count: int) -> None:
+def record_live_partial_exit(order_id: int, filled_count: int) -> bool:
     """Reconcile an open live position's tracked size after an IOC exit
     order only partial-fills (matches what's immediately available, cancels
     the rest -- see order_executor._exit_live_position's docstring).
@@ -655,14 +708,100 @@ def record_live_partial_exit(order_id: int, filled_count: int) -> None:
     The sold portion's realized P&L is the caller's responsibility to add
     via add_live_loss(), same division of labor record_live_early_exit()
     already has with its own caller.
+
+    Also guarded on `settled_at IS NULL` (see record_live_early_exit's
+    docstring) -- returns False without writing anything if the position was
+    already fully closed by a concurrent writer. Additionally requires
+    `COALESCE(fill_quantity, quantity) >= filled_count` so a DELTA larger
+    than what's actually still open (a stale caller) can never drive
+    fill_quantity negative -- opus review (2026-08-17), NEW-L2: a negative
+    or exactly-zero fill_quantity is falsy, which _get_live_open_positions()'s
+    `fill_quantity or quantity` fallback would silently misread as "nothing
+    tracked yet, use the full original quantity," resurrecting an
+    already-closed-out position at its original size.
     """
     init_log()
     with _conn() as con:
-        con.execute(
+        cur = con.execute(
             "UPDATE orders SET fill_quantity = COALESCE(fill_quantity, quantity) - ? "
-            "WHERE id = ?",
-            (filled_count, order_id),
+            "WHERE id = ? AND settled_at IS NULL "
+            "AND COALESCE(fill_quantity, quantity) >= ?",
+            (filled_count, order_id, filled_count),
         )
+    return cur.rowcount > 0
+
+
+def record_live_exit_fill(
+    position: dict, fill_count: int, exit_price: float, reason: str | None = None
+) -> tuple[float, bool]:
+    """Record a live position's exit fill (full or partial) and compute its
+    fee-adjusted realized P&L -- the shared settlement math both
+    order_executor._exit_live_position (automated protective exits) and
+    main.cmd_order (manual live sells) need.
+
+    Mirrors _exit_live_position's own formula exactly: fee only discounts a
+    genuine gain, never applied to a loss (the entry side already paid $0,
+    always a resting maker order -- matching the convention verified across
+    weather_markets.py/paper.py/order_executor.py). Note this fee
+    assumption is exact for _exit_live_position's always-IOC/taker fills;
+    main.cmd_order's live sells are also always-IOC as of the fix that added
+    this second caller, so the same assumption holds there too -- this
+    would need revisiting if a future caller ever placed a resting
+    (maker-eligible) live exit order.
+
+    position must have "id" (its execution_log row id -- used both as the
+    closes_position_id linkage and as the row this update targets),
+    "quantity" (the position's currently tracked open size), and
+    "entry_price".
+
+    fill_count is clamped to position["quantity"] before any math -- a
+    caller-supplied fill_count larger than what this bot believes is open
+    (e.g. main.cmd_order's user-typed `count` exceeding the matched
+    position's real tracked size) must not inflate the realized P&L or
+    add_live_loss beyond the position's actual economic exposure.
+
+    Returns (pnl, fully_closed). fully_closed is False when the (clamped)
+    fill_count is less than the position's tracked quantity (a genuine
+    partial exit -- the position stays open at the reduced size via
+    record_live_partial_exit for a future retry), True when the full
+    remaining quantity closed via record_live_early_exit. Both branches
+    call add_live_loss(-pnl) so the day's aggregate live total reflects
+    this fill immediately.
+
+    Raises RuntimeError if the position was already settled by a concurrent
+    writer before this call's UPDATE landed -- add_live_loss is deliberately
+    NOT called in that case, so the same exit's P&L is never double-counted.
+    """
+    from utils import KALSHI_FEE_RATE
+
+    qty = position["quantity"]
+    entry_price = position["entry_price"]
+    clamped_fill_count = min(fill_count, qty)
+    gross_pnl = clamped_fill_count * (exit_price - entry_price)
+    pnl = round(gross_pnl * (1 - KALSHI_FEE_RATE) if gross_pnl > 0 else gross_pnl, 4)
+    resolved_reason = "manual_close" if reason is None else reason
+
+    if clamped_fill_count < qty:
+        applied = record_live_partial_exit(position["id"], clamped_fill_count)
+        if not applied:
+            raise RuntimeError(
+                f"position {position['id']} was already settled by a concurrent "
+                "writer -- not applying this partial exit"
+            )
+        add_live_loss(-pnl)
+        return pnl, False
+
+    applied = record_live_early_exit(
+        position["id"], exit_price, resolved_reason, pnl, expected_quantity=qty
+    )
+    if not applied:
+        raise RuntimeError(
+            f"position {position['id']} was already settled OR partially reduced "
+            "by a concurrent writer since this call's position snapshot was "
+            "taken -- not applying this exit"
+        )
+    add_live_loss(-pnl)
+    return pnl, True
 
 
 def export_live_tax_csv(path: str, tax_year: int | None = None) -> int:

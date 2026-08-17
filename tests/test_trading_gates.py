@@ -1,7 +1,10 @@
 """P0-2: LiveTradingGate must block live orders when graduation/safety gates fail."""
 
 import os
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Convenience context: both env vars required to pass the first two checks.
 _PROD_ENV = {"KALSHI_ENV": "prod", "LIVE_TRADING_ENABLED": "true"}
@@ -451,3 +454,470 @@ class TestLiveTradingGate:
 
         assert allowed
         assert reason == "ok"
+
+
+class TestCmdOrderLiveRecording:
+    """backlog.txt "MANUAL cmd_order LIVE ORDERS..." entry: a real live
+    fill placed through cmd_order must be recorded via
+    execution_log/LivePositionStore (live=True, closes_position_id set for
+    a closing sell), never absorbed into paper.place_paper_order() -- the
+    original bug let the automated protective-exit scanner "close" a real
+    live position in the books, via close_paper_early(), without ever
+    touching the real position on the exchange.
+
+    All gate checks pass in every test here (this entry is specifically
+    about what happens to a fill that already got past the gate) --
+    TestLiveTradingGate above covers the gate itself.
+    """
+
+    @contextmanager
+    def _passing_gate_patches(self):
+        with (
+            patch.dict(os.environ, _PROD_ENV),
+            patch("paper.graduation_check", return_value={"settled": 35}),
+            patch("paper.is_paused_drawdown", return_value=False),
+            patch("paper.is_daily_loss_halted", return_value=False),
+            patch("paper.is_accuracy_halted", return_value=False),
+            patch("paper.is_streak_paused", return_value=False),
+        ):
+            yield
+
+    def _fake_analysis_triple(self):
+        """Minimal market/enriched/analysis triple covering every field
+        cmd_order's post-fill recording block reads -- used only by the
+        tests that need the Brier-tracking branch to actually run (the
+        positive-control paper test and the fully-analyzed live test);
+        tests focused purely on live-position bookkeeping use
+        get_market.return_value = None instead, since that block is
+        independent of _is_live's own recording branch."""
+        fake_market = {
+            "ticker": "KXHIGH-NYC-26APR17-T70",
+            "close_time": "2026-04-17T20:00:00Z",
+        }
+        fake_enriched = dict(fake_market, _city="NYC", _date=None)
+        fake_analysis = {
+            "forecast_prob": 0.65,
+            "market_prob": 0.50,
+            "net_edge": 0.10,
+            "kelly": 0.05,
+            "method": "ensemble",
+            "days_out": 1,
+            "target_date": "2026-04-17",
+            "condition": {"type": "high_temp", "threshold": 70},
+            "model_forecast_means": {},
+            "forecast_temp": 71.0,
+        }
+        return fake_market, fake_enriched, fake_analysis
+
+    def test_live_buy_logs_live_true_not_a_paper_trade(self, monkeypatch):
+        """The core fix: a real live BUY via cmd_order must be logged
+        live=True in execution_log and must NOT create a paper_trades.json
+        row -- before the fix, place_paper_order() unconditionally absorbed
+        every cmd_order fill into the paper ledger regardless of action."""
+        import execution_log
+        import main
+        import paper
+        from kalshi_client import PROD_BASE
+
+        fake_market, fake_enriched, fake_analysis = self._fake_analysis_triple()
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = fake_market
+        mock_client.place_order.return_value = {
+            "order_id": "ord_1",
+            # Kalshi's real status enum is resting/canceled/executed -- there
+            # is no "filled" (order_executor._kalshi_status_to_internal's own
+            # docstring). Mocking "filled" directly is exactly the gap that
+            # let the pre-fix status-passthrough bug slip past this suite
+            # undetected (opus review, 2026-08-17).
+            "status": "executed",
+            "fill_count_fp": "5.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with (
+            patch.object(main, "enrich_with_forecast", return_value=fake_enriched),
+            patch.object(main, "analyze_trade", return_value=fake_analysis),
+            self._passing_gate_patches(),
+        ):
+            main.cmd_order(
+                mock_client, "buy", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.40"]
+            )
+
+        mock_client.place_order.assert_called_once()
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT live, fill_quantity, closes_position_id FROM orders "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert row["live"] == 1
+        assert row["fill_quantity"] == 5
+        assert row["closes_position_id"] is None
+        # The actual bug: this fill must not also land in the paper ledger,
+        # where the automated protective-exit scanner could later mark it
+        # "closed" in the books without ever touching the real position.
+        assert paper.get_all_trades() == []
+
+    def test_demo_buy_still_creates_paper_trade_positive_control(self, monkeypatch):
+        """Positive control for the test above: a DEMO (non-live) buy, with
+        the exact same analysis mocks, must still go through
+        place_paper_order() and stay live=False in execution_log --
+        proving the paper-recording branch is real, reachable code (not
+        vacuously dead after the fix), so the live test's "no paper trade
+        created" assertion is meaningful rather than trivially true."""
+        import execution_log
+        import main
+        import paper
+        from kalshi_client import DEMO_BASE
+
+        fake_market, fake_enriched, fake_analysis = self._fake_analysis_triple()
+        mock_client = MagicMock()
+        mock_client.base_url = DEMO_BASE
+        mock_client.get_market.return_value = fake_market
+        mock_client.place_order.return_value = {
+            "order_id": "ord_1",
+            "status": "executed",
+            "fill_count_fp": "5.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with (
+            patch.object(main, "enrich_with_forecast", return_value=fake_enriched),
+            patch.object(main, "analyze_trade", return_value=fake_analysis),
+        ):
+            main.cmd_order(
+                mock_client, "buy", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.40"]
+            )
+
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT live FROM orders ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert row["live"] == 0
+        trades = paper.get_all_trades()
+        assert len(trades) == 1
+        assert trades[0]["ticker"] == "KXHIGH-NYC-26APR17-T70"
+        assert trades[0]["quantity"] == 5
+
+    def test_live_buy_partial_fill_records_correct_fill_quantity(self, monkeypatch):
+        """Adjacency fix caught during the same investigation: cmd_order
+        previously never passed fill_quantity to log_order_result at all,
+        so _get_live_open_positions()'s `fill_quantity or quantity`
+        fallback would have tracked a partially-filled live BUY at its full
+        REQUESTED size (5) instead of what actually filled (3)."""
+        import execution_log
+        import main
+        from kalshi_client import PROD_BASE
+        from order_executor import _get_live_open_positions
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = None  # skip analysis branch
+        mock_client.place_order.return_value = {
+            "order_id": "ord_1",
+            # Live orders are IOC as of this fix: Kalshi has no distinct
+            # "partially filled" status -- an IOC order that matches some
+            # contracts and cancels the remainder reports "canceled" with a
+            # nonzero fill count (order_executor._kalshi_status_to_internal's
+            # own F9 docstring), which _kalshi_status_to_internal promotes to
+            # "filled" internally. Only 3 of the 5 requested contracts
+            # matched before the rest was canceled.
+            "status": "canceled",
+            "fill_count_fp": "3.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "buy", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.40"]
+            )
+
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT fill_quantity FROM orders ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert row["fill_quantity"] == 3
+        open_positions = _get_live_open_positions()
+        assert len(open_positions) == 1
+        assert open_positions[0]["quantity"] == 3
+
+    def test_live_sell_closes_matching_tracked_position(self, monkeypatch):
+        """A live SELL that matches an existing tracked open live position
+        (the common real sequence: opened automatically by
+        `watch --auto --live`, closed manually via cmd_order) must close
+        THAT position via closes_position_id + record_live_exit_fill, not
+        open a brand-new phantom paper position at the sell's price."""
+        import execution_log
+        import main
+        import paper
+        from kalshi_client import PROD_BASE
+
+        position_id = execution_log.log_order(
+            ticker="KXHIGH-NYC-26APR17-T70",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        execution_log.log_order_result(position_id, status="filled", fill_quantity=10)
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = None
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "status": "executed",
+            "fill_count_fp": "10.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "10", "0.60"]
+            )
+
+        with execution_log._conn() as con:
+            position_row = con.execute(
+                "SELECT settled_at, pnl FROM orders WHERE id = ?", (position_id,)
+            ).fetchone()
+            exit_row = con.execute(
+                "SELECT live, closes_position_id FROM orders WHERE id != ? "
+                "ORDER BY id DESC LIMIT 1",
+                (position_id,),
+            ).fetchone()
+        assert position_row["settled_at"] is not None
+        # gross_pnl = 10 * (0.60 - 0.40) = 2.00; gain -> fee applies:
+        # 2.00 * (1 - 0.07) = 1.86
+        assert position_row["pnl"] == pytest.approx(1.86)
+        assert exit_row["live"] == 1
+        assert exit_row["closes_position_id"] == position_id
+        # Must not also open a phantom NEW paper position at the sell price
+        # -- the exact bug class this fix resolves.
+        assert paper.get_all_trades() == []
+
+    def test_live_sell_with_no_matching_position_logs_live_no_paper_mirror(
+        self, monkeypatch
+    ):
+        """Per the explicit design decision: a live SELL with no matching
+        tracked live position (e.g. reducing a position this bot has no
+        live row for) still reaches the real exchange either way -- record
+        it correctly as live=True/closes_position_id=None instead of
+        silently mislabeling it live=False or routing it into
+        paper.place_paper_order() (which would open a brand-new phantom
+        entry at the sell's price, the exact bug this fix resolves).
+
+        Opus review (2026-08-17), NEW-H1: live=True/status='filled'/
+        settled_at=NULL/closes_position_id=NULL is EXACTLY the shape
+        get_filled_unsettled_live_orders() treats as an open LONG position
+        -- left alone, this reduce-only sell would be misread as a
+        brand-new entry the bot just bought, and the protective-exit
+        scanner would later place a REAL exit sell against it. The row
+        must be immediately self-settled so it can never be mistaken for
+        one -- this is the actual regression proof, not just the live/
+        closes_position_id field checks above."""
+        import execution_log
+        import main
+        import paper
+        from kalshi_client import PROD_BASE
+        from order_executor import _get_live_open_positions
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = None
+        mock_client.place_order.return_value = {
+            "order_id": "ord_1",
+            "status": "executed",
+            "fill_count_fp": "5.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.60"]
+            )
+
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT live, closes_position_id, settled_at FROM orders "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert row["live"] == 1
+        assert row["closes_position_id"] is None
+        # The actual regression proof: this row must never be readable as
+        # an open position, regardless of how it got there.
+        assert row["settled_at"] is not None
+        assert _get_live_open_positions() == []
+        assert paper.get_all_trades() == []
+
+    def test_live_order_placed_immediate_or_cancel(self, monkeypatch):
+        """Opus review (2026-08-17): live orders must be placed IOC, not the
+        GTC default -- a resting order has no path back to being recognized
+        as a manageable position (no code teaches the general poller about
+        closes_position_id), which would silently orphan the fix. Confirmed
+        via AskUserQuestion as the deliberate trading-behavior tradeoff."""
+        import main
+        from kalshi_client import PROD_BASE
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = None
+        mock_client.place_order.return_value = {
+            "order_id": "ord_1",
+            "status": "executed",
+            "fill_count_fp": "5.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "buy", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.40"]
+            )
+
+        mock_client.place_order.assert_called_once()
+        _args, _kwargs = mock_client.place_order.call_args
+        assert _args == ("KXHIGH-NYC-26APR17-T70", "yes", "buy", 5, 0.40)
+        assert _kwargs["time_in_force"] == "immediate_or_cancel"
+        # cycle= is time-derived (order_executor._current_forecast_cycle()),
+        # not asserted to an exact value -- just that it's threaded through
+        # for idempotency, not silently omitted.
+        assert _kwargs.get("cycle")
+
+    def test_demo_order_stays_good_till_canceled(self, monkeypatch):
+        """Positive control for the test above: demo/paper mode keeps the
+        prior GTC default -- only the live path's order semantics change."""
+        import main
+        from kalshi_client import DEMO_BASE
+
+        mock_client = MagicMock()
+        mock_client.base_url = DEMO_BASE
+        mock_client.get_market.return_value = None
+        mock_client.place_order.return_value = {
+            "order_id": "ord_1",
+            "status": "executed",
+            "fill_count_fp": "5.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        main.cmd_order(
+            mock_client, "buy", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.40"]
+        )
+
+        mock_client.place_order.assert_called_once()
+        _args, _kwargs = mock_client.place_order.call_args
+        assert _args == ("KXHIGH-NYC-26APR17-T70", "yes", "buy", 5, 0.40)
+        assert "time_in_force" not in _kwargs
+        assert _kwargs.get("cycle")
+
+    def test_live_buy_zero_fill_canceled_records_nothing(self, monkeypatch):
+        """A genuinely dead IOC order (no match at all -- Kalshi status
+        "canceled" with a ZERO fill count) must record no live position and
+        print a clear nothing-filled message, distinct from H2's
+        canceled-with-partial-fill case."""
+        import main
+        import paper
+        from kalshi_client import PROD_BASE
+        from order_executor import _get_live_open_positions
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = None
+        mock_client.place_order.return_value = {
+            "order_id": "ord_1",
+            "status": "canceled",
+            "fill_count_fp": "0.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "buy", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.40"]
+            )
+
+        assert _get_live_open_positions() == []
+        assert paper.get_all_trades() == []
+
+    def test_live_buy_records_close_time_entry_prob_forecast_cycle(self, monkeypatch):
+        """Opus review (2026-08-17), H3: without close_time, a position fails
+        positions._passes_exit_gates CLOSED (never exits via stop-loss/
+        breakeven); without entry_prob, order_executor._check_live_model_exits
+        skips it entirely. Both were previously never passed, silently
+        leaving a cmd_order-opened live position structurally unmanageable
+        even after the rest of this fix routes it into execution_log."""
+        import execution_log
+        import main
+        from kalshi_client import PROD_BASE
+
+        fake_market, fake_enriched, fake_analysis = self._fake_analysis_triple()
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = fake_market
+        mock_client.place_order.return_value = {
+            "order_id": "ord_1",
+            "status": "executed",
+            "fill_count_fp": "5.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with (
+            patch.object(main, "enrich_with_forecast", return_value=fake_enriched),
+            patch.object(main, "analyze_trade", return_value=fake_analysis),
+            self._passing_gate_patches(),
+        ):
+            main.cmd_order(
+                mock_client, "buy", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.40"]
+            )
+
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT close_time, entry_prob, forecast_cycle FROM orders "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert row["close_time"] == fake_market["close_time"]
+        assert row["entry_prob"] == pytest.approx(fake_analysis["forecast_prob"])
+        assert row["forecast_cycle"] is not None

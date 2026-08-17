@@ -1187,9 +1187,15 @@ def _exit_live_position(
     Re-runs only the kill-switch/trading-paused gate -- closing an existing
     position reduces exposure, so this is deliberately NOT subject to the
     daily-loss/spend/max-open-position gates (same reasoning already applied
-    to _replace_live_order and the manual sell path in main.py's cmd_order:
-    those gates size NEW exposure, and blocking an exit is exactly backwards
-    when the account already holds a position that needs to close).
+    to _replace_live_order: those gates size NEW exposure, and blocking an
+    exit is exactly backwards when the account already holds a position that
+    needs to close). Corrected 2026-08-17: this comment previously also
+    claimed main.py's cmd_order applies the same reduced gate on its manual
+    sell path -- re-verified false. cmd_order runs the FULL
+    trading_gates.pre_live_trade_check() (main.py:4522-4528) on every order,
+    buy or sell, with no exit-specific carve-out; that's a real difference,
+    not just stale documentation, and is out of scope for the recording-path
+    fix cmd_order picked up in the same backlog entry that caught this.
 
     Scope note on partial fills: an immediate_or_cancel order can legally
     partial-fill (match what's immediately available, cancel the rest). This
@@ -1216,12 +1222,10 @@ def _exit_live_position(
     call. See execution_log.log_order's closes_position_id docstring.
     """
     from trading_gates import pre_live_trade_check
-    from utils import KALSHI_FEE_RATE
 
     ticker = position["ticker"]
     side = position["side"]
     qty = position["quantity"]
-    entry_price = position["entry_price"]
 
     try:
         pre_live_trade_check(client)
@@ -1276,22 +1280,43 @@ def _exit_live_position(
         execution_log.log_order_result(
             log_id, status="filled", response=response, fill_quantity=fill_count
         )
-        # Same fee convention as the full-close branch below: fee only
-        # discounts a genuine gain, never applied to a loss.
-        partial_gross_pnl = fill_count * (exit_price - entry_price)
-        partial_pnl = round(
-            partial_gross_pnl * (1 - KALSHI_FEE_RATE)
-            if partial_gross_pnl > 0
-            else partial_gross_pnl,
-            4,
-        )
+        # Fee/settlement math lives in execution_log.record_live_exit_fill so
+        # main.cmd_order's manual live-sell path shares the exact same
+        # formula instead of re-deriving it (backlog.txt "MANUAL cmd_order
+        # LIVE ORDERS..." entry). That same fix also added a settled_at-race
+        # guard that RAISES RuntimeError if a concurrent writer (now
+        # possible: a manual cmd_order sell can race this automated exit
+        # scanner against the same position) already settled the row first
+        # -- must be caught here, not left to propagate. Uncaught, this
+        # exception would climb through LivePositionStore.exit() into
+        # _check_live_position_exits' caller in the watch/cron loop, which
+        # has no generic exception handler (only KeyboardInterrupt around
+        # the main loop) -- crashing the ENTIRE process and leaving every
+        # OTHER live position unprotected until manually restarted, from a
+        # race on just ONE position. Losing the race here is not a bug in
+        # this exit attempt; the position is already handled by whoever won
+        # -- log and retry next cycle, same as an unfilled/illiquid IOC.
+        try:
+            partial_pnl, _ = execution_log.record_live_exit_fill(
+                position, fill_count, exit_price, reason=reason
+            )
+        except RuntimeError as _race_err:
+            _log.warning(
+                "[LiveExit] %s: partial-exit bookkeeping lost a race (%s) — "
+                "position already settled by a concurrent writer, skipping",
+                ticker,
+                _race_err,
+            )
+            return False
         remaining_qty = qty - fill_count
-        execution_log.record_live_partial_exit(position["id"], fill_count)
-        execution_log.add_live_loss(-partial_pnl)
         # Settle the EXIT ORDER's own row (not the position row -- that one
         # must stay open, see the docstring above) so this sold lot gets its
         # own tax-CSV row and counts toward get_live_pnl_summary instead of
-        # only ever landing in the daily aggregate total.
+        # only ever landing in the daily aggregate total. Reuses partial_pnl
+        # from record_live_exit_fill above rather than recomputing it --
+        # fill_count < qty already holds in this branch, so
+        # record_live_exit_fill's own clamp (min(fill_count, qty)) is a
+        # no-op here and the two figures are identical by construction.
         execution_log.record_live_early_exit(log_id, exit_price, reason, partial_pnl)
         _log.warning(
             "[LiveExit] %s: IOC exit PARTIALLY filled (%d/%d) via %s — "
@@ -1320,11 +1345,24 @@ def _exit_live_position(
     # case, so this matters: a proceeds*(1-fee) formula would overcharge fee
     # on every losing exit instead of correctly charging $0 fee on it. The
     # entry side already paid $0 (always a resting maker order), so only
-    # this exit fill's fee applies.
-    gross_pnl = qty * (exit_price - entry_price)
-    pnl = round(gross_pnl * (1 - KALSHI_FEE_RATE) if gross_pnl > 0 else gross_pnl, 4)
-    execution_log.record_live_early_exit(position["id"], exit_price, reason, pnl)
-    execution_log.add_live_loss(-pnl)
+    # this exit fill's fee applies. See execution_log.record_live_exit_fill's
+    # own docstring for the shared implementation, and the partial-fill
+    # branch above for why the RuntimeError it can raise must be caught here
+    # rather than left to crash the watch/cron process.
+    try:
+        pnl, _ = execution_log.record_live_exit_fill(
+            position, fill_count, exit_price, reason=reason
+        )
+    except RuntimeError as _race_err:
+        _log.warning(
+            "[LiveExit] %s: full-exit bookkeeping lost a race (%s) — the "
+            "order filled on the exchange but a concurrent writer already "
+            "settled this position row first; the fill itself is not lost "
+            "(Kalshi has it), only this attempt's OWN bookkeeping is",
+            ticker,
+            _race_err,
+        )
+        return True
     _log.info(
         "[LiveExit] %s: exited via %s @ %.2f (pnl=%.2f)",
         ticker,

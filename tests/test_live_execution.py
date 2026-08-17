@@ -2911,6 +2911,91 @@ class TestExitLivePosition(_LiveDBTestBase):
         base.update(overrides)
         return base
 
+    def test_full_exit_race_loss_does_not_crash_the_caller(self):
+        """Opus review (2026-08-17), NEW-H2: execution_log.record_live_exit_fill
+        now raises RuntimeError when it loses a settled_at/quantity race to a
+        concurrent writer -- main.cmd_order's manual sell can race this
+        automated exit scanner against the same position for the first time
+        since that fix shipped. Left uncaught, that RuntimeError would climb
+        out of _exit_live_position, through LivePositionStore.exit(), into
+        _check_live_position_exits' caller in the watch/cron loop, which has
+        no generic exception handler -- crashing the ENTIRE process and
+        leaving every OTHER live position unprotected from a race on just
+        ONE. Must be caught here and treated as "lost the race, skip" (same
+        as an unfilled/illiquid IOC), not propagate."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        # Simulate a concurrent writer (e.g. a manual cmd_order sell) already
+        # having closed this exact position before this exit attempt's own
+        # bookkeeping call lands.
+        execution_log.record_live_early_exit(row_id, 0.55, "manual_close", 1.395)
+
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        # Must not raise -- and must not silently report success either.
+        assert result is True
+        # The concurrent writer's real settlement must survive untouched.
+        row = execution_log.get_order_by_id(row_id)
+        assert row["exit_price"] == pytest.approx(0.55)
+        assert row["pnl"] == pytest.approx(1.395)
+        assert row["exit_reason"] == "manual_close"
+
+    def test_partial_exit_race_loss_does_not_crash_the_caller(self):
+        """Mirrors the full-exit race test above for the partial-fill
+        branch."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "4.00",  # only 4 of 10 requested
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        execution_log.record_live_early_exit(row_id, 0.55, "manual_close", 1.395)
+
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        assert result is False
+        row = execution_log.get_order_by_id(row_id)
+        # The concurrent writer's settlement (and this row's fill_quantity,
+        # never explicitly set here so it's still NULL) must survive
+        # untouched -- not decremented by the losing writer.
+        assert row["fill_quantity"] is None
+
     def test_gate_blocked_returns_false_and_places_nothing(self):
         from unittest.mock import MagicMock, patch
 

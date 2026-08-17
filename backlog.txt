@@ -1555,12 +1555,27 @@ Resolution (2026-08-17):
   unrelated churn into this narrow fix; graphify-out is now one commit
   further behind, unchanged from before this session.
 
-[OPEN 2026-08-09 -- new, split out of the entry above per its own "same payload" scoping] MANUAL cmd_order LIVE SELLS DON'T SET closes_position_id OR REDUCE TRACKED POSITION SIZE -- AND MAY NOT EVEN LOG live=True
-Priority: Low -- manual CLI-only path (main.py cmd_order), not the automated
-  cron/watch protective-exit path the sibling entry above fixed. No live
-  order has ever gone through this command (ENABLE_MICRO_LIVE is False).
+[RESOLVED 2026-08-17 -- split out of the entry above per its own "same
+  payload" scoping on 2026-08-09, re-verified and re-investigated 2026-08-17,
+  then fixed the same session after two full rounds of opus review (effort:
+  high) both caught real, severe bugs in the fix itself -- see the RESOLUTION
+  block at the end of this entry for the complete picture] MANUAL cmd_order
+  LIVE ORDERS (BUY AND SELL) NEVER LOG live=True -- BUYS GET SILENTLY
+  ABSORBED INTO THE PAPER SIMULATION WHERE THE AUTOMATED EXIT SCANNER CAN
+  ABANDON A REAL LIVE POSITION BELIEVING IT'S CLOSED; SELLS STILL DON'T SET
+  closes_position_id OR REDUCE TRACKED POSITION SIZE
+Priority: was Low -- now HIGH, live-order-safety tier (same weight as the
+  DEMO_BASE smoke test entry, L5410). The original Low rationale cited the
+  wrong gate; see the 2026-08-17 UPDATE below for the correction. The
+  bottom-line "hasn't fired yet" conclusion still holds today (re-confirmed
+  2026-08-17: the live .env has only KALSHI_ENV=prod set, LIVE_TRADING_ENABLED
+  is absent) but for a different reason than originally stated, and the two
+  flags are NOT coupled -- someone could set LIVE_TRADING_ENABLED=true for
+  an unrelated reason (e.g. testing `watch --auto --live`) without realizing
+  it also arms cmd_order's buy/sell path.
 
-Problem:
+Problem (as originally filed 2026-08-09 -- expanded/superseded by the
+  2026-08-17 UPDATE below, kept for history):
   main.py's cmd_order (the manual buy/sell CLI command) logs via
   `log_order(ticker, side, int(count), price, order_type=action)` --
   positionally, with no live=True keyword at all, so even a manual order
@@ -1577,12 +1592,474 @@ Problem:
   as-is from the opus review that surfaced it, not independently re-verified
   against cmd_order's full call graph.
 
-Recommendation (not yet actioned -- filed for later decision):
+Recommendation (2026-08-09, superseded by the 2026-08-17 UPDATE below):
   First confirm whether cmd_order's sell action can actually reach a real
   live order today (trace its full call graph and any live/paper gating
   around it) before deciding whether this needs the same closes_position_id
   + fill_quantity-reduction treatment _exit_live_position now has, or
   whether it's genuinely paper-only and this is a non-issue.
+
+UPDATE 2026-08-17 (full investigation completed, no code changed yet --
+  this is the deferred trace the 2026-08-09 filing asked for):
+
+  Reachability, corrected: the 2026-08-09 Priority's "No live order has ever
+  gone through this command (ENABLE_MICRO_LIVE is False)" cites the WRONG
+  gate. cmd_order never checks ENABLE_MICRO_LIVE at all -- that flag only
+  gates cron.py's graduation check (cron.py:332) and order_executor.py's
+  separate micro-live auto-trading path (order_executor.py:3163-3172).
+  cmd_order's real gate is trading_gates.pre_live_trade_check() (called at
+  main.py:4522-4528, guarded by `getattr(client, "base_url", None) !=
+  DEMO_BASE` at main.py:4521), which requires LIVE_TRADING_ENABLED=true
+  (trading_gates.py:69-70) -- confirmed unset in the live .env (only
+  KALSHI_ENV=prod is set there), so the "hasn't fired yet" bottom line
+  holds, but for a different reason, and the two flags are NOT coupled --
+  someone could flip LIVE_TRADING_ENABLED=true for an unrelated reason
+  without realizing it also arms cmd_order's buy/sell path.
+
+  Also: main.py's KALSHI_ENV=prod startup banner (main.py:9328-9350) prints
+  "Live orders are NOT placed by this command -- only `watch --auto --live`
+  can" (main.py:9344) for every command OTHER than `watch --auto --live`,
+  including `buy`/`sell` -- its own guard (`_live_orders_possible`,
+  main.py:9333, `cmd == "watch" and "--auto" in args and "--live" in args`)
+  is entirely independent of cmd_order's real gate (pre_live_trade_check).
+  The moment LIVE_TRADING_ENABLED=true, this banner statement is FALSE for
+  cmd_order specifically -- an operator could have live orders active via
+  cmd_order with the console actively (and wrongly) reassuring them
+  otherwise. (The banner's own code comment, main.py:9330-9332, repeats the
+  same wrong-gate reasoning the original 2026-08-09 filing made.)
+
+  The real bug, traced through cmd_order's full post-fill path
+  (main.py:4568-4688) -- bigger than the original title:
+    1. main.py:4568 -- `log_order(...)` never passes live=True.
+       execution_log.log_order's `live` kwarg (execution_log.py:170)
+       defaults to False. Confirmed: EVERY order placed through cmd_order,
+       even a real one sent to the live API via client.place_order()
+       (main.py:4571), is logged live=False in execution_log's orders table.
+    2. main.py:4637 -- after ANY successful fill, BUY or SELL alike (no
+       branching on `action`), cmd_order unconditionally calls
+       paper.place_paper_order() "for P&L/Brier tracking" (see the print at
+       main.py:4653-4656). place_paper_order (paper.py:885) has no `live`
+       parameter and no concept of "this fill closes an existing position"
+       -- confirmed it always appends a brand-new row to paper_trades.json's
+       `data["trades"]` list (paper.py:981-1015, id = max existing + 1) and
+       deducts from the SIMULATED paper balance (paper.py:1027,
+       `data["balance"] -= cost`), never the real account. One nuance the
+       first-pass writeup missed: place_paper_order has a duplicate-open
+       guard (paper.py:964-979) that raises ValueError if an unsettled
+       paper_trades.json row already exists for that ticker -- so a SELL of
+       a position that was itself already phantom-recorded via a prior
+       cmd_order BUY gets blocked (caught by cmd_order's own try/except at
+       main.py:4686, prints a warning, no second phantom row). The "SELL
+       silently opens a NEW phantom position" failure mode is real
+       specifically for the more common real-world sequence: a live
+       position opened automatically via `watch --auto --live` (which never
+       touches paper_trades.json -- it uses execution_log/LivePositionStore
+       exclusively) and then manually closed via cmd_order sell. In that
+       sequence there is no existing paper_trades.json row for the ticker,
+       so place_paper_order succeeds and creates a brand-new OPENING trade
+       at the sell's side/price.
+    3. That same paper_trades.json store is what
+       paper.check_paper_position_exits() (paper.py:1438) and
+       paper.check_model_exits() (paper.py:2286) manage on EVERY automated
+       cron/watch cycle -- confirmed called every cycle at cron.py:1683
+       ("check_paper_position_exits() also runs from watch's automated
+       loop", per that line's own comment). Their exit function,
+       paper.close_paper_early() (paper.py:1261-1296), only ever updates the
+       JSON file (settled flag, balance, pnl) -- confirmed by reading its
+       full body: no client.* call anywhere in it.
+
+  Put together: a real live BUY placed via cmd_order is invisible to every
+  live-position mechanism (execution_log's live=1 rows, LivePositionStore,
+  _exit_live_position) and instead gets absorbed into the ordinary paper
+  simulation. The very next cron/watch cycle's stop-loss/model-exit check
+  will find it, decide to exit it, and call close_paper_early() -- which
+  silently marks it "closed" in the bot's own books and credits the
+  SIMULATED balance, while placing NO real sell order against Kalshi. The
+  actual live position remains open and completely unmanaged on the real
+  exchange, indefinitely, with the bot believing it's closed. A cmd_order
+  SELL of a position that was opened automatically (the common case)
+  compounds this differently: it creates a phantom NEW opening paper
+  position at the sell side/price instead of closing anything -- the exact
+  phantom-open-position bug class this repo's `_exit_live_position` fix
+  already resolved for the automated path, now reachable again via this
+  separate manual entry point.
+
+  Re-prioritized: this is not "Low, manual-only, dormant." It's a real,
+  reachable-the-moment-one-env-var-changes bug where the bot's own
+  protective-exit automation can silently abandon a real, unmanaged live
+  position while believing it closed it -- a genuine capital-loss risk, not
+  a bookkeeping gap. Treated as High, live-order-safety tier, same weight as
+  the DEMO_BASE smoke test entry (L5410) this repo already has flagged High.
+
+Recommendation (2026-08-17, supersedes the 2026-08-09 one above -- needs a
+  design decision, not a quick patch):
+  The 2026-08-09 filing's proposed fix (add closes_position_id +
+  fill_quantity reduction to mirror _exit_live_position) assumed cmd_order
+  already uses the live-position machinery, just incompletely. It doesn't
+  use it AT ALL. The real question: should a real live fill from cmd_order
+  route through execution_log/LivePositionStore (log_order with live=True,
+  no place_paper_order call for the buy side; for sell, look up the
+  matching open live position via
+  execution_log.get_filled_unsettled_live_orders() and call
+  record_live_early_exit()/record_live_partial_exit() with
+  closes_position_id, mirroring _exit_live_position exactly) instead of
+  paper.place_paper_order() -- so it gets picked up by the SAME automated
+  protective-exit scanner real positions from `watch --auto --live` use?
+  This is a real architecture decision (does cmd_order become a second real
+  entry point into the live-position system, duplicating logic
+  _exit_live_position/_auto_place_trades already have, or does it call into
+  a shared helper factored out of those?) that needs AskUserQuestion before
+  any code is written -- do not guess at the shape.
+  Also needs handling: what happens to a REAL fill recorded via cmd_order
+  BEFORE this fix ships -- any historical rows already silently living in
+  paper_trades.json as phantom paper trades need a data audit, not just a
+  go-forward code fix. Confirmed currently moot only because
+  LIVE_TRADING_ENABLED has never been set true in this environment -- verify
+  that assumption again before treating it as safe to skip.
+  Scope boundary: does not touch order_executor._exit_live_position or
+  _auto_place_trades themselves -- both already correctly use the live-
+  position machinery; this entry is entirely about cmd_order's own,
+  structurally different (and wrong) recording path.
+  Tests needed: prove a real (mocked live) cmd_order buy creates a row in
+  execution_log with live=1, NOT a paper_trades.json row -- plus a positive
+  control proving today's actual behavior (a paper_trades.json row IS
+  created, execution_log stays live=0) so the bug is provably reproduced
+  before it's provably fixed. Same for a sell correctly resolving
+  closes_position_id against an existing live position instead of creating
+  a new phantom entry. Mock LIVE_TRADING_ENABLED=true the way
+  tests/test_trading_gates.py's `_PROD_ENV` fixture already does
+  (`{"KALSHI_ENV": "prod", "LIVE_TRADING_ENABLED": "true"}`), since none of
+  this is reachable without it.
+
+RESOLUTION 2026-08-17:
+
+  ARCHITECTURE (confirmed via AskUserQuestion before any code was written,
+  per this entry's own Recommendation above): cmd_order's live fills now
+  route through execution_log/LivePositionStore instead of
+  paper.place_paper_order(). A new shared helper,
+  execution_log.record_live_exit_fill(position, fill_count, exit_price,
+  reason=None) -> (pnl, fully_closed), was extracted from
+  order_executor._exit_live_position's inline fee-adjusted P&L formula so
+  both the automated exit scanner and cmd_order's manual sell use the exact
+  same math -- _exit_live_position was refactored to call it too (pure
+  refactor; its own 105-test suite, tests/test_live_execution.py, passes
+  unchanged, confirming behavior-preservation). Live orders are placed
+  immediate-or-cancel (time_in_force="immediate_or_cancel") instead of the
+  prior GTC default -- a deliberate, AskUserQuestion-confirmed trading-
+  behavior change for the manual live path specifically (it can no longer
+  place a patient resting limit order); demo/paper mode keeps GTC,
+  unaffected either way. For a live SELL with no matching tracked live
+  position, the fix places the order regardless (it still reaches the real
+  exchange) but does NOT mirror it into paper -- confirmed via
+  AskUserQuestion, see the ROUND 2 fix below for what "recorded correctly"
+  actually required.
+
+  ROUND 1 -- first opus review (effort: high) on the initial implementation
+  found it was structurally correct but did not actually work, plus several
+  real adjacent bugs:
+    H1 (the fix silently never worked): Kalshi's real order-status enum is
+      resting/canceled/executed -- there is no "filled". The code stored
+      Kalshi's raw status string directly; execution_log.
+      get_filled_unsettled_live_orders() hardcodes `status = 'filled'`, so a
+      live position placed via cmd_order could never surface to the
+      protective-exit scanner regardless of anything else the fix did.
+      FIXED: route through order_executor._kalshi_status_to_internal()
+      before writing to execution_log or deciding control flow, matching
+      every other live-order call site's existing convention.
+    H2 (partial-fill-then-cancel silently dropped): a `status in ("rejected",
+      "canceled"): return` early-return fired before any bookkeeping ran,
+      discarding a genuine partial fill. FIXED: gate on the TRANSLATED
+      status instead of the raw one.
+    H3 (position unmanageable even once visible): log_order() never passed
+      close_time (positions._passes_exit_gates fails CLOSED without it,
+      never exits) or entry_prob (order_executor._check_live_model_exits
+      skips a position with entry_prob None). FIXED: pass both (only when
+      the analysis fetch succeeded, same as every other optional field
+      already threaded through cmd_order) plus forecast_cycle.
+    M4 (no quantity reconciliation): a sell for more than the matched
+      position's tracked quantity would inflate computed P&L past the
+      position's real size. FIXED: clamp fill_count to position["quantity"]
+      inside record_live_exit_fill.
+    M5 (no concurrency guard): record_live_early_exit/record_live_partial_exit
+      had no settled_at guard, so a manual sell racing the automated
+      cron/watch exit scanner against the same position could double-settle
+      or double-count P&L. FIXED (first pass): WHERE settled_at IS NULL,
+      both functions return a bool, record_live_exit_fill raises
+      RuntimeError on a lost race instead of silently succeeding.
+    M8: an unrelated pre-existing test assertion (assert reason == "ok" in
+      test_client_prod_base_url_reaches_full_gate) was accidentally orphaned
+      while editing the file. Restored.
+    All new tests originally mocked an unrealistic "status": "filled" Kalshi
+    API response -- exactly why H1 shipped undetected. Fixed to use real
+    "executed"/"canceled" values throughout.
+
+  ROUND 2 -- a SECOND independent opus review (effort: high) of the
+  round-1-fixed diff found the fixes themselves had two more severe bugs,
+  proven via empirical reproduction (not just static reading), plus a
+  subtler race the round-1 guard didn't close:
+    NEW-H1 (worse than the original bug): the "no matching position, record
+      it anyway" design for an unmatched live sell wrote live=1/
+      status='filled'/settled_at=NULL/closes_position_id=NULL -- EXACTLY the
+      shape get_filled_unsettled_live_orders() reads as an open LONG
+      position. A real reduce-only sell would be misread as a brand-new
+      entry the bot just bought, and the protective-exit scanner would later
+      place a REAL exit sell against it -- an actively wrong phantom
+      position, not just an invisible one. FIXED: immediately self-settle
+      that row (execution_log.record_live_early_exit with a distinct
+      "unmatched_sell" exit_reason and pnl=0.0 -- unknown, not a real claim,
+      since there's no tracked entry_price to compute one against) so it
+      can never be read as open, while still preserving the historical
+      record that the sell happened.
+    NEW-H2 (crash risk): the round-1 RuntimeError-on-lost-race was never
+      caught by _exit_live_position's own two call sites. Uncaught, it would
+      climb through LivePositionStore.exit() into the watch/cron loop, which
+      has no generic exception handler (only KeyboardInterrupt) -- crashing
+      the ENTIRE live process from a race on just ONE position, leaving
+      every OTHER live position unprotected until manual restart. FIXED:
+      both call sites now catch RuntimeError, log, and return
+      True/False as appropriate (matching the existing "lost this cycle,
+      retry next" pattern already used for an unfilled/illiquid IOC).
+    NEW-M2 (a race the settled_at guard didn't close): Writer A partially
+      exits a position (settled_at deliberately stays NULL); Writer B,
+      holding a STALE snapshot from before A's write, computes a full-close
+      off the stale (larger) quantity -- the settled_at-only guard doesn't
+      catch this since the row isn't settled yet. FIXED: record_live_early_exit
+      gained an optional expected_quantity parameter (compared against
+      COALESCE(fill_quantity, quantity) in the same UPDATE's WHERE clause,
+      optimistic-concurrency style); record_live_exit_fill's full-close
+      branch always passes it. record_live_partial_exit also gained a
+      `COALESCE(fill_quantity, quantity) >= filled_count` guard so a stale
+      DELTA can never drive fill_quantity negative (this doubles as the fix
+      for NEW-L2: a negative/zero fill_quantity is falsy, which
+      _get_live_open_positions()'s `fill_quantity or quantity` fallback
+      would have silently misread as "nothing tracked, use the full
+      original quantity" -- resurrecting an already-reduced position at its
+      stale original size).
+    NEW-L6 (defensive): wrapped the live-position lookup in try/except so a
+      DB read failure can't block placing a real exit sell (mirrors
+      _exit_live_position's own "blocking an exit is exactly backwards"
+      reasoning).
+    NEW-L9: threaded cycle=order_executor._current_forecast_cycle() through
+      to client.place_order() so a manual cmd_order retry gets the same
+      server-side idempotency dedup the automated paths already have
+      (previously fell back to a random UUID, no dedup).
+    NEW-M5: strengthened the pre-existing "Analysis failed" warning with an
+      explicit second warning when a LIVE buy proceeds with no close_time --
+      the position will have NO automated stop-loss/breakeven coverage,
+      not just "won't be tracked in Brier/P&L" as the original message said.
+    All fixes re-tested; two NEW tests needed their own fix after landing
+    (a wrong assertion value, and a pytest-environment-specific teardown
+    PermissionError traced to reading results back via a raw `with
+    execution_log._conn()` block instead of the existing get_order_by_id()
+    helper -- confirmed via two clean standalone reproductions outside
+    pytest that the underlying execution_log logic itself has no real
+    resource leak; this was a test-artifact fix, not a production one).
+
+  ACCEPTED, EXPLICITLY REASONED LIMITATIONS (not fixed, per-finding
+  reasoning stated rather than silently dropped):
+    NEW-M1 (multiple open live positions can legally share a ticker+side --
+      order_executor.py's own _get_live_open_positions callers already
+      assume this is possible; root cause is the paper-only duplicate/
+      exposure blindness this session also filed as its own entry, see
+      below): a cmd_order sell only closes the OLDEST matching position --
+      closes_position_id is a single column, not a list, matching every
+      other exit mechanism in this codebase (_exit_live_position also only
+      ever closes one position per call). A full fix needs either schema
+      support for closing multiple positions with one order or preventing
+      the duplicate-entry root cause in the first place. Mitigated with an
+      explicit operator-facing warning when it happens, rather than silently
+      leaving the others untouched with no signal.
+    NEW-M4 (degraded place_order response): if Kalshi's V2 create succeeds
+      but the internal get_order() follow-up fails, place_order() returns
+      the raw create response, which has no status/fill_count_fp -- a live
+      IOC order that genuinely filled would be recorded status="pending",
+      fill_quantity=0. The recovery machinery
+      (_recover_pending_orders/_poll_pending_orders) heals this for a BUY
+      (an ordinary entry-shaped row) but has no closes_position_id
+      awareness, so a matched SELL would not resolve automatically -- the
+      same underlying gap that justified going IOC in the first place, now
+      one layer deeper (a degraded API response on top of an already-narrow
+      case). Narrow enough (two independent failure conditions must both
+      occur) and architecturally big enough (would mean teaching the shared
+      poller about closes_position_id, which this entry's own scope
+      boundary already excludes) to file rather than fix here if it
+      recurs -- not filed as a new entry yet since it has never been
+      observed, only reasoned about.
+    NEW-L1 (a raw "rejected" status, which _kalshi_status_to_internal
+      doesn't recognize -- Kalshi's real vocabulary is resting/canceled/
+      executed, "rejected" isn't real Kalshi wording -- falls through to
+      "pending" rather than a terminal state): self-healing via the normal
+      pending-recovery path, just a slightly misleading interim label.
+    NEW-L3 (record_live_early_exit/record_live_partial_exit's `return
+      cur.rowcount > 0` sits outside the `with _conn()` block): correct
+      today because _conn() returns a bare sqlite3.Connection (commits on
+      __exit__, never closes) -- matches execution_log.add_live_loss's own
+      existing established pattern of reading a result inside `with` and
+      returning it after.
+    NEW-L4 (Brier/prediction tracking still fires on a manual live SELL,
+      logging an entry-shaped prediction for what is actually an exit):
+      pre-existing behavior, unrelated to this fix's live/paper routing
+      change, just more visible now that it's the only tracking left running
+      on the live path.
+    NEW-L8 (P&L uses the user's typed limit price, not an achieved fill
+      price): matches _exit_live_position's own existing convention exactly
+      (same field, same assumption) -- consistent, not a new gap, and
+      conservative in direction for a sell (Kalshi fills at limit-or-better).
+    M6/NEW-M3 (paper.check_position_limits' exposure caps never read
+      execution_log): filed as its own entry below (see
+      "paper.check_position_limits' EXPOSURE CAPS ARE STRUCTURALLY BLIND...")
+      -- corrected 2026-08-17 same session to state precisely that removing
+      cmd_order's accidental (and separately wrong) paper-mirror write IS a
+      real regression for cmd_order's own exposure-cap coverage specifically,
+      even though the root architectural gap is repo-wide and pre-existing.
+
+  TESTS: 185 tests across the three directly-touched files (tests/
+  test_execution_log.py, tests/test_trading_gates.py, tests/
+  test_live_execution.py) -- all pass, all newly added ones proven to
+  actually catch a revert of the fix they cover (IOC via
+  assert_called_once, status translation via the
+  _get_live_open_positions() assertion in the partial-fill test, the
+  NEW-H1 phantom-position fix via an explicit settled_at + empty-
+  open-positions assertion, M4/NEW-M2 clamping/races via dedicated
+  concurrent-writer tests in both directions, M8 via the restored
+  assertion, NEW-H2 via two dedicated tests proving _exit_live_position
+  itself never raises through a lost race). Wide regression sweep across
+  every test file touching the changed modules (main.py, order_executor.py,
+  execution_log.py, paper.py): 1246 passed. ruff + ruff format + mypy clean
+  on all three changed source files.
+
+  graphify-out/ knowledge graph refreshed (AST always, plus a scoped
+  semantic-layer pass on the 7 files this session's diff actually touched --
+  main.py, order_executor.py, execution_log.py, the two changed test files,
+  backlog.txt, BACKLOG_OPEN.md -- since this is a live-order-safety change,
+  not LOW tier). The incremental detector also found 22 other repo files
+  changed since the graph's last update by unrelated prior sessions
+  (data/*.json, pyproject.toml, test fixtures, a design-canvas state file) --
+  deliberately skipped for semantic extraction (no meaningful graph content
+  in config/data/fixture blobs) but included in the manifest/AST refresh.
+
+  Two new backlog entries filed as a direct result of this investigation
+  (both deliberately NOT fixed here, per the same-payload test): "KALSHI_ENV=
+  prod STARTUP BANNER WRONGLY CLAIMS ONLY `watch --auto --live` CAN PLACE
+  LIVE ORDERS..." (below) and "paper.check_position_limits' EXPOSURE CAPS
+  ARE STRUCTURALLY BLIND TO REAL LIVE POSITIONS..." (below).
+
+[OPEN 2026-08-17 -- new, split out of the "MANUAL cmd_order LIVE ORDERS..."
+  entry above per the same-payload test: this is a startup console message,
+  not part of that entry's post-fill recording path, so it's a genuinely
+  separate consumer rather than an inline fix] KALSHI_ENV=prod STARTUP
+  BANNER WRONGLY CLAIMS ONLY `watch --auto --live` CAN PLACE LIVE ORDERS --
+  FALSE FOR cmd_order (buy/sell) ONCE LIVE_TRADING_ENABLED=true
+Priority: Medium -- informational/console-accuracy only, no trading-
+  behavior impact by itself, but directly adjacent to a live-safety gate:
+  it can give an operator false confidence that live orders aren't active
+  via cmd_order when LIVE_TRADING_ENABLED=true has, in fact, armed it.
+
+Problem:
+  main.py's KALSHI_ENV=prod startup banner (main.py:9328-9350) computes
+  `_live_orders_possible = cmd == "watch" and "--auto" in args and "--live"
+  in args` (main.py:9333) and, when False, prints "Live orders are NOT
+  placed by this command — only `watch --auto --live` can" (main.py:9344)
+  for every OTHER command, including `buy`/`sell`. This check is entirely
+  independent of cmd_order's actual gate (trading_gates.pre_live_trade_check(),
+  called at main.py:4522-4528) -- the moment LIVE_TRADING_ENABLED=true, this
+  banner statement is false specifically for cmd_order, which places real
+  orders via the same client.place_order() call `watch --auto --live` uses.
+  The banner block's own code comment (main.py:9330-9332) repeats the same
+  wrong-gate reasoning ("cron/loop never pass live=True... ENABLE_MICRO_LIVE
+  is hard-disabled") the original 2026-08-09 filing of the sibling entry
+  made -- ENABLE_MICRO_LIVE is irrelevant to cmd_order, which cmd_order
+  never checks at all.
+  Discovered during the 2026-08-17 investigation of the sibling entry above;
+  filed separately since fixing cmd_order's recording path (that entry)
+  does nothing to correct this startup message.
+
+Recommendation (not yet actioned -- filed for later decision):
+  Broaden `_live_orders_possible` to also cover `cmd in ("buy", "sell")`
+  when LIVE_TRADING_ENABLED=true -- mirroring cmd_order's own real gate
+  (main.py:4521's `getattr(client, "base_url", None) != DEMO_BASE` +
+  trading_gates.pre_live_trade_check()), not re-deriving a separate KALSHI_ENV
+  read (see trading_gates.LiveTradingGate.check()'s own docstring for why a
+  second, independently-read env value can drift from the gate's real
+  notion of prod-ness). One real wrinkle: the `client` object doesn't exist
+  yet at the banner's point in main() (built later, at main.py:9465/9479),
+  so the check can't call `getattr(client, "base_url", ...)` the way
+  cmd_order itself does -- fall back to a plain
+  `os.getenv("LIVE_TRADING_ENABLED", "").strip().lower() == "true"` read at
+  the banner instead, the same fallback trading_gates.LiveTradingGate.check()
+  already uses for its own "no client passed" case (trading_gates.py:57-64).
+  Needs a design decision on exact wording/placement (AskUserQuestion) before
+  implementing -- not guessed at here.
+
+[OPEN 2026-08-17 -- found by opus review of the "MANUAL cmd_order LIVE
+  ORDERS..." fix above; filed separately per the same-payload test since
+  this affects EVERY live-order path, not just cmd_order, and fixing it
+  would mean changing paper.check_position_limits/get_total_exposure
+  themselves, which that entry's own scope boundary explicitly excludes]
+  paper.check_position_limits' EXPOSURE CAPS ARE STRUCTURALLY BLIND TO REAL
+  LIVE POSITIONS -- paper.get_open_trades() IS THE ONLY SIGNAL THEY EVER READ
+Priority: Medium -- a real, repo-wide gap (not specific to cmd_order or to
+  this session's fix), but confirmed EMPIRICALLY MOOT today: zero live=1
+  rows have ever existed in execution_log (verified via direct query,
+  2026-08-17 -- same check the sibling entry above already ran), so there
+  is currently no live exposure for these caps to have missed.
+
+Problem:
+  paper.get_total_exposure() (paper.py:1620-1623) and
+  paper.get_ticker_exposure() (paper.py:1626-1629) both compute their
+  totals exclusively from `sum(t["cost"] for t in get_open_trades())` --
+  paper.py's own JSON store. paper.check_position_limits() (paper.py:3447),
+  the SINGLE shared enforcement point for per-market/portfolio/city-date/
+  directional/correlated-group exposure caps across every manual and
+  automated placement path in this bot (per its own docstring, "#2: those
+  three caps were previously enforced only inside portfolio_kelly_fraction()
+  ... every manual order path ... could silently exceed them"), calls
+  get_total_exposure() at its MAX_TOTAL_OPEN_EXPOSURE check (paper.py:3645)
+  and has no other source of exposure data anywhere in its body. Neither
+  function has ever read execution_log for real live positions.
+  Confirmed this is NOT specific to cmd_order: order_executor._auto_place_trades
+  (the fully-automated `watch --auto --live` path) branches live vs. paper
+  as a mutually exclusive if/else (order_executor.py:2966 calls
+  _place_live_order for the live branch; order_executor.py:3014-3049 is the
+  separate paper `else` branch that calls place_paper_order) -- a live entry
+  NEVER also mirrors into paper.place_paper_order(). So exposure caps have
+  been structurally blind to the automated live path's own positions this
+  entire time, independent of anything cmd_order does.
+  Surfaced by this session's cmd_order fix only because, PRE-FIX, cmd_order's
+  bug (unconditionally calling place_paper_order() for every live fill,
+  buy or sell) happened to ALSO feed this exposure-cap signal as an
+  accidental side effect of the recording bug -- never a deliberate
+  mechanism, and never true for the automated live path. Post-fix,
+  cmd_order's live buys correctly stop writing to paper, which removes that
+  accidental signal and brings cmd_order in line with how _auto_place_trades
+  has always behaved.
+
+  CORRECTED 2026-08-17 (2nd opus review, NEW-M3): the line above ("not a new
+  regression") undersold this. The ROOT architectural gap (exposure caps
+  never reading execution_log at all) is genuinely pre-existing and
+  repo-wide, but for cmd_order SPECIFICALLY, the fix is a real, concrete
+  behavior change: pre-fix, a manual live buy had SOME (wrong in other
+  ways, but present) exposure-cap coverage via the accidental paper-mirror
+  write; post-fix, it has NONE. That a differently-broken automated path
+  already had zero coverage doesn't make removing cmd_order's own
+  (accidental) coverage a non-event for cmd_order's own operators -- it is
+  a regression for that one path, just one whose root cause and fix both
+  belong here rather than in the sibling entry. Still empirically moot
+  today (LIVE_TRADING_ENABLED unset), which is why this wasn't treated as
+  blocking, but stated precisely rather than downplayed.
+
+Recommendation (not yet actioned -- filed for later decision):
+  If/when this needs fixing, get_total_exposure()/get_ticker_exposure()
+  (or check_position_limits() directly) would need to also sum cost across
+  execution_log's live=1, settled_at IS NULL rows (order_executor.
+  _get_live_open_positions() already builds exactly this shape) alongside
+  paper's get_open_trades() -- a real design question (one combined
+  cross-ledger total vs. two separately-capped totals; whether the
+  per-city/date/directional/correlated-group checks, which walk paper's
+  trade list structurally, need the same treatment) that needs
+  AskUserQuestion before implementing, not guessed at here. Given this is
+  currently empirically moot (no live positions exist to be missed), there
+  is no urgency forcing the choice.
 
 [RESOLVED 2026-08-05] ~13 NON-SAFETY-CRITICAL FILES STILL BYPASS paths.py -- WORKTREE CRON RUNS SILENTLY HIT A STALE LOCAL data/ CACHE
 Priority: Medium -- no live-money or trade-correctness impact (DB, paper

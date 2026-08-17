@@ -651,6 +651,232 @@ class TestLiveSettlement:
         assert rows[0]["outcome"] != "no"
 
 
+class TestRecordLiveExitFill:
+    """record_live_exit_fill is the shared fee-adjusted-P&L/settlement
+    helper extracted from order_executor._exit_live_position so
+    main.cmd_order's manual live-sell path can reuse the exact same formula
+    instead of re-deriving it (backlog.txt "MANUAL cmd_order LIVE
+    ORDERS..." entry). order_executor.py's own _exit_live_position tests
+    (tests/test_live_execution.py) already pin this formula end-to-end
+    through the automated exit path and must keep passing unchanged after
+    the refactor -- these tests instead pin the extracted function's own
+    direct contract in isolation.
+    """
+
+    def setup_method(self):
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def _open_position(self, quantity=10, entry_price=0.40):
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=quantity,
+            price=entry_price,
+            status="filled",
+            live=True,
+        )
+        execution_log.log_order_result(row_id, status="filled", fill_quantity=quantity)
+        return {"id": row_id, "quantity": quantity, "entry_price": entry_price}
+
+    def test_full_exit_gain_applies_fee_discount(self):
+        position = self._open_position(quantity=10, entry_price=0.40)
+        pnl, fully_closed = execution_log.record_live_exit_fill(
+            position, 10, 0.60, reason="model_exit"
+        )
+        # gross_pnl = 10 * (0.60 - 0.40) = 2.00; gain -> fee applies:
+        # 2.00 * (1 - 0.07) = 1.86
+        assert pnl == pytest.approx(1.86)
+        assert fully_closed is True
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT settled_at, exit_price, exit_reason, pnl FROM orders "
+                "WHERE id = ?",
+                (position["id"],),
+            ).fetchone()
+        assert row["settled_at"] is not None
+        assert row["exit_price"] == pytest.approx(0.60)
+        assert row["exit_reason"] == "model_exit"
+        assert row["pnl"] == pytest.approx(1.86)
+        assert execution_log.get_today_live_loss() == pytest.approx(-1.86)
+        # Positive control: the closed position no longer surfaces as open.
+        assert position["id"] not in [
+            r["id"] for r in execution_log.get_filled_unsettled_live_orders()
+        ]
+
+    def test_full_exit_loss_skips_fee_discount(self):
+        position = self._open_position(quantity=10, entry_price=0.40)
+        pnl, fully_closed = execution_log.record_live_exit_fill(
+            position, 10, 0.20, reason="stop_loss"
+        )
+        # gross_pnl = 10 * (0.20 - 0.40) = -2.00; loss -> no fee discount.
+        assert pnl == pytest.approx(-2.00)
+        assert fully_closed is True
+        assert execution_log.get_today_live_loss() == pytest.approx(2.00)
+
+    def test_partial_exit_leaves_position_open_and_reduces_quantity(self):
+        position = self._open_position(quantity=10, entry_price=0.40)
+        pnl, fully_closed = execution_log.record_live_exit_fill(
+            position, 4, 0.20, reason="stop_loss"
+        )
+        # gross_pnl = 4 * (0.20 - 0.40) = -0.80; loss -> no fee discount.
+        assert pnl == pytest.approx(-0.80)
+        assert fully_closed is False
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT settled_at, fill_quantity FROM orders WHERE id = ?",
+                (position["id"],),
+            ).fetchone()
+        # Must not silently mark the position fully closed on a genuine
+        # partial fill -- that would corrupt the ledger by claiming all 10
+        # contracts exited when only 4 actually did.
+        assert row["settled_at"] is None
+        assert row["fill_quantity"] == 6
+        assert execution_log.get_today_live_loss() == pytest.approx(0.80)
+        # Positive control: the reduced position still surfaces as open,
+        # at the correct new size, for a future exit attempt.
+        reopened = execution_log.get_filled_unsettled_live_orders()
+        assert len(reopened) == 1
+        assert reopened[0]["id"] == position["id"]
+        assert reopened[0]["fill_quantity"] == 6
+
+    def test_reason_defaults_to_manual_close(self):
+        """cmd_order's manual live sell calls this with no explicit reason
+        for the common case -- must land distinctly from the automated
+        stop_loss/breakeven/model_exit tags for later exit-cause auditing
+        (mirrors web_app.py's dashboard manual-close "manual_close" tag)."""
+        position = self._open_position(quantity=5, entry_price=0.50)
+        execution_log.record_live_exit_fill(position, 5, 0.55)
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT exit_reason FROM orders WHERE id = ?", (position["id"],)
+            ).fetchone()
+        assert row["exit_reason"] == "manual_close"
+
+    def test_fill_count_equal_to_quantity_is_a_full_exit_not_partial(self):
+        """Boundary check: fill_count == quantity must take the full-close
+        branch (settled_at set), not the partial branch — a strict `<`
+        mutated to `<=` would wrongly leave an exactly-fully-filled exit
+        open forever."""
+        position = self._open_position(quantity=3, entry_price=0.40)
+        _pnl, fully_closed = execution_log.record_live_exit_fill(position, 3, 0.50)
+        assert fully_closed is True
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT settled_at FROM orders WHERE id = ?", (position["id"],)
+            ).fetchone()
+        assert row["settled_at"] is not None
+
+    def test_fill_count_larger_than_position_quantity_is_clamped(self):
+        """Opus review (2026-08-17), M4: a caller-supplied fill_count larger
+        than the position's own tracked quantity (e.g. main.cmd_order's
+        user-typed sell count exceeding what this bot believes is open) must
+        not inflate P&L or add_live_loss beyond the position's real size --
+        clamp to position["quantity"] before any math."""
+        position = self._open_position(quantity=10, entry_price=0.40)
+        pnl, fully_closed = execution_log.record_live_exit_fill(position, 20, 0.60)
+        # Must compute as if fill_count were 10 (clamped), NOT 20:
+        # gross_pnl = 10 * (0.60 - 0.40) = 2.00; gain -> fee applies:
+        # 2.00 * (1 - 0.07) = 1.86. An unclamped 20-contract calculation
+        # would double this to 3.72.
+        assert pnl == pytest.approx(1.86)
+        assert fully_closed is True
+        assert execution_log.get_today_live_loss() == pytest.approx(-1.86)
+
+    def test_concurrent_settle_race_raises_and_does_not_double_count(self):
+        """Opus review (2026-08-17), M5: main.cmd_order's manual sell can now
+        race the automated cron/watch exit scan against the SAME position --
+        previously impossible since cmd_order never participated in the
+        live-position machinery at all. If a concurrent writer settles the
+        row first, this call must not silently overwrite that settlement or
+        double-count P&L via add_live_loss."""
+        position = self._open_position(quantity=10, entry_price=0.40)
+        # Simulate a concurrent writer (e.g. the automated exit scanner)
+        # already having closed this position first -- record_live_early_exit
+        # alone doesn't call add_live_loss (that's the caller's job, same
+        # division of labor record_live_exit_fill itself has), so call it
+        # explicitly to fully reproduce what a real concurrent settle via
+        # record_live_exit_fill would have done.
+        execution_log.record_live_early_exit(position["id"], 0.35, "stop_loss", -0.50)
+        execution_log.add_live_loss(0.50)
+        assert execution_log.get_today_live_loss() == pytest.approx(0.50)
+
+        with pytest.raises(RuntimeError, match="already settled"):
+            execution_log.record_live_exit_fill(position, 10, 0.60)
+
+        # The concurrent writer's real settlement must survive untouched --
+        # not overwritten by this call's exit_price/pnl.
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT exit_price, pnl FROM orders WHERE id = ?", (position["id"],)
+            ).fetchone()
+        assert row["exit_price"] == pytest.approx(0.35)
+        assert row["pnl"] == pytest.approx(-0.50)
+        # add_live_loss must NOT have been called a second time -- the
+        # daily total must still reflect only the first (real) settlement.
+        assert execution_log.get_today_live_loss() == pytest.approx(0.50)
+
+    def test_concurrent_settle_race_on_partial_exit_also_raises(self):
+        """Mirrors the full-exit race test above for the partial-exit
+        branch -- record_live_partial_exit must be guarded the same way."""
+        position = self._open_position(quantity=10, entry_price=0.40)
+        execution_log.record_live_early_exit(position["id"], 0.35, "stop_loss", -0.50)
+
+        with pytest.raises(RuntimeError, match="already settled"):
+            execution_log.record_live_exit_fill(position, 4, 0.60)
+
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT fill_quantity FROM orders WHERE id = ?", (position["id"],)
+            ).fetchone()
+        # fill_quantity must be untouched by the losing writer.
+        assert row["fill_quantity"] == 10
+
+    def test_stale_snapshot_full_close_after_concurrent_partial_raises(self):
+        """Opus review (2026-08-17), NEW-M2: the settled_at guard alone does
+        NOT stop a caller holding a STALE position snapshot from
+        full-closing a position a concurrent writer already partially
+        reduced -- a partial exit deliberately leaves settled_at NULL, so
+        the plain settled_at check in the sibling tests above doesn't cover
+        this case. Without the expected_quantity guard, Writer B here would
+        compute P&L off the stale quantity=10 and overwrite the row even
+        though only 7 contracts are actually still open (3 already sold by
+        Writer A) -- a real overcount, not just a lost race."""
+        position = self._open_position(quantity=10, entry_price=0.40)
+        # Writer A: a genuine partial exit shrinks the real open size to 7,
+        # settled_at stays NULL by design.
+        execution_log.record_live_exit_fill(position, 3, 0.50)
+
+        # Writer B: still holds the ORIGINAL quantity=10 snapshot (fetched
+        # before Writer A's write) and tries to close all 10.
+        with pytest.raises(RuntimeError, match="partially reduced"):
+            execution_log.record_live_exit_fill(position, 10, 0.60)
+
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT settled_at, fill_quantity, pnl FROM orders WHERE id = ?",
+                (position["id"],),
+            ).fetchone()
+        # Writer A's real partial exit must survive untouched -- not
+        # overwritten by Writer B's stale full-close attempt.
+        assert row["settled_at"] is None
+        assert row["fill_quantity"] == 7
+        assert row["pnl"] is None
+        # Writer B's P&L must not have been double-counted on top of
+        # Writer A's already-realized partial P&L.
+        # Writer A: gross = 3 * (0.50 - 0.40) = 0.30; gain -> fee: 0.30*0.93 = 0.279
+        assert execution_log.get_today_live_loss() == pytest.approx(-0.279, rel=1e-3)
+
+
 class TestWasOrderedRecentlyCanceledSpelling:
     """F8: was_ordered_recently() must exclude API-canceled orders.
 
