@@ -1941,6 +1941,80 @@ def brier_score(
     + sync_outcomes).  Fallback: paper_trades.db where entry_prob and outcome are
     recorded directly at trade time — covers the common case where cron places trades
     without a prior analyze-command prediction log entry.
+
+    Primary-source query excludes condition_type='between'/'precip_month_total'/
+    'snow_month_total'/'hurricane_count'/'hurricane_next_event'/'storm_order' — the
+    same exclusion list (exact-match, case-sensitive, no whitespace normalization —
+    matches how every sibling query already does it, and how log_prediction always
+    writes condition_type: lowercase, from a fixed set of literals in
+    weather_markets.py, so this is a real constraint today, not just a documented
+    assumption) count_settled_predictions() and calibration.py's grid search already
+    use, added here 2026-08 (max-depth audit AUD-0004) after this function's lack of
+    any condition_type filter was found to silently let shadow-only non-temperature
+    predictions (routed in since 6845b62c/9a7583aa, 2026-08-06/07) contaminate the
+    value graduation_check() gates ALL live trading on. The filter lives in the
+    WHERE clause (applied before last_n's LIMIT), so last_n=50 now means the 50
+    most recent TEMPERATURE-only settled predictions -- reaching further back in
+    time than a naive "take the last 50 of any type, then filter" would, which is
+    the statistically correct behavior for a sample-validity window (this
+    function's own last_n docstring above: "lets old bad weeks age out").
+
+    IMPACT ON TODAY'S GATE (verified independently twice, by two different opus
+    reviewers, against real production data 2026-08-18): unfiltered last-50-of-
+    any-type Brier = 0.2169 (<=0.23 -- PASSES graduation_check()'s criterion);
+    true last-50-temperature-only Brier (this fix) = 0.2397 (>0.23 -- FAILS it).
+    This fix DOES flip graduation_check()'s Brier sub-check from pass to fail on
+    today's real data (sample guard is separately satisfied: count_settled_
+    predictions()=83 >= MIN_BRIER_SAMPLES=30, so the Brier value is genuinely
+    decisive, not skipped). An earlier version of this docstring claimed the
+    opposite ("both land above the threshold, the fix does not flip the gate") --
+    that was a transcription error, caught by review before commit; corrected here
+    since this docstring is the permanent in-code record of the audit's single
+    most consequential finding.
+
+    NOT a full fix for the Brier-family: this exclusion is NOT applied to this
+    module's other Brier-adjacent functions, several of which have zero
+    condition_type filtering of any kind -- brier_score_rolling_with_n (feeds
+    main.py/output_formatters.py/pdf_report.py/web_app.py display paths),
+    get_brier_over_time (feeds cron.py's operator-facing two-consecutive-weeks
+    Brier alert), brier_score_by_method(_rolling), brier_score_probation_rolling
+    (gates auto-unretirement of a retired method). brier_score_rolling (this
+    module, a thin cutoff_days wrapper around this function, no non-test callers)
+    is now filtered while brier_score_rolling_with_n -- its documented sibling
+    over the same window -- is not; they will now disagree. Extending the filter
+    to the rest of the Brier family is real, separate, larger-scoped work than
+    this fix (tracked in backlog.txt) -- do not read "matches every sibling" as
+    "the whole Brier family is now consistent."
+
+    Two non-test callers see an unannounced-until-now value shift from this fix
+    (both audited, neither broken): alerts.py's Black Swan Brier-collapse check
+    (threshold 0.30) now sees a HIGHER all-time value -- makes that halt strictly
+    MORE likely to fire (fail-safe direction); main.py's backtest-drift warning
+    (fires when recent_brier > all_time_brier + 0.05) now compares against a
+    higher all_time_brier too -- makes that warning LESS likely to fire, and
+    backtest.py's train_brier side of that comparison has no condition_type
+    concept of its own, so the comparison is now asymmetrically filtered.
+
+    KNOWN REMAINING GAPS (tracked in backlog.txt, not fixed here -- each needs its
+    own scoped design decision, not a same-shape mirror of this fix):
+    (1) paper_trades.db fallback path below has no equivalent filter -- paper
+        trade records carry no condition_type field at all (only ticker/var), so
+        filtering it would require deriving condition type from the ticker string
+        prefix, a new parsing mechanism that doesn't exist elsewhere for paper
+        trades. This fix makes that fallback MORE reachable than before (any DB
+        state where every settled multi-day prediction is now-excluded pushes the
+        primary query to zero rows, falling through to this unfiltered path) --
+        not exercised today (83 filtered rows exist), but no longer purely
+        hypothetical the way it was pre-fix.
+    (2) The exclusion list is a hardcoded tuple with no coupling to
+        weather_markets._rain_gates_active()/RAIN_TRADING_ENABLED. Production
+        currently has 17 settled precip_month_total rows against that gate's
+        20-row threshold to let rain markets graduate into real trading -- the
+        moment that flips, this function permanently excludes the calibration of
+        a market family receiving real capital, with nothing to notice or adjust.
+        Inherited from count_settled_predictions() (same tuple, same gap), but
+        this fix propagates it into the gate's VALUE as well as its sample COUNT,
+        a strictly larger blast radius. Same latent risk for snow/hurricane.
     """
     init_db()
     table = "multiday_predictions" if min_days_out > 0 else "predictions"
@@ -1950,6 +2024,9 @@ def brier_score(
             FROM {table} p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
+              AND (p.condition_type IS NULL
+                   OR p.condition_type NOT IN
+                      ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
         """
         params: list = []
         if city:

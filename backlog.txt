@@ -19904,3 +19904,271 @@ Resolution (2026-08-14, same session as the Update note above, chosen off a
   (open, wait for a poll tick, confirm) and the bulk-select-with-mock-data
   edge case before trusting it end-to-end.
 
+[RESOLVED 2026-08-18 -- found by max-depth forensic audit (AUD-0004), fixed
+  same session] TRACKER.BRIER_SCORE() HAS NO CONDITION_TYPE FILTER --
+  CONTAMINATES THE MASTER LIVE-TRADING GRADUATION GATE
+Priority: Critical -- brier_score() is the value paper.graduation_check()
+  gates ALL live trading on (LiveTradingGate.check() -> graduation_check()
+  -> brier <= 0.23). Reproduced against real production data: this bug
+  flips that gate's outcome on today's live data.
+
+Problem:
+  brier_score() (tracker.py, primary-source query) had zero condition_type
+  filtering, unlike its sibling count_settled_predictions() (fixed
+  2026-07-30, see that RESOLVED entry above) which already excludes
+  condition_type='between'/'precip_month_total'/'snow_month_total'/
+  'hurricane_count'/'hurricane_next_event'/'storm_order'. Shadow-only
+  non-temperature predictions (routed in since 6845b62c/9a7583aa,
+  2026-08-06/07) silently contaminated the calibration score used to
+  authorize real-money trading. graduation_check() already gated its
+  SAMPLE COUNT via the correctly-filtered count_settled_predictions(), but
+  computed the actual Brier VALUE via the unfiltered brier_score() -- two
+  different populations feeding one gate.
+
+Resolution: added the identical exclusion list (byte-for-byte mirror of
+  count_settled_predictions()'s WHERE clause, verified) to brier_score()'s
+  primary-source query only -- NOT the paper_trades.db fallback path (see
+  follow-up entry below; different, larger-scoped fix). Re-verified against
+  real production predictions.db this session (independently, not just
+  trusting the audit's numbers): unfiltered last-50-of-any-type Brier =
+  0.2169 (<=0.23, PASSES graduation_check()'s criterion); true
+  last-50-temperature-only Brier (this fix) = 0.2397 (>0.23, FAILS it).
+  Sample guard independently satisfied (count_settled_predictions()=83 >=
+  MIN_BRIER_SAMPLES=30), so this is a genuine, decisive flip on today's real
+  data, not a hypothetical one -- confirmed by re-deriving both numbers a
+  third time (once by the audit, once by me, once by the independent opus
+  reviewer below) via direct read-only SQL against the live DB.
+
+  6 new tests (tests/test_tracker.py::TestBrierScoreConditionTypeFilter):
+  excludes each of the 6 types individually and all-at-once; does NOT
+  exclude 'below' or NULL condition_type (a specific list, not an
+  accidental allowlist); last_n reaches further back in time to find a
+  full N temperature-only rows rather than diluting on a naive
+  filter-after-limit; the min_days_out=0 (same-day, `predictions` table)
+  branch is filtered too, not just the default multiday branch; and a test
+  pinning that when every settled row is an excluded type, the function
+  correctly falls through to the paper_trades fallback -- and that
+  fallback is genuinely unfiltered (contamination-and-all), documenting a
+  real exposure rather than asserting safety that doesn't exist yet (see
+  follow-up entry below). Mutation-tested via Edit (not a string-replace
+  script): 3 of these 6 tests fail when the WHERE-clause addition is
+  reverted; the other 3 are deliberate positive controls / different-branch
+  coverage not meant to be sensitive to this specific mutation.
+
+  Scoped regression: full tests/test_tracker.py (405 tests) +
+  tests/test_graduation_gate.py + tests/test_alerts_side.py all pass.
+  ruff/mypy/pre-commit (ruff, ruff-format, mypy) all clean.
+
+  Independent opus review (effort=high) found 1 HIGH + 3 MEDIUM + 4 LOW +
+  5 INFO, all addressed:
+
+  HIGH -- the first version of this docstring stated the fix's numbers
+  "both land above the 0.23 threshold, so the fix does not flip today's
+  gate outcome" -- backwards; 0.2169 is BELOW 0.23 (passes), only 0.2397
+  is above it (fails), so the fix DOES flip the gate today. Caught before
+  commit; docstring rewritten with the corrected claim and an explicit note
+  that an earlier version had this backwards, since this docstring is the
+  permanent in-code record of the audit's single most consequential
+  finding and needs to survive a future reader trusting it at face value.
+
+  MEDIUM -- this fix makes the unfiltered paper_trades.db fallback MORE
+  reachable (any DB state where every settled row is now-excluded pushes
+  the primary query to zero rows and falls through to it), not merely
+  "not exercised today" as the first docstring draft implied. Added the
+  fallback-reachability test above and rewrote the KNOWN REMAINING GAPS
+  section to state this explicitly; filed as its own follow-up entry below
+  rather than fixed here since it needs new ticker-prefix-parsing logic
+  paper trades don't have any equivalent of today.
+
+  MEDIUM -- the exclusion list has no coupling to
+  weather_markets._rain_gates_active()/RAIN_TRADING_ENABLED; production is
+  at 17/20 settled precip_month_total rows toward that gate's graduation
+  threshold. Inherited from count_settled_predictions(), but this fix
+  propagates the same gap into the Brier VALUE, not just the sample count
+  -- a strictly larger blast radius the moment rain trading activates.
+  Documented in the docstring; filed as its own follow-up entry below
+  (design decision, not a same-shape mirror).
+
+  MEDIUM -- "matches every sibling calibration query" overstated: several
+  Brier-family functions in tracker.py have NO condition_type filter at
+  all (brier_score_rolling_with_n -- feeds main.py/output_formatters.py/
+  pdf_report.py/web_app.py display paths; get_brier_over_time -- feeds
+  cron.py's operator-facing 2-consecutive-weeks Brier alert;
+  brier_score_by_method(_rolling); brier_score_probation_rolling -- gates
+  auto-unretirement). Concrete new inconsistency: brier_score_rolling
+  (thin wrapper around the now-filtered brier_score(), no non-test
+  callers) and brier_score_rolling_with_n (unfiltered) are documented
+  siblings over the same window and will now disagree. Docstring
+  rewritten to state precisely what is and isn't covered; broader
+  Brier-family unification filed as its own follow-up entry below.
+
+  LOW -- mutation-testing claim in the test class docstring said "makes
+  every test in this class fail" -- actually 3 of 4 (now 3 of 6 after the
+  2 additional tests above); the 4th/other 2 are deliberate positive
+  controls for different properties. Docstring corrected to name exactly
+  which tests are mutation-sensitive and why the others correctly aren't.
+
+  LOW -- exclusion matching is exact-match, case-sensitive, no whitespace
+  normalization (SQLite default BINARY collation); real risk assessed as
+  low today (queried every distinct condition_type spelling in production:
+  only the 7 expected lowercase literals exist, and log_prediction always
+  writes from hardcoded lowercase literals in weather_markets.py) but
+  nothing enforces it going forward (no CHECK constraint, no
+  normalization at write time). Documented explicitly in the docstring
+  rather than left implicit; not hardened (would be new validation
+  infrastructure, separate scope).
+
+  LOW -- 2 non-test callers see an unannounced value shift: alerts.py's
+  Black Swan Brier-collapse check (threshold 0.30) now sees a HIGHER
+  all-time value (makes that halt strictly MORE likely to fire --
+  fail-safe direction, not investigated further); main.py's backtest-drift
+  warning (fires when recent_brier > all_time_brier + 0.05) now compares
+  against a higher all_time_brier (makes that warning LESS likely to fire,
+  and the comparison is now asymmetrically filtered since backtest.py's
+  train_brier has no condition_type concept of its own). Both documented
+  in the docstring; neither is broken, both are noted as real, silent-
+  until-now behavior changes worth knowing about.
+
+  LOW -- this fix adds a 9th inline copy of the exclusion tuple
+  (calibration.py x1, ml_bias.py x3, tracker.py x7 after this change,
+  main.py x1 display-only). A pre-existing backlog note (SNOW MARKETS
+  entry, ~2026-07-30, "STEP 2 HANDOFF NOTE") already flagged this
+  duplication as stale at "tracker.py (2 sites)" -- now 7. Inline-
+  duplicating (matching the dominant existing convention, and
+  count_settled_predictions()'s own docstring explicitly deferring
+  unification as separate scope) was the right call for this narrow fix;
+  the duplication itself is real and growing, filed as its own follow-up
+  entry below rather than a silent refactor bundled into a safety-gate fix.
+
+  INFO (addressed, not a design issue) -- reviewer confirmed no SQL
+  injection risk: the `table` f-string interpolation is a 2-way ternary
+  over hardcoded literals ("multiday_predictions"/"predictions"), never
+  reaches user input.
+
+  INFO (addressed) -- confirmed the fix correctly uses condition_type, not
+  is_shadow, matching log_prediction's own documented convention that
+  shadow predictions are real forecasts intentionally NOT filtered out of
+  calibration scoring by that column.
+
+  INFO (no action -- reasoned, not silently dropped) -- reviewer suggested
+  the new test class's _insert helper could subclass TestBrierScoreLastN's
+  near-identical helper instead of duplicating it. Not done: the two
+  immediately-neighboring test classes in this same file already redundantly
+  re-import tempfile/shutil/Path locally rather than share; matching the
+  file's actual prevailing (imperfect) convention was judged not worth a
+  structural change bundled into a live-safety-gate fix's diff.
+
+  Verification: no live credentials in this worktree (per .env absence) --
+  all evidence is E1-E3 (direct code read, reproducible tests, live
+  read-only production-data queries), never E4 live-order observation.
+  git status/diff confirms only tracker.py + tests/test_tracker.py +
+  backlog.txt touched this session before this commit.
+
+[OPEN 2026-08-18 -- split out of the BRIER_SCORE() CONDITION_TYPE FILTER
+  entry above per its own opus review: needs new ticker-prefix-parsing
+  logic paper trades have no equivalent of today, not a same-shape mirror
+  of that fix] BRIER_SCORE()'S PAPER_TRADES.DB FALLBACK HAS NO
+  CONDITION_TYPE FILTER, AND IS NOW MORE REACHABLE THAN BEFORE
+Priority: Medium -- not exercised today (83 filtered tracker-DB rows
+  exist, so the primary query never returns zero rows for
+  graduation_check()'s actual call pattern), but no longer purely
+  hypothetical: the sibling fix above means any future DB state where
+  every settled multi-day prediction is an excluded condition_type now
+  falls through to this completely unfiltered path instead of erroring or
+  returning a filtered-but-smaller result.
+
+Problem:
+  tracker.brier_score()'s fallback path (paper.get_all_trades(), used when
+  the primary tracker-DB query returns 0 rows) has no condition_type
+  filter of any kind. Paper trade records carry no condition_type field at
+  all -- only ticker and var -- unlike tracker-DB prediction rows, which
+  store condition_type explicitly via log_prediction's analysis dict.
+  Filtering this fallback correctly would require deriving condition type
+  from the ticker string prefix (e.g. distinguishing KXRAIN*/KXBETWEEN*/
+  KXDENSNOWM*-style tickers), a parsing mechanism that doesn't exist
+  anywhere else for paper trades today. tests/test_tracker.py::
+  TestBrierScoreConditionTypeFilter::
+  test_when_every_settled_row_is_excluded_falls_through_to_unfiltered_paper_fallback
+  pins the current (unfiltered) behavior with a real reproduction: an
+  all-excluded tracker DB + one contaminated paper trade (entry_prob=0.9,
+  outcome='no', error=0.81) produces brier_score()==0.81 with no filtering
+  applied at all.
+
+Why not now: needs its own scoped design decision (which ticker-prefix
+  parsing scheme to use, whether to add it as a shared helper other paper-
+  trade consumers could also use, whether var-based classification -- see
+  paper.py's own KXHIGH*/KXLOW* ticker-prefix disambiguation logic used
+  elsewhere -- is the right model to follow) rather than a same-shape
+  mirror of the tracker-DB fix.
+
+[OPEN 2026-08-18 -- split out of the BRIER_SCORE() CONDITION_TYPE FILTER
+  entry above per its own opus review: a design decision about how to
+  couple a hardcoded exclusion list to a live feature flag, not a
+  same-shape mirror of that fix] BRIER-FAMILY CONDITION_TYPE EXCLUSION
+  LIST HAS NO COUPLING TO RAIN/SNOW/HURRICANE GRADUATION GATES
+Priority: Medium -- latent today (RAIN_TRADING_ENABLED unset per this
+  worktree's env), but production is at 17 settled precip_month_total rows
+  against weather_markets._rain_gates_active()'s 20-row graduation
+  threshold -- close enough that this should be resolved before that flag
+  flips, not discovered after.
+
+Problem:
+  count_settled_predictions()'s and (as of the entry above)
+  brier_score()'s condition_type exclusion list
+  ('between'/'precip_month_total'/'snow_month_total'/'hurricane_count'/
+  'hurricane_next_event'/'storm_order') is a hardcoded tuple with no
+  coupling to whether those market families are actually shadow-only or
+  live. The moment RAIN_TRADING_ENABLED (or the equivalent snow/hurricane
+  flag) flips, these functions will permanently exclude the calibration of
+  a market family receiving real capital, with nothing to notice the
+  mismatch or prompt a review. This is a pre-existing gap inherited from
+  count_settled_predictions() (2026-07-30), but the entry above propagates
+  it into the Brier VALUE that gates ALL live trading, not just a sample
+  count -- a strictly larger blast radius once triggered.
+
+Why not now: needs a real design decision (should the exclusion list read
+  from the same flags that gate each market family's live-trading
+  activation? should there be a startup/cron-time consistency check that
+  alerts if an excluded condition_type's live-trading flag is enabled?) --
+  a genuine judgment call for AskUserQuestion when picked up, not
+  something to decide silently while fixing an unrelated Brier-score bug.
+
+[OPEN 2026-08-18 -- split out of the BRIER_SCORE() CONDITION_TYPE FILTER
+  entry above per its own opus review: unifying/extending filtering across
+  the whole Brier family is real, separate, larger-scoped work] SEVERAL
+  BRIER-FAMILY FUNCTIONS STILL HAVE NO CONDITION_TYPE FILTER --
+  brier_score_rolling_with_n AND brier_score_rolling NOW DISAGREE
+Priority: Low-Medium -- brier_score_rolling_with_n feeds real display
+  paths (main.py, output_formatters.py, pdf_report.py, web_app.py) and
+  get_brier_over_time feeds cron.py's operator-facing 2-consecutive-weeks
+  Brier alert, but neither gates live-trading authorization the way
+  graduation_check()'s brier_score() call does -- lower financial-safety
+  stakes than the 2 entries above, still worth closing for calibration
+  accuracy.
+
+Problem:
+  tracker.py's brier_score_rolling_with_n(), get_brier_over_time(),
+  brier_score_by_method(), brier_score_by_method_rolling(), and
+  brier_score_probation_rolling() have zero condition_type filtering.
+  brier_score_probation_rolling() specifically gates auto-unretirement of
+  a retired method. Concrete new inconsistency introduced by the entry
+  above: brier_score_rolling(weeks=N) (a thin wrapper around the now-
+  filtered brier_score(cutoff_days=N*7), no non-test callers) and
+  brier_score_rolling_with_n(weeks=N) (unfiltered, real callers) are
+  documented siblings over the identical window and will now return
+  different numbers for the same inputs. Also: the exclusion tuple is now
+  duplicated 9 times across the codebase (calibration.py x1, ml_bias.py
+  x3, tracker.py x7, main.py x1 display-only) -- a pre-existing SNOW
+  MARKETS backlog note (~2026-07-30, "STEP 2 HANDOFF NOTE") already
+  flagged this as stale at "tracker.py (2 sites)"; it is 7 now.
+
+Why not now: extending the exclusion to every Brier-family function is a
+  genuinely larger, separate change (5+ functions, some with real
+  operator-facing consumers whose historical values would shift) than the
+  single targeted safety-gate fix above; count_settled_predictions()'s own
+  docstring already explicitly defers this same unification as separate
+  scope. Whoever picks this up should also consider whether the 9-times-
+  duplicated exclusion tuple is worth extracting into one shared module-
+  level constant at the same time, given the count keeps growing every
+  time a new site needs the same list.
+

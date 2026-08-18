@@ -689,6 +689,167 @@ class TestBrierScoreLastN(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TestBrierScoreConditionTypeFilter(unittest.TestCase):
+    """Tests for brier_score()'s condition_type exclusion (AUD-0004, 2026-08-18
+    max-depth audit). The primary-source query must exclude the same non-
+    temperature condition types count_settled_predictions()/calibration.py's grid
+    search already exclude, so a shadow-only rain/hurricane/storm-order prediction
+    can't silently contaminate the value graduation_check() gates ALL live trading
+    on. Mutation-tested via Edit (reverting the WHERE-clause filter addition,
+    re-running, then restoring -- not the file's own asserted behavior, verified
+    manually before commit): 3 of these 4 tests fail without the filter
+    (test_excludes_between_condition_type, test_excludes_all_six_shadow_
+    condition_types, test_last_n_reaches_further_back_to_skip_shadow_predictions).
+    test_does_not_exclude_below_or_null_condition_type is a deliberate positive
+    control for a DIFFERENT property (the exclusion is a specific list, not an
+    accidentally-broad allowlist) and correctly still passes without the filter --
+    it was never meant to be mutation-sensitive to this particular change."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_brier_condition_filter.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _insert(
+        self, ticker, our_prob, settled_yes, condition_type="above", days_ago=0
+    ):
+        analysis = {
+            "condition": {"type": condition_type, "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.50,
+            "edge": our_prob - 0.50,
+            "method": "ensemble",
+            "n_members": 20,
+        }
+        tracker.log_prediction(ticker, "NYC", date(2099, 1, 1), analysis)
+        tracker.log_outcome(ticker, settled_yes)
+        if days_ago:
+            with tracker._conn() as con:
+                con.execute(
+                    "UPDATE outcomes SET settled_at = datetime('now', ?) WHERE ticker = ?",
+                    (f"-{days_ago} days", ticker),
+                )
+
+    def test_excludes_between_condition_type(self):
+        """A condition_type='between' prediction must not move the Brier score --
+        positive control (TK-TEMP alone) proves the code path that COULD have
+        produced a different score was actually reached, before the negative
+        assertion (adding the shadow row doesn't move it) is meaningful."""
+        self._insert("TK-TEMP", 1.0, True, condition_type="above")  # perfect: error=0.0
+        bs_before = tracker.brier_score()
+        self.assertIsNotNone(bs_before)
+        self.assertAlmostEqual(bs_before, 0.0, places=6)
+
+        # Maximally-wrong shadow 'between' prediction (error=1.0) -- must NOT dilute the score.
+        self._insert("TK-BETWEEN", 0.0, True, condition_type="between")
+        bs_after = tracker.brier_score()
+        self.assertAlmostEqual(bs_after, 0.0, places=6)
+
+    def test_excludes_all_six_shadow_condition_types(self):
+        """Every condition_type in the exclusion list is dropped, all at once."""
+        self._insert("TK-BASE", 1.0, True, condition_type="above")
+        excluded_types = (
+            "between",
+            "precip_month_total",
+            "snow_month_total",
+            "hurricane_count",
+            "hurricane_next_event",
+            "storm_order",
+        )
+        for i, ct in enumerate(excluded_types):
+            self._insert(f"TK-SHADOW-{i}", 0.0, True, condition_type=ct)
+
+        bs = tracker.brier_score()
+        # Only TK-BASE (a perfect prediction) should count; if any of the 6
+        # maximally-wrong shadow predictions leaked in, this would move off 0.0.
+        self.assertAlmostEqual(bs, 0.0, places=6)
+
+    def test_does_not_exclude_below_or_null_condition_type(self):
+        """'below' (a real temperature condition type) and a NULL condition_type
+        (legacy rows predating the column) must still be counted -- this is a
+        specific exclusion list, not an accidental allowlist that would also
+        drop legitimate temperature predictions."""
+        self._insert("TK-BELOW", 1.0, True, condition_type="below")
+        bs_below = tracker.brier_score()
+        self.assertIsNotNone(bs_below)
+        self.assertAlmostEqual(bs_below, 0.0, places=6)
+
+        with tracker._conn() as con:
+            con.execute(
+                "UPDATE predictions SET condition_type = NULL WHERE ticker = ?",
+                ("TK-BELOW",),
+            )
+        bs_null = tracker.brier_score()
+        self.assertAlmostEqual(bs_null, 0.0, places=6)
+
+    def test_last_n_reaches_further_back_to_skip_shadow_predictions(self):
+        """last_n=1 must select the 1 most recent TEMPERATURE prediction, not the
+        1 most recent prediction of any type. This is the subtler behavior change:
+        the filter lives in the WHERE clause (applied before LIMIT), so a more-
+        recent shadow prediction doesn't occupy the last_n=1 slot and force a
+        temperature-only caller to see a diluted/wrong window."""
+        self._insert(
+            "TK-OLD-TEMP", 1.0, True, condition_type="above", days_ago=5
+        )  # perfect
+        self._insert(
+            "TK-NEW-SHADOW", 0.0, True, condition_type="between", days_ago=1
+        )  # would score 1.0 if counted
+
+        bs = tracker.brier_score(last_n=1)
+        self.assertIsNotNone(bs)
+        # If the shadow prediction leaked into the last_n=1 window, this would be 1.0.
+        self.assertAlmostEqual(bs, 0.0, places=6)
+
+    def test_filter_also_applies_to_min_days_out_zero_same_day_path(self):
+        """min_days_out=0 selects FROM predictions (not multiday_predictions) --
+        a different table reference in the same query string. The filter must
+        apply there too, not just the default multiday branch every other test
+        in this class exercises (opus-review-flagged coverage gap)."""
+        self._insert("TK-SAMEDAY-TEMP", 1.0, True, condition_type="above")
+        bs_before = tracker.brier_score(min_days_out=0)
+        self.assertIsNotNone(bs_before)
+        self.assertAlmostEqual(bs_before, 0.0, places=6)
+
+        self._insert("TK-SAMEDAY-SHADOW", 0.0, True, condition_type="between")
+        bs_after = tracker.brier_score(min_days_out=0)
+        self.assertAlmostEqual(bs_after, 0.0, places=6)
+
+    def test_when_every_settled_row_is_excluded_falls_through_to_unfiltered_paper_fallback(
+        self,
+    ):
+        """Opus-review-flagged (MEDIUM): this fix makes the paper_trades.db
+        fallback MORE reachable than before -- any DB state where every settled
+        multi-day prediction is a now-excluded type pushes the primary query to
+        zero rows, falling through to a path with NO condition_type filter at
+        all. This test pins that this actually happens and that the fallback
+        path is genuinely unfiltered (uses whatever paper.get_all_trades()
+        returns, contamination and all) -- it does NOT assert this is safe, it
+        documents the real, currently-dormant exposure described in the
+        docstring's KNOWN REMAINING GAPS section."""
+        # Every settled tracker-DB row is an excluded type -> primary query returns 0 rows.
+        self._insert("TK-ONLY-SHADOW", 0.5, True, condition_type="between")
+
+        paper_trade = {
+            "entry_prob": 0.9,
+            "outcome": "no",  # error = 0.81 -- would fail a 0.23 gate outright
+            "city": None,
+        }
+        from unittest.mock import patch
+
+        with patch("paper.get_all_trades", return_value=[paper_trade]):
+            bs = tracker.brier_score()
+
+        self.assertIsNotNone(bs)
+        self.assertAlmostEqual(bs, 0.81, places=6)
+
+
 class TestBrierByConditionTypeRolling(unittest.TestCase):
     """Tests for tracker.brier_by_condition_type_rolling() (2026-08-12
     investigation follow-up: surfaces a condition_type-specific weakness
