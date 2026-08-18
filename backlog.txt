@@ -20172,3 +20172,872 @@ Why not now: extending the exclusion to every Brier-family function is a
   level constant at the same time, given the count keeps growing every
   time a new site needs the same list.
 
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] check_position_limits() exposure caps are structurally blind to live positions opened via cmd_order (regression introduced by the e5331a8d live-fill-routing fix)
+Priority: HIGH (audit id AUD-0001, status CONFIRMED, confidence VERY HIGH, evidence E2)
+Files: paper.py, main.py
+
+Problem:
+  check_position_limits()'s exposure accounting was designed around a single ledger (paper_trades.json) that, prior to e5331a8d, happened to also receive live fills. e5331a8d correctly stopped writing live fills into that ledger but did not add execution_log-sourced live exposure into check_position_limits' accounting.
+  Evidence: Independently read paper.py:3447-3686 (check_position_limits full body), paper.py:1299-1301 (get_open_trades reads only paper_trades.json), paper.py:1598-1673 (all four exposure getters call get_open_trades exclusively), main.py:4528 (_is_live derivation) and main.py:4546-4569 (cmd_order buy path calling check_position_limits). Grepped paper.py for 'execution_log' -- zero functional references,...
+  Financial risk: Real live money: once LIVE_TRADING_ENABLED=true, repeated manual cmd_order live buys on the same city/date (or correlated group) can silently exceed all configured exposure caps, with the CLI...
+  Security risk: None -- internal risk-control gap, not attacker-facing.
+  Recommendation: Have check_position_limits() also incorporate open live positions from execution_log (via order_executor._get_live_open_positions()) into its exposure accounting before comparing against caps. Already tracked in backlog.txt.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0001), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _auto_place_trades' position-count/VaR/concentration gates are seeded only from the paper ledger, blind to real live exposure
+Priority: HIGH (audit id AUD-0002, status CONFIRMED, confidence VERY HIGH, evidence E1)
+Files: order_executor.py
+
+Problem:
+  _open_trades_list = get_open_trades() (paper.py's JSON ledger) is the sole feed for MAX_CONCURRENT_POSITIONS, per-date/same-day concentration caps, and the VaR gate, regardless of live=True/False. No execution_log-derived live-position source is ever merged in; only a same-cycle in-memory append (F6, order_executor.py:3037-3053) adds the current cycle's own live fills, which does not cover positions opened in prior watch/cron cycles.
+  Root cause: No execution_log/get_filled_unsettled_live_orders/_get_live_open_positions call exists anywhere inside _auto_place_trades (spans order_executor.py:2294 to end of file, 3340) feeding these specific risk gates.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0002), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Settlement P&L for taker (IOC)-filled live orders is computed with the $0 maker fee, not Kalshi's real taker fee
+Priority: HIGH (audit id AUD-0003, status CONFIRMED, confidence VERY HIGH, evidence E1)
+Files: order_executor.py, main.py, utils.py, execution_log.py, tests/test_live_execution.py
+
+Problem:
+  order_executor._poll_pending_orders() computes realized P&L for every live position at market settlement using KALSHI_MAKER_FEE_RATE (0.0), justified by a comment that live orders are always resting maker GTC. Commit e5331a8d changed cmd_order's live order placement to time_in_force='immediate_or_cancel' (a taker fill), so an entry via cmd_order that settles at market expiry (rather than being manually sold) is settled with the wrong (zero) fee, overstating profit. The pre-existing automated taker-cross reprice fallback (order_executor.py:989-1015, gated by _clears_taker_fee) shares the...
+  Root cause: e5331a8d introduced a taker (IOC) live-order entry path without updating the downstream settlement-PnL computation's hardcoded maker-fee assumption; the pre-existing auto-path taker-cross reprice fallback shares the same unaddressed gap.
+  Evidence: Verified directly: order_executor.py:432-433 imports KALSHI_MAKER_FEE_RATE unconditionally; execution_log.get_filled_unsettled_live_orders() (execution_log.py:535-556) makes no maker/taker distinction in its query; main.py:4702-4711 confirmed cmd_order live orders are always IOC post-e5331a8d; order_executor.py:989-1015's _clears_taker_fee-gated taker-cross confirmed to place entry replacements...
+  Financial risk: Overstates real live P&L for any position entered via cmd_order (now always IOC/taker post e5331a8d) or via the auto-trader's taker-cross reprice path and later closed by market settlement rather...
+  Recommendation: Track whether each live order row's ENTRY fill was maker or taker and select KALSHI_FEE_RATE vs KALSHI_MAKER_FEE_RATE accordingly in _poll_pending_orders' settlement formula, mirroring record_live_exit_fill's existing correct treatment of exits.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0003), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] LiveTradingGate's drawdown/streak risk-halt checks read only the paper ledger, never execution_log — blind to real live trading losses
+Priority: HIGH (audit id AUD-0005, status CONFIRMED, confidence VERY HIGH, evidence E2)
+Files: trading_gates.py, paper.py, order_executor.py, execution_log.py
+
+Problem:
+  trading_gates.LiveTradingGate.check() is the single mandatory pre-check before every live order (cmd_order and the shared cron/watch --auto --live engine). Of its five risk sub-checks, four (is_paused_drawdown, is_streak_paused, is_daily_loss_halted, graduation_check) never read execution_log.db — they all compute exclusively from paper.py's own JSON ledger (paper_trades.json). Even is_daily_loss_halted(client), the one sub-check that accepts a live client, only uses that client to fetch market quotes for repricing paper.py's own paper open positions (get_unrealized_pnl_paper); its...
+  Root cause: is_paused_drawdown()/is_streak_paused()/get_daily_pnl() were written when paper.py's ledger was the only trade record in the system and were never extended to also read execution_log.db once live trading became a separate ledger. Commit e5331a8d (2026-08-17) explicitly stopped routing live...
+  Evidence: Independently re-read trading_gates.py in full (140 lines) and confirmed check() calls exactly these 5 paper.* functions. Read paper.py's is_paused_drawdown (L626-635) and _drawdown_snapshot (L575-598): both read only _load() (paper_trades.json), no execution_log reference anywhere. Read is_streak_paused (L2436-2454): reads only _load()["trades"]. Read get_daily_pnl/is_daily_loss_halted...
+  Financial risk: Real dollar risk once LIVE_TRADING_ENABLED is turned on: a slow live-account bleed spread across multiple days, or a genuine consecutive-loss streak, would never be caught by either...
+  Security risk: None directly — internal risk-management/reliability gap, not externally exploitable.
+  Recommendation: Add live-account-aware drawdown and consecutive-loss-streak checks sourced from execution_log.db (mirroring get_today_live_loss()/get_today_live_spend()), called from LiveTradingGate.check() when a live client is passed, or as additional explicit steps in order_executor._place_live_order()...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0005), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cron._acquire_cron_lock() has a TOCTOU race with no OS-level exclusive-create primitive — reproduced
+Priority: HIGH (audit id AUD-0006, status CONFIRMED, confidence VERY HIGH, evidence E2)
+Files: cron.py
+
+Problem:
+  _acquire_cron_lock() checks `if lp.exists(): ...` and, several lines later, calls `lp.write_text(json.dumps(lock_data))` with no intervening OS-level exclusive-create (no O_EXCL open, no msvcrt.locking, no atomic rename-based claim). Two processes racing to acquire the lock when it does not yet exist (or has just gone stale) can both observe exists()==False and both proceed to write, each believing it holds exclusive ownership. This is the ONLY mechanism serializing cmd_cron (cron.py:2409) against cmd_watch --auto's own trade cycle (main.py:3622), web_app.py's /api/run_cron spawn path, and...
+  Root cause: Check-then-act file existence test followed by a plain (non-exclusive) write, instead of an atomic O_EXCL create or a real OS file lock (contrast with paper.py's _CrossProcessDataLock, which does use msvcrt.locking for its own file).
+  Evidence: Self-reproduced this session by running audit/reproductions/cron_lock_race_repro.py (redirects cron.LOCK_PATH to a tempdir, monkeypatches pathlib.Path.exists to rendezvous two threads at a threading.Barrier the instant both have evaluated `if lp.exists():`, then releases both into the write path). Output: `results: [True, True]` — both callers of _acquire_cron_lock() returned True, i.e. both...
+  Financial risk: If two lock holders both run a trade cycle concurrently, each can independently detect the same open live position needing a protective exit (verified cron.py:912-919 calls...
+  Security risk: None (not attacker-reachable — requires two legitimate local invocations racing).
+  Recommendation: Replace the exists()-then-write_text() pattern with an atomic exclusive-create, e.g. `open(lp, 'x')` (raises FileExistsError if the file already exists) wrapped in the same fail-closed exception handling already present, or reuse paper.py's msvcrt-based _CrossProcessDataLock primitive for this file...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0006), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Ambiguous place_order() failure can leave a real live position permanently untracked, unprotected, and re-orderable
+Priority: HIGH (audit id AUD-0007, status CONFIRMED, confidence HIGH, evidence E1)
+Files: kalshi_client.py, execution_log.py, order_executor.py, main.py
+
+Problem:
+  place_order() catches any exception from the create-order POST and tries to determine whether the order landed anyway via _find_order_by_client_id (3 sequential GET-based lookups: resting, executed, canceled). Each lookup pass individually swallows its own exception and treats a failed lookup as 'not found'. If all 3 lookups also fail, place_order re-raises the original exception even though the order may have genuinely landed on Kalshi. The caller then logs the row status='failed'. Every dedup/anti-thrash guard in execution_log.py deliberately excludes status='failed' rows, and...
+  Root cause: The 'failed' status is overloaded to mean both 'genuinely never sent' (correctly excluded from dedup) and 'sent, but outcome unknown due to a correlated failure in both the placement call and its own reconciliation check' (a rarer but real case). No distinct status/recovery path exists for the...
+  Evidence: Independently re-read the full chain: kalshi_client.py 517-534 (place_order except block re-raises only when _find_order_by_client_id returns None), 551-608 (all 3 lookup passes independently swallow exceptions), execution_log.py's 4 dedup functions (278-380, all exclude status='failed'), order_executor.py 269-355 (_recover_pending_orders filters strictly on status=='pending'), and...
+  Financial risk: A real live position could sit completely unmanaged indefinitely, and a subsequent retry could double real capital exposure on the same signal with neither copy protected.
+  Recommendation: Distinguish 'confirmed never sent' from 'ambiguous outcome, reconciliation itself failed' with a separate status (e.g. 'unknown'), and have a recovery routine periodically re-check 'unknown'/'failed' live-order rows against the Kalshi API until confirmed.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0007), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_watch --live position-protection block has zero exception handling; a single failure kills the entire persistent watch process
+Priority: HIGH (audit id AUD-0008, status CONFIRMED, confidence VERY HIGH, evidence E1)
+Files: main.py, order_executor.py, cron.py
+
+Problem:
+  cmd_watch's `if live:` block calls _poll_pending_orders, _reprice_or_cancel_pending_orders, _check_live_position_exits, and _check_live_model_exits with no surrounding try/except, inside a `while True:` loop whose only exception handler catches KeyboardInterrupt. _check_live_position_exits itself has no internal try/except anywhere in its body. cron.py's equivalent call site wraps the same two functions in a broad except, confirming the gap is cmd_watch-specific.
+  Root cause: cmd_watch's live-protection block was never given the same defensive try/except treatment its own paper-side siblings received in the same function, and was not brought in line with cron.py's already-guarded equivalent.
+  Evidence: Independently re-read main.py:3558-3913 in full. Confirmed the `if live:` block at 3759-3790 has zero try/except, while the three subsequent blocks in the same function (3792-3810, 3822-3850, 3861-3889) are each individually wrapped in `except Exception as ...:` with explicit comments about the silent-permanent-kill risk. Confirmed the outer loop's sole handler is `except KeyboardInterrupt:` at...
+  Financial risk: All open live positions go completely unprotected for however long it takes an operator to notice the crashed process and restart it -- potentially hours if unattended.
+  Recommendation: Wrap the `if live:` block's 4 calls in the same try/except-and-log pattern already used for the paper-side checks immediately below, matching cron.py's existing guard.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0008), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _count_open_live_orders() only counts status=='pending' live orders, missing already-filled open positions
+Priority: HIGH (audit id AUD-0009, status CONFIRMED, confidence VERY HIGH, evidence E2)
+Files: order_executor.py
+
+Problem:
+  The max_open_positions live-trading gate counts only rows with status=='pending', so a filled-but-still-open live position stops being counted once its status transitions to 'filled', even though execution_log.get_filled_unsettled_live_orders() (status='filled' AND settled_at IS NULL) still correctly treats it as an open position.
+  Root cause: Gate uses status=='pending' as its definition of 'open position' instead of the codebase's own authoritative open-position query (status='filled' AND settled_at IS NULL AND closes_position_id IS NULL).
+  Full record: audit/AUDIT_REPORT.json (id AUD-0009), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _quick_paper_buy()'s maker-order branch places real live orders but never records the fill in execution_log
+Priority: HIGH (audit id AUD-0010, status CONFIRMED, confidence MEDIUM, evidence E1)
+Files: main.py
+
+Problem:
+  main.py's _quick_paper_buy() has a maker-order branch (main.py ~2465-2511) that calls client.place_maker_order(...) at 2494-2496, prints a success message, and returns at 2511 — with no call to execution_log.log_order, record_live_exit_fill, record_live_settlement, or any other persistence. This is the exact bug class e5331a8d (2026-08-17) just fixed for cmd_order, but that fix and its predecessors (bb91374f, 105cf4ce) never touched _quick_paper_buy.
+  Root cause: _quick_paper_buy was written/reviewed as a paper-trading helper; its --live maker-order fallback is functionally live-order code never subjected to the execution_log-routing review the cmd_order/order_executor cluster received. backlog.txt (RESOLVED header at line 7442, dated 2026-07-30 — the...
+  Evidence: Read main.py:2170-2539 in full. grep for execution_log|log_order|record_live restricted to that range matches only the sibling paper (non-maker) branch (~2514-2531). Cross-checked every place_order/place_maker_order call site in the repo via grep across *.py: order_executor.py's 6 sites and main.py:4703/4713 (cmd_order, logged via log_order at 4653) are all preceded by execution_log.log_order;...
+  Financial risk: An operator who hits the maker branch (via the `analyze` command / interactive 'Analyze' menu, not cmd_today — see verification_notes) gets a real, unmanaged Kalshi position invisible to the bot's...
+  Security risk: None beyond the financial/operational risk described.
+  Recommendation: Route _quick_paper_buy's maker branch through execution_log.log_order/record_live_exit_fill, or remove the live/maker branch entirely.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0010), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] LIVE_TRADING_RUNBOOK.md falsely claims only `watch --auto --live` can place live orders
+Priority: HIGH (audit id AUD-0011, status CONFIRMED, confidence VERY HIGH, evidence E1)
+
+Problem:
+  Independently read LIVE_TRADING_RUNBOOK.md:102-104 and :131 — text matches claim exactly ('cron never places live orders regardless of LIVE_TRADING_ENABLED — only `watch --auto --live` does'; 'python main.py cron never places live orders — only `watch --auto --live` does'). Read main.py:4333 def cmd_order(...) and confirmed lines 4519-4537 exactly as cited: `_is_live = getattr(client, "base_url", None) != DEMO_BASE` (4528) followed by `pre_live_trade_check(client)` (4534) inside `if _is_live:`. Also independently found backlog.txt:1947-1952, a pre-existing OPEN entry titled 'KALSHI_ENV=prod...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0011), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _poll_pending_orders and _count_open_live_orders can silently lose a genuinely still-open live order once enough interleaved (mostly paper) orders accumulate in the shared execution_log orders table
+Priority: HIGH (audit id AUD-0012, status CONFIRMED, confidence MEDIUM, evidence E2)
+Files: execution_log.py, order_executor.py
+
+Problem:
+  execution_log.get_recent_orders(limit=N) is `SELECT * FROM orders ORDER BY placed_at DESC LIMIT ?` with no WHERE clause on `live` — both _poll_pending_orders (limit=200) and _count_open_live_orders (limit=500) fetch this fixed-size mixed (paper+live) window and filter for live+pending only in Python after truncation, so a real still-pending live order can fall entirely outside the window once enough other (overwhelmingly paper) orders accumulate afterward.
+  Root cause: Using a generic top-N-of-everything helper for a live-scoped query instead of a dedicated `WHERE live=1 AND status='pending'` SQL query — the fix pattern already exists elsewhere in the same file (get_live_pnl_summary's open_count metric, execution_log.py:922-928, uses exactly that unlimited scoped...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0012), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_watch --auto --live has no standalone _recover_pending_orders() call; crash-window phantom 'pending' live rows stay invisible to live position protection whenever the cron lock is contended
+Priority: HIGH (audit id AUD-0013, status CONFIRMED, confidence MEDIUM, evidence E1)
+Files: main.py, order_executor.py, trade_cycle.py, cron.py, execution_log.py, LIVE_TRADING_RUNBOOK.md
+
+Problem:
+  order_executor._recover_pending_orders() reconciles execution_log 'pending' rows against Kalshi's live API. Called from cron.py (standalone) and trade_cycle.run_trade_cycle() (near its top). cmd_watch never calls it directly -- only reaches it indirectly via run_trade_cycle(), gated on auto_trade=True AND ctx.acquire_cron_lock() succeeding. If the shared cron lock is held by a concurrent cron.py run, cmd_watch's cycle_result stays None and recovery is skipped that cycle, yet the `if live:` block still runs _check_live_position_exits/_check_live_model_exits unconditionally.
+  Root cause: cluster A's cron/cmd_watch unification routes cmd_watch's live-position-protection through run_trade_cycle() only when the shared cron lock is free; the standalone _recover_pending_orders() safeguard added to cron.py was never mirrored into cmd_watch's own flow.
+  Evidence: Grep confirms exactly two real call sites (cron.py:900-904, trade_cycle.py:222-226); main.py's 2 hits (4683,4729) are comment-only. Read of main.py:3558-3790 confirms the `if live:` block at 3759 is not gated on cycle_result. Read of order_executor.py:269-356 (_recover_pending_orders) traced in full this session.
+  Financial risk: Materially narrower than originally characterized -- see verification_notes. The common case (order placed, response logged, not yet polled as filled) is already independently self-healed every...
+  Recommendation: Add a standalone _recover_pending_orders(client) call in cmd_watch's live-order loop, mirroring cron.py's own restored early call.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0013), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] KALSHI_ENV=prod startup banner wrongly claims only `watch --auto --live` can place live orders
+Priority: MEDIUM (audit id AUD-0014, status CONFIRMED, confidence HIGH, evidence E1)
+Files: main.py
+
+Problem:
+  The banner's _live_orders_possible check only recognizes the watch --auto --live code path; cmd_order's independent client-base_url-derived live-order capability was never reflected in the banner logic.
+  Evidence: main.py:9567 `_live_orders_possible = cmd == "watch" and "--auto" in args and "--live" in args`; main.py:9578 prints the false claim otherwise. main.py:4528-4569 shows cmd_order independently gates and places live orders via the same client-base_url-derived _is_live + pre_live_trade_check mechanism, unconditioned on _live_orders_possible.
+  Financial risk: Indirect -- a misleading safety banner could make an operator less careful than the banner implies is necessary, though trading_gates.LiveTradingGate.check() still enforces the real safety chain...
+  Recommendation: Update _live_orders_possible to also cover cmd_order-dispatching commands. IMPORTANT CORRECTION: the actual dispatch condition to add is `cmd in ("buy", "sell")`, NOT `cmd == "order"` as the original finding recommended -- main.py has no literal "order" command; grepped `cmd == "order"` repo-wide...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0014), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] KalshiClient env comparison fails open to PROD_BASE for any non-exact 'demo' string
+Priority: MEDIUM (audit id AUD-0015, status CONFIRMED, confidence VERY HIGH, evidence E2)
+Files: kalshi_client.py:217, main.py:486-488,1037,4528, trading_gates.py:51-64, config.py:272
+
+Problem:
+  KalshiClient.__init__ decides the API base URL with `self.base_url = DEMO_BASE if env == "demo" else PROD_BASE` — an exact-match-only comparison whose else-branch is PROD, not DEMO.
+  Root cause: The base_url selection whitelists the safe value ('demo') and treats every other string as the dangerous one (prod), instead of whitelisting the dangerous value and defaulting everything else to safe.
+  Evidence: Read kalshi_client.py:217 directly — confirmed exact text `self.base_url = DEMO_BASE if env == "demo" else PROD_BASE`. Independently re-ran the reproduction this session: `KalshiClient(env=e).base_url` for e in ['demo','Demo','DEMO',' demo','demo ','sandbox','test','prod','production'] — output confirmed only literal 'demo' -> DEMO, all 8 other values (including case/whitespace variants) -> PROD,...
+  Financial risk: Requires an operator misconfiguration (typo/case/whitespace in KALSHI_ENV) plus independently-set LIVE_TRADING_ENABLED=true plus valid prod credentials — all other interlocks (LIVE_TRADING_ENABLED...
+  Security risk: Fail-open default on a local operator-config input, not externally exploitable, but a real misconfiguration-amplification weakness.
+  Recommendation: Invert the comparison to whitelist 'prod' explicitly, and/or add startup validation rejecting any kalshi_env value other than exactly 'demo' or 'prod'.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0015), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Between-bucket settlement lock-in can lock YES off the instantaneous METAR reading despite a lower authoritative daily-high, contradicting its own documented invariant
+Priority: MEDIUM (audit id AUD-0016, status CONFIRMED, confidence VERY HIGH, evidence E2)
+Files: settlement_monitor.py, metar.py, cron.py, tests/test_settlement_monitor.py
+
+Problem:
+  settlement_monitor._check_between_settlement()'s YES branch computes `comp_temp = max(current_temp_f, max_temp_f)` and locks YES when `max_temp_f is not None and lower_f <= comp_temp <= upper_f`. When the freshest instantaneous reading (current_temp_f) exceeds the independently-cached authoritative running daily high (max_temp_f), comp_temp reduces to current_temp_f and the lock is decided purely by the instantaneous reading -- contradicting the function's own docstring ('YES only from a REAL max_temp_f; never locks YES from the current_temp_fallback alone') and the test named for that exact...
+  Root cause: The `max(current_temp_f, max_temp_f)` combination silently substitutes the instantaneous reading for the authoritative running extreme whenever the instantaneous reading is larger, defeating the 'requires a REAL max_temp_f' guard exactly in the still-rising-temperature case the guard exists to...
+  Evidence: Reproduced this session: `_check_between_settlement(current_temp_f=67.0, lower_f=66.5, upper_f=68.5, max_temp_f=65.0)` returns `{'locked': True, 'outcome': 'yes', 'confidence': 0.7749999999999999, 'comp_temp_f': 67.0}` — comp_temp_f == current_temp_f, confirming the lock is decided by the instantaneous reading while max_temp_f (65.0) is still below the band. Verified...
+  Financial risk: Feeds paper.close_paper_early() with no human review; a forced YES close on a temperature that has only just entered the band and may still climb books an incorrect settlement outcome, corrupting...
+  Recommendation: Gate the in-band/YES check on max_temp_f itself, not max(current_temp_f, max_temp_f); use current_temp_f only for the already-correctly-reasoned NO branch. Add a regression test with max_temp_f present-but-lower-than-current_temp_f.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0016), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _target_date_due() still compares city-local target_date against UTC-today, missed by the 0100bffe/6364b38b fix sweep
+Priority: MEDIUM (audit id AUD-0017, status CONFIRMED, confidence VERY HIGH, evidence E2)
+Files: main.py
+
+Problem:
+  main.py's _target_date_due(target_date_str, today_date) is called from exactly two sites: cmd_watch_settle's _pending() closure (main.py:886-892) and the main-menu due-today-trades banner (main.py:7251-7255). Both compute today_date via utils.utc_today() (a UTC calendar date) and compare it against t.get(target_date), which is stored on paper trade dicts as analyze_trade's target_date.isoformat() -- a CITY-LOCAL calendar date parsed from the market ticker (order_executor.py:3101). This is the identical bug class that commits 0100bffe and 6364b38b fixed at every other target_date-vs-today...
+  Root cause: _target_date_due's only two callers construct their today via utils.utc_today() instead of a per-trade city-local today (ZoneInfo keyed off the trade's city), unlike every other target_date comparison site fixed by 0100bffe/6364b38b.
+  Evidence: Reproduced directly by re-running audit/reproductions/repro_target_date_due.py this session: `py audit/reproductions/repro_target_date_due.py` -> 'compared against UTC-today (2026-08-18) -> due=True' vs 'compared against NY-local-today (2026-08-17) -> due=False'. Also confirmed via git show --stat/diff on 0100bffe (touches tracker.py only via log_prediction; commit message explicitly defers...
+  Financial risk: Low/indirect -- neither call site gates an order or a real settlement action; cmd_watch_settle's loop just runs longer than necessary and the banner only misinforms the operator.
+  Recommendation: Compute today_date via ZoneInfo keyed off each trade's own city, mirroring the local-today pattern already used elsewhere in this fix chain, with a UTC fallback on ZoneInfo failure.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0017), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] .env.example's DASHBOARD_PASSWORD comment ('leave empty to disable auth') is stale — code now refuses to start the dashboard instead
+Priority: MEDIUM (audit id AUD-0018, status CONFIRMED, confidence VERY HIGH, evidence E3)
+
+Problem:
+  Read .env.example:45-47 — comment reads exactly 'Optional: protect the web dashboard with HTTP Basic Auth / Leave empty to disable auth (default for local use)' with DASHBOARD_PASSWORD= (empty). Read web_app.py:150-164 — confirmed the guard logic exactly as cited. Independently reproduced this session (not just trusting the original pass's claimed repro): ran `python -c` importing web_app and calling `web_app._build_app(None)` with DASHBOARD_PASSWORD and DASHBOARD_UNPROTECTED both unset, and observed the exact RuntimeError: 'DASHBOARD_PASSWORD must be set. The dashboard exposes kill switch...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0018), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _compute_persistence_prob's same-day daily-extreme fix (b0f4cad2) covers only var="max" (HIGH markets); var="min" (LOW markets) still uses the instantaneous METAR reading instead of the true running daily low
+Priority: MEDIUM (audit id AUD-0020, status CONFIRMED, confidence HIGH, evidence E1)
+Files: weather_markets.py, metar.py, tests/test_weather_markets.py, backlog.txt
+
+Problem:
+  Commit b0f4cad2 (2026-08-17) fixed _compute_persistence_prob's same-day (days_out==0) 'prefer today's observed extreme' branch, but scoped the fix to var=="max" only: it resolves a METAR station and calls metar.fetch_metar_daily_extreme(station, tz, local_today, "max") to get the true running daily high instead of the misleading instantaneous reading. No equivalent branch exists for var=="min" -- all min-var, days_out==0 calls still fall through to the raw instantaneous temp_f reading (weather_markets.py:6142-6143), exactly the defect class the max-side fix was written to eliminate.
+  Root cause: The backlog.txt entry that drove b0f4cad2 ("PREFER TODAY'S OBSERVED MAX BRANCH IS DEAD CODE") discusses only the HIGH/max case throughout its filing, resolution narrative, and the AskUserQuestion options presented to the user -- var=="min" is never mentioned or considered. The fix was applied...
+  Evidence: Independently re-read weather_markets.py:6090-6154 in full this session and confirmed the `if var == "max" and days_out == 0 and _live:` guard (L6121) is the only branch that calls fetch_metar_daily_extreme; the `else` branch (L6142-6143, which also covers var=="min") uses `_live.get("temp_f")` unconditionally with no daily-low lookup at all. metar.py:374-423's fetch_metar_daily_extreme...
+  Financial risk: This is a real (non-shadow) input to live trade probability/edge calculation for same-day LOW-type daily and hourly temperature markets whenever METAR has not yet locked. At a diluted 15% blend...
+  Recommendation: Generalize the var=="max" branch in _compute_persistence_prob to also handle var=="min" symmetrically, calling metar.fetch_metar_daily_extreme(station, tz, local_today, "min") when var=="min" and days_out==0, falling back to temp_f exactly as the max branch does on failure. Update or replace the...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0020), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _log_shadow_predictions() re-opens the paper ledger and a fresh SQLite connection once per shadow ticker per cron cycle instead of once per batch
+Priority: MEDIUM (audit id AUD-0021, status CONFIRMED, confidence VERY HIGH, evidence E3)
+Files: order_executor.py, paper.py, tracker.py
+
+Problem:
+  Commit 25aef473 correctly hoisted the 6 shadow-only gate booleans (_hourly_gates_active() etc.) to run once per _auto_place_trades() call instead of once per ticker, explicitly to stop wasting a live price refetch + 5000-sim VaR calc on shadow-only candidates. But the shadow-logging call it routes to, _log_shadow_predictions([item], live=live), is still invoked once PER shadow-routed ticker (6 separate call sites in the per-ticker loop, each passing a single-item list). Inside that function, every call does an unconditional paper.get_open_trades() -> paper._load() (full JSON read + SHA-256...
+  Root cause: The per-ticker shadow-routing loop in _auto_place_trades() (order_executor.py ~L2613-2665) calls _log_shadow_predictions() once per matching ticker instead of collecting all shadow-routed items and making one batched call after the loop (or reusing the already-open connection/already-loaded...
+  Evidence: Grepped all 6 call sites of _log_shadow_predictions in order_executor.py and confirmed each passes `[item]` (a single-item list), contradicting the function's own 'batched onto a single connection' docstring claim. Read paper._load() (paper.py L396-405) and tracker._conn() (tracker.py L413-419) and confirmed neither caches/memoizes -- both do real file/DB I/O on every call. Ran a direct timing...
+  Financial risk: None directly -- this only affects shadow (non-trading) prediction logging, not order placement or sizing. Indirect risk is limited to CPU/IO cost and (for the shadow families with low settlement...
+  Recommendation: Accumulate shadow-routed (ticker, item) pairs during the per-ticker loop instead of calling _log_shadow_predictions() inline per match; make one call with the full list after the loop (or before placement, preserving the existing ordering guarantee), letting the function's own...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0021), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Shadow-only far-tail rain-blend signal shares the global _ensemble_cb circuit breaker with the live temperature trading blend's prewarm fetch
+Priority: MEDIUM (audit id AUD-0022, status CONFIRMED, confidence HIGH, evidence E1)
+Files: weather_markets.py, circuit_breaker.py, trade_cycle.py
+
+Problem:
+  d190d09d extends the shadow-only rain_forecast_blend_prob signal to reach _fetch_ensemble_precip_multiday for early-month monthly-rain tickets. Each per-model fetch that returns an all-null response calls _ensemble_cb.record_failure() on the SAME global CircuitBreaker instance that the real Tier-1 temp-blend prewarm loop depends on. The outer try/except in _analyze_monthly_rain_trade does not cover this side effect, which happens inside the fetch helper's own internal except block before control returns to the caller.
+  Root cause: A circuit breaker instance scoped to an entire external API family rather than per-consumer, combined with a newly-reachable code path whose own false-failure guard is an approximate heuristic, not a guarantee.
+  Evidence: Read of weather_markets.py:8016-8149, 100-139, 2009-2014, 8750-8836 confirms every mechanical claim. weather_markets.py:8818-8829 contains the original author's own comment independently stating almost the identical concern. circuit_breaker.py:42-144 confirms CircuitBreaker persists state to disk (paths.CB_STATE_PATH, atomic-written) by default -- this is genuinely cross-process (cron.py and a...
+  Financial risk: Soft degradation of the real live temperature trading blend's forecast ensemble diversity for a bounded window, potentially biasing the probability estimate feeding Kelly-sized live/paper trades.
+  Recommendation: Give the far-tail blend's multiday fetch its own dedicated circuit breaker instance, consistent with the commit's own stated design intent.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0022), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Accuracy-circuit-breaker admin override has no test proving it actually lifts the LIVE trading gate
+Priority: MEDIUM (audit id AUD-0023, status CONFIRMED, confidence HIGH, evidence E1)
+Files: tests/test_risk_control.py, tests/test_trading_gates.py, trading_gates.py, paper.py, main.py
+
+Problem:
+  Commit 251e838e added `py main.py admin accuracy-override` and its own commit message states this override 'also silently lifts the LIVE-order gate, trading_gates.LiveTradingGate calls the same is_accuracy_halted()'. tests/test_risk_control.py (36 tests) exercises the override exclusively against paper.is_accuracy_halted() called directly. tests/test_trading_gates.py's TestLiveTradingGate class always patches `paper.is_accuracy_halted` with a hardcoded return_value (grepped every occurrence: lines 38, 99, 114, 129, 158, 174, 189, 204, 450, 480 -- all `patch("paper.is_accuracy_halted",...
+  Root cause: The override mechanism and the live-trading gate are tested as two separate units, each with the other's real state mocked away, so the integration point the commit message specifically calls out as risky is never exercised end-to-end.
+  Evidence: Ran `grep -n "is_accuracy_halted" trading_gates.py` -> confirmed trading_gates.py imports and calls the exact same paper.is_accuracy_halted function (trading_gates.py:75,107). Ran `grep -rln "ACCURACY_HALT_OVERRIDE\|accuracy_override\|accuracy-override" tests/*.py` -> only conftest.py and test_risk_control.py. Ran `grep -n "accuracy_halt_override\|is_accuracy_halted\|ACCURACY_HALT_OVERRIDE"...
+  Financial risk: Low likelihood, but a broken live-gate wiring in the direction of 'override no longer works' would leave a legitimately-recovering bot stuck halted (opportunity cost only); wiring broken the other...
+  Security risk: None directly -- this is a CLI-only admin command, not dashboard-reachable per the commit's own scope statement.
+  Recommendation: Add one integration test in test_risk_control.py or test_trading_gates.py that sets a real accuracy-halt override and calls trading_gates.LiveTradingGate.check() end-to-end (all other gates mocked to pass), asserting allowed=True, plus a companion test proving an EXPIRED override does not.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0023), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] No automated reconciliation between execution_log's internally-tracked live positions and Kalshi's real /portfolio/positions
+Priority: MEDIUM (audit id AUD-0025, status CONFIRMED, confidence HIGH, evidence E1)
+Files: output_formatters.py, order_executor.py, kalshi_client.py
+
+Problem:
+  kalshi_client.get_positions() is called from exactly one place in the entire codebase: output_formatters.cmd_positions(), a manual CLI display command. No automated code path (cron.py, trade_cycle.run_trade_cycle(), order_executor's pollers) ever cross-checks Kalshi's real position list against execution_log's internally tracked live positions.
+  Root cause: The bot's live-position tracking was designed as a self-contained ledger with crash-recovery for the specific placement-crash race, but no periodic ground-truth reconciliation against the exchange's own position endpoint was ever added.
+  Evidence: grep across the repo for '.get_positions(' confirms a single non-test call site (output_formatters.py:426). Confirmed cmd_positions is dispatched only from main.py's manual CLI branch (main.py:9694-9695, 'elif cmd == "positions": cmd_positions(client)'), not from any cron/trade_cycle/order_executor automated path.
+  Financial risk: A drifted internal ledger means the bot's protective-exit system could fail to manage a real position the exchange shows but execution_log does not track. Currently low-probability given existing...
+  Recommendation: Add a lightweight reconciliation check (e.g. inside cmd_watch's cycle or a dedicated cron step) comparing client.get_positions() against tracked live positions, logging a warning on mismatch.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0025), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_order's unmatched-sell settlement fallback can leave the exact phantom-position shape its own fix was designed to prevent
+Priority: MEDIUM (audit id AUD-0026, status CONFIRMED, confidence HIGH, evidence E1)
+Files: main.py, execution_log.py
+
+Problem:
+  When a manual live sell via cmd_order has no matching tracked position, the code immediately calls record_live_early_exit(row_id, price, 'unmatched_sell', 0.0) specifically so the just-logged row isn't later misread as a new open position by the automated exit scanner. That call is wrapped only in a broad except Exception with a warning log and no retry or alternate fail-closed handling.
+  Root cause: If the record_live_early_exit DB write itself fails, the row is left exactly in the dangerous shape (live=True, status='filled', settled_at=NULL, closes_position_id=None) the surrounding comment says must never happen -- there is no retry and no compensating mechanism.
+  Evidence: Independently re-read main.py's unmatched-sell branch (4806-4829): the try/except around record_live_early_exit only logs a warning, no retry. Confirmed execution_log.get_filled_unsettled_live_orders() (535-556) WHERE clause matches exactly `live = 1 AND status = 'filled' AND settled_at IS NULL AND closes_position_id IS NULL` -- exactly the row shape this failure leaves.
+  Financial risk: Low direct financial risk (spurious exit orders should be rejected by Kalshi as there's no real position to sell), but produces a recurring, silent operational anomaly and log/alert noise, and...
+  Recommendation: Add a bounded retry to this specific settle call, or fail closed by writing a distinct marker/flag file the operator is alerted to.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0026), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Settlement-lag force-close signal is wired to paper positions only, never live
+Priority: MEDIUM (audit id AUD-0027, status CONFIRMED, confidence VERY HIGH, evidence E1)
+Files: cron.py, settlement_monitor.py
+
+Problem:
+  cron.py's settlement-lag force-close block (1434-1497) imports paper.close_paper_early/paper.get_open_trades and matches signals only against paper positions built from paper.get_open_trades(). Grepping settlement_signal/read_settlement_signals usage across order_executor.py, positions.py, and main.py returns zero matches -- only cron.py (consumer), settlement_monitor.py (producer), and web_app.py (read-only display) reference it at all.
+  Root cause: The METAR settlement-lag force-close feature (cluster K) was built and wired against paper.py's ledger only; no equivalent live-position force-close path was added alongside it.
+  Evidence: Independently re-read cron.py:1434-1497, confirming the block's data source is exclusively paper.get_open_trades()/paper.close_paper_early. Independently re-ran the grep across order_executor.py, positions.py, main.py for settlement_signal|read_settlement_signals -- confirmed zero matches. Independently re-read settlement_monitor.py:277-359's docstring, which states the calibrated confidence...
+  Financial risk: Currently low in practice: settlement_monitor.py's own docstring documents the calibrated confidence never reaches cron's own >=0.80 force-close threshold under current production coefficients, so...
+  Recommendation: Extend the settlement-lag force-close block (or add a live-specific sibling) to also match against live open positions (execution_log's get_filled_unsettled_live_orders), mirroring how positions.py already unified paper/live for stop-loss/breakeven.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0027), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_order's manual partial live-sell never settles its own execution_log row, reproducing the 'aggregate-only P&L' bug the same day's earlier commit fixed for the automated path
+Priority: MEDIUM (audit id AUD-0028, status CONFIRMED, confidence VERY HIGH, evidence E2)
+Files: main.py, execution_log.py
+
+Problem:
+  cmd_order's matched-position live-sell branch (main.py:4780-4793) calls only execution_log.record_live_exit_fill(_live_close_position, _record_count, price). For a partial fill, that function settles only the referenced POSITION row via record_live_partial_exit (correctly leaves settled_at NULL, position stays open) but never calls record_live_early_exit on the SELL order's own row (main.py's row_id, created earlier via log_order with closes_position_id set) — unlike order_executor._exit_live_position's equivalent partial-fill branch, which makes a required second call...
+  Root cause: cmd_order's live-sell path (commit e5331a8d) was not updated to mirror _exit_live_position's two-call settlement pattern for partial fills, even though the same-day earlier commit 105cf4ce had just added exactly this second call to fix the identical bug on the automated path.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0028), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] emos-train/emos-deactivate check cron-in-flight before an unbounded human confirmation prompt, not immediately before the write
+Priority: MEDIUM (audit id AUD-0029, status CONFIRMED, confidence HIGH, evidence E1)
+Files: main.py
+
+Problem:
+  Both the EMOS activation and deactivation commands call `_cron_module._is_cron_running()` once, then print a confirmation prompt and block on `input()` for an arbitrary human-paced duration, then on 'yes' proceed straight to save_emos_params()/deactivate_emos() with no re-check immediately before the write. A cron cycle that starts during the confirmation window is invisible to this gate.
+  Root cause: Classic check-then-(long-wait)-then-act TOCTOU: the safety check runs before the unbounded-duration side effect (waiting on a human), not after it.
+  Evidence: Read main.py:6663-6753 (activation) and 6788-6849 directly: `_is_cron_running()` called once, followed by `input()`, followed by the write with no second check in between.
+  Financial risk: The failure mode this gate exists to prevent — 'one scan split across two probability methods, some markets priced with the old method, some with EMOS' (per the check's own error message) — can still...
+  Recommendation: Re-check _is_cron_running() (or better, acquire the actual cron lock) immediately before writing EMOS params, not just before printing the prompt.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0029), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] paper._CrossProcessDataLock silently fails OPEN after 10 seconds of sustained contention
+Priority: MEDIUM (audit id AUD-0030, status CONFIRMED, confidence HIGH, evidence E2)
+Files: paper.py
+
+Problem:
+  _acquire_file_lock() retries msvcrt.locking for up to a 10.0s deadline (paper.py:180); on continued OSError past the deadline it logs a warning, closes the file handle, and returns without ever setting self._fh (paper.py:187-193). _release_file_lock() then no-ops for that call, and the caller's read-modify-write on paper_trades.json proceeds with no cross-process lock held at all — reverting to exactly the pre-fix in-process-only protection the class's own docstring (paper.py:132-136) says is insufficient ('a load in one could straddle a save in the other and silently revert a settlement or...
+  Root cause: Deliberate liveness-over-safety tradeoff ('Never let the locking mechanism itself take down trading') — but the fallback silently drops the cross-process safety guarantee entirely rather than e.g. failing the operation or retrying with backoff beyond 10s.
+  Evidence: Read paper.py:171-199 directly. Verified the positions.update_peak_profits (fc8e3555-era) caller comment cited exists at paper.py:1396-1405 and matches the described risk of silently lowering an already-higher peak or writing a peak onto a trade the other process already closed.
+  Financial risk: A lost update to paper_trades.json under this fallback could silently revert a settlement or drop a manually-placed paper trade, corrupting the paper ledger's accuracy (which downstream...
+  Recommendation: At minimum, log this fallback path at a severity that would page/alert an operator (not just warning), and consider whether 10s is long enough given three independent long-lived processes (cron, watch, web_app) can all touch this file.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0030), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] e5331a8d's two self-disclosed follow-up gaps remain open, and the startup banner is wrong about a third live-capable command path
+Priority: MEDIUM (audit id AUD-0031, status CONFIRMED, confidence HIGH, evidence E2)
+Files: main.py, paper.py
+
+Problem:
+  e5331a8d's commit message directly discloses two deliberately-deferred follow-ups: the KALSHI_ENV=prod startup banner wrongly claims only 'watch --auto --live' can place live orders, and paper.check_position_limits' exposure caps never read execution_log for real live positions. Both confirmed still true at HEAD. Additionally, per Finding 1 (_quick_paper_buy), the banner is wrong about a third command path — but that path is `analyze` (cmd_analyze), not `cmd_today` as originally stated.
+  Root cause: e5331a8d scoped its fix narrowly to cmd_order per its own commit message ('deliberately not fixed here'); the banner condition and check_position_limits were never updated to reflect the broader set of live-capable code paths.
+  Evidence: e5331a8d commit message (git show -s --format=%B e5331a8d) confirmed verbatim to state both disclosed gaps. Confirmed at HEAD: main.py ~9566 computes _live_orders_possible = cmd == 'watch' and '--auto' in args and '--live' in args and unconditionally prints the narrow banner text for every other command. paper.check_position_limits() (paper.py:3447-3698, read in full) confirmed to contain zero...
+  Financial risk: A real live position (via cmd_order or the Finding-1 gap) is invisible to check_position_limits' city/date concentration and correlated-group caps, meaning those caps can be silently under-enforced...
+  Recommendation: Fix the banner's condition to cover all live-capable commands, and extend check_position_limits to read execution_log for live-position exposure, per the backlog follow-ups e5331a8d itself filed.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0031), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] LIVE_TRADING_RUNBOOK.md's Appendix gate list is incomplete — omits TRADING_PAUSED and kill switch, miscounts 'seven' gates
+Priority: MEDIUM (audit id AUD-0032, status CONFIRMED, confidence VERY HIGH, evidence E1)
+
+Problem:
+  Read full trading_gates.py — LiveTradingGate.check() has 9 sequential gate checks: is_trading_paused() (line 39), KILL_SWITCH_PATH.exists() (line 48), prod base_url/KALSHI_ENV (51-64), LIVE_TRADING_ENABLED (69), is_paused_drawdown (85), is_streak_paused (91), is_daily_loss_halted (101), is_accuracy_halted (107), graduation_check (114). Read LIVE_TRADING_RUNBOOK.md:230-242 Appendix — it lists exactly the last 7 of these 9 (numbered 1-7) and states 'All seven gates must pass simultaneously', omitting TRADING_PAUSED and the kill switch entirely. Exact match to the claim.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0032), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] LIVE_TRADING_RUNBOOK.md incorrectly states KELLY_CAP is 'hardcoded, not env-configurable'
+Priority: MEDIUM (audit id AUD-0033, status CONFIRMED, confidence VERY HIGH, evidence E1)
+
+Problem:
+  Read LIVE_TRADING_RUNBOOK.md:65 — table row reads exactly 'KELLY_CAP | 0.25 (hardcoded, not env-configurable) | Max Kelly fraction per position'. Read utils.py:106 — `KELLY_CAP: float = float(os.getenv("KELLY_CAP", "0.25"))`, an env-var read with a default, directly contradicting the doc. Confirmed exact match to citation.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0033), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] README.md documents `override set/clear` command syntax that doesn't exist — real CLI is `pause/unpause`
+Priority: MEDIUM (audit id AUD-0034, status CONFIRMED, confidence VERY HIGH, evidence E1)
+
+Problem:
+  Read README.md — line 118 documents `override <set|clear|status>`, lines 192-194 show `override set 60` / `override clear` / `override status` usage examples. Read main.py cmd_override (line 3249 onward) — only handles action == 'unpause'/'status' (3261) and action == 'pause' (3283); any other action (including 'set'/'clear') falls through to lines 3298-3299 printing 'Unknown override action: ...' with correct usage text 'override pause [minutes] | unpause | status'. Read COMMANDS.md:98-100 — correctly documents pause/unpause/status, confirming the two docs contradict each other and README is...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0034), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py's CSRF header enforcement (X-Requested-With) has no test that proves it is actually enforced
+Priority: MEDIUM (audit id AUD-UNMATCHED-56, status CONFIRMED, confidence HIGH, evidence E1)
+Files: web_app.py, tests/test_web_auth.py, tests/test_p0_16_cron_endpoint.py, tests/test_web_app.py
+
+Problem:
+  Commit 0edf818b added a required X-Requested-With: XMLHttpRequest header as the sole CSRF mitigation for all state-changing dashboard endpoints (web_app.py:198-201: `if _flask_request.method in ("GET","HEAD","OPTIONS") or (headers.get("X-Requested-With")=="XMLHttpRequest"): return None` else falls through to a 401). Every existing 'auth succeeds' test (tests/test_web_auth.py's `_basic_auth()` helper, tests/test_p0_16_cron_endpoint.py's identical helper) bundles Authorization AND X-Requested-With together in one dict, so success is only ever tested with both present. The 'auth fails' tests...
+  Root cause: Test helpers were written to build a single combined 'valid request' header set rather than isolating the two independent conditions (valid password; valid CSRF header) the auth check ANDs together.
+  Evidence: `grep -n "X-Requested-With\|def test_" tests/test_web_auth.py` shows _basic_auth() always includes both headers, and every 'succeeds' test uses that helper unmodified; the 'without_auth' tests omit Authorization entirely, not just the CSRF header. Same pattern confirmed in tests/test_p0_16_cron_endpoint.py's identical `_basic_auth`. `grep -rln "X-Requested-With" tests/*.py` -> only these two...
+  Financial risk: None directly observed; this is a defense-in-depth mechanism protecting kill-switch/halt/resume/order-placement endpoints from CSRF. An undetected regression that silently drops the header check...
+  Security risk: Regression in a CSRF mitigation for state-changing endpoints including kill-switch and order placement would go undetected by the test suite.
+  Recommendation: Add test_halt_with_correct_password_but_no_csrf_header_returns_401 (and similarly for /api/run_cron, /api/resume) using a header dict with only Authorization set, asserting 401 -- mirroring the existing wrong-password test's structure but isolating the other half of the AND condition.
+  Full record: audit/AUDIT_REPORT.json (id AUD-UNMATCHED-56), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] METAR settlement-lag force-close gate (cron.py's >=0.80 threshold) is mathematically unreachable under the currently fitted calibration model
+Priority: LOW (audit id AUD-0035, status CONFIRMED, confidence VERY HIGH, evidence E2)
+Files: cron.py, settlement_monitor.py, metar.py, ml_bias.py
+
+Problem:
+  The calibration model systematically compresses the [0.72,0.97] raw range downward through a sigmoid correction such that its output ceiling (0.766) sits below the pre-existing 0.80 force-close threshold.
+  Evidence: Read cron.py:1440-1485 confirming the >=0.80 gate at L1471. Read settlement_monitor.py:277-345 and ml_bias.py:494-505 confirming the sigmoid(a*ln(s)-b*ln(1-s)+c) formula. Read metar.py:31-57 confirming the [0.72,0.97] hard bound. Went beyond the finding's own evidence by reading the REAL currently-fitted calibration file directly from the main clone (paths.py resolves data/ there):...
+  Financial risk: Currently near-zero per the settlement_monitor.py docstring's own claim (cron.log/schtasks checks reportedly show this path has never fired against real trades) -- not independently re-verified this...
+  Recommendation: Per backlog.txt's own entry: rescale the 0.80 threshold to the calibrated scale, or fit a settlement-path-specific calibration model once enough settlement-lag outcome rows exist.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0035), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Live cmd_order sell only closes the oldest of multiple tracked live positions sharing the same ticker+side (operator-warned, not auto-fixed)
+Priority: LOW (audit id AUD-0036, status CONFIRMED, confidence HIGH, evidence E1)
+Files: main.py, order_executor.py, execution_log.py
+
+Problem:
+  Multiple live positions can legally share a ticker+side because nothing prevents duplicate live entries (same root cause as the check_position_limits() blindness finding). closes_position_id supports referencing only one prior row per exit.
+  Evidence: Read main.py:4577-4666 directly, confirming the code, the 'Opus review (2026-08-17), NEW-M1' comment, and the yellow warning print exactly as described. Additionally verified the 'oldest' claim at the SQL level (beyond the original finding's evidence): order_executor._get_live_open_positions() (order_executor.py:1077-1115) calls execution_log.get_filled_unsettled_live_orders()...
+  Financial risk: Low-to-moderate: if duplicate live positions accumulate (enabled by Finding 1), an operator may believe a full exit occurred when others remain open, though the warning surfaces this if read.
+  Recommendation: Already correctly deferred by its own authors pending the exposure-cap fix (Finding 1), which is the real root cause preventing duplicate live entries from accumulating. No independent action recommended.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0036), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] METAR-calibrated T-ticker settlement force-close gate's 'currently dormant' status is a coefficient-snapshot fact, not a durable invariant, given weekly auto-retrain
+Priority: LOW (audit id AUD-0038, status CONFIRMED, confidence HIGH, evidence E2)
+Files: settlement_monitor.py, ml_bias.py, metar.py, cron.py
+
+Problem:
+  The T-ticker settlement-lag force-close gate (cron.py's >=0.80 threshold) is currently unreachable under the coefficients fitted as of 2026-08-16 (a=b=0.2262, c=0.4001) -- calibrated confidence never exceeds ~0.766 (YES) / ~0.595 (NO). This is specific to that coefficient snapshot. ml_bias.fit_metar_calibration() refits these coefficients weekly (cron.py L2032-2052) from live settlement data, bounded only by a>0/|a|<=5/|b|<=5. No test or runtime check ties the 'stays below 0.80' claim to future retrains -- a future week's fit could push the calibrated output above 0.80 and silently reactivate...
+  Root cause: The dormancy conclusion was verified against one point-in-time coefficient fit and documented as current fact, but the coefficients are refit on a recurring schedule with no corresponding re-verification or monitoring tied to the threshold comparison.
+  Evidence: settlement_monitor.py:295-323 docstring confirmed to state the coefficient-specific dormancy claim (including the exact a=b=0.2262, c=0.4001 figures and cron.log/schtasks verification story). ml_bias.py:299-322 (_fit_platt) confirmed bounds are exactly `a>0, |a|<=5, |b|<=5` -- no bound relates to the 0.80 threshold. Independently read+verified the live data file: paths.METAR_CALIBRATION_PATH...
+  Financial risk: Low today (path is dormant); the risk is a future, unreviewed transition to active behavior in a path whose YES-branch has the separate correctness issue reported in Finding 1 above (the...
+  Recommendation: Add a lightweight check at retrain time comparing the newly-fitted calibration's output range against cron.py's 0.80 force-close threshold, so a transition from dormant to active is visible rather than silent.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0038), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Kill-switch override rename race can crash cmd_cron with uncaught FileExistsError (Path.rename vs os.replace semantics gap)
+Priority: LOW (audit id AUD-0039, status CONFIRMED, confidence HIGH, evidence E2)
+Files: main.py, cron.py, alerts.py
+
+Problem:
+  main.py's cmd_cron() wrapper implements a one-shot interactive override for the kill switch: when an operator answers 'y' to 'Override and run this cycle anyway?', it does `_kill_path.rename(_kill_tmp)` (main.py:332) to temporarily move .kill_switch out of the way, restoring it in a `finally` block afterward. This rename is NOT wrapped in try/except. Unlike the rest of the codebase's atomic-write infrastructure (safe_io.atomic_write_json / os.replace, hardened across cluster J commits 94d36402/3a28ae33 specifically because Path.rename()/os.replace() differ on Windows), this call site uses...
+  Root cause: A stale .kill_switch.tmp can be left on disk if the cron watchdog (cron.py:2375 os._exit, 720s timeout) hard-kills the process mid-override-cycle (os._exit bypasses Python `finally` blocks, so the restore-from-tmp step at main.py:346-350 never runs). If, in that same aborted cycle, a black-swan...
+  Evidence: Grepped `\.rename(` across the entire repo (excluding tests/audit) -- exactly 3 hits, all in main.py's cmd_cron wrapper (lines 292, 332, 350); only line 332 is unguarded by try/except or a pre-check that the destination is absent. Directly reproduced in this Windows environment this session: `pathlib.Path('a').rename(pathlib.Path('b'))` where b already exists raises `FileExistsError [WinError...
+  Financial risk: Low/none directly -- the kill switch remains present/active throughout this failure (fail-safe direction: trading stays halted), and the crash only occurs on a manual interactive `py main.py cron`...
+  Recommendation: Use os.replace() (or safe_io's retry-wrapped equivalent) instead of Path.rename() at main.py:332/292/350 so the operation is atomic-replace rather than fail-on-exists; additionally, change the stale-tmp-restore guard at main.py:290 to also unlink an orphaned .kill_switch.tmp when .kill_switch...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0039), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_order accepts and forwards an out-of-range order price with no local validation before hitting the live exchange
+Priority: LOW (audit id AUD-0040, status CONFIRMED, confidence HIGH, evidence E1)
+Files: main.py, web_app.py
+
+Problem:
+  main.cmd_order parses price=float(price_str) and validates only that count is a whole number >= 1; there is no check that price is within Kalshi's valid contract-price range. By contrast, web_app.py's /api/close-position route explicitly validates exit_price in (0,1] server-side.
+  Root cause: cmd_order's input validation was written to check count's constraint but never extended to price's valid-range constraint, unlike the newer web_app.py close-position path.
+  Evidence: Direct read of main.py:4333-4356 and a full-body grep of cmd_order (through the place_order() call) confirms no '0 <' or '<= 1' bound check on price anywhere. Confirmed web_app.py:2995-2996 does perform `if not (0.0 < exit_price <= 1.0): return 400`.
+  Financial risk: Minimal -- Kalshi's own API validation is the real backstop; risk is a worse operator experience, not an actual trading-safety gap.
+  Recommendation: Add a local 0 < price < 1 (or <=1) check alongside the existing count validation in cmd_order, before the confirmation prompt.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0040), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_order writes 'buy'/'sell' into execution_log's order_type column, which every other write site (and the schema's own comment) uses for 'market'/'limit'
+Priority: LOW (audit id AUD-0041, status CONFIRMED, confidence VERY HIGH, evidence E1)
+Files: main.py, execution_log.py, order_executor.py
+
+Problem:
+  execution_log.py's orders table schema documents order_type as holding "market" or "limit", and every write site in order_executor.py (6 call sites) writes exactly one of those literal strings. main.cmd_order is the sole exception: it calls log_order(..., order_type=action, ...) where action is the CLI verb "buy" or "sell".
+  Root cause: This is the codebase's original bug, present since the first execution_log integration (commit 1e3faca6, April 2026) and never corrected; e5331a8d re-touched this exact call site without noticing or fixing the pre-existing misuse.
+  Evidence: Direct read confirms execution_log.py:135 schema comment ("market" or "limit") and all 6 order_executor.py call sites (737,836,1241,1649,3088,3258) using "limit"/"market" literals. `git log -S "order_type=action" -- main.py` shows only commit 1e3faca6 introduces the string (never toggled since). `git show e5331a8d -- main.py` diff confirms the log_order() call at this site was rewritten (new...
+  Financial risk: None currently (no code reads this field for any decision), but any future feature distinguishing maker vs taker fills by order_type (a natural fix for the settlement-fee finding above) would need...
+  Recommendation: Fix cmd_order's log_order() call to pass a real order_type value, mirroring order_executor's time_in_force-derived convention.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0041), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Far-tail rain blend's logged n_members metadata doesn't reflect the deterministic cross-product's true effective sample size
+Priority: LOW (audit id AUD-0043, status CONFIRMED, confidence HIGH, evidence E1)
+Files: weather_markets.py
+
+Problem:
+  d190d09d's far-tail case computes combined_totals as the deterministic cross product of member_totals (near-forecast ensemble, ~30-130 members) and tail_sums_tilted (historical tail years, >=15). The commit's own comment explains this cross-product IS the exact expected value of pairing each near member with a tail value, computed exhaustively rather than sampled -- mathematically sound for computing forecast_blend_prob itself. However, the logged composition metadata rain_forecast_blend_n_members is set to n_members (the near-ensemble count) only, not any measure of the tail-year count or...
+  Root cause: The cross product's raw length (n_members * n_tail_years, potentially several hundred to ~1000) is not an independent-sample count -- each near member is paired with every tail year and vice versa, so the genuine 'effective sample size' for statistical-uncertainty purposes is bounded by...
+  Evidence: Read weather_markets.py L8830-8940 in full. Confirmed combined_totals = [m + t for m in member_totals for t in tail_sums_tilted] (L8896-8898); forecast_blend_signal (L8918-8933) only stores rain_forecast_blend_n_members: n_members (the near-member count) and rain_forecast_blend_tail_days (a calendar day count, not a tail-year count) -- the tail sample count (len(tail_sums_tilted)) is computed but...
+  Financial risk: None currently -- confirmed shadow/log-only: blended_prob is computed at L8941-8943 from remaining_sums_tilted, set independently at L8737 well before the far-tail block runs, and...
+  Recommendation: If/when this signal is revisited for graduation, also log the tail-year sample count (len(tail_sums_tilted)) alongside n_members so effective-sample-size can be assessed correctly. Not urgent: this signal is shadow/log-only today and does not affect blended_prob/rec_side/sizing.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0043), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] tracker.py Previous-Runs-API helpers still use UTC-anchored day arithmetic against a city-local target_date, with stale comments asserting the opposite
+Priority: LOW (audit id AUD-0044, status CONFIRMED, confidence HIGH, evidence E1)
+Files: tracker.py
+
+Problem:
+  _fetch_previous_run_daily (used by an offline backfill loop) and _fetch_previous_run_leads (used live by the FORECAST RUN-TO-RUN TREND shadow signal via get_forecast_run_trend_from_analysis) both compute past_days/forecast_days as (target_date - utils.utc_today()).days [+1]. Their inline comments justify this by citing analyze_trade's UTC-based days_out computation -- true before 0100bffe, but that commit changed analyze_trade to use city-local today instead, and the target_date fed into this signal is the same city-local value used elsewhere in analyze_trade's pipeline.
+  Root cause: These helpers were not part of 0100bffe's traced call-graph sweep, so their UTC-based arithmetic and comments were left unchanged after target_date's semantics changed everywhere else.
+  Evidence: Static read of tracker.py:4178-4283 cross-referenced against 0100bffe's diff (git show 0100bffe -- tracker.py shows only log_prediction changed) and get_forecast_run_trend_from_analysis (tracker.py:4426-4451), which extracts analysis[target_date] -- the same city-local value analyze_trade now produces.
+  Financial risk: Very low -- the consuming signal's own docstring (tracker.py, get_forecast_run_trend) states it is 'log-only today ... and must never block a trade decision'; the backfill path only affects...
+  Recommendation: Apply the same ZoneInfo-based local-today pattern used elsewhere in this fix chain, or document why these callers are exempt.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0044), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_forecast CLI display starts its 7-day range from UTC-today instead of city-local today
+Priority: LOW (audit id AUD-0045, status CONFIRMED, confidence HIGH, evidence E1)
+Files: main.py
+
+Problem:
+  cmd_forecast(city) sets today = utils.utc_today() and iterates 7 days from there via get_weather_forecast(city, today+i), with no per-city ZoneInfo adjustment despite city being a known parameter. During the nightly UTC-ahead-of-local window, the row labeled today actually shows tomorrow's local forecast, and the city's real local today is omitted from the displayed window.
+  Root cause: This CLI command predates or was never covered by the city-local-today fix chain and still uses the older utils.utc_today() convention.
+  Evidence: Static read of main.py:3918-3949 showing today = utils.utc_today() with no ZoneInfo use.
+  Financial risk: None -- manual/human-facing display command only.
+  Recommendation: Compute today via ZoneInfo(_CITY_TZ.get(city,...)) for consistency with the rest of the codebase.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0045), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py dashboard forecast endpoints label per-city forecasts using UTC-today, and their own justifying comment is now stale
+Priority: LOW (audit id AUD-0046, status CONFIRMED, confidence HIGH, evidence E1)
+Files: web_app.py
+
+Problem:
+  Both /api/forecast and /api/today_forecasts compute their today/tomorrow date labels via utils.utc_today(), applied uniformly across all cities regardless of timezone. /api/forecast's inline WA-timezone comment acknowledges the mislabeling risk around local midnight but justifies keeping utc_today() by claiming the tracker/analytics side of the codebase standardizes on it -- that premise predates (2026-07-11) and is now contradicted by 0100bffe (2026-08-11), which moved the trading-logic side to city-local comparisons specifically to fix this same mislabeling problem.
+  Root cause: These endpoints predate the audited commit window and were not revisited by the 0100bffe/6364b38b fix chain; the comment's justification was never updated after its premise changed.
+  Evidence: Static read of web_app.py:2097-2128 (api_today_forecasts) and 3184-3227 (api_forecast), cross-referenced with git log -S WA-timezone showing the comment was introduced 2026-07-11 (commit 54b0c576), before 0100bffe changed the codebase-wide convention it cites.
+  Financial risk: None -- dashboard display only.
+  Recommendation: Low priority given this predates the audited window and is display-only; worth a follow-up to fix per-city or at least correct the stale comment.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0046), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] settlement_monitor.py logs per-city polling failures at DEBUG only, invisible on console for an unattended daily task
+Priority: LOW (audit id AUD-0047, status CONFIRMED, confidence HIGH, evidence E1)
+Files: settlement_monitor.py, main.py, cron.py
+
+Problem:
+  The only two exception handlers in run_settlement_monitor's polling loop (market-fetch failure at 591-592, general per-city error at 599-600) both log at DEBUG level. main.py's logging setup routes DEBUG to the file handler but the console handler is INFO, so these lines reach bot.log but are invisible during an interactive run.
+  Root cause: The per-city error handling was left at DEBUG when the module was manual/dormant; commit 64c08693 scheduled it as a real unattended daily cron task without revisiting the log level, unlike the analogous ML-retrain block in cron.py which was deliberately bumped from debug to warning with an explicit...
+  Evidence: Independently re-read settlement_monitor.py:510-608 (the full polling loop), confirming these are the only two exception handlers, both at exactly lines 591-592 and 599-600, both `_log.debug()`. Confirmed main.py's console handler level (9485, logging.INFO) vs. file handler (9481, logging.DEBUG) via direct read. Confirmed the analogous fix pattern in cron.py:2053-2058 via direct read.
+  Financial risk: None directly (this signal path is documented as currently dormant); primarily an operability/observability gap.
+  Recommendation: Bump these two handlers to WARNING, matching the reasoning already applied to cron.py's ML-retrain block in the same commit window.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0047), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] execution_log.py and tracker.py never explicitly close SQLite connections
+Priority: LOW (audit id AUD-0048, status CONFIRMED, confidence HIGH, evidence E1)
+Files: execution_log.py, tracker.py
+
+Problem:
+  _conn() in both files returns a raw sqlite3.connect(...) object used via `with _conn() as con:`. sqlite3.Connection's context-manager protocol only commits/rolls back the transaction on exit -- it does not close the connection. Neither file ever calls con.close().
+  Root cause: The `with _conn() as con:` idiom is commonly (and incorrectly) assumed to close the connection the way file-object context managers do; sqlite3.Connection's __exit__ only manages the transaction.
+  Evidence: Independently re-ran the grep: execution_log.py has exactly 21 `with _conn() as con:` blocks and 0 `con.close()` calls; tracker.py has exactly 105 and 0 respectively -- both counts match the finding's own citation exactly. Confirmed execution_log.py:108-113 `_conn()` returns a raw `sqlite3.connect(DB_PATH, timeout=30)` with no pooling wrapper.
+  Financial risk: None observed.
+  Recommendation: No urgent action needed given CPython's refcounting behavior; consider explicit con.close() in a finally block if this code is ever run under an alternate Python implementation or under heavy concurrent connection churn.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0048), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] was_traded_today/was_recently_ordered/was_ordered_recently already treat any fill (entry OR exit) on a ticker+side as blocking re-entry -- pre-existing design, not changed by the closes_position_id-adding commits
+Priority: LOW (audit id AUD-0049, status CONFIRMED, confidence HIGH, evidence E2)
+Files: execution_log.py
+
+Problem:
+  None of these three dedup-guard SQL queries filter on closes_position_id, unlike execution_log.get_today_live_spend() which explicitly excludes closes_position_id-set rows. Verified this is NOT a regression: a fresh entry-only row (no exit row at all) already independently trips all three guards, so the exit row is redundant to the blocking effect, not its cause.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0049), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] trade_cycle.py's prewarm ThreadPoolExecutor tasks are not cancelled on timeout and outlive the phase that spawned them
+Priority: LOW (audit id AUD-0050, status CONFIRMED, confidence HIGH, evidence E1)
+Files: trade_cycle.py, cron.py
+
+Problem:
+  _run_batch_prewarm_for_pairs submits up to 8 per-city-date prewarm tasks and waits on as_completed(warm_futures, timeout=200); on TimeoutError it only logs and falls through, and the finally: warm_pool.shutdown(wait=False) does not pass cancel_futures=True (default False) and cannot stop already-running worker threads regardless. Already-submitted _warm_one_tracked calls keep running on background threads while run_trade_cycle proceeds into the next (analysis) phase.
+  Root cause: shutdown(wait=False) only stops new task submission; it neither cancels queued futures nor interrupts running ones, so the 'prewarm phase' the rest of the code treats as finished is not actually over.
+  Evidence: Read trade_cycle.py:1136-1173 and cron.py:2375-2377 directly: as_completed(..., timeout=200) at line 1157, TimeoutError handling at 1164-1170 (log + fall through, no cancellation), shutdown(wait=False) at 1172, and cron.py's watchdog os._exit(1) hard-kill (no cleanup) at 2375-2377.
+  Financial risk: Low — the touched caches are internally locked, so this is a performance/hang-risk finding rather than a P&L-affecting one.
+  Recommendation: Pass cancel_futures=True to shutdown() (Python 3.9+) to at least drop queued-but-not-started tasks, and consider whether already-running prewarm threads need an explicit cooperative-cancellation flag if their side effects (cache writes) should not race with the next phase's reads.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0050), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] settlement_monitor.py has no application-level overlap guard; relies entirely on unverified Task Scheduler default policy
+Priority: LOW (audit id AUD-0051, status CONFIRMED, confidence HIGH, evidence E1)
+Files: settlement_monitor.py, main.py
+
+Problem:
+  The daily Task Scheduler entry (schtasks /Create /F /SC DAILY ...) has no analogue of cron.py's LOCK_PATH mechanism; protection against two overlapping runs relies entirely on Windows Task Scheduler's default 'do not start a new instance' policy, which is not explicitly set by the schtasks /Create call and could be silently changed by an operator editing the task's Settings tab.
+  Root cause: No file-lock or PID-based mutual exclusion was added when settlement_monitor.py was wired up as its own scheduled job (commit 64c08693); the module has no lock/PID logic at all.
+  Evidence: Grepped settlement_monitor.py for lock/PID logic — none found (only unrelated METAR 'lock-in' domain terminology unrelated to concurrency). write_settlement_signals (settlement_monitor.py:126-133) performs a full atomic_write_json({'signals': signals, ...}, _SIGNALS_PATH) — a wholesale overwrite of the entire file from the calling process's own in-memory list, not a merge. Verified...
+  Financial risk: A dropped settlement-lag signal could delay a force-close decision that depends on it (per cluster K's settlement-lag force-close gate wiring), though this requires two overlapping runs to actually...
+  Recommendation: Add a lightweight lock (reuse cron.py's pattern, corrected per Finding 1, or paper.py's msvcrt-based lock) to settlement_monitor.py's entry point, independent of whatever Task Scheduler's actual configured overlap policy is.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0051), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] tracker.count_settled_signal_rows() builds SQL via f-string interpolation of column/json_key parameters
+Priority: LOW (audit id AUD-0052, status CONFIRMED, confidence HIGH, evidence E1)
+Files: tracker.py:2671-2742
+
+Problem:
+  count_settled_signal_rows() interpolates its `column` and `json_key` parameters directly into the SQL string rather than using parameterized placeholders.
+  Root cause: Column/JSON-path names can't be parameterized with `?` placeholders in SQLite, so the function trusts callers to only ever pass fixed literal identifiers, with no runtime validation.
+  Evidence: Read tracker.py:2671-2742 directly — confirmed `where = f"json_extract(p.signal_values, '$.{json_key}') IS NOT NULL"` and `where = f"p.{column} IS NOT NULL"` exactly as described, plus the f-string table-name interpolation `f"SELECT COUNT(*) FROM {table} p ...WHERE {where}"`. Grepped every call site in weather_markets.py (lines 6867, 6889 via the _count_signal_column/_count_signal_json_key...
+  Financial risk: None currently — not reachable from any user/network input.
+  Security risk: Latent SQL-injection-shaped pattern; unexploitable today, would become exploitable only if a future caller passed request-derived input.
+  Recommendation: Add an allowlist check inside count_settled_signal_rows() before interpolation, independent of current caller discipline.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0052), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py's /api/trades route loads the entire paper ledger twice in one request, with no caching across the ~7 routes (plus the /api/stream SSE loop) that each independently call get_open_trades()/get_all_trades()
+Priority: LOW (audit id AUD-0053, status CONFIRMED, confidence VERY HIGH, evidence E3)
+Files: web_app.py, paper.py
+
+Problem:
+  web_app.py's api_trades() (the handler for /api/trades) calls paper.get_open_trades() at L1405 and then paper.get_all_trades() at L1475 -- both route independently through paper._load(), which does a full open()+json.load()+SHA-256-checksum of data/paper_trades.json with no caching or memoization (see the companion finding on _log_shadow_predictions for _load()'s measured per-call cost). That's two full ledger reads to serve one HTTP request, when a single get_all_trades() call (filtering its own result for open trades) would suffice. More broadly, at least 7 distinct call sites across...
+  Root cause: No shared/memoized read path exists for the paper ledger across web_app.py's routes; each route (and the SSE background loop) independently calls the public get_open_trades()/get_all_trades() functions, both of which unconditionally re-do the full read+parse+checksum on every call. This pattern...
+  Evidence: Direct code read of web_app.py L1398-1478 (api_trades) shows both get_open_trades() and get_all_trades() called in the same function body. grep for get_open_trades()/get_all_trades() across web_app.py found 7+ independent call sites (L126, 1181, 1405, 1475, 1497, 1655, 1671, 3039). Confirmed paper._DATA_LOCK (paper.py L227) is a _CrossProcessDataLock instance, not a plain in-process...
+  Financial risk: None -- read-only dashboard display path, does not affect trade sizing or placement.
+  Recommendation: In api_trades(), replace the get_open_trades()+get_all_trades() pair with one get_all_trades() call, deriving open_trades via a local filter (mirroring get_open_trades()'s own `[t for t in trades if not t['settled']]` logic) instead of a second _load(). Separately (broader, lower urgency given...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0053), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] frontend authHeader() has no unit test asserting the CSRF header is present in its output
+Priority: LOW (audit id AUD-0054, status CONFIRMED, confidence HIGH, evidence E1)
+Files: frontend/src/useData.js, frontend/src/useData.test.js
+
+Problem:
+  The same 0edf818b commit fixed a real bug where one of the two frontend trees' useData.js never sent the X-Requested-With header at all, causing every POST to 401 unconditionally even with the correct password. frontend/src/useData.test.js has no unit test that calls authHeader() directly and asserts the returned object includes 'X-Requested-With': 'XMLHttpRequest' -- coverage of the header only exists implicitly, through fetchAllSafe's mocked-fetch assertions which check the Authorization value but never the CSRF header value (grepped the whole file for 'Requested': only appears in a code...
+  Root cause: Test suite validates the auth-retry orchestration logic (fetchAllSafe) thoroughly but never unit-tests the small, security-relevant authHeader() helper itself in isolation.
+  Evidence: `grep -n "Requested\|headers" frontend/src/useData.test.js` -> only two matches, both about the Authorization field, none about X-Requested-With.
+  Financial risk: None -- purely a client-side regression-guard gap; the server-side enforcement (see the companion finding above) is the actual security boundary, and that too is untested for this exact property,...
+  Security risk: Low on its own since the server independently enforces the header; but combined with the server-side test gap, there is no automated safety net if a future refactor drops the header from either side.
+  Recommendation: Add a small describe('authHeader') block asserting the CSRF header's presence and value in both the password-set and password-unset cases.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0054), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_order's multi-open-live-position-per-ticker sell branch is untested
+Priority: LOW (audit id AUD-0055, status CONFIRMED, confidence HIGH, evidence E1)
+Files: main.py, tests/test_trading_gates.py, tests/test_live_execution.py
+
+Problem:
+  e5331a8d's cmd_order live-sell matching logic explicitly handles (and warns about) the case where more than one tracked open live position shares the same ticker+side: it closes only the oldest (by placed_at ascending, confirmed via execution_log.get_filled_unsettled_live_orders()'s `ORDER BY placed_at`), prints an operator warning naming the untouched positions, and leaves the rest open. This is a deliberately-scoped partial fix (the commit's own comment references a separate, unaddressed backlog entry for the structural fix). No test in tests/test_trading_gates.py's...
+  Root cause: The commit's positive/negative-control test suite covers the single-match and no-match cases thoroughly but the explicitly-called-out multi-match edge case has no test.
+  Evidence: `grep -rn "oldest\|multiple.*tracked live\|len(_live_open_matches)" tests/*.py` -> no matches referencing this code path at all (only unrelated 'oldest' usages in other test files).
+  Financial risk: Low -- this is an already-documented, operator-visible partial fix (the warning message itself is the safety net for a human), not a silent failure mode; but an untested behavior can regress silently...
+  Recommendation: Add TestCmdOrderLiveRecording::test_live_sell_with_multiple_tracked_positions_closes_only_oldest, matching the style of the file's existing tests.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0055), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_order's unmatched-live-sell placeholder pnl=0.0 is indistinguishable from a real zero-P&L outcome in tax/P&L exports
+Priority: LOW (audit id AUD-0057, status CONFIRMED, confidence HIGH, evidence E1)
+
+Problem:
+  When cmd_order's live sell path (e5331a8d) can't match the sell to any tracked live position, it calls execution_log.record_live_early_exit(row_id, price, 'unmatched_sell', 0.0) to immediately settle the row and keep it from being misread as an open position. The code's own comment explicitly documents this 0.0 as 'a neutral placeholder, not a real P&L claim' because there is no tracked entry_price to compute a real P&L against. However, execution_log.export_live_tax_csv() and get_live_pnl_summary() both filter on settled_at IS NOT NULL AND pnl IS NOT NULL with no field distinguishing a...
+  Root cause: There is no tracked entry_price for an unmatched live sell (the position was opened outside this bot's own tracking), so no real P&L can be computed; the chosen design intentionally settles the row with a placeholder value rather than leaving it open, but downstream consumers have no way to...
+  Evidence: main.py lines 4806-4829 verified verbatim: `elif action == "sell":` branch, comment '0.0 is a neutral placeholder, not a real P&L claim', then `record_live_early_exit(row_id, price, "unmatched_sell", 0.0)`. execution_log.py lines 807-843 (export_live_tax_csv): base_query WHERE clause is `o.live = 1 AND o.settled_at IS NOT NULL AND o.pnl IS NOT NULL` -- no exit_reason filter. execution_log.py...
+  Financial risk: Low -- affects only manual cmd_order sells with no matching tracked live position, an edge case; understates or overstates realized P&L reporting/tax records for that specific trade by an unknown...
+  Recommendation: Consider excluding exit_reason='unmatched_sell' rows from get_live_pnl_summary()/export_live_tax_csv() aggregate totals, or flagging them for manual review, since this is a rare-but-real manual-trading edge case (selling a position the bot didn't open/track).
+  Full record: audit/AUDIT_REPORT.json (id AUD-0057), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] METAR calibration production-file write isolation relies on per-test monkeypatches, not an autouse structural guard
+Priority: LOW (audit id AUD-0058, status CONFIRMED, confidence VERY HIGH, evidence E1)
+Files: ml_bias.py, tests/conftest.py, tests/test_ml_bias.py
+
+Problem:
+  ml_bias.py:22 binds _METAR_CALIBRATION_PATH from paths.METAR_CALIBRATION_PATH at import time. tests/conftest.py has no autouse fixture redirecting this path (only the in-memory _METAR_CACHE/_TEMP_CACHE get autouse isolation). 5d9b6c56's commit message (2026-08-16) confirms this exact gap already caused a real incident: a test's attempt to monkeypatch paths.METAR_CALIBRATION_PATH didn't reach ml_bias._METAR_CALIBRATION_PATH (same import-time-binding hazard as this project's own documented 'monkeypatch env vs attr' pattern), silently writing synthetic coefficients to the real production data...
+  Root cause: No structural (autouse) isolation exists for this specific file path the way it does for tracker.DB_PATH (isolate_tracker_db) or the climatology caches; correctness currently depends on every test author remembering to patch ml_bias._METAR_CALIBRATION_PATH directly.
+  Evidence: ml_bias.py:22 import-time binding confirmed by read. grep -n -i metar tests/conftest.py shows no autouse fixture for METAR_CALIBRATION_PATH, only in-memory cache fixtures. 5d9b6c56 commit message quoted verbatim describes the prior incident. tests/test_ml_bias.py's TestFitAndSaveMetarCalibration (1863-1958) and TestCmdCalibrateMetarBlock (1960+) both currently patch...
+  Financial risk: Low direct financial risk, but a repeat incident would corrupt the production METAR calibration coefficients file, degrading the live temperature-bias correction used in real trade signal generation...
+  Recommendation: Add an autouse conftest.py fixture redirecting ml_bias._METAR_CALIBRATION_PATH to tmp_path, mirroring isolate_tracker_db and the climatology cache-dir fixtures.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0058), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] No test coverage for check_position_limits() vs execution_log interaction
+Priority: LOW (audit id AUD-0059, status CONFIRMED, confidence MEDIUM, evidence E1)
+Files: tests/
+
+Problem:
+  Despite e5331a8d adding 188 new/changed tests across main.py/order_executor.py/execution_log.py (including a new 470-line tests/test_trading_gates.py), no test asserts or documents whether check_position_limits()'s exposure sums should or do include execution_log-tracked live positions.
+  Root cause: The interaction between check_position_limits() (paper.py) and execution_log (added/expanded across cluster D commits) was never covered by a dedicated test, consistent with the finding above being filed as a known gap rather than an actively-guarded one.
+  Evidence: Re-ran the finding's cited command this session: `grep -rl check_position_limits tests/ | xargs grep -l execution_log` actually returns `tests/test_hurricane_gating.py` -- NOT empty, contradicting the finding's literal stated evidence ('returns no files at HEAD'). Inspected that file's execution_log reference (around line 478): it is an unrelated monkeypatch of...
+  Financial risk: Indirect -- absence of test coverage makes the Finding-1 gap easier to miss or reintroduce in future refactors.
+  Recommendation: Add a test exercising check_position_limits() against a scenario with an open execution_log live position, documenting current behavior (blind) so any future fix has a clear before/after test.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0059), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] schema_validator.py's validate_market/validate_forecast/validate_nws_response return values are discarded everywhere they're called
+Priority: LOW (audit id AUD-0060, status CONFIRMED, confidence HIGH, evidence E1)
+Files: schema_validator.py, kalshi_client.py, nws.py, weather_markets.py
+
+Problem:
+  All three validators are documented as returning bool ("Returns True if valid, False if critical fields are missing/wrong type"), but every production call site (kalshi_client.get_markets/get_market, nws's daily-forecast fetch, weather_markets' Open-Meteo daily-fetch helper) invokes the function as a bare statement, discarding the boolean. Only the internal _log.warning() calls have any observable effect — a market or forecast payload that fails validation proceeds through the caller's normal processing exactly as if it had validated cleanly.
+  Root cause: The module's own docstring states this is intentional ("Logs warnings on violations rather than crashing"), so functionally this is logging-only by design rather than a broken gate that regressed. But the bool return signature invites the opposite assumption from future readers/maintainers.
+  Evidence: Independently read schema_validator.py in full (196 lines) confirming all three functions return bool per docstring. Grepped every call site of validate_market/validate_forecast/validate_nws_response repo-wide (production code + tests): confirmed exactly kalshi_client.py:324, kalshi_client.py:343, nws.py:236, weather_markets.py:1525 as the 4 production call sites, and read each in its surrounding...
+  Financial risk: Low/indirect — downstream consumers generally already use .get() with defaults and None-checks, so this is a missed defense-in-depth layer rather than an active bug path.
+  Recommendation: Either wire the boolean into the callers (skip processing malformed records) if that protection is actually wanted, or change the return type/docstring to make clear these are logging-only, to prevent a future caller (or the nws.py circuit-breaker comment's own apparent original intent) from...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0060), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] README.md's environment-variable table omits the 6 shadow-only *_TRADING_ENABLED feature flags, 3 added within this audit's commit window
+Priority: LOW (audit id AUD-0061, status CONFIRMED, confidence HIGH, evidence E1)
+
+Problem:
+  Ran `grep -n "_TRADING_ENABLED" main.py weather_markets.py order_executor.py` and found exactly the 6 flags cited (HOURLY_TRADING_ENABLED, HURRICANE_NEXT_EVENT_TRADING_ENABLED, HURRICANE_TRADING_ENABLED, RAIN_TRADING_ENABLED, SNOW_TRADING_ENABLED, STORM_ORDER_TRADING_ENABLED); grep of README.md for the same pattern returned zero matches. Confirmed via `git log --oneline --all -S` that HURRICANE_TRADING_ENABLED was introduced in 1a7c9aca and STORM_ORDER_TRADING_ENABLED in 9a7583aa, matching the cluster-G commits cited. Exact match to claim.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0061), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] README.md's 'bot only trades temperature and precipitation' claim is stale given hurricane market support added this window
+Priority: LOW (audit id AUD-0062, status CONFIRMED, confidence HIGH, evidence E1)
+
+Problem:
+  Read README.md:361 verbatim: 'The bot only trades Kalshi weather markets (temperature and precipitation). It ignores all other market types.' Confirmed via git log -S that hurricane-model commits 1a7c9aca/9a7583aa (and d4ade606 closing a related gate-bypass gap) exist and add real hurricane-market order-placement code paths gated behind env flags, contradicting the blanket claim. Exact match.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0062), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] README.md's EMOS activation row count ('~25 rows') contradicts the actual 40-row floor added this window and contradicts COMMANDS.md
+Priority: LOW (audit id AUD-0063, status CONFIRMED, confidence HIGH, evidence E1)
+
+Problem:
+  Read README.md:203 — 'Once ~25 rows are accumulated, an `emos-train` command will fit...'. Read main.py:6663-6668 — `_EMOS_VAR_FLOOR = 40` with a hard refusal below that unless --force. Read COMMANDS.md:62 — correctly states 'refuses below 40 ens_var rows'. Confirmed via `git log --oneline -S"_EMOS_VAR_FLOOR"` a single introducing commit 4557a77b, and via `git show 4557a77b^:main.py` that the prior threshold was a softer `n_var >= 10` check (line 6333 pre-commit) used only to choose default vs fitted c/d values, not a hard activation floor — so README's '25' never matched any actual...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0063), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_schedule()'s docstring claims 'auto-scan every hour' but registers a 3-hourly task
+Priority: LOW (audit id AUD-0064, status CONFIRMED, confidence VERY HIGH, evidence E1)
+
+Problem:
+  Grepped and read main.py — docstring at line 8963 reads exactly 'Register a Windows Task Scheduler job to auto-scan every hour.'; line 8991 builds `schtasks /Create /F /SC HOURLY /MO 3 ...`; line 9008 prints 'Task ... registered — runs every 3 hours.' All three line numbers match the citation exactly. Independently ran `git blame` on both lines and confirmed the docstring (line 8963) was authored by commit d7b2ad7e on 2026-04-09 while the /MO 3 interval (line 8991) was authored by a separate commit c189f2821 on 2026-04-16, exactly matching the finding's git-blame claim.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0064), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] README.md's NOTIFY_CHANNELS default ('desktop,discord') doesn't match the actual code default
+Priority: LOW (audit id AUD-0065, status CONFIRMED, confidence HIGH, evidence E1)
+
+Problem:
+  Grepped NOTIFY_CHANNELS across README.md/notify.py/.env.example. README.md:278 reads default `desktop,discord`. notify.py:42 reads `os.getenv("NOTIFY_CHANNELS", "desktop,pushover,ntfy,discord,email")`. .env.example:43 sets `NOTIFY_CHANNELS=desktop,pushover,ntfy,discord,email`. Code and .env.example agree with each other and disagree with README exactly as claimed.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0065), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] kalshi_client.py docstring claims 'no live caller uses IOC/FOK today' — now false after e5331a8d
+Priority: LOW (audit id AUD-UNMATCHED-61, status CONFIRMED, confidence MEDIUM, evidence E1)
+
+Problem:
+  _find_order_by_client_id's docstring (kalshi_client.py) states 'no live caller uses IOC/FOK today (all pass good_till_canceled) -- but this keeps the lookup correct if that changes.' e5331a8d (2026-08-17) added a live caller (main.py's cmd_order) that passes time_in_force='immediate_or_cancel' for live orders, and order_executor._exit_live_position already used IOC before that. The comment was not updated to reflect this and now misleads a future reader into thinking the third lookup-pass (canceled-with-partial-fill) is purely defensive/unreachable, when it is now a live, reachable code path...
+  Root cause: Corrected by verification: the comment (added in commit 555bf1e0, 2026-07-11) was already false starting commit efa13ed4/ef6224d8 (2026-07-12/13, over a month before e5331a8d) once order_executor._exit_live_position began passing immediate_or_cancel. e5331a8d (2026-08-17) did not originate the...
+  Evidence: kalshi_client.py lines 583-585 (verified verbatim, unchanged): '# Third pass: an IOC/FOK order with no fill is finalized as canceled, not\n# resting/executed -- no live caller uses IOC/FOK today (all pass\n# good_till_canceled), but this keeps the lookup correct if that changes.' git log -S"no live caller uses IOC" -- kalshi_client.py shows the comment originated in 555bf1e0 (2026-07-11 21:01:17...
+  Financial risk: None directly -- this is a comment, not logic. Low risk that a future maintainer removes the 'unreachable' third-pass lookup based on the stale comment, which would then break IOC order...
+  Recommendation: Update the comment to note that main.cmd_order (live path) and order_executor._exit_live_position both pass immediate_or_cancel, so this third lookup pass is now a genuinely exercised code path, not merely a forward-looking safeguard.
+  Full record: audit/AUDIT_REPORT.json (id AUD-UNMATCHED-61), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Far-tail rain climatology blend's additive dry-tilt shift is floor-clipped at 0.0, under-applying the correction for near-zero precipitation distributions
+Priority: INFO (audit id AUD-0066, status CONFIRMED, confidence HIGH, evidence E1)
+Files: acis_precip.py, weather_markets.py
+
+Problem:
+  acis_precip.py:499's `shifted = [max(0.0, s + damped_shift_in) for s in remaining_sums]` applies a floor-at-0.0 additive shift to a distribution that is mostly exact zeros (dry days). A negative (dry-tilt) shift gets asymmetrically clipped toward zero more than a positive shift would be. Confirmed shadow-only/log-only: the far-case tilted values feed only forecast_blend_signal['rain_forecast_blend_prob'] (a metadata/logging dict), while blended_prob (the value that actually drives recommended_side/sizing) comes from a separate, earlier remaining_sums_tilted computation.
+  Root cause: An additive shift model applied to a zero-heavy, non-negative distribution mechanically produces an asymmetric floor effect for negative shifts.
+  Evidence: acis_precip.py:499 read directly and confirmed verbatim. weather_markets.py:8858-8873's in-code comment matches this characterization near-verbatim ('mostly exact zeros... dry SEAS5 tilt gets clipped... Not fixed here... shadow-only'). Traced weather_markets.py:8912-9052 line by line: combined_totals only feeds forecast_blend_signal (a dict merged into a 'signals' metadata key at L9051-9052);...
+  Financial risk: None currently -- confirmed not to feed the live-trading-affecting blended_prob/recommended_side/sizing path.
+  Recommendation: Consider a multiplicative or rank-preserving tilt instead of a floor-clipped additive one if/when this signal is graduated out of shadow-only status.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0066), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_watch and cron confirmed to share one effective safety-gate chain via run_trade_cycle (no residual divergence found)
+Priority: INFO (audit id AUD-0067, status CONFIRMED, confidence HIGH, evidence E1)
+Files: trade_cycle.py, main.py, cron.py
+
+Problem:
+  Verified that trade_cycle.run_trade_cycle() (shared by cron.py and cmd_watch's auto-trade branch, both via _build_cron_context()) independently checks the kill switch (cron.KILL_SWITCH_PATH.exists()), manual override, accuracy halt, and graduation gate itself (trade_cycle.py:188-212), so cmd_watch inherits the same gate coverage as cron even though it doesn't duplicate cron.py's own pre-check block at cron.py:591-643 (which that block's own comments say exists only for black-swan-abort visibility logging, not as the blocking authority).
+  Root cause: N/A -- confirms correct unification, not a defect.
+  Evidence: trade_cycle.py:188 `if cron.KILL_SWITCH_PATH.exists()`, :196 `ctx.check_manual_override()`, :202 `ctx.check_accuracy_halt()`, :212 `ctx.check_graduation_gate()`; main.py:3619-3648 cmd_watch's auto_trade branch calls `run_trade_cycle(ctx, ...)` via the identical `_build_cron_context()` helper cron.py uses.
+  Recommendation: No action needed.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0067), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] safe_io bare os.replace() migration is complete repo-wide (cluster J fully resolved for os.replace specifically)
+Priority: INFO (audit id AUD-0068, status CONFIRMED, confidence HIGH, evidence E1)
+Files: safe_io.py
+
+Problem:
+  Grepped `os.replace(` across the entire repository outside safe_io.py -- zero remaining bare call sites in production code; only comment/docstring mentions and the guard test's own allowlist. Confirms the migration commits (94d36402, 3a28ae33, f2c03d98) fully closed this specific pattern, though it did not extend to the semantically-similar Path.rename() pattern (see the separate NEW finding on main.py's kill-switch rename race).
+  Root cause: N/A -- confirms completeness, not a defect.
+  Evidence: grep -rn "os.replace(" *.py -> only safe_io.py's own _replace_with_retry implementation and a comment in circuit_breaker.py.
+  Recommendation: No action needed for os.replace() specifically.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0068), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py CSRF check (X-Requested-With / method allowlist) applies globally via before_request, no per-route gap found
+Priority: INFO (audit id AUD-0069, status CONFIRMED, confidence HIGH, evidence E1)
+Files: web_app.py
+
+Problem:
+  Confirmed the CSRF-relevant check (state-changing requests must carry X-Requested-With: XMLHttpRequest when authenticated via Basic Auth) lives in a single @app.before_request hook applied unconditionally to all routes, not a per-route decorator a new route could accidentally omit. Enumerated all 60 @app.route definitions and all POST/DELETE routes (run_cron, cancel-cron, halt, resume, override POST/DELETE, forecast-cache/invalidate, paper-order, close-position) are covered by construction.
+  Root cause: N/A -- confirms correct design, not a defect.
+  Evidence: web_app.py:166-209 `@app.before_request def _check_auth()`; full route enumeration via grep.
+  Security risk: None found in this check.
+  Recommendation: No action needed; note for future reviewers that this protection is central and would need to move with any auth-model change.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0069), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Admin accuracy-circuit-breaker override (cluster M) confirmed CLI-only, not dashboard-reachable
+Priority: INFO (audit id AUD-0070, status CONFIRMED, confidence HIGH, evidence E1)
+Files: web_app.py, main.py, paper.py
+
+Problem:
+  Recon flagged this as worth checking. Confirmed by enumerating all @app.route definitions in web_app.py (60 routes) that none correspond to the accuracy-circuit-breaker override command added in 251e838e; it is reachable only via CLI.
+  Root cause: N/A -- confirms current state, not a defect.
+  Evidence: Full grep of `@app.route` in web_app.py; none named/shaped for accuracy-override.
+  Financial risk: None currently.
+  Security risk: None currently.
+  Recommendation: No action needed; flag if a future change ever adds a dashboard route for this, since it would need its own explicit auth/CSRF consideration beyond the generic before_request check.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0070), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] trade_cycle.py's STRONG/MED placement-gate mirror uses a different None-fallback for net_edge than the real validate() gate it mirrors
+Priority: INFO (audit id AUD-0071, status CONFIRMED, confidence VERY HIGH, evidence E2)
+Files: trade_cycle.py, order_executor.py, weather_markets.py
+
+Problem:
+  Commit c9b0fc02 (and its follow-up 55918ede) added a mirror of order_executor._validate_trade_opportunity's edge gates into trade_cycle.py's STRONG/MED tier classification, specifically to prevent tier-classification from disagreeing with the real placement gate (the exact bug class of the KXHIGHTSEA-26AUG07-T85 live incident cited in that commit). I independently reproduced the mirror and the real gate side by side and found one residual discrepancy: trade_cycle's net_edge variable falls back None -> analysis.get('edge') -> 0.0, while validate()'s real edge variable falls back None -> 0.0...
+  Root cause: trade_cycle.py's net_edge variable (lines 467-471) predates the placement-gate mirror and was originally a generic None-safety helper for the tier-magnitude check (abs(adjusted_edge)>=threshold); the placement-gate mirror added later reuses this same variable for its net_edge<=0 check rather than...
+  Evidence: Read trade_cycle.py L440-680 and order_executor.py L1995-2024 in full and confirmed the exact code byte-for-byte against the finding's description. Ran the existing audit/reproductions/net_edge_fallback_mismatch.py (present in the repo, verified its embedded source snippets against current file contents before trusting it) with `python audit/reproductions/net_edge_fallback_mismatch.py`: confirms...
+  Financial risk: None under current code paths (unreachable, and now confirmed unreachable across 100% of weather_markets.py's edge-assignment sites, not just the sampled majority); if ever reached, worst case is a...
+  Recommendation: No action required -- already documented and accepted by the team with correct reasoning, and my broader grep closes the remaining audit gap (hourly/arb paths) the original finding had left open, with the same 'unreachable' conclusion holding.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0071), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] log_prediction's UTC-based days_out fallback remains for callers that do not supply analysis days_out
+Priority: INFO (audit id AUD-0072, status CONFIRMED, confidence HIGH, evidence E1)
+Files: tracker.py
+
+Problem:
+  tracker.py's log_prediction() prefers analysis[days_out] (analyze_trade's city-local value) when present, but falls back to max(0, (market_date - utils.utc_today()).days) when the caller does not supply it, documented as covering shadow/lookup writes built from a bare market dict. This fallback still uses UTC and clamps at 0, so it can silently store days_out=0 for a trade whose real city-local days_out is 1 during the nightly window.
+  Root cause: Deliberate, explicitly-documented fallback for callers lacking a pre-computed days_out; not itself part of the 0100bffe/6364b38b fix scope.
+  Evidence: Static read of tracker.py:864-886 including the comment explicitly describing this as a known, accepted fallback path.
+  Financial risk: None -- affects only analytics bucketing for rows written without a real analyze_trade result.
+  Recommendation: No action required beyond what is already documented; could adopt the same ZoneInfo pattern if this fallback path is revisited for other reasons.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0072), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] ml_bias.get_emos_status() mislabels a concurrent EMOS deactivation race as file corruption
+Priority: INFO (audit id AUD-0073, status CONFIRMED, confidence LOW, evidence E1)
+Files: ml_bias.py
+
+Problem:
+  get_emos_status() checks `_EMOS_PARAMS_PATH.exists()` then separately reads the file's contents; if deactivate_emos() deletes the file between the check and the read, the read raises FileNotFoundError, caught by a broad `except Exception` and reported as `{'active': False, 'corrupt': True, ...}` instead of the correct `{'active': False}`.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0073), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] ForecastCache disk snapshot is last-writer-wins across independent processes
+Priority: INFO (audit id AUD-0074, status CONFIRMED, confidence HIGH, evidence E1)
+Files: forecast_cache.py
+
+Problem:
+  ForecastCache/PersistentForecastCache's store is strictly in-process (self._store: dict), so separate cron/watch/web_app processes each hold an independent copy; dump_to_disk/load_from_disk round-trip through a single shared JSON file with no cross-process merge — the last process to dump_to_disk() wins and silently discards any newly-learned entries a losing process added.
+  Root cause: dump_to_disk builds its serialized payload purely from the calling instance's own in-memory self._store and does a full atomic_write_json overwrite; load_from_disk likewise fully replaces in-memory entries from whatever the file currently contains — no read-merge-write.
+  Evidence: Read forecast_cache.py:185-227 directly, confirming the full-overwrite/full-replace shape with no merge step.
+  Financial risk: None — the caches affected are documented as permanent/idempotent derived facts (e.g. station lookups) that get re-derived next time needed, not trading state.
+  Recommendation: No action needed given the low-impact caches involved; if this pattern is reused for higher-value state in the future, a read-merge-write should be considered.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0074), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py: two @_require_auth route decorators remain despite before_request comment claiming they were removed
+Priority: INFO (audit id AUD-0075, status CONFIRMED, confidence VERY HIGH, evidence E1)
+Files: web_app.py:1911, web_app.py:1952, web_app.py:170-172
+
+Problem:
+  web_app.py's before_request handler comment states 'Route-level @_require_auth decorators were removed (WA-16)', but @_require_auth still decorates api_emos_status and api_weather_alerts.
+  Root cause: The WA-16 cleanup that removed redundant per-route decorators elsewhere in the file missed these two routes.
+  Evidence: Grepped '@_require_auth' in web_app.py — confirmed exactly two hits, at lines 1911 (decorating api_emos_status, defined at line 1912) and 1952 (decorating api_weather_alerts, defined at line 1953). Read web_app.py:160-172 directly — confirmed the before_request comment text 'Route-level @_require_auth decorators were removed (WA-16): before_request runs unconditionally on every request, making...
+  Financial risk: None — before_request's auth check runs first regardless.
+  Security risk: None — purely redundant, not a weakening of the auth boundary.
+  Recommendation: Remove the two leftover decorators or update the before_request comment.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0075), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Kalshi API ticker values flow unvalidated into URL path segments
+Priority: INFO (audit id AUD-0076, status CONFIRMED, confidence MEDIUM, evidence E1)
+Files: kalshi_client.py:340,347,363
+
+Problem:
+  Ticker/series_ticker strings are interpolated directly into REST path segments with no validation. One of these paths is reachable indirectly from /api/paper-order's JSON body (ticker field).
+  Root cause: No allowlist/format validation on ticker strings before building the request path.
+  Evidence: Read kalshi_client.py:339-363 directly — confirmed `f"/markets/{ticker}"` (get_market, line 340), `f"/markets/{ticker}/orderbook"` (get_orderbook, line 347), and `f"/series/{series_ticker}/markets/{ticker}/candlesticks"` (get_candlesticks, line 363) exactly as cited. Confirmed the fixed-host claim: PROD_BASE/DEMO_BASE are module-level constants (kalshi_client.py:186-187), never derived from...
+  Financial risk: None identified — same-privilege operator-signed request to Kalshi's own fixed host only.
+  Security risk: Theoretical path-segment manipulation only; no SSRF (host fixed), no privilege escalation.
+  Recommendation: Optional hardening: validate ticker format before use, as defense-in-depth only.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0076), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Verified: web_app.py's dev server does NOT block concurrent requests behind an open SSE stream, despite Werkzeug's own run_simple() defaulting threaded=False
+Priority: INFO (audit id AUD-0077, status CONFIRMED, confidence VERY HIGH, evidence E3)
+Files: web_app.py
+
+Problem:
+  Recorded for later passes' benefit so this isn't re-investigated: web_app.py's start_web() calls _app.run(...) without an explicit threaded=True, and Werkzeug's own werkzeug.serving.run_simple (installed version 3.1.8) defaults threaded=False -- which looked, from static reading alone, like it would let the two infinite-loop/time.sleep(10) SSE endpoints (/api/stream, /api/stream/markets, the former opened persistently by the React frontend's useData.js on every dashboard page load) serialize the single-threaded dev server, blocking every other request (page loads, /api/trades,...
+  Root cause: N/A -- not a bug. Flask's Flask.run() sets threaded=True by default (has since Flask 1.0, per its own docstring changelog), overriding Werkzeug's run_simple()'s own threaded=False default.
+  Evidence: audit/reproductions/sse_blocking_repro2.py: built the real app via web_app._build_app(None), ran app.run(host="127.0.0.1", port=58433, debug=False, use_reloader=False) (the exact production call), opened a persistent /api/stream connection, fired 8x /api/status requests at 1s intervals -- all completed in 57-270ms with no blocking observed. Confirmed via `python -c "import inspect; from flask.app...
+  Recommendation: No action needed. Documented here so a later pass doesn't re-spend time investigating the same (ultimately incorrect) hypothesis.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0077), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] ml_bias.py's HMAC sidecar write bypasses the codebase's atomic-write convention (but fails safe on a torn write anyway)
+Priority: INFO (audit id AUD-0078, status CONFIRMED, confidence HIGH, evidence E1)
+Files: ml_bias.py
+
+Problem:
+  _write_hmac() writes the HMAC sidecar via a plain Path.write_text() call rather than safe_io.atomic_write_text/atomic_write_json. A process kill mid-write here could leave a truncated/corrupt .hmac file.
+  Root cause: This write path was not included in the atomic-write migration passes or their bypass-guard tests, likely because it writes via Path.write_text directly rather than a bare os.replace() (the specific pattern those guard tests check for).
+  Evidence: Direct read of ml_bias.py:72-75 (_write_hmac) confirms no safe_io import/usage. Direct read of ml_bias.py:78-155 (_load_models) confirms every rejection path returns {} rather than loading unverified data.
+  Financial risk: None identified.
+  Security risk: None -- the HMAC check also incidentally covers the reliability case.
+  Recommendation: Low priority: route _write_hmac (and the adjacent .pkl write) through safe_io.atomic_write_text/atomic_write_bytes for consistency.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0078), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Misleading test docstring in test_full_exit_race_loss_does_not_crash_the_caller
+Priority: INFO (audit id AUD-0079, status CONFIRMED, confidence MEDIUM, evidence E1)
+Files: tests/test_live_execution.py, order_executor.py
+
+Problem:
+  The test's docstring says '[the caller] must not raise -- and must not silently report success either', but the test body then asserts `result is True`. This isn't a bug: _exit_live_position's True/False return communicates whether the exchange fill itself succeeded (it did, in this scenario -- only the bookkeeping lost a race to a concurrent writer), and every current caller (order_executor.py's _check_live_position_exits -> store.exit(...)) discards the return value entirely, so there is no actual 'silently report success' failure mode to guard against today. The docstring overstates what...
+  Root cause: Test-writing shorthand describing the historical bug being guarded against (a RuntimeError propagating and crashing the process) using language ('report success') that doesn't match the actual return-value semantics of the function under test.
+  Evidence: Read order_executor.py:1182-1373 (_exit_live_position) and order_executor.py:1420-1444 (_check_live_position_exits), confirming store.exit()'s boolean return is never inspected by its only caller.
+  Financial risk: None -- documentation-only.
+  Recommendation: Reword the docstring's final sentence, or note explicitly that the True/False contract has no current caller that branches on it (so if one is ever added, this test's assumption should be re-examined). NOTE: a caller that branches on it already exists (see verification_notes) -- the...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0079), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Recent-commit test suite (2026-08-02..08-17) shows unusually high, self-critical test-writing discipline
+Priority: INFO (audit id AUD-0080, status CONFIRMED, confidence HIGH, evidence E2)
+Files: tests/test_trading_gates.py, tests/test_live_execution.py, tests/test_positions.py, tests/test_settlement_monitor.py, tests/test_rain_markets.py, tests/test_cron_integration.py, tests/test_trade_cycle
+
+Problem:
+  Across all recent-commit-relevant test files sampled this pass, the dominant pattern is genuine, well-evidenced testing: exact numeric boundary pins (not loose ranges), positive controls proving a mocked branch is still reachable (e.g. TestCmdOrderLiveRecording's demo-mode sibling tests), documented mutation-testing results inline in docstrings, real (tmp-file/tmp-DB) end-to-end assertions rather than mock.called-only checks, and repeated instances of a prior test being caught as vacuous by an opus review round and rewritten to actually discriminate the bug it claims to guard against (e.g....
+  Root cause: N/A -- positive observation, not a defect.
+  Evidence: Direct pytest runs this session (E2) plus extensive source reads of the listed files' test bodies and docstrings.
+  Recommendation: None required; noted so this audit's overall test-quality assessment isn't skewed toward assuming pervasive weak coverage based on the handful of gaps found above, which are genuine but narrow.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0080), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] metar.fetch_metar_daily_extreme docstring's caller list is stale after b0f4cad2 added a third caller
+Priority: INFO (audit id AUD-0081, status CONFIRMED, confidence HIGH, evidence E1)
+
+Problem:
+  metar.py's fetch_metar_daily_extreme docstring states 'Both current callers (settlement_monitor.py, weather_markets.py's _metar_lock_in) only ever pass today's date; this function does not enforce that itself.' b0f4cad2 (2026-08-17) added a third call site in weather_markets.py's _compute_persistence_prob (weather_markets.py:6137) that also calls this function, but the docstring's caller enumeration was not updated.
+  Root cause: b0f4cad2 reused an existing function without revisiting its docstring's caller inventory.
+  Evidence: metar.py lines 396-404 docstring text verified verbatim. grep of `fetch_metar_daily_extreme(` shows 3 call sites: weather_markets.py:6137 (new, from b0f4cad2), weather_markets.py:10368 and 10433 (pre-existing _metar_lock_in), settlement_monitor.py:416. `git show b0f4cad2 --stat` confirms this commit ('fix(weather_markets): source real daily-high for persistence_prob's dead branch', 2026-08-17)...
+  Financial risk: None -- purely cosmetic/documentation.
+  Recommendation: Update the docstring to mention the third caller, or phrase it generically ('every current caller') rather than naming call sites individually so future additions don't require a docstring update to stay accurate.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0081), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] CI workflow runs the full pytest suite twice per run (coverage report + coverage gate as separate full runs)
+Priority: INFO (audit id AUD-0083, status CONFIRMED, confidence HIGH, evidence E1)
+
+Problem:
+  Read .github/workflows/ci.yml in full. Lines 40-41: 'Run tests with coverage' step runs `pytest -v --cov=. --cov-report=term-missing`. Lines 43-44: 'Fail if coverage drops below 40%' step runs `pytest --cov=. --cov-fail-under=40 -q`. Both are independent full pytest invocations over the same testpaths with no test-selection narrowing between them, exactly as claimed. Recommendation (merge into one invocation or use `coverage report --fail-under`) is technically sound.
+  Full record: audit/AUDIT_REPORT.json (id AUD-0083), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] pyproject.toml's `integration` marker relies entirely on tests self-skipping, not on pytest configuration excluding the marker
+Priority: INFO (audit id AUD-0084, status CONFIRMED, confidence MEDIUM, evidence E1)
+
+Problem:
+  Read pyproject.toml's [tool.pytest.ini_options] block in full — confirmed no `addopts` key exists at all, so nothing at config level excludes the `integration` marker by default. Read tests/test_integration_live.py — `pytestmark = pytest.mark.integration` (module-level) plus a per-client-construction self-skip (`if os.getenv("KALSHI_ENV") != "demo": pytest.skip(...)`) is the only mechanism preventing these tests from attempting real calls; note the file's own docstring additionally claims (also inaccurately) that these tests 'are excluded from normal pytest runs' by default, which reinforces...
+  Full record: audit/AUDIT_REPORT.json (id AUD-0084), audit/AUDIT_REPORT.md.
