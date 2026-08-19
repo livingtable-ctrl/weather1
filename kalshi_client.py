@@ -187,6 +187,37 @@ PROD_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 DEMO_BASE = "https://demo-api.kalshi.co/trade-api/v2"
 
 
+class OrderStatusUnknownError(Exception):
+    """Raised by place_order() when the create-order POST failed AND at
+    least one of the 3 reconciliation lookups (_find_order_by_client_id)
+    also failed to execute -- so whether the order landed on the exchange
+    genuinely cannot be determined right now (AUD-0007).
+
+    Distinct from a plain re-raised POST exception, which means
+    reconciliation positively confirmed no matching order exists. Callers
+    must not treat this the same as a confirmed-failed placement: log it
+    with a status that keeps dedup guards blocking a retry and that a
+    recovery routine can periodically re-check via client_order_id (carried
+    on this exception) once the API is healthy again.
+    """
+
+    def __init__(self, client_order_id: str, original_exc: BaseException):
+        self.client_order_id = client_order_id
+        self.original_exc = original_exc
+        super().__init__(
+            f"order outcome unknown for client_order_id={client_order_id}: {original_exc}"
+        )
+
+    def __reduce__(self):
+        # Opus review follow-up: Exception's default __reduce__ reconstructs
+        # via type(self)(*self.args), i.e. OrderStatusUnknownError(msg) --
+        # one positional arg, which doesn't match __init__'s required
+        # (client_order_id, original_exc) signature and raises TypeError on
+        # pickle/copy. No exercised path crosses a process boundary today,
+        # but this is cheap to get right rather than leave latent.
+        return (self.__class__, (self.client_order_id, self.original_exc))
+
+
 def _to_v2_side_price(side: str, action: str, price: float) -> tuple[str, float]:
     """Map this codebase's (side: yes/no, action: buy/sell, price) model to
     Kalshi's V2 order API (side: bid/ask, single price) model.
@@ -452,10 +483,86 @@ class KalshiClient:
         self._validate(data, "market_positions", "/portfolio/positions")
         return data.get("market_positions", [])
 
+    def _get_orders_by_status(self, status: str) -> list[dict]:
+        """Fetch every order with the given status, following Kalshi's cursor
+        pagination (same pattern as get_markets/get_trades) instead of
+        silently returning only the first page.
+
+        AUD-0007 follow-on (opus review): the 3 reconciliation lookups in
+        _find_order_by_client_id (and get_open_orders, which shares this
+        helper) previously fetched a single unpaginated page. An account
+        with more than one page of order history could have the order
+        being reconciled sitting on a later page, making a genuinely
+        landed order look "confirmed not found" once enough other orders
+        (mostly unrelated) accumulated afterward -- the same class of bug
+        AUD-0012 already fixed for execution_log's own local queries, just
+        on the Kalshi-API side of the lookup instead.
+
+        Raises (rather than silently treating a malformed page as empty) if
+        a response is missing the expected "orders" key -- a degraded/
+        reshaped payload must be treated as a failed lookup (uncertain=True
+        in the caller), not as "this page had zero matching orders".
+
+        Opus review follow-up (round 2): mirrors get_trades' full 3-guard
+        termination shape (this originally only had the repeated-cursor
+        guard) -- Kalshi's own pagination convention (confirmed live, see
+        get_trades' docstring) can return a non-empty cursor on what turns
+        out to be the LAST page, with an empty page on the next call being
+        what actually signals "done"; without the `not page` check this
+        loops one extra (harmless but wasteful) round-trip per call, and
+        without a page-count backstop a server that keeps minting fresh
+        cursors could loop indefinitely. This runs SYNCHRONOUSLY inside
+        place_order's exception handler (a live-order placement's error
+        path), so an unbounded loop here is a latency/availability risk,
+        not just a resource one. limit=1000 (Kalshi's max page size, same
+        as get_trades) minimizes round-trips for the common case.
+        """
+        all_orders: list[dict] = []
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
+        page_count = 0
+        while True:
+            params: dict = {"status": status, "limit": 1000}
+            if cursor:
+                params["cursor"] = cursor
+            data = self._get("/portfolio/orders", params=params, auth=True)
+            page = data.get("orders")
+            if not isinstance(page, list):
+                # Covers both a missing key (page is None) and a present
+                # but malformed value (e.g. {"orders": null} -- page is
+                # also None -- or {"orders": {}}) with the same descriptive
+                # ValueError instead of a bare TypeError from extend().
+                raise ValueError(
+                    f"_get_orders_by_status({status!r}): response has no "
+                    f"usable 'orders' list: {data!r}"
+                )
+            all_orders.extend(page)
+            page_count += 1
+            cursor = data.get("cursor")
+            if not cursor or not page:
+                break
+            if cursor in seen_cursors:
+                _log.error(
+                    "_get_orders_by_status(%r): Kalshi returned a repeated "
+                    "cursor %r — stopping pagination early instead of "
+                    "looping forever",
+                    status,
+                    cursor,
+                )
+                break
+            seen_cursors.add(cursor)
+            if page_count >= 50:
+                _log.error(
+                    "_get_orders_by_status(%r): exceeded 50 pages (50,000+ "
+                    "orders) -- stopping pagination early as a runaway-loop "
+                    "backstop",
+                    status,
+                )
+                break
+        return all_orders
+
     def get_open_orders(self) -> list[dict]:
-        data = self._get("/portfolio/orders", params={"status": "resting"}, auth=True)
-        self._validate(data, "orders", "/portfolio/orders")
-        return data.get("orders", [])
+        return self._get_orders_by_status("resting")
 
     def place_order(
         self,
@@ -524,13 +631,23 @@ class KalshiClient:
         except Exception as exc:
             # POST was not retried automatically (see _build_session).
             # On any failure, check whether the order landed anyway before re-raising.
-            existing = self._find_order_by_client_id(client_order_id)
+            existing, _uncertain = self._find_order_by_client_id(client_order_id)
             if existing:
                 _log.warning(
                     "place_order: order landed despite exception; returning existing %s",
                     existing.get("order_id"),
                 )
                 return existing
+            if _uncertain:
+                # AUD-0007: at least one reconciliation lookup itself failed
+                # to execute, so "not found" here is not a confirmed
+                # negative -- a matching order could be sitting in whichever
+                # pass didn't complete. Re-raising the original exception
+                # would make the caller mark this 'failed', and every dedup
+                # guard in execution_log.py excludes 'failed' rows, so a
+                # real live position could go permanently untracked and be
+                # re-orderable. Callers must catch this distinct type.
+                raise OrderStatusUnknownError(client_order_id, exc) from exc
             raise exc
 
         # order_id is now confirmed live on the exchange -- a failure in this
@@ -548,36 +665,45 @@ class KalshiClient:
             )
             return resp
 
-    def _find_order_by_client_id(self, client_order_id: str) -> dict | None:
-        """Return the order matching client_order_id, or None if not found.
+    def _find_order_by_client_id(
+        self, client_order_id: str
+    ) -> tuple[dict | None, bool]:
+        """Return (order matching client_order_id or None, reconciliation_uncertain).
 
         Checks resting orders first, then executed, then canceled — covers the
         taker-fill case where an order lands and fills immediately before the
         timeout retry fires, and the IOC/FOK case where an unfilled order is
         finalized as canceled rather than resting/executed.
+
+        reconciliation_uncertain is True if ANY of the 3 lookup passes itself
+        failed to execute (AUD-0007) -- a failed pass could be hiding the real
+        match, so a None return alongside uncertain=True must NOT be treated
+        as a confirmed "not found": the order may have landed in exactly the
+        status bucket this call couldn't check. Only uncertain=False means
+        all 3 passes genuinely completed and none matched.
         """
+        _uncertain = False
         try:
             for order in self.get_open_orders():
                 if order.get("client_order_id") == client_order_id:
-                    return order
+                    return order, False
         except Exception as _e:
+            _uncertain = True
             _log.warning(
-                "_find_order_by_client_id: resting lookup failed (%s) — assuming not landed",
+                "_find_order_by_client_id: resting lookup failed (%s) — outcome uncertain",
                 _e,
             )
         # Second pass: check executed orders only if resting lookup found nothing.
         # 2026-07-09: was "filled" -- not a real Kalshi status value (the enum is
         # resting/canceled/executed), so this lookup silently matched nothing.
         try:
-            data = self._get(
-                "/portfolio/orders", params={"status": "executed"}, auth=True
-            )
-            for order in data.get("orders", []):
+            for order in self._get_orders_by_status("executed"):
                 if order.get("client_order_id") == client_order_id:
-                    return order
+                    return order, False
         except Exception as _e:
+            _uncertain = True
             _log.warning(
-                "_find_order_by_client_id: executed lookup failed (%s) — assuming not landed",
+                "_find_order_by_client_id: executed lookup failed (%s) — outcome uncertain",
                 _e,
             )
         # Third pass: an IOC/FOK order with no fill is finalized as canceled, not
@@ -587,10 +713,7 @@ class KalshiClient:
         # order with zero fill genuinely never landed, so report not-found (None)
         # so the caller can safely retry.
         try:
-            data = self._get(
-                "/portfolio/orders", params={"status": "canceled"}, auth=True
-            )
-            for order in data.get("orders", []):
+            for order in self._get_orders_by_status("canceled"):
                 if order.get("client_order_id") == client_order_id:
                     fill_count_fp = order.get("fill_count_fp")
                     try:
@@ -599,13 +722,14 @@ class KalshiClient:
                         # Unparseable fill count -- treat as landed rather than
                         # risk the caller retrying and double-placing a real order.
                         _filled = True
-                    return order if _filled else None
+                    return (order, False) if _filled else (None, _uncertain)
         except Exception as _e:
+            _uncertain = True
             _log.warning(
-                "_find_order_by_client_id: canceled lookup failed (%s) — assuming not landed",
+                "_find_order_by_client_id: canceled lookup failed (%s) — outcome uncertain",
                 _e,
             )
-        return None
+        return None, _uncertain
 
     def get_order(self, order_id: str) -> dict:
         """Fetch a single order by ID from the Kalshi portfolio API.

@@ -338,6 +338,42 @@ class TestCountOpenLiveOrders:
         )
         assert order_executor._count_open_live_orders() == 1
 
+    def test_counts_unknown_entry(self):
+        """AUD-0007 follow-on: an 'unknown' entry row (placement outcome
+        ambiguous -- see kalshi_client.OrderStatusUnknownError) could turn
+        out to be a real fill once reconciled, so it must count toward
+        max_open_positions the same as a 'pending' entry -- otherwise the
+        cap could be silently exceeded whenever ambiguous orders accumulate."""
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="unknown",
+            live=True,
+            response={"client_order_id": "coid_abc"},
+        )
+        assert order_executor._count_open_live_orders() == 1
+
+    def test_pending_exit_and_unknown_exit_do_not_double_count(self):
+        """Same reasoning as test_pending_exit_order_does_not_double_count,
+        for the 'unknown' half of the union: an ambiguous protective EXIT
+        order (closes_position_id set) must not be double-counted against
+        the position it was closing."""
+        position_id = _log_live_position()
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.20,
+            order_type="market",
+            status="unknown",
+            live=True,
+            closes_position_id=position_id,
+            response={"client_order_id": "coid_exit"},
+        )
+        assert order_executor._count_open_live_orders() == 1
+
     def test_paper_orders_are_never_counted(self):
         execution_log.log_order(
             ticker="KXHIGH-25MAY15-T75",

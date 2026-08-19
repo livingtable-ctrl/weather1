@@ -381,8 +381,8 @@ class TestPlaceOrderSurvivesGetOrderFailure:
 
             client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
         client._find_order_by_client_id = MagicMock(
-            return_value=None
-        )  # simulates a lagged read finding nothing
+            return_value=(None, False)
+        )  # simulates a lagged read finding nothing, reconciliation NOT uncertain
         return client
 
     def test_returns_raw_create_response_when_get_order_fails(self):

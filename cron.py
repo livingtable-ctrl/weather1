@@ -904,11 +904,12 @@ def _cmd_cron_body(
             _log.warning("cmd_cron: _recover_pending_orders failed: %s", _rpo_exc)
 
         # Protect any live position still open from an earlier watch/live
-        # session -- cron.py itself never places live orders (see
-        # backlog.txt's [RESTING EXIT ORDERS + OCO...] entry), but a
-        # position opened during a prior `watch --auto --live` run can still
-        # be open when a later cron run fires, and previously got zero
-        # automated exit management here.
+        # session -- cron.py itself never OPENS a new live position (see
+        # backlog.txt's [RESTING EXIT ORDERS + OCO...] entry), but it can
+        # still place a real live SELL order via the exit checks right below
+        # to protect one, and a position opened during a prior
+        # `watch --auto --live` run can still be open when a later cron run
+        # fires, and previously got zero automated exit management here.
         try:
             from order_executor import (
                 _check_live_model_exits,

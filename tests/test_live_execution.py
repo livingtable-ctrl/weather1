@@ -213,6 +213,7 @@ class TestPlaceLiveOrder:
         from unittest.mock import MagicMock, patch
 
         import main
+        import order_executor
 
         mock_client = MagicMock()
         mock_client.place_order.return_value = {
@@ -237,7 +238,12 @@ class TestPlaceLiveOrder:
             patch("trading_gates.LiveTradingGate.check", return_value=(True, "ok")),
             patch("execution_log.was_ordered_this_cycle", return_value=False),
             patch("execution_log.log_order", return_value=1),
-            patch.object(main, "_count_open_live_orders", return_value=0),
+            # Opus review follow-up: _place_live_order lives in
+            # order_executor.py and resolves this name from ITS OWN module
+            # globals, not main's -- patching main._count_open_live_orders
+            # was inert (the real function always ran, harmlessly returning
+            # 0 against this test's empty DB either way).
+            patch.object(order_executor, "_count_open_live_orders", return_value=0),
         ):
             placed, cost = main._place_live_order(
                 ticker="KXHIGH-25MAY15-T75",
@@ -254,6 +260,97 @@ class TestPlaceLiveOrder:
         assert cost > 0.0
         call_args = mock_client.place_order.call_args
         assert call_args.kwargs["price"] == pytest.approx(0.55)
+
+    def test_order_status_unknown_logs_unknown_not_failed(self):
+        """AUD-0007: when place_order() raises OrderStatusUnknownError (POST
+        failed AND reconciliation itself couldn't confirm either way), the
+        row must be logged status='unknown', never 'failed' -- every dedup
+        guard in execution_log.py excludes 'failed', so misclassifying an
+        ambiguous outcome as 'failed' would let a real live position go
+        untracked and be re-orderable."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        import main
+        import order_executor
+        from kalshi_client import OrderStatusUnknownError
+
+        mock_client = MagicMock()
+        mock_client.place_order.side_effect = OrderStatusUnknownError(
+            "coid_abc123", ConnectionError("timeout")
+        )
+
+        config = {
+            "max_trade_dollars": 50,
+            "daily_loss_limit": 200,
+            "max_open_positions": 10,
+            "gtc_cancel_hours": 24,
+        }
+        analysis = {
+            "kelly_quantity": 5,
+            "implied_prob": 0.55,
+            "market": {"yes_bid": 50, "yes_ask": 60},
+        }
+
+        with (
+            patch("trading_gates.LiveTradingGate.check", return_value=(True, "ok")),
+            patch("execution_log.was_ordered_this_cycle", return_value=False),
+            # Opus review follow-up: _place_live_order lives in
+            # order_executor.py and resolves this name from ITS OWN module
+            # globals, not main's -- patching main._count_open_live_orders
+            # was inert (the real function always ran, harmlessly returning
+            # 0 against this test's empty DB either way).
+            patch.object(order_executor, "_count_open_live_orders", return_value=0),
+        ):
+            placed, cost = main._place_live_order(
+                ticker="KXHIGH-25MAY15-T75",
+                side="yes",
+                analysis=analysis,
+                config=config,
+                client=mock_client,
+                cycle="12z",
+            )
+
+        assert placed is False
+        assert cost == 0.0
+        unknown_rows = execution_log.get_unknown_live_orders()
+        assert len(unknown_rows) == 1
+        assert unknown_rows[0]["ticker"] == "KXHIGH-25MAY15-T75"
+        import json as _json
+
+        stored_response = _json.loads(unknown_rows[0]["response"])
+        assert stored_response["client_order_id"] == "coid_abc123"
+
+        # Positive control: a genuinely-failed (not ambiguous) order must
+        # still land in 'failed', not 'unknown' -- proves the two except
+        # branches are actually distinguished, not that every order lands
+        # in 'unknown' regardless of exception type.
+        mock_client.place_order.side_effect = ConnectionError("plain failure")
+        with (
+            patch("trading_gates.LiveTradingGate.check", return_value=(True, "ok")),
+            patch("execution_log.was_ordered_this_cycle", return_value=False),
+            # Opus review follow-up: _place_live_order lives in
+            # order_executor.py and resolves this name from ITS OWN module
+            # globals, not main's -- patching main._count_open_live_orders
+            # was inert (the real function always ran, harmlessly returning
+            # 0 against this test's empty DB either way).
+            patch.object(order_executor, "_count_open_live_orders", return_value=0),
+        ):
+            main._place_live_order(
+                ticker="KXHIGH-25MAY15-T76",
+                side="yes",
+                analysis=analysis,
+                config=config,
+                client=mock_client,
+                cycle="12z",
+            )
+        failed_row = next(
+            o
+            for o in execution_log.get_recent_orders(limit=10)
+            if o["ticker"] == "KXHIGH-25MAY15-T76"
+        )
+        assert failed_row["status"] == "failed"
+        assert execution_log.get_unknown_live_orders() == unknown_rows
 
 
 class TestAutoPlaceTradesCycleCheck:
@@ -646,6 +743,488 @@ class TestRecoverPendingOrders:
             "order became invisible to _poll_pending_orders after recovery "
             "nulled its response/order_id"
         )
+
+
+class TestRecoverUnknownOrders:
+    """AUD-0007: 'unknown' rows (place_order()'s POST failed AND
+    reconciliation itself couldn't confirm either way) have no order_id --
+    only a client_order_id stashed in response at write time -- so they need
+    a distinct re-check path from the order_id-based 'pending' loop above.
+    _recover_pending_orders() (despite its name, unchanged for backwards
+    compat with its many existing call sites) now handles both."""
+
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_found_on_recheck_resolves_to_filled(self):
+        """An 'unknown' row whose order turns out to have actually landed
+        (found this time via client_order_id) must resolve to 'filled', not
+        stay stuck 'unknown' forever."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="unknown",
+            live=True,
+            response={"client_order_id": "coid_recheck1"},
+        )
+
+        mock_client = MagicMock()
+        mock_client._find_order_by_client_id.return_value = (
+            {"order_id": "ord_found", "status": "executed", "fill_count_fp": "2.00"},
+            False,
+        )
+
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == row_id)
+        assert row["status"] == "filled"
+        assert row["fill_quantity"] == 2
+        mock_client._find_order_by_client_id.assert_called_once_with("coid_recheck1")
+
+    def test_confirmed_not_found_resolves_to_failed(self):
+        """An 'unknown' row where reconciliation NOW genuinely completes
+        (uncertain=False) and confirms no matching order exists is safe to
+        finally mark 'failed' -- dedup guards correctly unblock a retry."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="unknown",
+            live=True,
+            response={"client_order_id": "coid_recheck2"},
+        )
+
+        mock_client = MagicMock()
+        mock_client._find_order_by_client_id.return_value = (None, False)
+
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == row_id)
+        assert row["status"] == "failed"
+
+    def test_still_uncertain_stays_unknown(self):
+        """Positive control for the two tests above: if reconciliation is
+        STILL uncertain (e.g. the API is still degraded), the row must stay
+        'unknown' rather than being force-resolved either way -- proves this
+        recovery pass doesn't just resolve every unknown row unconditionally
+        regardless of what the re-check actually found."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="unknown",
+            live=True,
+            response={"client_order_id": "coid_recheck3"},
+        )
+
+        mock_client = MagicMock()
+        mock_client._find_order_by_client_id.return_value = (None, True)
+
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == row_id)
+        assert row["status"] == "unknown"
+
+    def test_recovered_exit_order_settles_the_position_it_closed(self):
+        """Opus review follow-up (HIGH): resolving a recovered 'unknown'
+        EXIT order's own status to 'filled' is not enough -- unlike
+        _exit_live_position (the live path this mirrors), the position it
+        closed must also be settled (record_live_exit_fill), or it stays
+        open forever: still returned by get_filled_unsettled_live_orders()
+        even though it was genuinely sold, so the exit scanner would keep
+        placing fresh real SELL orders against it every cycle, and its true
+        P&L would never reach the tax CSV / PnL summary."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        position_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,  # entry price
+            status="filled",
+            live=True,
+        )
+        exit_row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.20,  # exit price
+            order_type="market",
+            status="unknown",
+            live=True,
+            closes_position_id=position_id,
+            response={"client_order_id": "coid_exit_recover"},
+        )
+
+        mock_client = MagicMock()
+        mock_client._find_order_by_client_id.return_value = (
+            {
+                "order_id": "ord_exit_found",
+                "status": "executed",
+                "fill_count_fp": "10.00",
+            },
+            False,
+        )
+
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        exit_row = next(o for o in orders if o["id"] == exit_row_id)
+        assert exit_row["status"] == "filled"
+
+        position_row = next(o for o in orders if o["id"] == position_id)
+        assert position_row["settled_at"] is not None, (
+            "the position the recovered exit order closed was never "
+            "settled -- it will look open forever to get_filled_unsettled_"
+            "live_orders(), triggering repeat real sell attempts"
+        )
+        # gross_pnl = 10 * (0.20 - 0.40) = -2.00; loss -> no fee discount.
+        assert position_row["pnl"] == pytest.approx(-2.00)
+        assert position_row["exit_reason"] == "recovered_exit"
+
+    def test_recovered_exit_partial_fill_settles_partial_and_leaves_position_open(
+        self,
+    ):
+        """Partial-fill counterpart: the position must be REDUCED (not
+        fully settled), and the exit order's own row gets its own pnl
+        recorded separately -- mirrors _exit_live_position's partial-fill
+        branch exactly."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        position_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        exit_row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.20,
+            order_type="market",
+            status="unknown",
+            live=True,
+            closes_position_id=position_id,
+            response={"client_order_id": "coid_partial_recover"},
+        )
+
+        mock_client = MagicMock()
+        mock_client._find_order_by_client_id.return_value = (
+            {
+                "order_id": "ord_partial_found",
+                "status": "canceled",
+                "fill_count_fp": "4.00",  # 4 of 10 filled before cancel (F9)
+            },
+            False,
+        )
+
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        exit_row = next(o for o in orders if o["id"] == exit_row_id)
+        # F9: canceled + nonzero fill_count -> internal 'filled'.
+        assert exit_row["status"] == "filled"
+        assert exit_row["settled_at"] is not None, (
+            "the exit order's OWN row must be settled with its own pnl for "
+            "a partial fill (record_live_early_exit), same as _exit_live_"
+            "position's partial-fill branch"
+        )
+        # gross_pnl = 4 * (0.20 - 0.40) = -0.80
+        assert exit_row["pnl"] == pytest.approx(-0.80)
+
+        position_row = next(o for o in orders if o["id"] == position_id)
+        assert position_row["settled_at"] is None, (
+            "a partial exit must leave the position OPEN at its reduced "
+            "size, not fully settle it"
+        )
+        assert position_row["fill_quantity"] == 6  # 10 - 4 remaining
+
+    def test_settlement_failure_reverts_to_unknown_not_permanently_filled(self):
+        """Opus review follow-up (round 2, HIGH): round 1 wrote the exit
+        row's own status to 'filled' BEFORE attempting to settle the
+        position it closed -- a settlement failure (e.g. a locked DB) was
+        then PERMANENT, because get_unknown_live_orders() only selects
+        status='unknown', so a row that already left that status was never
+        retried. Must now revert to 'unknown' on a settlement failure so a
+        later recovery pass gets another chance."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        position_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        exit_row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.20,
+            order_type="market",
+            status="unknown",
+            live=True,
+            closes_position_id=position_id,
+            response={"client_order_id": "coid_settle_fail"},
+        )
+
+        mock_client = MagicMock()
+        mock_client._find_order_by_client_id.return_value = (
+            {
+                "order_id": "ord_settle_fail",
+                "status": "executed",
+                "fill_count_fp": "10.00",
+            },
+            False,
+        )
+
+        # Force a NON-race exception (sqlite3.OperationalError-shaped, not
+        # the "lost a race" RuntimeError this code already handled in round
+        # 1) to prove the broader except now catches it too.
+        with patch(
+            "execution_log.record_live_exit_fill",
+            side_effect=OSError("database is locked"),
+        ):
+            _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        exit_row = next(o for o in orders if o["id"] == exit_row_id)
+        assert exit_row["status"] == "unknown", (
+            "a settlement failure must leave the row 'unknown' so the next "
+            "recovery pass retries it -- marking it 'filled' anyway makes "
+            "the failure permanent (the row leaves get_unknown_live_orders()"
+            " forever)"
+        )
+        position_row = next(o for o in orders if o["id"] == position_id)
+        assert position_row["settled_at"] is None
+
+        # Now simulate the next recovery pass succeeding (DB no longer
+        # locked) -- confirms the row genuinely IS retried, not just left
+        # unknown forever with no path back to resolution.
+        _recover_pending_orders(mock_client)
+        orders = execution_log.get_recent_orders(limit=10)
+        exit_row = next(o for o in orders if o["id"] == exit_row_id)
+        assert exit_row["status"] == "filled"
+        position_row = next(o for o in orders if o["id"] == position_id)
+        assert position_row["settled_at"] is not None
+
+    def test_concurrent_recovery_passes_settle_exit_order_only_once(self):
+        """Opus review follow-up (round 2, MEDIUM): _recover_pending_orders
+        runs concurrently across processes (cron.py vs cmd_watch's
+        standalone call, deliberately not serialized behind the cron lock
+        per AUD-0013). Simulating two passes racing on the SAME unknown
+        exit row (both reading it before either resolves it) must settle
+        the position's quantity/pnl exactly ONCE, not twice."""
+        import execution_log
+
+        position_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        exit_row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.20,
+            order_type="market",
+            status="unknown",
+            live=True,
+            closes_position_id=position_id,
+            response={"client_order_id": "coid_race"},
+        )
+
+        # Both "processes" already hold the same unknown-row snapshot
+        # (mirrors two concurrent get_unknown_live_orders() reads before
+        # either has claimed the row) -- call the resolution logic twice
+        # in a row without re-fetching, exercising claim_unknown_order's
+        # atomicity directly rather than the outer query.
+        import execution_log as _el
+
+        rows_snapshot = _el.get_unknown_live_orders()
+        assert len(rows_snapshot) == 1
+
+        from order_executor import _settle_recovered_exit_order
+
+        # First "process" wins the claim and settles.
+        assert _el.claim_unknown_order(exit_row_id) is True
+        assert _settle_recovered_exit_order(exit_row_id, rows_snapshot[0], 4) is True
+        _el.log_order_result(exit_row_id, status="filled", response={}, fill_quantity=4)
+
+        # Second "process" was holding the SAME pre-race snapshot and now
+        # tries to claim the same row -- must lose, since it's no longer
+        # 'unknown'.
+        assert _el.claim_unknown_order(exit_row_id) is False
+
+        orders = execution_log.get_recent_orders(limit=10)
+        position_row = next(o for o in orders if o["id"] == position_id)
+        # gross_pnl = 4 * (0.20 - 0.40) = -0.80 -- must be recorded exactly
+        # once, not twice (-1.60), and the position reduced by 4 once, not
+        # twice (fill_quantity == 6, not 2).
+        assert position_row["fill_quantity"] == 6
+        assert execution_log.get_today_live_loss() == pytest.approx(0.80)
+
+    def test_missing_client_order_id_leaves_unknown_without_crashing(self):
+        """A malformed 'unknown' row with no stored client_order_id must be
+        skipped safely (left unknown, warning logged), not crash the whole
+        recovery pass and block every other row's reconciliation."""
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="unknown",
+            live=True,
+            response={},
+        )
+
+        _recover_pending_orders(client=None)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == row_id)
+        assert row["status"] == "unknown"
+
+    def test_unknown_row_processed_when_zero_pending_rows_exist(self):
+        """Regression guard: the pending-rows loop's early return used to
+        make the whole function bail out (skipping the unknown-rows loop
+        entirely) whenever there were zero pending rows -- this is the
+        specific empty-pending trigger condition that exposed it."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        unknown_row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="unknown",
+            live=True,
+            response={"client_order_id": "coid_recheck4"},
+        )
+
+        mock_client = MagicMock()
+        mock_client._find_order_by_client_id.return_value = (None, False)
+
+        # No pending rows exist at all -- get_pending_live_orders() returns [].
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == unknown_row_id)
+        assert row["status"] == "failed", (
+            "unknown-row reconciliation was skipped because the pending-rows "
+            "loop had nothing to do"
+        )
+
+    def test_pending_and_unknown_rows_both_processed_in_one_call(self):
+        """Opus review follow-up: the previous version of this test's name
+        implied a genuinely mixed pending+unknown call but only ever logged
+        an unknown row (zero pending) -- a real regression guard for the
+        early-return bug (test above), but not what this name claims. Now
+        exercises both loops with real, distinct rows in the SAME call and
+        confirms both resolve correctly."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        pending_row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=3,
+            price=0.50,
+            status="pending",
+            live=True,
+            response={"order_id": "ord_pending_1"},
+        )
+        unknown_row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T76",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="unknown",
+            live=True,
+            response={"client_order_id": "coid_recheck5"},
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {
+            "order_id": "ord_pending_1",
+            "status": "executed",
+            "fill_count_fp": "3.00",
+        }
+        mock_client._find_order_by_client_id.return_value = (
+            {"order_id": "ord_unknown_1", "status": "resting"},
+            False,
+        )
+
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        pending_row = next(o for o in orders if o["id"] == pending_row_id)
+        unknown_row = next(o for o in orders if o["id"] == unknown_row_id)
+        assert pending_row["status"] == "filled"
+        assert unknown_row["status"] == "pending"
 
 
 class TestFinalizeCancel:

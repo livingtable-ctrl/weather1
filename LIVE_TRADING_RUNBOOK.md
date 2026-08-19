@@ -99,8 +99,11 @@ All tests must pass. A failure in `test_trading_gates.py` means the safety gate 
 
 ```bash
 # Run one real cron cycle to confirm no import errors, DB connectivity, API reachability.
-# cron never places live orders regardless of LIVE_TRADING_ENABLED — only
-# `watch --auto --live` does — so this is a safe dry run by design.
+# cron never OPENS a new live position (buy) regardless of LIVE_TRADING_ENABLED
+# — only `watch --auto --live` does. It CAN still place a real live SELL to
+# protect an already-open position (stop-loss/breakeven/model exit) if one
+# exists from a prior `watch --live` session — this dry run is only "safe by
+# design" when no live position is currently open; check first if unsure.
 python main.py cron 2>&1 | tail -30
 ```
 
@@ -128,7 +131,9 @@ print('Gate:', 'PASS' if allowed else 'BLOCKED', '—', reason)
 python main.py watch --auto --live
 ```
 
-`python main.py cron` never places live orders — only `watch --auto --live` does. Watch the first cycle's output carefully. If the gate blocks, the bot logs `Live trading gate blocked: <reason>` (in red) and raises `RuntimeError` rather than placing anything — confirm you see neither an unexpected block nor a silent placement with no log trace.
+`python main.py cron` never opens a new live position (buys) — only `watch --auto --live` does. Watch the first cycle's output carefully. If the gate blocks, the bot logs `Live trading gate blocked: <reason>` (in red) and raises `RuntimeError` rather than placing anything — confirm you see neither an unexpected block nor a silent placement with no log trace.
+
+Note: `cron` can still place a real live SELL order to protect an already-open position (stop-loss/breakeven/model exit) even though it never originates new live exposure — see its `_check_live_position_exits`/`_check_live_model_exits` calls. "Never places live orders" understates this; the accurate claim is "never opens a new one."
 
 ---
 
@@ -160,6 +165,18 @@ for o in orders: print(' ', o['ticker'], o['side'], o['status'], o['placed_at'])
 "
 ```
 
+**`status == 'unknown'`**: the create-order call failed AND the bot's own
+follow-up check (querying Kalshi to see if the order landed anyway) also
+couldn't get a definite answer -- so whether this order is real or not is
+genuinely unresolved right now. It's not stuck: `_recover_pending_orders`
+re-checks every 'unknown' row automatically at cron/watch startup and every
+cycle, and will resolve it to `filled`/`pending`/`failed` once the API is
+reachable again. While unresolved, the same ticker+side is blocked from a
+new automated retry (by design, to avoid a duplicate real order). If a row
+stays `unknown` for more than a few cycles, check the order manually against
+Kalshi's own order history (`c.get_open_orders()` / the Kalshi web UI) for
+the ticker in question before assuming it's safe to ignore.
+
 ### Alert thresholds — take action if:
 
 | Metric | Action threshold | Action |
@@ -169,6 +186,7 @@ for o in orders: print(' ', o['ticker'], o['side'], o['status'], o['placed_at'])
 | Projected VaR | Repeatedly near `MAX_VAR_DOLLARS` | Portfolio risk is concentrating — review correlated exposure |
 | Any circuit breaker opens | Any source | Check data source; review any live orders touched by bad data |
 | Brier score (after 10+ trades) | > 0.25 | Pause and investigate |
+| `status == 'unknown'` order row | Persists past a few cron/watch cycles | Manually check that ticker against Kalshi's own order history before assuming it's safe to ignore |
 
 ### Weekly review
 

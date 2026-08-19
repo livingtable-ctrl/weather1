@@ -20535,7 +20535,7 @@ Problem:
   Recommendation: Replace the exists()-then-write_text() pattern with an atomic exclusive-create, e.g. `open(lp, 'x')` (raises FileExistsError if the file already exists) wrapped in the same fail-closed exception handling already present, or reuse paper.py's msvcrt-based _CrossProcessDataLock primitive for this file...
   Full record: audit/AUDIT_REPORT.json (id AUD-0006), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Ambiguous place_order() failure can leave a real live position permanently untracked, unprotected, and re-orderable
+[RESOLVED 2026-08-19 -- batch-02] Ambiguous place_order() failure can leave a real live position permanently untracked, unprotected, and re-orderable
 Priority: HIGH (audit id AUD-0007, status CONFIRMED, confidence HIGH, evidence E1)
 Files: kalshi_client.py, execution_log.py, order_executor.py, main.py
 
@@ -20547,7 +20547,69 @@ Problem:
   Recommendation: Distinguish 'confirmed never sent' from 'ambiguous outcome, reconciliation itself failed' with a separate status (e.g. 'unknown'), and have a recovery routine periodically re-check 'unknown'/'failed' live-order rows against the Kalshi API until confirmed.
   Full record: audit/AUDIT_REPORT.json (id AUD-0007), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_watch --live position-protection block has zero exception handling; a single failure kills the entire persistent watch process
+Resolution 2026-08-19: Implemented exactly as recommended, plus extended to
+  every place_order()/place_maker_order() call site, not just the 2 this
+  entry cited (user confirmed via AskUserQuestion: place_order()'s exception
+  behavior changes for every caller, so all 6 needed the same handling for
+  consistency). kalshi_client.py: new OrderStatusUnknownError; _find_order_
+  by_client_id() now returns (order, reconciliation_uncertain) instead of
+  just an order -- uncertain=True on ANY of the 3 lookup passes failing
+  (chosen over "only if all 3 fail" via AskUserQuestion: a match could be
+  hiding in the one pass that didn't complete, even if the other two ran
+  clean). place_order() raises OrderStatusUnknownError (carrying
+  client_order_id) instead of re-raising the original exception when
+  uncertain. execution_log.py: new get_unknown_live_orders(); no dedup-
+  function changes needed (was_recently_ordered/was_traded_today/
+  was_ordered_this_cycle/was_ordered_recently all use exclusion-list
+  filters that already treat any non-'failed'/'canceled' status, including
+  the new 'unknown', as blocking a retry by default). order_executor.py:
+  _place_live_order, _exit_live_position, _reprice_or_cancel_pending_orders,
+  and the micro-live order block now catch OrderStatusUnknownError
+  separately and log status='unknown' with the client_order_id stashed in
+  response (never 'failed'); _count_open_live_orders() also now counts
+  'unknown' entry rows (an inclusion-based counter, unlike the dedup
+  functions, so it needed an explicit fix or max_open_positions could be
+  silently exceeded once ambiguous orders accumulate); _recover_pending_
+  orders() (all its existing call sites: cron.py startup, trade_cycle.
+  run_trade_cycle(), and cmd_watch's new standalone call added for AUD-0013)
+  now also re-checks 'unknown' rows via client_order_id -> confirmed
+  found/failed/still-uncertain. main.py: cmd_order and _quick_paper_buy
+  (AUD-0010's fix) both catch it the same way.
+  Adjacent bug fixed in the same change (found while researching this
+  entry, confirmed via AskUserQuestion): order_executor.py's micro-live
+  order block wrapped place_order() AND the subsequent tracker.
+  log_live_fill() call in one except -- if log_live_fill raised AFTER a
+  genuinely successful placement, the except clobbered the just-recorded
+  'pending' status back to 'failed', hiding a real live position the same
+  way this entry's core bug did. Narrowed the try block so only place_
+  order()'s own exceptions can set the order's status; log_live_fill
+  failures are now caught separately and logged as cosmetic (slippage-
+  tracking only), never touching the order row. This specific block is
+  gated `not os.getenv("PYTEST_CURRENT_TEST")` (order_executor.py) and so
+  has never had direct automated test coverage even before this fix --
+  known, pre-existing gap, not introduced by this change.
+  Tests: kalshi_client.py's _find_order_by_client_id/place_order behavior
+  (tests/test_idempotency.py, tests/test_kalshi_client.py -- rewrote the 3
+  existing tests whose mocks assumed the old single-value return, added 5
+  new covering uncertain=True/False and the any-pass-fails threshold),
+  order_executor._place_live_order + _recover_pending_orders' new unknown-
+  row reconciliation (tests/test_live_execution.py -- 1 + 6 new tests, incl.
+  a regression guard for a self-caught bug: the pending-rows loop's early
+  `if not pending: return` would have skipped the new unknown-rows loop
+  entirely whenever there were zero pending rows), _count_open_live_orders
+  (tests/test_batch01_live_position_visibility.py -- 2 new), and main.
+  _quick_paper_buy's maker-branch bookkeeping via AUD-0010 (see that entry).
+  Every new status-differentiation test pairs a positive control (a
+  genuinely-failed order still lands 'failed', not 'unknown') so the
+  assertions can't pass vacuously. Mutation-tested via Edit-revert-run-
+  revert-back on kalshi_client.py's exception branch and order_executor.py's
+  pending/unknown early-return bug -- both confirmed to break the intended
+  tests pre-fix.
+  Scoped tests: 487 passed, 2 skipped (see AUD-0008/AUD-0010/AUD-0013
+  entries below -- shared test run across all 4 batch-02 items).
+  ruff/ruff-format/mypy (via pre-commit, not just .venv mypy): all passed.
+
+[RESOLVED 2026-08-19 -- batch-02] cmd_watch --live position-protection block has zero exception handling; a single failure kills the entire persistent watch process
 Priority: HIGH (audit id AUD-0008, status CONFIRMED, confidence VERY HIGH, evidence E1)
 Files: main.py, order_executor.py, cron.py
 
@@ -20558,6 +20620,20 @@ Problem:
   Financial risk: All open live positions go completely unprotected for however long it takes an operator to notice the crashed process and restart it -- potentially hours if unattended.
   Recommendation: Wrap the `if live:` block's 4 calls in the same try/except-and-log pattern already used for the paper-side checks immediately below, matching cron.py's existing guard.
   Full record: audit/AUDIT_REPORT.json (id AUD-0008), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-19: Wrapped exactly as recommended -- main.py's `if live:`
+  block (now ~3845-3910) has its 4 calls (_poll_pending_orders, _reprice_or_
+  cancel_pending_orders, _check_live_position_exits, _check_live_model_exits)
+  in `try: ... except Exception as _live_exc: _log.error(...)`, matching the
+  three paper-side sibling blocks immediately below it and cron.py's own
+  equivalent guard. Bundled with AUD-0013's fix (same block, same try) since
+  they're the same code region and the audit's own evidence for AUD-0013
+  cites this file too.
+  Tests: tests/test_trading.py -- 2 new (test_cmd_watch_live_exception_does_
+  not_kill_the_process, test_cmd_watch_live_calls_standalone_recovery_every_
+  cycle), both mutation-tested via Edit-revert-run-revert-back on the actual
+  main.py block (reverted to the unguarded pre-fix shape, confirmed both
+  tests fail with the exact expected failure mode, then restored).
 
 [RESOLVED 2026-08-18 -- fixed as part of batch-01, same change as AUD-0001; see the Resolution note under AUD-0001's own entry above] _count_open_live_orders() only counts status=='pending' live orders, missing already-filled open positions
 Priority: HIGH (audit id AUD-0009, status CONFIRMED, confidence VERY HIGH, evidence E2)
@@ -20587,7 +20663,7 @@ Resolution 2026-08-18: NOT a pure swap to the filled+unsettled definition --
   into this batch's scope per this project's same-payload rule (different
   consumer, no shared output with anything this fix touches).
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _quick_paper_buy()'s maker-order branch places real live orders but never records the fill in execution_log
+[RESOLVED 2026-08-19 -- batch-02] _quick_paper_buy()'s maker-order branch places real live orders but never records the fill in execution_log
 Priority: HIGH (audit id AUD-0010, status CONFIRMED, confidence MEDIUM, evidence E1)
 Files: main.py
 
@@ -20600,12 +20676,49 @@ Problem:
   Recommendation: Route _quick_paper_buy's maker branch through execution_log.log_order/record_live_exit_fill, or remove the live/maker branch entirely.
   Full record: audit/AUDIT_REPORT.json (id AUD-0010), audit/AUDIT_REPORT.md.
 
+Resolution 2026-08-19: Routed through execution_log, not removed (user's
+  AskUserQuestion choice: this is a real manual-trading feature reachable
+  today, not dead code). Mirrors cmd_order's live-order pattern exactly --
+  log_order(status='pending', live=True) BEFORE the place_maker_order() call
+  (so a crash between logging and the API response leaves a recoverable
+  'pending' row, same as every other live-order call site), then log_order_
+  result() after with the status translated through order_executor.
+  _kalshi_status_to_internal() (a resting maker order -- the common case --
+  translates to None, defaulting to 'pending', the same convention _place_
+  live_order/cmd_order both already use). close_time/entry_prob threaded
+  through when available (entry_prob only when the user let auto-Kelly size
+  the order, since analysis is never computed on an explicit-qty order --
+  initialized `analysis: dict | None = None` before the branch so referencing
+  it later can't NameError on that path). Also catches the new
+  OrderStatusUnknownError (AUD-0007's fix, applied here too per that entry's
+  "all 6 call sites" scope decision) -- this was the sole live-order call
+  site with NO exception handling of any kind before this fix, so it was the
+  highest-risk site to regress on the failed-vs-unknown distinction.
+  Tests: tests/test_trading_gates.py -- 3 new (TestQuickPaperBuyMakerRecording:
+  success->pending, failure->failed as a positive control, and
+  OrderStatusUnknownError->unknown with client_order_id preserved).
+
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] LIVE_TRADING_RUNBOOK.md falsely claims only `watch --auto --live` can place live orders
 Priority: HIGH (audit id AUD-0011, status CONFIRMED, confidence VERY HIGH, evidence E1)
 
 Problem:
   Independently read LIVE_TRADING_RUNBOOK.md:102-104 and :131 — text matches claim exactly ('cron never places live orders regardless of LIVE_TRADING_ENABLED — only `watch --auto --live` does'; 'python main.py cron never places live orders — only `watch --auto --live` does'). Read main.py:4333 def cmd_order(...) and confirmed lines 4519-4537 exactly as cited: `_is_live = getattr(client, "base_url", None) != DEMO_BASE` (4528) followed by `pre_live_trade_check(client)` (4534) inside `if _is_live:`. Also independently found backlog.txt:1947-1952, a pre-existing OPEN entry titled 'KALSHI_ENV=prod...
   Full record: audit/AUDIT_REPORT.json (id AUD-0011), audit/AUDIT_REPORT.md.
+
+ADDENDUM 2026-08-19 (batch-02, AUD-0013's own fix, expanded after round-2
+  opus review): this entry's own Problem text quotes LIVE_TRADING_RUNBOOK.md
+  :102-104 and :131 verbatim -- BOTH of those quotes are now STALE. Both
+  locations were corrected by batch-02 (AUD-0013's resolution note above)
+  to "never opens a NEW live position," the same fix this entry itself
+  would have made. Do NOT grep for the original false-claim text expecting
+  to find it. Still genuinely open and NOT touched by batch-02: this
+  entry's third cited location, a separate `KALSHI_ENV=prod` startup
+  banner in main.py making the same false claim (see the next backlog
+  entry below, filed as its own item) -- that one is a different file/
+  code path than the runbook and was out of batch-02's own file scope.
+  Also still open: whatever the backlog.txt:1947-1952 cross-reference in
+  this entry's Problem text points to -- not verified by batch-02, re-check
+  it's still accurate before closing this entry.
 
 [RESOLVED 2026-08-18 -- fixed as part of batch-01, same change as AUD-0001; see the Resolution note under AUD-0001's own entry above] _poll_pending_orders and _count_open_live_orders can silently lose a genuinely still-open live order once enough interleaved (mostly paper) orders accumulate in the shared execution_log orders table
 Priority: HIGH (audit id AUD-0012, status CONFIRMED, confidence MEDIUM, evidence E2)
@@ -20629,7 +20742,7 @@ Resolution 2026-08-18: new execution_log.get_pending_live_orders()
   the old LIMIT-200 pattern would have evicted it while the new query
   doesn't).
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_watch --auto --live has no standalone _recover_pending_orders() call; crash-window phantom 'pending' live rows stay invisible to live position protection whenever the cron lock is contended
+[RESOLVED 2026-08-19 -- batch-02] cmd_watch --auto --live has no standalone _recover_pending_orders() call; crash-window phantom 'pending' live rows stay invisible to live position protection whenever the cron lock is contended
 Priority: HIGH (audit id AUD-0013, status CONFIRMED, confidence MEDIUM, evidence E1)
 Files: main.py, order_executor.py, trade_cycle.py, cron.py, execution_log.py, LIVE_TRADING_RUNBOOK.md
 
@@ -20640,6 +20753,52 @@ Problem:
   Financial risk: Materially narrower than originally characterized -- see verification_notes. The common case (order placed, response logged, not yet polled as filled) is already independently self-healed every...
   Recommendation: Add a standalone _recover_pending_orders(client) call in cmd_watch's live-order loop, mirroring cron.py's own restored early call.
   Full record: audit/AUDIT_REPORT.json (id AUD-0013), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-19: Added exactly as recommended -- cmd_watch's `if live:`
+  block now calls `_recover_pending_orders(client)` in its own try/except
+  (logging a warning on failure, matching cron.py's exact pattern) BEFORE
+  the poll/reprice/exit-checks try, unconditional on auto_trade or the cron
+  lock. Also extended _recover_pending_orders() itself to reconcile
+  'unknown' rows (AUD-0007's new status), not just 'pending' -- this makes
+  the periodic re-check that fix's own recommendation asked for come for
+  free at every one of this function's existing call sites (cron.py
+  startup, trade_cycle.run_trade_cycle(), and this new cmd_watch call)
+  rather than needing a second dedicated recovery path.
+  Self-caught regression during mutation testing: the pending-rows loop's
+  original `if not pending: return` would have made the whole function bail
+  out before ever reaching the new unknown-rows loop, whenever there were
+  zero pending rows (the common case) -- fixed to let both loops run
+  independently of each other's emptiness before this shipped; a dedicated
+  regression test (test_pending_and_unknown_rows_both_processed_in_one_call)
+  guards it.
+  Doc-accuracy note (found while researching this entry, fixed as adjacency
+  since it's the exact line this entry's own evidence cites): LIVE_TRADING_
+  RUNBOOK.md:131 and a matching cron.py comment both claimed "cron never
+  places live orders" -- false as stated; cron.py's own _check_live_
+  position_exits/_check_live_model_exits calls (same lines this entry
+  already touches) place real live SELL orders to protect an already-open
+  position. Corrected to "never OPENS a new live position (buys)," which is
+  the true claim.
+  CORRECTION 2026-08-19 (round-2 opus review): the paragraph above
+  originally also said LIVE_TRADING_RUNBOOK.md:102-103 was deliberately
+  NOT touched here, left for AUD-0011's own session. Round-2 review argued
+  that leaving a second, uncorrected copy of the exact same false claim in
+  the SAME file (in a "safe dry run by design" pre-flight instruction, an
+  even more operationally dangerous context than :131's) made the doc
+  actively self-contradictory rather than just incomplete -- persuasive
+  enough to fix both instances in this batch after all. LIVE_TRADING_
+  RUNBOOK.md:99-106 now also corrected to "never opens a NEW live position"
+  with the same stop-loss/breakeven/model-exit caveat. See AUD-0011's own
+  entry below for what portion of its scope this leaves open.
+  Tests: see AUD-0008 entry above (test_cmd_watch_live_calls_standalone_
+  recovery_every_cycle) and the "AUD-0007" entry above (TestRecoverUnknownOrders
+  in tests/test_live_execution.py -- 6 new: found-on-recheck, confirmed-not-
+  found, still-uncertain positive control, missing-client_order_id fails
+  safe, and the pending/unknown-independence regression guard).
+  Independent opus review at effort:high, spawned as a single review across
+  all 4 batch-02 items together (same subsystem, same session, per this
+  project's scale-review-to-change-size convention) -- see the addendum note
+  at the end of this entry once that review and any resulting fixes land.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] KALSHI_ENV=prod startup banner wrongly claims only `watch --auto --live` can place live orders
 Priority: MEDIUM (audit id AUD-0014, status CONFIRMED, confidence HIGH, evidence E1)
@@ -21456,3 +21615,116 @@ Problem:
   len(get_filled_unsettled_live_orders()) plus still-pending entry orders
   (closes_position_id IS NULL), the same union order_executor.
   _count_open_live_orders now uses.
+
+ADDENDUM 2026-08-19 (batch-02, AUD-0007): _count_open_live_orders now ALSO
+  counts 'unknown'-status entry orders (a new status this batch introduced --
+  see AUD-0007's resolution above), widening the gap between it and this
+  function's own open_count one more notch. Deliberately not fixed here
+  either (opus review flagged it during batch-02, but it's the same
+  different-consumer/no-shared-output reasoning this entry's own header
+  already used to defer past AUD-0009) -- whoever picks this entry up should
+  fold BOTH gaps (filled-unsettled AND unknown) into open_count in one pass
+  rather than fixing this dashboard stat twice.
+
+[OPEN 2026-08-19 -- found by independent opus review during batch-02 (AUD-0007's fix), genuinely out of scope for that batch (different subsystem: trading_gates.py's gate coverage, not the place_order/execution_log status plumbing batch-02 touched)] _exit_live_position's docstring claims a reduced gate; the code runs the FULL LiveTradingGate, silently disabling every protective exit once the daily-loss halt trips
+Priority: MEDIUM -- narrow trigger (daily-loss halt must already be active) but the consequence is exactly backwards for a protective mechanism
+Files: order_executor.py, trading_gates.py
+
+Problem:
+  order_executor._exit_live_position's docstring states it "Re-runs only the
+  kill-switch/trading-paused gate" and is "deliberately NOT subject to the
+  daily-loss/spend/max-open-position gates" (reduced-gate reasoning: an EXIT
+  should never be blocked by exposure caps that exist to size NEW risk, not
+  to prevent closing existing risk). The code does not match: it calls the
+  FULL `pre_live_trade_check(client)` -> `LiveTradingGate.check()`, which
+  returns False (blocking) on drawdown halt, loss-streak pause, daily-loss
+  halt, accuracy halt, AND the graduation check -- not just kill-switch/
+  trading-paused.
+  Root cause: unclear which side is stale -- the docstring was "Corrected
+  2026-08-17" on a closely related point (a different reduced-gate claim
+  about cmd_order's sell path, confirmed false at the time and fixed in the
+  docstring), so this looks like drift rather than original intent, but
+  needs the same direct verification that correction got before deciding
+  which side to change.
+  Financial risk: the daily-loss halt is precisely the condition under which
+  open positions are most likely underwater and most need their protective
+  stop-loss/breakeven/model-exit to keep firing. From the moment it trips,
+  every automated exit attempt for the rest of the day is silently refused
+  (only a `_log.warning("[LiveExit] Gate blocked exit ...")` -- no operator-
+  facing alert), leaving positions to ride to settlement uncontrolled.
+  Recommendation: Determine whether the docstring or the code reflects the
+  actual intended behavior (re-derive from first principles: should a
+  protective EXIT ever be blocked by a daily-loss halt that exists to stop
+  NEW risk-taking?), then fix whichever side is wrong. If the code is wrong,
+  the fix is a scoped gate check (kill-switch/trading-paused only, matching
+  the docstring) mirroring _replace_live_order's existing reduced-gate
+  precedent in the same file.
+
+[OPEN 2026-08-19 -- found by independent opus review during batch-02 (AUD-0007), a genuinely separate feature (alerting/retention policy) from that batch's own status-plumbing fix] 'unknown'-status live orders have no age cap or operator alert -- an unresolvable row is re-checked forever at 3 authenticated GETs per recovery pass with no visible escalation
+Priority: LOW -- narrow trigger (Kalshi order history aging out past what _get_orders_by_status can still find, or a malformed client_order_id), and the runbook now tells operators to check manually if a row persists
+Files: execution_log.py, order_executor.py, LIVE_TRADING_RUNBOOK.md
+
+Problem:
+  execution_log.get_unknown_live_orders() is unbounded with no age cutoff,
+  and every _recover_pending_orders() call (cron startup, each
+  run_trade_cycle, cmd_watch's own standalone call) re-checks every
+  'unknown' row via 3 authenticated GETs (_find_order_by_client_id). A row
+  that can never be resolved -- e.g. it eventually ages out of what Kalshi's
+  own order-history pagination can still return, or (defensively handled,
+  but still a dead end) has no stored client_order_id at all -- gets
+  re-checked forever with no operator-visible alarm, while the same
+  ticker+side stays dedup-blocked for 7 days (was_ordered_recently) the
+  whole time.
+  Financial risk: Low directly (a stuck 'unknown' row blocks a RETRY, it
+  doesn't itself misrepresent a position as open/closed), but it's an
+  indefinitely-growing blind spot an operator has no automated signal for.
+  LIVE_TRADING_RUNBOOK.md's new Alert-thresholds row ("status == 'unknown'
+  order row / persists past a few cycles / manually check") is a stopgap,
+  not a fix -- it depends on an operator actually running the daily-checks
+  script and noticing.
+  Recommendation: Add an age cutoff (e.g. after N days, log at ERROR/emit a
+  distinct alert rather than silently retrying forever) and/or a dedicated
+  "unknown rows older than N" check surfaced in the daily-monitoring script
+  itself, not just documented in the runbook prose.
+
+ADDENDUM 2026-08-19 (batch-02, AUD-0007, design note not a bug): the
+  reconciliation lookups inside place_order()'s exception handler run in the
+  same synchronous call as the POST failure -- a POST that timed out
+  client-side after the exchange actually accepted it may genuinely not be
+  visible yet in GET /portfolio/orders by the time the immediate re-check
+  runs, independent of the pagination fix above. This is a pre-existing
+  race inherent to any synchronous same-request reconciliation design, not
+  something this batch introduced or could fully close without a retry-
+  with-backoff redesign (a bigger scope decision than this batch's fix).
+  Practical mitigation already in place: this exact race is why 'unknown'
+  triggers periodic re-checks via _recover_pending_orders rather than a
+  single point-in-time verdict -- a same-millisecond false negative on the
+  FIRST check gets a second (and third, ...) chance on every subsequent
+  recovery pass, which the old 'failed'-on-first-try behavior never gave it.
+
+[OPEN 2026-08-19 -- found by round-2 opus review of batch-02 (AUD-0007), a performance optimization genuinely separable from that batch's own correctness fixes] _recover_pending_orders' unknown-row loop re-walks the account's full order history once PER unknown row instead of once per recovery pass
+Priority: LOW -- latency/round-trip-count issue, not a correctness bug; bounded (not unbounded) after round-2's own pagination page-cap fix
+Files: order_executor.py, kalshi_client.py
+
+Problem:
+  Each 'unknown' row in a recovery pass calls
+  client._find_order_by_client_id(client_order_id), which internally does
+  its own fresh 3-status paginated fetch (resting/executed/canceled) via
+  kalshi_client._get_orders_by_status. With N unknown rows in the same
+  pass, that's 3N full paginated traversals of the same underlying order
+  history, even though every row in the pass is being reconciled against
+  the exact same account state.
+  Financial risk: None directly -- this is a round-trip/latency multiplier,
+  not a misclassification risk. Now bounded (50 pages/status, limit=1000
+  each) rather than unbounded, per round-2's own _get_orders_by_status fix
+  in the same review round, which substantially reduces the practical
+  severity of this finding.
+  Recommendation: Fetch each status list (resting/executed/canceled) ONCE
+  at the top of the unknown-rows loop in _recover_pending_orders, then
+  match each row's client_order_id against the in-memory lists instead of
+  calling _find_order_by_client_id per row. Needs care: _find_order_by_
+  client_id's per-pass "uncertain" tracking (did THIS specific lookup fail)
+  would need to become a pass-level concept shared across all rows in the
+  same recovery call, not re-derived per row -- worth its own careful
+  design pass and test coverage rather than folding into an already-large
+  review-response round.

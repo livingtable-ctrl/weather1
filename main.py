@@ -57,7 +57,7 @@ from colors import (
 )
 from config import load_and_validate as _load_config
 from consistency import find_violations
-from kalshi_client import KalshiClient
+from kalshi_client import KalshiClient, OrderStatusUnknownError
 from notify import alert_strong_signal
 from order_executor import (  # noqa: F401 — re-exports: tests + main code reference these via main.*
     _auto_place_trades,
@@ -2363,6 +2363,11 @@ def _quick_paper_buy(client: KalshiClient) -> None:
             tdate_str: str | None = None
             _enriched_for_limits: dict | None = None
             _market_for_limits: dict | None = None
+            # AUD-0010: only ever assigned inside the qty-is-None (auto-Kelly)
+            # branch below -- initialized here so the maker-order branch can
+            # safely reference it for entry_prob bookkeeping regardless of
+            # whether the user supplied an explicit qty.
+            analysis: dict | None = None
             try:
                 from weather_markets import enrich_with_forecast as _ewf_limits
 
@@ -2492,6 +2497,85 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                     except RuntimeError as _gate_err:
                         print(red(f"  Live trading gate blocked: {_gate_err}"))
                         return
+                # AUD-0010: this places a REAL live order via place_maker_order
+                # (client.place_order under the hood) -- pre-log BEFORE the API
+                # call, same as every other live-order call site in the repo
+                # (order_executor._place_live_order, main.cmd_order), so a crash
+                # between here and the response leaves a 'pending' row
+                # _recover_pending_orders can reconcile, instead of the prior
+                # zero-bookkeeping behavior that left a real position invisible
+                # to every dedup guard and protective-exit scanner.
+                from execution_log import log_order, log_order_result
+
+                # Opus review follow-up (HIGH): mirrors cmd_order's own
+                # _is_live computation exactly (main.py:4647) -- this branch
+                # is reachable with a DEMO_BASE client too (the gate check
+                # above only SKIPS the gate for demo, it doesn't block
+                # placement), so hardcoding live=True would mark a demo-
+                # environment rehearsal order live=1 in the single shared
+                # execution_log DB: it would count against the real daily
+                # live-spend cap, a prod `watch --live` session would poll a
+                # demo order_id against prod every cycle, and if it somehow
+                # resolved to 'filled' the live exit scanner could place a
+                # REAL prod SELL for a position that only ever existed on
+                # demo.
+                _qpb_is_live = getattr(client, "base_url", None) != DEMO_BASE
+                # Opus review follow-up: cmd_order warns explicitly when a
+                # live buy will have no close_time (main.py ~4777); this
+                # branch had no equivalent warning for either gap, and it
+                # has TWO independent ways to end up with zero automated
+                # exit coverage: no close_time (positions._passes_exit_gates
+                # fails CLOSED -- never exits via stop-loss/breakeven) and
+                # no entry_prob (order_executor._check_live_model_exits
+                # skips any position with entry_prob is None). entry_prob is
+                # only ever computed on the auto-Kelly (qty=None) path
+                # above, so any explicit-qty maker order silently has none.
+                if _qpb_is_live:
+                    _qpb_close_time = (
+                        _market_for_limits.get("close_time")
+                        or _market_for_limits.get("expiration_time")
+                        if _market_for_limits
+                        else None
+                    )
+                    _qpb_entry_prob = (
+                        analysis.get("forecast_prob") if analysis else None
+                    )
+                    if _qpb_close_time is None or _qpb_entry_prob is None:
+                        print(
+                            yellow(
+                                "  [Warning] This live position will be missing "
+                                + (
+                                    "close_time and entry_prob"
+                                    if _qpb_close_time is None
+                                    and _qpb_entry_prob is None
+                                    else "close_time"
+                                    if _qpb_close_time is None
+                                    else "entry_prob"
+                                )
+                                + " -- the automated stop-loss/breakeven and/or "
+                                "model-exit scanner will never manage it. "
+                                "Monitor and close it manually if needed."
+                            )
+                        )
+                _qpb_log_id = log_order(
+                    ticker,
+                    side,
+                    qty,
+                    maker_price,
+                    order_type="limit",
+                    status="pending",
+                    live=_qpb_is_live,
+                    close_time=(
+                        (
+                            _market_for_limits.get("close_time")
+                            or _market_for_limits.get("expiration_time")
+                        )
+                        if _market_for_limits
+                        else None
+                    ),
+                    entry_prob=(analysis.get("forecast_prob") if analysis else None),
+                    forecast_cycle=order_executor._current_forecast_cycle(),
+                )
                 try:
                     # Minute-bucketed pseudo-cycle so a quick manual retry
                     # after a lost response dedups server-side instead of
@@ -2504,20 +2588,76 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                     result = client.place_maker_order(
                         ticker, side, maker_price, qty, cycle=_maker_cycle
                     )
-                    order = result.get("order", result)
-                    print(
-                        green(
-                            f"  Maker limit order placed: {order.get('order_id', '')}  "
-                            f"@ ${maker_price:.3f}  ({qty} contracts)"
-                        )
+                except OrderStatusUnknownError as _unk_e:
+                    # AUD-0007: reconciliation itself couldn't confirm either
+                    # way -- 'unknown', not 'failed', so dedup keeps blocking
+                    # a retry and _recover_pending_orders re-checks it later.
+                    log_order_result(
+                        _qpb_log_id,
+                        status="unknown",
+                        error=str(_unk_e),
+                        response={"client_order_id": _unk_e.client_order_id},
                     )
-                    print(
-                        dim(
-                            "  Order rests in book — will fill only if market moves to your price."
-                        )
-                    )
+                    print(red(f"  Maker order outcome unknown: {_unk_e}"))
+                    return
                 except Exception as e:
+                    log_order_result(_qpb_log_id, status="failed", error=str(e))
                     print(red(f"  Maker order failed: {e}"))
+                    return
+
+                # Opus review follow-up (AUD-0007, round 2): moved out of
+                # the try above -- if this bookkeeping write itself raised
+                # (e.g. a locked DB) after a genuinely successful placement,
+                # the except block would have wrongly marked a REAL live
+                # order 'failed'. Round 2 caught that an unhandled exception
+                # here would now surface as a raw traceback to the operator
+                # instead (this function's own enclosing handlers are
+                # `except ValueError` and `except (KeyboardInterrupt,
+                # EOFError)`, neither of which is a generic catch-all) --
+                # caught locally instead: the pre-logged 'pending' row with
+                # no order_id is already handled safely by
+                # _recover_pending_orders' existing no-order_id branch.
+                # Kalshi's real status enum is resting/canceled/executed --
+                # a resting maker order (the common case) translates to
+                # None via _kalshi_status_to_internal, defaulting to
+                # "pending" -- same established convention as cmd_order's
+                # live path and _place_live_order.
+                order = result.get("order", result)
+                _qpb_filled = (
+                    order_executor._to_fill_count(order.get("fill_count_fp")) or 0
+                )
+                _qpb_status = (
+                    order_executor._kalshi_status_to_internal(
+                        order.get("status", ""), _qpb_filled
+                    )
+                    or "pending"
+                )
+                try:
+                    log_order_result(
+                        _qpb_log_id,
+                        status=_qpb_status,
+                        response=order,
+                        fill_quantity=_qpb_filled,
+                    )
+                except Exception as _qpb_bk_exc:
+                    print(
+                        yellow(
+                            "  [Warning] Order placed on exchange but local "
+                            f"bookkeeping failed: {_qpb_bk_exc} — check "
+                            "execution_log manually."
+                        )
+                    )
+                print(
+                    green(
+                        f"  Maker limit order placed: {order.get('order_id', '')}  "
+                        f"@ ${maker_price:.3f}  ({qty} contracts)"
+                    )
+                )
+                print(
+                    dim(
+                        "  Order rests in book — will fill only if market moves to your price."
+                    )
+                )
                 return
 
             if qty and qty > 0:
@@ -3777,37 +3917,70 @@ def cmd_watch(
                 )
             _save_watch_state(previous)
             if live:
-                _poll_pending_orders(client, config=live_cfg)
-                _reprice_or_cancel_pending_orders(
-                    client,
-                    config=live_cfg,
-                    liquid_opps=(
-                        # Filter to threshold-passing candidates only --
-                        # cycle_result.liquid_opps is every liquid candidate
-                        # regardless of outcome (all_results split by
-                        # is_liquid() alone), unlike the pre-extraction
-                        # liquid_opps list above which was already filtered
-                        # to _passes_edge-True pairs. _reprice_or_cancel_
-                        # pending_orders uses ticker presence in this list to
-                        # decide whether a resting live order gets left
-                        # alone or is eligible for cancel+taker-replace --
-                        # passing the unfiltered set would newly expose a
-                        # resting order on a below-threshold ticker to that
-                        # replacement path, which pre-extraction watch never
-                        # did.
-                        [
-                            p
-                            for p in cycle_result.liquid_opps
-                            if p[1].get("_passes_threshold")
-                        ]
-                        if cycle_result is not None
-                        else liquid_opps
-                    ),
-                )
-                # Live position protection — must run after the two calls
-                # above so a just-filled order is already visible.
-                _check_live_position_exits(client, config=live_cfg)
-                _check_live_model_exits(client, config=live_cfg)
+                # AUD-0013: cmd_watch only ever reached _recover_pending_orders
+                # indirectly via run_trade_cycle(), itself gated on
+                # auto_trade=True AND a successful ctx.acquire_cron_lock() a
+                # few lines above -- if the lock was contended this cycle,
+                # recovery was silently skipped while the exit checks below
+                # still ran. Standalone call here mirrors cron.py's own
+                # restored early call (cron.py ~898-904) and is a harmless
+                # no-op when there's nothing left pending/unknown to recover.
+                try:
+                    from order_executor import _recover_pending_orders
+
+                    _recover_pending_orders(client)
+                except Exception as _rpo_exc:
+                    _log.warning(
+                        "cmd_watch: _recover_pending_orders failed: %s", _rpo_exc
+                    )
+
+                # AUD-0008: this block previously had NO exception handling at
+                # all, unlike the three paper-side sibling blocks immediately
+                # below it (each already wrapped after a prior "was a silent
+                # pass" fix) and unlike cron.py's own equivalent call site
+                # (cron.py ~912-923, already guarded). The outer while-loop's
+                # only handler is `except KeyboardInterrupt`, so any exception
+                # here used to kill the entire persistent watch process,
+                # leaving every open live position unprotected until an
+                # operator noticed and restarted it -- potentially hours.
+                try:
+                    _poll_pending_orders(client, config=live_cfg)
+                    _reprice_or_cancel_pending_orders(
+                        client,
+                        config=live_cfg,
+                        liquid_opps=(
+                            # Filter to threshold-passing candidates only --
+                            # cycle_result.liquid_opps is every liquid candidate
+                            # regardless of outcome (all_results split by
+                            # is_liquid() alone), unlike the pre-extraction
+                            # liquid_opps list above which was already filtered
+                            # to _passes_edge-True pairs. _reprice_or_cancel_
+                            # pending_orders uses ticker presence in this list to
+                            # decide whether a resting live order gets left
+                            # alone or is eligible for cancel+taker-replace --
+                            # passing the unfiltered set would newly expose a
+                            # resting order on a below-threshold ticker to that
+                            # replacement path, which pre-extraction watch never
+                            # did.
+                            [
+                                p
+                                for p in cycle_result.liquid_opps
+                                if p[1].get("_passes_threshold")
+                            ]
+                            if cycle_result is not None
+                            else liquid_opps
+                        ),
+                    )
+                    # Live position protection — must run after the two calls
+                    # above so a just-filled order is already visible.
+                    _check_live_position_exits(client, config=live_cfg)
+                    _check_live_model_exits(client, config=live_cfg)
+                except Exception as _live_exc:
+                    _log.error(
+                        "cmd_watch: live order/position protection failed "
+                        "(open live positions may be unprotected this cycle): %s",
+                        _live_exc,
+                    )
             # Check price alerts
             try:
                 from alerts import check_alerts, mark_triggered
@@ -4734,27 +4907,57 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             result = client.place_order(
                 ticker, side, action, int(count), price, cycle=_cycle
             )
-        order = result.get("order", result)
-        _placed_order = order
-        _filled_count = order_executor._to_fill_count(order.get("fill_count_fp")) or 0
-        # Kalshi's real status enum is resting/canceled/executed -- there is
-        # no "filled". Storing the raw string directly (as this code did
-        # before the 2026-08-17 opus review caught it) means
-        # execution_log.get_filled_unsettled_live_orders()'s hardcoded
-        # `status = 'filled'` filter NEVER matches, so a real live position
-        # would never surface to the protective-exit scanner regardless of
-        # everything else this fix does. Translate through the same
-        # vocabulary every other live-order call site in order_executor.py
-        # already uses. A still-None result (raw status "resting" — only
-        # possible in demo/paper mode now that live orders are IOC) is
-        # recorded as "pending", matching _recover_pending_orders'
-        # established convention for an unresolved order.
-        _internal_status = (
-            order_executor._kalshi_status_to_internal(
-                order.get("status", ""), _filled_count
-            )
-            or "pending"
+    except OrderStatusUnknownError as _unk_e:
+        # AUD-0007: reconciliation itself couldn't confirm either way -- do
+        # NOT mark 'failed' (every dedup guard excludes it, so a real live
+        # position could be re-orderable and permanently untracked). Keep
+        # dedup blocking a retry; _recover_pending_orders re-checks this row
+        # via client_order_id once the API is healthy again.
+        log_order_result(
+            row_id,
+            status="unknown",
+            error=str(_unk_e),
+            response={"client_order_id": _unk_e.client_order_id},
         )
+        print(red(f"  Order outcome unknown: {_unk_e}"))
+        raise
+    except Exception as e:
+        log_order_result(row_id, status="failed", error=str(e))
+        print(red(f"  Order failed: {e}"))
+        raise
+
+    # Opus review follow-up (AUD-0007, round 2): this whole block used to
+    # sit inside the SAME try as the placement call above -- a bookkeeping-
+    # only failure (e.g. a locked DB) here would have wrongly marked a REAL
+    # live order 'failed', re-opening the exact dedup blind spot this fix
+    # exists to close (this was the one call site the round-1/round-2 narrow-
+    # the-try pass missed entirely). Caught in its own try below instead of
+    # re-raising -- unlike the placement try above, the order genuinely DID
+    # land on the exchange by this point, so cmd_order must not report
+    # failure to the operator; the pre-logged 'pending' row is already safe
+    # per _recover_pending_orders' no-order_id handling if this write fails.
+    order = result.get("order", result)
+    _placed_order = order
+    _filled_count = order_executor._to_fill_count(order.get("fill_count_fp")) or 0
+    # Kalshi's real status enum is resting/canceled/executed -- there is
+    # no "filled". Storing the raw string directly (as this code did
+    # before the 2026-08-17 opus review caught it) means
+    # execution_log.get_filled_unsettled_live_orders()'s hardcoded
+    # `status = 'filled'` filter NEVER matches, so a real live position
+    # would never surface to the protective-exit scanner regardless of
+    # everything else this fix does. Translate through the same
+    # vocabulary every other live-order call site in order_executor.py
+    # already uses. A still-None result (raw status "resting" — only
+    # possible in demo/paper mode now that live orders are IOC) is
+    # recorded as "pending", matching _recover_pending_orders'
+    # established convention for an unresolved order.
+    _internal_status = (
+        order_executor._kalshi_status_to_internal(
+            order.get("status", ""), _filled_count
+        )
+        or "pending"
+    )
+    try:
         # fill_quantity recorded at placement time — every other live-order
         # call site in order_executor.py does the same (e.g.
         # _exit_live_position, _reprice_or_cancel_pending_orders) since
@@ -4767,14 +4970,15 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             response=order,
             fill_quantity=_filled_count,
         )
-        print(green(f"  Order placed: {order.get('order_id', '')}"))
+    except Exception as _bk_exc:
         print(
-            f"  Status: {order.get('status')}  Filled: {order.get('fill_count_fp', 0)}"
+            yellow(
+                "  [Warning] Order placed on exchange but local bookkeeping "
+                f"failed: {_bk_exc} — check execution_log manually."
+            )
         )
-    except Exception as e:
-        log_order_result(row_id, status="failed", error=str(e))
-        print(red(f"  Order failed: {e}"))
-        raise
+    print(green(f"  Order placed: {order.get('order_id', '')}"))
+    print(f"  Status: {order.get('status')}  Filled: {order.get('fill_count_fp', 0)}")
 
     if _internal_status != "filled":
         print(

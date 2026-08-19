@@ -816,6 +816,146 @@ def test_cmd_watch_auto_executes_paper_stop_loss(tmp_path, monkeypatch):
     )
 
 
+def _cmd_watch_live_common_mocks(monkeypatch, tmp_path):
+    """Shared plumbing for the AUD-0008/AUD-0013 cmd_watch --live tests
+    below: everything needed to drive one iteration of the loop with
+    live=True and auto_trade=False (so run_trade_cycle/_recover_pending_orders
+    via that path never fires -- isolating the standalone call this fix adds)."""
+    import main
+
+    monkeypatch.setattr(main, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
+    monkeypatch.setattr(main, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
+    monkeypatch.setattr(main, "_LIVE_CONFIG_PATH", tmp_path / "live_config.json")
+    monkeypatch.setattr(main, "get_weather_markets", lambda client: [])
+    monkeypatch.setattr(main, "check_ensemble_circuit_health", lambda: None)
+    monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
+    monkeypatch.setattr(main, "sync_outcomes", lambda client: 0)
+    monkeypatch.setattr(main, "_check_early_exits", lambda client=None: 0)
+    monkeypatch.setattr("paper.check_expiring_trades", lambda warn_hours=24: [])
+    monkeypatch.setattr("paper.check_paper_position_exits", lambda client: [])
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda *_a, **_k: False)
+    monkeypatch.setattr(main, "_poll_pending_orders", lambda client, config=None: None)
+    monkeypatch.setattr(
+        main,
+        "_reprice_or_cancel_pending_orders",
+        lambda client, config=None, liquid_opps=None: None,
+    )
+
+    sleep_calls = {"n": 0}
+
+    def fake_sleep(s):
+        sleep_calls["n"] += 1
+        if sleep_calls["n"] >= 1:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("time.sleep", fake_sleep)
+
+
+def test_cmd_watch_live_exception_does_not_kill_the_process(tmp_path, monkeypatch):
+    """AUD-0008: cmd_watch's `if live:` block previously had zero exception
+    handling, unlike its paper-side siblings and cron.py's own equivalent
+    call site -- a single exception anywhere in it (here, from
+    _check_live_position_exits) used to propagate straight out of cmd_watch
+    and crash the entire persistent watch process, leaving every open live
+    position unprotected until an operator noticed and restarted it. Proof:
+    drive cmd_watch(live=True) with that call raising, and confirm the loop
+    survives to reach the KeyboardInterrupt stop signal in the SAME
+    iteration, rather than the injected exception propagating out first."""
+    from unittest.mock import MagicMock
+
+    import main
+
+    _cmd_watch_live_common_mocks(monkeypatch, tmp_path)
+    monkeypatch.setattr("order_executor._recover_pending_orders", lambda client: None)
+
+    _boom_calls = {"n": 0}
+
+    def _boom(client, config=None):
+        # Opus review follow-up: without this counter, the test below only
+        # proves _check_live_model_exits never ran -- equally true if the
+        # `if live:` block never executed at all (e.g. a future refactor
+        # moving these calls under `if auto_trade:` instead). Asserting
+        # _boom was actually invoked distinguishes "the exception was
+        # caught" from "the exception was never raised in the first place".
+        _boom_calls["n"] += 1
+        raise RuntimeError("simulated exit-check crash")
+
+    monkeypatch.setattr(main, "_check_live_position_exits", _boom)
+    _model_exit_calls = {"n": 0}
+    monkeypatch.setattr(
+        main,
+        "_check_live_model_exits",
+        lambda client, config=None: _model_exit_calls.__setitem__(
+            "n", _model_exit_calls["n"] + 1
+        ),
+    )
+
+    fake_client = MagicMock()
+
+    try:
+        main.cmd_watch(fake_client, live=True)
+    except KeyboardInterrupt:
+        pass
+    except RuntimeError:
+        pytest.fail(
+            "cmd_watch propagated the exit-check exception instead of "
+            "catching it -- this would kill the entire persistent watch "
+            "process, leaving every live position unprotected (AUD-0008)"
+        )
+
+    # Proves the block genuinely ran and raised (not skipped by some other
+    # gate), and that the exception was caught rather than never occurring.
+    assert _boom_calls["n"] == 1
+    # The exception aborts the try block at the point it's raised, so
+    # _check_live_model_exits (called right after _check_live_position_exits
+    # in the same try) correctly never runs THIS cycle -- what matters is
+    # that the exception didn't escape cmd_watch entirely, proven above by
+    # reaching the KeyboardInterrupt from time.sleep in the same call.
+    assert _model_exit_calls["n"] == 0
+
+
+def test_cmd_watch_live_calls_standalone_recovery_every_cycle(tmp_path, monkeypatch):
+    """AUD-0013: cmd_watch previously only ever reached
+    _recover_pending_orders() indirectly via run_trade_cycle(), itself gated
+    on auto_trade=True AND a successful cron-lock acquisition -- with
+    auto_trade=False (as here), that path never fires at all, so recovery
+    was skipped every single cycle of a plain `watch --live` (no --auto)
+    session. Confirms the new standalone call in the `if live:` block runs
+    regardless of auto_trade."""
+    from unittest.mock import MagicMock
+
+    import main
+
+    _cmd_watch_live_common_mocks(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        main, "_check_live_position_exits", lambda client, config=None: None
+    )
+    monkeypatch.setattr(
+        main, "_check_live_model_exits", lambda client, config=None: None
+    )
+
+    recovery_calls = {"n": 0}
+
+    def _fake_recover(client):
+        recovery_calls["n"] += 1
+
+    monkeypatch.setattr("order_executor._recover_pending_orders", _fake_recover)
+
+    fake_client = MagicMock()
+
+    try:
+        main.cmd_watch(fake_client, auto_trade=False, live=True)
+    except KeyboardInterrupt:
+        pass
+
+    assert recovery_calls["n"] == 1, (
+        "cmd_watch --live (without --auto) never called the standalone "
+        "_recover_pending_orders -- a crash-window 'pending'/'unknown' row "
+        "would stay invisible to live position protection for this entire "
+        "session"
+    )
+
+
 # ── L3-C regression: paper orders must be logged so was_traded_today() survives restarts ──
 
 

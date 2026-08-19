@@ -133,7 +133,7 @@ def init_log() -> None:
                 quantity       INTEGER NOT NULL,
                 price          REAL    NOT NULL,
                 order_type     TEXT,              -- "market" or "limit"
-                status         TEXT,              -- "sent", "pending", "filled", "failed", "canceled"
+                status         TEXT,              -- "sent", "pending", "filled", "failed", "canceled", "amended", "unknown" (AUD-0007: placement outcome ambiguous -- see kalshi_client.OrderStatusUnknownError)
                 response       TEXT,              -- JSON-encoded API response
                 error          TEXT,              -- error message if failed
                 placed_at      TEXT    NOT NULL
@@ -273,6 +273,35 @@ def log_order_result(
                 row_id,
             ),
         )
+
+
+def claim_unknown_order(row_id: int) -> bool:
+    """Atomically claim an 'unknown'-status row for recovery processing,
+    flipping it to 'pending' (reusing that status' existing "in-flight,
+    being reconciled" meaning rather than inventing a new one) ONLY if it
+    is still 'unknown' at the moment of this UPDATE. Returns whether THIS
+    call won the claim.
+
+    Opus review follow-up (AUD-0007, round 2): order_executor.
+    _recover_pending_orders can run concurrently from more than one process
+    (cron.py's own cycle vs cmd_watch's standalone call, deliberately NOT
+    serialized behind the shared cron lock per AUD-0013) -- without this,
+    two processes could both read the same 'unknown' row via
+    get_unknown_live_orders() and both attempt to resolve/settle it,
+    double-applying a partial-exit's quantity reduction and P&L (
+    record_live_partial_exit's own guard only checks the remaining
+    quantity is non-negative, not whether this specific delta was already
+    applied once). Only the winner of this atomic claim may proceed to
+    call _settle_recovered_exit_order; the loser must skip the row
+    entirely this pass.
+    """
+    init_log()
+    with _conn() as con:
+        cur = con.execute(
+            "UPDATE orders SET status = 'pending' WHERE id = ? AND status = 'unknown'",
+            (row_id,),
+        )
+    return cur.rowcount > 0
 
 
 def was_recently_ordered(ticker: str, side: str, within_minutes: int = 10) -> bool:
@@ -733,6 +762,27 @@ def get_pending_live_orders() -> list[dict]:
     with _conn() as con:
         rows = con.execute(
             "SELECT * FROM orders WHERE live = 1 AND status = 'pending' "
+            "ORDER BY placed_at",
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_unknown_live_orders() -> list[dict]:
+    """Return every live order whose placement outcome is ambiguous
+    (status='unknown'), unbounded.
+
+    AUD-0007: written when place_order()'s create-order POST failed AND
+    reconciliation itself couldn't confirm either way (see
+    kalshi_client.OrderStatusUnknownError) -- the order may or may not have
+    landed on the exchange. response's client_order_id is the only way to
+    re-check these against Kalshi later (there is no order_id -- the create
+    call itself never confirmed one). Mirrors get_pending_live_orders'
+    unbounded WHERE-scoped shape for the same reason (AUD-0012).
+    """
+    init_log()
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT * FROM orders WHERE live = 1 AND status = 'unknown' "
             "ORDER BY placed_at",
         ).fetchall()
     return [dict(r) for r in rows]

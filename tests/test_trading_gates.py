@@ -339,7 +339,12 @@ class TestLiveTradingGate:
 
         monkeypatch.setattr(main, "is_trading_paused", lambda: False)
         monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
-        monkeypatch.setattr("paper.is_daily_loss_halted", lambda: False)
+        # is_daily_loss_halted(client) takes a client arg (main.py passes
+        # client so the halt check includes unrealized MTM) -- a zero-arg
+        # lambda here would TypeError and get silently swallowed by
+        # _quick_paper_buy's own fail-open `except Exception: pass`, making
+        # this mock fictional even though the test still passes today.
+        monkeypatch.setattr("paper.is_daily_loss_halted", lambda *_a, **_k: False)
         monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
         _inputs = iter(
             [
@@ -373,7 +378,12 @@ class TestLiveTradingGate:
 
         monkeypatch.setattr(main, "is_trading_paused", lambda: False)
         monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
-        monkeypatch.setattr("paper.is_daily_loss_halted", lambda: False)
+        # is_daily_loss_halted(client) takes a client arg (main.py passes
+        # client so the halt check includes unrealized MTM) -- a zero-arg
+        # lambda here would TypeError and get silently swallowed by
+        # _quick_paper_buy's own fail-open `except Exception: pass`, making
+        # this mock fictional even though the test still passes today.
+        monkeypatch.setattr("paper.is_daily_loss_halted", lambda *_a, **_k: False)
         monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
         _inputs = iter(
             [
@@ -562,6 +572,57 @@ class TestCmdOrderLiveRecording:
         # where the automated protective-exit scanner could later mark it
         # "closed" in the books without ever touching the real position.
         assert paper.get_all_trades() == []
+
+    def test_live_buy_bookkeeping_failure_does_not_report_order_as_failed(
+        self, monkeypatch, capsys
+    ):
+        """Opus review follow-up (round 2): cmd_order's post-placement
+        bookkeeping write (log_order_result recording the fill) used to
+        share a try with the placement call itself -- a failure there (e.g.
+        a locked DB) after a genuinely successful placement would have
+        wrongly marked a REAL live order 'failed' (every dedup guard
+        excludes 'failed', so the position could go untracked and be
+        re-orderable) and, since cmd_order's except re-raises, surfaced as
+        an uncaught exception to the operator despite the order having
+        actually landed on the exchange. Must instead: not raise, not print
+        'Order failed', and warn about the bookkeeping gap specifically."""
+        import main
+        from kalshi_client import PROD_BASE
+
+        fake_market, fake_enriched, fake_analysis = self._fake_analysis_triple()
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = fake_market
+        mock_client.place_order.return_value = {
+            "order_id": "ord_bk_fail",
+            "status": "executed",
+            "fill_count_fp": "5.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with (
+            patch.object(main, "enrich_with_forecast", return_value=fake_enriched),
+            patch.object(main, "analyze_trade", return_value=fake_analysis),
+            self._passing_gate_patches(),
+            patch(
+                "execution_log.log_order_result",
+                side_effect=RuntimeError("db is locked"),
+            ),
+        ):
+            # Must not raise -- the order genuinely landed on the exchange.
+            main.cmd_order(
+                mock_client, "buy", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.40"]
+            )
+
+        mock_client.place_order.assert_called_once()
+        out = capsys.readouterr().out.lower()
+        assert "order failed" not in out
+        assert "bookkeeping" in out
 
     def test_demo_buy_still_creates_paper_trade_positive_control(self, monkeypatch):
         """Positive control for the test above: a DEMO (non-live) buy, with
@@ -921,3 +982,198 @@ class TestCmdOrderLiveRecording:
         assert row["close_time"] == fake_market["close_time"]
         assert row["entry_prob"] == pytest.approx(fake_analysis["forecast_prob"])
         assert row["forecast_cycle"] is not None
+
+
+class TestQuickPaperBuyMakerRecording:
+    """AUD-0010: _quick_paper_buy()'s maker-order branch places a REAL live
+    order via client.place_maker_order() but previously called zero
+    execution_log persistence -- the exact same 'phantom unmanaged live
+    position' failure mode TestCmdOrderLiveRecording above covers for
+    cmd_order, just never fixed for this call site.
+
+    Uses a PROD_BASE client + full gate-passing patches (not DEMO_BASE) for
+    every "this is a real live order" test below -- opus review caught that
+    the fix's own first draft hardcoded live=True regardless of the
+    client's actual base_url, and these tests originally used DEMO_BASE
+    (chosen only to skip the gate cheaply) while still asserting live==1,
+    silently locking in that bug. TestLiveTradingGate above already covers
+    the gate itself; _passing_gate_patches here exists purely so these
+    tests can reach the bookkeeping logic with a client the code correctly
+    recognizes as live."""
+
+    @contextmanager
+    def _passing_gate_patches(self):
+        with (
+            patch.dict(os.environ, _PROD_ENV),
+            patch("paper.graduation_check", return_value={"settled": 35}),
+            patch("paper.is_paused_drawdown", return_value=False),
+            patch("paper.is_daily_loss_halted", return_value=False),
+            patch("paper.is_accuracy_halted", return_value=False),
+            patch("paper.is_streak_paused", return_value=False),
+        ):
+            yield
+
+    def _standard_inputs(self):
+        return iter(
+            [
+                "KXTEST-25JUN01-T70",  # ticker
+                "yes",  # side
+                "2",  # order type: limit maker
+                "0.45",  # limit price
+                "5",  # qty
+                "",  # thesis
+            ]
+        )
+
+    def test_maker_order_success_logs_pending_row(self, monkeypatch):
+        import execution_log
+        import main
+        from kalshi_client import PROD_BASE
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = {}
+        mock_client.place_maker_order.return_value = {
+            "order_id": "ord_maker_1",
+            "status": "resting",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
+        monkeypatch.setattr(
+            "paper.check_position_limits", lambda *a, **kw: {"ok": True}
+        )
+        _inputs = self._standard_inputs()
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        with self._passing_gate_patches():
+            main._quick_paper_buy(mock_client)
+
+        mock_client.place_maker_order.assert_called_once()
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT live, status, quantity, price FROM orders "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert row["live"] == 1
+        # Kalshi's real status enum is resting/canceled/executed -- a
+        # resting maker order translates to None via
+        # _kalshi_status_to_internal, defaulting to "pending" (the
+        # established convention _place_live_order/cmd_order both use).
+        assert row["status"] == "pending"
+        assert row["quantity"] == 5
+        assert row["price"] == pytest.approx(0.45)
+
+    def test_maker_order_failure_logs_failed_row(self, monkeypatch):
+        """Positive control: confirms the bookkeeping wiring actually
+        differentiates outcomes, not just always writing 'pending' regardless
+        of what place_maker_order does."""
+        import execution_log
+        import main
+        from kalshi_client import PROD_BASE
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = {}
+        mock_client.place_maker_order.side_effect = ConnectionError("boom")
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
+        monkeypatch.setattr(
+            "paper.check_position_limits", lambda *a, **kw: {"ok": True}
+        )
+        _inputs = self._standard_inputs()
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        with self._passing_gate_patches():
+            main._quick_paper_buy(mock_client)
+
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT live, status FROM orders ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert row["live"] == 1
+        assert row["status"] == "failed"
+
+    def test_maker_order_status_unknown_not_failed(self, monkeypatch):
+        """AUD-0007 applied to AUD-0010's fix: an ambiguous placement outcome
+        through this call site must also land on 'unknown', not 'failed' --
+        this is the sole live-order call site that previously had NO
+        exception handling of any kind, so it's the highest-risk site to
+        regress on this exact distinction."""
+        import execution_log
+        import main
+        from kalshi_client import PROD_BASE, OrderStatusUnknownError
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = {}
+        mock_client.place_maker_order.side_effect = OrderStatusUnknownError(
+            "coid_qpb1", ConnectionError("timeout")
+        )
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
+        monkeypatch.setattr(
+            "paper.check_position_limits", lambda *a, **kw: {"ok": True}
+        )
+        _inputs = self._standard_inputs()
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        with self._passing_gate_patches():
+            main._quick_paper_buy(mock_client)
+
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT live, status, response FROM orders ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert row["live"] == 1
+        assert row["status"] == "unknown"
+        import json as _json
+
+        assert _json.loads(row["response"])["client_order_id"] == "coid_qpb1"
+
+    def test_maker_order_against_demo_client_logs_live_zero(self, monkeypatch):
+        """Opus review follow-up (HIGH): a DEMO_BASE client reaches this
+        branch too (the gate check only SKIPS the live-trading gate for
+        demo, it doesn't block placement) -- the row must be logged
+        live=0, not hardcoded live=True regardless of environment. A
+        demo-mode order wrongly marked live=1 would count against the real
+        daily live-spend cap, get polled against PROD by a live watch
+        session, and could trigger a real prod SELL if it ever looked
+        filled."""
+        import execution_log
+        import main
+        from kalshi_client import DEMO_BASE
+
+        mock_client = MagicMock()
+        mock_client.base_url = DEMO_BASE
+        mock_client.get_market.return_value = {}
+        mock_client.place_maker_order.return_value = {
+            "order_id": "ord_demo_1",
+            "status": "resting",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
+        # is_daily_loss_halted(client) takes a client arg (main.py passes
+        # client so the halt check includes unrealized MTM) -- a zero-arg
+        # lambda here would TypeError and get silently swallowed by
+        # _quick_paper_buy's own fail-open `except Exception: pass`, making
+        # this mock fictional even though the test still passes today.
+        monkeypatch.setattr("paper.is_daily_loss_halted", lambda *_a, **_k: False)
+        monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
+        monkeypatch.setattr(
+            "paper.check_position_limits", lambda *a, **kw: {"ok": True}
+        )
+        _inputs = self._standard_inputs()
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        main._quick_paper_buy(mock_client)
+
+        mock_client.place_maker_order.assert_called_once()
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT live FROM orders ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert row["live"] == 0

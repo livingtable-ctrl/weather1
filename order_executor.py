@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 import execution_log
 from ab_test import ABTest as _ABTest
 from colors import dim, green, red, yellow
+from kalshi_client import OrderStatusUnknownError
 from positions import Position
 from positions import check_breakeven_stops as check_breakeven_stops
 from positions import check_stop_losses as check_stop_losses
@@ -193,9 +194,20 @@ def _count_open_live_orders() -> int:
     get_filled_unsettled_live_orders (still open, not yet settled) and
     again via its own brief pending exit-order row.
     """
+    # AUD-0007 follow-on: an 'unknown' row (placement outcome ambiguous, see
+    # kalshi_client.OrderStatusUnknownError) could turn out to be a real fill
+    # once reconciled -- excluding it here would let max_open_positions be
+    # silently exceeded whenever ambiguous orders accumulate and later
+    # resolve. closes_position_id exclusion mirrors the pending-entries logic
+    # above for the same reason (an ambiguous protective EXIT order must not
+    # be double-counted against the position it was closing).
     pending_entries = sum(
         1
         for o in execution_log.get_pending_live_orders()
+        if o.get("closes_position_id") is None
+    ) + sum(
+        1
+        for o in execution_log.get_unknown_live_orders()
         if o.get("closes_position_id") is None
     )
     return pending_entries + len(execution_log.get_filled_unsettled_live_orders())
@@ -357,25 +369,145 @@ def _to_fill_count(raw: str | int | float | None) -> int | None:
         return None
 
 
+def _settle_recovered_exit_order(
+    exit_row_id: int, exit_row: dict, fill_count: int
+) -> bool:
+    """Settle the POSITION a recovered 'unknown' EXIT order actually closed.
+
+    Opus review follow-up (HIGH): _recover_pending_orders' unknown-row loop
+    only updated the exit order's OWN row status to 'filled' -- unlike
+    _exit_live_position (the live path this mirrors), it never called
+    execution_log.record_live_exit_fill on the POSITION the exit closed
+    (identified via exit_row["closes_position_id"]). Without this, that
+    position stays status='filled'/settled_at=NULL forever: still returned
+    by get_filled_unsettled_live_orders() as open even though it was
+    genuinely sold, so the exit scanner keeps placing fresh real SELL
+    orders against it every cycle, and its true P&L never reaches the tax
+    CSV / PnL summary.
+
+    Returns True if it's safe for the caller to now mark the exit row's own
+    status 'filled' (settlement succeeded, OR the position was already
+    settled/reduced by a concurrent writer -- either way this exit fill
+    genuinely happened on the exchange, so the row's own status must still
+    reflect that). Returns False if settlement needs to be retried on a
+    LATER recovery pass -- round 2 opus review caught that round 1 wrote
+    the exit row's own status to 'filled' BEFORE calling this, unconditionally,
+    making any settlement failure here permanent (get_unknown_live_orders()
+    only selects status='unknown', so a row that already left that status
+    was never revisited). The caller is responsible for reverting the row
+    back to 'unknown' on a False return.
+    reason is recorded as "recovered_exit" since the original protective
+    reason (stop_loss/breakeven/model_exit) is a call-time-only parameter
+    never persisted on the row itself, so it's genuinely unknown by the
+    time a later recovery pass resolves this.
+    """
+    position_id = exit_row.get("closes_position_id")
+    if position_id is None:
+        _log.warning(
+            "[Recovery] exit row %d: no closes_position_id on this row — cannot settle",
+            exit_row_id,
+        )
+        return False
+    position_row = execution_log.get_order_by_id(position_id)
+    if not position_row:
+        _log.warning(
+            "[Recovery] exit row %d: referenced position %s not found — "
+            "cannot settle, will retry next recovery pass",
+            exit_row_id,
+            position_id,
+        )
+        return False
+    if position_row.get("settled_at"):
+        # Already settled by some other path (e.g. a manual cmd_order sell
+        # raced this recovery) -- nothing left to do, but this exit fill
+        # genuinely happened, so the caller may still mark its own row filled.
+        return True
+
+    qty = position_row.get("fill_quantity") or position_row.get("quantity")
+    entry_price = position_row.get("price")
+    exit_price = exit_row.get("price")
+    if not qty or entry_price is None or exit_price is None:
+        _log.warning(
+            "[Recovery] exit row %d: position %s missing qty/entry_price, or "
+            "exit row missing its own price — cannot settle",
+            exit_row_id,
+            position_id,
+        )
+        return False
+    position = {"id": position_id, "quantity": qty, "entry_price": entry_price}
+
+    try:
+        pnl, fully_closed = execution_log.record_live_exit_fill(
+            position, fill_count, exit_price, reason="recovered_exit"
+        )
+    except RuntimeError as _race_err:
+        # record_live_exit_fill's own atomic settled_at/quantity guards lost
+        # this race to a concurrent writer -- the POSITION's bookkeeping is
+        # someone else's now, but this exit order's own fill still happened,
+        # so it's still safe (and correct) to mark this row's own status.
+        _log.warning(
+            "[Recovery] exit row %d: settlement lost a race (%s) — position "
+            "already settled/reduced by a concurrent writer",
+            exit_row_id,
+            _race_err,
+        )
+        return True
+    except Exception as _settle_exc:
+        # Opus review follow-up (round 2): previously only RuntimeError was
+        # caught here -- anything else (e.g. sqlite3.OperationalError from
+        # a locked DB) escaped uncaught, and by the time it reached the
+        # loop's outer except, the caller had ALREADY written 'filled' to
+        # this row (round 1's ordering), permanently removing it from
+        # get_unknown_live_orders(). Now genuinely retryable: caught here,
+        # returns False, and the caller reverts this row back to 'unknown'.
+        _log.warning(
+            "[Recovery] exit row %d: settlement failed (%s) — will retry "
+            "next recovery pass",
+            exit_row_id,
+            _settle_exc,
+        )
+        return False
+    if not fully_closed:
+        # Mirrors _exit_live_position's partial-fill branch: the position
+        # row stays open at its reduced size (record_live_partial_exit,
+        # called inside record_live_exit_fill above); THIS exit order's own
+        # row separately gets its own pnl/exit_price recorded so the sold
+        # lot counts toward export_live_tax_csv/get_live_pnl_summary.
+        execution_log.record_live_early_exit(
+            exit_row_id, exit_price, "recovered_exit", pnl
+        )
+    _log.info(
+        "[Recovery] exit row %d: settled recovered exit for position %s "
+        "(pnl=%.2f, fully_closed=%s)",
+        exit_row_id,
+        position_id,
+        pnl,
+        fully_closed,
+    )
+    return True
+
+
 def _recover_pending_orders(client) -> None:
-    """Reconcile 'pending' execution_log rows against the Kalshi API at startup.
+    """Reconcile 'pending' AND 'unknown' execution_log rows against the
+    Kalshi API at startup (and every subsequent call site -- cron.py's own
+    cycle, run_trade_cycle(), and cmd_watch's standalone call, AUD-0013).
 
     A crash in the ~50ms window between pre-logging an order and the API call
     leaves a phantom 'pending' row that permanently blacklists the ticker via
-    dedup guards. This function resolves those rows on startup so the dedup
-    state is accurate.
+    dedup guards. 'unknown' rows (AUD-0007) are a distinct case: the create
+    call itself failed AND reconciliation couldn't confirm either way, so
+    there's no order_id to poll, only a client_order_id to re-check.
     """
     # AUD-0012: dedicated unbounded query instead of a LIMIT-200-of-everything
     # fetch filtered in Python -- the fixed window could silently evict a
     # genuinely still-pending live order once enough other orders (mostly
     # paper) accumulated afterward.
     pending = execution_log.get_pending_live_orders()
-    if not pending:
-        return
-
-    _log.info(
-        "[Recovery] Checking %d pending live order(s) against Kalshi API", len(pending)
-    )
+    if pending:
+        _log.info(
+            "[Recovery] Checking %d pending live order(s) against Kalshi API",
+            len(pending),
+        )
     for order in pending:
         row_id = order["id"]
         ticker = order.get("ticker", "?")
@@ -444,6 +576,195 @@ def _recover_pending_orders(client) -> None:
                 )
         except Exception as exc:
             _log.warning("[Recovery] %s row %d: lookup failed: %s", ticker, row_id, exc)
+
+    # AUD-0007: also re-check 'unknown' rows -- written when place_order()'s
+    # POST failed AND reconciliation itself couldn't confirm either way (see
+    # kalshi_client.OrderStatusUnknownError). These have no order_id (the
+    # create call never confirmed one), only the client_order_id stashed in
+    # response at write time, so they need client._find_order_by_client_id
+    # rather than the get_order(order_id) path the pending loop above uses.
+    # Deliberately reuses this SAME function/call sites (cron.py startup,
+    # trade_cycle.run_trade_cycle, and cmd_watch's own standalone call added
+    # for AUD-0013) rather than a separate recovery path, so ambiguous rows
+    # get periodically re-checked for free every time pending-order recovery
+    # already runs -- matching AUD-0007's own recommendation.
+    unknown = execution_log.get_unknown_live_orders()
+    if not unknown:
+        return
+
+    _log.info(
+        "[Recovery] Re-checking %d order(s) with unknown outcome against Kalshi API",
+        len(unknown),
+    )
+    for order in unknown:
+        row_id = order["id"]
+        ticker = order.get("ticker", "?")
+        try:
+            response = order.get("response")
+            if isinstance(response, str):
+                response = json.loads(response)
+            client_order_id = (response or {}).get("client_order_id")
+            if not client_order_id:
+                # Should not happen (every 'unknown' write includes it), but
+                # fail safe rather than crash the recovery pass on one bad row.
+                _log.warning(
+                    "[Recovery] %s row %d: unknown row has no stored "
+                    "client_order_id — cannot re-check, leaving as unknown",
+                    ticker,
+                    row_id,
+                )
+                continue
+
+            found, uncertain = client._find_order_by_client_id(client_order_id)
+            if found:
+                # Opus review follow-up (round 2, HIGH+MEDIUM): claim this
+                # row atomically before touching it. _recover_pending_orders
+                # runs concurrently across processes (cron.py's own cycle
+                # AND cmd_watch's standalone call, deliberately not
+                # serialized behind the shared cron lock per AUD-0013) --
+                # without this, two processes could both read the same
+                # 'unknown' row and both attempt to resolve/settle it,
+                # double-applying a partial exit's quantity reduction and
+                # P&L (record_live_partial_exit's own guard only checks the
+                # remaining quantity is non-negative, not whether this
+                # specific delta was already applied once -- verified this
+                # does NOT stop a second identical-delta call from
+                # succeeding again). If another process already claimed
+                # this row since get_unknown_live_orders() was read, skip
+                # it entirely this pass -- it's being handled.
+                if not execution_log.claim_unknown_order(row_id):
+                    _log.info(
+                        "[Recovery] %s row %d: already claimed by a "
+                        "concurrent recovery pass — skipping",
+                        ticker,
+                        row_id,
+                    )
+                    continue
+
+                api_status = found.get("status", "")
+                _fill_count = _to_fill_count(found.get("fill_count_fp"))
+                if api_status == "resting":
+                    execution_log.log_order_result(
+                        row_id, status="pending", response=found
+                    )
+                    _log.info(
+                        "[Recovery] %s row %d: unknown → resting → pending",
+                        ticker,
+                        row_id,
+                    )
+                elif (
+                    _internal_status := _kalshi_status_to_internal(
+                        api_status, _fill_count
+                    )
+                ) is not None:
+                    # Opus review follow-up (HIGH): this row can be a
+                    # PROTECTIVE EXIT order (closes_position_id set), not
+                    # just a new entry. Resolving its own status to 'filled'
+                    # is not enough -- unlike a normal entry fill, an exit
+                    # fill must also settle the POSITION it closed
+                    # (record_live_exit_fill), or that position stays
+                    # 'filled'/settled_at=NULL forever: invisible to this
+                    # settlement, but still returned by
+                    # get_filled_unsettled_live_orders() as if never sold --
+                    # the exit scanner would keep placing fresh real SELL
+                    # orders against it every cycle, and its true P&L would
+                    # never reach the tax CSV/PnL summary. Mirrors
+                    # _exit_live_position's own full/partial-fill branching.
+                    #
+                    # Round 2: settlement is now attempted BEFORE this row's
+                    # own status is written as the final 'filled' -- round
+                    # 1's ordering (write 'filled' first, settle after) made
+                    # a settlement failure PERMANENT: get_unknown_live_
+                    # orders() only selects status='unknown', so once the
+                    # row left that status, nothing ever retried settlement
+                    # (only a RuntimeError from record_live_exit_fill was
+                    # even caught; a locked-DB-style error escaped to this
+                    # loop's outer except and was silently logged, with the
+                    # row already gone from the recovery queue).
+                    _is_exit_order = order.get("closes_position_id") is not None
+                    if _internal_status == "filled" and _is_exit_order:
+                        if not _fill_count:
+                            _log.warning(
+                                "[Recovery] %s row %d: exit order executed "
+                                "but fill count unparseable — cannot settle "
+                                "safely, leaving 'unknown' for next pass",
+                                ticker,
+                                row_id,
+                            )
+                            execution_log.log_order_result(
+                                row_id, status="unknown", response=response
+                            )
+                            continue
+                        if not _settle_recovered_exit_order(row_id, order, _fill_count):
+                            _log.warning(
+                                "[Recovery] %s row %d: settlement failed — "
+                                "leaving 'unknown' so it's retried next pass",
+                                ticker,
+                                row_id,
+                            )
+                            execution_log.log_order_result(
+                                row_id, status="unknown", response=response
+                            )
+                            continue
+                    execution_log.log_order_result(
+                        row_id,
+                        status=_internal_status,
+                        response=found,
+                        fill_quantity=_fill_count,
+                    )
+                    _log.info(
+                        "[Recovery] %s row %d: unknown → resolved to %s (kalshi status=%s)",
+                        ticker,
+                        row_id,
+                        _internal_status,
+                        api_status,
+                    )
+                else:
+                    _log.warning(
+                        "[Recovery] %s row %d: unknown API status %r on found "
+                        "order — reverting to unknown",
+                        ticker,
+                        row_id,
+                        api_status,
+                    )
+                    execution_log.log_order_result(
+                        row_id, status="unknown", response=response
+                    )
+            elif not uncertain:
+                # All 3 reconciliation lookups genuinely completed this time
+                # and none matched -- now safe to confirm this order never
+                # landed (dedup guards will unblock a retry, correctly).
+                # Opus review follow-up: preserve the original response
+                # (still carrying client_order_id) rather than passing none --
+                # log_order_result's UPDATE is unconditional, so omitting it
+                # would wipe the one piece of data that let this row be
+                # re-checked at all, permanently, even though 'failed' rows
+                # aren't normally re-examined by any recovery pass.
+                execution_log.log_order_result(
+                    row_id,
+                    status="failed",
+                    error="confirmed not found on unknown-order re-check",
+                    response=response,
+                )
+                _log.info(
+                    "[Recovery] %s row %d: unknown → confirmed not found → failed",
+                    ticker,
+                    row_id,
+                )
+            else:
+                _log.warning(
+                    "[Recovery] %s row %d: still could not confirm outcome — "
+                    "leaving unknown",
+                    ticker,
+                    row_id,
+                )
+        except Exception as exc:
+            _log.warning(
+                "[Recovery] %s row %d: unknown-order re-check failed: %s",
+                ticker,
+                row_id,
+                exc,
+            )
 
 
 # Cancel GTC orders this many minutes before market close — prevents leaving
@@ -840,12 +1161,44 @@ def _replace_live_order(
             time_in_force=time_in_force,
             cycle=cycle,
         )
-        execution_log.log_order_result(log_id, status="pending", response=response)
-        return True
+    except OrderStatusUnknownError as _unk_exc:
+        # AUD-0007: see _place_live_order's matching handler.
+        execution_log.log_order_result(
+            log_id,
+            status="unknown",
+            error=str(_unk_exc),
+            response={"client_order_id": _unk_exc.client_order_id},
+        )
+        _log.warning(
+            "[Reprice] Replacement order outcome unknown for %s: %s", ticker, _unk_exc
+        )
+        return False
     except Exception as exc:
         execution_log.log_order_result(log_id, status="failed", error=str(exc))
         _log.warning("[Reprice] Replacement order failed for %s: %s", ticker, exc)
         return False
+
+    # Opus review follow-up (AUD-0007, round 2): see _place_live_order's
+    # matching comment -- this write must not share the try above with the
+    # placement call (a bookkeeping-only failure here must not mark a REAL
+    # replacement order 'failed'), but round 2 caught that an unhandled
+    # exception here would now propagate uncaught instead. Currently safe
+    # in practice (this function's only production caller is inside
+    # cmd_watch's AUD-0008 try/except), but caught locally anyway for
+    # defense-in-depth against a future caller that isn't wrapped -- same
+    # reasoning as _place_live_order: the pre-logged 'pending' row with no
+    # order_id is already handled safely by _recover_pending_orders.
+    try:
+        execution_log.log_order_result(log_id, status="pending", response=response)
+    except Exception as _bk_exc:
+        _log.warning(
+            "[Reprice] %s: order placed on exchange but bookkeeping write "
+            "failed (%s) -- row stays pre-logged 'pending', "
+            "_recover_pending_orders will reconcile it",
+            ticker,
+            _bk_exc,
+        )
+    return True
 
 
 def _resolve_amend_status(response: dict) -> tuple[str, int | None]:
@@ -1436,6 +1789,18 @@ def _exit_live_position(
             time_in_force="immediate_or_cancel",
             cycle=cycle,
         )
+    except OrderStatusUnknownError as _unk_exc:
+        # AUD-0007: see _place_live_order's matching handler -- reconciliation
+        # itself couldn't confirm either way, so this exit attempt must not be
+        # marked 'failed' (which dedup guards would treat as never-sent).
+        execution_log.log_order_result(
+            log_id,
+            status="unknown",
+            error=str(_unk_exc),
+            response={"client_order_id": _unk_exc.client_order_id},
+        )
+        _log.warning("[LiveExit] Exit outcome unknown for %s: %s", ticker, _unk_exc)
+        return False
     except Exception as exc:
         execution_log.log_order_result(log_id, status="failed", error=str(exc))
         _log.warning("[LiveExit] Exit order failed for %s: %s", ticker, exc)
@@ -1846,16 +2211,19 @@ def _place_live_order(
             time_in_force="good_till_canceled",
             cycle=cycle,
         )
-        # Update the pre-logged row with the exchange response. "pending", not
-        # "placed" — every downstream lifecycle consumer (fill polling, GTC
-        # cancel, max_open_positions, PnL summary) filters on status="pending";
-        # "placed" was invisible to all of them and never transitioned further.
+    except OrderStatusUnknownError as _unk_exc:
+        # AUD-0007: reconciliation itself couldn't confirm either way --
+        # 'unknown', not 'failed', so dedup guards keep blocking a retry and
+        # _recover_pending_orders can re-check it via client_order_id once
+        # the API is healthy again.
         execution_log.log_order_result(
             log_id,
-            status="pending",
-            response=response,
+            status="unknown",
+            error=str(_unk_exc),
+            response={"client_order_id": _unk_exc.client_order_id},
         )
-        return True, dollar_cost
+        print(f"[LIVE] Order outcome unknown for {ticker}: {_unk_exc}")
+        return False, 0.0
     except Exception as exc:
         execution_log.log_order_result(
             log_id,
@@ -1864,6 +2232,43 @@ def _place_live_order(
         )
         print(f"[LIVE] Order failed for {ticker}: {exc}")
         return False, 0.0
+
+    # Opus review follow-up (AUD-0007, round 2): this write must not share
+    # the try above with the placement call (a bookkeeping-only failure
+    # here must not mark a REAL live order 'failed') -- but round 2 caught
+    # that moving it below the try/except ALSO means an unhandled exception
+    # here now propagates straight out of _place_live_order, up through
+    # _auto_place_trades (no enclosing try at that call site) and
+    # run_trade_cycle, into cmd_watch's `if auto_trade:` block -- which has
+    # no except clause -- killing the entire persistent watch process. The
+    # exact AUD-0008 failure mode, freshly reintroduced by AUD-0007's own
+    # round-1 fix. Caught here instead: the pre-logged row already stays
+    # 'pending' with no order_id/response if this write never lands, and
+    # _recover_pending_orders' existing no-order_id branch already handles
+    # exactly that shape safely (marks it 'sent', blocking a duplicate
+    # placement) -- so failing to update the row here is recoverable, not
+    # silent data loss. The order genuinely IS live on the exchange
+    # regardless of whether this local write succeeds, so still return
+    # True/dollar_cost rather than falsely reporting the placement failed.
+    try:
+        # "pending", not "placed" — every downstream lifecycle consumer
+        # (fill polling, GTC cancel, max_open_positions, PnL summary)
+        # filters on status="pending"; "placed" was invisible to all of
+        # them and never transitioned further.
+        execution_log.log_order_result(
+            log_id,
+            status="pending",
+            response=response,
+        )
+    except Exception as _bk_exc:
+        _log.warning(
+            "[LIVE] %s: order placed on exchange but bookkeeping write "
+            "failed (%s) -- row stays pre-logged 'pending', "
+            "_recover_pending_orders will reconcile it",
+            ticker,
+            _bk_exc,
+        )
+    return True, dollar_cost
 
 
 # ---------------------------------------------------------------------------
@@ -3505,6 +3910,7 @@ def _auto_place_trades(
                                 close_time=_micro_mkt.get("close_time")
                                 or _micro_mkt.get("expiration_time"),
                             )
+                            _micro_placed = False
                             try:
                                 _micro_resp = client.place_order(
                                     ticker=ticker,
@@ -3515,48 +3921,20 @@ def _auto_place_trades(
                                     time_in_force="good_till_canceled",
                                     cycle=cycle,
                                 )
-                                # "pending", not "placed" — see the matching
-                                # comment in _place_live_order above.
+                            except OrderStatusUnknownError as _unk_exc:
+                                # AUD-0007: see _place_live_order's matching handler.
                                 execution_log.log_order_result(
                                     _micro_log_id,
-                                    status="pending",
-                                    response=_micro_resp,
+                                    status="unknown",
+                                    error=str(_unk_exc),
+                                    response={
+                                        "client_order_id": _unk_exc.client_order_id
+                                    },
                                 )
-                                # F7: do NOT add_live_loss(_micro_cost) here — see the
-                                # matching comment on the main live path above; settlement
-                                # already accounts for this order's realized pnl, and
-                                # adding cost here too double-counted every loss.
-                                # KNOWN GAP (pre-existing, not introduced by the V2
-                                # order-endpoint migration): "avg_price" has never
-                                # been a real field on either the legacy or V2 Order
-                                # schema (real fields are yes_price_dollars/
-                                # no_price_dollars, the resting limit price, plus
-                                # taker_fill_cost_dollars/maker_fill_cost_dollars,
-                                # the total $ cost of fills) -- this has always
-                                # silently fallen through to _micro_price for
-                                # slippage-tracking purposes. A real average fill
-                                # price would need fill-cost / fill_count_fp, split
-                                # by maker vs taker fills; not implemented here to
-                                # avoid guessing at unverified field semantics.
-                                _micro_fill = (
-                                    _micro_resp.get("avg_price") or _micro_price
-                                )
-                                from tracker import log_live_fill as _log_fill
-
-                                _log_fill(
-                                    ticker=ticker,
-                                    side=rec_side,
-                                    paper_price=_micro_price,
-                                    fill_price=_micro_fill,
-                                    quantity=_micro_qty,
-                                )
-                                _log.info(
-                                    "[MicroLive] %s %s×%s @ %.3f (fill %.3f)",
+                                _log.warning(
+                                    "[MicroLive] order outcome unknown for %s: %s",
                                     ticker,
-                                    _micro_qty,
-                                    rec_side,
-                                    _micro_price,
-                                    _micro_fill,
+                                    _unk_exc,
                                 )
                             except Exception as _ml_exc:
                                 execution_log.log_order_result(
@@ -3567,6 +3945,79 @@ def _auto_place_trades(
                                     ticker,
                                     _ml_exc,
                                 )
+                            else:
+                                # Opus review follow-up (AUD-0007): moved out
+                                # of the try above -- if this write itself
+                                # raised (e.g. a locked DB) after a genuinely
+                                # successful placement, the except block
+                                # would have wrongly marked a REAL live order
+                                # 'failed'. "pending", not "placed" — see the
+                                # matching comment in _place_live_order above.
+                                execution_log.log_order_result(
+                                    _micro_log_id,
+                                    status="pending",
+                                    response=_micro_resp,
+                                )
+                                _micro_placed = True
+
+                            # Adjacent-scope fix (found while researching
+                            # AUD-0007): this block used to sit inside the
+                            # same try/except as the place_order() call above,
+                            # so if log_live_fill raised AFTER a genuinely
+                            # successful placement, the except clobbered the
+                            # just-recorded 'pending' status back to 'failed'
+                            # -- hiding a real live position from the
+                            # protective-exit scanner the exact same way
+                            # AUD-0007 does. A failure here is cosmetic
+                            # (slippage tracking only) and must never touch
+                            # the order's own status.
+                            if _micro_placed:
+                                try:
+                                    # F7: do NOT add_live_loss(_micro_cost) here — see
+                                    # the matching comment on the main live path
+                                    # above; settlement already accounts for this
+                                    # order's realized pnl, and adding cost here too
+                                    # double-counted every loss.
+                                    # KNOWN GAP (pre-existing, not introduced by the
+                                    # V2 order-endpoint migration): "avg_price" has
+                                    # never been a real field on either the legacy or
+                                    # V2 Order schema (real fields are
+                                    # yes_price_dollars/no_price_dollars, the resting
+                                    # limit price, plus taker_fill_cost_dollars/
+                                    # maker_fill_cost_dollars, the total $ cost of
+                                    # fills) -- this has always silently fallen
+                                    # through to _micro_price for slippage-tracking
+                                    # purposes. A real average fill price would need
+                                    # fill-cost / fill_count_fp, split by maker vs
+                                    # taker fills; not implemented here to avoid
+                                    # guessing at unverified field semantics.
+                                    _micro_fill = (
+                                        _micro_resp.get("avg_price") or _micro_price
+                                    )
+                                    from tracker import log_live_fill as _log_fill
+
+                                    _log_fill(
+                                        ticker=ticker,
+                                        side=rec_side,
+                                        paper_price=_micro_price,
+                                        fill_price=_micro_fill,
+                                        quantity=_micro_qty,
+                                    )
+                                    _log.info(
+                                        "[MicroLive] %s %s×%s @ %.3f (fill %.3f)",
+                                        ticker,
+                                        _micro_qty,
+                                        rec_side,
+                                        _micro_price,
+                                        _micro_fill,
+                                    )
+                                except Exception as _fill_log_exc:
+                                    _log.warning(
+                                        "[MicroLive] slippage-tracking log_live_fill "
+                                        "failed for %s (order itself is unaffected): %s",
+                                        ticker,
+                                        _fill_log_exc,
+                                    )
             except Exception as _ml_outer_exc:
                 _log.warning(
                     "[MicroLive] unexpected error for %s: %s", ticker, _ml_outer_exc
