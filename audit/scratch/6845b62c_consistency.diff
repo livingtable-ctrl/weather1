@@ -1,0 +1,445 @@
+commit 6845b62c5d5a9bf46c5ad0ef2bd4e6e8917a180c
+Author: thesa <thesa@users.noreply.github.com>
+Date:   Thu Aug 6 21:16:17 2026 -0400
+
+    feat(consistency): add shadow-only rain arbitrage detection for KXRAIN*M
+    
+    consistency._group_markets() blanket-excluded monthly rain-total ladders
+    (KXRAIN*M), so rain arbitrage was never checked -- unlike temperature,
+    whose ladders this same monotonicity check has protected for months.
+    Live-verified first: every rain bracket across NYC/Chicago/St. Petersburg
+    is strike_type="greater"; St. Petersburg's real July 2026 ladder had
+    exactly 10 brackets, confirming the backlog entry's own "10 vs 4" framing.
+    
+    Ships as a shadow-only first pass (user's explicit design choice, since
+    rain's ladder monotonicity has never been checked against live prices
+    before): Violation gained an is_shadow field, set explicitly at grouping
+    time for every entry (not re-derived downstream from key shape, so a
+    future market family can't silently inherit is_shadow=False by omission).
+    Rain groups via the existing sibling market_implied_rain_event_key()
+    (city, "RAIN", year, month) key rather than a new one. All 3 real
+    find_violations() consumers wired: main.py's arb-placement loop skips
+    placement for shadow violations, trade_cycle.py's >5-violation circuit
+    breaker excludes them from that count (so rollout noise can't halt real
+    temperature auto-trading) while still logging both populations, and
+    cmd_consistency's manual report marks shadow rows. Also fixed in passing:
+    Violation.description hardcoded a "degrees" symbol that would have
+    mislabeled rain's inches as Fahrenheit.
+    
+    Independent opus review (effort=high) found 1 HIGH + 6 MEDIUM + 8 LOW,
+    all fixed:
+    - HIGH: the rain branch's parse_market_price() call was unguarded --
+      a single malformed rain price could raise out of find_violations()
+      entirely, which via each caller's own broad exception handler could
+      halt ALL auto-trading for the cycle or silently disable the whole arb
+      block -- exactly what the shadow design existed to prevent. Fixed on
+      both the new rain branch and the identical pre-existing unguarded call
+      on the temperature branch (same fix, same file, in-scope adjacency).
+    - MEDIUM: a zero-quote-leg phantom-edge bug (a one-sided book still
+      reports has_quote=True, so a missing bid or ask could compute a
+      fabricated "guaranteed" edge) -- fixed with an explicit two-sided-quote
+      guard before emitting any violation. Two fail-closed guard tests were
+      vacuous (used monotone prices that would've passed even with the guard
+      deleted) -- rewritten with inversion-shaped prices. Added the one test
+      proving main.py's arb loop actually skips placement for a shadow
+      violation via the real cmd_watch path (previously zero coverage).
+    - LOW: threshold formatting, silent-drop logging, log-sample balance
+      between real/shadow violations, test fixture accuracy, a weak
+      assertion, and 3 new circuit-breaker tests covering the mixed-population
+      and exact-boundary cases.
+    
+    Filed a follow-up backlog entry for the graduation decision (when/how
+    shadow rain violations start driving real auto-placement) rather than
+    guessing at a mechanism upfront -- unlike this project's other
+    shadow-then-graduate signals, a monotonicity violation has no obvious
+    settlement outcome to correlate against, so the right shape needs real
+    shadow observations to design against first.
+    
+    65 tests pass (8 new + 2 updated in test_consistency.py, 4 new in
+    test_trade_cycle_engine.py); shadow-tagging and the shadow-skip fix were
+    both mutation-tested by hand. ruff/ruff-format/mypy clean.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+diff --git a/consistency.py b/consistency.py
+index babd666b..bbabdaf3 100644
+--- a/consistency.py
++++ b/consistency.py
+@@ -5,12 +5,18 @@ For a given city + date, temperature threshold markets must satisfy:
+   P(high > 70°) <= P(high > 65°) <= P(high > 60°)   [above thresholds decrease]
+   P(high < 60°) <= P(high < 65°) <= P(high < 70°)   [below thresholds increase]
+ 
++For a given city + month, monthly rain-total markets (KXRAIN*M) must satisfy
++the same single-sided shape: P(total > 7in) <= P(total > 5in) <= P(total > 1in).
++
+ If the market prices violate this monotonicity, there is a risk-free arbitrage:
+-buy the underpriced contract and sell the overpriced one.
++buy the underpriced contract and sell the overpriced one. Rain violations are
++returned with Violation.is_shadow=True -- see find_violations()'s docstring --
++this is a first pass, not yet graduated to real auto-placement.
+ """
+ 
+ from __future__ import annotations
+ 
++import logging
+ import re
+ from dataclasses import dataclass
+ 
+@@ -19,9 +25,12 @@ from weather_markets import (
+     _KXSNOW_MONTHLY_CITY,
+     _KXTEMP_HOURLY_CITY,
+     is_hurricane_count_ticker,
++    market_implied_rain_event_key,
+     parse_market_price,
+ )
+ 
++_log = logging.getLogger(__name__)
++
+ 
+ @dataclass
+ class Violation:
+@@ -31,6 +40,17 @@ class Violation:
+     sell_prob: float
+     guaranteed_edge: float  # sell_prob - buy_prob (> 0 means free money)
+     description: str
++    # backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL
++    # BLANKET-EXCLUDES KXRAIN*M": rain's ladder monotonicity has never been
++    # checked against live prices before this field existed, unlike
++    # temperature's (which has run this same check for months). True for
++    # every rain-sourced violation -- detect and log, but callers must skip
++    # the actual auto-place step, mirroring this project's established
++    # shadow-then-graduate pattern for every other new-market-type signal
++    # (rain forecast-blend, hurricane count guard). Not gated on a sample
++    # floor/graduation trigger of its own yet -- that's a deliberate
++    # follow-up decision, not part of this pass (see backlog.txt).
++    is_shadow: bool = False
+ 
+ 
+ def _parse_threshold(market: dict) -> tuple[str, float] | None:
+@@ -104,18 +124,45 @@ def _group_markets(markets: list[dict]) -> dict:
+     trading (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 1 --
+     no probability model exists yet for these).
+ 
+-    Also excludes KXRAIN*M monthly rain-total ladders and KXDENSNOWM monthly
+-    snow-total ladders (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step
+-    1). Redundant with the final grouping outcome -- these tickers' date_match
+-    regex already fails (no day digits after the month), so they'd be
+-    dropped via the "not series or not date_str" skip below regardless --
+-    but NOT redundant for the L-8 warning just below that skip: series
+-    resolves truthy (derived from the ticker prefix, e.g. "KXRAINDENM" or
+-    "KXDENSNOWM") while date_match stays None, which without this exclusion
+-    would log a real WARNING for every rain/snow market on every single
+-    scan. Kept explicit for that reason, plus the same single-source-of-
+-    truth reasoning as the hourly exclusion, since this feeds
+-    find_violations() too.
++    KXRAIN*M monthly rain-total ladders (backlog.txt "RAIN MARKETS --
++    CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-EXCLUDES KXRAIN*M")
++    are handled by a dedicated branch below rather than this function's
++    generic (series, date_str)-from-ticker-regex path: rain has no day
++    component, so that key shape doesn't apply, and Kalshi's real per-
++    bracket threshold lives in the market's own floor_strike/strike_type
++    fields, not ticker/title text (live-verified across every tracked rain
++    series -- see weather_markets._parse_market_condition's identical KXRAIN*M
++    branch, the established precedent this mirrors). Grouped instead via
++    weather_markets.market_implied_rain_event_key() -- the same (city,
++    "RAIN", year, month) 4-tuple key already proven live by the sibling
++    market-implied-distribution signal, reused rather than reinvented so the
++    two features can never drift on what counts as "the same rain event."
++    That key shape is structurally distinct (4-tuple, "RAIN"-tagged) from
++    temperature's (series, date_str) 2-tuple, so the two families can never
++    collide in this function's single returned `groups` dict.
++
++    Every rain-sourced violation find_violations() produces is tagged
++    is_shadow=True, set explicitly at append time below (not re-derived
++    later from the group key's shape -- a future new market family sharing
++    rain's 4-tuple key shape must make its own explicit is_shadow decision,
++    not silently inherit False by omission) -- rain's ladder monotonicity
++    has never been checked against live prices before, unlike temperature's,
++    so this is a deliberate shadow-only first pass: callers must log/observe
++    but not act on these until a separate, later decision graduates them.
++
++    Also excludes KXDENSNOWM monthly snow-total ladders (backlog.txt "RAIN /
++    SNOW / HURRICANE MARKETS" Step 1) -- snow's own arbitrage-check grouping
++    is a separate, not-yet-picked-up piece of that same backlog family, out
++    of scope for the rain fix above. Redundant with the final grouping
++    outcome -- these tickers' date_match regex already fails (no day digits
++    after the month), so they'd be dropped via the "not series or not
++    date_str" skip below regardless -- but NOT redundant for the L-8
++    warning just below that skip: series resolves truthy (derived from the
++    ticker prefix, e.g. "KXDENSNOWM") while date_match stays None, which
++    without this exclusion would log a real WARNING for every snow market on
++    every single scan. Kept explicit for that reason, plus the same
++    single-source-of-truth reasoning as the hourly exclusion, since this
++    feeds find_violations() too.
+ 
+     Also excludes the 5 hurricane-season-count series (backlog.txt
+     "HURRICANE MARKETS" -- season-count model, 2026-08-03), added here
+@@ -130,8 +177,10 @@ def _group_markets(markets: list[dict]) -> dict:
+     already been burned by once for this same ticker family (see
+     is_hurricane_ticker()'s own history). find_violations() feeds
+     automatic corrective trading (_arb_ppo -> paper.place_paper_order)
+-    directly, with NO shadow-gate check of its own -- opus-review-caught
+-    (2026-08-03): without this exclusion, adding these 5 series to
++    directly, with NO shadow-gate check of its own for THIS ticker family
++    (rain is the one exception -- see the is_shadow field on Violation and
++    the rain branch below) -- opus-review-caught (2026-08-03): without this
++    exclusion, adding these 5 series to
+     KNOWN_WEATHER_SERIES (so get_weather_markets() now returns them) would
+     let the arb auto-placer place REAL (non-shadow) paper orders on a
+     ticker family this bot has explicitly decided is unvalidated,
+@@ -143,13 +192,101 @@ def _group_markets(markets: list[dict]) -> dict:
+         ticker = m.get("ticker", "")
+         if ticker.upper().startswith(tuple(_KXTEMP_HOURLY_CITY)):
+             continue
+-        if ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY)):
+-            continue
+         if ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY)):
+             continue
+         if is_hurricane_count_ticker(ticker):
+             continue
+ 
++        if ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY)):
++            # Rain branch: (city, "RAIN", year, month) key via the shared
++            # sibling helper, condition read from Kalshi's own
++            # floor_strike/strike_type fields -- mirrors
++            # weather_markets._parse_market_condition's identical KXRAIN*M
++            # branch rather than _parse_threshold's ticker-suffix regex
++            # below, which can't match a "-<N>" rain bracket suffix at all
++            # (no T/B letter). Fails closed (skip, don't guess, and WARN so
++            # an unexpected listing-format change surfaces immediately
++            # instead of silently turning this check into a permanent
++            # no-op) on any unexpected shape, mirroring that sibling
++            # branch's own logging.
++            rain_key = market_implied_rain_event_key(ticker)
++            if rain_key is None:
++                _log.warning(
++                    "consistency: could not derive rain event key from ticker %r"
++                    " — excluded from grouping",
++                    ticker,
++                )
++                continue
++            floor_strike = m.get("floor_strike")
++            strike_type = m.get("strike_type")
++            if floor_strike is None or strike_type != "greater":
++                _log.warning(
++                    "consistency[%s]: missing floor_strike or unexpected"
++                    " strike_type=%r (expected 'greater') — excluded from grouping",
++                    ticker,
++                    strike_type,
++                )
++                continue
++            try:
++                threshold = float(floor_strike)
++            except (TypeError, ValueError):
++                _log.warning(
++                    "consistency[%s]: non-numeric floor_strike=%r — excluded"
++                    " from grouping",
++                    ticker,
++                    floor_strike,
++                )
++                continue
++            # coalesce_market_price (utils.py, called via parse_market_price)
++            # documents itself as raising ValueError on a non-numeric price
++            # string and expects EVERY caller to wrap it per-market -- this
++            # branch didn't reach parse_market_price at all before rain was
++            # supported, so it's new exposure here specifically. Unguarded,
++            # one malformed rain price would raise out of find_violations()
++            # entirely, which (via each caller's own except Exception) can
++            # halt ALL auto-trading for the cycle -- exactly what the
++            # shadow-only design exists to prevent. See the identical guard
++            # added to the temperature branch below (pre-existing gap,
++            # fixed in the same pass since it's the same call, same file).
++            try:
++                prices = parse_market_price(m)
++            except (ValueError, TypeError) as exc:
++                _log.warning(
++                    "consistency[%s]: malformed price fields (%s) — excluded"
++                    " from grouping",
++                    ticker,
++                    exc,
++                )
++                continue
++            if not prices.get("has_quote", False):
++                continue
++            # precip_month_total is always single-sided "total > threshold"
++            # (Kalshi's strike_type="greater", live-verified across every
++            # tracked rain series) -- the same shape as a temperature
++            # "above" bracket, so it reuses that monotonicity loop unchanged
++            # rather than adding a parallel rain-specific check below.
++            # is_shadow/unit are set explicitly here (not re-derived later
++            # from the group key's shape) so a FUTURE new market family
++            # sharing this same 4-tuple-key pattern (e.g. snow's own
++            # arbitrage check, already flagged as a follow-up above) can't
++            # silently default to is_shadow=False just by omission --
++            # opus-review-caught: the same "shared resource, one caller
++            # forgets to opt in" bug class this project has hit before for
++            # hurricane/rain shadow gates.
++            groups.setdefault(rain_key, []).append(
++                (
++                    m,
++                    "above",
++                    threshold,
++                    prices["implied_prob"],
++                    prices["yes_bid"],
++                    prices["yes_ask"],
++                    True,  # is_shadow
++                    "in",  # unit
++                )
++            )
++            continue
++
+         # Extract series and date from ticker
+         series = m.get("series_ticker", "")
+         if not series:
+@@ -160,9 +297,7 @@ def _group_markets(markets: list[dict]) -> dict:
+         date_match = re.search(r"(\d{2}[A-Z]{3}\d{2})", ticker)
+         # L-8: warn when ticker format doesn't match — silent drop masks API format changes
+         if date_match is None and series:
+-            import logging as _clog
+-
+-            _clog.getLogger(__name__).warning(
++            _log.warning(
+                 "consistency: could not extract date from ticker %r — excluded from grouping",
+                 ticker,
+             )
+@@ -176,7 +311,18 @@ def _group_markets(markets: list[dict]) -> dict:
+             continue
+ 
+         cond_type, threshold = parsed
+-        prices = parse_market_price(m)
++        # See the identical guard/comment on the rain branch above -- this
++        # call was already unguarded before rain existed; fixed here too
++        # since it's the same exposure, same file, same fix.
++        try:
++            prices = parse_market_price(m)
++        except (ValueError, TypeError) as exc:
++            _log.warning(
++                "consistency[%s]: malformed price fields (%s) — excluded from grouping",
++                ticker,
++                exc,
++            )
++            continue
+         # F5: skip markets with no real quote — implied_prob=0 from a stale/empty book
+         # would generate spurious violations
+         if not prices.get("has_quote", False):
+@@ -187,9 +333,12 @@ def _group_markets(markets: list[dict]) -> dict:
+ 
+         key = (series, date_str)
+         # Store bid/ask alongside implied prob so find_violations can compute
+-        # R27: real arb edge = sell_bid − buy_ask (not mid − mid).
++        # R27: real arb edge = sell_bid − buy_ask (not mid − mid). is_shadow/
++        # unit set explicitly (False/"°") -- see the rain branch's identical
++        # per-entry tagging above for why this isn't re-derived from the
++        # group key's shape.
+         groups.setdefault(key, []).append(
+-            (m, cond_type, threshold, implied, yes_bid, yes_ask)
++            (m, cond_type, threshold, implied, yes_bid, yes_ask, False, "°")
+         )
+ 
+     return groups
+@@ -199,20 +348,34 @@ def find_violations(markets: list[dict]) -> list[Violation]:
+     """
+     Scan a list of markets and return all monotonicity violations.
+     Only checks markets that have real quotes (implied_prob > 0).
++
++    Every violation whose group key is a rain event key (a 4-tuple tagged
++    "RAIN", from market_implied_rain_event_key() -- see _group_markets) is
++    returned with is_shadow=True. Callers that auto-place corrective trades
++    MUST check this flag and skip placement for shadow violations -- this
++    is a deliberate first pass (rain's ladder monotonicity has never been
++    checked against live prices before), not yet graduated to live
++    placement. See backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE
++    CHECK STILL BLANKET-EXCLUDES KXRAIN*M".
+     """
+     groups = _group_markets(markets)
+     violations: list[Violation] = []
+ 
+-    for (series, date_str), entries in groups.items():
++    for entries in groups.values():
++        # is_shadow/unit are set per-entry at append time in _group_markets
++        # (not re-derived here from the group key's shape) -- every entry in
++        # one group shares the same value by construction (grouping itself
++        # already partitions rain from temperature), so taking it from any
++        # single entry is safe.
+         # Split into above and below groups; carry bid/ask for R27 edge calc.
+         above = [
+-            (m, t, p, bid, ask)
+-            for m, ct, t, p, bid, ask in entries
++            (m, t, p, bid, ask, shadow, unit)
++            for m, ct, t, p, bid, ask, shadow, unit in entries
+             if ct == "above" and p > 0
+         ]
+         below = [
+-            (m, t, p, bid, ask)
+-            for m, ct, t, p, bid, ask in entries
++            (m, t, p, bid, ask, shadow, unit)
++            for m, ct, t, p, bid, ask, shadow, unit in entries
+             if ct == "below" and p > 0
+         ]
+ 
+@@ -220,9 +383,25 @@ def find_violations(markets: list[dict]) -> list[Violation]:
+         # Sort by threshold ascending
+         above.sort(key=lambda x: x[1])
+         for i in range(len(above) - 1):
+-            m_lo, t_lo, p_lo, bid_lo, ask_lo = above[i]
+-            m_hi, t_hi, p_hi, bid_hi, ask_hi = above[i + 1]
++            m_lo, t_lo, p_lo, bid_lo, ask_lo, shadow, unit = above[i]
++            m_hi, t_hi, p_hi, bid_hi, ask_hi, _shadow_hi, _unit_hi = above[i + 1]
+             if p_hi > p_lo + 0.01:  # P(> higher threshold) > P(> lower) — violation
++                # Opus-review-caught: a market with NO real ask (or NO real
++                # bid) on the leg this arb needs still has has_quote=True
++                # (parse_market_price treats a one-sided book as a quote --
++                # mid falls back to yes_bid) and yes_ask/yes_bid=0.0, which
++                # made `edge = bid_hi - 0` compute a fabricated "guaranteed"
++                # profit against a leg with no real liquidity to trade
++                # into/out of. Both legs need a REAL two-sided quote to be
++                # tradeable at all -- reproduced live against a realistic
++                # thin rain ladder before this guard existed. Applies to
++                # both market families; disproportionately matters for rain,
++                # whose monthly ladders are typically much thinner than
++                # temperature's daily ones, and this shadow pass exists
++                # specifically to give a clean signal for that graduation
++                # decision.
++                if ask_lo <= 0 or bid_hi <= 0:
++                    continue
+                 # R27: arb = BUY low-threshold (pay ask_lo), SELL high-threshold
+                 # (receive bid_hi).  Use actual bid/ask, not midpoints.
+                 edge = bid_hi - ask_lo
+@@ -234,18 +413,22 @@ def find_violations(markets: list[dict]) -> list[Violation]:
+                         sell_prob=p_hi,
+                         guaranteed_edge=edge,
+                         description=(
+-                            f"P(>{t_hi:.0f}°) = {p_hi:.0%} > P(>{t_lo:.0f}°) = {p_lo:.0%} — "
++                            f"P(>{t_hi:g}{unit}) = {p_hi:.0%} > P(>{t_lo:g}{unit}) = {p_lo:.0%} — "
+                             f"IMPOSSIBLE: higher threshold can't have higher probability"
+                         ),
++                        is_shadow=shadow,
+                     )
+                 )
+ 
+         # Below: P(high < X) should INCREASE as X increases
+         below.sort(key=lambda x: x[1])
+         for i in range(len(below) - 1):
+-            m_lo, t_lo, p_lo, bid_lo, ask_lo = below[i]
+-            m_hi, t_hi, p_hi, bid_hi, ask_hi = below[i + 1]
++            m_lo, t_lo, p_lo, bid_lo, ask_lo, shadow, unit = below[i]
++            m_hi, t_hi, p_hi, bid_hi, ask_hi, _shadow_hi, _unit_hi = below[i + 1]
+             if p_lo > p_hi + 0.01:  # P(< lower threshold) > P(< higher) — violation
++                # Same zero-quote-leg guard as the "above" loop above.
++                if ask_hi <= 0 or bid_lo <= 0:
++                    continue
+                 # R27: arb = BUY high-threshold (pay ask_hi), SELL low-threshold
+                 # (receive bid_lo).
+                 edge = bid_lo - ask_hi
+@@ -257,9 +440,10 @@ def find_violations(markets: list[dict]) -> list[Violation]:
+                         sell_prob=p_lo,
+                         guaranteed_edge=edge,
+                         description=(
+-                            f"P(<{t_lo:.0f}°) = {p_lo:.0%} > P(<{t_hi:.0f}°) = {p_hi:.0%} — "
++                            f"P(<{t_lo:g}{unit}) = {p_lo:.0%} > P(<{t_hi:g}{unit}) = {p_hi:.0%} — "
+                             f"IMPOSSIBLE: lower threshold can't have higher 'below' probability"
+                         ),
++                        is_shadow=shadow,
+                     )
+                 )
+ 

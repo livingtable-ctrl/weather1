@@ -1,0 +1,151 @@
+commit d320142d6e3916741d38bed488ae8095a6534ce4
+Author: thesa <thesa@users.noreply.github.com>
+Date:   Sun Aug 16 21:43:07 2026 -0400
+
+    feat(settlement_monitor,ml_bias): wire METAR calibration into settlement-lag force-close gate
+    
+    backlog.txt L4: cron.py's >=0.80 T-ticker force-close gate was evaluating the
+    raw, known-overconfident metar._dynamic_lock_in_confidence() output while
+    weather_markets.py's analyze_trade already prices fresh entries at the
+    calibrated probability -- the two sides of the same trade disagreed under
+    different calibration regimes, and paper P&L from these forced closes feeds
+    the accuracy circuit breaker that does gate live trading.
+    
+    Adds _calibrate_metar_settlement_confidence() in settlement_monitor.py,
+    reusing weather_markets._load_metar_calibration()'s cached model loader and
+    ml_bias.apply_metar_calibration(), with the exact P(YES) orientation
+    conversion the entry-path fix uses and its own 0.60 magnitude cap (not the
+    generic 0.30, which would silently skip most NO-lock corrections). Fails
+    closed to the raw confidence on any error. `between` path untouched, out of
+    scope per the backlog entry.
+    
+    Opus review (effort=high) found the wiring correct but surfaced that the
+    raw formula's hard [0.72, 0.97] bound means calibrated confidence can never
+    reach the 0.80 gate under the current model -- verified independently, and
+    confirmed via cron.log + schtasks that this force-close path has never
+    actually run in production, so this isn't a live regression. Filed as a new
+    backlog entry to revisit once the settlement monitor is actually scheduled
+    and real data exists to inform a threshold rescale.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+diff --git a/settlement_monitor.py b/settlement_monitor.py
+index 221cfe81..c2c11d9b 100644
+--- a/settlement_monitor.py
++++ b/settlement_monitor.py
+@@ -19,7 +19,12 @@ from zoneinfo import ZoneInfo
+ 
+ import metar as _metar
+ from safe_io import project_root as _project_root
+-from weather_markets import _CITY_TZ, KNOWN_WEATHER_SERIES, _parse_city_from_ticker
++from weather_markets import (
++    _CITY_TZ,
++    KNOWN_WEATHER_SERIES,
++    _load_metar_calibration,
++    _parse_city_from_ticker,
++)
+ 
+ _log = logging.getLogger(__name__)
+ 
+@@ -269,6 +274,91 @@ def _check_between_settlement(
+     }
+ 
+ 
++def _calibrate_metar_settlement_confidence(
++    outcome: str, confidence: float, ticker: str
++) -> float:
++    """Apply the same METAR beta-calibration weather_markets.py's
++    analyze_trade uses for fresh entries (backlog.txt L4) to this
++    settlement-lag force-close signal's raw confidence, so cron.py's
++    >=0.80 force-close gate isn't evaluating a known-overconfident number
++    while entries are priced under the calibrated one. T-ticker
++    (above/below) only -- the `between` path has its own separate
++    confidence formula and is out of scope.
++
++    apply_metar_calibration expects P(YES), but `confidence` here is
++    direction-relative (a NO-lock confidence=0.93 means P(NO)=0.93, i.e.
++    P(YES)=0.07) -- mirrors weather_markets.py's exact
++    outcome=="yes" ? confidence : 1-confidence conversion in both
++    directions around the calibration call.
++
++    Uses its own correction cap (_METAR_CORRECTION_LIMIT = 0.60), not the
++    generic _ML_CORRECTION_LIMIT (0.30) weather_markets.py's GBM/Platt
++    corrections use -- reusing 0.30 here was a HIGH finding on the
++    entry-path fix (see weather_markets.py's matching comment): METAR's
++    miscalibration is large by design, and 0.30 silently discarded every
++    NO-lock correction while still applying YES-lock ones.
++
++    Fails closed (returns the raw confidence unchanged) if no calibration
++    model is loaded yet, or if anything about applying it goes wrong.
++
++    IMPORTANT (opus review finding, 2026-08-16, verified against real
++    production coefficients): metar._dynamic_lock_in_confidence() is
++    hard-bounded to [0.72, 0.97]. Run through the real fitted model
++    (a=b=0.2262, c=0.4001 as of this writing), the calibrated output
++    across that ENTIRE input range never exceeds ~0.766 for a YES-lock or
++    ~0.595 for a NO-lock -- both permanently below cron.py's >=0.80
++    force-close gate. This is not a bug: it means the raw signal was
++    never actually confident enough (once corrected) to justify a
++    force-close under the current threshold. The practical effect is that
++    this T-ticker force-close path goes dormant under current data,
++    rather than merely firing less often. Confirmed via cron.log (no
++    "SETTLEMENT LAG signal" entries ever recorded) and via `schtasks`
++    (the daily KalshiWeatherSettlementMonitor task was never registered
++    on this machine) that this mechanism has not actually been live yet,
++    so this is not a behavior regression against real production traffic.
++    See backlog.txt for the follow-up entry to revisit cron.py's 0.80
++    threshold once the settlement monitor is actually scheduled and real
++    settlement-lag data exists to recalibrate against -- do not rescale
++    the gate speculatively before that data exists.
++    """
++    _METAR_CORRECTION_LIMIT = 0.60
++    try:
++        from ml_bias import apply_metar_calibration as _apply_metar_cal
++
++        metar_cal = _load_metar_calibration()
++        if metar_cal is None:
++            return confidence
++
++        raw_p_yes = confidence if outcome == "yes" else (1.0 - confidence)
++        new_p_yes = _apply_metar_cal(raw_p_yes, metar_cal)
++        new_confidence = new_p_yes if outcome == "yes" else (1.0 - new_p_yes)
++        delta = abs(new_confidence - confidence)
++        _log.info(
++            "check_city_settlement: METAR beta-calibration %s %.3f -> %.3f (delta %.3f)",
++            ticker,
++            confidence,
++            new_confidence,
++            delta,
++        )
++        if delta > _METAR_CORRECTION_LIMIT:
++            _log.warning(
++                "check_city_settlement: METAR beta-calibration for %s exceeds "
++                "+/-%.2f (delta=%.3f) -- skipping",
++                ticker,
++                _METAR_CORRECTION_LIMIT,
++                delta,
++            )
++            return confidence
++        return max(0.01, min(0.99, new_confidence))
++    except Exception as exc:
++        _log.warning(
++            "check_city_settlement: METAR beta-calibration failed for %s: %s",
++            ticker,
++            exc,
++        )
++        return confidence
++
++
+ def check_city_settlement(city: str, active_tickers: list[dict]) -> list[dict]:
+     """
+     Check METAR for a city and return any new settlement signals.
+@@ -376,6 +466,9 @@ def check_city_settlement(city: str, active_tickers: list[dict]) -> list[dict]:
+             margin_f=_SETTLEMENT_MARGIN_F,
+         )
+         if lockout["locked"]:
++            lockout["confidence"] = _calibrate_metar_settlement_confidence(
++                lockout["outcome"], lockout["confidence"], market["ticker"]
++            )
+             signal = build_settlement_signal(
+                 ticker=market["ticker"],
+                 city=city,

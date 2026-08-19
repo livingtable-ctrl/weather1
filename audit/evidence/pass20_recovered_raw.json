@@ -1,0 +1,39 @@
+{
+  "findings": [
+    {
+      "title": "param_sweep.py's PAPER_MIN_EDGE sweep values never overlap the range load_swept_min_edge() will accept",
+      "type": "BUG",
+      "scope": "UNRELATED_CODEBASE",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "evidence_level": "E2",
+      "files": [
+        "param_sweep.py",
+        "config.py",
+        "tests/test_param_sweep_load.py",
+        "utils.py"
+      ],
+      "symbols": [
+        "run_sweep",
+        "sweep_parameter",
+        "load_swept_min_edge",
+        "_compute_paper_min_edge_from_files"
+      ],
+      "lines": [
+        "param_sweep.py:166-168",
+        "param_sweep.py:102-129",
+        "config.py:192-230"
+      ],
+      "description": "run_sweep()'s params_to_sweep dict sweeps PAPER_MIN_EDGE over [0.15, 0.20, 0.25, 0.30, 0.35, 0.40], apparently copy-pasted from the adjacent MED_EDGE entry [0.15, 0.20, 0.25, 0.30, 0.35] (correct for MED_EDGE, whose default is 0.15 per utils.py). But PAPER_MIN_EDGE's real domain is [0.03, 0.15]: confirmed by config.py's own walk-forward acceptance check (0.03 <= opt <= 0.15), its hardcoded fallback (0.05), and tests/test_param_sweep_load.py's example values (0.05-0.10). The two ranges intersect at exactly one point, 0.15.",
+      "root_cause": "PAPER_MIN_EDGE's entry in params_to_sweep uses MED_EDGE's candidate-value scale instead of a list within PAPER_MIN_EDGE's own [0.03, 0.15] domain.",
+      "evidence": "Reproduced in audit/reproductions/repro_pass20_param_sweep_scale_mismatch.py: 500 synthetic trades with net_edge uniform on [0.03, 0.16] (weak edge-to-win-rate correlation). Sweeping the actual shipped values [0.15, 0.20, 0.25, 0.30, 0.35, 0.40] gives trades=41 at 0.15 and trades=0/win_rate=None for every value >=0.20. Sweeping PAPER_MIN_EDGE's real range [0.03..0.15] instead populates every step (41 to 500 trades), showing the domain the shipped list never explores.",
+      "expected_behavior": "The PAPER_MIN_EDGE sweep should test candidates spanning its actual accepted range [0.03, 0.15] so load_swept_min_edge() can surface whichever threshold in that range empirically performs best.",
+      "actual_behavior": "Only one tested value (0.15) can ever pass load_swept_min_edge()'s filter; values 0.20-0.40 are structurally rejected regardless of trade count/win rate, and the sub-0.15 region where PAPER_MIN_EDGE actually operates (default 0.05) is never tested.",
+      "recommendation": "Change params_to_sweep['PAPER_MIN_EDGE'] to values within [0.03, 0.15], e.g. [0.03, 0.05, 0.07, 0.09, 0.11, 0.13, 0.15].",
+      "financial_risk": "Low/indirect: fails soft. load_swept_min_edge() returns either 0.15 or None; None falls back to the hardcoded 0.05 default or to walk_forward_params.json's separately and correctly ranged sweep (checked first, can mask this bug). No path produces an out-of-range/dangerous PAPER_MIN_EDGE. Practical cost: the param_sweep-based auto-tune for PAPER_MIN_EDGE is silently non-functional below 0.15, indefinitely.",
+      "security_risk": "None.",
+      "reproduction": "audit/reproductions/repro_pass20_param_sweep_scale_mismatch.py; ran via `python audit/reproductions/repro_pass20_param_sweep_scale_mismatch.py` from repo root; output captured in audit/evidence/pass20_unrelated_discovery.md.",
+      "limitations": "Did not verify how often walk_forward_params.json already masks this in practice, or whether MED_EDGE has its own separate auto-tune consumer. Kept at MEDIUM (not LOW) as a fully dead auto-tuning path, not HIGH since it fails closed to a safe hardcoded default with no live-trading impact."
+    }
+  ]
+}

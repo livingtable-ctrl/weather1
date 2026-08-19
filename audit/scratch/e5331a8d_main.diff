@@ -1,0 +1,429 @@
+commit e5331a8d5674e9beff1e4800d0e47152b8eb8470
+Author: thesa <thesa@users.noreply.github.com>
+Date:   Mon Aug 17 15:55:49 2026 -0400
+
+    fix(main,order_executor,execution_log): route cmd_order's live fills through execution_log instead of the paper ledger
+    
+    cmd_order's live buy/sell fills were unconditionally recorded via
+    paper.place_paper_order() and never logged live=True, so a real live
+    position was invisible to the automated protective-exit scanner. The next
+    cron/watch cycle could then silently "close" it via paper.close_paper_early()
+    (which never touches the exchange), leaving the real position open and
+    unmanaged indefinitely.
+    
+    cmd_order now routes live fills through execution_log/LivePositionStore via
+    a new shared execution_log.record_live_exit_fill() helper (also refactored
+    into order_executor._exit_live_position, a pure behavior-preserving
+    refactor). Live orders are placed immediate-or-cancel instead of GTC
+    (confirmed via AskUserQuestion) so a resting order can never orphan the fix
+    -- no code taught the general poller about closes_position_id.
+    
+    Two full opus reviews (effort:high) each caught real severe bugs in the
+    fix itself, not just the original problem: round 1 found the fix never
+    actually worked (Kalshi's real order-status vocabulary has no "filled",
+    so the hardcoded status filter downstream never matched a translated raw
+    status) plus missing close_time/entry_prob, no quantity clamping, and no
+    settled_at concurrency guard -- all fixed. Round 2, reviewing round 1's
+    own fixes, found two NEW bugs those fixes introduced: an unmatched live
+    sell was recorded in a shape indistinguishable from an open long position
+    (worse than the original bug), and a new race-guard exception, uncaught by
+    any call site, could crash the entire watch --auto --live process from a
+    race on one position. Both fixed.
+    
+    Mid-session, a concurrent session's own commit (105cf4ce) fixed the sibling
+    backlog entry (L1378) in the exact same function -- manually merged so both
+    fixes coexist (verified via their tests + this session's new ones together).
+    
+    Resolves backlog.txt's L1412 entry. Two new follow-up entries filed but
+    deliberately not fixed here (same-payload test): the KALSHI_ENV=prod
+    startup banner also wrongly claims only watch --auto --live can place live
+    orders, and paper.check_position_limits' exposure caps never read
+    execution_log for real live positions.
+    
+    188 tests across the three directly-touched files, 1515 in the wide
+    regression sweep, all pass. graphify-out/ refreshed for the touched files.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+diff --git a/main.py b/main.py
+index c124c6fa..40592898 100644
+--- a/main.py
++++ b/main.py
+@@ -4518,7 +4518,16 @@ def cmd_order(client: KalshiClient, action: str, args: list):
+     # skipping it (2026-07-09 follow-up review).
+     from kalshi_client import DEMO_BASE
+ 
+-    if getattr(client, "base_url", None) != DEMO_BASE:
++    # Captured once here (not re-derived later) so the post-fill recording
++    # below routes through execution_log/LivePositionStore instead of
++    # paper.place_paper_order() for a genuine live order -- see backlog.txt
++    # "MANUAL cmd_order LIVE ORDERS..." entry: silently absorbing a real
++    # fill into the paper ledger let the automated protective-exit scanner
++    # abandon an unmanaged real position on the exchange while believing it
++    # had closed it.
++    _is_live = getattr(client, "base_url", None) != DEMO_BASE
++
++    if _is_live:
+         from trading_gates import pre_live_trade_check
+ 
+         try:
+@@ -4565,13 +4574,178 @@ def cmd_order(client: KalshiClient, action: str, args: list):
+                 _limit_exc_ord,
+             )
+ 
+-    row_id = log_order(ticker, side, int(count), price, order_type=action)
++    # A live SELL that matches a currently-tracked open live position closes
++    # it (mirrors order_executor._exit_live_position's closes_position_id
++    # convention) rather than opening a new one -- resolved BEFORE log_order
++    # so closes_position_id can be set on this same row, the same way
++    # _exit_live_position sets it upfront. Matched by exact (ticker, side);
++    # no match (e.g. reducing a position this bot has no live row for) is a
++    # deliberate fail-open — the order still reaches the real exchange
++    # either way, just recorded as a fresh live entry (closes_position_id=
++    # None) instead of being silently mislabeled or routed into the paper
++    # ledger.
++    _live_close_position: dict | None = None
++    if _is_live and action == "sell":
++        # Defensive: a DB read failure here must not block placing the real
++        # sell order -- per _exit_live_position's own established reasoning,
++        # "blocking an exit is exactly backwards when the account already
++        # holds a position that needs to close." Falling through with no
++        # match is safe (opus review, 2026-08-17): it just routes into the
++        # already-defensive "no matching position" branch below.
++        try:
++            _live_open_matches = [
++                _p
++                for _p in order_executor._get_live_open_positions()
++                if _p["ticker"] == ticker and _p.get("side", "yes") == side
++            ]
++        except Exception as _lookup_err:
++            _log.warning(
++                "cmd_order: live position lookup failed for %s, proceeding "
++                "without a match: %s",
++                ticker,
++                _lookup_err,
++            )
++            _live_open_matches = []
++        if _live_open_matches:
++            _live_close_position = _live_open_matches[0]
++            if len(_live_open_matches) > 1:
++                # Opus review (2026-08-17), NEW-M1: multiple open live
++                # positions can legally share a ticker+side (see
++                # order_executor.py's own _get_live_open_positions callers);
++                # this sell only closes the OLDEST one. A full fix needs
++                # either closes_position_id to support more than one
++                # referenced row or preventing duplicate live entries in
++                # the first place (backlog.txt "check_position_limits'
++                # EXPOSURE CAPS ARE STRUCTURALLY BLIND..." entry) -- flagged
++                # to the operator rather than silently leaving the others
++                # untouched with no signal.
++                print(
++                    yellow(
++                        f"  [Warning] {len(_live_open_matches)} tracked live "
++                        f"positions exist for {ticker} {side} -- this sell "
++                        "only closes the oldest one (#"
++                        f"{_live_close_position['id']}); the others are "
++                        "untouched and need their own sell."
++                    )
++                )
++
++    # Needed for a live position to actually be MANAGEABLE once it surfaces
++    # via _get_live_open_positions(): positions._passes_exit_gates fails
++    # CLOSED (never exits) on a missing close_time, and
++    # _check_live_model_exits skips any position with entry_prob None --
++    # both silently None before this fix since cmd_order never passed them.
++    # Only available when the analysis fetch above succeeded. Opus review
++    # (2026-08-17), NEW-M5: the earlier "Analysis failed" warning only says
++    # "order will not be tracked in Brier/P&L" -- true but understates it
++    # now that a failed analysis on a LIVE buy means the resulting position
++    # has NO automated stop-loss/breakeven coverage at all, not just missing
++    # accuracy tracking. Say so explicitly for the case that actually
++    # matters (a live order proceeding with no close_time).
++    if _is_live and action == "buy" and not _market:
++        print(
++            yellow(
++                "  [Warning] No market data was fetched, so this live position "
++                "will have NO close_time recorded -- the automated stop-loss/"
++                "breakeven scanner will never exit it. Monitor and close it "
++                "manually if needed."
++            )
++        )
++    row_id = log_order(
++        ticker,
++        side,
++        int(count),
++        price,
++        order_type=action,
++        live=_is_live,
++        closes_position_id=(
++            _live_close_position["id"] if _live_close_position else None
++        ),
++        close_time=_market.get("close_time") if _market else None,
++        entry_prob=_analysis.get("forecast_prob") if _analysis else None,
++        forecast_cycle=order_executor._current_forecast_cycle(),
++    )
+     _placed_order: dict | None = None
++    # Only mirror what actually filled — a resting/partially-filled order was
++    # previously recorded as `count` contracts fully filled, distorting
++    # paper P&L, exposure-cap accounting, and Brier tracking until the
++    # market settles (or forever, if it never fills).
++    # fill_count_fp is a fixed-point-formatted STRING (e.g. "2.00"), not an
++    # int — int("2.00") raises ValueError, which crashed cmd_order right
++    # here on every real order response (filled or resting) and skipped
++    # paper-trade recording entirely. Reuse order_executor's parser rather
++    # than reinventing it.
++    #
++    # Live orders are placed immediate-or-cancel (never resting) -- opus
++    # review (2026-08-17) found that a resting GTC order's raw Kalshi status
++    # ("resting") has no path to ever being recognized as a manageable
++    # position: only order_executor._exit_live_position's automated exits
++    # set closes_position_id, and the general poller that later resolves a
++    # still-resting order (_poll_pending_orders/_recover_pending_orders) has
++    # no awareness of closes_position_id at all, so a resting cmd_order sell
++    # would leave the position it was meant to close orphaned forever. IOC
++    # resolves synchronously in this same call (matching
++    # _exit_live_position's own model exactly) -- confirmed via
++    # AskUserQuestion this is an acceptable, deliberate trading-behavior
++    # change for the manual live path specifically (it can no longer place a
++    # patient resting limit order). Demo/paper mode keeps the prior GTC
++    # default -- unaffected either way, since the paper ledger doesn't
++    # depend on Kalshi's status vocabulary at all.
++    _filled_count = 0
+     try:
+-        result = client.place_order(ticker, side, action, int(count), price)
++        # cycle= threads through to the idempotency key (kalshi_client.py's
++        # place_order deterministically derives it from ticker+side+action+
++        # count+price+cycle) -- omitting it (as this code did before the
++        # 2026-08-17 opus review) falls back to a random UUID, so a manual
++        # retry of a failed/uncertain cmd_order call gets no server-side
++        # dedup protection the automated paths already have.
++        _cycle = order_executor._current_forecast_cycle()
++        if _is_live:
++            result = client.place_order(
++                ticker,
++                side,
++                action,
++                int(count),
++                price,
++                time_in_force="immediate_or_cancel",
++                cycle=_cycle,
++            )
++        else:
++            result = client.place_order(
++                ticker, side, action, int(count), price, cycle=_cycle
++            )
+         order = result.get("order", result)
+         _placed_order = order
+-        log_order_result(row_id, status=order.get("status", "sent"), response=order)
++        _filled_count = order_executor._to_fill_count(order.get("fill_count_fp")) or 0
++        # Kalshi's real status enum is resting/canceled/executed -- there is
++        # no "filled". Storing the raw string directly (as this code did
++        # before the 2026-08-17 opus review caught it) means
++        # execution_log.get_filled_unsettled_live_orders()'s hardcoded
++        # `status = 'filled'` filter NEVER matches, so a real live position
++        # would never surface to the protective-exit scanner regardless of
++        # everything else this fix does. Translate through the same
++        # vocabulary every other live-order call site in order_executor.py
++        # already uses. A still-None result (raw status "resting" — only
++        # possible in demo/paper mode now that live orders are IOC) is
++        # recorded as "pending", matching _recover_pending_orders'
++        # established convention for an unresolved order.
++        _internal_status = (
++            order_executor._kalshi_status_to_internal(
++                order.get("status", ""), _filled_count
++            )
++            or "pending"
++        )
++        # fill_quantity recorded at placement time — every other live-order
++        # call site in order_executor.py does the same (e.g.
++        # _exit_live_position, _reprice_or_cancel_pending_orders) since
++        # _get_live_open_positions() falls back to the full requested
++        # `quantity` when fill_quantity is NULL, which would silently track
++        # a live BUY that only partial-filled at its full requested size.
++        log_order_result(
++            row_id,
++            status=_internal_status,
++            response=order,
++            fill_quantity=_filled_count,
++        )
+         print(green(f"  Order placed: {order.get('order_id', '')}"))
+         print(
+             f"  Status: {order.get('status')}  Filled: {order.get('fill_count_fp', 0)}"
+@@ -4581,36 +4755,95 @@ def cmd_order(client: KalshiClient, action: str, args: list):
+         print(red(f"  Order failed: {e}"))
+         raise
+ 
+-    if _placed_order and _placed_order.get("status") in ("rejected", "canceled"):
++    if _internal_status != "filled":
+         print(
+             yellow(
+-                f"  Order {_placed_order.get('status')} — not recording as paper trade."
++                f"  Order {(_placed_order or {}).get('status', _internal_status)} — "
++                "nothing filled, not recording a trade."
+             )
+         )
+         return
++    _record_count = min(_filled_count, int(count))
+ 
+-    # Only mirror what actually filled — a resting/partially-filled GTC limit
+-    # order was previously recorded as `count` contracts fully filled,
+-    # distorting paper P&L, exposure-cap accounting, and Brier tracking
+-    # until the market settles (or forever, if it never fills).
+-    # fill_count_fp is a fixed-point-formatted STRING (e.g. "2.00"), not an
+-    # int — int("2.00") raises ValueError, which crashed cmd_order right
+-    # here on every real order response (filled or resting) and skipped
+-    # paper-trade recording entirely. Reuse order_executor's parser rather
+-    # than reinventing it.
+-    _filled_count = (
+-        order_executor._to_fill_count((_placed_order or {}).get("fill_count_fp")) or 0
+-    )
+-    if _filled_count <= 0:
+-        print(
+-            yellow(
+-                f"  Order {(_placed_order or {}).get('status', 'resting')} — "
+-                "nothing filled yet, not recording as paper trade."
++    if _is_live:
++        # A live fill needs its POSITION recorded via
++        # execution_log/LivePositionStore, not paper.place_paper_order() --
++        # log_order above already recorded this fill's own row (live=True,
++        # closes_position_id set for a matched sell). A sell that closes a
++        # tracked live position also needs record_live_exit_fill so that
++        # position's row is marked settled with fee-adjusted P&L, the same
++        # way order_executor._exit_live_position does for the automated
++        # path — otherwise it would sit "open" in execution_log forever
++        # even though it was just closed for real on the exchange, and the
++        # next cron/watch cycle's protective-exit scan would try to exit it
++        # again.
++        if _live_close_position is not None:
++            try:
++                from execution_log import record_live_exit_fill
++
++                _pnl, _fully_closed = record_live_exit_fill(
++                    _live_close_position, _record_count, price
++                )
++                print(
++                    green(
++                        f"  Live position #{_live_close_position['id']} "
++                        f"{'closed' if _fully_closed else 'partially closed'} "
++                        f"via manual sell — pnl=${_pnl:+.2f}"
++                    )
++                )
++            except Exception as _live_rec_err:
++                _log.warning(
++                    "cmd_order: record_live_exit_fill failed for %s: %s",
++                    ticker,
++                    _live_rec_err,
++                )
++                print(
++                    yellow(
++                        "  [Warning] Order filled but position bookkeeping failed: "
++                        f"{_live_rec_err} — check execution_log manually."
++                    )
++                )
++        elif action == "sell":
++            # Opus review (2026-08-17), NEW-H1: this row was written above as
++            # live=True/status='filled'/settled_at=NULL/closes_position_id=
++            # None -- exactly the shape execution_log.get_filled_unsettled_live_orders()
++            # treats as an OPEN LONG POSITION. Left alone, a real reduce-only
++            # sell (of a position this bot doesn't track) would be
++            # misread by the protective-exit scanner as a brand-new entry it
++            # just bought, and it would later place a REAL exit sell against
++            # it -- worse than the original bug this fix resolves, not just
++            # a repeat of it. Immediately mark the row settled (pnl unknown
++            # -- there is no tracked entry_price to compute one against, so
++            # 0.0 is a neutral placeholder, not a real P&L claim) so it can
++            # never be mistaken for an open position, while still preserving
++            # the historical record that this live sell happened.
++            try:
++                from execution_log import record_live_early_exit
++
++                record_live_early_exit(row_id, price, "unmatched_sell", 0.0)
++            except Exception as _settle_err:
++                _log.warning(
++                    "cmd_order: could not settle unmatched-sell row %s: %s",
++                    row_id,
++                    _settle_err,
++                )
++            print(
++                yellow(
++                    f"  Live sell recorded (execution_log row #{row_id}, live=True) "
++                    f"— no matching tracked live position for {ticker}; nothing to "
++                    "close. P&L unknown (no tracked entry) -- recorded, not left "
++                    "open as a phantom position."
++                )
++            )
++        else:
++            print(
++                green(
++                    f"  Live order recorded (execution_log row #{row_id}, live=True)."
++                )
+             )
+-        )
+-        return
+-    _record_count = min(_filled_count, int(count))
+ 
++    # Brier/prediction-accuracy tracking runs regardless of live vs. paper —
++    # independent of which ledger the fill's own P&L lands in.
+     if _analysis and _market and _enriched:
+         try:
+             _city = _enriched.get("_city")
+@@ -4634,27 +4867,28 @@ def cmd_order(client: KalshiClient, action: str, args: list):
+             _target_date_str = _target_date.isoformat() if _target_date else None
+             _days_out = int(_analysis.get("days_out", 1))
+ 
+-            _trade = place_paper_order(
+-                ticker,
+-                side,
+-                _record_count,
+-                price,
+-                entry_prob=_analysis.get("forecast_prob"),
+-                net_edge=_analysis.get("net_edge"),
+-                city=_city,
+-                target_date=_target_date_str,
+-                method=_analysis.get("method"),
+-                model_forecast_means=_analysis.get("model_forecast_means"),
+-                forecast_temp=_analysis.get("forecast_temp"),
+-                condition_threshold=_analysis.get("condition", {}).get("threshold"),
+-                close_time=_market.get("close_time"),
+-                days_out=_days_out,
+-            )
+-            print(
+-                green(
+-                    f"  Recorded as paper trade #{_trade['id']} for P&L/Brier tracking."
++            if not _is_live:
++                _trade = place_paper_order(
++                    ticker,
++                    side,
++                    _record_count,
++                    price,
++                    entry_prob=_analysis.get("forecast_prob"),
++                    net_edge=_analysis.get("net_edge"),
++                    city=_city,
++                    target_date=_target_date_str,
++                    method=_analysis.get("method"),
++                    model_forecast_means=_analysis.get("model_forecast_means"),
++                    forecast_temp=_analysis.get("forecast_temp"),
++                    condition_threshold=_analysis.get("condition", {}).get("threshold"),
++                    close_time=_market.get("close_time"),
++                    days_out=_days_out,
++                )
++                print(
++                    green(
++                        f"  Recorded as paper trade #{_trade['id']} for P&L/Brier tracking."
++                    )
+                 )
+-            )
+ 
+             try:
+                 from tracker import log_analysis_attempt as _log_attempt
+@@ -4684,8 +4918,8 @@ def cmd_order(client: KalshiClient, action: str, args: list):
+                 _log.warning("cmd_order: log_prediction failed: %s", _pe)
+ 
+         except Exception as _rec_err:
+-            _log.warning("cmd_order: paper trade recording failed: %s", _rec_err)
+-            print(yellow(f"  [Warning] Could not record as paper trade: {_rec_err}"))
++            _log.warning("cmd_order: trade analysis recording failed: %s", _rec_err)
++            print(yellow(f"  [Warning] Could not record trade analysis: {_rec_err}"))
+ 
+ 
+ def cmd_cancel(client: KalshiClient, order_id: str):

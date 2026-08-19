@@ -1,0 +1,247 @@
+commit d190d09dd699df5266e85650a6ddf8e2d1420891
+Author: thesa <thesa@users.noreply.github.com>
+Date:   Mon Aug 17 16:12:32 2026 -0400
+
+    feat(weather_markets): blend far-tail climatology into rain forecast signal beyond the 16-day horizon
+    
+    Extends the shadow-only rain_forecast_blend_prob signal (backlog.txt L2911,
+    formerly L2838) to tickets checked early in their accrual month, where the
+    remaining window exceeds Open-Meteo's forecast horizon -- previously the
+    signal was simply skipped for that case. Now blends a real near-forecast
+    prefix (capped to a genuine 14-day window, recovering ECMWF's real horizon
+    per a live-verified opus finding) with resampled far-tail climatology via
+    a deterministic cross product, tail-scoped SEAS5 tilt, and a new gap guard
+    against a newly-reachable circuit-breaker corruption path. Still shadow/
+    log-only; blended_prob/rec_side/sizing are untouched.
+    
+    Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+diff --git a/weather_markets.py b/weather_markets.py
+index 0631f22f..c986bc88 100644
+--- a/weather_markets.py
++++ b/weather_markets.py
+@@ -8740,52 +8740,197 @@ def _analyze_monthly_rain_trade(
+ 
+     threshold = condition["threshold"]
+ 
+-    # New: day-specific short-range forecast signal (backlog.txt "RAIN MARKETS
+-    # -- MONTHLY MODEL HAS NO DAY-SPECIFIC FORECAST SIGNAL"). Shadow/log-only,
++    # Day-specific short-range forecast signal (backlog.txt "RAIN MARKETS --
++    # MONTHLY MODEL HAS NO DAY-SPECIFIC FORECAST SIGNAL"). Shadow/log-only,
+     # matching every other new signal's SIGNAL_REGISTRY rollout in this
+     # codebase -- computed and logged here, but forecast_prob/blended_prob
+     # below is untouched; a future pass wires this in only once enough settled
+-    # predictions validate it. Scoped to remaining windows that fit entirely
+-    # inside Open-Meteo's 16-day forecast horizon -- when the remaining window
+-    # exceeds that (early-month tickets), the signal is simply not computed
+-    # this cycle, no fabrication, no historical-tail blending yet (deferred to
+-    # a future pass). Defensive try/except: a bug here must only ever cost
+-    # this new signal, never the existing bootstrap-only analysis below.
+-    # Opus review (2026-07-28) flagged that constructing remaining_start_date/
+-    # remaining_end_date outside the try below would propagate an uncaught
+-    # ValueError if the remaining_start_day<=days_in_month guard were ever
+-    # weakened by a future edit (remaining_start_day==days_in_month+1 is a
+-    # real, reachable value in the "already past month-end" branch above) --
+-    # not a live bug today (the guard correctly prevents it), but moved
+-    # inside the try anyway as belt-and-suspenders, matching this block's
+-    # own stated contract: a bug here must only ever cost this new signal,
+-    # never the existing bootstrap-only analysis below.
++    # predictions validate it.
++    #
++    # near_end_date caps the fetch to Open-Meteo's 16-day horizon
++    # (today_local + 15). When the remaining window already fits entirely
++    # inside that horizon (2026-07-28's shipped case), near_end_date equals
++    # remaining_end_date exactly, so that case's fetch call/values are
++    # byte-for-byte unchanged. Otherwise (2026-08-17's addition, the >16-day
++    # early-month case) near_end_date is a strict prefix of the remaining
++    # window -- the only days a real forecast can actually reach -- and the
++    # days beyond it are filled in from a resampled historical tail instead
++    # of left uncomputed. Design (AskUserQuestion, 2026-08-17): each near
++    # member is paired with one random resampled tail-year total (matches
++    # this file's own bootstrap_ci_month_total resampling convention, same
++    # sample count as the near-only case); SEAS5's tilt is applied to the
++    # tail-only sums (not the full remaining_sums_tilted used for
++    # blended_prob below) -- the near days have a real forecast now and
++    # don't need a mean-only nudge on top of it, while the tail beyond the
++    # forecast horizon still does, since SEAS5 remains the only
++    # forward-looking signal that reaches it.
++    #
++    # Defensive try/except: a bug anywhere in this block (near OR far case)
++    # must only ever cost this new signal, never the existing bootstrap-only
++    # analysis below. Opus review (2026-07-28) flagged that constructing
++    # remaining_start_date/remaining_end_date outside the try below would
++    # propagate an uncaught ValueError if the remaining_start_day<=
++    # days_in_month guard were ever weakened by a future edit
++    # (remaining_start_day==days_in_month+1 is a real, reachable value in
++    # the "already past month-end" branch above) -- not a live bug today
++    # (the guard correctly prevents it), but moved inside the try anyway as
++    # belt-and-suspenders.
+     forecast_blend_signal: dict[str, float] | None = None
+     try:
++        from datetime import timedelta as _timedelta
++
+         remaining_end_date = date(year, month, days_in_month)
+         remaining_start_date = (
+             date(year, month, remaining_start_day)
+             if remaining_start_day <= days_in_month
+             else None
+         )
++        near_end_date = (
++            min(remaining_end_date, today_local + _timedelta(days=15))
++            if remaining_start_date is not None
++            else None
++        )
++        is_far_case = near_end_date is not None and near_end_date != remaining_end_date
++        # Far case only: cap the actual fetch to a real 14-day window
++        # (today + 13), not the full 16-day horizon the near-only case uses.
++        # Opus review (2026-08-17, verified live against Open-Meteo) found a
++        # 16-day-out request falls entirely outside icon_seamless's
++        # (~7-day) and ecmwf_ifs025's (~14-day) real per-model horizons, so
++        # _fetch_ensemble_precip_multiday's own full-coverage-only rule
++        # (2026-07-28's H2 fix) silently drops both every time -- the far
++        # case's "ensemble" was actually always exactly 30 gfs_seamless
++        # members, zero ECMWF weight, vs. the near-only case's ~130-member,
++        # ~77%-ECMWF-weighted ensemble. A 14-day cap recovers ECMWF's real
++        # horizon at the cost of 2 fewer forecast-covered days (folded into
++        # the tail instead). The near-only branch below is untouched by
++        # this -- near_end_date there still spans up to a genuine 16 days,
++        # matching the shipped 2026-07-28 case's values byte-for-byte.
++        fetch_end_date = (
++            today_local + _timedelta(days=13) if is_far_case else near_end_date
++        )
++        # Two guards, both defensive (not reachable today given
++        # RAIN_MAX_DAYS_OUT's own days_out gate on the caller side, but the
++        # gap this block can request from remaining_start_date is new
++        # territory the shipped near-only case never reached):
++        #   1. fetch_end_date < remaining_start_date -- even the FIRST
++        #      remaining day is beyond the (13- or 15-day) window, i.e. no
++        #      near-forecast coverage at all to blend.
++        #   2. remaining_start_date more than 6 days out -- opus review
++        #      (2026-08-17) found this newly reachable via the "before
++        #      month starts" branch (remaining_start_date can be far from
++        #      today there, unlike every other branch), and past
++        #      icon_seamless's own real horizon (~7 days, live-probed) EVERY
++        #      model in the requested range would return all-null values --
++        #      _fetch_ensemble_precip_multiday's is_all_null check treats
++        #      that as a dead-model FAILURE and records it on the circuit
++        #      breaker SHARED with every other market's ensemble fetch, not
++        #      a benign "0 members" result. 6 days is a conservative,
++        #      explicitly-documented heuristic (Open-Meteo doesn't publish a
++        #      fixed guaranteed per-model horizon), not a precise constant.
+         if (
+             remaining_start_date is not None
+-            and (remaining_end_date - today_local).days <= 15
++            and fetch_end_date is not None
++            and fetch_end_date >= remaining_start_date
++            and (remaining_start_date - today_local).days <= 6
+         ):
+             member_totals = _fetch_ensemble_precip_multiday(
+-                lat, lon, tz, remaining_start_date, remaining_end_date
++                lat, lon, tz, remaining_start_date, fetch_end_date
+             )
+             if member_totals is not None and len(member_totals) >= 15:
+                 # >=15 matches bootstrap_ci_month_total's own "trust this as
+                 # a distribution" bar.
+-                forecast_blend_prob = sum(
+-                    1 for m in member_totals if month_to_date_actual + m > threshold
+-                ) / len(member_totals)
+-                forecast_blend_signal = {
+-                    "rain_forecast_blend_prob": max(
+-                        0.01, min(0.99, forecast_blend_prob)
+-                    ),
+-                }
++                if not is_far_case:
++                    # Shipped <=16-day case: the near fetch already covers
++                    # the ENTIRE remaining window, so each member IS a
++                    # full-window trajectory -- no tail to blend.
++                    combined_totals: list[float] | None = member_totals
++                    tail_days = 0
++                    n_members = len(member_totals)
++                else:
++                    # >16-day case: blend the real near-forecast members with
++                    # far-tail climatology.
++                    tail_start_day = fetch_end_date.day + 1
++                    tail_sums, tail_full_month_sums = (
++                        acis_precip.historical_remaining_and_full_month_sums(
++                            history, month, tail_start_day, days_in_month
++                        )
++                    )
++                    if len(tail_sums) >= 15:
++                        # Accepted, documented limitation (opus review,
++                        # 2026-08-17, L3): apply_seasonal_tilt's additive-
++                        # shift-then-floor-at-0.0 design assumes a
++                        # multi-week distribution; a 1-3 day tail (the
++                        # common case once a ticket is checked mid-month) is
++                        # mostly exact zeros, so a dry SEAS5 tilt gets
++                        # clipped by the floor on most samples and is
++                        # under-applied relative to a wet one. Not fixed
++                        # here: doing so would mean changing
++                        # apply_seasonal_tilt's own clamp behavior, which
++                        # also feeds the ALREADY-SHIPPED full-remaining-
++                        # window tilt that blended_prob/rec_side/sizing
++                        # depend on -- out of this change's scope. Magnitude
++                        # is tiny (a fraction of an inch on a 1-3 day tail)
++                        # and this signal is shadow-only.
++                        tail_sums_tilted, _tail_tilt_applied = (
++                            acis_precip.apply_seasonal_tilt(
++                                tail_sums, tail_full_month_sums, seasonal_mean_mm
++                            )
++                        )
++                        # Deterministic cross-product, not a per-member
++                        # random resample draw. Revised 2026-08-17 from the
++                        # originally-chosen paired-resample design: opus
++                        # review found the far case's real near-member count
++                        # is only ~30 (see fetch_end_date's own comment
++                        # above), small enough that one random.choice() draw
++                        # per member injected ~+/-8pp of pure sampling noise
++                        # into the logged signal on every scan cycle
++                        # (60-repeat repro: stdev 0.084 on an identical
++                        # input), and leaked global RNG state into the
++                        # unrelated bootstrap_ci_month_total() call below.
++                        # The cross product IS the exact expected value of
++                        # that same "pair each near member with a tail
++                        # value" idea, computed exhaustively instead of
++                        # sampled -- ~30 members x ~15-30 tail years is a
++                        # few hundred to ~1000 terms, negligible cost, zero
++                        # sampling error, no RNG use at all.
++                        combined_totals = [
++                            m + t for m in member_totals for t in tail_sums_tilted
++                        ]
++                        tail_days = days_in_month - tail_start_day + 1
++                        n_members = len(member_totals)
++                    else:
++                        _log.debug(
++                            "_analyze_monthly_rain_trade[%s]: forecast-blend "
++                            "far case skipped -- only %d usable historical "
++                            "tail years (need >= 15)",
++                            ticker,
++                            len(tail_sums),
++                        )
++                        combined_totals = None
++                        tail_days = 0
++                        n_members = 0
++                if combined_totals is not None:
++                    forecast_blend_prob = sum(
++                        1
++                        for c in combined_totals
++                        if month_to_date_actual + c > threshold
++                    ) / len(combined_totals)
++                    forecast_blend_signal = {
++                        "rain_forecast_blend_prob": max(
++                            0.01, min(0.99, forecast_blend_prob)
++                        ),
++                        # Composition metadata (2026-08-17, opus-review-
++                        # requested): lets a future graduation analysis
++                        # stratify by regime instead of pooling a
++                        # multi-model near-only estimator with a
++                        # single-model-plus-climatology far one into one
++                        # Brier/calibration comparison. Log-only, same as
++                        # rain_forecast_blend_prob itself -- cannot be
++                        # retrofitted onto already-logged rows, so this must
++                        # ship before rows accumulate, not after.
++                        "rain_forecast_blend_tail_days": tail_days,
++                        "rain_forecast_blend_n_members": n_members,
++                    }
+     except Exception as _fb_exc:
+         _log.warning(
+             "_analyze_monthly_rain_trade[%s]: forecast-blend signal skipped: %s",

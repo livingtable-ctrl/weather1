@@ -1,0 +1,562 @@
+--86b5dc2d--
+ backlog.txt                      |  359 +++++++++++-
+ cron.py                          | 1028 +++++++++-------------------------
+ main.py                          |   97 +++-
+ order_executor.py                |    8 +-
+ tests/test_cron_group_c.py       |   34 +-
+ tests/test_phase3_batch_e.py     |   52 +-
+ tests/test_trade_cycle_engine.py | 1128 ++++++++++++++++++++++++++++++++++++++
+ tests/test_trade_improvements.py |   16 +-
+ trade_cycle.py                   |  921 +++++++++++++++++++++++++++++++
+ 9 files changed, 2808 insertions(+), 835 deletions(-)
+--6bce0724--
+ BACKLOG_OPEN.md                |  15 ++--
+ backlog.txt                    | 115 +++++++++++++++++++++++-
+ cron.py                        | 112 +++++------------------
+ main.py                        | 105 +++++++++++++---------
+ paper.py                       | 138 ++++++++++++++++++++++++++++
+ tests/test_cron_integration.py |  33 +++++++
+ tests/test_paper.py            | 198 +++++++++++++++++++++++++++++++++++++++++
+ tests/test_trading.py          | 125 ++++++++++++++++++++------
+ trade_cycle.py                 |  15 +++-
+ 9 files changed, 683 insertions(+), 173 deletions(-)
+--dfcd5f7c--
+ BACKLOG_OPEN.md                  |  13 +-
+ backlog.txt                      | 101 +++++++++++-
+ main.py                          | 191 ++++++++++++++++++++---
+ tests/test_trade_cycle_engine.py | 324 +++++++++++++++++++++++++++++++++++++++
+ trade_cycle.py                   |  56 ++++++-
+ 5 files changed, 643 insertions(+), 42 deletions(-)
+--f94a44bc--
+ calibration.py                 | 16 +++++-----
+ cloud_backup.py                |  6 ++--
+ config.py                      | 10 ++++--
+ cron.py                        | 38 ++++++++++++++--------
+ execution_log.py               |  3 +-
+ main.py                        | 39 +++++++++++++----------
+ monte_carlo.py                 |  8 +++--
+ param_sweep.py                 |  9 +++---
+ paths.py                       | 33 +++++++++++++++++++
+ sigma_audit.py                 | 11 ++-----
+ tests/test_param_sweep_load.py |  8 +++--
+ tests/test_phase2_batch_a.py   | 44 ++++++++++++++++++++++++--
+ tests/test_weather_markets.py  | 72 +++++++++++++++++-------------------------
+ weather_markets.py             |  8 +++--
+ web_app.py                     | 43 ++++++++++++++++---------
+ 15 files changed, 224 insertions(+), 124 deletions(-)
+--1a7c9aca--
+ backlog.txt                         | 295 ++++++++++++-
+ consistency.py                      |  23 +
+ cron.py                             |  16 +
+ hurricane_climatology.py            | 458 +++++++++++++++++++
+ main.py                             |  39 +-
+ order_executor.py                   |  12 +
+ paper.py                            |  28 +-
+ paths.py                            |   1 +
+ tests/test_consistency.py           |  33 ++
+ tests/test_hurricane_climatology.py | 313 +++++++++++++
+ tests/test_hurricane_gating.py      |  53 ++-
+ tests/test_hurricane_markets.py     | 858 ++++++++++++++++++++++++++++++++++++
+ tests/test_shadow_predictions.py    |  85 ++++
+ tests/test_tracker.py               | 115 +++++
+ tracker.py                          |  69 +++
+ utils.py                            |   6 +
+ weather_markets.py                  | 697 ++++++++++++++++++++++++++++-
+ 17 files changed, 3059 insertions(+), 42 deletions(-)
+--d4ade606--
+ backlog.txt                | 102 ++++++++++++++
+ main.py                    | 194 ++++++++++++++++++++-------
+ tests/test_p1_remaining.py | 328 +++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 578 insertions(+), 46 deletions(-)
+--93493119--
+ BACKLOG_OPEN.md              |  23 +--
+ backlog.txt                  | 195 ++++++++++++++++++++-
+ tests/test_dead_code_scan.py |  10 ++
+ tests/test_tracker.py        | 403 ++++++++++++++++++++++++++++++++++++++++++-
+ tracker.py                   | 155 +++++++++++++++++
+ 5 files changed, 772 insertions(+), 14 deletions(-)
+--8701f49d--
+ BACKLOG_OPEN.md                              |  47 ++++++-----
+ backlog.txt                                  | 113 ++++++++++++++++++++++++++-
+ config.py                                    |   3 -
+ order_executor.py                            |  37 ---------
+ tests/test_backlog_batch.py                  |   6 +-
+ tests/test_bug_b_unparseable_date_logging.py |   3 -
+ tests/test_config_divergence_guard.py        |   1 -
+ tests/test_drawdown_tiers.py                 |   2 -
+ tests/test_execution_proof.py                |   4 -
+ tests/test_execution_stability.py            |  63 ---------------
+ tests/test_live_execution.py                 |  10 +--
+ tests/test_p0_10_paper_prelog.py             |   7 --
+ tests/test_shadow_predictions.py             |  10 ---
+ tests/test_trading.py                        |  19 -----
+ 14 files changed, 141 insertions(+), 184 deletions(-)
+--f092e712--
+ BACKLOG_OPEN.md                  |  49 ++++++------
+ ab_test.py                       |   4 +-
+ acis_precip.py                   |   4 +-
+ acis_snow.py                     |   4 +-
+ alerts.py                        |   4 +-
+ backlog.txt                      | 158 ++++++++++++++++++++++++++++++++++++++-
+ backtest.py                      |   3 +-
+ check_edge.py                    |   5 +-
+ circuit_breaker.py               |  12 +--
+ climate_indices.py               |   3 +-
+ climatology.py                   |   4 +-
+ cron.py                          |   3 +-
+ feature_importance.py            |   4 +-
+ hurricane_climatology.py         |   5 +-
+ kalshi_ws.py                     |   3 +-
+ main.py                          |  20 ++---
+ ml_bias.py                       |   5 +-
+ notify.py                        |   3 +-
+ nws.py                           |   5 +-
+ paths.py                         |  56 +++++++++++++-
+--d37a3e04--
+ backlog.txt                      |  87 ++++++++++++++++++++++
+ cron.py                          |  42 ++++++++++-
+ tests/test_trade_cycle_engine.py | 151 +++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 278 insertions(+), 2 deletions(-)
+--6845b62c--
+ BACKLOG_OPEN.md                  |  38 +++---
+ backlog.txt                      | 174 ++++++++++++++++++++++++++-
+ consistency.py                   | 252 +++++++++++++++++++++++++++++++++------
+ main.py                          |  32 ++++-
+ tests/test_consistency.py        | 189 +++++++++++++++++++++++------
+ tests/test_trade_cycle_engine.py | 229 +++++++++++++++++++++++++++++++++++
+ trade_cycle.py                   |  35 +++++-
+ 7 files changed, 854 insertions(+), 95 deletions(-)
+--af139662--
+ BACKLOG_OPEN.md                |   3 +-
+ backlog.txt                    | 145 +++++++++++++++++++++++++++++++++++++++++
+ tests/conftest.py              |  69 ++++++++++++++++++++
+ tests/test_cron_integration.py | 129 +++++++++++++++++++++++++++++++-----
+ tests/test_weather_markets.py  |  80 +++++++++++++++++++++++
+ weather_markets.py             |  53 ++++++++++-----
+ 6 files changed, 443 insertions(+), 36 deletions(-)
+--ae321905--
+ BACKLOG_OPEN.md           |   6 +-
+ backlog.txt               | 166 ++++++++++++++++++++++++++++--
+ climatology.py            |  79 ++++++++++++---
+ tests/conftest.py         |  71 ++++++++++++-
+ tests/test_climatology.py | 252 +++++++++++++++++++++++++++++++++++++++++++++-
+ 5 files changed, 544 insertions(+), 30 deletions(-)
+--fe052acf--
+ BACKLOG_OPEN.md               |   3 +-
+ backlog.txt                   | 161 ++++++++++++++++++++++++++++++++++++++++++
+ tests/test_weather_markets.py | 157 ++++++++++++++++++++++++++++++++--------
+ 3 files changed, 292 insertions(+), 29 deletions(-)
+--46c44435--
+ BACKLOG_OPEN.md                     |  49 +--
+ backlog.txt                         | 339 ++++++++++++++-
+ calibration.py                      |   2 +-
+ consistency.py                      |   9 +
+ hurricane_climatology.py            | 148 ++++++-
+ main.py                             |  73 +++-
+ ml_bias.py                          |   6 +-
+ order_executor.py                   |  15 +
+ paper.py                            |  26 +-
+ tests/test_consistency.py           |  56 +++
+ tests/test_hurricane_climatology.py | 204 +++++++++
+ tests/test_hurricane_gating.py      | 111 +++++
+ tests/test_hurricane_markets.py     | 824 ++++++++++++++++++++++++++++++++++++
+ tests/test_ml_bias.py               |  71 ++++
+ tests/test_series_drift.py          |  49 +++
+ tests/test_shadow_predictions.py    |  83 ++++
+ tests/test_tracker.py               | 258 +++++++++++
+ tracker.py                          |  97 ++++-
+ weather_markets.py                  | 502 ++++++++++++++++++++--
+ 19 files changed, 2842 insertions(+), 80 deletions(-)
+--0c94b6e0--
+ BACKLOG_OPEN.md           |   5 +-
+ backlog.txt               |  52 +++++++-
+ climatology.py            | 174 ++++++++++++++++++++-----
+ tests/test_climatology.py | 321 ++++++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 516 insertions(+), 36 deletions(-)
+--25aef473--
+ main.py                          |  55 ++++++++++++++
+ order_executor.py                | 155 +++++++++++++++++++++------------------
+ paper.py                         |  25 +++++++
+ tests/test_hourly_markets.py     | 151 ++++++++++++++++++++++++++++++++++++++
+ tests/test_shadow_predictions.py |  66 +++++++++++++++++
+ 5 files changed, 379 insertions(+), 73 deletions(-)
+--0c31fdd8--
+ BACKLOG_OPEN.md                |  3 ++-
+ backlog.txt                    | 61 ++++++++++++++++++++++++++++++++++++++++++
+ tests/test_cron_integration.py | 13 +++++++++
+ 3 files changed, 76 insertions(+), 1 deletion(-)
+--4fbcdfd7--
+ BACKLOG_OPEN.md                  |  3 +--
+ backlog.txt                      | 21 +++++++++++----------
+ tests/test_trade_cycle_engine.py | 10 ++++++++++
+ 3 files changed, 22 insertions(+), 12 deletions(-)
+--9a7583aa--
+ backlog.txt                         |  233 ++++++++
+ calibration.py                      |    2 +-
+ consistency.py                      |    6 +
+ hurricane_climatology.py            |  184 +++++++
+ main.py                             |   51 +-
+ ml_bias.py                          |    6 +-
+ order_executor.py                   |   12 +
+ paper.py                            |   17 +
+ tests/test_consistency.py           |   54 ++
+ tests/test_hurricane_climatology.py |  225 ++++++++
+ tests/test_hurricane_gating.py      |   58 +-
+ tests/test_hurricane_markets.py     | 1001 +++++++++++++++++++++++++++++++++++
+ tests/test_ml_bias.py               |   23 +-
+ tests/test_series_drift.py          |   18 +
+ tests/test_shadow_predictions.py    |   78 +++
+ tests/test_tracker.py               |  187 ++++++-
+ tracker.py                          |   68 ++-
+ weather_markets.py                  |  636 ++++++++++++++++++++--
+ 18 files changed, 2784 insertions(+), 75 deletions(-)
+--c9b0fc02--
+ BACKLOG_OPEN.md                  |   4 +-
+ backlog.txt                      | 184 ++++++++++++++++++++++++++++-
+ cron.py                          |   3 +-
+ tests/test_trade_cycle_engine.py | 248 +++++++++++++++++++++++++++++++++++++++
+ trade_cycle.py                   | 127 ++++++++++++++++++--
+ 5 files changed, 555 insertions(+), 11 deletions(-)
+--4d198e1f--
+ BACKLOG_OPEN.md                |  3 ++-
+ backlog.txt                    | 33 +++++++++++++++++++++++++++++++++
+ order_executor.py              |  2 +-
+ tests/test_trade_validation.py | 11 +++++++++++
+ 4 files changed, 47 insertions(+), 2 deletions(-)
+--fa2dedae--
+ backlog.txt                   | 100 ++++++++++++++++++++++++++++++-
+ tests/conftest.py             |  38 ++++++++++++
+ tests/test_weather_markets.py | 135 ++++++++++++++++++++++++++++++++++++++++--
+ 3 files changed, 267 insertions(+), 6 deletions(-)
+--55918ede--
+ BACKLOG_OPEN.md                  |   5 +-
+ backlog.txt                      | 207 ++++++++++++++++++++++++++++-
+ order_executor.py                |  16 ++-
+ tests/test_cron_integration.py   |  12 ++
+ tests/test_trade_cycle_engine.py | 273 +++++++++++++++++++++++++++++++++++++--
+ tests/test_trade_validation.py   |  37 ++++++
+ tests/test_trading.py            |  76 +++++++++++
+ trade_cycle.py                   | 153 +++++++++++++++-------
+ 8 files changed, 711 insertions(+), 68 deletions(-)
+--94d36402--
+ BACKLOG_OPEN.md                     |  46 ++---
+ backlog.txt                         | 272 +++++++++++++++++++++++++++++-
+ hurricane_climatology.py            |  24 ++-
+ safe_io.py                          | 323 ++++++++++++++++++++++++++----------
+ tests/test_hurricane_climatology.py |  97 +++++++++++
+ tests/test_safe_io.py               | 309 ++++++++++++++++++++++++++++++++++
+ 6 files changed, 953 insertions(+), 118 deletions(-)
+--7c40c357--
+ ml_bias.py            |  42 ++++++++---------
+ tests/test_ml_bias.py | 125 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 144 insertions(+), 23 deletions(-)
+--5970934e--
+ BACKLOG_OPEN.md                  |   2 +-
+ backlog.txt                      | 190 ++++++++++++++++++++++++++++++++++++++-
+ cron.py                          |  10 ++-
+ main.py                          |  32 ++++---
+ tests/test_trade_cycle_engine.py | 160 +++++++++++++++++++++++++++++++++
+ trade_cycle.py                   |  15 +++-
+ 6 files changed, 390 insertions(+), 19 deletions(-)
+--3a28ae33--
+ alerts.py                           |  14 +---
+ backlog.txt                         | 116 ++++++++++++++++++++++++++-
+ safe_io.py                          |  12 ++-
+ tests/test_alerts.py                |  36 +++++++++
+ tests/test_bare_os_replace_guard.py | 152 ++++++++++++++++++++++++++++++++++++
+ tests/test_p9_p10.py                |  55 +++++++++++++
+ tests/test_weather_markets.py       |  87 ++++++++++++++-------
+ tracker.py                          |  38 ++-------
+ weather_markets.py                  |  14 +---
+ 9 files changed, 432 insertions(+), 92 deletions(-)
+--f2c03d98--
+ BACKLOG_OPEN.md                   |  43 +++++------
+ backlog.txt                       | 127 +++++++++++++++++++++++--------
+ backtest.py                       |  20 +++--
+ climate_indices.py                |  41 ++++++++--
+ safe_io.py                        |  40 ++++++++--
+ tests/test_backtest.py            | 139 +++++++++++++++++++++++++++++++++
+ tests/test_backtest_stratified.py |  16 ++--
+ tests/test_forecasting.py         | 156 ++++++++++++++++++++++++++++++++++++++
+ tests/test_safe_io.py             |  86 +++++++++++++++++++++
+ 9 files changed, 589 insertions(+), 79 deletions(-)
+--bb91374f--
+ BACKLOG_OPEN.md              |  50 +++++-----
+ backlog.txt                  | 205 +++++++++++++++++++++++++++++++++++++
+ execution_log.py             |  78 ++++++++++++++-
+ order_executor.py            |  55 +++++++---
+ tests/test_execution_log.py  | 115 ++++++++++++++++++++-
+ tests/test_live_execution.py | 233 +++++++++++++++++++++++++++++++++++++++++--
+ 6 files changed, 687 insertions(+), 49 deletions(-)
+--bded3d6a--
+ BACKLOG_OPEN.md                             |  52 +--
+ backlog.txt                                 | 209 ++++++++++-
+ docs/grade_audit/modules/weather_markets.md |  21 +-
+ metar.py                                    |  40 +-
+ tests/test_gaussian_prob.py                 | 181 +++++++++
+ tests/test_metar.py                         |  90 +++++
+ tests/test_phase2_batch_d.py                | 546 +++++++++++++++++++++++++---
+ weather_markets.py                          | 352 ++++++++++++++++--
+ 8 files changed, 1371 insertions(+), 120 deletions(-)
+--39b1ba54--
+ BACKLOG_OPEN.md                  |  55 +++---
+ backlog.txt                      | 243 +++++++++++++++++++++++++-
+ metar.py                         | 190 ++++++++++++++++++++-
+ settlement_monitor.py            | 163 ++++++++++++++----
+ tests/conftest.py                |  10 +-
+ tests/test_gaussian_prob.py      |   7 +-
+ tests/test_metar.py              | 356 +++++++++++++++++++++++++++++++++++++++
+ tests/test_phase2_batch_d.py     |  22 ++-
+ tests/test_settlement_monitor.py | 266 +++++++++++++++++++++++++----
+ tests/test_weather_markets.py    |  26 ++-
+ weather_markets.py               |  23 ++-
+ 11 files changed, 1248 insertions(+), 113 deletions(-)
+--e0fd1cc0--
+ BACKLOG_OPEN.md                  |  22 +-
+ backlog.txt                      |  34 +++
+ main.py                          |  45 ++++
+ tests/test_disputed_row_guard.py |   9 +
+ tests/test_p1_remaining.py       |  39 +++
+ tests/test_tracker.py            | 513 +++++++++++++++++++++++----------------
+ tracker.py                       | 296 +++++++++++++++-------
+ weather_markets.py               |  38 +--
+ 8 files changed, 681 insertions(+), 315 deletions(-)
+--64c08693--
+ cron.py                                       |  15 +-
+ main.py                                       | 152 ++++++++++++-
+ tests/test_cmd_schedule_settlement_monitor.py | 300 ++++++++++++++++++++++++++
+ tests/test_cron_integration.py                |  42 ++++
+ 4 files changed, 497 insertions(+), 12 deletions(-)
+--1659e638--
+ cron.py                       | 15 +++++++++---
+ order_executor.py             | 27 ++++++++++++--------
+ tests/test_sameday_reserve.py | 57 ++++++++++++++++++++++++++-----------------
+ 3 files changed, 63 insertions(+), 36 deletions(-)
+--0100bffe--
+ BACKLOG_OPEN.md               |  54 ++++----
+ backlog.txt                   | 181 +++++++++++++++++++++++-
+ mos.py                        |  37 ++++-
+ nws.py                        |  20 ++-
+ tests/test_forecasting.py     |  21 +--
+ tests/test_hourly_markets.py  |  15 +-
+ tests/test_mos.py             |  88 ++++++++++++
+ tests/test_nws.py             |  63 +++++++++
+ tests/test_tracker.py         |  40 ++++++
+ tests/test_weather_markets.py | 315 ++++++++++++++++++++++++++++++++++++------
+ tracker.py                    |  31 +++--
+ trade_cycle.py                |   3 +-
+ weather_markets.py            |  96 ++++++++++---
+ 13 files changed, 851 insertions(+), 113 deletions(-)
+--fc7b37eb--
+ cron.py               |  13 ++++
+ tests/test_tracker.py | 180 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ tracker.py            | 100 ++++++++++++++++++++++++++++
+ 3 files changed, 293 insertions(+)
+--fc8e3555--
+ BACKLOG_OPEN.md              |  10 +-
+ backlog.txt                  | 279 ++++++++++++++++++++++++++++++-
+ execution_log.py             |  20 ++-
+ order_executor.py            | 168 ++++++++++++-------
+ paper.py                     | 379 ++++++++++++++++---------------------------
+ positions.py                 | 306 ++++++++++++++++++++++++++++++++++
+ tests/test_early_exits.py    |  26 ++-
+ tests/test_execution_log.py  |  41 +++++
+ tests/test_live_execution.py | 110 ++++++++++---
+ tests/test_paper.py          |  99 ++++++-----
+ tests/test_paper_metrics.py  |  38 ++++-
+ tests/test_positions.py      | 366 +++++++++++++++++++++++++++++++++++++++++
+ 12 files changed, 1451 insertions(+), 391 deletions(-)
+--756d8596--
+ main.py                       |  36 +++++
+ tests/test_tracker.py         | 267 +++++++++++++++++++++++++++++++++
+ tests/test_weather_markets.py | 338 ++++++++++++++++++++++++++++++++++++++++++
+ tracker.py                    | 159 ++++++++++++++++++++
+ weather_markets.py            |  92 +++++++++++-
+ 5 files changed, 890 insertions(+), 2 deletions(-)
+--c6288b9c--
+ BACKLOG_OPEN.md              |  13 +-
+ backlog.txt                  | 276 ++++++++++++++++++++++++++++++++++++++++++-
+ main.py                      |  32 ++++-
+ order_executor.py            |  19 ++-
+ tests/test_early_exits.py    | 150 +++++++++++++++++++++++
+ tests/test_live_execution.py |  10 +-
+ tests/test_menu_ux.py        |  74 ++++++++++--
+ 7 files changed, 542 insertions(+), 32 deletions(-)
+--ee22c44c--
+ BACKLOG_OPEN.md                      |   6 +-
+ backlog.txt                          | 404 +++++++++++++++++++++++++++++++++-
+ frontend/package-lock.json           | 405 ++++++++++++++++++++++++++++++++++-
+ frontend/package.json                |   6 +-
+ frontend/src/App.jsx                 |  77 ++++++-
+ frontend/src/useData.js              |  49 ++++-
+ frontend/src/useData.test.js         | 111 ++++++++++
+ static/dist/assets/index-BuJNk8P5.js |  43 ++++
+ static/dist/assets/index-D1Xm5x5e.js |  43 ----
+ static/dist/index.html               |  24 +--
+ web_app.py                           |  31 ++-
+ 11 files changed, 1118 insertions(+), 81 deletions(-)
+--0edf818b--
+ BACKLOG_OPEN.md                                    |   5 +-
+ backlog.txt                                        | 128 ++++++++++++++-
+ frontend/src/useData.js                            | 108 +++++++++----
+ frontend/src/useData.test.js                       | 169 ++++++++++++++++++-
+ graphify-out/cache/stat-index.json                 |   2 +-
+ weather app site V_3 (3)/src/tabs/AnalyticsTab.jsx |   5 +-
+ weather app site V_3 (3)/src/tabs/OverviewTab.jsx  |   3 +-
+ weather app site V_3 (3)/src/tabs/PositionsTab.jsx |  70 ++++++--
+ weather app site V_3 (3)/src/useData.js            | 178 ++++++++++++++++-----
+ 9 files changed, 580 insertions(+), 88 deletions(-)
+--d47b59d3--
+ BACKLOG_OPEN.md                                    |   3 +-
+ backlog.txt                                        | 112 +++++++++++++++++++--
+ weather app site V_3 (3)/src/tabs/PositionsTab.jsx |  84 ++++++++++++----
+ 3 files changed, 170 insertions(+), 29 deletions(-)
+--709b0043--
+ BACKLOG_OPEN.md       |   3 +-
+ backlog.txt           | 118 ++++++++++++++++++++++++++++-
+ tests/test_web_app.py | 206 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ web_app.py            | 102 ++++++++++++++++++++-----
+ 4 files changed, 402 insertions(+), 27 deletions(-)
+--251e838e--
+ COMMANDS.md                |  17 ++++
+ main.py                    | 163 ++++++++++++++++++++++++++++++-
+ paper.py                   | 137 ++++++++++++++++++++++++++
+ tests/conftest.py          |  16 +++
+ tests/test_risk_control.py | 235 +++++++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 564 insertions(+), 4 deletions(-)
+--4557a77b--
+ BACKLOG_OPEN.md                                    |     46 +-
+ COMMANDS.md                                        |      6 +-
+ backlog.txt                                        |    135 +-
+ cron.py                                            |     37 +-
+ graphify-out/GRAPH_REPORT.md                       |   3640 +-
+ ...0c12f5fee4ca3cdcf601d1e7265a2d20481823f604.json |      1 +
+ ...94b7261fa644c6bea25b6b39ed494c3aacad3012fa.json |      1 +
+ ...1ae599a4881f4141dddecbe2474f144a3935c548a6.json |      1 +
+ ...68668845846ab18b15df55c17b5927b788fb5e58a7.json |      1 +
+ ...e197620001511affdd043c189f0f304a3bceb821c2.json |      1 +
+ ...c0cb54ab414ede33db34ce1f1d6082fddaac01f253.json |      1 +
+ ...b4b3aec7988eca35d3a0adb75c27c53b5ba3083b47.json |      1 +
+ ...3b24a7f45ecd187b26290dc2d9457290d6c93330b8.json |      1 +
+ graphify-out/cache/stat-index.json                 |      2 +-
+ graphify-out/graph.json                            | 156084 +++++++++---------
+ graphify-out/manifest.json                         |   2568 +-
+ main.py                                            |    244 +-
+ ml_bias.py                                         |    275 +-
+ paths.py                                           |      5 +
+ tests/test_main_cron_smoke.py                      |    441 +
+--5d9b6c56--
+ BACKLOG_OPEN.md                                    |     57 +-
+ backlog.txt                                        |    274 +
+ cron.py                                            |     22 +
+ graphify-out/GRAPH_REPORT.md                       |   3838 +-
+ ...8b40a4482277ecf85a29192ae58269b9576db98c84.json |      1 +
+ ...019ad924d2948faf2eb41933f33776c1dbc975e5c3.json |      1 +
+ ...f59e83dd276b18dabe61aea590d0e2d87cfdd686ac.json |      1 +
+ ...0c0128e81a7f11305573c0a2ed6434da0973d36f98.json |      1 +
+ ...3c94627027bc2cf1b8f8cd29d2b87c0896e3bdce93.json |      1 +
+ ...181c9ac25a88970f62c2a99125550332f289bf3190.json |      1 +
+ ...452f84a056305c88d5545011eadd05e294540f3c95.json |      1 +
+ ...49f25c5b4166e51d9c26f71ad5769a552c45053737.json |      1 +
+ ...8793952ecca00fb67290b4e10f8b6a99f79f3a5cf9.json |      1 +
+ ...4824be35c5881c38a7d279afc1cf37471ea7c6a317.json |      1 +
+ ...759ac295b1e11b85ff8549f235227bd59fd58c041e.json |      1 +
+ ...82878bd8eeac1a3488212ad6f5d6908def2ab815cb.json |      1 +
+ ...876fd5668b5ac870ba0b5244519196045474247a5c.json |      1 +
+ ...0e2153fa76918b9d524b2ec7f54092a3f72214c5fc.json |      1 +
+ ...96ec4910b1b155c1d64f913e16290181922706495e.json |      1 +
+ ...ed7795dc46a81ecbc47e8245df6d8b48c465978a41.json |      1 +
+--d320142d--
+ BACKLOG_OPEN.md                                    |     56 +-
+ backlog.txt                                        |    109 +-
+ ...e1ef5276c6c38493c700a12d433db9bb46fe2e0069.json |      1 +
+ ...10f6d63c9680575081a877353927e5dd95f63f85ad.json |      1 +
+ ...460d945b4113eab056355352d712c2e0584c411038.json |      1 +
+ graphify-out/cache/stat-index.json                 |      2 +-
+ graphify-out/graph.json                            | 300694 +++++++++---------
+ graphify-out/manifest.json                         |   2562 +
+ settlement_monitor.py                              |     95 +-
+ tests/test_settlement_monitor.py                   |    181 +-
+ 10 files changed, 154180 insertions(+), 149522 deletions(-)
+--6364b38b--
+ BACKLOG_OPEN.md                                    |     55 +-
+ backlog.txt                                        |     85 +-
+ graphify-out/GRAPH_REPORT.md                       |   4707 +-
+ ...39e0de133e4125696336955963e9f876ef03100705.json |      1 +
+ ...b1c8aa1b67eaf5166dac75518db66ee610ef6f9a2f.json |      1 +
+ ...452f84a056305c88d5545011eadd05e294540f3c95.json |      1 +
+ ...4f585d9a8a3ad1e6175a1d4e7172c1769b0f5755b4.json |      1 +
+ ...e1ef5276c6c38493c700a12d433db9bb46fe2e0069.json |      1 +
+ ...10f6d63c9680575081a877353927e5dd95f63f85ad.json |      1 +
+ ...10767cd89db03fdb69df6f5aa25155c9cf57262e09.json |      1 +
+ ...6628a4753e3a10c48316ac386d036f26f4115f0e20.json |      1 +
+ ...9c9aeebc328daf8399bbd73a99b4479f6dae4ccfeb.json |      1 +
+ ...c01a7f5f324c409da75d1f8fe8c6b19c3754e63401.json |      1 +
+ ...8c8142223891003824abf80463ad47f4869a686cf3.json |      1 +
+ ...4ccfa489a1d6402a010666fb54fe3cfb8ae3e61eb7.json |      1 +
+ ...0c3fb20cdb7d016bd56cf5cb5dba424cab2bfb8b5a.json |      1 +
+ ...460d945b4113eab056355352d712c2e0584c411038.json |      1 +
+ ...ad5595682eeddaee0d58e32420593d2ff7c6a87559.json |      1 +
+ ...6522eca24ec2d3014b6f48ff80d958472357b99a99.json |      1 +
+ ...39e0de133e4125696336955963e9f876ef03100705.json |      1 +
+--105cf4ce--
+ BACKLOG_OPEN.md              |  51 +++++------
+ backlog.txt                  |  75 ++++++++++++++-
+ execution_log.py             |  48 +++++++---
+ order_executor.py            |  25 +++--
+ tests/test_live_execution.py | 211 +++++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 359 insertions(+), 51 deletions(-)
+--b0f4cad2--
+ BACKLOG_OPEN.md                                    |     51 +-
+ backlog.txt                                        |     75 +-
+ graphify-out/GRAPH_REPORT.md                       |   4095 +-
+ ...8b40a4482277ecf85a29192ae58269b9576db98c84.json |      1 +
+ ...019ad924d2948faf2eb41933f33776c1dbc975e5c3.json |      1 +
+ ...0c0128e81a7f11305573c0a2ed6434da0973d36f98.json |      1 +
+ ...3c94627027bc2cf1b8f8cd29d2b87c0896e3bdce93.json |      1 +
+ ...9e95937fe317df72887366fcc602eee7a54d7257cf.json |      1 +
+ ...181c9ac25a88970f62c2a99125550332f289bf3190.json |      1 +
+ ...49f25c5b4166e51d9c26f71ad5769a552c45053737.json |      1 +
+ ...8793952ecca00fb67290b4e10f8b6a99f79f3a5cf9.json |      1 +
+ ...4824be35c5881c38a7d279afc1cf37471ea7c6a317.json |      1 +
+ ...759ac295b1e11b85ff8549f235227bd59fd58c041e.json |      1 +
+ ...82878bd8eeac1a3488212ad6f5d6908def2ab815cb.json |      1 +
+ ...876fd5668b5ac870ba0b5244519196045474247a5c.json |      1 +
+ ...0e2153fa76918b9d524b2ec7f54092a3f72214c5fc.json |      1 +
+ ...96ec4910b1b155c1d64f913e16290181922706495e.json |      1 +
+ ...ed7795dc46a81ecbc47e8245df6d8b48c465978a41.json |      1 +
+ ...999b63e6f4aae3df15423bbaf9f86e5a7d7087222e.json |      1 +
+ ...87cf62cde52c97535a2f7c7578dfd74fd87f98db53.json |      1 +
+--e5331a8d--
+ BACKLOG_OPEN.md                                    |     51 +-
+ backlog.txt                                        |    491 +-
+ execution_log.py                                   |    167 +-
+ graphify-out/GRAPH_REPORT.md                       |   4370 +-
+ ...34f7261dd1da2d227916d4eec655031a822fdfd288.json |      1 +
+ ...a6262230014ed1fe453530c30ecf17bc7f4cc2e5e5.json |      1 +
+ ...d960ca8568a3f44366ec7eeecff626aab7241a7d58.json |      1 +
+ ...d699c2c5df186f486fd0b73f7a31da8fd6ca1ca5f8.json |      1 +
+ ...cc22b2f7d4db939280b5f296a713a2cab847e34ad9.json |      1 +
+ ...4dc2f7ff6bf49deecf1f294b100904cf85d1a0c94c.json |      1 +
+ ...34f7261dd1da2d227916d4eec655031a822fdfd288.json |      1 +
+ ...a6262230014ed1fe453530c30ecf17bc7f4cc2e5e5.json |      1 +
+ ...d960ca8568a3f44366ec7eeecff626aab7241a7d58.json |      1 +
+ ...1cd0378f871de3cb6ccdfb06772ec831567bc20cb5.json |      1 +
+ ...6ae350a728d48d06c872b7af957e5abc5e3194cce7.json |      1 +
+ ...75a2a755d00f0750d4d96cccc844202b4c45505697.json |      1 +
+ ...d699c2c5df186f486fd0b73f7a31da8fd6ca1ca5f8.json |      1 +
+ ...cc22b2f7d4db939280b5f296a713a2cab847e34ad9.json |      1 +
+ ...4dc2f7ff6bf49deecf1f294b100904cf85d1a0c94c.json |      1 +
+ graphify-out/cache/stat-index.json                 |      2 +-
+--d190d09d--
+ BACKLOG_OPEN.md                                    |     42 +-
+ backlog.txt                                        |    205 +-
+ graphify-out/GRAPH_REPORT.md                       |   2209 +-
+ ...650599938519b334c3cbe5f97b05c8f8ef1e1196a1.json |      1 +
+ ...09f3f86c15ba825dd58ae5b486810ef3c01fda9574.json |      1 +
+ ...c2ee7bf6684e858a23c772bef01006d0b81e72df54.json |      1 +
+ graphify-out/cache/stat-index.json                 |      2 +-
+ graphify-out/graph.json                            | 231816 +++++++++---------
+ tests/test_rain_markets.py                         |    577 +-
+ weather_markets.py                                 |    199 +-
+ 10 files changed, 111926 insertions(+), 123127 deletions(-)
