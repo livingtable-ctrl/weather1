@@ -143,13 +143,16 @@ def test_auto_place_trades_skips_already_traded_today(tmp_path, monkeypatch):
     # Mark the ticker as already traded today
     execution_log.log_order("KXTEST", "yes", 5, 0.60, "limit", "pending", live=False)
 
-    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.is_daily_loss_halted", lambda c: False)
-    monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+    monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.get_open_trades", lambda: [])
-    monkeypatch.setattr("paper.kelly_quantity", lambda kf, p, cap=None, method=None: 5)
     monkeypatch.setattr(
-        "paper.portfolio_kelly_fraction", lambda kf, city, dt, side="yes": 0.10
+        "paper.kelly_quantity", lambda kf, p, cap=None, method=None, client=None: 5
+    )
+    monkeypatch.setattr(
+        "paper.portfolio_kelly_fraction",
+        lambda kf, city, dt, side="yes", client=None: 0.10,
     )
     import order_executor as _oe
 
@@ -198,13 +201,16 @@ def test_live_mode_dedup_blocks_already_traded_ticker(tmp_path, monkeypatch):
     # Pre-log the ticker as already traded today (live=True path) so the guard fires.
     execution_log.log_order("KXTEST-LIVE", "yes", 5, 0.60, "limit", "filled", live=True)
 
-    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.is_daily_loss_halted", lambda c: False)
-    monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+    monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.get_open_trades", lambda: [])
-    monkeypatch.setattr("paper.kelly_quantity", lambda kf, p, cap=None, method=None: 5)
     monkeypatch.setattr(
-        "paper.portfolio_kelly_fraction", lambda kf, city, dt, side="yes": 0.10
+        "paper.kelly_quantity", lambda kf, p, cap=None, method=None, client=None: 5
+    )
+    monkeypatch.setattr(
+        "paper.portfolio_kelly_fraction",
+        lambda kf, city, dt, side="yes", client=None: 0.10,
     )
 
     import order_executor as _oe

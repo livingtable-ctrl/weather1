@@ -150,7 +150,7 @@ def test_drawdown_halt_also_logs_shadow_prediction(monkeypatch):
     """Drawdown halt causes the identical 'no trade placed' staleness problem
     as TRADING_PAUSED — it should shadow-log too, not just the pause branch."""
     monkeypatch.delenv("TRADING_PAUSED", raising=False)
-    monkeypatch.setattr("paper.is_paused_drawdown", lambda: True)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda *_a, **_k: True)
     opp = _make_flat_opp("KXSHADOWDRAWDOWN")
 
     result = order_executor._auto_place_trades([opp], client=None)
@@ -165,13 +165,15 @@ def test_real_placement_logs_is_shadow_false(monkeypatch):
     """Sanity check for the is_shadow column itself: a real, successfully
     placed trade must be flagged is_shadow=0, not just absent/NULL."""
     monkeypatch.delenv("TRADING_PAUSED", raising=False)
-    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.is_daily_loss_halted", lambda c: False)
-    monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+    monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.get_open_trades", lambda: [])
-    monkeypatch.setattr("paper.kelly_quantity", lambda kf, p, cap=None, method=None: 5)
     monkeypatch.setattr(
-        "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None: kf
+        "paper.kelly_quantity", lambda kf, p, cap=None, method=None, client=None: 5
+    )
+    monkeypatch.setattr(
+        "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None, client=None: kf
     )
     monkeypatch.setattr("order_executor._daily_paper_spend", lambda: 0.0)
     monkeypatch.setattr("order_executor._current_forecast_cycle", lambda: "12z")
@@ -204,13 +206,15 @@ def _place_everything_setup(monkeypatch):
     a real placement can reach the finish line for any opp that clears the
     hourly gate check."""
     monkeypatch.delenv("TRADING_PAUSED", raising=False)
-    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.is_daily_loss_halted", lambda c: False)
-    monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+    monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.get_open_trades", lambda: [])
-    monkeypatch.setattr("paper.kelly_quantity", lambda kf, p, cap=None, method=None: 5)
     monkeypatch.setattr(
-        "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None: kf
+        "paper.kelly_quantity", lambda kf, p, cap=None, method=None, client=None: 5
+    )
+    monkeypatch.setattr(
+        "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None, client=None: kf
     )
     monkeypatch.setattr("order_executor._daily_paper_spend", lambda: 0.0)
     monkeypatch.setattr("order_executor._current_forecast_cycle", lambda: "12z")

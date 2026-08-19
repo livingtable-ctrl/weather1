@@ -81,14 +81,24 @@ class LiveTradingGate:
             return False, f"Could not import paper safety checks: {exc}"
 
         # P3-6: cheapest checks first — in-memory/file reads before DB/API calls.
+        # 2nd-round-opus-review-caught (L-7): no longer fully accurate --
+        # is_paused_drawdown/is_streak_paused now each add an execution_log
+        # table scan (is_streak_paused's un-cached, see get_live_settlement_
+        # streak's own M-F docstring note) ahead of the file-read checks
+        # below. Left in this order anyway: this gate only fires once per
+        # live order (unlike the per-candidate cron/watch loop), so the
+        # absolute cost here is low regardless of ordering.
+        # AUD-0005: pass client so these also check real live losses via
+        # execution_log, not just paper_trades.json -- see is_paused_drawdown/
+        # is_streak_paused's own docstrings for what the live-aware branch does.
         try:
-            if is_paused_drawdown():
+            if is_paused_drawdown(client):
                 return False, "Drawdown halt active"
         except Exception as exc:
             return False, f"is_paused_drawdown error: {exc}"
 
         try:
-            if is_streak_paused():
+            if is_streak_paused(client):
                 return False, "Loss streak pause active"
         except Exception as exc:
             return False, f"is_streak_paused error: {exc}"

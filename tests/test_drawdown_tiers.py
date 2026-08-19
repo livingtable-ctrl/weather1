@@ -133,7 +133,7 @@ def test_no_trades_placed_when_drawdown_breached_mid_cycle(monkeypatch):
         placed.append(ticker)
         if len(placed) == 1:
             # After first placement, simulate balance crashing below HALT
-            monkeypatch.setattr(paper, "is_paused_drawdown", lambda: True)
+            monkeypatch.setattr(paper, "is_paused_drawdown", lambda *_a, **_k: True)
         return {
             "ticker": ticker,
             "side": side,
@@ -144,14 +144,16 @@ def test_no_trades_placed_when_drawdown_breached_mid_cycle(monkeypatch):
         }
 
     monkeypatch.setattr(paper, "place_paper_order", mock_place)
-    monkeypatch.setattr(paper, "is_paused_drawdown", lambda: False)
+    monkeypatch.setattr(paper, "is_paused_drawdown", lambda *_a, **_k: False)
     monkeypatch.setattr(paper, "is_daily_loss_halted", lambda _client=None: False)
-    monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
+    monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr(paper, "get_open_trades", lambda: [])
     monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
     monkeypatch.setattr(paper, "kelly_quantity", lambda kelly, price, **kw: 1)
     monkeypatch.setattr(
-        paper, "portfolio_kelly_fraction", lambda kelly, city, date, side="yes": 0.05
+        paper,
+        "portfolio_kelly_fraction",
+        lambda kelly, city, date, side="yes", client=None: 0.05,
     )
     monkeypatch.setattr(paper, "corr_kelly_scale", lambda opp, trades: 1.0)
     monkeypatch.setattr(

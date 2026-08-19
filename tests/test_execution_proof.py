@@ -29,13 +29,15 @@ def _make_opp(ticker="KXTEST", edge=0.30):
 def _stub_auto_prereqs(monkeypatch):
     """Stub out all guards so _auto_place_trades reaches the trade loop."""
     # These are imported from paper inside _auto_place_trades, so patch on paper module
-    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.is_daily_loss_halted", lambda c: False)
-    monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+    monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.get_open_trades", lambda: [])
-    monkeypatch.setattr("paper.kelly_quantity", lambda kf, p, cap=None, method=None: 5)
     monkeypatch.setattr(
-        "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None: kf
+        "paper.kelly_quantity", lambda kf, p, cap=None, method=None, client=None: 5
+    )
+    monkeypatch.setattr(
+        "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None, client=None: kf
     )
     # These now live in order_executor (re-exported by main)
     monkeypatch.setattr("order_executor._daily_paper_spend", lambda: 0.0)
@@ -91,7 +93,7 @@ def test_auto_place_trades_returns_placed_count(monkeypatch, tmp_path):
 def test_auto_place_trades_returns_zero_when_halted(monkeypatch):
     """Returns 0 immediately when drawdown guard is active."""
     # is_paused_drawdown is imported from paper inside _auto_place_trades
-    monkeypatch.setattr("paper.is_paused_drawdown", lambda: True)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda *_a, **_k: True)
 
     import main
 

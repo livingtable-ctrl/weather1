@@ -1483,48 +1483,70 @@ setInterval(() => {{
 
     @app.route("/api/risk")
     def api_risk():
+        # Opus-review-caught (M10): the try/except previously covered only
+        # the import, not the computation below -- these functions used to
+        # read only paper_trades.json (a local JSON file, effectively never
+        # raising in practice), but now also query execution_log's SQLite
+        # DB via get_all_open_positions(), a new failure mode (locked/
+        # corrupt DB) that would otherwise crash this route with an
+        # unhandled 500. Widened to cover the whole body, matching
+        # /api/price-improvement's own try/except Exception convention.
         try:
             from paper import (
                 check_aged_positions,
                 check_correlated_event_exposure,
+                get_all_open_positions,
                 get_expiry_date_clustering,
-                get_open_trades,
                 get_total_exposure,
             )
-        except ImportError as e:
-            return jsonify({"error": str(e)}), 500
 
-        trades = get_open_trades()
+            # AUD-0001 adjacency: get_all_open_positions() (paper + live),
+            # not get_open_trades() (paper-only) -- every other field in
+            # this same response (total_exposure, expiry_clustering,
+            # aged_positions, correlated_events) already includes live
+            # positions, so this city_exposure/directional breakdown must
+            # too or the response is internally self-contradictory (a live
+            # position counted in the total but invisible to its own
+            # breakdown).
+            trades = get_all_open_positions()
 
-        # Aggregate city exposure and directional bias from open trades
-        city_exp: dict[str, float] = {}
-        yes_exp = 0.0
-        no_exp = 0.0
-        for t in trades:
-            city = t.get("city") or "Unknown"
-            cost = float(t.get("cost") or 0.0)
-            city_exp[city] = city_exp.get(city, 0.0) + cost
-            if t.get("side") == "yes":
-                yes_exp += cost
-            else:
-                no_exp += cost
+            # Aggregate city exposure and directional bias from open trades
+            city_exp: dict[str, float] = {}
+            yes_exp = 0.0
+            no_exp = 0.0
+            for t in trades:
+                city = t.get("city") or "Unknown"
+                cost = float(t.get("cost") or 0.0)
+                city_exp[city] = city_exp.get(city, 0.0) + cost
+                if t.get("side") == "yes":
+                    yes_exp += cost
+                else:
+                    no_exp += cost
 
-        city_exposure = sorted(
-            [{"city": c, "exposure": round(v, 4)} for c, v in city_exp.items()],
-            key=lambda x: float(x["exposure"]),  # type: ignore[arg-type]
-            reverse=True,
-        )
+            city_exposure = sorted(
+                [{"city": c, "exposure": round(v, 4)} for c, v in city_exp.items()],
+                key=lambda x: float(x["exposure"]),  # type: ignore[arg-type]
+                reverse=True,
+            )
 
-        return jsonify(
-            {
-                "city_exposure": city_exposure,
-                "directional": {"yes": round(yes_exp, 4), "no": round(no_exp, 4)},
-                "expiry_clustering": get_expiry_date_clustering(),
-                "total_exposure": round(get_total_exposure(), 4),
-                "aged_positions": check_aged_positions(),
-                "correlated_events": check_correlated_event_exposure(),
-            }
-        )
+            return jsonify(
+                {
+                    "city_exposure": city_exposure,
+                    "directional": {"yes": round(yes_exp, 4), "no": round(no_exp, 4)},
+                    "expiry_clustering": get_expiry_date_clustering(),
+                    # 2nd-round-opus-review-caught (M-B): client was missing
+                    # here -- the numerator (trades, via get_all_open_positions
+                    # above) already included live positions, but this
+                    # denominator stayed paper-only, so a small live position
+                    # against a large live account could misreport as a much
+                    # bigger fraction than reality.
+                    "total_exposure": round(get_total_exposure(client), 4),
+                    "aged_positions": check_aged_positions(),
+                    "correlated_events": check_correlated_event_exposure(),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": str(exc)}), 500
 
     @app.route("/api/price-improvement")
     def price_improvement():
@@ -2863,6 +2885,7 @@ setInterval(() => {{
                 city=city,
                 target_date_str=target_date,
                 side=side,
+                client=client,
             )
             if not _limit_dash.get("ok", True):
                 return jsonify(

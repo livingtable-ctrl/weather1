@@ -1167,7 +1167,7 @@ def test_kelly_bet_dollars_method_scaling_reduces_kelly(mock_balance_1000, monke
     monkeypatch.setattr(paper, "DATA_PATH", mock_balance_1000.DATA_PATH)
     monkeypatch.setattr(paper, "get_balance", lambda: 1000.0)
     monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
-    monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
+    monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr(paper, "_dynamic_kelly_cap", lambda: 500.0)
     monkeypatch.setattr(paper, "_method_kelly_multiplier", lambda m: 0.75 if m else 1.0)
 

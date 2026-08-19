@@ -340,7 +340,7 @@ class TestLiveTradingGate:
         monkeypatch.setattr(main, "is_trading_paused", lambda: False)
         monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
         monkeypatch.setattr("paper.is_daily_loss_halted", lambda: False)
-        monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+        monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
         _inputs = iter(
             [
                 "KXTEST-25JUN01-T70",  # ticker
@@ -374,7 +374,7 @@ class TestLiveTradingGate:
         monkeypatch.setattr(main, "is_trading_paused", lambda: False)
         monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
         monkeypatch.setattr("paper.is_daily_loss_halted", lambda: False)
-        monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+        monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
         _inputs = iter(
             [
                 "KXTEST-25JUN01-T70",  # ticker

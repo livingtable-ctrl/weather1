@@ -170,9 +170,35 @@ def _get_current_book(client, ticker: str) -> dict | None:
 
 
 def _count_open_live_orders() -> int:
-    """Count live orders with status 'pending' — enforces max_open_positions limit."""
-    orders = execution_log.get_recent_orders(limit=500)
-    return sum(1 for o in orders if o.get("live") and o.get("status") == "pending")
+    """Count open live positions — enforces max_open_positions limit.
+
+    AUD-0009/AUD-0012: was `status == 'pending'` over a LIMIT-500 fetch, so
+    (a) a filled (no longer pending) live position stopped counting the
+    moment it filled, and (b) a genuinely still-pending order could fall
+    outside the fixed-size window entirely once enough other orders
+    accumulated afterward. Fixed as the union of both real "open" states,
+    each via its own unbounded query:
+      - still-resting entry orders (status='pending') -- a GTC entry order
+        represents real capital that could fill at any moment, and
+        test_prelog.py's F1 regression test deliberately established that a
+        placed-but-unfilled order must count here.
+      - filled-but-unsettled positions (get_filled_unsettled_live_orders) --
+        the gap AUD-0009 found: these stopped counting once no longer
+        'pending', with nothing else picking them back up.
+    closes_position_id IS NULL on the pending half excludes a pending
+    protective EXIT order's own row (an IOC sell placed with
+    closes_position_id=<the position it's closing>, per
+    _exit_live_position's own docstring) -- without this exclusion, a
+    position mid-exit would be double-counted: once via
+    get_filled_unsettled_live_orders (still open, not yet settled) and
+    again via its own brief pending exit-order row.
+    """
+    pending_entries = sum(
+        1
+        for o in execution_log.get_pending_live_orders()
+        if o.get("closes_position_id") is None
+    )
+    return pending_entries + len(execution_log.get_filled_unsettled_live_orders())
 
 
 def _resolve_micro_live_config(live_config: dict | None) -> dict:
@@ -193,6 +219,10 @@ def _resolve_micro_live_config(live_config: dict | None) -> dict:
     return _load_live_config()
 
 
+_LIVE_BALANCE_CACHE_TTL_SECS = 5.0
+_LIVE_BALANCE_CACHE_ATTR = "_weather1_live_balance_cache"
+
+
 def _resolve_live_balance(client) -> float:
     """Fetch the real Kalshi balance (dollars) for live Kelly sizing.
 
@@ -201,18 +231,79 @@ def _resolve_live_balance(client) -> float:
     sizing silently fell back to the paper balance for every live trade.
     Returns 0.0 (meaning "use the paper balance") on any fetch failure,
     matching the prior fallback behavior rather than blocking placement.
+
+    2nd-round-opus-review-caught (M-A): AUD-0001's exposure-denominator fix
+    made this function (via paper._live_effective_balance) get called
+    several times per check_position_limits/portfolio_kelly_fraction
+    invocation, and once per correlated open position inside
+    covariance_kelly_scale -- a 15-candidate cron cycle with several
+    correlated positions could fire 60+ uncached authenticated
+    GET /portfolio/balance calls through the shared read circuit breaker,
+    risking tripping it and then having get_market() price refetches on
+    the SAME breaker silently degrade too. Cached for
+    _LIVE_BALANCE_CACHE_TTL_SECS (5s) -- short enough that sizing/exposure
+    decisions never act on a materially stale balance, long enough to
+    collapse an entire candidate's worth of repeated calls (and most of a
+    cron cycle's) into one real fetch.
+
+    Cache lives as an attribute ON the client object itself (not a
+    module-level dict keyed by id(client)) -- id() is a memory address
+    CPython can and does reuse once an object is garbage-collected, which
+    would risk one client instance silently reading a stale balance cached
+    under a previous, unrelated, already-freed client that happened to
+    reuse the same address (a real risk across a long-running test suite's
+    many short-lived mock clients). Attaching the cache to the object
+    itself ties its lifetime to the object's own lifetime -- no reuse
+    possible, and neither KalshiClient nor unittest.mock.MagicMock use
+    __slots__, so this is safe on both.
+
+    Reads/writes the cache via client.__dict__ directly, NOT
+    getattr(client, attr, default)/setattr -- verified empirically that
+    MagicMock's own __getattr__ auto-vivifies (and returns a fresh child
+    Mock for) ANY unset attribute name rather than ever raising
+    AttributeError, so getattr(mock, x, default) never actually returns
+    `default` for a MagicMock, silently defeating the "not cached yet"
+    check and returning a Mock object in place of a real float. Explicitly
+    set attributes (via normal attribute assignment, which MagicMock also
+    supports for real values) DO land in __dict__, while auto-vivified
+    ones don't -- so checking __dict__ directly correctly distinguishes
+    "genuinely cached" from "just accessed."
+
+    2nd-round-opus-review-caught (L-3, documented not fixed): does not
+    check client.base_url. A client pointed at Kalshi's demo environment
+    would have its play-money balance folded into paper._exposure_denom's
+    combined denominator, silently loosening every exposure cap for that
+    call. Deliberately left as-is rather than gated to PROD_BASE only --
+    this function's existing pre-AUD-0001 purpose (live Kelly sizing) may
+    be intentionally exercised with a demo client during testing/dry-runs,
+    and restricting it here would change that established behavior too,
+    not just the new exposure-cap usage. Narrow in practice (requires
+    deliberately running with a demo client while relying on production-
+    scale exposure caps); worth a dedicated look if it ever bites.
     """
+    now = time.monotonic()
+    cached = vars(client).get(_LIVE_BALANCE_CACHE_ATTR)
+    if cached is not None and now - cached[1] < _LIVE_BALANCE_CACHE_TTL_SECS:
+        return cached[0]
     try:
         bal_data = client.get_balance()
         api_balance_cents = bal_data.get("balance")
         if api_balance_cents is not None:
-            return float(api_balance_cents) / 100.0
+            balance = float(api_balance_cents) / 100.0
+            try:
+                setattr(client, _LIVE_BALANCE_CACHE_ATTR, (balance, now))
+            except Exception:
+                pass  # some client stand-in that rejects attribute writes -- fine, just no caching
+            return balance
     except Exception as exc:
         _log.warning(
             "_resolve_live_balance: could not fetch live balance — "
             "falling back to paper balance for sizing: %s",
             exc,
         )
+    # Deliberately NOT caching the 0.0 fallback -- a transient failure
+    # should retry on the very next call, not pin every caller to "no live
+    # balance" for the rest of the TTL window.
     return 0.0
 
 
@@ -274,11 +365,11 @@ def _recover_pending_orders(client) -> None:
     dedup guards. This function resolves those rows on startup so the dedup
     state is accurate.
     """
-    pending = [
-        o
-        for o in execution_log.get_recent_orders(limit=200)
-        if o.get("live") and o.get("status") == "pending"
-    ]
+    # AUD-0012: dedicated unbounded query instead of a LIMIT-200-of-everything
+    # fetch filtered in Python -- the fixed window could silently evict a
+    # genuinely still-pending live order once enough other orders (mostly
+    # paper) accumulated afterward.
+    pending = execution_log.get_pending_live_orders()
     if not pending:
         return
 
@@ -436,11 +527,9 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
     now_utc = datetime.now(UTC)
 
     # ── Pending orders: GTC age check + fill status ───────────────────────────
-    pending = [
-        o
-        for o in execution_log.get_recent_orders(limit=200)
-        if o.get("live") and o.get("status") == "pending" and o.get("response")
-    ]
+    # AUD-0012: dedicated unbounded query, not a LIMIT-200-of-everything
+    # fetch filtered in Python -- see _recover_pending_orders' identical note.
+    pending = [o for o in execution_log.get_pending_live_orders() if o.get("response")]
     for order in pending:
         try:
             response = (
@@ -929,11 +1018,9 @@ def _reprice_or_cancel_pending_orders(
     cycle = _current_forecast_cycle()
     now_utc = datetime.now(UTC)
 
-    pending = [
-        o
-        for o in execution_log.get_recent_orders(limit=200)
-        if o.get("live") and o.get("status") == "pending" and o.get("response")
-    ]
+    # AUD-0012: dedicated unbounded query, not a LIMIT-200-of-everything
+    # fetch filtered in Python -- see _recover_pending_orders' identical note.
+    pending = [o for o in execution_log.get_pending_live_orders() if o.get("response")]
     for order in pending:
         ticker = order.get("ticker", "")
         side = order.get("side", "yes")
@@ -1084,6 +1171,15 @@ def _get_live_open_positions() -> list[dict]:
     update_peak_profits(), the same pattern paper.PaperPositionStore.get_open()
     uses over paper.get_open_trades().
     """
+    # AUD-0001/AUD-0002: city/target_date backfilled from the ticker alone
+    # (weather_markets.parse_city_date needs only market["ticker"] -- title
+    # is an optional disambiguator it doesn't have here) so paper.py's
+    # exposure caps and _auto_place_trades' city/date concentration caps,
+    # which key off these two fields, can see live positions at all. Lazy
+    # import matches this file's existing convention (paper.py imports
+    # weather_markets the same way inside check_position_limits).
+    from weather_markets import _CITY_TZ, parse_city_date
+
     rows = execution_log.get_filled_unsettled_live_orders()
     positions = []
     for r in rows:
@@ -1091,10 +1187,92 @@ def _get_live_open_positions() -> list[dict]:
         entry_price = r.get("price")
         if not qty or entry_price is None:
             continue
+        ticker = r["ticker"]
+        city, target_date = parse_city_date({"ticker": ticker})
+        # Opus-review-caught: rain/snow monthly tickers carry no day-level
+        # date at all (parse_city_date's own docstring: "the regex
+        # naturally finds nothing"), so target_date stayed None for those
+        # series even after the backfill above -- invisible to every
+        # city/date-keyed cap (get_city_date_exposure, get_correlated_
+        # exposure, _multiday_date_counts, get_expiry_date_clustering).
+        # Fall back to close_time's date when present -- not necessarily
+        # byte-identical to the month-anchor date analyze_trade() itself
+        # assigns these series at signal time (paper trades store that
+        # value directly via _unpack_opp), but a real date beats an
+        # invisible position for every cap that keys on this field.
+        # 2nd-round-opus-review-caught (L-6): close_time is NOT guaranteed
+        # present on every row (main.py's cmd_order logs close_time=None
+        # when the market dict it enriched from lacked one) -- when it's
+        # also missing, target_date stays None here and days_out below
+        # falls back to its own default of 1 (multi-day), matching this
+        # function's pre-H2 behavior for that case rather than the
+        # days_out=0-forever failure mode a naive fallback could produce.
+        if target_date is None and r.get("close_time"):
+            try:
+                from zoneinfo import ZoneInfo
+
+                # 2nd-round-opus-review-caught (H-B): close_time is a UTC
+                # timestamp from the exchange; target_date must be
+                # CITY-LOCAL to match parse_city_date's own contract (and
+                # the entered_date conversion below) -- taking its raw UTC
+                # .date() reproduces the same UTC-vs-city-local bug for the
+                # ~4-8h evening window where UTC has already rolled over
+                # but the city hasn't.
+                target_date = (
+                    datetime.fromisoformat(r["close_time"].replace("Z", "+00:00"))
+                    .astimezone(ZoneInfo(_CITY_TZ.get(city or "", "America/New_York")))
+                    .date()
+                )
+            except (ValueError, TypeError, KeyError):
+                pass
+        # filled_at (when the position actually opened) is the correct
+        # analog of paper's entered_at for the 12h minimum-hold gates
+        # below -- a GTC entry order can rest a while before filling,
+        # so placed_at would understate how long the position itself
+        # has actually been held. Falls back to placed_at only for
+        # rows logged before filled_at existed.
+        entered_at = r.get("filled_at") or r.get("placed_at")
+        # AUD-0002 (opus-review-caught): _auto_place_trades' same-day/
+        # multi-day concentration caps key off days_out, snapshotted at
+        # placement time (order_executor.py's own comment there: using a
+        # STATIC days_out, not a dynamically-recomputed one, deliberately
+        # avoids reclassifying an aged position as same-day just because
+        # it settles today) -- execution_log's orders table never
+        # persisted this field for live orders, so reconstruct the same
+        # snapshot from what IS persisted: target_date vs. the date this
+        # position was actually entered. Missing target_date/entered_at
+        # (parse failure, or a row logged before filled_at existed) falls
+        # back to 1 (multi-day), matching this codebase's own established
+        # "legacy trades with no days_out field are treated as multi-day"
+        # convention exactly -- without this, a same-day live position
+        # would be invisible to the same-day cap AND wrongly counted
+        # against the multi-day cap for its target_date.
+        # 2nd-round-opus-review-caught (H-B): target_date is CITY-LOCAL
+        # (parse_city_date's own contract), but entered_at is a UTC
+        # timestamp -- naively taking entered_at's UTC .date() and
+        # subtracting from a city-local target_date reproduces the exact
+        # UTC-vs-city-local bug this codebase already documents and fixes
+        # elsewhere (main.py's _feature_importance_days_out docstring: "the
+        # ~4-8h evening window where UTC's calendar date has already
+        # rolled over but the city's has not"). Mirrors that function's
+        # fix exactly: convert entered_at to the CITY's own local calendar
+        # date via ZoneInfo before subtracting.
+        days_out = 1
+        if target_date and entered_at:
+            try:
+                from zoneinfo import ZoneInfo
+
+                entered_dt = datetime.fromisoformat(entered_at.replace("Z", "+00:00"))
+                entered_date = entered_dt.astimezone(
+                    ZoneInfo(_CITY_TZ.get(city or "", "America/New_York"))
+                ).date()
+                days_out = max(0, (target_date - entered_date).days)
+            except (ValueError, TypeError, KeyError):
+                pass
         positions.append(
             {
                 "id": r["id"],
-                "ticker": r["ticker"],
+                "ticker": ticker,
                 "side": r.get("side", "yes"),
                 "entry_price": entry_price,
                 "quantity": qty,
@@ -1102,14 +1280,17 @@ def _get_live_open_positions() -> list[dict]:
                 "close_time": r.get("close_time"),
                 "peak_profit_pct": r.get("peak_profit_pct"),
                 "entry_prob": r.get("entry_prob"),
-                # filled_at (when the position actually opened) is the correct
-                # analog of paper's entered_at for the 12h minimum-hold gates
-                # below -- a GTC entry order can rest a while before filling,
-                # so placed_at would understate how long the position itself
-                # has actually been held. Falls back to placed_at only for
-                # rows logged before filled_at existed.
-                "entered_at": r.get("filled_at") or r.get("placed_at"),
+                "city": city,
+                "target_date": target_date.isoformat() if target_date else None,
+                "days_out": days_out,
+                "entered_at": entered_at,
                 "settled": False,
+                # Opus-review-caught (L7): paper trade ids and execution_log
+                # row ids are BOTH plain incrementing integers -- disjoint
+                # id spaces displayed together (e.g. check_aged_positions'
+                # merged list) would otherwise show two different positions
+                # as the same "#5" with no way to tell which is which.
+                "live": True,
             }
         )
     return positions
@@ -2238,14 +2419,21 @@ def _log_shadow_predictions(opps: list, live: bool = False) -> int:
     failed validation/dedup, or that log_prediction itself skipped, e.g. for
     a missing city).
     """
-    from paper import get_open_trades
+    from paper import get_all_open_positions
     from tracker import _conn as _tracker_conn
     from tracker import log_prediction as _log_pred
 
     try:
-        open_tickers = {t["ticker"] for t in get_open_trades()}
+        # Opus-review-caught (L8): get_all_open_positions() (paper + live),
+        # matching the real placement loop's own open_tickers below --
+        # otherwise a ticker held LIVE gets shadow-logged here as if it
+        # were a genuine candidate the real loop would have traded, when
+        # the real loop would actually skip it as already-open, mildly
+        # polluting the auto-retirement scoring this function exists to
+        # keep honest.
+        open_tickers = {t["ticker"] for t in get_all_open_positions()}
     except Exception as _e:
-        _log.warning("_log_shadow_predictions: get_open_trades failed: %s", _e)
+        _log.warning("_log_shadow_predictions: get_all_open_positions failed: %s", _e)
         open_tickers = set()
 
     logged = 0
@@ -2336,7 +2524,17 @@ def _auto_place_trades(
             )
         )
         return 0
-    if is_paused_drawdown():
+    # AUD-0005: pass client through unconditionally so the drawdown/streak
+    # checks also see real live losses via execution_log, not just
+    # paper_trades.json. client may be None on a pure-paper caller with
+    # none provided -- is_paused_drawdown handles that. Opus-review-caught:
+    # "same as is_daily_loss_halted below" (the original wording here) is a
+    # misleading analogy -- that function's client is used only for PAPER
+    # unrealized MTM pricing (get_unrealized_pnl_paper), not live-loss
+    # awareness; is_daily_loss_halted itself remains blind to live losses
+    # (mitigated, not eliminated, by _place_live_order's own separate
+    # execution_log.get_today_live_loss() check).
+    if is_paused_drawdown(client):
         print(
             yellow(
                 "  [Auto] Drawdown guard active — no auto-trades placed."
@@ -2355,14 +2553,36 @@ def _auto_place_trades(
             )
         )
         return 0
-    _streak_paused = is_streak_paused()
+    _streak_paused = is_streak_paused(client)
     if _streak_paused:
         print(
             yellow("  [Auto] Loss streak detected — Kelly halved for all auto-trades.")
         )
 
-    _open_trades_list = get_open_trades()
+    # AUD-0002: seed with prior-cycle live positions too, not just the paper
+    # ledger -- previously MAX_CONCURRENT_POSITIONS, the per-date/same-day
+    # concentration caps, and the VaR gate below were all blind to any live
+    # position opened in an earlier watch/cron cycle (only F6's own
+    # same-cycle append, further down, covered live orders placed THIS
+    # cycle). Unconditional, not gated on `live` -- the finding is explicit
+    # that this was blind "regardless of live=True/False": a PAPER cycle
+    # placing trades should still see real live exposure, not just a live
+    # cycle. _get_live_open_positions() is called fresh here, before any
+    # live order this cycle is placed, so there's no overlap with F6's
+    # later append of this cycle's own fills.
+    _open_trades_list = get_open_trades() + _get_live_open_positions()
     open_tickers = {t["ticker"] for t in _open_trades_list}
+    # Opus-review-caught (L9, deliberately not changed further): if the same
+    # ticker were somehow held on BOTH ledgers with opposite sides at once,
+    # the live entry (concatenated after paper) silently wins this dict,
+    # which could report the wrong "existing side" in the FLIP WARNING
+    # message below. Left as-is -- `ticker in open_tickers` (checked further
+    # down) already unconditionally skips placement for an already-open
+    # ticker regardless of which side wins here, so this can only ever
+    # affect a warning MESSAGE's wording, never a trading decision. The
+    # precondition itself (the same ticker open on both ledgers
+    # simultaneously with opposite sides) is also an unusual state this bot
+    # doesn't otherwise put itself into.
     _open_trade_sides: dict[str, str] = {
         t["ticker"]: t.get("side", "yes") for t in _open_trades_list
     }
@@ -2776,7 +2996,7 @@ def _auto_place_trades(
         # always <=1.0, so this only ever shrinks or holds ci_kelly.
         ci_kelly *= _ticker_edge_share.get(ticker, 1.0)
         adj_kelly = portfolio_kelly_fraction(
-            ci_kelly, city, target_date_str, side=rec_side
+            ci_kelly, city, target_date_str, side=rec_side, client=client
         )
         adj_kelly *= corr_kelly_scale(
             {"city": city, "target_date": target_date_str}, _open_trades_list
@@ -2898,7 +3118,9 @@ def _auto_place_trades(
         if drawdown_scaling_factor() == 0.0:
             _skip_reasons.append(f"{ticker}: drawdown_halt")
             continue
-        qty = kelly_quantity(adj_kelly_final, entry_price, cap=cap, method=method)
+        qty = kelly_quantity(
+            adj_kelly_final, entry_price, cap=cap, method=method, client=client
+        )
         if qty < 1:
             _skip_reasons.append(
                 f"{ticker}: qty_zero(kelly={adj_kelly_final:.4f} price={entry_price:.2f})"
@@ -2969,7 +3191,27 @@ def _auto_place_trades(
         # update paper.is_paused_drawdown mid-cycle are observed immediately.
         from paper import is_paused_drawdown as _is_paused_now
 
-        if _is_paused_now():
+        # Opus-review-caught: client only passed when this cycle can
+        # actually place a live order. The cycle-level check at the top of
+        # this function already covers the live-aware branch once per
+        # cycle (cheap: one API call, now further TTL-cached -- see
+        # _resolve_live_balance's own docstring); re-fetching live
+        # balance/loss data here on EVERY candidate would fire a
+        # per-candidate portfolio-balance check even on a PURE PAPER cycle
+        # (client is non-None there too, for MTM pricing) even though
+        # nothing about live account state can have changed between paper
+        # placements -- pure overhead with no correctness benefit, and
+        # against trading_gates.py's own "cheapest checks first" ordering.
+        # Only a live cycle can plausibly move live state between
+        # candidates.
+        # 2nd-round-opus-review-caught (L-5): scoped on `live and
+        # live_config`, matching the ACTUAL live-placement branch's own
+        # condition a few lines below (`if live and live_config:`) --
+        # `live=True` alone with live_config=None still routes through
+        # the paper branch, so gating on `live` alone would have fired
+        # this live-balance check for a candidate that was never going to
+        # place a real order.
+        if _is_paused_now(client if (live and live_config) else None):
             _log.warning(
                 "auto_place_trades: HALT — drawdown floor breached mid-cycle, "
                 "stopping after %d placements",
@@ -2987,6 +3229,7 @@ def _auto_place_trades(
                 entry_price,
                 cap=cap,
                 method=method,
+                client=client,
                 balance_override=_live_balance if _live_balance > 0 else None,
             )
 

@@ -127,7 +127,7 @@ def test_kelly_bet_dollars_never_exceeds_balance(kelly_frac, drawdown_scale, bal
         with (
             patch.object(paper, "DATA_PATH", tmp_path),
             patch.object(paper, "drawdown_scaling_factor", lambda: drawdown_scale),
-            patch.object(paper, "is_streak_paused", lambda: False),
+            patch.object(paper, "is_streak_paused", lambda *_a, **_k: False),
             patch.object(paper, "_method_kelly_multiplier", lambda method: 1.0),
             patch.object(paper, "_dynamic_kelly_cap", lambda: balance * 2),
         ):

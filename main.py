@@ -1172,8 +1172,8 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
         if ci_kelly > 0.005:
             from paper import kelly_bet_dollars, kelly_quantity
 
-            bet_dollars = kelly_bet_dollars(ci_kelly)
-            bet_qty = kelly_quantity(ci_kelly, prices["implied_prob"])
+            bet_dollars = kelly_bet_dollars(ci_kelly, client=client)
+            bet_qty = kelly_quantity(ci_kelly, prices["implied_prob"], client=client)
             if fee_kelly > 0 and ci_kelly < fee_kelly * 0.85:
                 penalty_pct = (fee_kelly - ci_kelly) / fee_kelly
                 kelly_label = (
@@ -1190,8 +1190,8 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
         elif fee_kelly > 0.005:
             from paper import kelly_bet_dollars, kelly_quantity
 
-            bet_dollars = kelly_bet_dollars(fee_kelly)
-            bet_qty = kelly_quantity(fee_kelly, prices["implied_prob"])
+            bet_dollars = kelly_bet_dollars(fee_kelly, client=client)
+            bet_qty = kelly_quantity(fee_kelly, prices["implied_prob"], client=client)
             _kv(
                 "Kelly:",
                 f"{bold(f'{fee_kelly * 100:.1f}% of bankroll')}  {green(f'→ ${bet_dollars:.2f}  (~{bet_qty} contracts)')}  {dim('fee-adjusted')}",
@@ -2344,7 +2344,10 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                     )
                 )
                 return
-            if is_streak_paused():
+            # Opus-review-caught (L2): pass client here too, same reasoning
+            # as is_daily_loss_halted just above -- otherwise this warning
+            # stays blind to a real live streak.
+            if is_streak_paused(client):
                 print(yellow("  Warning: on a 3+ loss streak — Kelly is halved."))
         except Exception:
             pass
@@ -2396,9 +2399,15 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                         analysis.get("ci_adjusted_kelly", 0.0) if analysis else 0.0
                     )
                     adj_kelly = portfolio_kelly_fraction(
-                        fee_kelly, city, tdate_str, side=side
+                        fee_kelly, city, tdate_str, side=side, client=client
                     )
-                    qty = kelly_quantity(adj_kelly, price)
+                    # 2nd-round-opus-review-caught (H-A): this is the ONLY
+                    # place that actually sizes the maker-order branch's real
+                    # live order (client.place_maker_order below) -- the
+                    # is_streak_paused(client) warning above was cosmetic
+                    # without this, the exact H1 bug shape at a call site H1
+                    # missed.
+                    qty = kelly_quantity(adj_kelly, price, client=client)
                 except Exception:
                     qty = 0
 
@@ -2422,6 +2431,7 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                         city=city,
                         target_date_str=tdate_str,
                         side=side,
+                        client=client,
                     )
                     if not _limit_check.get("ok", True):
                         print(
@@ -2672,7 +2682,7 @@ def cmd_today(client: KalshiClient) -> None:
         )
         _entry_price = _market_prob if _side == "yes" else 1 - _market_prob
 
-        _bet_dollars = kelly_bet_dollars(_ci_kelly)
+        _bet_dollars = kelly_bet_dollars(_ci_kelly, client=client)
         _win_per_dollar = (1 - _entry_price) * (1 - _fee)
         _if_correct = (
             round(_bet_dollars / _entry_price * _win_per_dollar, 2)
@@ -2759,8 +2769,12 @@ def cmd_today(client: KalshiClient) -> None:
     _market_prob1 = best_a["market_prob"]
     _entry_price1 = _market_prob1 if _side1 == "yes" else 1 - _market_prob1
     _ci_kelly1 = best_a.get("ci_adjusted_kelly", best_a.get("fee_adjusted_kelly", 0.0))
-    _bet_dollars1 = kelly_bet_dollars(_ci_kelly1)
-    _qty1 = kelly_quantity(_ci_kelly1, _entry_price1) if _entry_price1 > 0 else 0
+    _bet_dollars1 = kelly_bet_dollars(_ci_kelly1, client=client)
+    _qty1 = (
+        kelly_quantity(_ci_kelly1, _entry_price1, client=client)
+        if _entry_price1 > 0
+        else 0
+    )
 
     try:
         raw = (
@@ -2903,6 +2917,7 @@ def cmd_today(client: KalshiClient) -> None:
                     city=best_m.get("_city"),
                     target_date_str=best_a.get("target_date"),
                     side=_side1,
+                    client=client,
                 )
             except Exception as _limit_exc_today:
                 _limit_check_today = {"ok": True}
@@ -3003,7 +3018,7 @@ def cmd_today(client: KalshiClient) -> None:
                 else (yellow("MED") if _rtr != "HIGH" else red("HIGH"))
             )
             _rck = ra.get("ci_adjusted_kelly", ra.get("fee_adjusted_kelly", 0.0))
-            _rbet = kelly_bet_dollars(_rck)
+            _rbet = kelly_bet_dollars(_rck, client=client)
             _rbet_s = f"${_rbet:.0f}" if _rbet > 0 else "—"
             print(
                 f"  #{rank}  {bold(_rt)}  BUY {_rs.upper()} @ {_rep:.0%}"
@@ -3148,7 +3163,12 @@ def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
         print(bold(f"\n  ── Aged Positions ({len(aged)}) ──"))
         for entry in aged:
             t = entry["trade"]
-            print(yellow(f"  #{t['id']} {t['ticker']} — {entry['age_days']} days old"))
+            # Opus-review-caught (L7): paper and execution_log ids are
+            # separate incrementing-int spaces that collide visually --
+            # prefix live entries so "#5" can't be misread as the other
+            # ledger's #5.
+            _id_label = f"LIVE#{t['id']}" if t.get("live") else f"#{t['id']}"
+            print(yellow(f"  {_id_label} {t['ticker']} — {entry['age_days']} days old"))
 
     # Correlated event exposure warning
     try:
@@ -4559,6 +4579,7 @@ def cmd_order(client: KalshiClient, action: str, args: list):
                 city=_city_ord,
                 target_date_str=_tdate_str_ord,
                 side=side,
+                client=client,
             )
             if not _limit_check_ord.get("ok", True):
                 print(
@@ -7428,6 +7449,7 @@ def cmd_menu(client: KalshiClient):
                                     city=_sub_city,
                                     target_date_str=_sub_tdate_str,
                                     side=side,
+                                    client=client,
                                 )
                                 if not _limit_sub.get("ok", True):
                                     print(
@@ -8192,7 +8214,10 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
             return
 
         # Drawdown guard: block auto-sizing when drawdown exceeds MAX_DRAWDOWN_FRACTION
-        if is_paused_drawdown() and qty is None:
+        # Opus-review-caught (L2): pass client (in scope on this function's
+        # own signature) so this also sees a real live drawdown, not just
+        # paper's.
+        if is_paused_drawdown(client) and qty is None:
             from paper import MAX_DRAWDOWN_FRACTION, get_peak_balance
 
             floor = get_peak_balance() * (1 - MAX_DRAWDOWN_FRACTION)
@@ -8234,7 +8259,7 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
         if qty is None:
             if fee_kelly and fee_kelly > 0.005:
                 adj_kelly = portfolio_kelly_fraction(
-                    fee_kelly, city, target_date_str, side=side
+                    fee_kelly, city, target_date_str, side=side, client=client
                 )
                 if adj_kelly < fee_kelly:
                     print(
@@ -8243,8 +8268,8 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                             f"{adj_kelly * 100:.1f}% (existing {city}/{target_date_str} exposure)"
                         )
                     )
-                qty = kelly_quantity(adj_kelly, price)
-                bet_amt = kelly_bet_dollars(adj_kelly)
+                qty = kelly_quantity(adj_kelly, price, client=client)
+                bet_amt = kelly_bet_dollars(adj_kelly, client=client)
                 print(
                     f"\n  {bold('Kelly auto-size:')} {adj_kelly * 100:.1f}% of balance "
                     f"= {green(f'${bet_amt:.2f}')} → {bold(str(qty))} contracts"
@@ -8287,6 +8312,7 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                 city=city,
                 target_date_str=target_date_str,
                 side=side,
+                client=client,
             )
             if not _limit_check_paper.get("ok", True):
                 print(

@@ -358,24 +358,28 @@ def test_auto_place_trades_med_tier_uses_20_cap(monkeypatch):
 
     captured_caps = []
 
-    def fake_kelly_quantity(kf, price, min_dollars=1.0, cap=None, method=None):
+    def fake_kelly_quantity(
+        kf, price, min_dollars=1.0, cap=None, method=None, client=None
+    ):
         captured_caps.append(cap)
         # Return 10 contracts so the trade goes through
         return 10
 
-    def fake_portfolio_kelly_fraction(ci_kelly, city, target_date, side=None):
+    def fake_portfolio_kelly_fraction(
+        ci_kelly, city, target_date, side=None, client=None
+    ):
         return 0.05  # non-trivial fraction so we don't skip
 
     def fake_get_open_trades():
         return []  # no existing positions
 
-    def fake_is_paused_drawdown():
+    def fake_is_paused_drawdown(client=None):
         return False
 
     def fake_is_daily_loss_halted(client=None):
         return False
 
-    def fake_is_streak_paused():
+    def fake_is_streak_paused(client=None):
         return False
 
     def fake_place_paper_order(*args, **kwargs):
@@ -450,10 +454,14 @@ def test_auto_place_trades_none_ci_kelly_falls_back_without_crashing(monkeypatch
 
     captured_ci_kelly = []
 
-    def fake_kelly_quantity(kf, price, min_dollars=1.0, cap=None, method=None):
+    def fake_kelly_quantity(
+        kf, price, min_dollars=1.0, cap=None, method=None, client=None
+    ):
         return 10
 
-    def fake_portfolio_kelly_fraction(ci_kelly, city, target_date, side=None):
+    def fake_portfolio_kelly_fraction(
+        ci_kelly, city, target_date, side=None, client=None
+    ):
         captured_ci_kelly.append(ci_kelly)
         return ci_kelly
 
@@ -470,9 +478,9 @@ def test_auto_place_trades_none_ci_kelly_falls_back_without_crashing(monkeypatch
         paper, "portfolio_kelly_fraction", fake_portfolio_kelly_fraction
     )
     monkeypatch.setattr(paper, "get_open_trades", lambda: [])
-    monkeypatch.setattr(paper, "is_paused_drawdown", lambda: False)
+    monkeypatch.setattr(paper, "is_paused_drawdown", lambda *_a, **_k: False)
     monkeypatch.setattr(paper, "is_daily_loss_halted", lambda client=None: False)
-    monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
+    monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
     import order_executor as _oe
 
@@ -738,7 +746,7 @@ def test_cmd_watch_auto_executes_early_exits(tmp_path, monkeypatch):
             raise KeyboardInterrupt
 
     monkeypatch.setattr("time.sleep", fake_sleep)
-    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda *_a, **_k: False)
 
     try:
         main.cmd_watch(MagicMock())
@@ -781,7 +789,7 @@ def test_cmd_watch_auto_executes_paper_stop_loss(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "check_ensemble_circuit_health", lambda: None)
     monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
     monkeypatch.setattr(main, "sync_outcomes", lambda client: 0)
-    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda *_a, **_k: False)
 
     sleep_calls = {"n": 0}
 
@@ -852,9 +860,9 @@ def test_auto_place_trades_logs_paper_order_to_execution_log(tmp_path, monkeypat
     monkeypatch.setattr(main, "get_weather_markets", lambda client: [fake_market])
     monkeypatch.setattr(main, "enrich_with_forecast", lambda m: m)
     monkeypatch.setattr(main, "analyze_trade", lambda e: fake_analysis)
-    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.is_daily_loss_halted", lambda client=None: False)
-    monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+    monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
 
     strong_opps = [(fake_market, fake_analysis)]
     main._auto_place_trades(strong_opps, client=None)
@@ -1085,9 +1093,9 @@ def _l7b_common_patches(monkeypatch):
     import main
     import paper
 
-    monkeypatch.setattr(paper, "is_paused_drawdown", lambda: False)
+    monkeypatch.setattr(paper, "is_paused_drawdown", lambda *_a, **_k: False)
     monkeypatch.setattr(paper, "is_daily_loss_halted", lambda client=None: False)
-    monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
+    monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
     import order_executor as _oe
 
@@ -1264,11 +1272,15 @@ def _run_with_captured_kelly(monkeypatch, opps):
 
     captured: list[float] = []
 
-    def fake_portfolio_kelly_fraction(ci_kelly, city, target_date, side=None):
+    def fake_portfolio_kelly_fraction(
+        ci_kelly, city, target_date, side=None, client=None
+    ):
         captured.append(ci_kelly)
         return ci_kelly
 
-    def fake_kelly_quantity(kf, price, min_dollars=1.0, cap=None, method=None):
+    def fake_kelly_quantity(
+        kf, price, min_dollars=1.0, cap=None, method=None, client=None
+    ):
         return 10
 
     def fake_place_paper_order(*args, **kwargs):

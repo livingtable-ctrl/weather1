@@ -12,7 +12,7 @@ import json
 import logging
 import sqlite3
 import threading as _el_threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from paths import EXECUTION_LOG_DB_PATH
@@ -436,6 +436,193 @@ def get_today_live_loss() -> float:
         return float("inf")
 
 
+def get_live_realized_loss_since(days: int) -> float:
+    """Return realized live loss (dollars) over the trailing `days` calendar
+    dates, inclusive of today (UTC), in the same loss-sign convention as
+    get_today_live_loss(): positive = net loss, negative = net gain.
+
+    AUD-0005: paper.is_paused_drawdown() only ever reads paper_trades.json,
+    so a real live-account bleed spread across multiple days was never
+    caught by any gate. Sums daily_live_loss.total (already correctly
+    updated at every full settlement AND every partial exit via
+    add_live_loss -- see order_executor._exit_live_position's docstring)
+    rather than re-deriving from orders.pnl directly, since that table is
+    the single place both settlement paths already write to.
+
+    A trailing window (not a true all-time peak-balance drawdown, which
+    paper.py's mechanism is) by design -- there is no persisted live
+    peak/starting balance anywhere to compute a real high-water mark from,
+    and this project deliberately chose not to add one (new table +
+    snapshot-writer) for a currently-dormant feature. Fails closed (inf) on
+    a DB read failure, matching get_today_live_loss()/get_today_live_spend().
+
+    Opus-review-caught: also fails closed via the same degraded-flag check
+    get_today_live_loss() uses -- if a prior add_live_loss() write failed,
+    today's own row in daily_live_loss is untrustworthy (understated), and
+    silently summing it as fact here would let a real bleed pass the
+    drawdown gate on the one day the data is known-wrong.
+    """
+    if _degraded_for_today():
+        return float("inf")
+    # Opus-review-caught (L5): days<=0 would push cutoff into the future,
+    # matching zero rows and silently returning 0.0 loss -- a silent kill
+    # switch for the drawdown gate with no warning. Clamp to at least 1 day
+    # (today only) instead.
+    days = max(1, days)
+    today = datetime.now(UTC).date()
+    cutoff = (today - timedelta(days=days - 1)).isoformat()
+    try:
+        init_log()
+        with _conn() as con:
+            row = con.execute(
+                "SELECT COALESCE(SUM(total), 0.0) AS total FROM daily_live_loss "
+                # Opus-review-caught (L5): upper-bound the window too --
+                # without it a future-dated row (clock skew, a test/dev
+                # artifact) would silently count toward today's loss.
+                "WHERE date >= ? AND date <= ?",
+                (cutoff, today.isoformat()),
+            ).fetchone()
+        return float(row["total"]) if row else 0.0
+    except Exception as exc:
+        _log.error(
+            "get_live_realized_loss_since: DB read failed, failing closed: %s", exc
+        )
+        return float("inf")
+
+
+def get_live_settlement_streak() -> tuple[str, int, float]:
+    """Live-order equivalent of paper.get_current_streak(): returns
+    ("win"|"loss"|"neutral"|"none", N, streak_pnl) describing the trailing
+    run of consecutive same-direction settled live orders, ordered by
+    settlement time. streak_pnl is the sum of pnl across those N orders
+    (paper's is_streak_paused() re-derives this same magnitude from a
+    second, separate query over paper_trades.json -- returned directly here
+    instead so the caller doesn't need its own second query or reach into
+    this module's private _conn()).
+
+    AUD-0005: paper.is_streak_paused() only ever reads paper_trades.json, so
+    a genuine live consecutive-loss streak was never caught by any gate.
+
+    No closes_position_id filter (unlike get_filled_unsettled_live_orders,
+    which excludes those rows because they'd be misread as brand-new open
+    positions) -- a partial-exit's own row IS a genuine settled outcome with
+    real pnl (order_executor._exit_live_position's partial-fill path calls
+    record_live_early_exit on that exact row), and excluding it here would
+    silently drop real losses/wins from the streak the same way it used to
+    drop them from get_live_pnl_summary's totals before that was fixed.
+    Matches get_live_pnl_summary's own (already-correct) unfiltered shape.
+
+    Unlike get_today_live_loss()/get_live_realized_loss_since(), this does
+    NOT catch and fail closed internally -- there is no natural "worse than
+    any real streak" sentinel for a (direction, count, pnl) tuple the way
+    `inf` is for a dollar total. Raises on a DB read failure; the caller
+    (paper.is_streak_paused()) is responsible for failing its own bool
+    contract closed, matching how trading_gates.LiveTradingGate.check()
+    already wraps each individual safety check in its own try/except.
+
+    Opus-review-caught: excludes same-day (days_out==0) settlements from
+    the streak, matching paper.get_current_streak()'s own
+    `((_d := t.get("days_out")) is None or _d >= 1)` filter exactly -- same-
+    day trades settle within hours and this codebase deliberately treats
+    them as a separate, faster-cycling risk bucket that shouldn't drive the
+    same multi-day streak signal. execution_log's orders table never
+    persisted days_out for live orders, so it's reconstructed the same way
+    order_executor._get_live_open_positions() does for open positions:
+    target_date (parsed from the ticker, falling back to close_time for
+    series with no day-level date in the ticker) minus the date the
+    position was entered.
+
+    2nd-round-opus-review-caught (M-F): unlike order_executor.
+    _resolve_live_balance (given a short TTL cache in the same review
+    round -- see its docstring), this function is deliberately left
+    UNcached despite running an unbounded full-table scan with a
+    per-row regex/timezone parse on every call, now including from
+    kelly_bet_dollars(client=...) once per Kelly-sizing call. A
+    _resolve_live_balance-style cache attaches to the client object
+    itself, naturally scoping its lifetime to that object (safe across
+    tests, since each test gets a fresh mock). This function takes no
+    client -- any cache would have to be module-level, and this module's
+    own DB_PATH is routinely repointed at a fresh per-test temp file by
+    tests/conftest.py's autouse isolate_execution_log fixture, which a
+    naive time-based module cache has no way to know about -- it would
+    silently serve a PRIOR test's stale result into a fresh, supposedly-
+    isolated test DB. This is a real, DB-local (not network/circuit-
+    breaker) cost that grows with live-order history; worth revisiting
+    with a DB_PATH-aware cache key if live order volume ever makes it
+    material, but not risked here given the test-isolation hazard.
+    """
+    from weather_markets import _CITY_TZ, parse_city_date
+
+    init_log()
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT pnl, ticker, close_time, placed_at, filled_at FROM orders "
+            "WHERE live = 1 AND settled_at IS NOT NULL AND pnl IS NOT NULL "
+            # Opus-review-caught (L4): `id` tiebreaker for a deterministic
+            # order when two settlements land in the same instant -- paper's
+            # get_current_streak() sorts a stable Python list, this is the
+            # SQL equivalent.
+            "ORDER BY settled_at, id",
+        ).fetchall()
+
+    def _is_same_day(row) -> bool:
+        city, target_date = parse_city_date({"ticker": row["ticker"]})
+        if target_date is None and row["close_time"]:
+            try:
+                from zoneinfo import ZoneInfo as _ZI
+
+                # 2nd-round-opus-review-caught (H-B): close_time is UTC;
+                # target_date must be CITY-LOCAL -- mirrors
+                # order_executor._get_live_open_positions()' identical fix.
+                target_date = (
+                    datetime.fromisoformat(row["close_time"].replace("Z", "+00:00"))
+                    .astimezone(_ZI(_CITY_TZ.get(city or "", "America/New_York")))
+                    .date()
+                )
+            except (ValueError, TypeError, KeyError):
+                return False
+        entered_at = row["filled_at"] or row["placed_at"]
+        if target_date is None or not entered_at:
+            return False
+        try:
+            # 2nd-round-opus-review-caught (H-B/L-1): target_date is
+            # CITY-LOCAL; entered_at is UTC. Convert to the city's own
+            # local calendar date before comparing -- mirrors
+            # order_executor._get_live_open_positions()' own fix for the
+            # identical bug, which this docstring already claims (now
+            # correctly) to match.
+            from zoneinfo import ZoneInfo
+
+            entered_dt = datetime.fromisoformat(entered_at.replace("Z", "+00:00"))
+            entered_date = entered_dt.astimezone(
+                ZoneInfo(_CITY_TZ.get(city or "", "America/New_York"))
+            ).date()
+        except (ValueError, TypeError, KeyError):
+            return False
+        return target_date == entered_date
+
+    rows = [r for r in rows if not _is_same_day(r)]
+    if not rows:
+        return ("none", 0, 0.0)
+    pnls = [r["pnl"] for r in rows]
+    last = pnls[-1]
+    if last > 0:
+        direction = "win"
+    elif last < 0:
+        direction = "loss"
+    else:
+        return ("neutral", 0, 0.0)
+    streak = 1
+    for pnl in reversed(pnls[:-1]):
+        if direction == "win" and pnl > 0:
+            streak += 1
+        elif direction == "loss" and pnl < 0:
+            streak += 1
+        else:
+            break
+    return (direction, streak, sum(pnls[-streak:]))
+
+
 def get_today_live_spend() -> float:
     """Return today's cumulative live order spend in dollars (UTC date),
     across every non-failed/canceled/amended order regardless of settlement
@@ -530,6 +717,25 @@ def add_live_loss(amount: float) -> float:
         except Exception as _e:
             _log.error("add_live_loss fallback read also failed: %s", _e)
             return float("inf")
+
+
+def get_pending_live_orders() -> list[dict]:
+    """Return every live order still resting (status='pending'), unbounded.
+
+    AUD-0012: dedicated scoped query, not a LIMIT-N-of-everything fetch
+    filtered in Python afterward -- that pattern (execution_log.py's own
+    get_recent_orders(limit=N)) can silently evict a genuinely still-pending
+    live order once enough other (overwhelmingly paper) orders accumulate
+    after it, once N is exceeded. Mirrors get_filled_unsettled_live_orders's
+    own unbounded WHERE-scoped shape.
+    """
+    init_log()
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT * FROM orders WHERE live = 1 AND status = 'pending' "
+            "ORDER BY placed_at",
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_filled_unsettled_live_orders() -> list[dict]:

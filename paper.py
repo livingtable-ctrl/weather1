@@ -282,6 +282,12 @@ def _env_int(name: str, default: str) -> int:
 # #121: drawdown halt configurable via env (default 50%)
 MAX_DRAWDOWN_FRACTION = _env_float("DRAWDOWN_HALT_PCT", "0.20")
 
+# AUD-0005: live trading has no persisted peak/starting balance to compute a
+# true drawdown from (see is_paused_drawdown's docstring), so the live-side
+# check is a trailing realized-loss window instead, reusing the same
+# MAX_DRAWDOWN_FRACTION threshold against the live account's current balance.
+LIVE_DRAWDOWN_WINDOW_DAYS = _env_int("LIVE_DRAWDOWN_WINDOW_DAYS", "14")
+
 MAX_DAILY_LOSS_PCT = _env_float("MAX_DAILY_LOSS_PCT", "0.03")  # default 3%
 MAX_POSITION_AGE_DAYS = _env_int("MAX_POSITION_AGE_DAYS", "7")
 
@@ -623,16 +629,88 @@ def get_max_drawdown_pct() -> float:
     return max(0.0, (peak - get_balance()) / peak)
 
 
-def is_paused_drawdown() -> bool:
+def is_paused_drawdown(client=None) -> bool:
     """
     Return True if balance has fallen more than MAX_DRAWDOWN_FRACTION from the
     peak balance (high-water mark). Auto-sizing is halted; manual qty still works.
 
     Uses _drawdown_snapshot() so effective balance and peak come from a single
     atomic read — no risk of seeing mismatched values from two separate reads.
+
+    AUD-0005: pass a live client to also check for a real live-account
+    bleed. paper's own peak/balance concept doesn't cover live trading at
+    all -- paper_trades.json's balance is a fixed-STARTING_BALANCE
+    simulation figure, unrelated to the real live account's size. No
+    persisted live peak exists to compute a true drawdown from (and this
+    project deliberately chose not to add one -- a new table plus a
+    balance-snapshot writer -- for a currently-dormant feature), so this
+    checks realized live loss over a trailing LIVE_DRAWDOWN_WINDOW_DAYS
+    window against the live account's CURRENT balance instead.
+
+    If the live balance itself can't be fetched, this degrades to "no live
+    signal" (falls through to the paper-only result above) rather than
+    halting all trading (paper included) on a transient API hiccup --
+    mirrors _resolve_live_balance's own established "0.0 means fall back"
+    convention elsewhere in this codebase. An unexpected error in the live
+    check itself (as opposed to a clean can't-fetch signal) fails closed.
+
+    2nd-round-opus-review-caught (M-E): this fail-closed True return now
+    halts PAPER trading too (this function is shared, not live-only) on
+    ANY of: a genuine live drawdown, an unreadable execution_log DB, OR
+    get_live_realized_loss_since()'s own degraded-data fail-closed (inf).
+    That's the correct SAFE direction (never silently under-halt), but a
+    bare "Drawdown guard active" message gives an operator no way to tell
+    "real live losses" from "the DB had a bad day" -- logs the real reason
+    at WARNING so it's at least debuggable without changing this
+    function's bool-only public contract this late in the change.
     """
     effective, peak = _drawdown_snapshot()
-    return effective < peak * (1 - MAX_DRAWDOWN_FRACTION)
+    if effective < peak * (1 - MAX_DRAWDOWN_FRACTION):
+        return True
+    if client is None:
+        return False
+    try:
+        from execution_log import get_live_realized_loss_since
+
+        live_effective_balance = _live_effective_balance(client)
+        if live_effective_balance <= 0:
+            return False
+        live_loss = get_live_realized_loss_since(LIVE_DRAWDOWN_WINDOW_DAYS)
+        if live_loss == float("inf"):
+            _log.warning(
+                "is_paused_drawdown: halting on inf live loss -- "
+                "execution_log's daily_live_loss data is degraded/unreadable "
+                "for today, not necessarily a real drawdown breach"
+            )
+        return live_loss > live_effective_balance * MAX_DRAWDOWN_FRACTION
+    except Exception as exc:
+        _log.warning("is_paused_drawdown: live check failed, failing closed: %s", exc)
+        return True
+
+
+def _live_effective_balance(client) -> float:
+    """Live account balance PLUS the cost of currently open live positions.
+
+    Opus-review-caught: _resolve_live_balance(client) alone returns Kalshi's
+    /portfolio/balance CASH figure, which excludes capital already committed
+    to open positions -- mirrors exactly the problem get_effective_balance()
+    already solves on the paper side (same-day open trade costs are
+    temporarily locked capital, not losses, and shouldn't shrink the
+    drawdown/streak thresholds). Without this, the live thresholds get
+    TIGHTER the more capital is deployed, independent of any actual
+    performance -- a heavily-invested-but-healthy account could halt on a
+    trivial realized loss purely because most of its capital is in open
+    positions rather than cash. Returns 0.0 (same "couldn't fetch, fall
+    back" convention as _resolve_live_balance itself) if the balance fetch
+    fails.
+    """
+    from order_executor import _get_live_open_positions, _resolve_live_balance
+
+    cash = _resolve_live_balance(client)
+    if cash <= 0:
+        return cash
+    open_cost = sum(p.get("cost", 0.0) or 0.0 for p in _get_live_open_positions())
+    return cash + open_cost
 
 
 def drawdown_scaling_factor() -> float:
@@ -817,6 +895,7 @@ def kelly_bet_dollars(
     cap: float | None = None,
     method: str | None = None,
     balance_override: float | None = None,  # CR-4: live path passes live balance
+    client=None,  # AUD-0005: live-aware streak check, see is_streak_paused
 ) -> float:
     """
     Return the dollar amount to bet.
@@ -830,6 +909,13 @@ def kelly_bet_dollars(
          If None, uses _dynamic_kelly_cap() based on current Brier score.
     method: analysis method ('ensemble', 'normal_dist'); scales Kelly
             down if that method's Brier performance is poor.
+    client: pass through so is_streak_paused() can also see a real live
+            settlement streak, not just paper's -- this is the ONLY place
+            that actually halves the bet size on a streak (opus-review
+            caught: _auto_place_trades separately computed a live-aware
+            is_streak_paused(client) result but only used it to print a
+            message, never fed it into sizing -- this was the real halving
+            path all along, and it was still calling the zero-arg version).
     """
     scale = drawdown_scaling_factor()
     if scale == 0.0:
@@ -847,7 +933,7 @@ def kelly_bet_dollars(
         fraction = max(0.0, min(kelly_fraction * scale, KELLY_CAP))
         dollars = round(balance * fraction, 2)
 
-    if is_streak_paused():
+    if is_streak_paused(client):
         dollars = round(dollars * 0.50, 2)
 
     # Apply per-method Brier scaling before cap
@@ -866,11 +952,16 @@ def kelly_quantity(
     cap: float | None = None,
     method: str | None = None,
     balance_override: float | None = None,  # CR-4: propagate to kelly_bet_dollars
+    client=None,  # AUD-0005: propagate to kelly_bet_dollars, see its docstring
 ) -> int:
     if price <= 0:
         return 0
     dollars = kelly_bet_dollars(
-        kelly_fraction, cap=cap, method=method, balance_override=balance_override
+        kelly_fraction,
+        cap=cap,
+        method=method,
+        balance_override=balance_override,
+        client=client,
     )
     if dollars < min_dollars:
         return 0
@@ -946,13 +1037,23 @@ def place_paper_order(
             )
 
         # #47: enforce single-ticker exposure cap using same denom as get_ticker_exposure
+        # 2nd-round-opus-review-caught (L-2/L-8): this call has no client to
+        # pass (place_paper_order takes none), so it always uses the
+        # paper-only denominator even when check_position_limits() upstream
+        # (which DOES get a client on live-adjacent paths) used the combined
+        # one -- a real but narrow inconsistency, largely masked in practice
+        # by the already-open-ticker skip that runs before either check on
+        # every real placement path. Message corrected to not claim
+        # "starting balance" specifically, since _exposure_denom()'s value
+        # depends on client/live-balance state it doesn't actually have
+        # here (see _exposure_denom's own docstring).
         if (
             get_ticker_exposure(ticker) + cost / _exposure_denom()
             > MAX_SINGLE_TICKER_EXPOSURE
         ):
             raise ValueError(
                 f"Single-ticker exposure cap reached for {ticker} "
-                f"(max {MAX_SINGLE_TICKER_EXPOSURE:.0%} of starting balance)."
+                f"(max {MAX_SINGLE_TICKER_EXPOSURE:.0%} of paper balance)."
             )
 
         if data["balance"] < cost:
@@ -1575,7 +1676,7 @@ def check_paper_position_exits(client) -> list[dict]:
     return closed
 
 
-def _exposure_denom() -> float:
+def _exposure_denom(client=None) -> float:
     """P0-4: exposure denominator scales with balance so caps stay proportional.
 
     #4: floors at STARTING_BALANCE (max(STARTING_BALANCE, balance)), NOT the
@@ -1588,53 +1689,136 @@ def _exposure_denom() -> float:
     denominator is shared by every exposure cap, not just drawdown-driven
     ones — see get_effective_balance()'s same-day-cost add-back for the
     established pattern this codebase already uses to avoid exposure/drawdown
-    checks over-reacting to temporarily-spent (not lost) capital. Left as-is
-    pending a deliberate design decision on the right denominator, rather
-    than risk over-tightening ordinary position-sizing on a guess.
+    checks over-reacting to temporarily-spent (not lost) capital.
+
+    AUD-0001 (opus-review-caught, M1): the exposure-cap functions below now
+    sum LIVE dollar costs (get_all_open_positions()) but were still dividing
+    by this paper-only denominator -- a live account whose real size differs
+    from paper's fixed STARTING_BALANCE would get a meaningless "fraction of
+    balance" the moment any live position exists (e.g. a $5,000 live account
+    with one $300 live position would read as 30% exposure against paper's
+    $1000 denominator). Pass a live client to add the live effective balance
+    (cash + open live position cost, via _live_effective_balance -- same
+    concept as get_effective_balance()'s same-day-cost add-back, just for
+    the live side) into the denominator, so a combined paper+live exposure
+    total is measured against a combined paper+live capital base. Degrades
+    to paper-only (client=None behavior, unchanged) if no client is passed
+    or the live balance can't be fetched -- never raises.
+
+    2nd-round-opus-review-caught (L-4, documented not fixed): the numerator
+    (get_all_open_positions(), called by each exposure getter) and this
+    denominator's own get_all_open_positions() call (inside
+    _live_effective_balance) are two SEPARATE reads, not one atomic
+    snapshot -- a settlement landing between them could see a mismatched
+    fraction, and within one check_position_limits() call (which calls
+    this 3x for its own 3 cap checks) a transient balance-fetch failure on
+    only one of those calls would compare different terms of the same
+    logical check against different denominators. _drawdown_snapshot()
+    elsewhere in this file exists specifically to avoid this exact class
+    of bug for paper's own balance+peak read. Not fixed here: doing so
+    would mean restructuring every exposure getter to take a pre-fetched
+    snapshot rather than compute it internally, a real signature change
+    across 5+ functions and their callers -- deferred as its own follow-up
+    rather than risked this late in an already-large change. The window is
+    narrow (needs a settlement or balance-fetch failure to land in a
+    sub-second gap between two reads within one call).
     """
-    return max(STARTING_BALANCE, get_balance())
+    paper_denom = max(STARTING_BALANCE, get_balance())
+    if client is None:
+        return paper_denom
+    try:
+        live_effective = _live_effective_balance(client)
+    except Exception:
+        return paper_denom
+    if live_effective <= 0:
+        return paper_denom
+    return paper_denom + live_effective
 
 
-def get_city_date_exposure(city: str, target_date_str: str) -> float:
-    """Return the fraction of current balance committed to open trades for this city + date."""
+def get_all_open_positions() -> list[dict]:
+    """Return paper's open trades merged with real open live positions
+    (execution_log-sourced, city/target_date backfilled from the ticker) as
+    a single combined list.
+
+    AUD-0001/AUD-0002/backlog.txt's "EXPOSURE CAPS... STRUCTURALLY BLIND TO
+    REAL LIVE POSITIONS" entry: the 5 exposure-cap functions just below, and
+    order_executor._auto_place_trades' own concentration/VaR gates, all
+    previously summed get_open_trades() only -- structurally blind to a live
+    position opened via cmd_order or the automated live path, regardless of
+    whether the CURRENT call is itself live or paper. Confirmed via
+    AskUserQuestion (2026-08-18): caps apply to the combined total, not two
+    separately-tracked totals.
+
+    Deliberately does NOT change get_open_trades() itself -- that function
+    has over a dozen other callers (P&L reporting, paper-only position
+    management, dashboard stats) that must keep meaning "paper trades only".
+    Lazy import of order_executor to avoid a module-load-time cycle
+    (order_executor already imports paper the same way, locally, throughout
+    its own functions -- this mirrors that established convention).
+    """
+    from order_executor import _get_live_open_positions
+
+    return get_open_trades() + _get_live_open_positions()
+
+
+def get_city_date_exposure(city: str, target_date_str: str, client=None) -> float:
+    """Return the fraction of current balance committed to open trades for
+    this city + date. Pass a live client for a combined paper+live
+    denominator -- see _exposure_denom's docstring."""
     committed = sum(
         t["cost"]
-        for t in get_open_trades()
+        for t in get_all_open_positions()
         if t.get("city") == city and t.get("target_date") == target_date_str
     )
-    return committed / _exposure_denom()
+    return committed / _exposure_denom(client)
 
 
-def get_directional_exposure(city: str, target_date_str: str, side: str) -> float:
-    """Return the fraction of current balance in open trades for this city + date + direction."""
+def get_directional_exposure(
+    city: str, target_date_str: str, side: str, client=None
+) -> float:
+    """Return the fraction of current balance in open trades for this city +
+    date + direction. Pass a live client for a combined paper+live
+    denominator -- see _exposure_denom's docstring."""
     committed = sum(
         t["cost"]
-        for t in get_open_trades()
+        for t in get_all_open_positions()
         if t.get("city") == city
         and t.get("target_date") == target_date_str
         and t.get("side") == side
     )
-    return committed / _exposure_denom()
+    return committed / _exposure_denom(client)
 
 
-def get_total_exposure() -> float:
-    """Return the total fraction of current balance committed across all open trades."""
-    committed = sum(t["cost"] for t in get_open_trades())
-    return committed / _exposure_denom()
+def get_total_exposure(client=None) -> float:
+    """Return the total fraction of current balance committed across all
+    open trades. Pass a live client for a combined paper+live denominator --
+    see _exposure_denom's docstring."""
+    committed = sum(t["cost"] for t in get_all_open_positions())
+    return committed / _exposure_denom(client)
 
 
-def get_ticker_exposure(ticker: str) -> float:
-    """Return fraction of current balance committed to open trades for this ticker (#47)."""
-    committed = sum(t["cost"] for t in get_open_trades() if t.get("ticker") == ticker)
-    return committed / _exposure_denom()
+def get_ticker_exposure(ticker: str, client=None) -> float:
+    """Return fraction of current balance committed to open trades for this
+    ticker (#47). Pass a live client for a combined paper+live denominator --
+    see _exposure_denom's docstring."""
+    committed = sum(
+        t["cost"] for t in get_all_open_positions() if t.get("ticker") == ticker
+    )
+    return committed / _exposure_denom(client)
 
 
 def position_age_kelly_scale(ticker: str) -> float:
     """
     #44: Scale down Kelly if we already hold an aging position in this ticker.
     Returns 1.0 if no existing position; scales toward 0.0 at MAX_POSITION_AGE_DAYS.
+
+    AUD-0002 adjacency (opus-review-caught): uses get_all_open_positions(),
+    not get_open_trades() -- a live position on the same ticker must also
+    scale down Kelly for a new same-ticker bet. No dollar-amount/denominator
+    involved here (unlike get_ticker_exposure/covariance_kelly_scale), so
+    this needed no exposure-denominator design decision.
     """
-    existing = [t for t in get_open_trades() if t.get("ticker") == ticker]
+    existing = [t for t in get_all_open_positions() if t.get("ticker") == ticker]
     if not existing:
         return 1.0
     now = datetime.now(UTC)
@@ -1651,11 +1835,15 @@ def position_age_kelly_scale(ticker: str) -> float:
     return max(0.0, 1.0 - max_age / MAX_POSITION_AGE_DAYS)
 
 
-def get_correlated_exposure(city: str, target_date_str: str) -> float:
+def get_correlated_exposure(city: str, target_date_str: str, client=None) -> float:
     """
-    Return the total fraction of STARTING_BALANCE committed to open trades
-    in cities correlated with the given city on the same date.
-    Correlated cities share weather patterns (e.g. NYC+Boston, LA+Phoenix).
+    Return the total fraction of the exposure denominator (2nd-round-opus-
+    review-caught, L-8: NOT always STARTING_BALANCE -- see
+    _exposure_denom's docstring for what it actually is with vs. without a
+    client) committed to open trades in cities correlated with the given
+    city on the same date. Correlated cities share weather patterns (e.g.
+    NYC+Boston, LA+Phoenix). Pass a live client for a combined paper+live
+    denominator -- see _exposure_denom's docstring.
     """
     group = next(
         (g for g in _CORRELATED_CITY_GROUPS if city in g),
@@ -1663,14 +1851,11 @@ def get_correlated_exposure(city: str, target_date_str: str) -> float:
     )
     if not group:
         return 0.0
-    return (
-        sum(
-            t["cost"]
-            for t in get_open_trades()
-            if t.get("city") in group and t.get("target_date") == target_date_str
-        )
-        / _exposure_denom()
-    )
+    return sum(
+        t["cost"]
+        for t in get_all_open_positions()
+        if t.get("city") in group and t.get("target_date") == target_date_str
+    ) / _exposure_denom(client)
 
 
 def portfolio_kelly_fraction(
@@ -1679,6 +1864,7 @@ def portfolio_kelly_fraction(
     target_date_str: str | None,
     side: str | None = None,
     ticker: str | None = None,
+    client=None,
 ) -> float:
     """
     Scale down base_fraction based on existing open exposure to this city/date.
@@ -1689,6 +1875,9 @@ def portfolio_kelly_fraction(
       hard binary cliff). At the cap, sizing is 30% of base.
 
     If existing city/date exposure >= MAX_CITY_DATE_EXPOSURE, returns 0.0.
+
+    Pass a live client for a combined paper+live exposure denominator
+    throughout -- see _exposure_denom's docstring (AUD-0001/M1).
     """
     # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: monthly rain-
     # total tickers now flow through this function normally -- target_date_
@@ -1702,7 +1891,7 @@ def portfolio_kelly_fraction(
     # change here.
     # Global cap: halt new positions if total open exposure >= 50% of starting balance
     # Capture total_exp once so we can clamp the final result to remaining room.
-    total_exp = get_total_exposure()
+    total_exp = get_total_exposure(client)
     if total_exp >= MAX_TOTAL_OPEN_EXPOSURE:
         return 0.0
 
@@ -1711,7 +1900,7 @@ def portfolio_kelly_fraction(
         remaining = MAX_TOTAL_OPEN_EXPOSURE - total_exp
         return round(min(base_fraction, remaining), 6)
 
-    existing = get_city_date_exposure(city, target_date_str)
+    existing = get_city_date_exposure(city, target_date_str, client)
     if existing >= MAX_CITY_DATE_EXPOSURE:
         return 0.0
 
@@ -1722,7 +1911,7 @@ def portfolio_kelly_fraction(
     # Directional concentration penalty
     if (
         side
-        and get_directional_exposure(city, target_date_str, side)
+        and get_directional_exposure(city, target_date_str, side, client)
         > MAX_DIRECTIONAL_EXPOSURE
     ):
         result *= 0.50
@@ -1730,7 +1919,7 @@ def portfolio_kelly_fraction(
     # Continuous correlated-city penalty:
     # As group exposure rises from 0 → MAX_CORRELATED_EXPOSURE, Kelly falls
     # linearly from 1.0 → 0.3. Beyond the cap it stays at 0.3.
-    corr_exp = get_correlated_exposure(city, target_date_str)
+    corr_exp = get_correlated_exposure(city, target_date_str, client)
     if corr_exp > 0 and MAX_CORRELATED_EXPOSURE > 0:
         ratio = min(corr_exp / MAX_CORRELATED_EXPOSURE, 1.0)
         corr_scale = 1.0 - ratio * 0.70  # 1.0 at 0%, 0.3 at 100% of cap
@@ -1745,7 +1934,7 @@ def portfolio_kelly_fraction(
         base_prob = (
             base_fraction  # use base_fraction as proxy when entry_prob unavailable
         )
-        result *= covariance_kelly_scale(city, base_prob, side)
+        result *= covariance_kelly_scale(city, base_prob, side, client)
 
     # City-level Brier scaling: automatically reduce position size for cities where
     # the model has historically underperformed (e.g. SF Brier=0.563, ATL Brier=0.475).
@@ -1763,6 +1952,7 @@ def covariance_kelly_scale(
     new_city: str,
     new_prob: float,
     new_side: str,
+    client=None,
 ) -> float:
     """
     #51: Portfolio Kelly covariance adjustment.
@@ -1779,8 +1969,14 @@ def covariance_kelly_scale(
 
     We normalise this by sigma_A^2 so it's independent of bet size, then map
     the ratio linearly to [1.0, 0.3].
+
+    AUD-0002 adjacency (opus-review-caught, M2): uses get_all_open_positions()
+    (paper + live), not get_open_trades() -- a correlated LIVE position must
+    also scale down Kelly for a new correlated bet. client threads through to
+    w_i's own _exposure_denom(client) call for the same combined paper+live
+    denominator reasoning as M1's exposure-cap fix.
     """
-    open_trades = get_open_trades()
+    open_trades = get_all_open_positions()
     if not open_trades:
         return 1.0
 
@@ -1803,7 +1999,7 @@ def covariance_kelly_scale(
         p_i: float = float(_ep_raw) if _ep_raw is not None else 0.5
         p_i = max(0.01, min(0.99, p_i))
         sigma_i = (p_i * (1 - p_i)) ** 0.5
-        w_i = t.get("cost", 0.0) / max(_exposure_denom(), 1.0)
+        w_i = t.get("cost", 0.0) / max(_exposure_denom(client), 1.0)
         weighted_corr_sum += corr * sigma_i * w_i
         total_weight += w_i
 
@@ -2433,25 +2629,57 @@ def get_current_streak() -> tuple[str, int]:
     return (direction, streak)
 
 
-def is_streak_paused() -> bool:
+def is_streak_paused(client=None) -> bool:
     """
     #45: Return True if on a 3+ consecutive loss streak AND total streak losses
     exceed 2% of starting balance. Prevents pausing on trivial $0.01 losses.
+
+    AUD-0005: pass a live client to also check for a real live consecutive-
+    loss streak via execution_log (paper's own streak, computed above, only
+    ever reads paper_trades.json). Thresholded against 2% of the live
+    account's CURRENT balance, not paper's fixed STARTING_BALANCE -- a live
+    account's real size can differ arbitrarily from paper's fixed
+    simulation figure. Same can't-fetch-balance-degrades-gracefully /
+    unexpected-error-fails-closed split as is_paused_drawdown() above.
     """
     kind, n = get_current_streak()
-    if kind != "loss" or n < 3:
+    if kind == "loss" and n >= 3:
+        # Check PnL magnitude of the streak, not just count
+        settled = [
+            t
+            for t in _load()["trades"]
+            if t.get("settled")
+            and t.get("pnl") is not None
+            and ((_d := t.get("days_out")) is None or _d >= 1)
+        ]
+        settled.sort(key=lambda t: t.get("settled_at") or t.get("entered_at", ""))
+        streak_pnl = sum(t["pnl"] for t in settled[-n:] if t.get("pnl") is not None)
+        if streak_pnl < -(STARTING_BALANCE * 0.02):
+            return True
+    if client is None:
         return False
-    # Check PnL magnitude of the streak, not just count
-    settled = [
-        t
-        for t in _load()["trades"]
-        if t.get("settled")
-        and t.get("pnl") is not None
-        and ((_d := t.get("days_out")) is None or _d >= 1)
-    ]
-    settled.sort(key=lambda t: t.get("settled_at") or t.get("entered_at", ""))
-    streak_pnl = sum(t["pnl"] for t in settled[-n:] if t.get("pnl") is not None)
-    return streak_pnl < -(STARTING_BALANCE * 0.02)
+    try:
+        from execution_log import get_live_settlement_streak
+
+        live_kind, live_n, live_streak_pnl = get_live_settlement_streak()
+        if live_kind != "loss" or live_n < 3:
+            return False
+        # Opus-review-caught: effective balance (cash + open position cost),
+        # not raw cash -- see _live_effective_balance's docstring. Raw cash
+        # alone would make this threshold shrink the more capital is
+        # deployed, independent of actual streak performance.
+        live_balance = _live_effective_balance(client)
+        if live_balance <= 0:
+            return False
+        return live_streak_pnl < -(live_balance * 0.02)
+    except Exception as exc:
+        # 2nd-round-opus-review-caught (M-E): log the real cause -- this
+        # fail-closed True halts PAPER trading too (shared function), so
+        # an operator needs to be able to tell "genuine live streak" from
+        # "execution_log had a bad day" without redesigning this
+        # function's bool-only contract this late in the change.
+        _log.warning("is_streak_paused: live check failed, failing closed: %s", exc)
+        return True
 
 
 def override_accuracy_halt(
@@ -2758,10 +2986,14 @@ def check_aged_positions() -> list[dict]:
     """
     Return open trades entered more than MAX_POSITION_AGE_DAYS days ago.
     Each entry: {"trade": {...}, "age_days": int}
+
+    AUD-0001 adjacency: feeds the same /api/risk dashboard payload as
+    get_total_exposure() (web_app.py's aged_positions key) -- see
+    check_correlated_event_exposure's identical note.
     """
     now = datetime.now(UTC)
     aged = []
-    for t in get_open_trades():
+    for t in get_all_open_positions():
         entered_str = t.get("entered_at", "")
         if not entered_str:
             continue
@@ -2901,7 +3133,13 @@ def check_correlated_event_exposure() -> list[dict]:
     """
     from datetime import date
 
-    open_trades = get_open_trades()
+    # AUD-0001 adjacency: this feeds the SAME /api/risk dashboard
+    # payload as get_total_exposure() (web_app.py's correlated_events key,
+    # alongside total_exposure/expiry_clustering/aged_positions) -- leaving
+    # it on get_open_trades() would make that one response self-
+    # contradictory (a live position counted in the total but invisible to
+    # this breakdown).
+    open_trades = get_all_open_positions()
     # Only consider trades with city and target_date
     dated_trades = [t for t in open_trades if t.get("city") and t.get("target_date")]
 
@@ -3308,8 +3546,14 @@ def get_factor_exposure() -> dict:
     """
     Directional bias across open positions.
     Returns YES/NO counts, costs, and which cities are on each side.
+
+    AUD-0001 adjacency (opus-review-caught, M2): uses get_all_open_positions()
+    -- no exposure-denominator/dollar-fraction involved here (just raw
+    counts and costs), so unlike get_ticker_exposure/covariance_kelly_scale
+    this needed no exposure-denominator design decision, matching
+    position_age_kelly_scale's identical reasoning.
     """
-    open_trades = get_open_trades()
+    open_trades = get_all_open_positions()
     yes_count = no_count = 0
     yes_cost = no_cost = 0.0
     cities_yes: list[str] = []
@@ -3357,8 +3601,12 @@ def get_expiry_date_clustering() -> list[dict]:
     """
     Identify dates with 2+ open positions settling — concentration risk.
     Returns [{date, count, total_cost, tickers}] sorted ascending.
+
+    AUD-0001 adjacency: feeds the same /api/risk dashboard payload as
+    get_total_exposure() (web_app.py's expiry_clustering key) -- see
+    check_correlated_event_exposure's identical note.
     """
-    open_trades = get_open_trades()
+    open_trades = get_all_open_positions()
     by_date: dict[str, list] = {}
     for t in open_trades:
         d = t.get("target_date") or ""
@@ -3452,6 +3700,7 @@ def check_position_limits(
     city: str | None = None,
     target_date_str: str | None = None,
     side: str | None = None,
+    client=None,
 ) -> dict:
     """
     Check whether adding qty contracts at price would breach position limits.
@@ -3626,9 +3875,14 @@ def check_position_limits(
             "limit": max_cost_per_market,
         }
 
+    # AUD-0001: this per-market cap's own existing_cost was computed inline
+    # from get_open_trades() directly, a SEPARATE blind spot from the 5
+    # get_*_exposure() functions below (which get_all_open_positions() now
+    # fixes) -- missed on the first pass of this fix since it isn't one of
+    # those named functions, caught by check_position_limits' own test.
     existing_cost = sum(
         t.get("cost", 0.0) or 0.0
-        for t in get_open_trades()
+        for t in get_all_open_positions()
         if t.get("ticker") == ticker
     )
     new_cost = qty * price
@@ -3642,7 +3896,10 @@ def check_position_limits(
             "limit": max_cost_per_market,
         }
 
-    if get_total_exposure() + new_cost / _exposure_denom() >= MAX_TOTAL_OPEN_EXPOSURE:
+    if (
+        get_total_exposure(client) + new_cost / _exposure_denom(client)
+        >= MAX_TOTAL_OPEN_EXPOSURE
+    ):
         return {
             "ok": False,
             "reason": "Would exceed global portfolio exposure cap (50%)",
@@ -3651,9 +3908,9 @@ def check_position_limits(
         }
 
     if city and target_date_str:
-        _new_frac = new_cost / _exposure_denom()
+        _new_frac = new_cost / _exposure_denom(client)
         if (
-            get_city_date_exposure(city, target_date_str) + _new_frac
+            get_city_date_exposure(city, target_date_str, client) + _new_frac
             >= MAX_CITY_DATE_EXPOSURE
         ):
             return {
@@ -3664,7 +3921,8 @@ def check_position_limits(
             }
         if (
             side
-            and get_directional_exposure(city, target_date_str, side) + _new_frac
+            and get_directional_exposure(city, target_date_str, side, client)
+            + _new_frac
             >= MAX_DIRECTIONAL_EXPOSURE
         ):
             return {
@@ -3674,7 +3932,7 @@ def check_position_limits(
                 "limit": max_cost_per_market,
             }
         if (
-            get_correlated_exposure(city, target_date_str) + _new_frac
+            get_correlated_exposure(city, target_date_str, client) + _new_frac
             >= MAX_CORRELATED_EXPOSURE
         ):
             return {

@@ -53,19 +53,19 @@ def _patch_paper_guards(
     """Patch all paper guard functions imported inside _auto_place_trades."""
     import paper
 
-    monkeypatch.setattr(paper, "is_paused_drawdown", lambda: paused_drawdown)
+    monkeypatch.setattr(paper, "is_paused_drawdown", lambda *_a, **_k: paused_drawdown)
     monkeypatch.setattr(paper, "is_daily_loss_halted", lambda client=None: loss_halted)
-    monkeypatch.setattr(paper, "is_streak_paused", lambda: streak_paused)
+    monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: streak_paused)
     monkeypatch.setattr(paper, "get_open_trades", lambda: [])
     monkeypatch.setattr(
         paper,
         "portfolio_kelly_fraction",
-        lambda fraction, city, date, side="yes": fraction,
+        lambda fraction, city, date, side="yes", client=None: fraction,
     )
     monkeypatch.setattr(
         paper,
         "kelly_quantity",
-        lambda fraction, price, min_dollars=1.0, cap=None, method=None: 2,
+        lambda fraction, price, min_dollars=1.0, cap=None, method=None, client=None: 2,
     )
 
 
@@ -84,7 +84,7 @@ class TestKellyScalesWithBalance:
         _write_paper_json(paper_file_1000, 1000.0)
 
         # Pure Kelly: disable all side-effects so only balance×fraction runs
-        monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
+        monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: False)
         monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
         monkeypatch.setattr(paper, "_method_kelly_multiplier", lambda method: 1.0)
         monkeypatch.setattr(paper, "_dynamic_kelly_cap", lambda: 10_000.0)

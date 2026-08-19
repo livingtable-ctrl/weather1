@@ -61,8 +61,8 @@ class TestMaxConcurrentPositions:
         open_trades = self._make_open_trades(20)
         monkeypatch.setattr(paper, "get_open_trades", lambda: open_trades)
         monkeypatch.setattr(paper, "is_daily_loss_halted", lambda c: False)
-        monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
-        monkeypatch.setattr(paper, "is_paused_drawdown", lambda: False)
+        monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: False)
+        monkeypatch.setattr(paper, "is_paused_drawdown", lambda *_a, **_k: False)
         import order_executor
 
         monkeypatch.setattr(order_executor, "_daily_paper_spend", lambda: 0.0)
@@ -93,8 +93,8 @@ class TestMaxConcurrentPositions:
         open_trades = self._make_open_trades(18)
         monkeypatch.setattr(paper, "get_open_trades", lambda: open_trades)
         monkeypatch.setattr(paper, "is_daily_loss_halted", lambda c: False)
-        monkeypatch.setattr(paper, "is_streak_paused", lambda: False)
-        monkeypatch.setattr(paper, "is_paused_drawdown", lambda: False)
+        monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: False)
+        monkeypatch.setattr(paper, "is_paused_drawdown", lambda *_a, **_k: False)
         import order_executor
 
         monkeypatch.setattr(order_executor, "_daily_paper_spend", lambda: 0.0)

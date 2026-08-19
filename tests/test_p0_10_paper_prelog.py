@@ -32,13 +32,15 @@ def _make_opp(ticker="KXTEST"):
 
 
 def _stub_prereqs(monkeypatch):
-    monkeypatch.setattr("paper.is_paused_drawdown", lambda: False)
+    monkeypatch.setattr("paper.is_paused_drawdown", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.is_daily_loss_halted", lambda c: False)
-    monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+    monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.get_open_trades", lambda: [])
-    monkeypatch.setattr("paper.kelly_quantity", lambda kf, p, cap=None, method=None: 5)
     monkeypatch.setattr(
-        "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None: kf
+        "paper.kelly_quantity", lambda kf, p, cap=None, method=None, client=None: 5
+    )
+    monkeypatch.setattr(
+        "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None, client=None: kf
     )
     monkeypatch.setattr("order_executor._daily_paper_spend", lambda: 0.0)
     monkeypatch.setattr("order_executor._current_forecast_cycle", lambda: "12z")

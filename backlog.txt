@@ -1991,11 +1991,9 @@ Recommendation (not yet actioned -- filed for later decision):
   Needs a design decision on exact wording/placement (AskUserQuestion) before
   implementing -- not guessed at here.
 
-[OPEN 2026-08-17 -- found by opus review of the "MANUAL cmd_order LIVE
-  ORDERS..." fix above; filed separately per the same-payload test since
-  this affects EVERY live-order path, not just cmd_order, and fixing it
-  would mean changing paper.check_position_limits/get_total_exposure
-  themselves, which that entry's own scope boundary explicitly excludes]
+[RESOLVED 2026-08-18 -- fixed together with AUD-0001/AUD-0002/AUD-0005/
+  AUD-0009/AUD-0012 (2026-08-18 max-depth audit batch-01, same root cause);
+  see Resolution below]
   paper.check_position_limits' EXPOSURE CAPS ARE STRUCTURALLY BLIND TO REAL
   LIVE POSITIONS -- paper.get_open_trades() IS THE ONLY SIGNAL THEY EVER READ
 Priority: Medium -- a real, repo-wide gap (not specific to cmd_order or to
@@ -2060,6 +2058,34 @@ Recommendation (not yet actioned -- filed for later decision):
   AskUserQuestion before implementing, not guessed at here. Given this is
   currently empirically moot (no live positions exist to be missed), there
   is no urgency forcing the choice.
+
+Resolution 2026-08-18 (batch-01 of the max-depth audit -- see AUD-0001's own
+  entry below for the full multi-file fix; this entry's exact recommendation
+  was implemented):
+  Chose the "one combined cross-ledger total" design via AskUserQuestion
+  (the design question this entry's own Recommendation flagged as needing
+  one) -- added paper.get_all_open_positions() = get_open_trades() +
+  order_executor._get_live_open_positions(), and pointed
+  get_total_exposure()/get_ticker_exposure()/get_city_date_exposure()/
+  get_directional_exposure()/get_correlated_exposure() at it, PLUS
+  check_position_limits()'s own separate inline existing_cost computation
+  for the per-market cap (a second blind spot this entry didn't call out by
+  name, caught by this session's own test suite). The per-city/date/
+  directional/correlated-group checks get the same treatment automatically
+  since they walk the same combined list -- no separate design needed for
+  that half of the open question.
+  _get_live_open_positions() also gained city/target_date backfill (parsed
+  from the ticker via weather_markets.parse_city_date) since the raw
+  execution_log rows have neither, and the city/date-keyed caps can't see a
+  live position without them.
+  get_open_trades() itself was deliberately left unchanged -- it has 14
+  other callers (P&L reporting, paper-only position management, dashboard
+  stats) that require paper-only semantics.
+  Tests: tests/test_batch01_live_position_visibility.py (30 tests, incl.
+  mutation tests reverting to the pre-fix get_open_trades()-only behavior
+  and confirming they'd miss a live-only position). Full repo regression
+  sweep across every test file referencing the touched functions: 1193
+  passed, 0 failed.
 
 [RESOLVED 2026-08-05] ~13 NON-SAFETY-CRITICAL FILES STILL BYPASS paths.py -- WORKTREE CRON RUNS SILENTLY HIT A STALE LOCAL data/ CACHE
 Priority: Medium -- no live-money or trade-correctness impact (DB, paper
@@ -20192,7 +20218,7 @@ Why not now: extending the exclusion to every Brier-family function is a
   level constant at the same time, given the count keeps growing every
   time a new site needs the same list.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] check_position_limits() exposure caps are structurally blind to live positions opened via cmd_order (regression introduced by the e5331a8d live-fill-routing fix)
+[RESOLVED 2026-08-18 -- fixed as part of batch-01 (AUD-0001/AUD-0002/AUD-0005/AUD-0009/AUD-0012, same root cause); see Resolution below] check_position_limits() exposure caps are structurally blind to live positions opened via cmd_order (regression introduced by the e5331a8d live-fill-routing fix)
 Priority: HIGH (audit id AUD-0001, status CONFIRMED, confidence VERY HIGH, evidence E2)
 Files: paper.py, main.py
 
@@ -20204,7 +20230,244 @@ Problem:
   Recommendation: Have check_position_limits() also incorporate open live positions from execution_log (via order_executor._get_live_open_positions()) into its exposure accounting before comparing against caps. Already tracked in backlog.txt.
   Full record: audit/AUDIT_REPORT.json (id AUD-0001), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _auto_place_trades' position-count/VaR/concentration gates are seeded only from the paper ledger, blind to real live exposure
+Resolution 2026-08-18 (batch-01: AUD-0001+AUD-0002+AUD-0005+AUD-0009+AUD-0012
+  fixed together as one coordinated change, all sharing the same root cause
+  -- risk gates reading only paper_trades.json, blind to execution_log's
+  real live positions/losses. Full narrative here since this is the anchor
+  entry; AUD-0002/0005/0009/0012 below point back to this one rather than
+  repeating it):
+
+  Design decisions (both surfaced via AskUserQuestion before implementing):
+  1. Exposure caps enforce ONE combined paper+live total, not two
+     separately-tracked totals -- matches this project's existing
+     single-shared-enforcement-point convention (check_position_limits'
+     own docstring) and the F6 same-cycle-append precedent in
+     _auto_place_trades, which already merges live trades into the same
+     list structurally.
+  2. Live drawdown has no persisted peak/starting balance to compute a true
+     high-water-mark drawdown from (unlike paper's), and this project
+     deliberately chose NOT to add one (a new SQLite table + a balance-
+     snapshot writer that would need to run on some cadence) for a
+     currently-dormant feature. Used a trailing 14-day realized-loss window
+     against the live client's CURRENT balance instead --
+     LIVE_DRAWDOWN_WINDOW_DAYS env var, mirrors get_today_live_loss()'s own
+     shape per this entry's own Recommendation text.
+
+  paper.py:
+  - New get_all_open_positions() = get_open_trades() +
+    order_executor._get_live_open_positions(). get_open_trades() itself
+    left unchanged -- it has 14 other callers (P&L reporting, paper-only
+    position management, dashboard stats) requiring paper-only semantics.
+  - get_total_exposure/get_ticker_exposure/get_city_date_exposure/
+    get_directional_exposure/get_correlated_exposure, PLUS
+    check_position_limits' own separate inline per-market existing_cost sum
+    (a second blind spot this entry's Problem text didn't name, caught by
+    this session's own test suite after the first pass missed it) all now
+    read get_all_open_positions().
+  - check_aged_positions/get_expiry_date_clustering/
+    check_correlated_event_exposure (paper.py) and web_app.py's /api/risk
+    endpoint's own inline get_open_trades() call also switched to
+    get_all_open_positions() -- all four feed the SAME dashboard JSON
+    response as get_total_exposure(), so leaving them on paper-only would
+    have made that one response self-contradictory (total_exposure
+    including a live position the breakdown fields couldn't see).
+  - is_paused_drawdown()/is_streak_paused() gained an optional client=None
+    param; when passed, OR in a live-side check (execution_log-sourced)
+    alongside the existing paper-only check. Degrades to "no live signal"
+    (not a halt) if the live balance can't be fetched, matching
+    _resolve_live_balance's own established convention; fails closed on an
+    unexpected error.
+
+  order_executor.py:
+  - _get_live_open_positions() now backfills city/target_date onto each
+    live position dict (parsed from the ticker alone via
+    weather_markets.parse_city_date -- the raw execution_log rows have
+    neither field, so the city/date-keyed caps couldn't see a live
+    position without this).
+  - _auto_place_trades' _open_trades_list now seeds with
+    get_open_trades() + _get_live_open_positions() (prior-cycle live
+    positions), unconditionally -- not gated on live=True/False, per this
+    finding's own explicit scope ("regardless of live=True/False"): a
+    PAPER cycle placing trades must still see real live exposure.
+  - _count_open_live_orders() (AUD-0009/0012, detailed in that entry below)
+    and is_paused_drawdown/is_streak_paused's 3 direct call sites now pass
+    client through, matching is_daily_loss_halted's existing pattern.
+
+  execution_log.py: 3 new functions -- get_pending_live_orders()
+  (unbounded, AUD-0012), get_live_realized_loss_since(days) and
+  get_live_settlement_streak() (both AUD-0005, detailed in that entry).
+
+  trading_gates.py: LiveTradingGate.check() now passes client through to
+  is_paused_drawdown/is_streak_paused (previously called with zero args).
+
+  A real backward-compat break was caught and fixed along the way: ~30
+  existing tests across 13 files monkeypatched is_paused_drawdown/
+  is_streak_paused with strict zero-arg lambdas; widened them to accept
+  (and ignore) an optional client arg rather than retreating from making
+  _auto_place_trades' direct calls live-aware (which the AUD-0005 finding
+  explicitly requires, not just the trading_gates.py gate).
+
+  Separately discovered and NOT part of this fix (flagged, not fixed here):
+  the tests/conftest.py mock_balance_1000 fixture patches paper.DATA_PATH
+  and then calls importlib.reload(paper), which re-executes paper.py's
+  module-level `DATA_PATH = _project_root() / "data" / "paper_trades.json"`
+  and silently undoes the patch -- confirmed empirically this session that
+  paper.DATA_PATH under that fixture resolves to the REAL production data
+  file (200+ real trades). Any test using that fixture and calling
+  place_paper_order or reading open-trade state risks reading/writing real
+  production data. This session's own new tests avoid the fixture entirely
+  (direct paper.DATA_PATH patch, no reload). Worth its own follow-up --
+  out of scope for this batch (affects the whole test suite's isolation
+  infrastructure, not this fix's 5 findings).
+
+  Independent opus review (effort:high, isolated worktree) before push found
+  25 findings (2 HIGH, 10 MEDIUM, 13 LOW). ALL addressed:
+  - HIGH: is_streak_paused(client)'s live signal never reached the actual
+    Kelly-halving code (kelly_bet_dollars still called is_streak_paused()
+    zero-arg) -- threaded client through kelly_bet_dollars/kelly_quantity
+    and all their call sites in order_executor.py/main.py.
+  - HIGH: live position dicts had no days_out, so the same-day cap couldn't
+    see same-day live positions AND wrongly double-counted them against the
+    multi-day cap -- _get_live_open_positions() now reconstructs days_out
+    from target_date vs. entered_at, mirroring the exact snapshot semantic
+    order_executor.py's own same-day-cap comment describes.
+  - MEDIUM (10): exposure-cap denominator combined live dollars with a
+    paper-only balance (fixed via a new _exposure_denom(client) combining
+    paper balance + live effective balance -- see this entry's own new
+    Design decision 3 below); position_age_kelly_scale/covariance_
+    kelly_scale/get_factor_exposure still paper-only (position_age and
+    get_factor_exposure fixed directly -- no denominator involved in
+    either; covariance fixed alongside the denominator work); rain/snow
+    tickers got
+    target_date=None forever (added a close_time fallback); the drawdown
+    window function skipped the degraded-data check its sibling has
+    (added); the live balance denominator excluded deployed capital
+    (added _live_effective_balance = cash + open live position cost,
+    mirroring get_effective_balance()'s same-day-cost add-back); an
+    uncached live API call fired per-candidate even on pure-paper cycles
+    (scoped to live=True only); 3 test-quality gaps (a "partial exit" test
+    that didn't actually exercise a partial exit, a cap test with an opp
+    dict no gate would ever pass, missing coverage of the fail-closed/
+    degrade branches) all rewritten with genuine positive controls;
+    /api/risk's try/except covered only the import, not the new
+    DB-touching calls (widened to the whole route body).
+  - LOW (13): 2 more production call sites (main.py's cmd_paper/cmd_order
+    display warnings) not passing client; same-day live settlements
+    weren't excluded from the streak (paper's own convention); no SQL
+    tiebreaker on settled_at ties; a days<=0 window silently returning 0.0
+    loss (clamped, plus an upper bound against future-dated rows); merged
+    paper+live ids collide visually in CLI displays (live entries now
+    prefixed); a shadow-logging dedup check stayed paper-only; 3 comments
+    citing a nonexistent /api/exposure endpoint (real name is /api/risk);
+    one comment's misleading analogy corrected; two "mutation tests" that
+    swapped in a hand-written reimplementation rather than mutating the
+    real function were replaced by directly Edit-reverting the actual
+    production code (order_executor.py/paper.py) via this session's own
+    Edit-run-revert-back cycle, confirming the DIRECT tests already catch
+    the regression, then removing the redundant reimplementation tests.
+    One finding (L6, partial-exit quantity overstatement) was independently
+    re-verified and found FALSE -- record_live_partial_exit already
+    correctly reduces the tracked fill_quantity on a genuine partial exit;
+    no code change. One (L10, lambda arity precision) and one (L12,
+    get_all_open_positions() called 5x per check_position_limits
+    invocation -- a real perf note, not correctness) accepted as-is:
+    low-value relative to a broader signature refactor this late in an
+    already-large session.
+
+  Design decision 3 (surfaced via AskUserQuestion after the opus review,
+  same pattern as decisions 1-2 above): exposure-cap denominator now
+  combines paper's balance with the live client's effective balance
+  (_exposure_denom(client) = max(STARTING_BALANCE, paper_balance) +
+  live_cash + live_open_position_cost) when a client is passed --
+  threaded through all 5 exposure getters, check_position_limits,
+  portfolio_kelly_fraction, and covariance_kelly_scale, plus every call
+  site in main.py/order_executor.py/web_app.py that has a client in scope.
+  Degrades to paper-only (unchanged behavior) when no client is available.
+
+  A SECOND independent opus review (effort:high, isolated worktree) then
+  reviewed the fixes above for new bugs the fixes themselves might have
+  introduced -- exactly the pattern that has burned this project before
+  (a round-1 fix's own round-2 review once found 2 new severe bugs a
+  round-1 finding-checklist review would never have caught). Found 22 more
+  findings (2 HIGH, 6 MEDIUM, 14 LOW). ALL addressed:
+  - HIGH: the H1 Kelly-halving fix only covered _auto_place_trades' two
+    call sites -- main.py's _quick_paper_buy (places REAL live maker
+    orders), cmd_today, and cmd_market/cmd_paper each had their OWN
+    separate kelly_quantity/kelly_bet_dollars call sites still missing
+    client. Swept and fixed every remaining call site in the repo.
+  - HIGH: the H2 days_out fix compared a CITY-LOCAL target_date against a
+    UTC-parsed entered_date -- the exact UTC-vs-city-local bug class this
+    codebase already documents and fixes elsewhere (main.py's
+    _feature_importance_days_out). Fixed by converting entered_at (and,
+    caught while testing this fix, the close_time-based target_date
+    fallback too) to the position's own city-local calendar date via
+    ZoneInfo, mirroring that existing function exactly. Applied in both
+    order_executor.py and execution_log.py's matching same-day-streak
+    filter.
+  - MEDIUM: the M1 exposure-denominator fix made _resolve_live_balance
+    fire an uncached authenticated API call several times per
+    check_position_limits/portfolio_kelly_fraction call (once per
+    correlated position inside covariance_kelly_scale) -- risked tripping
+    the shared read circuit breaker under real trading volume. Fixed with
+    a short (5s) TTL cache attached to the client object itself, NOT a
+    module-level dict keyed by id(client) -- caught during implementation
+    that id() is a memory address CPython can reuse across short-lived
+    test mocks, which would have let one client silently read a stale
+    balance cached under a different, already-freed client. Also caught
+    (before shipping) that MagicMock's own __getattr__ auto-vivifies any
+    unset attribute rather than ever raising AttributeError, so a naive
+    getattr(client, attr, default) never actually returns the default for
+    a mock -- switched to reading/writing via client.__dict__ directly.
+  - MEDIUM: /api/risk's total_exposure field was the one dashboard number
+    that still didn't get client passed (fixed); 2 test "mutation tests"
+    that never called the real function under test (raw-SQL row-count
+    assertions instead) were caught, verified redundant via genuine
+    Edit-revert-run-revert-back cycles proving the direct tests already
+    cover the same claims, and removed -- same antipattern this session's
+    OWN round-1 fix (see L11 above) had already caught and fixed once;
+    added WARNING-level logging so a fail-closed drawdown/streak halt
+    caused by degraded execution_log data is distinguishable from a
+    genuine drawdown breach without redesigning the gate's bool-only
+    contract; get_live_settlement_streak's unbounded per-call table scan
+    was considered for the same TTL-cache treatment as
+    _resolve_live_balance but deliberately left uncached -- it has no
+    client object to attach a cache to, and a module-level cache would
+    have no way to know when tests/conftest.py's autouse fixture repoints
+    execution_log.DB_PATH at a fresh per-test temp file, risking silent
+    stale-result leakage across tests.
+  - LOW (14): 2 more comment/message fixes (a stale "starting balance"
+    claim, an "every row carries close_time" overclaim -- the underlying
+    logic was already safe, just the comment was wrong); a genuinely
+    midnight-flaky test (two separate datetime.now() calls a few ms apart)
+    fixed to use one fixed literal timestamp instead; a real (if narrow)
+    condition-scoping bug fixed (a per-candidate live-balance recheck was
+    scoped to `live` alone instead of matching the actual live-placement
+    branch's own `live and live_config` condition); orphaned scratch-test
+    __pycache__ artifacts cleaned up (confirmed gitignored, so harmless to
+    the commit either way); 3 findings (place_paper_order's own
+    denominator staying paper-only since it has no client parameter to
+    thread through, a demo-client base_url check on the balance fetch, and
+    a numerator/denominator atomicity gap across two separate DB reads
+    within one exposure check) documented as deliberate, understood scope
+    boundaries rather than fixed -- each would need either a broader
+    signature change across many callers or risked changing established
+    behavior (demo-mode Kelly-sizing testing) this late in an already very
+    large change, and each fails toward the safe direction (tighter caps,
+    not silently loosened safety).
+
+  Tests: tests/test_batch01_live_position_visibility.py (45 tests spanning
+  all 5 findings plus both opus-review rounds' fixes, incl. mutation tests
+  reverting each fix to its pre-fix behavior -- via real Edit-revert-run-
+  revert-back cycles on the production files themselves for the highest-
+  stakes claims, including the 2 streak-filter claims round 2 caught
+  weren't actually being mutation-tested -- and confirming the reverted
+  version misses the scenario each time). Full regression sweep across
+  every test file referencing any touched function (29-30 files, run
+  three times across both review rounds): 1193, then 1203, then 1218
+  passed, 0 failed all three times. ruff + mypy clean on all changed
+  production files all three rounds.
+
+[RESOLVED 2026-08-18 -- fixed as part of batch-01, same change as AUD-0001; see the Resolution note under AUD-0001's own entry above] _auto_place_trades' position-count/VaR/concentration gates are seeded only from the paper ledger, blind to real live exposure
 Priority: HIGH (audit id AUD-0002, status CONFIRMED, confidence VERY HIGH, evidence E1)
 Files: order_executor.py
 
@@ -20212,6 +20475,12 @@ Problem:
   _open_trades_list = get_open_trades() (paper.py's JSON ledger) is the sole feed for MAX_CONCURRENT_POSITIONS, per-date/same-day concentration caps, and the VaR gate, regardless of live=True/False. No execution_log-derived live-position source is ever merged in; only a same-cycle in-memory append (F6, order_executor.py:3037-3053) adds the current cycle's own live fills, which does not cover positions opened in prior watch/cron cycles.
   Root cause: No execution_log/get_filled_unsettled_live_orders/_get_live_open_positions call exists anywhere inside _auto_place_trades (spans order_executor.py:2294 to end of file, 3340) feeding these specific risk gates.
   Full record: audit/AUDIT_REPORT.json (id AUD-0002), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-18: _auto_place_trades' _open_trades_list now seeds with
+  get_open_trades() + order_executor._get_live_open_positions()
+  unconditionally (not gated on live=True/False, per this finding's own
+  scope). See AUD-0001's Resolution note above for the full multi-file
+  narrative and test results (shared fix).
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Settlement P&L for taker (IOC)-filled live orders is computed with the $0 maker fee, not Kalshi's real taker fee
 Priority: HIGH (audit id AUD-0003, status CONFIRMED, confidence VERY HIGH, evidence E1)
@@ -20225,7 +20494,7 @@ Problem:
   Recommendation: Track whether each live order row's ENTRY fill was maker or taker and select KALSHI_FEE_RATE vs KALSHI_MAKER_FEE_RATE accordingly in _poll_pending_orders' settlement formula, mirroring record_live_exit_fill's existing correct treatment of exits.
   Full record: audit/AUDIT_REPORT.json (id AUD-0003), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] LiveTradingGate's drawdown/streak risk-halt checks read only the paper ledger, never execution_log — blind to real live trading losses
+[RESOLVED 2026-08-18 -- fixed as part of batch-01, same change as AUD-0001; see the Resolution note under AUD-0001's own entry above] LiveTradingGate's drawdown/streak risk-halt checks read only the paper ledger, never execution_log — blind to real live trading losses
 Priority: HIGH (audit id AUD-0005, status CONFIRMED, confidence VERY HIGH, evidence E2)
 Files: trading_gates.py, paper.py, order_executor.py, execution_log.py
 
@@ -20237,6 +20506,21 @@ Problem:
   Security risk: None directly — internal risk-management/reliability gap, not externally exploitable.
   Recommendation: Add live-account-aware drawdown and consecutive-loss-streak checks sourced from execution_log.db (mirroring get_today_live_loss()/get_today_live_spend()), called from LiveTradingGate.check() when a live client is passed, or as additional explicit steps in order_executor._place_live_order()...
   Full record: audit/AUDIT_REPORT.json (id AUD-0005), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-18: implemented exactly this entry's own recommendation
+  -- a trailing 14-day realized-loss window (execution_log.
+  get_live_realized_loss_since) and a settlement-order streak check
+  (execution_log.get_live_settlement_streak), both mirroring
+  get_today_live_loss()'s shape rather than paper's peak-balance mechanism
+  (no persisted live peak exists, and this project chose not to add one --
+  see AUD-0001's Resolution note for the full design-decision writeup).
+  Wired into BOTH LiveTradingGate.check() (client now passed to
+  is_paused_drawdown/is_streak_paused, previously zero-arg) AND
+  _auto_place_trades' own direct calls to the same two functions (this
+  entry's Problem text specifically named _auto_place_trades' direct calls
+  as needing the fix too, not just the gate). See AUD-0001's Resolution
+  note above for the full multi-file narrative and test results (shared
+  fix).
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cron._acquire_cron_lock() has a TOCTOU race with no OS-level exclusive-create primitive — reproduced
 Priority: HIGH (audit id AUD-0006, status CONFIRMED, confidence VERY HIGH, evidence E2)
@@ -20275,7 +20559,7 @@ Problem:
   Recommendation: Wrap the `if live:` block's 4 calls in the same try/except-and-log pattern already used for the paper-side checks immediately below, matching cron.py's existing guard.
   Full record: audit/AUDIT_REPORT.json (id AUD-0008), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _count_open_live_orders() only counts status=='pending' live orders, missing already-filled open positions
+[RESOLVED 2026-08-18 -- fixed as part of batch-01, same change as AUD-0001; see the Resolution note under AUD-0001's own entry above] _count_open_live_orders() only counts status=='pending' live orders, missing already-filled open positions
 Priority: HIGH (audit id AUD-0009, status CONFIRMED, confidence VERY HIGH, evidence E2)
 Files: order_executor.py
 
@@ -20283,6 +20567,25 @@ Problem:
   The max_open_positions live-trading gate counts only rows with status=='pending', so a filled-but-still-open live position stops being counted once its status transitions to 'filled', even though execution_log.get_filled_unsettled_live_orders() (status='filled' AND settled_at IS NULL) still correctly treats it as an open position.
   Root cause: Gate uses status=='pending' as its definition of 'open position' instead of the codebase's own authoritative open-position query (status='filled' AND settled_at IS NULL AND closes_position_id IS NULL).
   Full record: audit/AUDIT_REPORT.json (id AUD-0009), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-18: NOT a pure swap to the filled+unsettled definition --
+  tests/test_prelog.py has a pre-existing F1 regression test asserting a
+  placed-but-not-yet-filled resting GTC order must ALSO count (real capital
+  committed, could fill any moment). Fixed as the union of both real open
+  states, each via its own unbounded query: still-pending entry orders
+  (excluding a pending protective EXIT order's own row via
+  closes_position_id IS NULL, or a position mid-exit would double-count)
+  PLUS filled-but-unsettled positions (this entry's own gap). Caught by
+  re-running the existing test suite after an initial pure-swap attempt
+  broke the F1 test -- see AUD-0001's Resolution note for the full
+  narrative.
+  Adjacent, NOT fixed here (same pending-only bug shape, but a different
+  consumer -- a dashboard stat, not a gate): execution_log.
+  get_live_pnl_summary()'s own open_count metric (execution_log.py, near
+  the functions touched by this fix) has the identical status='pending'-
+  only undercounting bug. Filed as its own follow-up rather than expanded
+  into this batch's scope per this project's same-payload rule (different
+  consumer, no shared output with anything this fix touches).
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _quick_paper_buy()'s maker-order branch places real live orders but never records the fill in execution_log
 Priority: HIGH (audit id AUD-0010, status CONFIRMED, confidence MEDIUM, evidence E1)
@@ -20304,7 +20607,7 @@ Problem:
   Independently read LIVE_TRADING_RUNBOOK.md:102-104 and :131 — text matches claim exactly ('cron never places live orders regardless of LIVE_TRADING_ENABLED — only `watch --auto --live` does'; 'python main.py cron never places live orders — only `watch --auto --live` does'). Read main.py:4333 def cmd_order(...) and confirmed lines 4519-4537 exactly as cited: `_is_live = getattr(client, "base_url", None) != DEMO_BASE` (4528) followed by `pre_live_trade_check(client)` (4534) inside `if _is_live:`. Also independently found backlog.txt:1947-1952, a pre-existing OPEN entry titled 'KALSHI_ENV=prod...
   Full record: audit/AUDIT_REPORT.json (id AUD-0011), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _poll_pending_orders and _count_open_live_orders can silently lose a genuinely still-open live order once enough interleaved (mostly paper) orders accumulate in the shared execution_log orders table
+[RESOLVED 2026-08-18 -- fixed as part of batch-01, same change as AUD-0001; see the Resolution note under AUD-0001's own entry above] _poll_pending_orders and _count_open_live_orders can silently lose a genuinely still-open live order once enough interleaved (mostly paper) orders accumulate in the shared execution_log orders table
 Priority: HIGH (audit id AUD-0012, status CONFIRMED, confidence MEDIUM, evidence E2)
 Files: execution_log.py, order_executor.py
 
@@ -20312,6 +20615,19 @@ Problem:
   execution_log.get_recent_orders(limit=N) is `SELECT * FROM orders ORDER BY placed_at DESC LIMIT ?` with no WHERE clause on `live` — both _poll_pending_orders (limit=200) and _count_open_live_orders (limit=500) fetch this fixed-size mixed (paper+live) window and filter for live+pending only in Python after truncation, so a real still-pending live order can fall entirely outside the window once enough other (overwhelmingly paper) orders accumulate afterward.
   Root cause: Using a generic top-N-of-everything helper for a live-scoped query instead of a dedicated `WHERE live=1 AND status='pending'` SQL query — the fix pattern already exists elsewhere in the same file (get_live_pnl_summary's open_count metric, execution_log.py:922-928, uses exactly that unlimited scoped...
   Full record: audit/AUDIT_REPORT.json (id AUD-0012), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-18: new execution_log.get_pending_live_orders()
+  (unbounded `WHERE live=1 AND status='pending'`) replaces the
+  LIMIT-N-then-Python-filter pattern at all 4 sites that had it, not just
+  the 2 this entry cited: _count_open_live_orders (172), _poll_pending_
+  orders (424), plus two more found by adjacency during this fix --
+  _recover_pending_orders (startup crash-recovery reconciliation) and
+  _reprice_or_cancel_pending_orders (same LIMIT-200-then-filter pattern,
+  same file). See AUD-0001's Resolution note above for the full multi-file
+  narrative and test results (shared fix, incl. a direct repro test that
+  logs a target pending order then 205 filler orders after it and confirms
+  the old LIMIT-200 pattern would have evicted it while the new query
+  doesn't).
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_watch --auto --live has no standalone _recover_pending_orders() call; crash-window phantom 'pending' live rows stay invisible to live position protection whenever the cron lock is contended
 Priority: HIGH (audit id AUD-0013, status CONFIRMED, confidence MEDIUM, evidence E1)
@@ -21061,3 +21377,82 @@ Priority: INFO (audit id AUD-0084, status CONFIRMED, confidence MEDIUM, evidence
 Problem:
   Read pyproject.toml's [tool.pytest.ini_options] block in full — confirmed no `addopts` key exists at all, so nothing at config level excludes the `integration` marker by default. Read tests/test_integration_live.py — `pytestmark = pytest.mark.integration` (module-level) plus a per-client-construction self-skip (`if os.getenv("KALSHI_ENV") != "demo": pytest.skip(...)`) is the only mechanism preventing these tests from attempting real calls; note the file's own docstring additionally claims (also inaccurately) that these tests 'are excluded from normal pytest runs' by default, which reinforces...
   Full record: audit/AUDIT_REPORT.json (id AUD-0084), audit/AUDIT_REPORT.md.
+
+[OPEN 2026-08-18 -- found while implementing batch-01 of the 2026-08-18 max-depth audit (AUD-0001/0002/0005/0009/0012); filed separately since it affects the whole test suite's isolation infrastructure, not that batch's own 5 findings] tests/conftest.py's mock_balance_1000 fixture does not actually isolate paper.DATA_PATH -- tests using it read/write the REAL production data/paper_trades.json
+Priority: HIGH -- real production trading-data corruption risk, though not itself a live-money safety gate
+
+Problem:
+  mock_balance_1000 (tests/conftest.py) does:
+    monkeypatch.setattr("paper.DATA_PATH", tmp_path / "paper_trades.json")
+    import importlib
+    import paper
+    importlib.reload(paper)
+    yield paper
+  importlib.reload(paper) re-executes paper.py's module-level code AFTER the
+  monkeypatch has already been applied, which re-runs
+  `DATA_PATH = _project_root() / "data" / "paper_trades.json"` and silently
+  overwrites the patched value back to the real path -- the reload undoes
+  the very patch that was just applied one line above it.
+  Root cause: patch-then-reload ordering. A monkeypatch applied to a module
+  attribute does not survive that module being reloaded, since reload
+  re-executes every top-level assignment in the module body.
+  Evidence: confirmed empirically this session by writing a throwaway test
+  using the mock_balance_1000 fixture and printing paper.DATA_PATH inside
+  it -- it resolved to `C:\Users\thesa\claude kalshi\data\paper_trades.json`
+  (this machine's real main-clone production file, confirmed via git status/
+  mtime to be the actual live paper-trading ledger, not a test fixture),
+  which at the time of this check already contained 200+ real trades
+  including one for the exact test ticker this session had picked,
+  causing a spurious "duplicate order" test failure that only made sense
+  once the real cause was found.
+  Financial risk: None directly (paper-only data, no real money), but a
+  real data-integrity risk: any test using this fixture that calls
+  place_paper_order, settle_trade, or similar write paths could corrupt
+  genuine trading history with fabricated test trades, and any test that
+  reads open-trade state (get_open_trades, get_balance, exposure
+  calculations) gets real production numbers instead of the deterministic
+  $1000-start fixture state its own name promises, making test assertions
+  against "expected" values potentially flaky depending on live account
+  state at the moment the test happens to run.
+  Recommendation: Either (a) drop the importlib.reload(paper) call entirely
+  -- reload appears to exist only to reset paper.py's module-level
+  singleton state between tests, but the DATA_PATH patch alone plus
+  per-test isolation of any other module-level caches (audit which, if
+  any, actually need resetting) may be sufficient, or (b) re-apply the
+  monkeypatch.setattr AFTER the reload (patch, reload, patch again) so the
+  final state actually reflects the intended isolation. Whichever fix is
+  chosen, audit every one of the ~90+ tests currently using this fixture
+  (grep `mock_balance_1000` across tests/) for accidental assumptions
+  about starting from a genuinely empty/deterministic $1000 ledger --
+  some may have been silently passing only because they happened not to
+  collide with whatever real trades existed in production data/
+  paper_trades.json at the time they were written or last run, and could
+  start failing (correctly) once real isolation is restored.
+  This session's own new tests (tests/test_batch01_live_position_visibility.py)
+  avoid this fixture entirely, patching paper.DATA_PATH directly with no
+  reload.
+
+[OPEN 2026-08-18 -- found while implementing batch-01 of the 2026-08-18 max-depth audit (AUD-0009); filed separately as a different consumer (a dashboard stat) than that batch's own gate-fix scope] execution_log.get_live_pnl_summary()'s own open_count metric has the identical status='pending'-only undercounting bug AUD-0009 fixed for _count_open_live_orders
+Priority: LOW -- informational dashboard stat, not a safety gate
+
+Problem:
+  get_live_pnl_summary()'s open_count field (execution_log.py, near
+  get_recent_orders/get_pending_live_orders) is computed as
+  `SELECT COUNT(*) AS open_count FROM orders WHERE live = 1 AND status = 'pending'`
+  -- the exact same "open position" misdefinition AUD-0009 found and fixed
+  in order_executor._count_open_live_orders (pending-only, missing
+  filled-but-unsettled positions, and not counting a still-resting entry
+  order that later fills as ever having been "open" once it transitions
+  past pending). Unlike AUD-0009's site, this one is NOT unbounded-query-
+  truncation-prone (no LIMIT N here), so it's purely the status-definition
+  bug, not also an AUD-0012-style eviction risk.
+  Root cause: same as AUD-0009's -- status='pending' used as the
+  definition of "open" instead of this codebase's own authoritative
+  open-position query (get_filled_unsettled_live_orders' shape).
+  Financial risk: None -- this is a dashboard/reporting metric
+  (get_live_pnl_summary is read by web_app.py's dashboard), not a
+  trading gate.
+  Recommendation: Mirror AUD-0009's fix -- open_count should be
+  len(get_filled_unsettled_live_orders()) plus still-pending entry orders
+  (closes_position_id IS NULL), the same union order_executor.
+  _count_open_live_orders now uses.

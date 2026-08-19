@@ -508,7 +508,7 @@ class TestQuickPaperBuyRespectsPositionLimits:
                 main, "_resolve_price", lambda client, ticker, side: 0.50
             )
             monkeypatch.setattr("paper.is_daily_loss_halted", lambda client=None: False)
-            monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+            monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
             # 600 contracts @ $0.50 = $300 > the $250 per-market cap.
             _inputs = iter(
                 [
@@ -548,7 +548,7 @@ class TestQuickPaperBuyRespectsPositionLimits:
                 main, "_resolve_price", lambda client, ticker, side: 0.50
             )
             monkeypatch.setattr("paper.is_daily_loss_halted", lambda client=None: False)
-            monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+            monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
             # 10 contracts @ $0.50 = $5 -- well under any cap.
             _inputs = iter(
                 [
@@ -597,7 +597,7 @@ class TestQuickPaperBuyRespectsPositionLimits:
                 main, "_resolve_price", lambda client, ticker, side: 0.50
             )
             monkeypatch.setattr("paper.is_daily_loss_halted", lambda client=None: False)
-            monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+            monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
             monkeypatch.setattr(
                 "paper.check_position_limits",
                 lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("db locked")),
@@ -661,7 +661,7 @@ class TestQuickPaperBuyAutoKellySizing:
                 main, "_resolve_price", lambda client, ticker, side: 0.50
             )
             monkeypatch.setattr("paper.is_daily_loss_halted", lambda client=None: False)
-            monkeypatch.setattr("paper.is_streak_paused", lambda: False)
+            monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
 
             def _fake_enrich(market, fetch_forecast=True):
                 enriched = {"_city": "NYC", "_date": None}
