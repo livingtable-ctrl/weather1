@@ -90,6 +90,13 @@ _ALLOWLIST: dict[str, tuple[int, str]] = {
         "describe this guard's own backlog entry by name -- text "
         "mentions, not calls.",
     ),
+    "tests/test_cron_integration.py": (
+        2,
+        "TestKillSwitchOverrideRenameRace's docstring/comment describe the "
+        "AUD-0039 fix (which routes through safe_io._replace_with_retry, "
+        "not a bare call) by naming the old Path.rename()/os.replace() "
+        "semantics gap it closed -- text mentions, not calls.",
+    ),
 }
 
 

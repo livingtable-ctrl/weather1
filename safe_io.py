@@ -7,9 +7,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import tempfile
 import threading
 import time
+import typing
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
@@ -17,6 +19,103 @@ _log = logging.getLogger(__name__)
 
 class AtomicWriteError(Exception):
     pass
+
+
+class CrossProcessLock:
+    """OS-level mutual exclusion across separate processes, guarding a
+    critical section keyed by a lock file path.
+
+    Windows-only (msvcrt.locking) -- a no-op that always succeeds on other
+    platforms, same convention as paper.py's _CrossProcessDataLock (this
+    project only runs on Windows; non-Windows callers fall back to whatever
+    in-process protection they already have, not a new gap).
+
+    Not reentrant -- a caller that needs recursive acquisition from the same
+    thread (paper.py's get_open_trades/get_balance calling back into an
+    already-locked section) should keep using its own RLock-wrapped
+    implementation rather than this class.
+    """
+
+    def __init__(self, lock_path: Path, timeout: float = 10.0):
+        self._lock_path = lock_path
+        self._timeout = timeout
+        self._fh: typing.BinaryIO | None = None
+
+    def __enter__(self) -> CrossProcessLock:
+        self.acquire()
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.release()
+
+    def acquire(self) -> bool:
+        """Block (up to `timeout` seconds) until the OS mutex is held.
+
+        Returns True once acquired (or immediately on non-Windows, where
+        this is a no-op). On sustained contention past the deadline, logs at
+        ERROR -- silently proceeding unlocked is a real safety gap, not just
+        a warning -- and returns False without holding anything. Never
+        raises; callers decide whether False means fail-closed (abort) or
+        fail-open (proceed unlocked), matching what they need.
+        """
+        if sys.platform != "win32":
+            return True
+        try:
+            self._lock_path.parent.mkdir(exist_ok=True)
+            fh = open(self._lock_path, "a+b")
+        except Exception as exc:
+            _log.warning(
+                "CrossProcessLock: could not open lock file %s: %s",
+                self._lock_path,
+                exc,
+            )
+            return False
+
+        import msvcrt
+
+        deadline = time.monotonic() + self._timeout
+        try:
+            while True:
+                try:
+                    fh.seek(0)
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    if time.monotonic() > deadline:
+                        _log.error(
+                            "CrossProcessLock: lock %s contended >%.0fs -- "
+                            "giving up without acquiring it",
+                            self._lock_path,
+                            self._timeout,
+                        )
+                        fh.close()
+                        return False
+                    time.sleep(0.05)
+        except BaseException:
+            # Opus review: a KeyboardInterrupt landing inside the retry
+            # sleep (a real window on every call -- up to `timeout` seconds)
+            # used to propagate with `fh` still open and, worse, still
+            # holding the OS byte-range lock until GC. Close it before
+            # re-raising rather than silently leaking the handle/lock.
+            fh.close()
+            raise
+        self._fh = fh
+        return True
+
+    def release(self) -> None:
+        fh, self._fh = self._fh, None
+        if fh is None:
+            return
+        try:
+            if sys.platform == "win32":
+                fh.seek(0)
+                import msvcrt
+
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+        except Exception:
+            pass
+        finally:
+            fh.close()
 
 
 def _replace_with_retry(src: str, dst: Path, deadline_secs: float = 0.5) -> None:
@@ -49,7 +148,8 @@ def _replace_with_retry(src: str, dst: Path, deadline_secs: float = 0.5) -> None
     deadline_secs=0.1 -- read contention on a data/.emergency/ or system-
     temp destination isn't the expected failure mode there) if the primary
     write exhausts all retries. paper.py's own cross-process lock
-    (_acquire_file_lock) gives up after a fixed 10s budget -- callers that
+    (_acquire_file_lock) gives up after a fixed 30s budget (AUD-0030,
+    extended from 10s) -- callers that
     hold that lock across an atomic_write_json/atomic_write_text call
     should account for this function's contribution to worst-case latency,
     not just the write itself.

@@ -1093,3 +1093,161 @@ def test_check_emergency_copies_skips_file_with_unparseable_mtime(
     results = safe_io.check_emergency_copies(base_dir=emergency_dir)
 
     assert [r["filename"] for r in results] == ["good.json"]
+
+
+class TestCrossProcessLock:
+    """AUD-0006/AUD-0051: shared OS-mutex primitive used to guard critical
+    sections that must not run concurrently across separate processes
+    (cron's lock-file check-then-write, settlement_monitor's whole run)."""
+
+    def test_acquire_release_round_trip(self, tmp_path):
+        import sys
+
+        import safe_io
+
+        lock = safe_io.CrossProcessLock(tmp_path / ".test.lock", timeout=2.0)
+        assert lock.acquire() is True
+        lock.release()
+        # Must be re-acquirable after release, not left permanently held.
+        assert lock.acquire() is True
+        lock.release()
+        if sys.platform == "win32":
+            assert (tmp_path / ".test.lock").exists()
+
+    @pytest.mark.skipif(
+        __import__("sys").platform != "win32",
+        reason="cross-process mutual exclusion uses msvcrt (Windows-only)",
+    )
+    def test_acquire_closes_handle_on_unexpected_exception_during_contention(
+        self, tmp_path, monkeypatch
+    ):
+        """Opus review: a BaseException (e.g. KeyboardInterrupt) landing
+        inside the retry sleep -- a real window on every call, up to
+        `timeout` seconds -- used to propagate with the file handle left
+        open (only closed later, if/when CPython's refcounting GC finalizes
+        it -- not guaranteed to be immediate, and not something to rely on
+        for an OS-level resource). Directly checks `fh.closed` on the exact
+        handle `open()` returned, rather than inferring closure indirectly
+        (e.g. via whether a second lock can acquire afterward -- CPython's
+        prompt refcounting can incidentally finalize/close an unreferenced
+        file object even without an explicit .close(), which would make an
+        indirect check pass for the wrong reason and not actually verify
+        the explicit-close code path this fix adds)."""
+        import safe_io
+
+        lock_path = tmp_path / ".test.lock"
+        lock = safe_io.CrossProcessLock(lock_path, timeout=5.0)
+
+        import msvcrt as _real_msvcrt
+
+        def _always_locked(*_a, **_kw):
+            raise OSError("simulated contention")
+
+        monkeypatch.setattr(_real_msvcrt, "locking", _always_locked)
+
+        class _Boom(Exception):
+            pass
+
+        def _boom_sleep(*_a, **_kw):
+            raise _Boom("simulated interrupt during contention wait")
+
+        monkeypatch.setattr(safe_io.time, "sleep", _boom_sleep)
+
+        import builtins
+
+        opened: list = []
+        _orig_open = builtins.open
+
+        def _tracking_open(*a, **kw):
+            fh = _orig_open(*a, **kw)
+            opened.append(fh)
+            return fh
+
+        monkeypatch.setattr(builtins, "open", _tracking_open)
+
+        with pytest.raises(_Boom):
+            lock.acquire()
+
+        assert len(opened) == 1, f"expected exactly one open() call, got {opened}"
+        assert opened[0].closed, (
+            "file handle must be explicitly closed before the exception "
+            "propagates, not left open for GC to eventually finalize"
+        )
+
+    @pytest.mark.skipif(
+        __import__("sys").platform != "win32",
+        reason="cross-process mutual exclusion uses msvcrt (Windows-only)",
+    )
+    def test_second_holder_blocked_while_first_holds_it(self, tmp_path):
+        import safe_io
+
+        path = tmp_path / ".test.lock"
+        holder = safe_io.CrossProcessLock(path, timeout=5.0)
+        assert holder.acquire() is True
+
+        contender = safe_io.CrossProcessLock(path, timeout=0.3)
+        try:
+            # Short timeout so this returns promptly instead of really
+            # waiting -- proves mutual exclusion, not just that it can lock.
+            result = contender.acquire()
+            assert result is False, (
+                "a second CrossProcessLock on the SAME path must not "
+                "acquire while the first is still held"
+            )
+        finally:
+            holder.release()
+
+        # Once released, a fresh attempt must succeed.
+        contender2 = safe_io.CrossProcessLock(path, timeout=2.0)
+        assert contender2.acquire() is True
+        contender2.release()
+
+    @pytest.mark.skipif(
+        __import__("sys").platform != "win32",
+        reason="cross-process mutual exclusion uses msvcrt (Windows-only)",
+    )
+    def test_two_threads_racing_both_eventually_acquire_but_never_overlap(
+        self, tmp_path
+    ):
+        """Opus review: the original version of this test only asserted
+        results.count(True) == 2, which passes even if acquire() were
+        gutted to `return True` unconditionally with no locking at all --
+        it proved both threads finished, not that they were ever mutually
+        exclusive. Recording each hold's [enter, exit) interval and
+        asserting they never overlap actually discriminates a broken lock."""
+        import threading
+        import time as _t
+
+        import safe_io
+
+        path = tmp_path / ".test.lock"
+        intervals = []
+        intervals_lock = threading.Lock()
+
+        def _worker():
+            lock = safe_io.CrossProcessLock(path, timeout=3.0)
+            got = lock.acquire()
+            if got:
+                enter = _t.monotonic()
+                _t.sleep(0.2)  # hold briefly so the other thread must wait
+                exit_ = _t.monotonic()
+                lock.release()
+                with intervals_lock:
+                    intervals.append((enter, exit_))
+
+        t1 = threading.Thread(target=_worker)
+        t2 = threading.Thread(target=_worker)
+        t1.start()
+        t2.start()
+        t1.join(timeout=10)
+        t2.join(timeout=10)
+
+        assert len(intervals) == 2, (
+            f"both threads should eventually acquire it (one after the "
+            f"other releases), got {intervals}"
+        )
+        (e1, x1), (e2, x2) = intervals
+        assert x1 <= e2 or x2 <= e1, (
+            f"holds overlapped ({intervals}) -- the lock did not actually "
+            f"provide mutual exclusion"
+        )

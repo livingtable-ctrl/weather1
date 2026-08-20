@@ -287,22 +287,49 @@ def cmd_cron(client: "KalshiClient", min_edge: float | None = None) -> None:
     # bypasses finally blocks), .kill_switch.tmp may have been left behind without
     # being renamed back.  Restore it now so the kill switch is never silently lost.
     _kill_stale_tmp = _kill_path.with_name(".kill_switch.tmp")
-    if _kill_stale_tmp.exists() and not _kill_path.exists():
-        try:
-            _kill_stale_tmp.rename(_kill_path)
-            import logging as _logging
+    if _kill_stale_tmp.exists():
+        if not _kill_path.exists():
+            try:
+                import safe_io as _safe_io
 
-            _logging.getLogger(__name__).warning(
-                "cmd_cron: restored kill switch from stale .kill_switch.tmp "
-                "(prior override run was hard-killed by the watchdog)"
-            )
-        except Exception as _restore_exc:
-            import logging as _logging
+                _safe_io._replace_with_retry(str(_kill_stale_tmp), _kill_path)
+                import logging as _logging
 
-            _logging.getLogger(__name__).error(
-                "cmd_cron: could not restore .kill_switch from .kill_switch.tmp: %s",
-                _restore_exc,
-            )
+                _logging.getLogger(__name__).warning(
+                    "cmd_cron: restored kill switch from stale .kill_switch.tmp "
+                    "(prior override run was hard-killed by the watchdog)"
+                )
+            except Exception as _restore_exc:
+                import logging as _logging
+
+                _logging.getLogger(__name__).error(
+                    "cmd_cron: could not restore .kill_switch from .kill_switch.tmp: %s",
+                    _restore_exc,
+                )
+        else:
+            # .kill_switch already exists too (e.g. a black-swan check
+            # re-created it after the watchdog hard-killed a prior override
+            # run, before the rename-back at the bottom of this function
+            # could happen) -- the orphaned .tmp would otherwise sit forever
+            # and make the next override's move-aside step below raise
+            # FileExistsError under plain Path.rename() semantics. Discard
+            # it; .kill_switch already being present means the halt is
+            # already enforced regardless of what the stale .tmp contained.
+            try:
+                _kill_stale_tmp.unlink()
+                import logging as _logging
+
+                _logging.getLogger(__name__).warning(
+                    "cmd_cron: discarded orphaned .kill_switch.tmp "
+                    "(.kill_switch already present -- halt already enforced)"
+                )
+            except Exception as _cleanup_exc:
+                import logging as _logging
+
+                _logging.getLogger(__name__).error(
+                    "cmd_cron: could not remove orphaned .kill_switch.tmp: %s",
+                    _cleanup_exc,
+                )
     if _kill_path.exists() and not _called_from_loop:
         _bs_path = BLACK_SWAN_PATH
         _reason_str = ""
@@ -328,8 +355,27 @@ def cmd_cron(client: "KalshiClient", min_edge: float | None = None) -> None:
             return
         # Temporarily move the kill switch so cron's internal check doesn't
         # double-fire.  Restored in the finally block — override is one-shot.
+        # safe_io._replace_with_retry (not Path.rename, and not a bare
+        # replace call -- those are banned outside safe_io.py by
+        # tests/test_bare_os_replace_guard.py) so this can't raise
+        # FileExistsError if an orphaned .kill_switch.tmp somehow still
+        # exists (AUD-0039), and gets the same transient-PermissionError
+        # retry every other Windows file-replace in this codebase gets --
+        # aborts the override cleanly instead of an uncaught traceback if
+        # the move fails for any other reason.
         _kill_tmp = _kill_path.with_name(".kill_switch.tmp")
-        _kill_path.rename(_kill_tmp)
+        try:
+            import safe_io as _safe_io
+
+            _safe_io._replace_with_retry(str(_kill_path), _kill_tmp)
+        except OSError as _move_exc:
+            print(
+                red(
+                    f"  Could not start override — moving kill switch aside "
+                    f"failed: {_move_exc}"
+                )
+            )
+            return
         print(
             yellow(
                 "  [override] Running one cycle — kill switch will be restored after.\n"
@@ -343,11 +389,31 @@ def cmd_cron(client: "KalshiClient", min_edge: float | None = None) -> None:
         finally:
             _cron_module.USER_OVERRIDE_ACTIVE = False
             _paper_module.KILL_SWITCH_OVERRIDE_ACTIVE = False
+            # Opus review (AUD-0039 followup): this restore step used to be
+            # completely unguarded inside a finally -- an OSError here (e.g.
+            # a transient Windows sharing violation, or another process
+            # touching .kill_switch.tmp between the exists() check and the
+            # action below) would replace any in-flight exception from the
+            # cron cycle and escape as an uncaught traceback, skipping the
+            # "restored" confirmation. Now caught and logged instead.
             if _kill_tmp.exists():
-                if _kill_path.exists():
-                    _kill_tmp.unlink()  # black swan re-created it during the run
-                else:
-                    _kill_tmp.rename(_kill_path)
+                try:
+                    if _kill_path.exists():
+                        # black swan re-created it during the run -- keep
+                        # the fresh copy (it may carry a newer reason than
+                        # the stale .tmp), discard the temp.
+                        _kill_tmp.unlink(missing_ok=True)
+                    else:
+                        import safe_io as _safe_io
+
+                        _safe_io._replace_with_retry(str(_kill_tmp), _kill_path)
+                except OSError as _restore_exc:
+                    import logging as _logging
+
+                    _logging.getLogger(__name__).error(
+                        "cmd_cron: could not restore kill switch after override: %s",
+                        _restore_exc,
+                    )
             print(
                 yellow("  [override] Kill switch restored — still active for next run.")
             )

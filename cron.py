@@ -215,10 +215,28 @@ def _acquire_cron_lock() -> bool:
     - Live PID  → block (another instance is really running).
     - Dead PID  → override (process is gone, lock is stale).
     - No psutil → conservative 1800 s age threshold before overriding.
+
+    AUD-0006: the exists()-check + later write_text() below is a TOCTOU race
+    on its own -- two processes can both observe exists()==False (or both
+    independently decide a stale lock should be overridden) and both write.
+    The whole check-then-decide-then-write sequence is wrapped in a real OS
+    mutex (keyed off LOCK_PATH + ".mutex", separate from the lock file
+    itself so the lock file's own format/tests are untouched) so only one
+    caller ever executes this logic at a time; the loser re-checks under the
+    mutex and correctly sees the winner's fresh lock.
     """
     import time as _time
 
+    from safe_io import CrossProcessLock
+
     lp = LOCK_PATH
+    _mutex = CrossProcessLock(lp.with_name(lp.name + ".mutex"), timeout=5.0)
+    if not _mutex.acquire():
+        _log.error(
+            "cmd_cron: could not acquire cron-lock mutex within timeout — "
+            "failing closed (cannot safely check/write the lock file)"
+        )
+        return False
     try:
         if lp.exists():
             # CR-1: safe defaults so `if pid` at line below never raises NameError
@@ -285,14 +303,34 @@ def _acquire_cron_lock() -> bool:
             "cmd_cron: lock acquisition failed: %s — aborting (fail-closed)", exc
         )
         return False  # FAIL CLOSED — never proceed on unexpected error
+    finally:
+        _mutex.release()
 
 
 def _release_cron_lock() -> None:
-    """Delete the cron lock file."""
+    """Delete the cron lock file.
+
+    AUD-0006 followup (opus review): the acquire-side mutex only serializes
+    _acquire_cron_lock's own check-then-write body -- without also taking it
+    here, another process's acquire() could observe lp.exists() == True
+    (under ITS mutex hold) and then have this unlink() race its own
+    lp.read_text() a moment later, turning a perfectly free lock into a
+    spurious "unreadable lock file" fail-closed skip. Best-effort: still
+    attempts the unlink even if the mutex itself can't be acquired within
+    its timeout (never let the locking mechanism block releasing the real
+    lock -- leaving the lock file behind would be worse than a narrow race).
+    """
+    from safe_io import CrossProcessLock
+
+    lp = LOCK_PATH
+    _mutex = CrossProcessLock(lp.with_name(lp.name + ".mutex"), timeout=5.0)
+    _mutex.acquire()
     try:
-        LOCK_PATH.unlink(missing_ok=True)
+        lp.unlink(missing_ok=True)
     except Exception as _e:
         _log.warning("cmd_cron: could not release lock: %s", _e)
+    finally:
+        _mutex.release()
 
 
 def _is_cron_running() -> bool:

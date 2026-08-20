@@ -177,7 +177,14 @@ class _CrossProcessDataLock:
             fh = open(lock_path, "a+b")
             import msvcrt
 
-            deadline = time.monotonic() + 10.0
+            # AUD-0030: was 10s / logged at warning. Three independent
+            # long-lived processes (cron, watch, web_app) can all contend
+            # for this file, and falling back to in-process-only protection
+            # here can silently revert a settlement or drop a manually-
+            # placed trade (see class docstring) -- that's an operator-
+            # visible event, not a routine warning, and 30s gives sustained
+            # contention more room to clear before giving up the guarantee.
+            deadline = time.monotonic() + 30.0
             while True:
                 try:
                     fh.seek(0)
@@ -185,9 +192,10 @@ class _CrossProcessDataLock:
                     break
                 except OSError:
                     if time.monotonic() > deadline:
-                        _log.warning(
-                            "paper.py: cross-process ledger lock contended >10s — "
-                            "proceeding without it this call"
+                        _log.error(
+                            "paper.py: cross-process ledger lock contended >30s — "
+                            "proceeding WITHOUT it this call (cross-process safety "
+                            "guarantee lost for this read-modify-write)"
                         )
                         fh.close()
                         return

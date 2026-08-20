@@ -73,3 +73,53 @@ def test_second_process_blocks_until_first_releases(tmp_path):
         )
     finally:
         proc.wait(timeout=10)
+
+
+def test_sustained_contention_falls_back_at_new_30s_deadline_not_old_10s(
+    monkeypatch, tmp_path, caplog
+):
+    """AUD-0030: under sustained contention, _acquire_file_lock() used to give
+    up after 10s and log at warning -- silently proceeding without the
+    cross-process guarantee (a real safety gap: a straddled load/save can
+    revert a settlement or drop a manually-placed trade) at a severity that
+    wouldn't page/alert anyone. Deadline extended to 30s, log escalated to
+    error. A fake monotonic clock proves both without a real 30s sleep --
+    mutation-tested: reverting either change makes this test fail (clock.t
+    lands near 11 instead of >=25, or no ERROR record is found)."""
+    import paper
+
+    lock = paper._CrossProcessDataLock(lambda: tmp_path / ".paper.lock")
+
+    class _FakeClock:
+        def __init__(self):
+            self.t = 0.0
+
+        def tick(self):
+            self.t += 1.0
+            return self.t
+
+    clock = _FakeClock()
+    monkeypatch.setattr(paper.time, "monotonic", clock.tick)
+    monkeypatch.setattr(paper.time, "sleep", lambda *_a, **_kw: None)
+
+    import msvcrt as _real_msvcrt
+
+    def _always_locked(*_a, **_kw):
+        raise OSError("simulated sustained contention")
+
+    monkeypatch.setattr(_real_msvcrt, "locking", _always_locked)
+
+    with caplog.at_level("WARNING"):
+        lock._acquire_file_lock()
+
+    assert lock._fh is None, "must not claim to hold the lock after giving up"
+    # Elapsed (fake) time when it gave up must land near the NEW 30s
+    # deadline, not the old 10s one -- old code would have bailed by
+    # clock.t ~= 11.
+    assert clock.t >= 25, (
+        f"gave up after only {clock.t:.0f} fake seconds -- deadline appears "
+        f"to still be the old 10s value, not the extended one"
+    )
+    error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert error_records, "fallback must log at ERROR (operator-visible), not WARNING"
+    assert any("contended" in r.message for r in error_records)

@@ -20550,7 +20550,7 @@ Resolution 2026-08-18: implemented exactly this entry's own recommendation
   note above for the full multi-file narrative and test results (shared
   fix).
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cron._acquire_cron_lock() has a TOCTOU race with no OS-level exclusive-create primitive — reproduced
+[RESOLVED 2026-08-20 -- batch-04] cron._acquire_cron_lock() has a TOCTOU race with no OS-level exclusive-create primitive — reproduced
 Priority: HIGH (audit id AUD-0006, status CONFIRMED, confidence VERY HIGH, evidence E2)
 Files: cron.py
 
@@ -20562,6 +20562,62 @@ Problem:
   Security risk: None (not attacker-reachable — requires two legitimate local invocations racing).
   Recommendation: Replace the exists()-then-write_text() pattern with an atomic exclusive-create, e.g. `open(lp, 'x')` (raises FileExistsError if the file already exists) wrapped in the same fail-closed exception handling already present, or reuse paper.py's msvcrt-based _CrossProcessDataLock primitive for this file...
   Full record: audit/AUDIT_REPORT.json (id AUD-0006), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-20: Rejected the audit's own first-listed fix (O_EXCL
+  exclusive-create) after re-deriving it via AskUserQuestion: it would break
+  the legitimate stale/dead-PID lock override path, which must overwrite an
+  EXISTING file -- O_EXCL raises on that, silently removing automatic
+  recovery from a crashed process's stale lock. Instead wrapped the whole
+  check-then-decide-then-write critical section in a real OS mutex: added
+  safe_io.CrossProcessLock (msvcrt-based on Windows, no-op elsewhere,
+  non-reentrant) as a shared primitive, per user's AskUserQuestion choice to
+  reuse it for both this fix and AUD-0051's below rather than writing two
+  bespoke locks. cron._acquire_cron_lock() now acquires a mutex keyed off
+  LOCK_PATH + ".mutex" (kept separate from the lock file itself so its
+  on-disk format and every existing test are untouched) before the
+  exists()-check, and releases it in a finally covering every return path;
+  failure to acquire the mutex itself fails closed (returns False), matching
+  the function's existing contract. Zero changes needed to any of the ~15
+  pre-existing tests in tests/test_cron_lock.py / tests/
+  test_execution_stability.py -- the mutex path is derived from LOCK_PATH at
+  call time, so tests that only monkeypatch LOCK_PATH keep working unchanged.
+  New tests (tests/test_cron_lock.py::TestAcquireCronLockClosesRace):
+  reproduces the audit's own repro technique (a Barrier inside a patched
+  Path.exists forcing two threads to the exact check-then-act instant the
+  bug needed) and asserts exactly one winner; a second test confirms
+  mutex-acquisition failure fails closed. safe_io.py also got a direct
+  CrossProcessLock unit-test class (tests/test_safe_io.py::
+  TestCrossProcessLock: acquire/release round-trip, second-holder-blocked,
+  two-threads-exactly-one-winner-eventually). Mutation-tested: reverting the
+  mutex wrap makes the race test fail with results.count(True) == 2 (both
+  callers win) instead of 1 -- confirmed live by temporarily reverting and
+  re-running.
+
+  Independent opus review (effort:high, single agent covering all 4 items in
+  this batch given the shared subsystem) found 9 issues, all fixed (see
+  batch-04's combined note on AUD-0051 below for the shared review process
+  across all 4 items). Of the 9, one belongs to this entry specifically:
+  _release_cron_lock() unlinked the lock file WITHOUT taking the same
+  mutex the acquire-side fix above added -- a concurrent _acquire_cron_lock()
+  could see lp.exists()==True (under its own mutex hold) and then have
+  release's unlink() race its own lp.read_text() a moment later, turning a
+  perfectly free lock into a spurious "unreadable lock file" fail-closed
+  skip (an entire cron cycle silently dropped). Fixed by wrapping
+  _release_cron_lock() in the same CrossProcessLock too (best-effort: still
+  unlinks even if the mutex itself can't be acquired, since leaving the
+  lock file behind is worse than the narrow race). New regression test
+  (tests/test_cron_lock.py::TestAcquireCronLockClosesRace::
+  test_release_serialized_against_concurrent_acquire_no_spurious_skip) uses
+  a two-event handshake (not incidental thread scheduling, which proved
+  non-deterministic on the first attempt at this test) to force the exact
+  interleaving; mutation-tested by reverting the release-side mutex --
+  confirmed the test then fails with the exact spurious "unreadable lock
+  file" log line and a False return where True was expected.
+
+  Full scoped suite (531 tests across cron/settlement/paper/safe_io + every
+  file monkeypatching LOCK_PATH, re-counted fresh via --collect-only at
+  writing time) passes; ruff+ruff-format+mypy clean via the actual
+  pre-commit hooks. Commit: (added post-push).
 
 [RESOLVED 2026-08-19 -- batch-02] Ambiguous place_order() failure can leave a real live position permanently untracked, unprotected, and re-orderable
 Priority: HIGH (audit id AUD-0007, status CONFIRMED, confidence HIGH, evidence E1)
@@ -21033,7 +21089,7 @@ Problem:
   Recommendation: Re-check _is_cron_running() (or better, acquire the actual cron lock) immediately before writing EMOS params, not just before printing the prompt.
   Full record: audit/AUDIT_REPORT.json (id AUD-0029), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] paper._CrossProcessDataLock silently fails OPEN after 10 seconds of sustained contention
+[RESOLVED 2026-08-20 -- batch-04] paper._CrossProcessDataLock silently fails OPEN after 10 seconds of sustained contention
 Priority: MEDIUM (audit id AUD-0030, status CONFIRMED, confidence HIGH, evidence E2)
 Files: paper.py
 
@@ -21044,6 +21100,24 @@ Problem:
   Financial risk: A lost update to paper_trades.json under this fallback could silently revert a settlement or drop a manually-placed paper trade, corrupting the paper ledger's accuracy (which downstream...
   Recommendation: At minimum, log this fallback path at a severity that would page/alert an operator (not just warning), and consider whether 10s is long enough given three independent long-lived processes (cron, watch, web_app) can all touch this file.
   Full record: audit/AUDIT_REPORT.json (id AUD-0030), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-20: Per user's AskUserQuestion choice, both of the
+  audit's own suggestions applied together: contention deadline extended
+  10.0s -> 30.0s (three long-lived processes -- cron, watch, web_app -- can
+  all contend for this file), and the fallback log call escalated from
+  _log.warning to _log.error (operator-visible severity for a real safety
+  gap -- silently proceeding unlocked can revert a settlement or drop a
+  manually-placed trade). paper.py:171-199 (_CrossProcessDataLock.
+  _acquire_file_lock). New test (tests/test_paper_cross_process_lock.py::
+  test_sustained_contention_falls_back_at_new_30s_deadline_not_old_10s) uses
+  a fake monotonic clock (no real 30s sleep) to prove both the new deadline
+  value and the new log level; mutation-tested by reverting both changes and
+  re-running -- confirmed the test then fails exactly as the old code
+  behaves (gives up at ~11 fake seconds, logs at WARNING not ERROR).
+  Opus review (see AUD-0006's note above) caught one adjacent stale
+  cross-reference: safe_io.py's own _replace_with_retry docstring cited
+  paper.py's "fixed 10s budget" in its worst-case-latency writeup -- updated
+  to 30s. Full scoped suite passes; ruff+ruff-format+mypy clean.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] e5331a8d's two self-disclosed follow-up gaps remain open, and the startup banner is wrong about a third live-capable command path
 Priority: MEDIUM (audit id AUD-0031, status CONFIRMED, confidence HIGH, evidence E2)
@@ -21125,7 +21199,7 @@ Problem:
   Recommendation: Add a lightweight check at retrain time comparing the newly-fitted calibration's output range against cron.py's 0.80 force-close threshold, so a transition from dormant to active is visible rather than silent.
   Full record: audit/AUDIT_REPORT.json (id AUD-0038), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Kill-switch override rename race can crash cmd_cron with uncaught FileExistsError (Path.rename vs os.replace semantics gap)
+[RESOLVED 2026-08-20 -- batch-04] Kill-switch override rename race can crash cmd_cron with uncaught FileExistsError (Path.rename vs os.replace semantics gap)
 Priority: LOW (audit id AUD-0039, status CONFIRMED, confidence HIGH, evidence E2)
 Files: main.py, cron.py, alerts.py
 
@@ -21136,6 +21210,65 @@ Problem:
   Financial risk: Low/none directly -- the kill switch remains present/active throughout this failure (fail-safe direction: trading stays halted), and the crash only occurs on a manual interactive `py main.py cron`...
   Recommendation: Use os.replace() (or safe_io's retry-wrapped equivalent) instead of Path.rename() at main.py:332/292/350 so the operation is atomic-replace rather than fail-on-exists; additionally, change the stale-tmp-restore guard at main.py:290 to also unlink an orphaned .kill_switch.tmp when .kill_switch...
   Full record: audit/AUDIT_REPORT.json (id AUD-0039), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-20: Implemented both halves of the recommendation. (1)
+  All 3 Path.rename() call sites in main.py's cmd_cron wrapper (lines
+  292/332/350 at audit time) switched to os.replace()-based semantics
+  (never raises FileExistsError on an existing destination); the move-aside
+  step (former L332) additionally wrapped in try/except OSError so any
+  other failure there aborts the override cleanly (printing the reason)
+  instead of an uncaught crash. (2) The stale-.tmp-restore guard
+  restructured from a single `if exists and not kill_switch_exists` into an
+  if/else: the new else branch discards an orphaned .kill_switch.tmp when
+  .kill_switch is ALSO present (the exact black-swan-recreated-it-mid-hard-
+  kill scenario this finding describes) instead of leaving it on disk
+  forever. New tests (tests/test_cron_integration.py::
+  TestKillSwitchOverrideRenameRace, 3 cases): the exact audit scenario
+  (orphaned .tmp + re-created .kill_switch, answer 'y' to override) no
+  longer crashes and the orphan is discarded; the original restore-from-
+  orphan path (no .kill_switch present) still works unchanged; a normal
+  override with no orphan involved still completes. Mutation-tested by
+  reverting BOTH changes together (reverting only the guard, with the
+  replace fix still in place, did NOT reproduce the crash -- overwrite-safe
+  replace semantics alone already prevented it, so isolating the guard's
+  own necessity required reverting both): the first test then fails with
+  the exact real-world `FileExistsError: [WinError 183] Cannot create a
+  file when that file already exists` the audit's own evidence section
+  reproduced standalone.
+
+  Opus review (see AUD-0006's note above) found 3 issues in this fix,
+  all fixed: (a) HIGH -- the initial implementation used bare os.replace()
+  at all 3 sites, which this repo's own tests/test_bare_os_replace_guard.py
+  bans outside safe_io.py precisely because bare os.replace() on Windows
+  can raise a transient PermissionError/WinError 5 whenever another
+  thread/process has the destination open even just for reading (self-
+  caught 2026-08-08, see that guard's own docstring) -- the guard test
+  itself was failing and "full scoped suite passes" as first written above
+  was false, since that guard wasn't in the scoped run. Fixed by routing
+  all 3 sites through safe_io._replace_with_retry() instead (the same
+  retry-wrapped helper every other Windows file-replace in this codebase
+  already uses), and adding a `tests/test_cron_integration.py` allowlist
+  entry for 2 docstring mentions of the old rename()/os.replace() semantics
+  gap this fix closed. (b) MEDIUM -- the restore-back step in the finally
+  block (former L384-388) was left completely unguarded despite (a)'s fix
+  guarding the move-aside step -- an OSError there would replace any
+  in-flight exception from the cron cycle and escape as an uncaught
+  traceback, skipping the "restored" confirmation. Wrapped in try/except
+  OSError with an ERROR log, matching the move-aside step's own guard
+  shape. (c) LOW/MEDIUM -- in the narrow TOCTOU window between checking
+  .kill_switch.exists() and acting on it in that same finally block, a
+  black-swan check on a genuinely separate process could re-create
+  .kill_switch with a fresh reason between the check and the act; the
+  fix's own re-check-then-branch structure (unlink the stale .tmp if
+  .kill_switch reappeared, else restore from it) already handles this
+  correctly by construction -- documented explicitly in a comment rather
+  than changed further, since eliminating the TOCTOU window entirely would
+  need locking .kill_switch itself, out of scope given the audit's own
+  "financial risk: low/none, diagnostics loss only" framing) held even
+  with this narrower race included. Full scoped suite (531 tests,
+  re-counted fresh via --collect-only at writing time) passes;
+  ruff+ruff-format+mypy clean via the actual pre-commit hooks (including
+  the bare-os.replace guard, now passing).
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_order accepts and forwards an out-of-range order price with no local validation before hitting the live exchange
 Priority: LOW (audit id AUD-0040, status CONFIRMED, confidence HIGH, evidence E1)
@@ -21273,7 +21406,7 @@ Problem:
   Recommendation: Pass cancel_futures=True to shutdown() (Python 3.9+) to at least drop queued-but-not-started tasks, and consider whether already-running prewarm threads need an explicit cooperative-cancellation flag if their side effects (cache writes) should not race with the next phase's reads.
   Full record: audit/AUDIT_REPORT.json (id AUD-0050), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] settlement_monitor.py has no application-level overlap guard; relies entirely on unverified Task Scheduler default policy
+[RESOLVED 2026-08-20 -- batch-04] settlement_monitor.py has no application-level overlap guard; relies entirely on unverified Task Scheduler default policy
 Priority: LOW (audit id AUD-0051, status CONFIRMED, confidence HIGH, evidence E1)
 Files: settlement_monitor.py, main.py
 
@@ -21284,6 +21417,74 @@ Problem:
   Financial risk: A dropped settlement-lag signal could delay a force-close decision that depends on it (per cluster K's settlement-lag force-close gate wiring), though this requires two overlapping runs to actually...
   Recommendation: Add a lightweight lock (reuse cron.py's pattern, corrected per Finding 1, or paper.py's msvcrt-based lock) to settlement_monitor.py's entry point, independent of whatever Task Scheduler's actual configured overlap policy is.
   Full record: audit/AUDIT_REPORT.json (id AUD-0051), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-20: Added a lock, reusing the safe_io.CrossProcessLock
+  shared primitive built for AUD-0006 above (per user's AskUserQuestion
+  choice, rather than a bespoke copy-pasted implementation). Split
+  run_settlement_monitor() into a thin public wrapper (acquires a new
+  _SETTLEMENT_LOCK_PATH lock for the FULL run duration -- up to 120min,
+  mirroring cron.py's LOCK_PATH pattern of one acquire per whole cycle, not
+  per-write -- then delegates to the unchanged monitoring loop, now renamed
+  _run_settlement_monitor_loop) so the existing ~90-line polling loop body
+  needed zero re-indentation/risk of an introduced bug. A second overlapping
+  invocation now fails to acquire the lock and returns immediately (logged
+  at ERROR) instead of racing the first on write_settlement_signals' full-
+  file overwrite. New tests (tests/test_settlement_monitor.py::
+  TestSettlementMonitorLock, 2 cases): positive control confirms the loop
+  DOES run normally (calls _run_settlement_monitor_loop with the right
+  args) so the second test's "does NOT run" assertion is actually
+  discriminating; the second test pre-holds the lock and confirms the loop
+  is skipped with an ERROR log. Mutation-tested by reverting the wrapper
+  back to a direct call: the skip-test then fails (loop runs anyway,
+  `calls` list is non-empty).
+
+  Independent opus review (effort:high, single agent covering all 4 items
+  in this batch, since they share cron.py/main.py/settlement_monitor.py/
+  paper.py and the new safe_io.CrossProcessLock primitive) found 9 issues
+  total across the batch, all fixed (see AUD-0006's note above for the one
+  specific to that entry, and AUD-0030/AUD-0039's own notes for theirs).
+  The 2 remaining findings were about the shared safe_io.CrossProcessLock
+  primitive itself (safe_io.py), not specific to this entry, but fixed
+  here since this is where the primitive was first exercised end-to-end:
+  (a) LOW -- CrossProcessLock.acquire()'s docstring promised "never raises"
+  but a BaseException (e.g. KeyboardInterrupt) landing inside the retry
+  sleep -- a real window on every call, up to `timeout` seconds -- used to
+  propagate with the file handle left open (relying on CPython's
+  refcounting GC to eventually finalize/close it, not something to rely on
+  for an OS-level byte-range lock). Fixed by wrapping the retry loop in
+  try/except BaseException: close the handle, then re-raise. New test
+  (tests/test_safe_io.py::TestCrossProcessLock::
+  test_acquire_closes_handle_on_unexpected_exception_during_contention)
+  directly checks `fh.closed` on the tracked handle rather than inferring
+  closure indirectly (an earlier draft of this test tried "can a second
+  lock acquire afterward," which passed even against the unfixed code,
+  since CPython's prompt refcounting incidentally finalizes/closes an
+  unreferenced file object even without an explicit .close() -- that
+  masked the exact gap this fix closes). Mutation-tested: reverting the
+  try/except makes the direct `fh.closed` check fail. (b) LOW/vacuous
+  test -- the original TestCrossProcessLock::
+  test_two_threads_racing_have_exactly_one_winner asserted
+  results.count(True) == 2, which is true both under a correctly-serialized
+  lock (each thread wins in turn) AND under acquire() gutted to
+  unconditionally `return True` with no locking at all -- the assertion
+  never actually checked mutual exclusion. Renamed to
+  test_two_threads_racing_both_eventually_acquire_but_never_overlap and
+  rewrote to record each hold's [enter, exit) interval and assert they
+  never overlap. Mutation-tested by gutting acquire() to `return True`
+  unconditionally: the new version correctly fails (intervals overlap); the
+  old version would have passed. Also fixed as pure cleanup, no separate
+  test needed: a stale doc cross-reference in safe_io.py (10s -> 30s, see
+  AUD-0030's own note), a hardcoded 5s test-only timeout in
+  settlement_monitor.py hoisted to a module constant
+  (_SETTLEMENT_LOCK_TIMEOUT_SECONDS) so tests/test_settlement_monitor.py's
+  contended-skip test can monkeypatch it down to 0.2s instead of burning 5
+  real seconds, and a stream-of-consciousness draft comment left in a test
+  docstring trimmed to its conclusion.
+
+  Full scoped suite (531 tests across cron/settlement/paper/safe_io + every
+  file monkeypatching LOCK_PATH + the bare-os.replace guard, re-counted
+  fresh via --collect-only at writing time) passes; ruff+ruff-format+mypy
+  clean via the actual pre-commit hooks. Commit: (added post-push).
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] tracker.count_settled_signal_rows() builds SQL via f-string interpolation of column/json_key parameters
 Priority: LOW (audit id AUD-0052, status CONFIRMED, confidence HIGH, evidence E1)

@@ -1010,3 +1010,109 @@ def test_cron_reads_settlement_signals_with_generous_staleness_window(cron_env):
     # 4x/day cadence) -- and stay well under 24h so it can't reach into a
     # prior trading day's now-irrelevant signals.
     assert 610 <= captured["max_age_minutes"] < 1440
+
+
+@pytest.mark.integration
+class TestKillSwitchOverrideRenameRace:
+    """AUD-0039 regression: cmd_cron's kill-switch override used unguarded
+    Path.rename() (raises FileExistsError if the destination already
+    exists) instead of os.replace(), and the stale-.tmp-restore guard only
+    handled the case where .kill_switch was ABSENT -- an orphaned
+    .kill_switch.tmp left behind by a watchdog hard-kill (os._exit bypasses
+    finally blocks) combined with a black-swan check re-creating
+    .kill_switch during that same aborted cycle left the orphan on disk
+    forever, so the next manual override's move-aside step crashed with an
+    uncaught FileExistsError on Windows."""
+
+    def test_orphaned_tmp_with_kill_switch_present_is_discarded_not_crashed(
+        self, cron_env, monkeypatch
+    ):
+        """The exact audit scenario: .kill_switch.tmp orphaned AND
+        .kill_switch re-created both present on disk. Mutation-tested against
+        the original code (old guard `if _kill_stale_tmp.exists() and not
+        _kill_path.exists()` plus plain Path.rename() at the move-aside
+        step): this scenario skips cleanup entirely, the orphan survives to
+        the move-aside step, and Path.rename() raises
+        `FileExistsError [WinError 183]` -- confirmed by reverting both
+        changes and re-running this test, which reproduces that exact crash."""
+        tmp_path, client, main, paper = cron_env
+
+        ks_path = tmp_path / ".kill_switch"
+        ks_tmp_path = tmp_path / ".kill_switch.tmp"
+        ks_path.write_text('{"reason": "test halt"}')
+        ks_tmp_path.write_text("orphaned")  # left behind by a prior hard-kill
+
+        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "y")
+
+        main.cmd_cron._called_from_loop = False
+        try:
+            main.cmd_cron(client)  # must not raise FileExistsError
+        except SystemExit:
+            # A completed override cycle sys.exit(0)s when not loop-mode --
+            # unrelated to this test, same as other interactive-override
+            # tests in this file (e.g. test_kill_switch_still_skips_settlement).
+            pass
+        finally:
+            main.cmd_cron._called_from_loop = False
+
+        # Orphan discarded, not left sitting around forever.
+        assert not ks_tmp_path.exists(), (
+            "orphaned .kill_switch.tmp must be discarded when .kill_switch "
+            "already exists, not left on disk indefinitely"
+        )
+        # Override is one-shot: kill switch itself must still be present
+        # (restored) after the cycle, halt still enforced for next run.
+        assert ks_path.exists(), (
+            "kill switch must still be active after the one-shot override "
+            "cycle completes"
+        )
+
+    def test_stale_tmp_without_kill_switch_still_restores_as_before(
+        self, cron_env, monkeypatch
+    ):
+        """Regression check: the original restore-from-orphan path (no
+        .kill_switch present, only the stale .tmp) must keep working
+        unchanged after restructuring the guard into an if/else."""
+        tmp_path, client, main, paper = cron_env
+
+        ks_path = tmp_path / ".kill_switch"
+        ks_tmp_path = tmp_path / ".kill_switch.tmp"
+        ks_tmp_path.write_text('{"reason": "test halt"}')  # orphan, no .kill_switch
+
+        # Restoring puts .kill_switch back, so the override prompt WILL
+        # fire -- decline it to keep this test focused on the restore step
+        # alone.
+        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "n")
+
+        main.cmd_cron._called_from_loop = False
+        try:
+            main.cmd_cron(client)
+        finally:
+            main.cmd_cron._called_from_loop = False
+
+        assert ks_path.exists(), ".kill_switch must be restored from the stale .tmp"
+        assert not ks_tmp_path.exists(), "the .tmp must be consumed by the restore"
+
+    def test_override_without_any_orphan_still_completes_via_replace(
+        self, cron_env, monkeypatch
+    ):
+        """Baseline: a normal override cycle (no orphaned .tmp involved at
+        all) must still work after switching the move-aside/restore steps
+        from Path.rename() to os.replace()."""
+        tmp_path, client, main, paper = cron_env
+
+        ks_path = tmp_path / ".kill_switch"
+        ks_path.write_text('{"reason": "test halt"}')
+
+        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "y")
+
+        main.cmd_cron._called_from_loop = False
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+        finally:
+            main.cmd_cron._called_from_loop = False
+
+        assert ks_path.exists(), "kill switch must be restored after the override"
+        assert not (tmp_path / ".kill_switch.tmp").exists()

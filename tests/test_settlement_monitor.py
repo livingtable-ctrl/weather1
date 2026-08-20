@@ -638,3 +638,84 @@ class TestMetarSettlementCalibration:
 
         assert len(signals) == 1
         assert signals[0]["confidence"] == pytest.approx(0.88)
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="cross-process lock uses msvcrt (Windows-only)"
+)
+class TestSettlementMonitorLock:
+    """AUD-0051: settlement_monitor.py had no application-level guard against
+    two overlapping runs -- protection relied entirely on Windows Task
+    Scheduler's (never explicitly set) default overlap policy. Held for the
+    whole run, same pattern as cron.py's LOCK_PATH."""
+
+    def test_run_settlement_monitor_acquires_lock_and_runs_loop(
+        self, tmp_path, monkeypatch
+    ):
+        """Positive control for the skip-test below: proves the loop DOES
+        run in the normal (uncontended) case, so a later assertion that it
+        did NOT run under contention is actually discriminating."""
+        import settlement_monitor as sm
+
+        lock_path = tmp_path / ".settlement_monitor.lock"
+        monkeypatch.setattr(sm, "_SETTLEMENT_LOCK_PATH", lock_path)
+
+        calls = []
+        monkeypatch.setattr(
+            sm,
+            "_run_settlement_monitor_loop",
+            lambda client, duration_minutes: calls.append((client, duration_minutes)),
+        )
+
+        client = object()
+        sm.run_settlement_monitor(client, duration_minutes=5)
+
+        assert calls == [(client, 5)]
+
+        from safe_io import CrossProcessLock
+
+        # Lock must be released afterward -- immediately re-acquirable.
+        lock = CrossProcessLock(lock_path, timeout=2.0)
+        assert lock.acquire() is True
+        lock.release()
+
+    def test_second_call_skips_loop_while_first_holds_lock(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """Mutation-tested: without the lock wrap in run_settlement_monitor,
+        this test's `calls` would be non-empty (the loop always runs) --
+        the assertion only holds because the fix makes an already-locked
+        instance skip immediately instead of racing the holder."""
+        import settlement_monitor as sm
+        from safe_io import CrossProcessLock
+
+        lock_path = tmp_path / ".settlement_monitor.lock"
+        monkeypatch.setattr(sm, "_SETTLEMENT_LOCK_PATH", lock_path)
+        # Opus review: don't burn 5 real seconds waiting out the production
+        # contention deadline just to prove the skip path.
+        monkeypatch.setattr(sm, "_SETTLEMENT_LOCK_TIMEOUT_SECONDS", 0.2)
+
+        calls = []
+        monkeypatch.setattr(
+            sm,
+            "_run_settlement_monitor_loop",
+            lambda client, duration_minutes: calls.append(1),
+        )
+
+        holder = CrossProcessLock(lock_path, timeout=2.0)
+        assert holder.acquire() is True
+        try:
+            with caplog.at_level("ERROR"):
+                sm.run_settlement_monitor(object(), duration_minutes=5)
+        finally:
+            holder.release()
+
+        assert not calls, (
+            "the monitoring loop must not run while another instance holds "
+            "the exclusivity lock"
+        )
+        assert any(
+            "lock" in r.message.lower()
+            for r in caplog.records
+            if r.levelname == "ERROR"
+        ), "must log at ERROR when skipping due to contention"

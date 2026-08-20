@@ -31,6 +31,16 @@ _log = logging.getLogger(__name__)
 _SIGNALS_PATH = _project_root() / "data" / "settlement_signals.json"
 _SIGNALS_PATH.parent.mkdir(exist_ok=True)
 
+# AUD-0051: no application-level guard previously existed against two
+# overlapping runs -- protection relied entirely on Windows Task Scheduler's
+# (never explicitly set) default "don't start a new instance" policy. Held
+# for the full duration of run_settlement_monitor() below, same pattern as
+# cron.py's LOCK_PATH (acquire once for the whole cycle, not per-write).
+_SETTLEMENT_LOCK_PATH = _project_root() / "data" / ".settlement_monitor.lock"
+# Module-level (not inline) so tests can monkeypatch it down to skip the
+# real wait when proving the contended-skip path (opus review).
+_SETTLEMENT_LOCK_TIMEOUT_SECONDS = 5.0
+
 # Short code (this module's convention) → full city name (metar.py's and
 # weather_markets.py's convention) — the only hand-maintained mapping needed
 # now; station/tz are derived below instead of duplicated a third time. A
@@ -492,7 +502,40 @@ def check_city_settlement(city: str, active_tickers: list[dict]) -> list[dict]:
 
 def run_settlement_monitor(client, duration_minutes: int = 120) -> None:
     """
-    Run the settlement lag monitoring loop.
+    Run the settlement lag monitoring loop, exclusively.
+
+    AUD-0051: the daily Task Scheduler entry has no application-level
+    overlap guard of its own -- it relies entirely on Task Scheduler's
+    (never explicitly set) default "don't start a new instance" policy,
+    which an operator could silently change. Held for the full duration of
+    the monitoring loop (mirrors cron.py's LOCK_PATH: acquire once for the
+    whole run, not per-write) so two overlapping invocations can never both
+    proceed -- the second one skips immediately instead of racing the first
+    on write_settlement_signals' full-file overwrite.
+    """
+    from safe_io import CrossProcessLock
+
+    lock = CrossProcessLock(
+        _SETTLEMENT_LOCK_PATH, timeout=_SETTLEMENT_LOCK_TIMEOUT_SECONDS
+    )
+    if not lock.acquire():
+        _log.error(
+            "Settlement lag monitor: could not acquire exclusivity lock (%s) "
+            "-- another instance may already be running; skipping this run",
+            _SETTLEMENT_LOCK_PATH,
+        )
+        return
+    try:
+        _run_settlement_monitor_loop(client, duration_minutes)
+    finally:
+        lock.release()
+
+
+def _run_settlement_monitor_loop(client, duration_minutes: int) -> None:
+    """
+    The actual monitoring loop -- split out of run_settlement_monitor so the
+    lock-acquire/release wrapper (AUD-0051) stays a thin, independently
+    testable layer around it.
 
     Polls METAR every _POLL_INTERVAL_SECONDS seconds, writing signals for any
     markets where the outcome has been confirmed.
