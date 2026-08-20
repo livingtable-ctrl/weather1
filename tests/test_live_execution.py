@@ -1703,6 +1703,91 @@ class TestPollPendingOrdersExtended:
         # is a credit of -0.90, not a lingering positive "loss".
         assert execution_log.get_today_live_loss() == pytest.approx(-0.90, rel=1e-3)
 
+    def test_settlement_uses_taker_fee_for_market_order_type(self):
+        """AUD-0003: an entry filled via a taker (IOC) order -- order_type=
+        'market', e.g. cmd_order's live buys or the auto-trader's
+        taker-cross reprice fallback -- must be settled with the real
+        KALSHI_FEE_RATE at natural market expiry, not the $0
+        KALSHI_MAKER_FEE_RATE every row used to get unconditionally."""
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import MagicMock
+
+        import execution_log
+        import main
+        from utils import KALSHI_FEE_RATE
+
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            order_type="market",
+            status="filled",
+            live=True,
+            fill_quantity=2,
+        )
+
+        close_time = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+            "close_time": close_time,
+        }
+
+        main._poll_pending_orders(mock_client, config={})
+
+        orders = execution_log.get_recent_orders(limit=10)
+        order = orders[0]
+        # pnl = 2 * (1 - 0.55) * (1 - KALSHI_FEE_RATE), NOT the maker-fee
+        # 0.90 test_settlement_recorded_for_finalized_market pins for the
+        # identical price/quantity with order_type='limit' (the default).
+        expected = 2 * (1 - 0.55) * (1 - KALSHI_FEE_RATE)
+        assert order["pnl"] == pytest.approx(expected, rel=1e-3)
+        assert expected != pytest.approx(
+            0.90, rel=1e-3
+        )  # mutation guard: fee must differ from maker
+
+    def test_settlement_defaults_to_taker_fee_for_unrecognized_order_type(self):
+        """AUD-0003: a missing/unrecognized order_type must NOT be assumed
+        free (maker) -- the safe failure direction is understating P&L, not
+        overstating it (the exact risk the audit flagged: an inflated P&L
+        makes the daily-loss circuit breaker less likely to trip when it
+        legitimately should)."""
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import MagicMock
+
+        import execution_log
+        import main
+        from utils import KALSHI_FEE_RATE
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="filled",
+            live=True,
+            fill_quantity=2,
+        )
+        # Simulate a pre-fix / legacy row with no meaningful order_type.
+        with execution_log._conn() as con:
+            con.execute("UPDATE orders SET order_type = NULL WHERE id = ?", (row_id,))
+
+        close_time = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+            "close_time": close_time,
+        }
+
+        main._poll_pending_orders(mock_client, config={})
+
+        order = execution_log.get_recent_orders(limit=10)[0]
+        expected = 2 * (1 - 0.55) * (1 - KALSHI_FEE_RATE)
+        assert order["pnl"] == pytest.approx(expected, rel=1e-3)
+
 
 class TestPlaceLiveOrderDedup:
     """_place_live_order must return (False, 0.0) when the ticker was already

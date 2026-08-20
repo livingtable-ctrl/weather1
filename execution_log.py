@@ -12,6 +12,7 @@ import json
 import logging
 import sqlite3
 import threading as _el_threading
+import time as _el_time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -539,7 +540,17 @@ def get_live_settlement_streak() -> tuple[str, int, float]:
     record_live_early_exit on that exact row), and excluding it here would
     silently drop real losses/wins from the streak the same way it used to
     drop them from get_live_pnl_summary's totals before that was fixed.
-    Matches get_live_pnl_summary's own (already-correct) unfiltered shape.
+
+    AUD-0057 review followup: DOES exclude exit_reason='unmatched_sell' rows
+    (mirroring get_live_pnl_summary/export_live_tax_csv's own exclusion) --
+    that row's pnl=0.0 is a documented non-real placeholder (cmd_order has
+    no tracked entry_price to compute a real one for an unmatched sell), and
+    this function is the one consumer of orders.pnl that feeds an actual
+    live risk GATE (paper.is_streak_paused() via LiveTradingGate.check()),
+    not just a dashboard/export display. Left unfiltered, a placeholder
+    'neutral, 0-length streak' settlement landing right after a real
+    consecutive-loss run would silently reset the streak the circuit
+    breaker is watching, exactly when it should be tripping.
 
     Unlike get_today_live_loss()/get_live_realized_loss_since(), this does
     NOT catch and fail closed internally -- there is no natural "worse than
@@ -587,6 +598,7 @@ def get_live_settlement_streak() -> tuple[str, int, float]:
         rows = con.execute(
             "SELECT pnl, ticker, close_time, placed_at, filled_at FROM orders "
             "WHERE live = 1 AND settled_at IS NOT NULL AND pnl IS NOT NULL "
+            "AND (exit_reason IS NULL OR exit_reason != 'unmatched_sell') "
             # Opus-review-caught (L4): `id` tiebreaker for a deterministic
             # order when two settlements land in the same instant -- paper's
             # get_current_streak() sorts a stable Python list, this is the
@@ -937,6 +949,126 @@ def record_live_early_exit(
     return cur.rowcount > 0
 
 
+# AUD-0026: distinct from _degraded_flag_path (which means "daily_live_loss
+# writes are untrustworthy today") -- this one accumulates individual rows
+# that record_live_early_exit_with_retry could not settle even after
+# retrying, each of which is left in the exact live=1/status='filled'/
+# settled_at=NULL/closes_position_id=NULL shape get_filled_unsettled_live_orders()
+# reads as a phantom open position. Not date-scoped (unlike the degraded
+# flag) since a given row's failure doesn't stop mattering at UTC midnight.
+def _unsettled_exit_flag_path() -> Path:
+    return DB_PATH.parent / "execution_log_unsettled_exit_rows.json"
+
+
+def record_live_early_exit_with_retry(
+    order_id: int,
+    exit_price: float,
+    exit_reason: str,
+    pnl: float,
+    retries: int = 3,
+) -> bool:
+    """Best-effort wrapper around record_live_early_exit for callers where a
+    failed write leaves a row permanently in the dangerous phantom-position
+    shape described above (currently only cmd_order's unmatched-sell
+    fallback). The underlying UPDATE is guarded on `settled_at IS NULL`, so
+    retrying after a transient failure (e.g. a momentary disk/WAL hiccup --
+    ordinary lock contention is already absorbed by sqlite3.connect's own
+    30s busy-timeout before an exception ever reaches this function, per
+    add_live_loss's docstring) is safe and cannot double-settle the row.
+
+    If every attempt still fails, appends a record to a persistent sentinel
+    flag file (mirroring _set_degraded_flag's pattern) instead of only
+    logging a warning that scrolls away, so the still-unsettled row has a
+    durable, greppable trace for an operator to find.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            applied = record_live_early_exit(order_id, exit_price, exit_reason, pnl)
+            if attempt > 1:
+                _log.info(
+                    "record_live_early_exit_with_retry: order %d settled on "
+                    "attempt %d/%d",
+                    order_id,
+                    attempt,
+                    retries,
+                )
+            return applied
+        except Exception as exc:
+            last_exc = exc
+            _log.warning(
+                "record_live_early_exit_with_retry: order %d attempt %d/%d failed: %s",
+                order_id,
+                attempt,
+                retries,
+                exc,
+            )
+            if attempt < retries:
+                _el_time.sleep(0.5 * attempt)
+
+    _log.error(
+        "record_live_early_exit_with_retry: order %d still unsettled after "
+        "%d attempts (%s) -- row left live=1/status='filled'/settled_at=NULL, "
+        "writing sentinel flag",
+        order_id,
+        retries,
+        last_exc,
+    )
+    try:
+        flag_path = _unsettled_exit_flag_path()
+        existing: list = []
+        if flag_path.exists():
+            try:
+                existing = json.loads(flag_path.read_text(encoding="utf-8"))
+                if not isinstance(existing, list):
+                    existing = []
+            except (json.JSONDecodeError, OSError):
+                existing = []
+        existing.append(
+            {
+                "order_id": order_id,
+                "exit_reason": exit_reason,
+                "error": str(last_exc),
+                "flagged_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        flag_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    except Exception as flag_exc:
+        _log.error(
+            "record_live_early_exit_with_retry: could not even write "
+            "sentinel flag for order %d: %s",
+            order_id,
+            flag_exc,
+        )
+    return False
+
+
+def get_unsettled_exit_flags() -> list[dict]:
+    """Read back every row record_live_early_exit_with_retry could not
+    settle even after retrying, if any.
+
+    Opus review follow-up (AUD-0026): the sentinel file this reads had no
+    reader anywhere in the codebase -- a file nobody ever checks does not
+    actually deliver on "the operator is alerted to" (this fix's own design
+    goal), since the underlying row stays in the exact phantom-open-position
+    shape the automated exit scanner could act on. Called from
+    order_executor._poll_pending_orders() once per watch/cron cycle so a
+    lingering flag surfaces as a recurring warning, not just a one-time
+    console line an operator could miss.
+
+    Returns [] (not an error) if the file is missing, empty, or corrupt --
+    this is a best-effort visibility aid, not itself a safety gate.
+    """
+    try:
+        flag_path = _unsettled_exit_flag_path()
+        if not flag_path.exists():
+            return []
+        flagged = json.loads(flag_path.read_text(encoding="utf-8"))
+        return flagged if isinstance(flagged, list) else []
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
 def record_live_partial_exit(order_id: int, filled_count: int) -> bool:
     """Reconcile an open live position's tracked size after an IOC exit
     order only partial-fills (matches what's immediately available, cancels
@@ -1082,6 +1214,25 @@ def export_live_tax_csv(path: str, tax_year: int | None = None) -> int:
       referenced position row, and fill_quantity (set by log_order_result
       when the IOC fill came back) gives the actual sold amount instead of
       what was requested.
+
+    AUD-0057 + opus review follow-up: cmd_order's live sell path settles an
+    unmatched sell (no tracked entry_price to compute real P&L against) with
+    a documented pnl=0.0 neutral placeholder. An earlier version of this fix
+    excluded those rows entirely -- reviewed and reversed: a real sell DID
+    execute on the exchange, and a tax export silently OMITTING a genuine
+    disposition (with no count or note anywhere) is a worse failure than
+    including it, and is exactly the kind of gap an operator reconciling
+    against a Kalshi statement would have no way to notice from inside this
+    tool. These rows are now INCLUDED but distinctly labeled: outcome is
+    written as "unmatched_sell_unknown_pnl" (not "early_exit", which would
+    otherwise misreport it identically to a real early exit) and pnl is
+    written as an empty cell rather than a misleading "0.0", so it reads as
+    "needs manual entry" rather than "measured and zero". Dashboard
+    aggregates (get_live_pnl_summary) still exclude the placeholder from
+    their SUMs -- unlike a line-item CSV, a rolled-up total has no column to
+    flag an unknown value in, so silently including a fabricated $0 there
+    would be strictly worse than omitting it from the sum.
+
     Returns count of rows written.
     """
     import csv
@@ -1092,7 +1243,7 @@ def export_live_tax_csv(path: str, tax_year: int | None = None) -> int:
             SELECT o.placed_at, o.ticker, o.side,
                    COALESCE(o.fill_quantity, o.quantity) AS quantity,
                    COALESCE(pos.price, o.price) AS price,
-                   o.outcome_yes, o.pnl, o.settled_at
+                   o.outcome_yes, o.pnl, o.settled_at, o.exit_reason
             FROM orders o
             LEFT JOIN orders pos ON pos.id = o.closes_position_id
             WHERE o.live = 1 AND o.settled_at IS NOT NULL AND o.pnl IS NOT NULL
@@ -1128,10 +1279,19 @@ def export_live_tax_csv(path: str, tax_year: int | None = None) -> int:
             # doesn't exist. `if row["outcome_yes"] else "no"` would silently
             # write "no" here (None is falsy), reporting a fabricated result
             # on a real tax-relevant realized gain/loss.
-            if row["outcome_yes"] is None:
+            # AUD-0057 + opus review follow-up: an unmatched-sell row must
+            # be distinguishable from a genuine early exit, not just from a
+            # genuine market resolution -- both share outcome_yes IS NULL,
+            # but only the former has no real pnl to report at all.
+            if row["exit_reason"] == "unmatched_sell":
+                outcome = "unmatched_sell_unknown_pnl"
+                pnl_cell = ""
+            elif row["outcome_yes"] is None:
                 outcome = "early_exit"
+                pnl_cell = row["pnl"]
             else:
                 outcome = "yes" if row["outcome_yes"] else "no"
+                pnl_cell = row["pnl"]
             writer.writerow(
                 [
                     row["placed_at"][:10],
@@ -1140,7 +1300,7 @@ def export_live_tax_csv(path: str, tax_year: int | None = None) -> int:
                     row["quantity"],
                     row["price"],
                     outcome,
-                    row["pnl"],
+                    pnl_cell,
                     row["settled_at"],
                 ]
             )
@@ -1151,25 +1311,46 @@ def get_live_pnl_summary() -> dict:
     """Return live order P&L summary for the dashboard.
 
     Returns:
-        today_pnl:     sum of pnl for live orders settled today (UTC)
-        total_pnl:     sum of all settled live order pnl
+        today_pnl:     sum of pnl for live orders settled today (UTC),
+                       excluding exit_reason='unmatched_sell' placeholders
+        total_pnl:     sum of all settled live order pnl, same exclusion
         open_count:    count of live orders with status='pending'
-        settled_count: count of live orders with settled_at IS NOT NULL
+        settled_count: count of live orders with settled_at IS NOT NULL --
+                       NOT exclusion-filtered (see AUD-0057 note below)
+
+    AUD-0057: both SUMs exclude exit_reason='unmatched_sell' rows -- see
+    export_live_tax_csv's matching docstring note. Those rows carry a
+    documented pnl=0.0 placeholder (no tracked entry_price to compute a real
+    P&L against), which would otherwise silently read as a genuine $0
+    outcome in this dashboard summary.
+
+    Opus review follow-up: settled_count deliberately does NOT get the same
+    exclusion. An unmatched-sell row genuinely IS a settled live order (a
+    real sell hit the exchange) -- only its P&L is unknown/placeholder, not
+    its settled-ness. Applying the SUM exclusion via CASE (rather than a
+    WHERE-clause AND, which would have silently dropped it from
+    settled_count too) keeps that one true fact ("N live orders have
+    settled") accurate while still not counting the placeholder's $0
+    toward either P&L total.
     """
     init_log()
     today = datetime.now(UTC).strftime("%Y-%m-%d")
+    _real_pnl = (
+        "CASE WHEN exit_reason IS NULL OR exit_reason != 'unmatched_sell' "
+        "THEN pnl ELSE 0 END"
+    )
     with _conn() as con:
         today_row = con.execute(
-            """
-            SELECT COALESCE(SUM(pnl), 0.0) AS today_pnl
+            f"""
+            SELECT COALESCE(SUM({_real_pnl}), 0.0) AS today_pnl
             FROM orders
             WHERE live = 1 AND settled_at LIKE ? AND pnl IS NOT NULL
             """,
             (f"{today}%",),
         ).fetchone()
         totals_row = con.execute(
-            """
-            SELECT COALESCE(SUM(pnl), 0.0) AS total_pnl,
+            f"""
+            SELECT COALESCE(SUM({_real_pnl}), 0.0) AS total_pnl,
                    COUNT(*) AS settled_count
             FROM orders
             WHERE live = 1 AND settled_at IS NOT NULL AND pnl IS NOT NULL

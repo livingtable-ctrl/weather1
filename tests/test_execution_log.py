@@ -650,6 +650,102 @@ class TestLiveSettlement:
         assert rows[0]["outcome"] == "early_exit"
         assert rows[0]["outcome"] != "no"
 
+    def test_export_live_tax_csv_labels_unmatched_sell_distinctly(self):
+        """AUD-0057 + opus review follow-up: an unmatched live sell settles
+        with a documented pnl=0.0 PLACEHOLDER (no tracked entry_price to
+        compute a real P&L against). A real disposition genuinely hit the
+        exchange, so it must still appear in a tax export (silently omitting
+        it would leave a reconciling operator unable to explain a missing
+        trade) -- but distinctly labeled ("unmatched_sell_unknown_pnl", pnl
+        left BLANK, not "early_exit"/"0.0", which would misreport it as a
+        measured value)."""
+        placeholder_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=5,
+            price=0.45,
+            status="filled",
+            live=True,
+        )
+        execution_log.record_live_early_exit(
+            placeholder_id, 0.45, "unmatched_sell", 0.0
+        )
+        # Positive control: a genuine early exit (real 0.0 outcome, NOT
+        # unmatched_sell) must keep its ordinary "early_exit"/"0.0" labeling
+        # -- proving the special-case branch is scoped to exit_reason, not
+        # accidentally firing on any NULL-outcome_yes row.
+        real_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T80",
+            side="yes",
+            quantity=2,
+            price=0.50,
+            status="filled",
+            live=True,
+        )
+        execution_log.record_live_early_exit(real_id, 0.50, "stop_loss", 0.0)
+
+        out_path = str(Path(self._tmp.name).parent / "unmatched_sell_tax.csv")
+        count = execution_log.export_live_tax_csv(out_path)
+        assert count == 2
+        import csv
+
+        with open(out_path, newline="") as f:
+            rows = {r["ticker"]: r for r in csv.DictReader(f)}
+        assert rows["KXHIGH-25MAY15-T75"]["outcome"] == "unmatched_sell_unknown_pnl"
+        assert rows["KXHIGH-25MAY15-T75"]["pnl"] == ""
+        assert rows["KXHIGH-25MAY15-T80"]["outcome"] == "early_exit"
+        assert rows["KXHIGH-25MAY15-T80"]["pnl"] == "0.0"
+
+    def test_get_live_pnl_summary_excludes_unmatched_sell_placeholder(self):
+        """AUD-0057: an unmatched sell's placeholder pnl must not count
+        toward today_pnl/total_pnl as if it were measured.
+
+        Opus review follow-up: production code always writes this
+        placeholder as exactly pnl=0.0, which makes a SUM exclusion a no-op
+        against a 0.0-only fixture (deleting the exclusion clause would not
+        fail this test at all) -- this row is deliberately seeded with a
+        NONZERO pnl (5.0) so the assertion actually proves the SQL filters
+        by exit_reason, not by coincidentally summing zero either way.
+        settled_count is asserted separately: unlike the P&L sums, it must
+        NOT exclude this row -- a real sell genuinely did settle on the
+        exchange, only its P&L is unknown, not its settled-ness."""
+        from datetime import UTC, datetime
+
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        placeholder_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=5,
+            price=0.45,
+            status="filled",
+            live=True,
+        )
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET settled_at = ?, exit_reason = 'unmatched_sell', "
+                "pnl = 5.0 WHERE id = ?",
+                (f"{today}T10:00:00+00:00", placeholder_id),
+            )
+        # Positive control: a genuine settlement in the same window must
+        # still be counted, proving the exclusion is scoped to exit_reason,
+        # not accidentally dropping every row.
+        real_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T80",
+            side="yes",
+            quantity=1,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        execution_log.record_live_settlement(real_id, outcome_yes=True, pnl=0.42)
+
+        summary = execution_log.get_live_pnl_summary()
+        assert summary["today_pnl"] == pytest.approx(0.42)
+        assert summary["total_pnl"] == pytest.approx(0.42)
+        # Both rows genuinely settled -- the placeholder's UNKNOWN P&L must
+        # not make it disappear from the settled count entirely.
+        assert summary["settled_count"] == 2
+
 
 class TestRecordLiveExitFill:
     """record_live_exit_fill is the shared fee-adjusted-P&L/settlement
@@ -875,6 +971,156 @@ class TestRecordLiveExitFill:
         # Writer A's already-realized partial P&L.
         # Writer A: gross = 3 * (0.50 - 0.40) = 0.30; gain -> fee: 0.30*0.93 = 0.279
         assert execution_log.get_today_live_loss() == pytest.approx(-0.279, rel=1e-3)
+
+
+class TestRecordLiveEarlyExitWithRetry:
+    """AUD-0026: cmd_order's unmatched-sell fallback settles its own row via
+    this wrapper instead of a single unguarded attempt -- a failed write
+    used to leave the row in the exact live=1/status='filled'/
+    settled_at=NULL/closes_position_id=NULL shape
+    get_filled_unsettled_live_orders() reads as a phantom open position,
+    with only a warning log (no durable trace) if it happened."""
+
+    def setup_method(self):
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+        execution_log._unsettled_exit_flag_path().unlink(missing_ok=True)
+
+    def teardown_method(self):
+        import gc
+        import time
+
+        execution_log._initialized = False
+        execution_log._unsettled_exit_flag_path().unlink(missing_ok=True)
+        self._tmp.close()
+        gc.collect()
+        # Windows-only flakiness: a retried/failed write leaves an extra
+        # sqlite3.Connection object (opened inside the mocked/real
+        # record_live_early_exit call) whose file handle isn't always
+        # released by the time gc.collect() returns here, even though the
+        # object itself is unreachable -- a short retry loop is more robust
+        # than a single unlink attempt, unlike every other test class in
+        # this file that only ever opens one connection per test.
+        for _attempt in range(10):
+            try:
+                Path(self._tmp.name).unlink(missing_ok=True)
+                break
+            except PermissionError:
+                gc.collect()
+                time.sleep(0.05)
+
+    def _unmatched_sell_row(self):
+        return execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=5,
+            price=0.45,
+            status="filled",
+            live=True,
+        )
+
+    def test_succeeds_on_first_attempt_writes_no_flag(self):
+        row_id = self._unmatched_sell_row()
+        result = execution_log.record_live_early_exit_with_retry(
+            row_id, 0.45, "unmatched_sell", 0.0
+        )
+        assert result is True
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT settled_at, exit_reason FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["settled_at"] is not None
+        assert row["exit_reason"] == "unmatched_sell"
+        assert not execution_log._unsettled_exit_flag_path().exists()
+
+    def test_recovers_after_transient_failures_within_retry_budget(self, monkeypatch):
+        """A write that fails twice then succeeds on the 3rd attempt (within
+        the default retries=3 budget) must end up settled with no flag file
+        -- proves the retry loop actually re-attempts the real write rather
+        than giving up after one failure."""
+        monkeypatch.setattr(execution_log._el_time, "sleep", lambda _s: None)
+        real_fn = execution_log.record_live_early_exit
+        calls = {"n": 0}
+
+        def _flaky(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise sqlite3.OperationalError("simulated transient failure")
+            return real_fn(*args, **kwargs)
+
+        monkeypatch.setattr(execution_log, "record_live_early_exit", _flaky)
+        row_id = self._unmatched_sell_row()
+        result = execution_log.record_live_early_exit_with_retry(
+            row_id, 0.45, "unmatched_sell", 0.0, retries=3
+        )
+        assert result is True
+        assert calls["n"] == 3
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT settled_at FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["settled_at"] is not None
+        assert not execution_log._unsettled_exit_flag_path().exists()
+
+    def test_exhausted_retries_writes_sentinel_flag_and_returns_false(
+        self, monkeypatch
+    ):
+        """Every attempt failing must fail closed: the row stays unsettled
+        (still phantom-shaped) but a durable flag file records it instead of
+        only a warning log line that scrolls away."""
+
+        monkeypatch.setattr(execution_log._el_time, "sleep", lambda _s: None)
+
+        def _always_fails(*args, **kwargs):
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(execution_log, "record_live_early_exit", _always_fails)
+        row_id = self._unmatched_sell_row()
+
+        result = execution_log.record_live_early_exit_with_retry(
+            row_id, 0.45, "unmatched_sell", 0.0, retries=3
+        )
+
+        assert result is False
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT settled_at FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        # The row genuinely stays unsettled -- the retry wrapper cannot
+        # conjure a write the DB refuses; the flag file is the fallback.
+        assert row["settled_at"] is None
+        flag_path = execution_log._unsettled_exit_flag_path()
+        assert flag_path.exists()
+        flagged = json.loads(flag_path.read_text(encoding="utf-8"))
+        assert len(flagged) == 1
+        assert flagged[0]["order_id"] == row_id
+        assert flagged[0]["exit_reason"] == "unmatched_sell"
+        assert "database is locked" in flagged[0]["error"]
+
+    def test_flag_file_accumulates_across_multiple_failed_rows(self, monkeypatch):
+        """A second unrelated failure must append to the flag file, not
+        overwrite the first row's entry -- each is its own operational
+        anomaly an operator needs to see."""
+
+        def _always_fails(*args, **kwargs):
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(execution_log, "record_live_early_exit", _always_fails)
+        row_id_1 = self._unmatched_sell_row()
+        row_id_2 = self._unmatched_sell_row()
+
+        execution_log.record_live_early_exit_with_retry(
+            row_id_1, 0.45, "unmatched_sell", 0.0, retries=1
+        )
+        execution_log.record_live_early_exit_with_retry(
+            row_id_2, 0.45, "unmatched_sell", 0.0, retries=1
+        )
+
+        flagged = json.loads(
+            execution_log._unsettled_exit_flag_path().read_text(encoding="utf-8")
+        )
+        assert [f["order_id"] for f in flagged] == [row_id_1, row_id_2]
 
 
 class TestWasOrderedRecentlyCanceledSpelling:

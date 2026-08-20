@@ -777,6 +777,79 @@ class TestCmdOrderLiveRecording:
         # -- the exact bug class this fix resolves.
         assert paper.get_all_trades() == []
 
+    def test_live_sell_partial_fill_settles_own_exit_row_pnl(self, monkeypatch):
+        """AUD-0028: a PARTIAL matched-sell fill must settle the sell
+        order's OWN row (not just the position row), mirroring
+        order_executor._exit_live_position's identical partial-fill branch
+        -- otherwise this sold lot's P&L never gets its own tax-CSV row and
+        never counts toward get_live_pnl_summary, reproducing the
+        'aggregate-only P&L' bug an earlier same-day commit fixed for the
+        automated exit path."""
+        import execution_log
+        import main
+        from kalshi_client import PROD_BASE
+
+        position_id = execution_log.log_order(
+            ticker="KXHIGH-NYC-26APR17-T70",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        execution_log.log_order_result(position_id, status="filled", fill_quantity=10)
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = None
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit_partial",
+            # IOC order that only matched 6 of the 10 requested before the
+            # remainder was auto-canceled -- Kalshi reports this as
+            # "canceled" with a nonzero fill count.
+            "status": "canceled",
+            "fill_count_fp": "6.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "10", "0.60"]
+            )
+
+        with execution_log._conn() as con:
+            position_row = con.execute(
+                "SELECT settled_at, fill_quantity FROM orders WHERE id = ?",
+                (position_id,),
+            ).fetchone()
+            exit_row = con.execute(
+                "SELECT settled_at, exit_reason, pnl, closes_position_id "
+                "FROM orders WHERE id != ? ORDER BY id DESC LIMIT 1",
+                (position_id,),
+            ).fetchone()
+        # The POSITION stays open at its reduced size -- unchanged behavior.
+        assert position_row["settled_at"] is None
+        assert position_row["fill_quantity"] == 4
+        # The exit order's OWN row must now be settled with its own P&L --
+        # this is the actual fix; before it, exit_row["settled_at"] stayed
+        # NULL forever (harmless for open-position detection, since
+        # closes_position_id is set, but the P&L silently never surfaced
+        # anywhere queryable).
+        assert exit_row["settled_at"] is not None
+        assert exit_row["exit_reason"] == "manual_close"
+        assert exit_row["closes_position_id"] == position_id
+        # gross_pnl = 6 * (0.60 - 0.40) = 1.20; gain -> fee: 1.20*(1-0.07) = 1.116
+        assert exit_row["pnl"] == pytest.approx(1.116, rel=1e-3)
+        # Positive control: this settled row must be real enough to actually
+        # surface in the aggregate P&L summary, not just present in the DB.
+        summary = execution_log.get_live_pnl_summary()
+        assert summary["total_pnl"] == pytest.approx(1.116, rel=1e-3)
+
     def test_live_sell_with_no_matching_position_logs_live_no_paper_mirror(
         self, monkeypatch
     ):
@@ -836,12 +909,64 @@ class TestCmdOrderLiveRecording:
         assert _get_live_open_positions() == []
         assert paper.get_all_trades() == []
 
+    def test_unmatched_sell_settle_failure_warns_operator_not_reassures(
+        self, monkeypatch, capsys
+    ):
+        """Opus review follow-up (AUD-0026): when record_live_early_exit_with_retry
+        exhausts every retry, the row genuinely stays live=1/status='filled'/
+        settled_at=NULL -- an OPEN-position-shaped phantom, exactly what this
+        whole branch exists to prevent. A prior version of this fix printed
+        the reassuring 'recorded, not left open as a phantom position'
+        message UNCONDITIONALLY, ignoring the wrapper's return value --
+        proving the console must instead surface a clear warning naming the
+        still-unsettled row."""
+        import execution_log
+        import main
+        from kalshi_client import PROD_BASE
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = None
+        mock_client.place_order.return_value = {
+            "order_id": "ord_1",
+            "status": "executed",
+            "fill_count_fp": "5.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+        monkeypatch.setattr(
+            "execution_log.record_live_early_exit_with_retry",
+            lambda *args, **kwargs: False,
+        )
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "5", "0.60"]
+            )
+
+        out = capsys.readouterr().out
+        assert "not left open as a phantom position" not in out
+        assert "could not" in out.lower()
+        # Positive control: the row genuinely IS still unsettled (the mock
+        # never touched the real DB write) -- proves the warning reflects
+        # real state, not just a hardcoded string.
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT settled_at FROM orders ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert row["settled_at"] is None
+
     def test_live_order_placed_immediate_or_cancel(self, monkeypatch):
         """Opus review (2026-08-17): live orders must be placed IOC, not the
         GTC default -- a resting order has no path back to being recognized
         as a manageable position (no code teaches the general poller about
         closes_position_id), which would silently orphan the fix. Confirmed
         via AskUserQuestion as the deliberate trading-behavior tradeoff."""
+        import execution_log
         import main
         from kalshi_client import PROD_BASE
 
@@ -873,10 +998,19 @@ class TestCmdOrderLiveRecording:
         # not asserted to an exact value -- just that it's threaded through
         # for idempotency, not silently omitted.
         assert _kwargs.get("cycle")
+        # AUD-0003: order_type must mirror this IOC placement ("market", not
+        # "buy") -- order_executor._poll_pending_orders' settlement-fee
+        # selection reads this column to tell a taker entry from a maker one.
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT order_type FROM orders ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert row["order_type"] == "market"
 
     def test_demo_order_stays_good_till_canceled(self, monkeypatch):
         """Positive control for the test above: demo/paper mode keeps the
         prior GTC default -- only the live path's order semantics change."""
+        import execution_log
         import main
         from kalshi_client import DEMO_BASE
 
@@ -904,6 +1038,15 @@ class TestCmdOrderLiveRecording:
         assert _args == ("KXHIGH-NYC-26APR17-T70", "yes", "buy", 5, 0.40)
         assert "time_in_force" not in _kwargs
         assert _kwargs.get("cycle")
+        # AUD-0003 positive control: demo/paper keeps the GTC default, so
+        # order_type must stay "limit" (maker) -- proves the "market" value
+        # asserted in the live test above is genuinely IOC-driven, not a
+        # hardcoded constant.
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT order_type FROM orders ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert row["order_type"] == "limit"
 
     def test_live_buy_zero_fill_canceled_records_nothing(self, monkeypatch):
         """A genuinely dead IOC order (no match at all -- Kalshi status

@@ -20482,7 +20482,7 @@ Resolution 2026-08-18: _auto_place_trades' _open_trades_list now seeds with
   scope). See AUD-0001's Resolution note above for the full multi-file
   narrative and test results (shared fix).
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Settlement P&L for taker (IOC)-filled live orders is computed with the $0 maker fee, not Kalshi's real taker fee
+[RESOLVED 2026-08-19 -- fixed as part of batch-03] Settlement P&L for taker (IOC)-filled live orders is computed with the $0 maker fee, not Kalshi's real taker fee
 Priority: HIGH (audit id AUD-0003, status CONFIRMED, confidence VERY HIGH, evidence E1)
 Files: order_executor.py, main.py, utils.py, execution_log.py, tests/test_live_execution.py
 
@@ -20493,6 +20493,34 @@ Problem:
   Financial risk: Overstates real live P&L for any position entered via cmd_order (now always IOC/taker post e5331a8d) or via the auto-trader's taker-cross reprice path and later closed by market settlement rather...
   Recommendation: Track whether each live order row's ENTRY fill was maker or taker and select KALSHI_FEE_RATE vs KALSHI_MAKER_FEE_RATE accordingly in _poll_pending_orders' settlement formula, mirroring record_live_exit_fill's existing correct treatment of exits.
   Full record: audit/AUDIT_REPORT.json (id AUD-0003), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-19: order_type ("limit"=maker/GTC, "market"=taker/IOC) was
+  already the established convention everywhere in order_executor.py (every
+  entry call site sets it to mirror the actual time_in_force used, confirmed
+  by the existing test_taker_cross_logged_as_market_order_type) except one:
+  main.cmd_order's own log_order call wrote order_type=action ("buy"/"sell"
+  instead of "limit"/"market"), so re-checking this existing signal instead
+  of adding a new schema column needed only that one fix, not a migration.
+  _poll_pending_orders' settlement loop now selects KALSHI_MAKER_FEE_RATE
+  only when order.get("order_type") == "limit", KALSHI_FEE_RATE otherwise --
+  a missing/unrecognized value conservatively defaults to the taker (real)
+  fee, the safe failure direction per this finding's own risk framing
+  (overstated P&L, not understated, is what makes the daily-loss circuit
+  breaker under-trip). Scope confirmed to be exactly _poll_pending_orders'
+  natural-market-expiry settlement path; record_live_exit_fill's manual/
+  automated-exit fee formula was already correct (always real KALSHI_FEE_RATE,
+  since exits are always IOC) and untouched. New tests: order_executor.py's
+  taker-fee selection (2 tests, incl. unrecognized-order_type default) in
+  tests/test_live_execution.py; cmd_order's order_type now correctly
+  reflecting its actual TIF, live vs. demo (2 assertions added to existing
+  IOC/GTC tests) in tests/test_trading_gates.py. Full scoped suite
+  (tests/test_execution_log.py + test_live_execution.py + test_trading_gates.py
+  + test_batch01_live_position_visibility.py, 262 tests) + broader regression
+  sweep (test_hourly_markets.py, test_hurricane_gating.py,
+  test_hurricane_markets.py, test_snow_markets.py, test_trading.py, +352
+  tests) all pass. ruff + ruff-format + mypy clean via the actual pre-commit
+  hook. See AUD-0057's resolution note for the batch-wide independent opus
+  review outcome (8 findings, all addressed).
 
 [RESOLVED 2026-08-18 -- fixed as part of batch-01, same change as AUD-0001; see the Resolution note under AUD-0001's own entry above] LiveTradingGate's drawdown/streak risk-halt checks read only the paper ledger, never execution_log — blind to real live trading losses
 Priority: HIGH (audit id AUD-0005, status CONFIRMED, confidence VERY HIGH, evidence E2)
@@ -20916,7 +20944,7 @@ Problem:
   Recommendation: Add a lightweight reconciliation check (e.g. inside cmd_watch's cycle or a dedicated cron step) comparing client.get_positions() against tracked live positions, logging a warning on mismatch.
   Full record: audit/AUDIT_REPORT.json (id AUD-0025), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_order's unmatched-sell settlement fallback can leave the exact phantom-position shape its own fix was designed to prevent
+[RESOLVED 2026-08-19 -- fixed as part of batch-03] cmd_order's unmatched-sell settlement fallback can leave the exact phantom-position shape its own fix was designed to prevent
 Priority: MEDIUM (audit id AUD-0026, status CONFIRMED, confidence HIGH, evidence E1)
 Files: main.py, execution_log.py
 
@@ -20927,6 +20955,28 @@ Problem:
   Financial risk: Low direct financial risk (spurious exit orders should be rejected by Kalshi as there's no real position to sell), but produces a recurring, silent operational anomaly and log/alert noise, and...
   Recommendation: Add a bounded retry to this specific settle call, or fail closed by writing a distinct marker/flag file the operator is alerted to.
   Full record: audit/AUDIT_REPORT.json (id AUD-0026), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-19: per explicit design decision (AskUserQuestion), took
+  the combined "bounded retry + marker file" option over retry-only or
+  flag-only. New execution_log.record_live_early_exit_with_retry() wraps
+  record_live_early_exit with up to 3 attempts (short backoff between
+  retries -- ordinary lock contention is already absorbed by sqlite3.connect's
+  own 30s busy-timeout before an exception ever reaches this function, so a
+  retry here only helps the rarer non-lock transient failure); if every
+  attempt still fails, appends {order_id, exit_reason, error, flagged_at} to
+  a new persistent sentinel file (execution_log_unsettled_exit_rows.json,
+  mirroring the existing _degraded_flag_path pattern) instead of only a
+  warning log line, and logs at ERROR level. cmd_order's unmatched-sell
+  branch now calls this wrapper instead of a single bare attempt. New tests
+  (tests/test_execution_log.py, TestRecordLiveEarlyExitWithRetry, 4 tests):
+  first-attempt success writes no flag; recovers within the retry budget
+  after 2 simulated transient failures; exhausted retries writes the
+  sentinel flag and returns False (row genuinely stays unsettled -- the
+  wrapper cannot conjure a write the DB refuses); flag file accumulates
+  across multiple failed rows rather than overwriting. Full scoped suite +
+  broader regression sweep (see AUD-0003's resolution note for the exact
+  file list/counts) pass. ruff + ruff-format + mypy clean via the actual
+  pre-commit hook.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Settlement-lag force-close signal is wired to paper positions only, never live
 Priority: MEDIUM (audit id AUD-0027, status CONFIRMED, confidence VERY HIGH, evidence E1)
@@ -20940,7 +20990,7 @@ Problem:
   Recommendation: Extend the settlement-lag force-close block (or add a live-specific sibling) to also match against live open positions (execution_log's get_filled_unsettled_live_orders), mirroring how positions.py already unified paper/live for stop-loss/breakeven.
   Full record: audit/AUDIT_REPORT.json (id AUD-0027), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_order's manual partial live-sell never settles its own execution_log row, reproducing the 'aggregate-only P&L' bug the same day's earlier commit fixed for the automated path
+[RESOLVED 2026-08-19 -- fixed as part of batch-03] cmd_order's manual partial live-sell never settles its own execution_log row, reproducing the 'aggregate-only P&L' bug the same day's earlier commit fixed for the automated path
 Priority: MEDIUM (audit id AUD-0028, status CONFIRMED, confidence VERY HIGH, evidence E2)
 Files: main.py, execution_log.py
 
@@ -20948,6 +20998,28 @@ Problem:
   cmd_order's matched-position live-sell branch (main.py:4780-4793) calls only execution_log.record_live_exit_fill(_live_close_position, _record_count, price). For a partial fill, that function settles only the referenced POSITION row via record_live_partial_exit (correctly leaves settled_at NULL, position stays open) but never calls record_live_early_exit on the SELL order's own row (main.py's row_id, created earlier via log_order with closes_position_id set) — unlike order_executor._exit_live_position's equivalent partial-fill branch, which makes a required second call...
   Root cause: cmd_order's live-sell path (commit e5331a8d) was not updated to mirror _exit_live_position's two-call settlement pattern for partial fills, even though the same-day earlier commit 105cf4ce had just added exactly this second call to fix the identical bug on the automated path.
   Full record: audit/AUDIT_REPORT.json (id AUD-0028), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-19: cmd_order's matched-sell branch now mirrors
+  order_executor._exit_live_position's exact partial-fill pattern -- when
+  record_live_exit_fill returns fully_closed=False, a second call,
+  record_live_early_exit(row_id, price, "manual_close", _pnl), settles the
+  sell order's OWN row (not the position row, which correctly stays open at
+  its reduced size), each failure path logged with its own distinct message
+  (not conflated with the position-settlement try/except above it) since
+  this failure mode is lower-risk than AUD-0026's (closes_position_id is
+  already set on this row, so it can never be misread as a phantom open
+  position -- only its P&L would silently go missing from tax export/pnl
+  summary), so no retry/flag treatment was warranted here, just parity with
+  the existing automated-exit code path. New test
+  (tests/test_trading_gates.py::TestCmdOrderLiveRecording::
+  test_live_sell_partial_fill_settles_own_exit_row_pnl): a 10-contract sell
+  that only fills 6 asserts the position stays open at fill_quantity=4, the
+  exit order's own row is now settled with exit_reason="manual_close" and
+  the correct fee-adjusted pnl (gross 6*(0.60-0.40)=1.20, fee-adjusted
+  1.20*0.93=1.116), and (positive control) that pnl actually surfaces via
+  get_live_pnl_summary()'s total_pnl, not just present in the DB row. Full
+  scoped suite + broader regression sweep pass (see AUD-0003's resolution
+  note). ruff + ruff-format + mypy clean via the actual pre-commit hook.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] emos-train/emos-deactivate check cron-in-flight before an unbounded human confirmation prompt, not immediately before the write
 Priority: MEDIUM (audit id AUD-0029, status CONFIRMED, confidence HIGH, evidence E1)
@@ -21077,7 +21149,7 @@ Problem:
   Recommendation: Add a local 0 < price < 1 (or <=1) check alongside the existing count validation in cmd_order, before the confirmation prompt.
   Full record: audit/AUDIT_REPORT.json (id AUD-0040), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_order writes 'buy'/'sell' into execution_log's order_type column, which every other write site (and the schema's own comment) uses for 'market'/'limit'
+[RESOLVED 2026-08-19 -- fixed as a side effect of AUD-0003's batch-03 fix] cmd_order writes 'buy'/'sell' into execution_log's order_type column, which every other write site (and the schema's own comment) uses for 'market'/'limit'
 Priority: LOW (audit id AUD-0041, status CONFIRMED, confidence VERY HIGH, evidence E1)
 Files: main.py, execution_log.py, order_executor.py
 
@@ -21088,6 +21160,15 @@ Problem:
   Financial risk: None currently (no code reads this field for any decision), but any future feature distinguishing maker vs taker fills by order_type (a natural fix for the settlement-fee finding above) would need...
   Recommendation: Fix cmd_order's log_order() call to pass a real order_type value, mirroring order_executor's time_in_force-derived convention.
   Full record: audit/AUDIT_REPORT.json (id AUD-0041), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-19: this finding's own Recommendation ("mirroring
+  order_executor's time_in_force-derived convention") is exactly what
+  AUD-0003's batch-03 fix did -- cmd_order's log_order() call now passes
+  order_type=("market" if _is_live else "limit") instead of
+  order_type=action. Caught by the batch-03 opus review as an already-fixed
+  entry that hadn't been flipped to RESOLVED; see AUD-0003's own resolution
+  note above for the full fix/test/verification narrative (same commit,
+  same diff hunk).
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Far-tail rain blend's logged n_members metadata doesn't reflect the deterministic cross-product's true effective sample size
 Priority: LOW (audit id AUD-0043, status CONFIRMED, confidence HIGH, evidence E1)
@@ -21161,13 +21242,24 @@ Problem:
   Recommendation: No urgent action needed given CPython's refcounting behavior; consider explicit con.close() in a finally block if this code is ever run under an alternate Python implementation or under heavy concurrent connection churn.
   Full record: audit/AUDIT_REPORT.json (id AUD-0048), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] was_traded_today/was_recently_ordered/was_ordered_recently already treat any fill (entry OR exit) on a ticker+side as blocking re-entry -- pre-existing design, not changed by the closes_position_id-adding commits
+[CLOSED 2026-08-19 -- re-verified during batch-03, no code change needed] was_traded_today/was_recently_ordered/was_ordered_recently already treat any fill (entry OR exit) on a ticker+side as blocking re-entry -- pre-existing design, not changed by the closes_position_id-adding commits
 Priority: LOW (audit id AUD-0049, status CONFIRMED, confidence HIGH, evidence E2)
 Files: execution_log.py
 
 Problem:
   None of these three dedup-guard SQL queries filter on closes_position_id, unlike execution_log.get_today_live_spend() which explicitly excludes closes_position_id-set rows. Verified this is NOT a regression: a fresh entry-only row (no exit row at all) already independently trips all three guards, so the exit row is redundant to the blocking effect, not its cause.
   Full record: audit/AUDIT_REPORT.json (id AUD-0049), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-19: re-read was_recently_ordered/was_traded_today/
+  was_ordered_recently (execution_log.py) directly during batch-03 -- none
+  filter on closes_position_id, confirming the finding's own description.
+  Independently confirmed the "not a regression" claim: get_today_live_spend()
+  is the only one of the four dedup-adjacent guards that explicitly excludes
+  closes_position_id-set rows (and correctly needs to, since it sums dollar
+  spend), while these three are pure existence checks that a same-ticker
+  entry row alone already trips regardless of whether an exit row exists.
+  No code change made -- this is a correctly-classified non-finding, not a
+  deferred fix.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] trade_cycle.py's prewarm ThreadPoolExecutor tasks are not cancelled on timeout and outlive the phase that spawned them
 Priority: LOW (audit id AUD-0050, status CONFIRMED, confidence HIGH, evidence E1)
@@ -21243,7 +21335,7 @@ Problem:
   Recommendation: Add TestCmdOrderLiveRecording::test_live_sell_with_multiple_tracked_positions_closes_only_oldest, matching the style of the file's existing tests.
   Full record: audit/AUDIT_REPORT.json (id AUD-0055), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_order's unmatched-live-sell placeholder pnl=0.0 is indistinguishable from a real zero-P&L outcome in tax/P&L exports
+[RESOLVED 2026-08-19 -- fixed as part of batch-03] cmd_order's unmatched-live-sell placeholder pnl=0.0 is indistinguishable from a real zero-P&L outcome in tax/P&L exports
 Priority: LOW (audit id AUD-0057, status CONFIRMED, confidence HIGH, evidence E1)
 
 Problem:
@@ -21253,6 +21345,92 @@ Problem:
   Financial risk: Low -- affects only manual cmd_order sells with no matching tracked live position, an edge case; understates or overstates realized P&L reporting/tax records for that specific trade by an unknown...
   Recommendation: Consider excluding exit_reason='unmatched_sell' rows from get_live_pnl_summary()/export_live_tax_csv() aggregate totals, or flagging them for manual review, since this is a rare-but-real manual-trading edge case (selling a position the bot didn't open/track).
   Full record: audit/AUDIT_REPORT.json (id AUD-0057), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-19: per explicit design decision (AskUserQuestion), took
+  the "exclude from both" option over "keep in totals, flag for review" as
+  the initial implementation -- get_live_pnl_summary()'s SUMs excluded the
+  placeholder via a WHERE-clause AND, and export_live_tax_csv() dropped the
+  row from the CSV entirely.
+
+  Batch-wide independent opus review (effort:high, covering AUD-0003/0026/
+  0028/0049/0057 together) found 8 issues; all addressed:
+  (1) MEDIUM -- get_live_settlement_streak() (execution_log.py), the ONE
+  reader of orders.pnl that feeds an actual live risk GATE
+  (paper.is_streak_paused), was missed by the exclusion -- a placeholder
+  settlement could silently reset a real consecutive-loss streak right when
+  the circuit breaker should trip. Fixed: same exit_reason exclusion added
+  there too, docstring's now-stale "matches get_live_pnl_summary's
+  unfiltered shape" claim corrected. New test in
+  tests/test_batch01_live_position_visibility.py::TestLiveSettlementStreak.
+  (2) MEDIUM -- cmd_order ignored record_live_early_exit_with_retry's
+  return value and printed the reassuring "not left open as a phantom
+  position" message even when every retry failed. Fixed: cmd_order now
+  branches on the return value and prints a red warning naming the still-
+  unsettled row when settlement genuinely failed. New test in
+  tests/test_trading_gates.py.
+  (3) MEDIUM -- AUD-0026's new sentinel flag file had no reader anywhere,
+  so it didn't actually alert anyone despite that being the fix's own
+  design goal. Fixed (proportionate to the audit's own "low direct
+  financial risk" severity for AUD-0026 -- a warning, not a new trading-
+  blocking gate, which would be a separate, bigger decision): new
+  execution_log.get_unsettled_exit_flags() reader, called once per
+  order_executor._poll_pending_orders() cycle to log a recurring warning
+  while any row remains unsettled.
+  (4) LOW -- the SUM exclusion made settled_count silently drop
+  unmatched_sell rows too (via the shared WHERE clause), even though a real
+  sell DID settle on the exchange -- only its P&L is unknown, not its
+  settled-ness; the previous test also mutation-tested to a false pass
+  (deleting the exclusion changed nothing, since production always writes
+  this placeholder as exactly pnl=0.0, making a SUM exclusion look tested
+  when it wasn't). Fixed: get_live_pnl_summary()'s SUMs now use a
+  `CASE WHEN exit_reason != 'unmatched_sell' ... THEN pnl ELSE 0 END`
+  expression instead of a WHERE-clause exclusion, so settled_count counts
+  every genuinely settled row while the P&L sums still exclude the
+  placeholder. Test rewritten to seed a NONZERO placeholder pnl (proving the
+  filter is real, not coincidentally always summing zero) and to assert
+  settled_count == 2, not 1.
+  (5) LOW -- export_live_tax_csv()'s exclude-entirely approach silently
+  omits a REAL exchange disposition from a TAX record with no count or
+  note anywhere, which is arguably worse for tax-reconciliation accuracy
+  than a placeholder $0 was. Reversed for this function specifically (the
+  dashboard SUM exclusion above is kept, since a rolled-up total has no
+  column to flag an unknown value in): the row is now INCLUDED, labeled
+  distinctly as outcome="unmatched_sell_unknown_pnl" (not "early_exit",
+  which would misreport it identically to a real one), with pnl written as
+  an empty CSV cell rather than a misleading "0.0". Test rewritten
+  (test_export_live_tax_csv_labels_unmatched_sell_distinctly) to assert the
+  row IS present with the distinct label/blank pnl, paired with a positive
+  control proving a genuine early_exit keeps its ordinary labeling.
+  (6) LOW -- the retry loop's worst-case blocking window (~91.5s across 3
+  attempts) and an import newly sitting outside any try/except -- assessed,
+  no code change: the widened window only matters if the DB is already
+  broken (already a rare, degraded scenario per the underlying finding's
+  own "low financial risk" framing), and the bare import matches every
+  other local execution_log import already unwrapped elsewhere in the same
+  cmd_order function.
+  (7) LOW -- AUD-0041 ("cmd_order writes 'buy'/'sell' into order_type") was
+  fully fixed by AUD-0003's own change but its backlog entry was still
+  [OPEN]. Fixed: flipped to [RESOLVED], pointing at AUD-0003's resolution
+  note.
+  (8) LOW -- order_executor._poll_pending_orders' settlement formula
+  applies the taker fee only on WINNING outcomes (pre-existing convention,
+  not introduced by this batch, shared with backtest.py/_exit_live_position)
+  -- a taker-entered LOSS is recorded fee-free, understating that loss in
+  the same circuit-breaker-under-tripping direction AUD-0003 itself
+  describes, just on the losing side. Genuinely out of scope for this batch
+  (needs real-world verification of Kalshi's actual fee schedule against a
+  live/demo trade before the formula can be safely changed -- an empirical
+  question, not an implementation choice): filed as its own new backlog
+  entry rather than guessed at inline.
+
+  Final test counts (re-derived at commit time): full scoped suite
+  (tests/test_execution_log.py + test_live_execution.py +
+  test_trading_gates.py + test_batch01_live_position_visibility.py, 262
+  tests) + broader regression sweep (test_hourly_markets.py,
+  test_hurricane_gating.py, test_hurricane_markets.py, test_snow_markets.py,
+  test_trading.py, 614 tests total across both) all pass. ruff + ruff-format
+  + mypy clean via the actual pre-commit hook, re-run after every review
+  finding's fix.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] METAR calibration production-file write isolation relies on per-test monkeypatches, not an autouse structural guard
 Priority: LOW (audit id AUD-0058, status CONFIRMED, confidence VERY HIGH, evidence E1)
@@ -21728,3 +21906,41 @@ Problem:
   same recovery call, not re-derived per row -- worth its own careful
   design pass and test coverage rather than folding into an already-large
   review-response round.
+
+[OPEN 2026-08-19 -- found by independent opus review of batch-03 (AUD-0003), genuinely out of scope for that fix: requires real-world verification of Kalshi's actual fee schedule, not something to guess at while already mid-fix] order_executor._poll_pending_orders' natural-settlement P&L formula applies the taker fee only on WINNING outcomes, so a taker-entered position that LOSES at settlement is recorded fee-free, understating that loss
+Priority: LOW -- same-direction consequence as AUD-0003 (the daily-loss circuit breaker under-tripping), but on the losing side, and against a formula convention that predates and is broader than this fix
+Files: order_executor.py, execution_log.py, backtest.py
+
+Problem:
+  AUD-0003's batch-03 fix correctly makes _poll_pending_orders' WINNING-outcome
+  branches (`qty * (1 - price) * (1 - _fee)`) select the real KALSHI_FEE_RATE
+  for a taker-entered position instead of always the $0 maker rate. The
+  LOSING-outcome branches (`-qty * price`) apply no fee at all, in either
+  case -- this was harmless while _fee was always 0.0 (maker), but now that
+  a taker entry can select a genuinely nonzero _fee, the losing branches
+  silently continue to charge nothing.
+  Root cause: This win-only-fee convention is not new to this fix -- it
+  matches the codebase's existing documented pattern elsewhere (see
+  backtest.py's own fee-on-winnings-only comment and
+  order_executor._exit_live_position's identical convention/comment,
+  neither touched by batch-03), on the assumption that Kalshi's real fee is
+  charged against winnings specifically, not as a flat per-trade cost. That
+  assumption was never verified against a live/demo trade (AUD-0003's own
+  audit record explicitly lists this exact limitation: "Did not execute a
+  live or demo trade to observe an actual taker fee being charged").
+  Financial risk: Understates realized losses for any taker-entered position
+  that loses at natural market settlement, feeding execution_log.add_live_loss()
+  -> get_today_live_loss() -> the daily-loss circuit breaker the same way
+  AUD-0003's overstatement direction did -- a real loss recorded as slightly
+  smaller than it was makes the breaker marginally less likely to trip when
+  it legitimately should. Currently non-operative (LIVE_TRADING_ENABLED
+  unset).
+  Recommendation: Before changing the formula, verify Kalshi's real fee
+  schedule against an actual live or demo taker trade (both a winning and a
+  losing outcome) to confirm whether the fee is genuinely winnings-only or
+  applies to every taker fill regardless of outcome -- this is an empirical
+  question the codebase has never verified, not an implementation choice.
+  If it turns out to apply to losses too, extend batch-03's per-order
+  maker/taker fee selection (order.get("order_type") == "limit") to the
+  losing branches as well, and audit backtest.py/_exit_live_position for the
+  same gap, since they share the identical win-only convention.

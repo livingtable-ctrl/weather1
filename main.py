@@ -4849,7 +4849,14 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         side,
         int(count),
         price,
-        order_type=action,
+        # AUD-0003: order_type mirrors the actual time_in_force this order
+        # is placed with, matching the convention every order_executor.py
+        # call site already uses ("limit"=maker/GTC, "market"=taker/IOC) --
+        # order_executor._poll_pending_orders' settlement-fee selection
+        # depends on this being accurate. Live orders here are always IOC
+        # (see the client.place_order call below); non-live (paper/demo)
+        # orders get client.place_order's own GTC default.
+        order_type=("market" if _is_live else "limit"),
         live=_is_live,
         closes_position_id=(
             _live_close_position["id"] if _live_close_position else None
@@ -5004,11 +5011,35 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         # again.
         if _live_close_position is not None:
             try:
-                from execution_log import record_live_exit_fill
+                from execution_log import record_live_early_exit, record_live_exit_fill
 
                 _pnl, _fully_closed = record_live_exit_fill(
                     _live_close_position, _record_count, price
                 )
+                if not _fully_closed:
+                    # AUD-0028: record_live_exit_fill's partial branch only
+                    # settles the POSITION row (_live_close_position["id"])
+                    # via record_live_partial_exit, correctly leaving it open
+                    # at its reduced size -- but that means THIS sell order's
+                    # own row (row_id) is never settled, so its P&L never
+                    # gets its own tax-CSV row and never counts toward
+                    # get_live_pnl_summary. Mirrors
+                    # order_executor._exit_live_position's identical
+                    # partial-fill branch, which makes this exact second
+                    # call onto its own log_id for the same reason.
+                    try:
+                        record_live_early_exit(row_id, price, "manual_close", _pnl)
+                    except Exception as _own_row_err:
+                        _log.warning(
+                            "cmd_order: partial exit of position #%d "
+                            "succeeded but settling this sell order's own "
+                            "row #%d failed: %s — its P&L will be missing "
+                            "from tax export/pnl summary until manually "
+                            "corrected",
+                            _live_close_position["id"],
+                            row_id,
+                            _own_row_err,
+                        )
                 print(
                     green(
                         f"  Live position #{_live_close_position['id']} "
@@ -5042,24 +5073,43 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             # 0.0 is a neutral placeholder, not a real P&L claim) so it can
             # never be mistaken for an open position, while still preserving
             # the historical record that this live sell happened.
-            try:
-                from execution_log import record_live_early_exit
+            # AUD-0026: bounded retry + a persistent sentinel flag on
+            # exhausted retries, instead of a single attempt behind a bare
+            # warning log -- a failed write here leaves this row in the
+            # exact phantom-open-position shape this whole branch exists to
+            # prevent (live=1/status='filled'/settled_at=NULL/
+            # closes_position_id=NULL).
+            from execution_log import record_live_early_exit_with_retry
 
-                record_live_early_exit(row_id, price, "unmatched_sell", 0.0)
-            except Exception as _settle_err:
-                _log.warning(
-                    "cmd_order: could not settle unmatched-sell row %s: %s",
-                    row_id,
-                    _settle_err,
-                )
-            print(
-                yellow(
-                    f"  Live sell recorded (execution_log row #{row_id}, live=True) "
-                    f"— no matching tracked live position for {ticker}; nothing to "
-                    "close. P&L unknown (no tracked entry) -- recorded, not left "
-                    "open as a phantom position."
-                )
+            _settled = record_live_early_exit_with_retry(
+                row_id, price, "unmatched_sell", 0.0
             )
+            if _settled:
+                print(
+                    yellow(
+                        f"  Live sell recorded (execution_log row #{row_id}, live=True) "
+                        f"— no matching tracked live position for {ticker}; nothing to "
+                        "close. P&L unknown (no tracked entry) -- recorded, not left "
+                        "open as a phantom position."
+                    )
+                )
+            else:
+                # Opus review follow-up (AUD-0026): the prior version printed
+                # the reassuring "not left open as a phantom position"
+                # message UNCONDITIONALLY, even when every retry attempt
+                # failed -- reporting success on exactly the failure this
+                # branch exists to guard against. Row #row_id genuinely IS
+                # still live=1/status='filled'/settled_at=NULL right now.
+                print(
+                    red(
+                        f"  [Warning] Live sell for {ticker} was placed, but "
+                        f"row #{row_id} could NOT be self-settled after "
+                        "retrying -- it is still recorded as an OPEN position "
+                        "and the automated exit scanner may try to sell it "
+                        "again. See execution_log_unsettled_exit_rows.json "
+                        "and settle this row manually."
+                    )
+                )
         else:
             print(
                 green(

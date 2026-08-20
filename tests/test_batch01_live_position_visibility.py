@@ -651,6 +651,36 @@ class TestLiveSettlementStreak:
     # real SQL query) that test_includes_partial_exit_rows above already
     # fails against that exact mutation and passes against the fix.
 
+    def test_excludes_unmatched_sell_placeholder_from_streak(self):
+        """Batch-03 opus review follow-up (AUD-0057): this function is the
+        ONE consumer of orders.pnl that feeds a real live risk GATE
+        (paper.is_streak_paused()), not just a dashboard/export display --
+        an unmatched-sell row's documented pnl=0.0 placeholder (no tracked
+        entry_price to compute a real P&L against) must not land as the
+        newest 'settlement' and silently reset a real consecutive-loss
+        streak the circuit breaker is watching."""
+        self._settle(-1.0)
+        self._settle(-2.0)
+        self._settle(-3.0)
+        # An unmatched live sell settles AFTER the real losses, chronologically
+        # the newest row -- if counted, get_live_settlement_streak would read
+        # this as the most recent settlement and report ("neutral", 0, 0.0)
+        # instead of the real 3-loss streak underneath it.
+        placeholder_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T80",
+            side="yes",
+            quantity=1,
+            price=0.5,
+            status="filled",
+            live=True,
+        )
+        execution_log.record_live_early_exit(placeholder_id, 0.5, "unmatched_sell", 0.0)
+
+        kind, n, pnl = execution_log.get_live_settlement_streak()
+        assert kind == "loss"
+        assert n == 3
+        assert pnl == pytest.approx(-6.0)
+
 
 class TestLiveAwareDrawdownAndStreak:
     """AUD-0005: paper.is_paused_drawdown()/is_streak_paused() gain an

@@ -840,9 +840,36 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
     filled orders whose markets have finalized.
     Called each iteration of cmd_watch to close the GTC order lifecycle.
     """
-    # Maker fee (not taker): live orders are always resting midpoint GTC limit
-    # orders, which pay $0 on this bot's markets (see KALSHI_MAKER_FEE_RATE).
-    from utils import KALSHI_MAKER_FEE_RATE as _fee
+    # Opus review follow-up (AUD-0026): surface any row
+    # record_live_early_exit_with_retry couldn't self-settle every cycle --
+    # a sentinel file nobody ever reads doesn't actually alert the operator.
+    # This only logs (does not block trading): the audit's own severity
+    # assessment for AUD-0026 called the underlying failure "low direct
+    # financial risk... a recurring, silent operational anomaly", so a
+    # recurring warning matches the risk, rather than a new blocking gate
+    # that would be a separate, bigger design decision.
+    _unsettled_flags = execution_log.get_unsettled_exit_flags()
+    if _unsettled_flags:
+        _log.warning(
+            "[LIVE] %d live order row(s) could not be self-settled after "
+            "retrying (see execution_log_unsettled_exit_rows.json) -- still "
+            "recorded as open positions, may be re-exited by mistake: %s",
+            len(_unsettled_flags),
+            [f.get("order_id") for f in _unsettled_flags],
+        )
+
+    # AUD-0003: fee at natural-expiry settlement depends on whether THIS
+    # row's entry fill was maker (resting GTC limit, $0 fee) or taker
+    # (immediate_or_cancel, real fee) -- selected per-order below from
+    # order_type ("limit"=maker, "market"/anything else=taker), not a single
+    # flat rate. Every entry-order call site across order_executor.py sets
+    # order_type to mirror the actual time_in_force used (see
+    # _replace_live_order/_amend_live_order/_place_live_order); main.cmd_order
+    # was the one exception (fixed alongside this) and is now consistent too.
+    # Unrecognized/missing order_type conservatively defaults to the taker
+    # rate rather than assuming free maker fills -- understating P&L is the
+    # safe failure direction here, not overstating it (see AUD-0003).
+    from utils import KALSHI_FEE_RATE, KALSHI_MAKER_FEE_RATE
 
     gtc_cancel_hours = (config or {}).get("gtc_cancel_hours", 24)
     now_utc = datetime.now(UTC)
@@ -975,6 +1002,11 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
             # NO price (= 1 - yes_bid) for NO orders.
             price = order["price"]
             qty = order.get("fill_quantity") or order["quantity"]
+            _fee = (
+                KALSHI_MAKER_FEE_RATE
+                if order.get("order_type") == "limit"
+                else KALSHI_FEE_RATE
+            )
             if outcome_yes and side == "yes":
                 pnl = (
                     qty * (1 - price) * (1 - _fee)
