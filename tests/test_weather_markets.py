@@ -4476,7 +4476,10 @@ class TestBatchPrewarmEnsembleTrackingOnlyModels:
 
         # The blended entry (what get_ensemble_temps/analyze_trade's live
         # forecast_temp actually reads) must NOT contain gem/ukmo's members.
-        blended = wm._ensemble_cache.get(("NYC", date_iso, None, "max"))
+        # 5th key element is the quarantine-state tag (empty -- nothing
+        # quarantined in this test, isolate_member_quarantine ensures a
+        # clean state file).
+        blended = wm._ensemble_cache.get(("NYC", date_iso, None, "max", ""))
         assert blended is not None
         assert all(-100.0 < t < 100.0 for t in blended), (
             f"gem/ukmo's tracking-only members leaked into the live trading "
@@ -4566,7 +4569,8 @@ class TestBatchPrewarmEnsembleBiasCorrection:
 
         # Blended entry: icon's members must be shifted down by its +4.0
         # bias (70,71,72,73,74 -> 66,67,68,69,70); gfs (no bias) unchanged.
-        blended = wm._ensemble_cache.get(("NYC", date_iso, None, "max"))
+        # 5th key element is the quarantine-state tag (empty in this test).
+        blended = wm._ensemble_cache.get(("NYC", date_iso, None, "max", ""))
         assert blended is not None
         assert 66.0 in blended and 70.0 in blended, (
             f"icon's bias-corrected members missing from the blend: {blended}"
@@ -4880,6 +4884,631 @@ class TestWeightsFromMaeExcludesTrackingOnlyModels:
         # gfs mae=4.0 -> weights 0.5/0.25, normalised to sum-to-2.
         assert baseline_result["icon_seamless"] == pytest.approx(4 / 3)
         assert baseline_result["gfs_seamless"] == pytest.approx(2 / 3)
+
+
+# ── TestMemberQuarantine (scan_member_quarantine, per-model EWMA drift guard) ──
+
+
+class TestMemberQuarantineScan:
+    """scan_member_quarantine() -- generic, per-model quarantine one layer
+    above _weights_from_mae()'s soft inverse-MAE down-weighting (see the
+    "Per-member EWMA quarantine" section preceding _model_bias in
+    weather_markets.py for why the soft weighting alone can never fully
+    exclude a member: repeats = max(1, round(w * 2)) always includes at
+    least one copy).
+
+    Peer-relative design (redesigned after an independent opus review found
+    the original self-relative/own-history design would never have caught
+    the live failure it was built for -- gfs_seamless's own recent MAE can
+    be better than its own older history while still being the worst of the
+    3 live candidates right now). z = (own.mae - mean(non-quarantined peers'
+    recent MAE)) / se, where se is the POOLED two-sample standard error
+    (own's own std/sqrt(n) combined with each peer's, not just own's alone
+    -- a second independent review found the one-sample version put the
+    live gfs_seamless case right at the trip boundary purely from ignoring
+    peer_mean's own sampling uncertainty). See _se() below, which mirrors
+    scan_member_quarantine()'s exact formula so test numbers can't silently
+    drift out of sync with a future formula change."""
+
+    def _fake_acc(self, recent: dict):
+        """Fake tracker.get_member_accuracy(days_back=...) -- scan_member_
+        quarantine() makes exactly ONE call now (no baseline/end_days_back)."""
+
+        def _fake(days_back=14):
+            return recent
+
+        return _fake
+
+    def _stats(self, mae, n, std=1.0):
+        return {
+            "mae": mae,
+            "n": n,
+            "std": std,
+            "city_breakdown": {},
+            "city_n_breakdown": {},
+        }
+
+    def _se(self, own_n=30, own_std=1.0, peer_ns=(30, 30), peer_std=1.0):
+        """Mirrors scan_member_quarantine()'s own pooled-SE formula exactly:
+        se = sqrt(own.std^2/own.n + sum(peer.std^2/peer.n)/len(peers)^2)."""
+        own_var = own_std**2 / own_n
+        peer_pool_var = sum(peer_std**2 / n for n in peer_ns) / (len(peer_ns) ** 2)
+        return (own_var + peer_pool_var) ** 0.5
+
+    @pytest.fixture(autouse=True)
+    def _clear_quarantine_state(self):
+        # Explicit fixture (not xunit setup_method) so it's unambiguously
+        # ordered after conftest's isolate_member_quarantine autouse fixture
+        # redirects MEMBER_QUARANTINE_PATH -- this write must never land on
+        # the real data/member_quarantine.json.
+        import weather_markets as wm
+
+        wm._save_member_quarantine_state({})
+
+    def test_warmup_floor_own_n_blocks_trip(self, monkeypatch):
+        """own.n below the floor must never update ewma_z/trip, however bad
+        the MAE looks, even with well-observed peers."""
+        import weather_markets as wm
+
+        recent = {
+            "gfs_seamless": self._stats(mae=20.0, n=5, std=1.0),  # n<20
+            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        wm.scan_member_quarantine()
+        state = wm.load_member_quarantine_state()
+        assert not state.get("gfs_seamless", {}).get("quarantined")
+        assert "ewma_z" not in state.get("gfs_seamless", {})
+
+    def test_warmup_floor_no_sufficient_peers_blocks_trip(self, monkeypatch):
+        """A model with plenty of its own data still can't be judged if
+        every OTHER candidate is data-thin -- there's no peer reference."""
+        import weather_markets as wm
+
+        recent = {
+            "gfs_seamless": self._stats(mae=20.0, n=30, std=1.0),
+            "icon_seamless": self._stats(mae=2.0, n=5, std=1.0),  # n<20
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=5, std=1.0),  # n<20
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        wm.scan_member_quarantine()
+        state = wm.load_member_quarantine_state()
+        assert not state.get("gfs_seamless", {}).get("quarantined")
+        assert "ewma_z" not in state.get("gfs_seamless", {})
+
+    def test_zero_own_std_blocks_trip(self, monkeypatch):
+        import weather_markets as wm
+
+        recent = {
+            "gfs_seamless": self._stats(mae=20.0, n=30, std=0.0),
+            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        wm.scan_member_quarantine()
+        state = wm.load_member_quarantine_state()
+        assert not state.get("gfs_seamless", {}).get("quarantined")
+
+    def test_cold_start_ordinary_bad_reading_does_not_trip_on_first_scan(
+        self, monkeypatch
+    ):
+        """ewma_z_prev is seeded at 0.0, not the first raw z -- an ORDINARY
+        bad first reading (raw z=4, well past what a single day's noise
+        would produce, but not extreme) must land well under the 2.0 trip
+        line (ewma = 0.2*4 = 0.8), proving smoothing genuinely bounds a
+        single scan's influence."""
+        import weather_markets as wm
+
+        se = self._se()  # 2 peers (icon, aifs), default std/n for all 3
+        own_mae = 2.0 + 4.0 * se  # peer_mean = mean(2.0, 2.0) = 2.0
+        recent = {
+            "gfs_seamless": self._stats(mae=own_mae, n=30, std=1.0),
+            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        wm.scan_member_quarantine()
+        state = wm.load_member_quarantine_state()
+        assert state["gfs_seamless"]["last_z"] == pytest.approx(4.0, rel=1e-3)
+        assert state["gfs_seamless"]["ewma_z"] == pytest.approx(0.8, rel=1e-3)
+        assert not state["gfs_seamless"]["quarantined"]
+
+    def test_cold_start_extreme_reading_can_trip_on_first_scan(self, monkeypatch):
+        """The seeded-at-0 smoothing bounds an ORDINARY bad reading (see
+        above) but does not and cannot prevent a single genuinely EXTREME
+        reading (raw z >= 2/lambda = 10) from reaching the trip line on the
+        very first scan -- ewma = 0.2*10 = 2.0 exactly. This is documented,
+        intended behavior, not a bug: a model 10 pooled standard errors off
+        its peers on day one should trip immediately, not wait. (The
+        MIN_EFFECT_F floor is also cleared here -- own-vs-peer gap is
+        10*se, comfortably above 0.5°F.)"""
+        import weather_markets as wm
+
+        se = self._se()
+        own_mae = 2.0 + 10.0 * se
+        recent = {
+            "gfs_seamless": self._stats(mae=own_mae, n=30, std=1.0),
+            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        result = wm.scan_member_quarantine()
+        state = wm.load_member_quarantine_state()
+        assert state["gfs_seamless"]["ewma_z"] == pytest.approx(2.0, rel=1e-3)
+        assert state["gfs_seamless"]["quarantined"]
+        assert result["newly_quarantined"] == ["gfs_seamless"]
+
+    def test_sustained_moderate_drift_trips_after_repeated_scans_not_immediately(
+        self, monkeypatch
+    ):
+        """A consistently-bad-but-not-extreme member (raw z=4 each scan)
+        must accumulate past the trip line over several scans, not on
+        scan 1 -- same ewma trajectory as the cold-start test above,
+        repeated: 0.8, 1.44, 1.952, then 2.3616 on the 4th scan."""
+        import weather_markets as wm
+
+        se = self._se()
+        own_mae = 2.0 + 4.0 * se
+        recent = {
+            "gfs_seamless": self._stats(mae=own_mae, n=30, std=1.0),
+            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        wm.scan_member_quarantine()
+        assert not wm.load_member_quarantine_state()["gfs_seamless"]["quarantined"]
+        wm.scan_member_quarantine()
+        assert not wm.load_member_quarantine_state()["gfs_seamless"]["quarantined"]
+        wm.scan_member_quarantine()
+        assert not wm.load_member_quarantine_state()["gfs_seamless"]["quarantined"]
+        wm.scan_member_quarantine()
+        assert wm.load_member_quarantine_state()["gfs_seamless"]["quarantined"]
+
+    def test_trip_blocked_when_effect_size_below_minimum_despite_high_z(
+        self, monkeypatch
+    ):
+        """MEDIUM-2 (review): a purely statistical z-threshold shrinks its
+        required MAE gap as ~1/sqrt(n), so at a large enough n a trivial,
+        practically meaningless gap could become "significant". Simulate
+        that directly with a huge n (own.std tiny relative to n so se is
+        tiny) producing z well past 2.0 from a gap well under
+        _QUARANTINE_MIN_EFFECT_F (0.5°F) -- must NOT trip."""
+        import weather_markets as wm
+
+        se = self._se(own_n=10_000, peer_ns=(10_000, 10_000))
+        # z=10 from this tiny se still means a real MAE gap far under 0.5°F.
+        own_mae = 2.0 + 10.0 * se
+        assert own_mae - 2.0 < wm._QUARANTINE_MIN_EFFECT_F, (
+            "test setup bug: effect size isn't actually below the floor"
+        )
+        recent = {
+            "gfs_seamless": self._stats(mae=own_mae, n=10_000, std=1.0),
+            "icon_seamless": self._stats(mae=2.0, n=10_000, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=10_000, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        result = wm.scan_member_quarantine()
+        state = wm.load_member_quarantine_state()
+        assert state["gfs_seamless"]["ewma_z"] >= wm._QUARANTINE_TRIP_Z, (
+            "test setup bug: z-threshold alone would have tripped"
+        )
+        assert not state["gfs_seamless"]["quarantined"], (
+            "must not trip on statistical significance alone when the "
+            "practical MAE gap is below the minimum effect size floor"
+        )
+        assert result["newly_quarantined"] == []
+
+    def test_asymmetric_hysteresis_dead_zone_no_flapping(self, monkeypatch):
+        """Once quarantined, ewma_z sitting in the dead zone strictly
+        between release (0.5) and trip (2.0) must never release -- release
+        requires clearly-recovered, not just merely-not-terrible. Feeds
+        raw z=1.0 (own.mae only 1 pooled SE above peers) while pre-seeded
+        ewma_z is also 1.0, so the updated ewma_z (0.2*1 + 0.8*1 = 1.0)
+        stays squarely inside (0.5, 2.0) -- the actual dead zone, not above
+        the trip line as the original (buggy) version of this test had it."""
+        import weather_markets as wm
+
+        wm._save_member_quarantine_state(
+            {"gfs_seamless": {"quarantined": True, "ewma_z": 1.0}}
+        )
+        se = self._se()
+        own_mae = 2.0 + 1.0 * se
+        recent = {
+            "gfs_seamless": self._stats(mae=own_mae, n=30, std=1.0),
+            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        wm.scan_member_quarantine()
+        state = wm.load_member_quarantine_state()
+        assert 0.5 < state["gfs_seamless"]["ewma_z"] < 2.0, (
+            f"test setup bug: ewma_z={state['gfs_seamless']['ewma_z']} isn't "
+            f"actually in the dead zone"
+        )
+        assert state["gfs_seamless"]["quarantined"], (
+            f"must stay quarantined while ewma_z={state['gfs_seamless']['ewma_z']} "
+            f"is in the dead zone (above release, below trip)"
+        )
+
+    def test_release_only_at_or_below_release_line(self, monkeypatch):
+        import weather_markets as wm
+
+        wm._save_member_quarantine_state(
+            {"gfs_seamless": {"quarantined": True, "ewma_z": 0.6}}
+        )
+        # own == peer_mean exactly -> z=0 -> new ewma_z = 0.2*0 + 0.8*0.6 = 0.48 <= 0.5
+        recent = {
+            "gfs_seamless": self._stats(mae=2.0, n=30, std=1.0),
+            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        result = wm.scan_member_quarantine()
+        assert "gfs_seamless" in result["released"]
+        assert not wm.load_member_quarantine_state()["gfs_seamless"]["quarantined"]
+
+    def test_quarantined_model_stays_quarantined_when_data_goes_thin(self, monkeypatch):
+        """A quarantined model that can no longer be evaluated (own.n drops
+        below the floor) must stay quarantined rather than silently
+        releasing from absence of evidence -- and last_scan_at must still
+        update so it's visible this was checked, not skipped entirely."""
+        import weather_markets as wm
+
+        wm._save_member_quarantine_state(
+            {"gfs_seamless": {"quarantined": True, "ewma_z": 3.0}}
+        )
+        recent = {
+            "gfs_seamless": self._stats(mae=20.0, n=5, std=1.0),  # n<20 now
+            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        result = wm.scan_member_quarantine()
+        state = wm.load_member_quarantine_state()
+        assert state["gfs_seamless"]["quarantined"]
+        assert state["gfs_seamless"]["ewma_z"] == pytest.approx(3.0)  # unchanged
+        assert "last_scan_at" in state["gfs_seamless"]
+        assert result["released"] == []
+
+    def test_peer_mean_excludes_already_quarantined_peer(self, monkeypatch):
+        """A peer that was ALREADY quarantined going into this scan must not
+        count toward another model's "normal" reference -- including its
+        bad MAE would inflate peer_mean and could mask a second bad member.
+        icon is pre-quarantined with a wildly bad recent.mae (999); if that
+        leaked into gfs's peer computation, gfs's z would come out strongly
+        NEGATIVE (10 vs a ~500 peer average) instead of strongly positive."""
+        import weather_markets as wm
+
+        wm._save_member_quarantine_state(
+            {"icon_seamless": {"quarantined": True, "ewma_z": 5.0}}
+        )
+        recent = {
+            "gfs_seamless": self._stats(mae=10.0, n=30, std=1.0),
+            "icon_seamless": self._stats(mae=999.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        wm.scan_member_quarantine()
+        state = wm.load_member_quarantine_state()
+        # peer_mean for gfs must be just aifs's 2.0 (icon excluded) -- ONE
+        # peer, not two, so the SE used here must reflect that.
+        se_one_peer = self._se(peer_ns=(30,))
+        assert state["gfs_seamless"]["last_z"] == pytest.approx(
+            (10.0 - 2.0) / se_one_peer, rel=1e-3
+        )
+        assert state["gfs_seamless"]["last_z"] > 0
+
+    def test_floor_quarantines_worst_first_blocks_the_rest(self, monkeypatch):
+        """Two of the 3 real candidates simultaneously over trip threshold
+        with MIN_ACTIVE=2 (room=1): only the worse (by ewma_z) is quarantined,
+        the other appears in blocked_by_floor, not silently dropped."""
+        import weather_markets as wm
+
+        # gfs peer_mean = mean(icon=9, aifs=2) = 5.5 -> effect=4.5, big z
+        # icon peer_mean = mean(gfs=10, aifs=2) = 6.0 -> effect=3.0, big z
+        # gfs is worse (higher z/ewma) -> gfs quarantined, icon blocked.
+        recent = {
+            "gfs_seamless": self._stats(mae=10.0, n=30, std=1.0),
+            "icon_seamless": self._stats(mae=9.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        result = wm.scan_member_quarantine()
+        assert result["newly_quarantined"] == ["gfs_seamless"]
+        assert result["blocked_by_floor"] == ["icon_seamless"]
+        state = wm.load_member_quarantine_state()
+        assert state["gfs_seamless"]["quarantined"]
+        assert not state["icon_seamless"]["quarantined"]
+
+    def test_deterministic_tiebreak_on_exact_equal_ewma_z(self, monkeypatch):
+        """Exact-float-tie between two candidates: alphabetically-first model
+        name wins the tie-break (is quarantined). gfs and icon given equal
+        mae -> by symmetry each one's peer_mean (computed from the OTHER two)
+        is identical, producing an exact z/ewma_z tie."""
+        import weather_markets as wm
+
+        recent = {
+            "gfs_seamless": self._stats(mae=12.0, n=30, std=1.0),
+            "icon_seamless": self._stats(mae=12.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        result = wm.scan_member_quarantine()
+        state = wm.load_member_quarantine_state()
+        assert state["gfs_seamless"]["ewma_z"] == pytest.approx(
+            state["icon_seamless"]["ewma_z"]
+        ), "test setup bug: this test requires an exact tie"
+        assert result["newly_quarantined"] == ["gfs_seamless"]  # alphabetically first
+        assert result["blocked_by_floor"] == ["icon_seamless"]
+
+    def test_read_time_floor_clamp_tiebreak_is_deterministic(self):
+        """get_quarantined_members()'s defensive read-time floor clamp (for
+        a hand-edited/corrupted state file reporting too many quarantined)
+        must use the SAME deterministic (-ewma_z, name) tiebreak as the scan
+        path's pass 2 -- a set-iteration-order tiebreak would let two
+        processes reading the identical corrupted file disagree on which
+        model stays quarantined, splitting _quarantine_cache_tag()'s cache
+        namespace between them."""
+        import weather_markets as wm
+
+        # All 3 candidates "quarantined" (invalid: floor only allows 1) with
+        # an exact ewma_z tie between two of them.
+        wm._save_member_quarantine_state(
+            {
+                "gfs_seamless": {"quarantined": True, "ewma_z": 5.0},
+                "icon_seamless": {"quarantined": True, "ewma_z": 5.0},
+                "ecmwf_aifs025_ensemble": {"quarantined": True, "ewma_z": 1.0},
+            }
+        )
+        result = wm.get_quarantined_members()
+        assert len(result) == 1, f"floor must clamp to 1, got {result}"
+        # Between the exact-tied gfs/icon (both ewma_z=5.0, higher than
+        # aifs's 1.0), alphabetically-first wins deterministically.
+        assert result == {"gfs_seamless"}, (
+            f"expected deterministic tiebreak to keep gfs_seamless, got {result}"
+        )
+
+    def test_stray_tracked_models_never_affect_peers_floor_or_room(self, monkeypatch):
+        """ecmwf_ifs025/gem_global -- tracked by get_member_accuracy() but NOT
+        real candidates for this blend -- must have zero effect on peer-mean
+        computation or the active-member floor/room math, even with
+        terrible MAE."""
+        import weather_markets as wm
+
+        recent = {
+            "gfs_seamless": self._stats(mae=2.0, n=30, std=1.0),
+            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "ecmwf_ifs025": self._stats(mae=50.0, n=30, std=1.0),
+            "gem_global": self._stats(mae=50.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        result = wm.scan_member_quarantine()
+        assert result["newly_quarantined"] == []
+        assert result["blocked_by_floor"] == []
+        state = wm.load_member_quarantine_state()
+        assert "ecmwf_ifs025" not in state
+        assert "gem_global" not in state
+        # If either stray leaked into a peer-mean, z would be nonzero.
+        assert state["gfs_seamless"]["last_z"] == pytest.approx(0.0, abs=1e-6)
+
+    def test_failed_persist_does_not_leave_mutated_state_in_the_cache(
+        self, monkeypatch
+    ):
+        """MEDIUM-3 (review): scan_member_quarantine() must work on its own
+        copy, never the module-level cache object -- otherwise a failed
+        disk write still leaves this process's in-memory cache holding the
+        never-persisted mutation, so it keeps "trading" against a decision
+        disk never actually recorded. Prime the cache with a clean read,
+        force the write to fail, run a scan that WOULD change state, then
+        confirm a fresh read still returns the pre-scan (unmutated) state."""
+        import weather_markets as wm
+
+        wm._save_member_quarantine_state({"icon_seamless": {"quarantined": False}})
+        pre_scan_state = wm.load_member_quarantine_state()  # primes the cache
+
+        monkeypatch.setattr(
+            wm._safe_io,
+            "atomic_write_json",
+            lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")),
+        )
+        se = self._se()
+        own_mae = 2.0 + 10.0 * se
+        recent = {
+            "gfs_seamless": self._stats(mae=own_mae, n=30, std=1.0),
+            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        result = wm.scan_member_quarantine()  # computes a real change, save fails
+        assert result["newly_quarantined"] == ["gfs_seamless"], (
+            "test setup bug: the scan itself must have decided to quarantine"
+        )
+
+        post_failure_state = wm.load_member_quarantine_state()
+        assert post_failure_state == pre_scan_state, (
+            f"a failed persist leaked the computed-but-unsaved mutation into "
+            f"the process's cache: {post_failure_state} != {pre_scan_state}"
+        )
+
+    def test_persistence_round_trip(self, monkeypatch):
+        import weather_markets as wm
+
+        recent = {
+            "gfs_seamless": self._stats(mae=5.0, n=30, std=1.0),
+            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        wm.scan_member_quarantine()
+        # Fresh read, simulating a new process. Non-zero expected values (not
+        # just presence of the ewma_z key) so this can't pass vacuously if
+        # the write never actually happened.
+        reloaded = wm.load_member_quarantine_state()
+        se = self._se()
+        assert "gfs_seamless" in reloaded
+        assert reloaded["gfs_seamless"]["ewma_z"] == pytest.approx(
+            0.2 * (5.0 - 2.0) / se, rel=1e-3
+        )
+        assert reloaded["gfs_seamless"]["last_own_mae"] == pytest.approx(5.0)
+        assert "last_scan_at" in reloaded["gfs_seamless"]
+
+
+class TestMemberQuarantineBlendHooks:
+    """get_ensemble_temps()/batch_prewarm_ensemble() must respect quarantine
+    state as a hard exclusion (soft _weights_from_mae down-weighting alone
+    can never reach true exclusion -- see the module docstring), while
+    accuracy tracking (and hence the ability to recover) continues
+    regardless of quarantine status."""
+
+    def test_get_ensemble_temps_skips_quarantined_model(self, monkeypatch):
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+        monkeypatch.setattr(wm, "get_quarantined_members", lambda: {"gfs_seamless"})
+        monkeypatch.setattr(wm, "_model_weights", lambda city, month=None: {})
+        monkeypatch.setattr(wm, "_model_bias", lambda city, var: {})
+        monkeypatch.setattr(
+            wm, "CITY_COORDS", {"NYC": (40.7, -74.0, "America/New_York")}
+        )
+
+        called_with = []
+
+        def _fake_fetch(lat, lon, tz, target_date, model, hour, var):
+            called_with.append(model)
+            return [70.0, 71.0]
+
+        monkeypatch.setattr(wm, "_fetch_model_ensemble", _fake_fetch)
+
+        from datetime import date as _date
+
+        wm.get_ensemble_temps("NYC", _date(2026, 8, 20))
+
+        assert "gfs_seamless" not in called_with, (
+            f"quarantined model must never be fetched, got calls: {called_with}"
+        )
+        assert "icon_seamless" in called_with
+
+    def test_get_ensemble_temps_cache_key_distinguishes_quarantine_state(
+        self, monkeypatch
+    ):
+        """A cache entry built before a quarantine change must not be served
+        after the change -- proves the cache-key fix, not just the filter."""
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+        monkeypatch.setattr(wm, "_model_weights", lambda city, month=None: {})
+        monkeypatch.setattr(wm, "_model_bias", lambda city, var: {})
+        monkeypatch.setattr(
+            wm, "CITY_COORDS", {"NYC": (40.7, -74.0, "America/New_York")}
+        )
+        monkeypatch.setattr(wm, "_fetch_model_ensemble", lambda *a, **k: [70.0])
+
+        from datetime import date as _date
+
+        monkeypatch.setattr(wm, "get_quarantined_members", lambda: set())
+        result_before = wm.get_ensemble_temps("NYC", _date(2026, 8, 20))
+
+        monkeypatch.setattr(wm, "get_quarantined_members", lambda: {"gfs_seamless"})
+        result_after = wm.get_ensemble_temps("NYC", _date(2026, 8, 20))
+
+        assert len(result_after) < len(result_before), (
+            "post-quarantine call must build a fresh (filtered) blend, not "
+            "serve the pre-quarantine cached one"
+        )
+
+    def test_batch_prewarm_still_fetches_quarantined_model_for_tracking(
+        self, monkeypatch
+    ):
+        """A quarantined model must still be fetched and cached per-model
+        (H-14) so its accuracy keeps being tracked and it can recover, while
+        its members are excluded from the blended entry that feeds the live
+        forecast -- mirrors TestBatchPrewarmEnsembleTrackingOnlyModels'
+        gem/ukmo test, but for a REAL blend model that's dynamically
+        quarantined rather than a statically tracking-only one."""
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
+        wm._ensemble_cb.record_success()
+        monkeypatch.setattr(wm.time, "sleep", lambda _seconds: None)
+        monkeypatch.setattr(wm, "get_quarantined_members", lambda: {"gfs_seamless"})
+
+        from datetime import date, timedelta
+
+        target = date.today() + timedelta(days=3)
+        date_iso = target.isoformat()
+
+        members_by_model = {
+            "icon_seamless": [70.0, 71.0, 72.0],
+            "gfs_seamless": [900.0, 901.0, 902.0],  # absurd -- must not leak into blend
+            "ecmwf_aifs025_ensemble": [74.0, 75.0, 76.0],
+            "gem_global": [200.0, 201.0, 202.0],
+            "ukmo_global_ensemble_20km": [-200.0, -201.0, -202.0],
+        }
+
+        def _fake_om_request(method, url, **kwargs):
+            params = kwargs.get("params", {})
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            daily_key = params.get("daily")
+            if daily_key == "precipitation_sum":
+                resp.json.return_value = {"daily": {"time": [date_iso]}}
+                return resp
+            model = params.get("models")
+            members = members_by_model.get(model, [])
+            resp.json.return_value = {
+                "daily": {
+                    "time": [date_iso],
+                    **{
+                        f"{daily_key}_member{i + 1:02d}": [v]
+                        for i, v in enumerate(members)
+                    },
+                }
+            }
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+
+        written = wm.batch_prewarm_ensemble({("NYC", date_iso)})
+        assert written > 0
+
+        # Per-model cache entry (H-14) must still exist for the quarantined
+        # model -- accuracy tracking must continue uninterrupted.
+        key = ("gfs_seamless", "NYC", date_iso, "max", None)
+        cached = wm._ensemble_cache.get(key)
+        assert cached is not None, (
+            "quarantined model's per-model cache entry must still be written "
+            "so accuracy tracking (and recovery) can continue"
+        )
+        assert cached == pytest.approx(members_by_model["gfs_seamless"])
+
+        # But its absurd values must NOT appear in the blended entry. Key's
+        # 5th element is the quarantine-state tag -- gfs_seamless is the
+        # only model quarantined in this test.
+        blended = wm._ensemble_cache.get(("NYC", date_iso, None, "max", "gfs_seamless"))
+        assert blended is not None
+        # Tight bound: only icon_seamless (70-72) and ecmwf_aifs025_ensemble
+        # (74-76) should ever appear here. A loose bound like `t < 500` would
+        # also silently pass gem_global's 200s/ukmo's -200s/gfs's 900s --
+        # this must actually distinguish "leaked" from "didn't leak", not
+        # just "isn't absurdly huge".
+        assert all(50.0 < t < 100.0 for t in blended), (
+            f"quarantined gfs_seamless's members (or gem/ukmo's tracking-"
+            f"only members) leaked into the live trading blend: {blended}"
+        )
+        assert any(t == pytest.approx(75.0) for t in blended), (
+            "ecmwf_aifs025_ensemble's real member is missing from the blend"
+        )
+        assert any(t == pytest.approx(72.0) for t in blended), (
+            "icon_seamless's real member is missing from the blend"
+        )
+
+        wm._ensemble_cache.clear()
+        wm._ensemble_disk_pending.clear()
 
 
 # ── TestModelBias (_model_bias, var-split bias-correction feeding the live blend) ──

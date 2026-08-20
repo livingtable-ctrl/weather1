@@ -34,6 +34,7 @@ from paths import (
     LAST_ML_RETRAIN_PATH,
     LAST_MONDAY_SWEEP_PATH,
     LAST_PARAM_SWEEP_PATH,
+    LAST_QUARANTINE_SCAN_PATH,
     LAST_WALK_FORWARD_PATH,
     LAST_WEIGHTS_REFRESH_PATH,
     LOCK_PATH,
@@ -771,7 +772,10 @@ def _cmd_cron_body(
         pass
 
     # EMOS readiness reminder: print until emos_params.json exists (training done).
-    # Reminds operator to run backfill-emos and, once ~40 rows accumulated, emos-train.
+    # Reminds operator to run backfill-emos, then (once the user's own real
+    # go-live bar of ~80 ens_var rows is cleared -- backlog.txt UPDATE
+    # 2026-08-18 -- not the 40-row Gneiting-2005 statistical minimum below,
+    # which only governs ens_mean-rows messaging/trainability) emos-train.
     # 40 = Gneiting 2005 minimum: 10 forecast cases per parameter × 4 EMOS parameters.
     _EMOS_PARAMS_PATH = EMOS_PARAMS_PATH
     if not _EMOS_PARAMS_PATH.exists():
@@ -784,6 +788,13 @@ def _cmd_cron_body(
             _emos_n = count_emos_ready_predictions()
             _emos_var_n = count_emos_variance_ready_predictions()
             _EMOS_TRAIN_GATE = 40
+            # User's own explicit go-live bar (backlog.txt UPDATE 2026-08-18),
+            # stricter than _EMOS_TRAIN_GATE's Gneiting-2005 statistical
+            # minimum: readiness/"accumulating" messaging below is keyed off
+            # this, not the 40-row floor. _EMOS_TRAIN_GATE itself still governs
+            # the ens_mean-rows messaging above (a genuinely different concern:
+            # main.py's own emos-train --activate gate) and is left untouched.
+            _EMOS_GOLIVE_BAR = 80
             if _emos_n == 0:
                 print(
                     yellow(
@@ -798,28 +809,30 @@ def _cmd_cron_body(
                 print(
                     yellow(
                         f"  [EMOS] ens_mean rows: {_emos_n}/{_EMOS_TRAIN_GATE}, "
-                        f"ens_var-populated: {_emos_var_n}/{_EMOS_TRAIN_GATE} — "
+                        f"ens_var-populated: {_emos_var_n}/{_EMOS_GOLIVE_BAR} — "
                         f"run 'py main.py backfill-emos' if new trades settled "
                         f"(won't move the ens_var count, only forward-fill live "
                         f"trades do)."
                     )
                 )
-            elif _emos_var_n < _EMOS_TRAIN_GATE:
+            elif _emos_var_n < _EMOS_GOLIVE_BAR:
                 # ens_mean already cleared 40, but ens_var (what c/d are
-                # actually fit from) hasn't -- backfill-emos can't help this
-                # count, only forward-fill live trades populate ens_var.
+                # actually fit from) hasn't cleared the real go-live bar --
+                # backfill-emos can't help this count, only forward-fill live
+                # trades populate ens_var.
                 print(
                     yellow(
                         f"  [EMOS] ens_mean rows: {_emos_n}, ens_var-populated: "
-                        f"{_emos_var_n}/{_EMOS_TRAIN_GATE} — accumulating from live "
+                        f"{_emos_var_n}/{_EMOS_GOLIVE_BAR} — accumulating from live "
                         f"forward-fill trades."
                     )
                 )
             else:
                 print(
                     yellow(
-                        f"  [EMOS] ens_var-populated rows: {_emos_var_n} — READY. "
-                        f"Run 'py main.py emos-train' to review the fit (dry run by "
+                        f"  [EMOS] ens_var-populated rows: {_emos_var_n} — READY "
+                        f"(>= {_EMOS_GOLIVE_BAR}-row go-live bar). Run "
+                        f"'py main.py emos-train' to review the fit (dry run by "
                         f"default), then add --activate to go live."
                     )
                 )
@@ -1114,6 +1127,47 @@ def _cmd_cron_body(
             _log.warning("cmd_cron: auto-retired strategy methods: %s", _newly_retired)
     except Exception as _e:
         _log.debug("cmd_cron: auto_retire_strategies failed: %s", _e)
+
+    # Per-ensemble-member quarantine scan (log-only outcome messages, but the
+    # scan itself DOES gate the live blend -- see weather_markets.py's
+    # "Per-member EWMA quarantine" section). Runs at most once/day via a
+    # marker file, same idiom as the Monday sweep below. Only ever reached
+    # inside _cmd_cron_body, i.e. only after _acquire_cron_lock() succeeds --
+    # a double-run here under a broken lock is the same, already-tracked
+    # AUD-0006 risk every other line in this function has, not a new one; a
+    # lost update just means one scan's quarantine decision is overwritten by
+    # the other's, self-heals on the next successful scan.
+    try:
+        _quarantine_scan_age = (
+            (datetime.now(UTC).timestamp() - LAST_QUARANTINE_SCAN_PATH.stat().st_mtime)
+            / 86400
+            if LAST_QUARANTINE_SCAN_PATH.exists()
+            else 999.0
+        )
+        if _quarantine_scan_age >= 1:
+            from weather_markets import scan_member_quarantine as _scan_quarantine
+
+            _q_result = _scan_quarantine()
+            if _q_result["newly_quarantined"]:
+                _log.warning(
+                    "cmd_cron: quarantined ensemble member(s): %s",
+                    _q_result["newly_quarantined"],
+                )
+            if _q_result["released"]:
+                _log.info(
+                    "cmd_cron: released ensemble member(s) from quarantine: %s",
+                    _q_result["released"],
+                )
+            if _q_result["blocked_by_floor"]:
+                _log.warning(
+                    "cmd_cron: ensemble member(s) qualify for quarantine but "
+                    "blocked by the active-member floor: %s",
+                    _q_result["blocked_by_floor"],
+                )
+            LAST_QUARANTINE_SCAN_PATH.parent.mkdir(exist_ok=True)
+            LAST_QUARANTINE_SCAN_PATH.touch()
+    except Exception as _e:
+        _log.debug("cmd_cron: scan_member_quarantine failed: %s", _e)
 
     # Condition-type weakness check (log-only, non-blocking, no halt gate --
     # see tracker.check_condition_type_weakness's own docstring for why).

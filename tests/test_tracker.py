@@ -2668,6 +2668,65 @@ class TestGetMemberBias(unittest.TestCase):
         self.assertEqual(result["gfs_seamless"]["max"]["n"], 1)
 
 
+class TestGetMemberAccuracyStd(unittest.TestCase):
+    """get_member_accuracy()'s std key, added for weather_markets.
+    scan_member_quarantine()'s per-member peer-relative drift check (std is
+    used there to compute the standard error of a model's own recent MAE
+    estimate: std / sqrt(n))."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _insert_at_age(
+        self, city, model, predicted, actual, age_days, target_date=None
+    ):
+        # target_date participates in a UNIQUE(city, model, target_date, var)
+        # constraint -- vary it (or pass one explicitly) so multiple rows for
+        # the same city/model/var don't collide.
+        if target_date is None:
+            target_date = f"2026-01-{1 + (age_days % 28):02d}"
+        with tracker._conn() as con:
+            con.execute(
+                """INSERT INTO ensemble_member_scores
+                   (city, model, predicted_temp, actual_temp, target_date, var, logged_at)
+                   VALUES (?, ?, ?, ?, ?, ?, datetime('now', ? || ' days'))""",
+                (city, model, predicted, actual, target_date, "max", f"-{age_days}"),
+            )
+
+    def test_std_matches_sample_stdev_of_errors(self):
+        # errors: |70-72|=2, |75-72|=3, |68-72|=4 -> stdev([2,3,4]) == 1.0
+        self._insert_at_age(
+            "NYC", "icon_seamless", 70.0, 72.0, age_days=1, target_date="2026-08-01"
+        )
+        self._insert_at_age(
+            "NYC", "icon_seamless", 75.0, 72.0, age_days=1, target_date="2026-08-02"
+        )
+        self._insert_at_age(
+            "NYC", "icon_seamless", 68.0, 72.0, age_days=1, target_date="2026-08-03"
+        )
+        result = tracker.get_member_accuracy(days_back=60)
+        import statistics as _stats
+
+        # Sample stdev (ddof=1), not population -- the conventional choice
+        # for the standard-error calculation this feeds downstream.
+        expected = _stats.stdev([2.0, 3.0, 4.0])
+        self.assertAlmostEqual(result["icon_seamless"]["std"], expected, places=4)
+
+    def test_std_is_zero_for_single_observation(self):
+        self._insert_at_age("NYC", "icon_seamless", 70.0, 72.0, age_days=1)
+        result = tracker.get_member_accuracy(days_back=60)
+        self.assertEqual(result["icon_seamless"]["std"], 0.0)
+
+
 class TestBackfillEnsembleMemberScoresVar(unittest.TestCase):
     """backfill_ensemble_member_scores_var() -- recovers var for legacy
     ensemble_member_scores rows logged before log_member_score() call sites

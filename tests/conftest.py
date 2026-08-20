@@ -32,6 +32,21 @@ def isolate_retired_strategies(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolate_member_quarantine(tmp_path, monkeypatch):
+    """Redirect weather_markets.MEMBER_QUARANTINE_PATH to an empty temp file.
+
+    Prevents a real data/member_quarantine.json on disk (which may have
+    'gfs_seamless' quarantined) from silently altering which models
+    get_ensemble_temps()/batch_prewarm_ensemble() blend in unrelated tests --
+    several existing tests assert specific per-model temps appear in the
+    blend without themselves controlling quarantine state.
+    """
+    monkeypatch.setattr(
+        "weather_markets.MEMBER_QUARANTINE_PATH", tmp_path / "member_quarantine.json"
+    )
+
+
+@pytest.fixture(autouse=True)
 def isolate_circuit_breaker_state(tmp_path, monkeypatch):
     """Redirect circuit_breaker._CB_STATE_PATH to a per-test temp file.
 
@@ -689,6 +704,14 @@ def isolate_cron_generated_files(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         wm, "HURRICANE_COUNT_TO_DATE_PATH", tmp_path / "hurricane_count_to_date.json"
+    )
+    # scan_member_quarantine()'s daily marker, stamped by _cmd_cron_body on
+    # every successful scan (same class of leak this fixture already exists
+    # to prevent for the other cron-cycle-output paths above) -- without
+    # this, any test that runs cmd_cron end-to-end suppresses the next REAL
+    # production quarantine scan for 24h.
+    monkeypatch.setattr(
+        cron, "LAST_QUARANTINE_SCAN_PATH", tmp_path / ".last_quarantine_scan"
     )
 
 

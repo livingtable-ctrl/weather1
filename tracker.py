@@ -5264,8 +5264,16 @@ def log_member_score(
 def get_member_accuracy(days_back: int = 60) -> dict:
     """
     Per-model MAE filtered to recent predictions, used by learn_seasonal_weights().
-    Returns {model: {mae: float, n: int, city_breakdown: {city: mae}}}
+    Returns {model: {mae: float, n: int, std: float, city_breakdown: {city: mae},
+    city_n_breakdown: {city: n}}}
+
+    std is the population stdev of the per-observation absolute errors --
+    used by weather_markets.scan_member_quarantine() to compute the standard
+    error of a model's own MAE estimate (std / sqrt(n)) for its peer-relative
+    drift check.
     """
+    import statistics as _stats
+
     init_db()
     with _conn() as con:
         rows = con.execute(
@@ -5293,6 +5301,10 @@ def get_member_accuracy(days_back: int = 60) -> dict:
     for model, entries in by_model.items():
         errors = [abs(p - a) for _, p, a in entries]
         mae = sum(errors) / len(errors)
+        # Sample stdev (ddof=1), the conventional choice for a standard-error
+        # calculation downstream (weather_markets.scan_member_quarantine's
+        # std/sqrt(n)) -- population stdev would understate it slightly.
+        std = _stats.stdev(errors) if len(errors) > 1 else 0.0
         city_errs: dict[str, list[float]] = {}
         for city, p, a in entries:
             city_errs.setdefault(city, []).append(abs(p - a))
@@ -5300,6 +5312,7 @@ def get_member_accuracy(days_back: int = 60) -> dict:
         result[model] = {
             "mae": round(mae, 4),
             "n": len(entries),
+            "std": round(std, 4),
             "city_breakdown": {c: round(v, 4) for c, v in city_mae.items()},
             # R25: per-city observation counts so _weights_from_mae can gate on
             # sample size rather than number of distinct cities.

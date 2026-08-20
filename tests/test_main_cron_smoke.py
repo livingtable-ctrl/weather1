@@ -102,7 +102,14 @@ class TestCmdCronGuards:
             (0, 0, "run 'py main.py backfill-emos' to populate history"),
             (25, 3, "run 'py main.py backfill-emos' if new trades settled"),
             (50, 12, "accumulating from live forward-fill trades"),
-            (50, 40, "READY"),
+            # Real go-live bar is 80 (backlog.txt 2026-08-18), not the
+            # 40-row Gneiting-2005 floor _emos_var_n<40 alone would suggest
+            # -- 40 and 79 must both still read "accumulating", only 80+
+            # reads READY. Regression test for the exact bug this fix closes
+            # (the original code said READY at var_n=40).
+            (50, 40, "accumulating from live forward-fill trades"),
+            (50, 79, "accumulating from live forward-fill trades"),
+            (50, 80, "READY"),
         ],
     )
     def test_emos_readiness_banner_four_way_branch(
@@ -131,6 +138,178 @@ class TestCmdCronGuards:
 
         out = capsys.readouterr().out
         assert expected_substring in out, f"expected {expected_substring!r} in:\n{out}"
+
+    def test_emos_branch2_display_uses_golive_bar_not_train_gate(
+        self, minimal_mocks, monkeypatch, capsys
+    ):
+        """Review-caught gap: the emos_n<40 branch also DISPLAYS
+        ens_var-populated's count -- it must show it against the 80-row
+        go-live bar, not the unrelated 40-row Gneiting floor, even though
+        this branch's own gating condition is still emos_n<40."""
+        import cron
+        import main
+
+        monkeypatch.setattr(
+            cron, "EMOS_PARAMS_PATH", minimal_mocks / "emos_params.json"
+        )
+        monkeypatch.setattr("tracker.count_emos_ready_predictions", lambda: 25)
+        monkeypatch.setattr("tracker.count_emos_variance_ready_predictions", lambda: 45)
+
+        main.cmd_cron._called_from_loop = True
+        try:
+            main.cmd_cron(MagicMock())
+        finally:
+            main.cmd_cron._called_from_loop = False
+
+        out = capsys.readouterr().out
+        assert "45/80" in out, f"expected 'ens_var-populated: 45/80' in:\n{out}"
+        assert "45/40" not in out, f"stale 40-row display leaked through:\n{out}"
+
+
+class TestCmdCronQuarantineScanWiring:
+    """cron.py's daily per-member quarantine scan (weather_markets.
+    scan_member_quarantine), gated by LAST_QUARANTINE_SCAN_PATH so back-to-
+    back cron runs the same day don't re-scan -- same marker-file idiom as
+    the existing Monday sweep."""
+
+    def test_scan_runs_when_marker_absent(self, minimal_mocks, monkeypatch):
+        import cron
+
+        marker = minimal_mocks / ".last_quarantine_scan"
+        monkeypatch.setattr(cron, "LAST_QUARANTINE_SCAN_PATH", marker)
+        assert not marker.exists()
+
+        called = []
+        monkeypatch.setattr(
+            "weather_markets.scan_member_quarantine",
+            lambda: called.append(1)
+            or {"newly_quarantined": [], "released": [], "blocked_by_floor": []},
+        )
+
+        import main
+
+        main.cmd_cron._called_from_loop = True
+        try:
+            main.cmd_cron(MagicMock())
+        finally:
+            main.cmd_cron._called_from_loop = False
+
+        assert called == [1], "scan must run when the marker file doesn't exist yet"
+        assert marker.exists(), "marker must be written after a successful scan"
+
+    def test_scan_skipped_when_marker_fresh(self, minimal_mocks, monkeypatch):
+        import cron
+
+        marker = minimal_mocks / ".last_quarantine_scan"
+        marker.write_text("")  # freshly touched -- mtime is "now"
+        monkeypatch.setattr(cron, "LAST_QUARANTINE_SCAN_PATH", marker)
+
+        called = []
+        monkeypatch.setattr(
+            "weather_markets.scan_member_quarantine",
+            lambda: called.append(1)
+            or {"newly_quarantined": [], "released": [], "blocked_by_floor": []},
+        )
+
+        import main
+
+        main.cmd_cron._called_from_loop = True
+        try:
+            main.cmd_cron(MagicMock())
+        finally:
+            main.cmd_cron._called_from_loop = False
+
+        assert called == [], "scan must be skipped when the marker is <1 day old"
+
+    def test_scan_runs_again_once_marker_is_stale(self, minimal_mocks, monkeypatch):
+        import os
+        import time
+
+        import cron
+
+        marker = minimal_mocks / ".last_quarantine_scan"
+        marker.write_text("")
+        # Back-date the marker's mtime by 2 days.
+        old = time.time() - 2 * 86400
+        os.utime(marker, (old, old))
+        monkeypatch.setattr(cron, "LAST_QUARANTINE_SCAN_PATH", marker)
+
+        called = []
+        monkeypatch.setattr(
+            "weather_markets.scan_member_quarantine",
+            lambda: called.append(1)
+            or {"newly_quarantined": [], "released": [], "blocked_by_floor": []},
+        )
+
+        import main
+
+        main.cmd_cron._called_from_loop = True
+        try:
+            main.cmd_cron(MagicMock())
+        finally:
+            main.cmd_cron._called_from_loop = False
+
+        assert called == [1], "scan must re-run once the marker is >=1 day old"
+
+    def test_newly_quarantined_member_logged_as_warning(
+        self, minimal_mocks, monkeypatch, caplog
+    ):
+        import logging
+
+        import cron
+
+        marker = minimal_mocks / ".last_quarantine_scan"
+        monkeypatch.setattr(cron, "LAST_QUARANTINE_SCAN_PATH", marker)
+        monkeypatch.setattr(
+            "weather_markets.scan_member_quarantine",
+            lambda: {
+                "newly_quarantined": ["gfs_seamless"],
+                "released": [],
+                "blocked_by_floor": [],
+            },
+        )
+
+        import main
+
+        with caplog.at_level(logging.WARNING):
+            main.cmd_cron._called_from_loop = True
+            try:
+                main.cmd_cron(MagicMock())
+            finally:
+                main.cmd_cron._called_from_loop = False
+
+        assert any(
+            "quarantined ensemble member" in r.message and "gfs_seamless" in r.message
+            for r in caplog.records
+        ), "a newly-quarantined member must be logged at WARNING, not silently absorbed"
+
+    def test_scan_failure_does_not_crash_cron(self, minimal_mocks, monkeypatch):
+        """Mirrors every other cmd_cron sub-check (auto_retire_strategies,
+        detect_brier_drift, etc.): a failure here is caught and logged, never
+        allowed to abort the rest of the cron cycle."""
+        import cron
+
+        marker = minimal_mocks / ".last_quarantine_scan"
+        monkeypatch.setattr(cron, "LAST_QUARANTINE_SCAN_PATH", marker)
+
+        def _raise():
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("weather_markets.scan_member_quarantine", _raise)
+
+        import main
+
+        main.cmd_cron._called_from_loop = True
+        try:
+            main.cmd_cron(MagicMock())  # must not raise
+        finally:
+            main.cmd_cron._called_from_loop = False
+
+        assert not marker.exists(), (
+            "the marker must NOT be stamped on a failed scan -- otherwise a "
+            "transient failure suppresses the real scan for a full day "
+            "instead of retrying next cycle"
+        )
 
 
 class TestCmdUndo:

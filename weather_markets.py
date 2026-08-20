@@ -47,6 +47,7 @@ from paths import (
     HOURLY_TARGET_HOURS_PATH,
     HURRICANE_COUNT_TO_DATE_PATH,
     LEARNED_WEIGHTS_PATH,
+    MEMBER_QUARANTINE_PATH,
     METAR_CALIBRATION_PATH,
     PLATT_MODELS_PATH,
     RETIREMENT_PROBATION_PATH,
@@ -1887,7 +1888,25 @@ def batch_prewarm_ensemble(
     lats = [c[1][0] for c in coords_list]
     lons = [c[1][1] for c in coords_list]
 
-    blend_models = [*ENSEMBLE_MODELS, "ecmwf_aifs025_ensemble"]
+    # Single source of truth for "the 3 real ensemble-blend models" --
+    # _QUARANTINE_CANDIDATE_MODELS (defined once, below _weights_from_mae),
+    # not a second independent (*ENSEMBLE_MODELS, "ecmwf_aifs025_ensemble")
+    # reconstruction here: two independent copies could drift and blend
+    # DIFFERENT model sets under an identical _quarantine_cache_tag()-keyed
+    # cache entry, silently corrupting whichever path filled it last.
+    _real_blend_models = _QUARANTINE_CANDIDATE_MODELS
+    # Per-member quarantine (see the "Per-member EWMA quarantine" section
+    # above _model_bias) excludes a model from blend_models only -- NOT from
+    # fetch_models below, so accuracy tracking (and hence the EWMA scan that
+    # decides quarantine/release) continues uninterrupted for a quarantined
+    # model, letting it recover. Computed once (not per city/date/var below)
+    # since quarantine state can't change mid-function; MUST use the same
+    # _quarantine_cache_tag() helper as get_ensemble_temps()'s cache key
+    # below, or that function can never hit this function's prewarmed
+    # blended entry (they'd be keyed differently for the exact same state).
+    _quarantined_now = get_quarantined_members()
+    _quarantine_tag = _quarantine_cache_tag()
+    blend_models = [m for m in _real_blend_models if m not in _quarantined_now]
     # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" Pass 2:
     # TRACKING_ONLY_MODEL_NAMES models are fetched and cached here too (so
     # _get_gem_ukmo_means hits warm cache like every other tracked model,
@@ -1903,7 +1922,7 @@ def batch_prewarm_ensemble(
     # this stays in sync with _weights_from_mae()'s/get_model_weights()'s
     # own exclusion of the same models from weight normalization.
     tracking_only_models = sorted(TRACKING_ONLY_MODEL_NAMES)
-    fetch_models = [*blend_models, *tracking_only_models]
+    fetch_models = [*_real_blend_models, *tracking_only_models]
     vars_to_fetch = [("max", "temperature_2m_max"), ("min", "temperature_2m_min")]
     total_calls = len(fetch_models) * len(vars_to_fetch)
     call_num = 0
@@ -2007,8 +2026,13 @@ def batch_prewarm_ensemble(
                 progress_cb(call_num, total_calls, f"{model}/{var_str}", ok)
 
     # Tier 1: blend-critical temp models. These feed the live trading blend
-    # directly, so they get first claim on the rate budget.
-    for model in blend_models:
+    # directly, so they get first claim on the rate budget. Iterates
+    # _real_blend_models (always all 3), NOT the quarantine-filtered
+    # blend_models -- a quarantined model must keep being fetched here so its
+    # accuracy keeps being tracked (see the quarantine module's docstring);
+    # blend_models is consulted separately below, only at the point that
+    # decides whether a model's members are folded into the live blend.
+    for model in _real_blend_models:
         if _ensemble_cb.is_open():
             break
         _fetch_temp_model(model)
@@ -2153,7 +2177,7 @@ def batch_prewarm_ensemble(
             target_month = date.fromisoformat(date_iso).month
             weights = _model_weights(city_name, month=target_month)
             for var_str, _ in vars_to_fetch:
-                cache_key = (city_name, date_iso, None, var_str)
+                cache_key = (city_name, date_iso, None, var_str, _quarantine_tag)
                 # Overwrite even if a (possibly stale, disk-resurrected) entry
                 # already exists — the network cost of this fetch is already
                 # paid, so skipping the write here would discard freshly
@@ -3390,6 +3414,406 @@ def _weights_from_mae(
     return normalised
 
 
+# ── Per-member EWMA quarantine ──────────────────────────────────────────────
+# Generic, per-model early-warning + hard-exclusion mechanism, one level above
+# _weights_from_mae()'s continuous inverse-MAE down-weighting. That soft
+# weighting alone can never fully exclude a member from the ENSEMBLE BLEND
+# specifically: get_ensemble_temps()'s and batch_prewarm_ensemble()'s
+# replication scheme both compute `repeats = max(1, round(w * 2))` -- the
+# max(1, ...) floor means even a weight driven to 0 still contributes at
+# least one copy of that model's members to the blend. When a member goes
+# acutely bad (see backlog: 2026-08 gfs_seamless MAE regression), the only
+# way to actually stop the ensemble blend from trading on it is to remove it
+# from the candidate list feeding the blend loop entirely -- that is what
+# this module does. Note the scope: this excludes the model from the
+# ensemble blend only, not from every downstream signal that independently
+# re-derives a per-model probability (e.g. analyze_trade's model_consensus
+# check, which still compares icon/gfs regardless of quarantine -- see
+# backlog.txt's "MODEL_CONSENSUS SHOULD EXCLUDE A QUARANTINED MEMBER" entry,
+# filed as a separate follow-up rather than expanding this change into
+# order_executor.py's Kelly-sizing logic).
+# _weights_from_mae()/_model_weights() are deliberately left untouched;
+# quarantine acts one layer above them, mirroring the existing
+# TRACKING_ONLY_MODEL_NAMES precedent in batch_prewarm_ensemble() (fetch for
+# accuracy tracking, exclude from the blend) but triggered dynamically
+# instead of statically.
+#
+# Candidate set is deliberately hardcoded here, NOT derived from
+# tracker.get_member_accuracy()'s own keys: that function returns every
+# tracked model, including ecmwf_ifs025 (a DIFFERENT blend's model entirely --
+# see _model_weights()'s own docstring) and TRACKING_ONLY_MODEL_NAMES. Only
+# _model_weights() (one layer above _weights_from_mae()) filters ecmwf_ifs025
+# out today; _weights_from_mae() itself only filters TRACKING_ONLY_MODEL_NAMES.
+# Iterating get_member_accuracy()'s raw keys here would let an irrelevant
+# model's MAE feed the active-member floor count below, corrupting it.
+_QUARANTINE_CANDIDATE_MODELS: tuple[str, ...] = (
+    *ENSEMBLE_MODELS,
+    "ecmwf_aifs025_ensemble",
+)
+
+_QUARANTINE_EWMA_LAMBDA = 0.2  # EWMA smoothing factor (Lucas & Saccucci 1990 range)
+_QUARANTINE_TRIP_Z = 2.0  # ewma_z at/above this trips quarantine
+_QUARANTINE_RELEASE_Z = 0.5  # ewma_z must fall to/below this to release (asymmetric --
+# trips easier than it releases, standard circuit-breaker hysteresis to avoid
+# flapping a member in/out every scan when it's sitting near the trip line)
+_QUARANTINE_MIN_RECENT_N = 20  # warm-up floor, matches _weights_from_mae's min_n
+_QUARANTINE_MIN_ACTIVE = 2  # never let quarantine drop active members below this
+_QUARANTINE_RECENT_DAYS = 14
+_QUARANTINE_MIN_EFFECT_F = 0.5  # minimum practical own-vs-peer MAE gap (°F) to
+# trip, evaluated ALONGSIDE (not instead of) the z-threshold -- a two-sample
+# standard error shrinks as ~1/sqrt(n), so at high enough sample sizes a
+# trivial, practically-meaningless MAE gap becomes "statistically
+# significant" on the z-test alone. This floor keeps a real-world-sized
+# difference required regardless of how much data has accumulated. Applied
+# only to the TRIP decision (pass 2), not to whether ewma_z itself updates --
+# ewma_z must keep tracking the true z every scan so RELEASE (which needs
+# ewma_z to fall, not the effect size to shrink further) still works
+# correctly for an already-quarantined member.
+
+_member_quarantine_state_cache: dict = {}
+_member_quarantine_state_cache_key: tuple[str, float] | None = None  # (path, mtime)
+
+
+def load_member_quarantine_state() -> dict:
+    """Load data/member_quarantine.json: {model: {ewma_z, quarantined, ...}}.
+
+    Mirrors tracker.get_retired_strategies()'s read shape: returns {} if the
+    file is missing, empty, or malformed, rather than raising. Memoized by
+    (path, mtime) -- not mtime alone, since a bare mtime match across two
+    DIFFERENT paths (e.g. two tests each redirecting MEMBER_QUARANTINE_PATH
+    to their own tmp_path file, on a filesystem with coarse mtime
+    resolution) would otherwise serve one test's cached state to another --
+    get_quarantined_members() is called once per market per scan cycle via
+    get_ensemble_temps(), so re-parsing the file on every call would be
+    real, avoidable per-cycle overhead.
+
+    Returns the SAME cached dict object across calls when the cache hits --
+    callers that intend to mutate must copy it first (see
+    scan_member_quarantine()'s deepcopy, which exists specifically so a
+    failed persist can never leave a mutated-but-unsaved object sitting in
+    this cache for the rest of the process).
+    """
+    global _member_quarantine_state_cache, _member_quarantine_state_cache_key
+
+    path = MEMBER_QUARANTINE_PATH
+    if not path.exists():
+        _member_quarantine_state_cache = {}
+        _member_quarantine_state_cache_key = None
+        return {}
+    try:
+        cache_key = (str(path), path.stat().st_mtime)
+        if cache_key == _member_quarantine_state_cache_key:
+            return _member_quarantine_state_cache
+        data = json.loads(path.read_text())
+    except Exception:
+        return {}
+    result = data if isinstance(data, dict) else {}
+    _member_quarantine_state_cache = result
+    _member_quarantine_state_cache_key = cache_key
+    return result
+
+
+def _save_member_quarantine_state(state: dict) -> bool:
+    """Persist member-quarantine state atomically. Mirrors save_learned_weights().
+
+    Returns True on success, False on failure (callers should not report a
+    quarantine/release decision as final if this returns False -- it was
+    computed but not durably saved, and will be lost on process restart).
+    """
+    global _member_quarantine_state_cache_key
+    try:
+        _safe_io.atomic_write_json(state, MEMBER_QUARANTINE_PATH)
+        # Invalidate the cache key so the next read re-parses -- the write
+        # above changes the file's mtime, but forcing a miss here avoids any
+        # dependency on filesystem mtime resolution being finer than the
+        # time this function takes to return. Deliberately does NOT update
+        # _member_quarantine_state_cache to `state` directly (unlike some
+        # write-through caches): scan_member_quarantine() always works on
+        # its own deep copy, never the cached object itself, so there is
+        # nothing here that needs protecting from a failed write leaking
+        # forward -- the cache simply re-reads from disk on next access.
+        _member_quarantine_state_cache_key = None
+        return True
+    except Exception as exc:
+        _log.error("[MemberQuarantine] failed to persist state: %s", exc)
+        return False
+
+
+def get_quarantined_members() -> set[str]:
+    """Cheap read accessor: which candidate models are currently quarantined.
+
+    Defensively re-enforces the active-member floor at READ time too, not
+    just when scan_member_quarantine() itself writes state -- a hand-edited
+    or future-bug-corrupted state file must never be able to report more
+    than len(_QUARANTINE_CANDIDATE_MODELS) - _QUARANTINE_MIN_ACTIVE
+    quarantined models, since every consumer (get_ensemble_temps,
+    batch_prewarm_ensemble) treats this set as an unconditional exclusion
+    list with no floor check of its own.
+    """
+    state = load_member_quarantine_state()
+    quarantined = {
+        m
+        for m in _QUARANTINE_CANDIDATE_MODELS
+        if isinstance(state.get(m), dict) and state[m].get("quarantined")
+    }
+    max_quarantined = max(0, len(_QUARANTINE_CANDIDATE_MODELS) - _QUARANTINE_MIN_ACTIVE)
+    if len(quarantined) > max_quarantined:
+        # Deterministic tiebreak (model name) on top of -ewma_z, matching
+        # scan_member_quarantine()'s own pass-2 sort -- without it, two
+        # processes reading an exact-tie state file could each keep a
+        # different model quarantined (set iteration order isn't stable
+        # across processes), splitting _quarantine_cache_tag()'s namespace.
+        ranked = sorted(quarantined, key=lambda m: (-state[m].get("ewma_z", 0.0), m))
+        quarantined = set(ranked[:max_quarantined])
+    return quarantined
+
+
+def _quarantine_cache_tag() -> str:
+    """A flat, JSON-round-trip-safe cache-key element for the current
+    quarantine state.
+
+    Deliberately a single joined STRING, not a tuple/list: cache entries
+    that survive to disk (_save_ensemble_disk_entry/_load_ensemble_disk_cache)
+    round-trip their key through json.dumps/json.loads, which turns a nested
+    tuple into a list -- and a list is unhashable, so the very first such
+    poisoned key raises inside _load_ensemble_disk_cache()'s load loop and
+    silently aborts it partway, truncating every entry after it on every
+    future process start. A string element has no such failure mode.
+    get_ensemble_temps() and batch_prewarm_ensemble() must use this SAME
+    helper for their respective cache_key/blended-entry keys -- a mismatch
+    there (as opposed to a mismatch in shape) means get_ensemble_temps can
+    never hit batch_prewarm_ensemble's prewarmed entry at all.
+    """
+    return ",".join(sorted(get_quarantined_members()))
+
+
+def scan_member_quarantine() -> dict[str, list[str]]:
+    """Update each candidate model's EWMA drift score and quarantine/release as needed.
+
+    Peer-relative design: for each candidate model, compares its own recent
+    (_QUARANTINE_RECENT_DAYS-day, by logged_at -- i.e. scored recently, not
+    necessarily FOR a recent target_date; a backfill re-scoring old dates
+    would land here too) MAE against the mean recent MAE of the OTHER
+    candidates that were not already quarantined going into this scan
+    (excluding an already-known-bad peer keeps it from inflating what counts
+    as "normal" and masking a second bad member).
+
+    Normalised by the POOLED two-sample standard error of (own mean - peer
+    mean), not just own's standard error alone: peer_mean is itself an
+    estimate from 1-2 peers with their own sampling uncertainty, not a known
+    constant, so treating it as exact would understate the true denominator
+    (an independent review, re-deriving this against live production data,
+    found the one-sample version put gfs_seamless -- the live case this
+    feature was built for -- right at the trip boundary, with roughly a 16%
+    swing in z coming purely from that omission). se = sqrt(own.std^2/own.n
+    + sum(peer.std^2/peer.n for peer in peers) / len(peers)^2).
+
+    An earlier design compared each model only against its OWN longer-run
+    history (a temporal-drift check) -- design review caught that an
+    overlapping recent/baseline window muted real drift toward z=0, but even
+    after fixing the windows to be non-overlapping, a live production
+    re-check found the self-relative framing itself was wrong for the
+    failure this feature targets: gfs_seamless's OWN recent MAE can be
+    better than its OWN older history (its worst stretch having aged out of
+    the recent window) while it is STILL the worst of the three live
+    candidates right now -- exactly the case a cross-model comparison
+    catches and a self-relative one does not. Peer-relative comparison also
+    needs only one data source (recent_acc), removing the earlier design's
+    dependency on a fragile, often-data-starved long-history baseline
+    window.
+
+    z is EWMA-smoothed (ewma_z_prev seeded at 0.0 for a model with no prior
+    state). Seeding at 0 bounds an ORDINARY bad first reading from tripping
+    quarantine on a single scan, but does not and cannot prevent trip on a
+    single genuinely EXTREME first reading (raw z >= 2/lambda = 10 alone
+    reaches the 2.0 trip line in one scan; raw z >= 1/lambda = 5 reaches
+    ewma_z=1.0) -- an extreme-enough single reading legitimately trips
+    immediately by design, it is not a bug.
+
+    TRIP additionally requires the raw own-vs-peer MAE gap to clear
+    _QUARANTINE_MIN_EFFECT_F in absolute °F terms, not just the z-threshold:
+    the two-sample SE shrinks as ~1/sqrt(n), so a purely statistical
+    threshold alone would eventually treat an arbitrarily small, practically
+    meaningless MAE gap as "significant" once enough data accumulates.
+    RELEASE is not floored this way -- it only needs ewma_z to fall, since
+    an already-quarantined member's ongoing z is what actually needs to
+    normalize, not a fresh minimum-effect test.
+
+    Returns {"newly_quarantined": [...], "released": [...], "blocked_by_floor": [...]}.
+
+    Known limitations:
+    - With only len(_QUARANTINE_CANDIDATE_MODELS) candidates (3 today) and
+      _QUARANTINE_MIN_ACTIVE=2, the floor protects against exactly one
+      simultaneously-bad member. A second member degrading while the first
+      is already quarantined is logged as blocked_by_floor, not excluded --
+      it still gets _weights_from_mae()'s ordinary soft down-weight, just
+      not a hard cutoff. Inherent to a 3-member ensemble, not a bug.
+    - A model that is BOTH already-quarantined AND currently data-thin
+      (recent.n or an available-peer floor fails) cannot be evaluated for
+      release this scan and stays quarantined -- logged at WARNING each such
+      scan so it doesn't silently freeze forever unnoticed.
+    """
+    import copy
+    import math as _math
+
+    from tracker import get_member_accuracy
+
+    models = _QUARANTINE_CANDIDATE_MODELS
+    # Deep copy, not the cached object itself: if _save_member_quarantine_state
+    # fails partway through this run, the module-level cache must still
+    # reflect the last SUCCESSFULLY persisted state, not this run's
+    # in-progress (and now lost) mutations -- otherwise this process keeps
+    # trading against a decision that disk never actually recorded, and
+    # every OTHER process (which reads disk directly, or a fresh cache miss)
+    # silently disagrees with it. Mirrors save_learned_weights()'s existing
+    # documented rationale for the same hazard.
+    state = copy.deepcopy(load_member_quarantine_state())
+    # Peer exclusion uses PRE-scan quarantine status (this scan's own
+    # z-values don't exist yet, and computing them would require already
+    # knowing who's excluded -- using yesterday's determination breaks the
+    # circularity and is fine since state only changes once per day).
+    pre_scan_quarantined = {
+        m
+        for m in models
+        if isinstance(state.get(m), dict) and state[m].get("quarantined")
+    }
+
+    recent_acc = get_member_accuracy(days_back=_QUARANTINE_RECENT_DAYS)
+
+    now_iso = datetime.now(UTC).isoformat()
+    released: list[str] = []
+    newly_quarantined: list[str] = []
+    blocked_by_floor: list[str] = []
+
+    # Pass 1: update every candidate's EWMA (independent of quarantine status)
+    # and release first -- releasing can only ever increase active_count, so
+    # it never needs a floor check, and doing it before the quarantine pass
+    # lets a member that recovered this scan free up floor room immediately.
+    for model in models:
+        entry = state.get(model, {})
+        if not isinstance(entry, dict):
+            entry = {}
+        entry.setdefault("quarantined", False)
+        ewma_z_prev = entry.get("ewma_z", 0.0)
+        entry["last_scan_at"] = now_iso
+
+        own = recent_acc.get(model)
+        peers = [
+            recent_acc[m2]
+            for m2 in models
+            if m2 != model
+            and m2 not in pre_scan_quarantined
+            and recent_acc.get(m2)
+            and recent_acc[m2]["n"] >= _QUARANTINE_MIN_RECENT_N
+        ]
+        if (
+            not own
+            or own["n"] < _QUARANTINE_MIN_RECENT_N
+            or own["std"] <= 0
+            or not peers
+        ):
+            # Not enough data to judge this scan -- leave ewma_z/quarantined
+            # as-is, but last_scan_at above still records that we tried.
+            state[model] = entry
+            if entry["quarantined"]:
+                _log.warning(
+                    "[MemberQuarantine] %s remains quarantined -- insufficient "
+                    "data this scan to evaluate for release (own or peer data "
+                    "too thin)",
+                    model,
+                )
+            continue
+
+        peer_mean = sum(p["mae"] for p in peers) / len(peers)
+        own_var = own["std"] ** 2 / own["n"]
+        peer_pool_var = sum(p["std"] ** 2 / p["n"] for p in peers) / (len(peers) ** 2)
+        se = _math.sqrt(own_var + peer_pool_var)
+        effect_f = own["mae"] - peer_mean
+        z = effect_f / se if se > 0 else 0.0
+        ewma_z = (
+            _QUARANTINE_EWMA_LAMBDA * z + (1 - _QUARANTINE_EWMA_LAMBDA) * ewma_z_prev
+        )
+
+        entry.update(
+            {
+                "ewma_z": round(ewma_z, 4),
+                "last_z": round(z, 4),
+                "last_effect_f": round(effect_f, 4),
+                "last_own_mae": own["mae"],
+                "last_peer_mean_mae": round(peer_mean, 4),
+                "last_n_own": own["n"],
+                "last_n_peers": len(peers),
+            }
+        )
+        state[model] = entry
+
+        if entry.get("quarantined") and ewma_z <= _QUARANTINE_RELEASE_Z:
+            entry["quarantined"] = False
+            entry["released_at"] = now_iso
+            released.append(model)
+            _log.warning(
+                "[MemberQuarantine] released %s (ewma_z=%.2f <= %.2f)",
+                model,
+                ewma_z,
+                _QUARANTINE_RELEASE_Z,
+            )
+
+    # Pass 2: quarantine worst-first, capped by remaining floor room. Trip
+    # requires BOTH the z-threshold AND a practically-meaningful MAE gap
+    # (_QUARANTINE_MIN_EFFECT_F) -- see docstring.
+    active_count = sum(1 for m in models if not state.get(m, {}).get("quarantined"))
+    room = max(0, active_count - _QUARANTINE_MIN_ACTIVE)
+
+    trip_candidates = sorted(
+        (
+            m
+            for m in models
+            if not state.get(m, {}).get("quarantined")
+            and state.get(m, {}).get("ewma_z", 0.0) >= _QUARANTINE_TRIP_Z
+            and state.get(m, {}).get("last_effect_f", 0.0) >= _QUARANTINE_MIN_EFFECT_F
+        ),
+        key=lambda m: (-state[m]["ewma_z"], m),
+    )
+    for model in trip_candidates:
+        if room <= 0:
+            blocked_by_floor.append(model)
+            _log.warning(
+                "[MemberQuarantine] %s qualifies for quarantine (ewma_z=%.2f) "
+                "but blocked by the %d-active floor -- active roster: %s",
+                model,
+                state[model]["ewma_z"],
+                _QUARANTINE_MIN_ACTIVE,
+                sorted(m2 for m2 in models if not state.get(m2, {}).get("quarantined")),
+            )
+            continue
+        state[model]["quarantined"] = True
+        state[model]["quarantined_at"] = now_iso
+        newly_quarantined.append(model)
+        room -= 1
+        _log.warning(
+            "[MemberQuarantine] quarantined %s (ewma_z=%.2f >= %.2f, effect=%.2f°F)",
+            model,
+            state[model]["ewma_z"],
+            _QUARANTINE_TRIP_Z,
+            state[model].get("last_effect_f", 0.0),
+        )
+
+    saved = _save_member_quarantine_state(state)
+    if not saved and (newly_quarantined or released):
+        _log.error(
+            "[MemberQuarantine] scan computed real changes (quarantined=%s "
+            "released=%s) but failed to persist them -- decision is lost on "
+            "process restart; will be recomputed fresh next scan",
+            newly_quarantined,
+            released,
+        )
+    return {
+        "newly_quarantined": newly_quarantined,
+        "released": released,
+        "blocked_by_floor": blocked_by_floor,
+    }
+
+
 # (city, var, days_back) -> per-model signed bias. Same TTL rationale as
 # _MAE_WEIGHTS_CACHE (per-model bias drifts as new trades settle).
 _MODEL_BIAS_CACHE: ForecastCache[dict[str, float]] = ForecastCache(
@@ -3557,10 +3981,12 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     it's also no longer in `ensemble_candidate_models` (which is
     baseline | TRACKING_ONLY_MODEL_NAMES) unless it's in `baseline`, and
     would silently fall back OUT of this function's output again. Also add
-    it to the live-blend fetch lists in
-    get_ensemble_temps()/batch_prewarm_ensemble() so its weight is actually
-    consumed. Skipping step (2) reproduces the exact silent-exclusion bug
-    this generalization exists to fix, just one step later.
+    it to _QUARANTINE_CANDIDATE_MODELS (the "Per-member EWMA quarantine"
+    section below) -- the single source of truth get_ensemble_temps()/
+    batch_prewarm_ensemble() both reference for which models actually enter
+    the live blend, so its weight is actually consumed. Skipping step (2)
+    reproduces the exact silent-exclusion bug this generalization exists to
+    fix, just one step later.
 
     ensemble_candidate_models (below) treats "in TRACKING_ONLY_MODEL_NAMES"
     as synonymous with "candidate for THIS blend" — true today (its only two
@@ -3754,7 +4180,15 @@ def get_ensemble_temps(
     var: "max" for daily high, "min" for daily low (ignored if hour is set).
     hour: local hour (0-23) for hourly markets like KXTEMPNYCH.
     """
-    cache_key = (city, target_date.isoformat(), hour, var)
+    # Quarantine state is part of the cache key so a quarantine/release change
+    # is reflected on the next call instead of silently serving an already-
+    # cached blend that still includes (or still excludes) a model for up to
+    # the cache's own TTL. Must match batch_prewarm_ensemble's blended-entry
+    # key exactly (same _quarantine_cache_tag() helper, same tuple shape) or
+    # this call can never hit that prewarmed entry.
+    _quarantine_tag = _quarantine_cache_tag()
+    _quarantined_now = set(_quarantine_tag.split(",")) if _quarantine_tag else set()
+    cache_key = (city, target_date.isoformat(), hour, var, _quarantine_tag)
     cached_data = _ensemble_cache.get(cache_key)
     if cached_data is not None:
         return cached_data
@@ -3776,7 +4210,12 @@ def get_ensemble_temps(
     decay = 1.0
 
     all_temps: list[float] = []
-    ensemble_models_with_ecmwf = [*ENSEMBLE_MODELS, "ecmwf_aifs025_ensemble"]
+    # _QUARANTINE_CANDIDATE_MODELS, not a second independent reconstruction
+    # of the same 3-model tuple -- see the identical note in
+    # batch_prewarm_ensemble() above.
+    ensemble_models_with_ecmwf = [
+        m for m in _QUARANTINE_CANDIDATE_MODELS if m not in _quarantined_now
+    ]
     for model in ensemble_models_with_ecmwf:
         try:
             temps = _fetch_model_ensemble(lat, lon, tz, target_date, model, hour, var)

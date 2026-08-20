@@ -800,7 +800,11 @@ class TestDynamicCacheTTL:
 
         import weather_markets as wm
 
-        cache_key = ("NYC", date(2026, 4, 15).isoformat(), None, "max")
+        # 5th element is the quarantine-state cache tag (empty string == no
+        # models currently quarantined) -- get_ensemble_temps()'s cache_key
+        # includes it so a quarantine/release change invalidates stale
+        # cached blends; must match here or this seeded entry is unreachable.
+        cache_key = ("NYC", date(2026, 4, 15).isoformat(), None, "max", "")
         fresh_data = [
             68.0,
             69.0,

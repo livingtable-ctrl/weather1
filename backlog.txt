@@ -21944,3 +21944,437 @@ Problem:
   maker/taker fee selection (order.get("order_type") == "limit") to the
   losing branches as well, and audit backtest.py/_exit_live_position for the
   same gap, since they share the identical win-only convention.
+
+[RESOLVED 2026-08-19/20 -- see resolution below.] ENSEMBLE MODEL QUALITY
+  DEGRADED FROM ~100% TO 30% DIRECTIONAL ACCURACY OVER 3 MONTHS -- NO
+  MECHANISM EXISTED TO AUTOMATICALLY EXCLUDE AN ACUTELY-DEGRADED MEMBER
+Priority: Medium-High -- affects the paper-trading track record the
+  eventual live-trading graduation decision is based on, not live capital
+  directly (LIVE_TRADING_ENABLED unset throughout).
+
+Problem:
+  cron.py's cmd_cron flagged "ensemble pin expiring but directional_
+  accuracy=0.30 < 0.70 -- not auto-renewing; check model quality" (2026-08-
+  19 scan). Investigation (querying paper.get_all_trades()/tracker's
+  multiday_predictions directly) confirmed a real, gradual decay: chunked
+  chronological win rate on the ensemble method's multi-day trades went
+  100% (May 19-28) -> 60% -> 50% -> 60% -> 40% -> 30% (Aug 7-14) -> 50%
+  (partial, Aug 15-19). Root-caused via tracker.get_member_accuracy(days_
+  back=60): gfs_seamless MAE=5.37F, the worst of every tracked model (an
+  externally-reported GFS warm-bias issue, dated ~2026-08-06, lines up with
+  the sharpest accuracy drop). ecmwf_aifs025_ensemble's own MAE (2.64F) was
+  actually good despite a separate, externally-documented "overdispersion"
+  (spread-calibration, not mean-bias) issue -- confirmed NOT the culprit by
+  MAE, ruling out an initial hypothesis that both flagged members needed
+  down-weighting.
+  The existing weight_from_mae()/get_ensemble_temps()/batch_prewarm_
+  ensemble() blend already soft-down-weights a bad member via inverse-MAE,
+  but both blend loops compute `repeats = max(1, round(w * 2))` -- the
+  max(1, ...) floor means even a weight driven toward 0 still includes at
+  least one copy of that model's members. No mechanism existed to actually
+  exclude an acutely-degraded member, only to lightly discount it.
+  Also found and fixed in passing: cron.py's "[EMOS] ... READY" message
+  hardcoded a 40-row floor (_EMOS_TRAIN_GATE, the Gneiting-2005 statistical
+  minimum for the ens_var fit) even though the user's own recorded decision
+  (this file, EMOS entry, UPDATE 2026-08-18) raised the real go-live bar to
+  ~80 rows -- the banner was printing "READY" prematurely between 40 and 79
+  rows.
+
+Resolution (2026-08-19/20):
+  Added a generic, per-ensemble-member EWMA drift guard (weather_markets.py,
+  new section preceding _model_bias -- scan_member_quarantine()/
+  load_member_quarantine_state()/get_quarantined_members()), enforced at
+  the model-selection layer (get_ensemble_temps()'s ensemble_models_with_
+  ecmwf list, batch_prewarm_ensemble()'s blend_models list) rather than by
+  trying to zero a weight, since the max(1,...) floor makes that structurally
+  impossible. Design, adversarially reviewed twice (5 parallel Explore
+  passes, 2 internal rounds each, at the user's explicit request) before
+  implementation:
+    - Non-overlapping recent(14d)/baseline(60d-excluding-the-most-recent-14d)
+      windows (tracker.get_member_accuracy() gained an end_days_back param)
+      -- an overlapping design was found to mute real, ongoing drift toward
+      z=0, since the recent window's own bad data also drags the baseline
+      it's compared against; confirmed on live data (GFS's z came out
+      negative under the original overlapping design).
+    - EWMA-smoothed z-score (lambda=0.2) of recent-vs-baseline MAE,
+      normalized by baseline's own std (tracker.get_member_accuracy() also
+      gained a std key) -- reacts to sustained drift, not a single noisy
+      scan. Seeded at 0.0 for a model with no prior state (not the first raw
+      z), so an extreme first reading can't single-handedly trip quarantine.
+    - Asymmetric hysteresis: trip at ewma_z>=2.0, release only at ewma_z<=0.5
+      -- standard circuit-breaker practice to prevent flapping right at a
+      boundary.
+    - Explicit, hardcoded 3-name candidate set (icon_seamless, gfs_seamless,
+      ecmwf_aifs025_ensemble) -- review found tracker.get_member_accuracy()
+      returns every tracked model including ecmwf_ifs025 (a DIFFERENT
+      blend's model) and gem_global/ukmo_global_ensemble_20km (tracking-
+      only); iterating its raw keys would have let an irrelevant model
+      corrupt the active-member floor count.
+    - 2-of-3 minimum-active floor with worst-first quarantine ordering,
+      capped by available room; anything blocked by the floor is logged, not
+      silently dropped. Known, stated limitation: this only protects against
+      one simultaneously-bad member out of 3 -- a second one gets only the
+      pre-existing soft down-weight.
+    - get_ensemble_temps()'s cache key now includes the current quarantined-
+      set (review found the original design would silently keep serving an
+      already-cached blend for up to 6h after a quarantine/release change).
+    - batch_prewarm_ensemble()'s Tier-1 fetch loop was fixed to iterate the
+      full 3-model set (not blend_models) so a quarantined model keeps being
+      fetched/tracked and can recover -- catching this during implementation
+      (not the design review) since the original blend_models/fetch_models
+      split would have silently stopped tracking a quarantined model,
+      making quarantine effectively permanent.
+    - New tests/conftest.py autouse fixture (isolate_member_quarantine)
+      isolates the new data/member_quarantine.json path for every test --
+      review found existing tests (e.g. test_bias_subtracted_from_raw_
+      members_before_blend) assert gfs_seamless specifically appears in the
+      blend and would have gone non-deterministically flaky against a real
+      on-disk quarantine file otherwise.
+  Daily scan wired into cmd_cron (cron.py, alongside the existing
+  auto_retire_strategies() call), gated by a LAST_QUARANTINE_SCAN_PATH
+  marker file (same once-per-day idiom as the existing Monday sweep) so
+  back-to-back cron cycles don't re-scan. Runs only inside _cmd_cron_body,
+  i.e. only after _acquire_cron_lock() succeeds -- a double-run under a
+  broken lock is the same already-tracked cron-lock TOCTOU risk (see the
+  live-trading-risk-gate audit's cron-lock finding, a disjoint subsystem
+  from this change) every other line in that function has, not a new one;
+  bounded impact (lost update to member_quarantine.json, self-heals next
+  scan).
+  cron.py's EMOS banner fix: added _EMOS_GOLIVE_BAR=80 alongside the
+  existing _EMOS_TRAIN_GATE=40, repointed the ens_var_n-gated branches (and
+  fixed a third branch's DISPLAY string that also referenced the stale 40,
+  caught by review) to the real bar; left _EMOS_TRAIN_GATE and main.py's
+  actual emos-train --activate gate (a genuinely different, correctly-40
+  concern) untouched. EMOS activation itself remains explicitly out of
+  scope -- current count (51) is still short of the 80-row bar.
+  Tests: tests/test_tracker.py (TestGetMemberAccuracyStdAndEndDaysBack, 6
+  tests -- std/end_days_back correctness, non-overlapping-window positive
+  control), tests/test_weather_markets.py (TestMemberQuarantineScan, 11
+  tests -- warm-up floors, cold-start seeding, sustained-drift-not-single-
+  scan, asymmetric hysteresis, floor+tiebreak, stray-tracked-model
+  isolation, persistence; TestMemberQuarantineBlendHooks, 3 tests -- real
+  behavioral get_ensemble_temps/batch_prewarm_ensemble exclusion+cache-key+
+  continued-tracking checks, mirroring the existing gem/ukmo tracking-only
+  test's mocked-HTTP style), tests/test_main_cron_smoke.py (EMOS banner
+  parametrize table extended to the 40/79/80 boundary plus a dedicated
+  branch-2-display test; TestCmdCronQuarantineScanWiring, 5 tests -- marker-
+  file gating, WARNING-level logging, failure isolation). Full scoped
+  regression sweep (tests/test_weather_markets.py + tests/test_tracker.py +
+  tests/test_main_cron_smoke.py, 732 passed/4 skipped/1 failed) found one
+  unrelated pre-existing failure (test_log_prediction_falls_back_to_
+  recomputed_days_out_when_absent, a UTC-vs-local-today date-boundary flake
+  in code this change never touches) -- not fixed here, different
+  subsystem. ruff/ruff-format/mypy all pass via the real pre-commit hook.
+  Not yet done at the time of this entry: independent opus review (effort=
+  high), optional member-quarantine/unquarantine CLI commands (mirroring
+  cmd_retire_strategies/cmd_unretire_strategy), commit/push.
+
+UPDATE 2026-08-20 (independent opus review, effort=high, run per this
+  project's standard workflow before commit): found 4 HIGH + 7 MEDIUM + 8
+  LOW/INFO. All addressed (per this project's "every finding, not just
+  HIGH/MEDIUM" rule) -- no finding dropped as informational-therefore-
+  ignorable.
+  HIGH-1/HIGH-2 (real regressions, independent of whether quarantine ever
+  fires): get_ensemble_temps()'s new 5-element cache_key (city, date, hour,
+  var, quarantine-tuple) never matched batch_prewarm_ensemble()'s still-
+  4-element blended-entry write -- the entire prewarm blend cache became
+  permanently dead (every get_ensemble_temps call fell through to 3
+  uncached per-city network fetches, bypassing the whole rate-budget
+  tiering the prewarm exists for), AND a nested tuple as a cache-key element
+  doesn't survive the disk cache's JSON round-trip (tuple -> list on reload,
+  which is unhashable -- the first such poisoned key raised inside
+  _load_ensemble_disk_cache()'s load loop and silently truncated every
+  entry after it, on every future process start). Fixed by (a) a single
+  shared _quarantine_cache_tag() helper (a flat joined STRING, not a
+  tuple/list -- JSON-round-trip-safe) used identically by both
+  get_ensemble_temps()'s cache_key and batch_prewarm_ensemble()'s blended-
+  entry key, and (b) an existing test (tests/test_forecasting.py::
+  test_cache_hit_returns_ensemble_without_fetch, NOT in the original scoped
+  sweep -- a real gap in what got regression-tested) plus 3 more test
+  read-sites in test_weather_markets.py updated to the new key shape, one
+  of which (my own new test) also had a leak-sentinel bound loose enough to
+  pass even with gem/ukmo's absurd tracking-only values leaking through --
+  tightened to a real bound.
+  HIGH-3/HIGH-4 (the statistic as designed would never have caught the
+  actual failure): the original design normalized by baseline.std (the raw
+  per-observation std) instead of the standard error of the MAE difference
+  (~std/sqrt(n)) -- desensitizing the trip threshold by roughly sqrt(n),
+  requiring a near-total model failure to ever trip. Worse: re-querying the
+  real DB found gfs_seamless's OWN recent-vs-baseline z came out NEGATIVE
+  (its worst stretch had aged out of the 14-day recent window while still
+  dragging the 15-60-day baseline) -- the self-relative/own-history framing
+  itself doesn't detect "this model is currently the worst of the three,"
+  only "this model got worse than its own past," which isn't what happened
+  here. Also: gfs/icon's real baseline windows are themselves too data-thin
+  (n=17, below the 20 floor) for the mechanism to ever fire at all right
+  now. Redesigned to PEER-RELATIVE comparison: z = (own recent MAE - mean
+  of non-quarantined peers' recent MAE) / (own std / sqrt(own n)) --
+  statistically correct normalization, directly targets "worse than peers
+  right now" (the actual observed failure), and removes the fragile long-
+  history baseline dependency entirely (tracker.get_member_accuracy()'s
+  end_days_back param, added for the old design, was removed as unused --
+  its 4 dedicated tests removed with it, the 2 std-specific tests kept).
+  Peer set explicitly excludes any peer already quarantined going into the
+  scan (using pre-scan state to avoid circularity) so an already-known-bad
+  peer can't inflate what counts as "normal" and mask a second bad member --
+  new dedicated regression test proves this (test_peer_mean_excludes_
+  already_quarantined_peer).
+  MEDIUM-5: member_quarantine.json was missing from main.py's
+  _PERMANENT_DATA_FILES -- cleanup_data_dir() (runs on every CLI invocation)
+  would silently delete it after 2 days of cron downtime, releasing a
+  confirmed-bad quarantine with no log line. Added.
+  MEDIUM-6: LAST_QUARANTINE_SCAN_PATH was missing from tests/conftest.py's
+  isolate_cron_generated_files fixture (the global one covering every other
+  real file _cmd_cron_body writes) -- any of the 67 other cmd_cron(
+  invocations across 10 test files would stamp the REAL production marker,
+  suppressing the next actual daily scan for 24h. Added.
+  MEDIUM-7/MEDIUM-8: two new tests' docstrings/assertions didn't actually
+  test what they claimed (cold-start test never asserted "does not trip";
+  hysteresis dead-zone test's numbers landed above the trip line, not in
+  the dead zone -- so it couldn't have distinguished asymmetric from
+  symmetric hysteresis). Both rewritten with correct math and now assert
+  the claimed property directly; also split the cold-start test into two
+  (ordinary-bad-reading-doesn't-trip vs extreme-reading-legitimately-can),
+  since both are true and conflating them is what produced the original
+  mismatch.
+  MEDIUM-9: the module docstring's "the only way to actually stop trading
+  on it" overclaimed scope -- analyze_trade's model_consensus check (and
+  hence order_executor's Kelly-halving) still independently compares
+  icon/gfs regardless of quarantine. Docstring corrected to state the real
+  scope (excludes from the ensemble BLEND only); actually fixing
+  model_consensus is filed as its own new entry below rather than expanding
+  this change into order_executor.py (a different consumer, needing its own
+  signature change -- see workflow rule on same-payload vs. genuinely
+  separate consumers).
+  MEDIUM-10: get_quarantined_members() only intersected/floored at WRITE
+  time (inside scan_member_quarantine()) -- a hand-edited or future-bug-
+  corrupted state file could report all 3 candidates quarantined with
+  nothing stopping it at READ time, emptying the blend entirely. Added the
+  same floor enforcement (intersect with the real candidate set, clamp to
+  the worst N-MIN_ACTIVE by ewma_z) at the read accessor itself.
+  MEDIUM-11: release logic only lived inside the data-sufficient branch, so
+  a quarantined model whose data went thin could never be evaluated for
+  release again -- frozen indefinitely with no visibility. Fixed by
+  stamping last_scan_at even on the skip path (so "never scanned" is
+  distinguishable from "scanned, still insufficient data") and logging a
+  WARNING each such scan a quarantined model can't be judged, rather than
+  silently doing nothing. New regression test:
+  test_quarantined_model_stays_quarantined_when_data_goes_thin. (Separately,
+  this scenario is now much less likely to actually occur in practice under
+  the peer-relative redesign, since it no longer depends on the fragile
+  60-day baseline window that produced the real n=17 shortfall found during
+  review -- only the 14-day recent window, continuously fed by
+  batch_prewarm_ensemble's unconditional Tier-1 fetch of all 3 real models.)
+  LOW/INFO (all addressed): logging.error -> _log.error for consistency
+  with the rest of the section; `candidate_models or default` -> `is None`
+  check (an explicitly-passed empty tuple was silently falling back to the
+  default); added mtime-memoization to load_member_quarantine_state() (was
+  re-parsing the file on every get_ensemble_temps() call, i.e. per market
+  per scan); corrected a stale "~40 rows" comment left over in cron.py's
+  EMOS block from before the 80-row fix; removed unnecessary raising=False
+  from 5 new test monkeypatches on an attribute that definitely exists;
+  converted a test class's implicit xunit setup_method into an explicit
+  autouse fixture so its ordering relative to conftest's isolation fixture
+  is unambiguous rather than merely empirically-correct; added a missing
+  assertion to test_scan_failure_does_not_crash_cron (that the marker file
+  is NOT stamped on failure, so a transient error retries next cycle
+  instead of suppressing the real scan for a full day).
+  Verified correct by the reviewer and left unchanged: the fetch-loop/
+  blend-list split in batch_prewarm_ensemble (the near-miss bug from this
+  entry's own implementation phase, re-checked and confirmed actually
+  fixed); recovery/tracking-continuity for a quarantined model; the EMOS
+  40/79/80 boundary behavior; get_member_accuracy()'s backward
+  compatibility; the floor/tie-break pass-2 logic; cron scan placement
+  before the market fetch (same-cycle effect).
+  Full re-run after all fixes: scoped suite green (tracker/weather_markets/
+  cron/forecasting test files), ruff/ruff-format/mypy clean via pre-commit.
+  A second independent opus review of these fixes (not just self-verified)
+  is queued before commit, per this project's "a fix needs its own review,
+  not just re-checking the original findings" rule -- a fix this size (the
+  core statistic was redesigned, not patched) can introduce new bugs
+  distinct from what it fixed.
+
+UPDATE 2026-08-20 (2nd independent opus review, effort=high, reviewing the
+  redesigned code fresh rather than just re-checking review 1's checklist):
+  found 0 HIGH, confirming the redesign's core statistic and every review-1
+  fix (cache keys, fetch/blend split, floor logic, all 8 rewritten test
+  arithmetic, EMOS boundaries) as actually correct this time. Found MEDIUM-
+  1/2/3 + LOW-1..4 + INFO-1/2/3/5 (INFO-4 noted, no action needed -- stale
+  4-element disk-cache keys from before this change are simply unreachable
+  and expire via TTL, not a live problem). All addressed:
+  MEDIUM-1 (the one real remaining statistical gap): z's denominator used
+  only own's standard error, treating peer_mean as a known constant --
+  but peer_mean is itself estimated from 1-2 peers with their own sampling
+  uncertainty. Re-querying live prod data with the correct two-sample
+  pooled SE showed this mattered concretely: gfs_seamless (still the live
+  motivating case) sat right at the trip boundary, with ~16% of z's value
+  coming purely from the omitted peer-uncertainty term (worse, ~41% at
+  k=1 peer, the case once one member is already quarantined). Fixed:
+  se = sqrt(own.std^2/own.n + sum(peer.std^2/peer.n for peer in peers) /
+  len(peers)^2) -- the standard pooled two-sample formula.
+  MEDIUM-2: neither threshold had a practical-significance floor -- since
+  se shrinks as ~1/sqrt(n) and get_member_accuracy's window can grow to
+  ~420 observations as trading coverage improves, the z-test alone would
+  eventually treat an arbitrarily small, real-world-meaningless MAE gap as
+  "significant." Added _QUARANTINE_MIN_EFFECT_F=0.5 (°F) as an ADDITIONAL
+  requirement alongside (not instead of) the z-threshold for TRIP
+  specifically -- release stays purely ewma_z-gated, since an already-
+  quarantined member's recovery is about its z normalizing, not a fresh
+  minimum-effect test. New regression test constructs n=10,000 to make the
+  z-only threshold trip on a sub-0.5°F gap, confirms the effect floor
+  blocks it.
+  MEDIUM-3 (the other one the reviewer flagged as must-fix): load_member_
+  quarantine_state() returns the SAME cached dict object on a cache hit,
+  and scan_member_quarantine() was mutating it in place -- so a failed
+  _save_member_quarantine_state() call (write error, disk full) still left
+  this process's in-memory cache holding the never-persisted mutation for
+  the rest of the process's life, meaning it kept "trading" against a
+  decision disk never actually recorded, while every other process
+  (reading disk directly) silently disagreed. This is the exact hazard
+  save_learned_weights() already documents and guards against for the
+  identical reason. Fixed: scan_member_quarantine() now works on
+  `copy.deepcopy(load_member_quarantine_state())`, never the cached object
+  itself; _save_member_quarantine_state() now returns a bool so a failed
+  persist gets its own ERROR log line (computed-but-unsaved) instead of
+  silently reporting success. New regression test forces the write to
+  raise, confirms a fresh read after the "failure" still returns the
+  pre-scan (unmutated) state.
+  LOW-1: pre_scan_quarantined's set comprehension lacked the isinstance
+  guard the rest of the module already has -- a corrupted per-model state
+  value would AttributeError, silently caught at _log.debug by cron.py's
+  broad except and permanently disabling quarantine. Added.
+  LOW-2: get_quarantined_members()'s defensive read-time floor clamp
+  (added in review 1's own MEDIUM-10 fix) sorted by -ewma_z with NO
+  secondary key -- an exact tie fell through to set-iteration order,
+  which isn't guaranteed stable across processes, so two processes reading
+  an identical corrupted state file could each keep a DIFFERENT model
+  quarantined, splitting the ensemble cache's quarantine-tag namespace
+  between them. Added the same (-ewma_z, model_name) tiebreak pass 2
+  already used. New test constructs an exact tie inside an over-floor
+  state file, confirms both processes would agree.
+  LOW-3: the "3 real blend models" tuple was independently reconstructed
+  in 3 places (_QUARANTINE_CANDIDATE_MODELS, batch_prewarm_ensemble's
+  _real_blend_models, get_ensemble_temps' inline list) -- a future edit to
+  one without the others would blend DIFFERENT model sets under an
+  IDENTICAL _quarantine_cache_tag()-keyed cache entry, corrupting whichever
+  path filled it last, silently. Consolidated to one source of truth
+  (_QUARANTINE_CANDIDATE_MODELS); _model_weights()'s own "graduating a
+  model needs BOTH steps" docstring checklist updated to name it as the
+  now-single required 3rd edit site (previously said "the live-blend fetch
+  lists," plural, which no longer describes the code).
+  LOW-4: scan_member_quarantine()'s candidate_models= parameter had no
+  caller and no test, and using it with a subset would have silently
+  diverged from get_quarantined_members()'s own floor (which always
+  clamps against the FULL candidate set regardless of what a caller passed
+  the scan) -- two floors that could disagree. Removed the parameter
+  entirely rather than leave untested, unused optionality with a latent
+  correctness trap.
+  INFO-1: a test docstring said "raw z >= 1/lambda = 10"; 1/lambda is 5,
+  2/lambda is 10 (the actual value that reaches the 2.0 trip line from a
+  cold seed in one scan). Fixed; the module docstring already had this
+  right.
+  INFO-2: get_member_accuracy() used population stdev (pstdev, ddof=0); a
+  standard-error calculation conventionally uses sample stdev (ddof=1).
+  At n>=20 the difference is under 2.6% and both push z the same
+  direction as the more consequential MEDIUM-1, but switched for
+  correctness. Updated the one dependent test.
+  INFO-3: the mtime memoization cache was keyed on mtime alone, not
+  (path, mtime) -- two different files sharing a coarse-resolution
+  filesystem's mtime tick (plausible across different tests each
+  redirecting MEMBER_QUARANTINE_PATH to their own tmp_path) could serve
+  one's cached contents for the other. Re-keyed by (str(path), mtime).
+  INFO-5: the docstring called the window "recent (14-day) MAE" without
+  clarifying it's actually "scored (logged_at) within the last 14 days,"
+  not "for a target_date within the last 14 days" -- a backfill re-scoring
+  old target dates would land in the window under the real semantics.
+  Clarified in the docstring.
+  Full re-run after this round of fixes: 20/20 in the quarantine test
+  classes (up from 14 -- 2 new tests for MEDIUM-2/MEDIUM-3, 1 for the
+  read-time tiebreak, plus the existing set re-derived against the new
+  pooled-SE formula via a shared _se() test helper that mirrors production
+  exactly, rather than hand-recomputed literals that could silently drift
+  out of sync with a future formula change again); full
+  test_weather_markets.py (286 passed/4 skipped) and test_tracker.py (408
+  passed/1 pre-existing unrelated failure, same UTC-vs-local-today flake
+  as before) both clean; ruff/ruff-format/mypy clean via pre-commit on the
+  first run this time.
+  A 3rd opus review round was NOT run for this batch -- judgment call,
+  not a process skip: these fixes were surgical corrections to specific,
+  already-enumerated findings (a formula substitution, a copy-before-
+  mutate fix, guard clauses), each verified by a new test whose expected
+  values are computed via the same shared formula helper the production
+  code uses (not independently hand-derived, which is exactly the kind of
+  arithmetic mismatch that produced review 1's own MEDIUM-7/8 test bugs) --
+  a materially different risk profile than review 1's full conceptual
+  redesign, which is what actually justified running a 2nd full review in
+  the first place. Flagged explicitly to the user rather than silently
+  decided.
+
+[OPEN 2026-08-20 -- filed as a review-caught follow-up (MEDIUM-9) rather
+  than expanded into the quarantine change above; genuinely separate
+  consumer/file, not this change's own file-line citations.]
+  ANALYZE_TRADE'S model_consensus CHECK (AND ORDER_EXECUTOR'S KELLY-HALVING)
+  DOESN'T EXCLUDE A QUARANTINED ENSEMBLE MEMBER
+Priority: Low-Medium -- not a correctness bug (halving position size when a
+  known-biased model disagrees is a conservative, not dangerous, side
+  effect), but it means weather_markets.py's own quarantine module
+  docstring's original "the only way to actually stop trading on it" claim
+  was an overclaim until corrected -- quarantine only excludes a member
+  from the ENSEMBLE BLEND, not from this independent consensus/sizing
+  signal.
+
+Problem:
+  weather_markets.py's analyze_trade() computes `model_consensus` by
+  directly comparing icon_seamless's and gfs_seamless's own probabilities
+  (via _get_consensus_probs, which is deliberately quarantine-unaware so
+  accuracy tracking/recovery continues) -- `if abs(icon_p - gfs_p) > 0.12:
+  model_consensus = False`. order_executor.py then applies `consensus_mult
+  = 0.5 if not model_consensus else 1.0` to position sizing. If
+  gfs_seamless is quarantined for a confirmed bias, it still fully
+  participates in this check -- and since it's biased, it will disagree
+  with icon more often, which means positions get MORE conservatively
+  sized (not more aggressively) exactly when the quarantine fired. Low risk
+  today, but the behavior doesn't match what an operator would reasonably
+  expect from "this model is quarantined."
+Recommendation: decide explicitly (AskUserQuestion -- this is a judgment
+  call, not obviously correct either way) whether model_consensus should
+  (a) skip the comparison entirely when either compared model is
+  quarantined (falls back to model_consensus=True, i.e. no penalty), or
+  (b) keep comparing but substitute a non-quarantined peer's probability
+  for the quarantined model's own, or (c) leave as-is and just keep the
+  corrected docstring. Needs its own scoped change to order_executor.py/
+  weather_markets.py's analyze_trade, not a stretch of the quarantine
+  module itself.
+
+[OPEN 2026-08-20 -- filed as a review-caught follow-up (2nd review's
+  MEDIUM-4) rather than blocked on; latent/not-live today, so not a
+  blocker for the quarantine change itself.]
+  QUARANTINE CHANGES THE LIVE ENSEMBLE BLEND'S SPREAD, BUT SPREAD-BASED
+  CALIBRATIONS (EMOS, ANOMALY/BIMODAL GUARDS) ARE FIT ON THE UNFILTERED
+  3-MODEL BLEND
+Priority: Low today (EMOS is not active -- no data/emos_params.json exists,
+  and the ~80-row go-live bar this same change corrected the cron banner
+  to reflect is not yet cleared), but worth tracking explicitly since this
+  same change is what steers the operator toward EMOS activation crossing
+  that bar on roughly the same timescale a real quarantine event might
+  first fire on.
+
+Problem:
+  _compute_ensemble_prob feeds the blend's ens_stats["std"]**2 into
+  emos_exceedance_prob's variance term, and EMOS's own c/d variance-
+  calibration coefficients (when eventually fit via `py main.py emos-train`)
+  will be fit from historical ens_var rows produced by the CURRENT 3-model
+  blend's spread. The same spread also feeds is_forecast_anomalous's
+  threshold and the bimodal-ensemble Kelly-reduction guard. Excluding a
+  quarantined member systematically narrows (or otherwise shifts) that
+  spread relative to what any of these were calibrated against -- so the
+  first time a real quarantine event coincides with EMOS being live, EMOS's
+  variance calibration would be evaluating a distribution shape it was
+  never actually fit on.
+Recommendation: before (or as part of) ever activating EMOS, check whether
+  its training data should be filtered to only ens_var rows logged while
+  the same set of members was active (or whether refitting after any
+  quarantine state change is needed), and whether is_forecast_anomalous's/
+  the bimodal guard's fixed thresholds implicitly assume a fixed 3-model
+  spread. Not urgent while EMOS stays inactive; revisit at the EMOS
+  activation decision itself, not before.

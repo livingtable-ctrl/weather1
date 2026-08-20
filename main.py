@@ -619,6 +619,7 @@ _PERMANENT_DATA_FILES = {
     "platt_models.json",
     "live_config.json",
     "retired_strategies.json",
+    "member_quarantine.json",
     "learned_weights.json",
     "learned_correlations.json",
     "temperature_scale.json",
