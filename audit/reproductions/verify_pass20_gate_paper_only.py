@@ -15,7 +15,6 @@ pointing at a worktree-local "data/" path).
 """
 import json
 import os
-import sqlite3
 import sys
 import tempfile
 from pathlib import Path
@@ -27,8 +26,8 @@ os.environ.setdefault("KALSHI_ENV", "demo")
 tmpdir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
 tmp_path = Path(tmpdir.name)
 
-import paper  # noqa: E402
 import execution_log  # noqa: E402
+import paper  # noqa: E402
 
 # --- Redirect paper.py's ledger to an empty/healthy synthetic ledger -------
 paper_ledger_path = tmp_path / "paper_trades.json"
@@ -74,9 +73,9 @@ print("paper.is_streak_paused()    ->", paper.is_streak_paused())
 print("paper.get_balance()         ->", paper.get_balance())
 print("paper.get_peak_balance()    ->", paper.get_peak_balance())
 print()
-print("Conclusion: despite execution_log recording $%.2f in real realized live "
+print(f"Conclusion: despite execution_log recording ${live_loss_today:.2f} in real realized live "
       "losses this run (10 consecutive), is_paused_drawdown()/is_streak_paused() "
       "report against the synthetic *paper* ledger only (0 trades, balance == "
-      "peak_balance == STARTING_BALANCE) and see nothing wrong." % live_loss_today)
+      "peak_balance == STARTING_BALANCE) and see nothing wrong.")
 
 tmpdir.cleanup()

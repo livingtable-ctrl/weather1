@@ -6,7 +6,10 @@ limit=N) (ORDER BY placed_at DESC LIMIT N, no `live` filter in SQL) and only
 filter for live+pending in Python AFTER truncating to the N most recent rows
 of ANY kind.
 """
-import sys, tempfile, pathlib, time
+import pathlib
+import sys
+import tempfile
+
 sys.path.insert(0, r"C:\Users\thesa\claude kalshi\.claude\worktrees\reverent-lumiere-f79c1f")
 import execution_log as el
 

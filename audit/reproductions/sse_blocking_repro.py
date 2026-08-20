@@ -42,9 +42,11 @@ if app is None:
     print("FAILED: _build_app(None) returned None -- cannot run repro")
     sys.exit(1)
 
-import utils as _dbg_utils
+import utils as _dbg_utils  # noqa: E402
+
 print("DEBUG utils.DASHBOARD_PASSWORD repr:", repr(_dbg_utils.DASHBOARD_PASSWORD))
-import os as _dbg_os
+import os as _dbg_os  # noqa: E402
+
 print("DEBUG os.environ DASHBOARD_PASSWORD set:", "DASHBOARD_PASSWORD" in _dbg_os.environ)
 
 server_thread = threading.Thread(
@@ -54,7 +56,7 @@ server_thread = threading.Thread(
 server_thread.start()
 time.sleep(1.5)  # let the dev server bind
 
-import urllib.request
+import urllib.request  # noqa: E402
 
 results = {}
 

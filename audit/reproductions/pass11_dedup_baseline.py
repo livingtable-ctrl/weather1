@@ -1,7 +1,11 @@
-import os, sys, tempfile, pathlib
+import pathlib
+import sys
+import tempfile
+
 tmpdir = tempfile.mkdtemp()
 sys.path.insert(0, r"C:\Users\thesa\claude kalshi\.claude\worktrees\reverent-lumiere-f79c1f")
-import execution_log as el
+import execution_log as el  # noqa: E402
+
 el.DB_PATH = pathlib.Path(tmpdir) / "execution_log_test2.db"
 el._initialized = False
 

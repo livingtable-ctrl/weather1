@@ -41,7 +41,7 @@ print("Rows visible via fresh live connection:", rows)
 con2.close()
 
 # Now call the real backup_data()
-import cloud_backup
+import cloud_backup  # noqa: E402
 
 result = cloud_backup.backup_data(data_dir=data_dir)
 print("backup_data() returned:", result)

@@ -123,8 +123,9 @@ def test_cmd_order_partial_manual_sell_row_never_settled(tmp_path):
     get_live_pnl_summary's SUM(pnl) totals, even though add_live_loss()
     correctly updated the daily aggregate.
     """
-    import execution_log
     import importlib
+
+    import execution_log
 
     importlib.reload(execution_log)
     execution_log.DB_PATH = tmp_path / "execution_log_test2.db"

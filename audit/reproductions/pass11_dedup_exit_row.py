@@ -3,14 +3,17 @@ misread as a "trade already happened" signal by the same-day/duplicate
 dedup guards, blocking legitimate re-entry after a stop-loss exit closes
 a position?
 """
-import os, sys, tempfile, pathlib
+import os
+import pathlib
+import sys
+import tempfile
 
 tmpdir = tempfile.mkdtemp()
 os.environ.setdefault("KALSHI_ENV", "demo")
 
 sys.path.insert(0, r"C:\Users\thesa\claude kalshi\.claude\worktrees\reverent-lumiere-f79c1f")
 
-import execution_log as el
+import execution_log as el  # noqa: E402
 
 # Isolate DB
 el.DB_PATH = pathlib.Path(tmpdir) / "execution_log_test.db"

@@ -61,5 +61,5 @@ for i in range(N + 1):
 print(f"max calibrated YES-lock confidence = {max_yes:.4f} at raw={argmax_yes:.4f}")
 print(f"max calibrated NO-lock confidence  = {max_no:.4f} at raw={argmax_no:.4f}")
 print(f"global max = {max(max_yes, max_no):.4f}")
-print(f"gate threshold = 0.80")
+print("gate threshold = 0.80")
 print(f"gate reachable? {max(max_yes, max_no) >= 0.80}")

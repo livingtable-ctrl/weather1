@@ -13,6 +13,7 @@ This contradicts the function's own docstring claim: "YES only from a
 REAL max_temp_f; never locks YES from the current_temp_fallback alone".
 """
 import sys
+
 sys.path.insert(0, ".")
 
 from settlement_monitor import _check_between_settlement

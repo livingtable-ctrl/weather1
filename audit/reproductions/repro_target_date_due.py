@@ -1,4 +1,6 @@
-import sys, datetime
+import datetime
+import sys
+
 sys.path.insert(0, r"C:\Users\thesa\claude kalshi\.claude\worktrees\reverent-lumiere-f79c1f")
 import main
 
@@ -16,5 +18,5 @@ result_using_utc_today = main._target_date_due(target_date_str, utc_today)
 result_using_local_today = main._target_date_due(target_date_str, ny_local_today)
 
 print("target_date =", target_date_str)
-print("compared against UTC-today (%s)  -> due=%s" % (utc_today, result_using_utc_today))
-print("compared against NY-local-today (%s) -> due=%s" % (ny_local_today, result_using_local_today))
+print(f"compared against UTC-today ({utc_today})  -> due={result_using_utc_today}")
+print(f"compared against NY-local-today ({ny_local_today}) -> due={result_using_local_today}")

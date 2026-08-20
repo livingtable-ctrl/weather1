@@ -1,4 +1,5 @@
 import sys
+
 sys.path.insert(0, r"C:\Users\thesa\claude kalshi\.claude\worktrees\reverent-lumiere-f79c1f")
 
 # Simulate the floor-clip line directly: shifted = [max(0.0, s + shift) for s in remaining_sums]

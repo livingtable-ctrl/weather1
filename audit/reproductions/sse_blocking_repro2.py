@@ -20,6 +20,7 @@ import time
 sys.path.insert(0, r"C:\Users\thesa\claude kalshi\.claude\worktrees\reverent-lumiere-f79c1f")
 
 import utils  # noqa: E402
+
 print("BEFORE utils.DASHBOARD_PASSWORD:", repr(utils.DASHBOARD_PASSWORD))
 utils.DASHBOARD_PASSWORD = ""  # force-disable auth for this repro, regardless of source
 import web_app  # noqa: E402
@@ -38,7 +39,7 @@ server_thread = threading.Thread(
 server_thread.start()
 time.sleep(1.5)
 
-import urllib.request
+import urllib.request  # noqa: E402
 
 sse_open_evt = threading.Event()
 sse_stop = threading.Event()

@@ -4,7 +4,9 @@ Forces the exact TOCTOU window: exists() returns True (file WAS there a
 moment ago) but the file is gone by the time read_text() runs -- simulating
 a concurrent deactivate_emos() deleting it in between.
 """
-import sys, pathlib
+import pathlib
+import sys
+
 sys.path.insert(0, r"C:\Users\thesa\claude kalshi\.claude\worktrees\reverent-lumiere-f79c1f")
 import ml_bias
 

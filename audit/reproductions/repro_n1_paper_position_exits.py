@@ -78,7 +78,7 @@ result = paper.check_paper_position_exits(FakeClient())
 
 print(f"open positions:            {N_OPEN_POSITIONS}")
 print(f"client.get_market() calls: {len(get_market_calls)}")
-print(f"client.get_markets() calls: 0 (batched path never invoked)")
+print("client.get_markets() calls: 0 (batched path never invoked)")
 print(f"closed (expected 0):        {len(result)}")
 
 assert len(get_market_calls) == N_OPEN_POSITIONS, (

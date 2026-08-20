@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, r"C:\Users\thesa\claude kalshi\.claude\worktrees\reverent-lumiere-f79c1f")
 
-from param_sweep import sweep_parameter, load_swept_min_edge  # noqa: E402
+from param_sweep import sweep_parameter  # noqa: E402
 
 random.seed(42)
 
