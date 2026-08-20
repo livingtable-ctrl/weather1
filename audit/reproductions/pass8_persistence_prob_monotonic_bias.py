@@ -52,6 +52,7 @@ for margin in [0, 1, 2]:
     threshold = 85.0
     current_running_max = threshold + margin
     p = persistence_prob("above", threshold, None, current_running_max, std_dev=5.0)
+    assert p is not None, "inputs here are always valid -- see persistence_prob's own None cases"
     ens_prob = 0.60  # arbitrary illustrative ensemble estimate
     blended_wrong = 0.85 * ens_prob + 0.15 * p
     blended_true = 0.85 * ens_prob + 0.15 * 1.0

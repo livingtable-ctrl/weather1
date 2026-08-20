@@ -56,5 +56,5 @@ print("live pending order counted by _count_open_live_orders after 520 interleav
       count_500_later >= 1, "(count =", count_500_later, ")")
 
 # The order genuinely never disappeared from the DB -- it is still there and still pending.
-row = el.get_order_by_id(live_id)
+row = el.get_order_by_id(str(live_id))
 print("row still exists in DB with status:", row["status"] if row else None)

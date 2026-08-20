@@ -167,8 +167,9 @@ def test_cmd_order_partial_manual_sell_row_never_settled(tmp_path):
 
     # But the sell order's OWN row (sell_row_id) -- what export_live_tax_csv
     # and get_live_pnl_summary actually read per-row -- was never settled.
-    sell_row = execution_log.get_order_by_id(sell_row_id)
+    sell_row = execution_log.get_order_by_id(str(sell_row_id))
     print(f"sell order row after cmd_order's bookkeeping: {sell_row}")
+    assert sell_row is not None
     assert sell_row["settled_at"] is None, (
         "BUG CONFIRMED: the manual sell's own execution_log row is never "
         "settled for a partial fill -- export_live_tax_csv and "

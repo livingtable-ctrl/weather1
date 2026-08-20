@@ -29,10 +29,8 @@ paper.DATA_PATH = Path(tmp.name)  # redirect off real data before any write
 
 # Simulate: BEFORE e5331a8d, cmd_order's live buy called place_paper_order()
 # unconditionally, so a live $200 buy WAS visible to check_position_limits.
-before_fix_existing = sum(
-    t.get("cost", 0.0)
-    for t in [{"cost": 200.0, "ticker": "KXHIGHNY-26AUG20-T85"}]
-)
+demo_trade_costs: list[float] = [200.0]  # KXHIGHNY-26AUG20-T85
+before_fix_existing = sum(demo_trade_costs)
 print(f"[Before e5331a8d] cmd_order live buy cost counted in existing_cost: "
       f"${before_fix_existing:.2f} (via paper ledger, accidentally)")
 

@@ -35,6 +35,9 @@ p_using_instantaneous = persistence_prob(
     "below", threshold_f, None, instantaneous_temp_f
 )
 p_using_true_low = persistence_prob("below", threshold_f, None, true_daily_low_f)
+assert p_using_instantaneous is not None and p_using_true_low is not None, (
+    "inputs here are always valid -- see persistence_prob's own None cases"
+)
 
 print(f"persistence_prob using instantaneous 74F (what the code ACTUALLY does): "
       f"{p_using_instantaneous:.4f}")

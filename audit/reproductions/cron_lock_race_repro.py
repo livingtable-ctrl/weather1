@@ -49,7 +49,7 @@ def _patched_exists(self):
     return result
 
 
-pathlib.Path.exists = _patched_exists
+pathlib.Path.exists = _patched_exists  # type: ignore[method-assign,assignment]
 
 results: list[bool] = []
 results_lock = threading.Lock()
@@ -68,7 +68,7 @@ t2.start()
 t1.join(timeout=10)
 t2.join(timeout=10)
 
-pathlib.Path.exists = _orig_exists
+pathlib.Path.exists = _orig_exists  # type: ignore[method-assign]
 
 print("results:", results)
 print("lock file final contents:", lock_path.read_text() if lock_path.exists() else "<missing>")

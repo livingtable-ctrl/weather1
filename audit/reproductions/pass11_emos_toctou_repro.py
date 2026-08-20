@@ -21,11 +21,11 @@ def fake_exists(self):
         return True
     return _real_exists(self)
 
-pathlib.Path.exists = fake_exists
+pathlib.Path.exists = fake_exists  # type: ignore[method-assign,assignment]
 try:
     result = ml_bias.get_emos_status()
 finally:
-    pathlib.Path.exists = _real_exists
+    pathlib.Path.exists = _real_exists  # type: ignore[method-assign]
 
 print("result:", result)
 print("mislabeled as corrupt during a pure deletion race?", result.get("corrupt") is True)

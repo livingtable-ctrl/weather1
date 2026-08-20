@@ -58,7 +58,7 @@ time.sleep(1.5)  # let the dev server bind
 
 import urllib.request  # noqa: E402
 
-results = {}
+results: dict[str, float | bytes | str] = {}
 
 
 def open_sse():
@@ -102,7 +102,7 @@ t_status.join(timeout=25)
 
 print("RESULTS:", results)
 if "status_latency_s" in results:
-    lat = results["status_latency_s"]
+    lat = float(results["status_latency_s"])  # this key is always a float, see assignments above
     print(f"\n/api/status latency while /api/stream SSE connection is open+sleeping: {lat:.2f}s")
     if lat > 3.0:
         print("CONFIRMED: dev server appears single-threaded -- /api/status was blocked "

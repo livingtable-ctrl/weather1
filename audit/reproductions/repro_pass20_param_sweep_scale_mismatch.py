@@ -18,7 +18,7 @@ random.seed(42)
 # Realistic PAPER_MIN_EDGE-scale trades: net_edge uniformly in [0.03, 0.16],
 # win probability weakly correlated with edge (more edge -> slightly better
 # win rate), matching how a real edge signal would behave.
-trades = []
+trades: list[dict[str, float | bool | str]] = []
 for i in range(500):
     edge = round(random.uniform(0.03, 0.16), 4)
     p_win = min(0.85, 0.45 + edge * 2.0)
@@ -33,8 +33,8 @@ for r in results:
 
 print()
 print("Trades with net_edge >= 0.15 (only value in the swept list this trade pool can ever populate):",
-      sum(1 for t in trades if t["net_edge"] >= 0.15))
-print("Trades with net_edge >= 0.20:", sum(1 for t in trades if t["net_edge"] >= 0.20))
+      sum(1 for t in trades if float(t["net_edge"]) >= 0.15))
+print("Trades with net_edge >= 0.20:", sum(1 for t in trades if float(t["net_edge"]) >= 0.20))
 
 # What the "sensible" range [0.03, 0.15] sweep would look like instead:
 sensible_values = [0.03, 0.05, 0.07, 0.09, 0.11, 0.13, 0.15]

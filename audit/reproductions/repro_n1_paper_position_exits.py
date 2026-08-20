@@ -69,10 +69,13 @@ class FakeStore:
         raise AssertionError("exit() should not be called -- neutral quotes")
 
 
-paper.PaperPositionStore = lambda: FakeStore()
-paper.check_stop_losses = lambda positions, prices: []
-paper.check_breakeven_stops = lambda positions, prices: []
-paper._shared_update_peak_profits = lambda positions, prices, save_fn: None
+# Deliberate test-double swap-in with a simplified signature/return shape --
+# mypy correctly can't verify these match the real production types, which
+# is the point (isolating this repro from any real dependency behavior).
+paper.PaperPositionStore = lambda: FakeStore()  # type: ignore[misc,assignment,return-value]
+paper.check_stop_losses = lambda positions, prices: []  # type: ignore[assignment]
+paper.check_breakeven_stops = lambda positions, prices: []  # type: ignore[assignment]
+paper._shared_update_peak_profits = lambda positions, prices, save_fn: None  # type: ignore[assignment,return-value]
 
 result = paper.check_paper_position_exits(FakeClient())
 
