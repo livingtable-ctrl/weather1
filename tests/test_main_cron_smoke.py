@@ -311,6 +311,165 @@ class TestCmdCronQuarantineScanWiring:
             "instead of retrying next cycle"
         )
 
+    def test_ewma_z_status_line_logged_every_scan(
+        self, minimal_mocks, monkeypatch, caplog
+    ):
+        """A daily INFO status line reporting every candidate's ewma_z, not
+        just quarantine/release events -- so drift toward the trip line is
+        visible before it actually trips (user request 2026-08-21)."""
+        import logging
+
+        import cron
+
+        marker = minimal_mocks / ".last_quarantine_scan"
+        monkeypatch.setattr(cron, "LAST_QUARANTINE_SCAN_PATH", marker)
+        monkeypatch.setattr(
+            "weather_markets.scan_member_quarantine",
+            lambda: {"newly_quarantined": [], "released": [], "blocked_by_floor": []},
+        )
+        monkeypatch.setattr(
+            "weather_markets.load_member_quarantine_state",
+            lambda: {
+                "gfs_seamless": {"quarantined": False, "ewma_z": 0.45},
+                "icon_seamless": {"quarantined": False, "ewma_z": -0.18},
+                "ecmwf_aifs025_ensemble": {"quarantined": False, "ewma_z": 0.05},
+            },
+        )
+
+        import main
+
+        with caplog.at_level(logging.INFO):
+            main.cmd_cron._called_from_loop = True
+            try:
+                main.cmd_cron(MagicMock())
+            finally:
+                main.cmd_cron._called_from_loop = False
+
+        status_lines = [
+            r.message for r in caplog.records if "ewma_z (trip=" in r.message
+        ]
+        assert status_lines, "expected a daily ewma_z status line, found none"
+        assert "gfs_seamless=0.45" in status_lines[0]
+        assert "icon_seamless=-0.18" in status_lines[0]
+        assert "ecmwf_aifs025_ensemble=0.05" in status_lines[0]
+
+    def test_approaching_trip_line_logged_as_warning(
+        self, minimal_mocks, monkeypatch, caplog
+    ):
+        """A non-quarantined model whose ewma_z crosses half the trip
+        threshold (1.0, since _QUARANTINE_TRIP_Z=2.0) must get a WARNING,
+        easy to grep for without reading every day's INFO line."""
+        import logging
+
+        import cron
+
+        marker = minimal_mocks / ".last_quarantine_scan"
+        monkeypatch.setattr(cron, "LAST_QUARANTINE_SCAN_PATH", marker)
+        monkeypatch.setattr(
+            "weather_markets.scan_member_quarantine",
+            lambda: {"newly_quarantined": [], "released": [], "blocked_by_floor": []},
+        )
+        monkeypatch.setattr(
+            "weather_markets.load_member_quarantine_state",
+            lambda: {
+                "gfs_seamless": {"quarantined": False, "ewma_z": 1.3},  # >= 1.0
+                "icon_seamless": {"quarantined": False, "ewma_z": 0.2},  # < 1.0
+            },
+        )
+
+        import main
+
+        with caplog.at_level(logging.WARNING):
+            main.cmd_cron._called_from_loop = True
+            try:
+                main.cmd_cron(MagicMock())
+            finally:
+                main.cmd_cron._called_from_loop = False
+
+        approach_lines = [
+            r.message
+            for r in caplog.records
+            if "approaching the quarantine" in r.message
+        ]
+        assert approach_lines, "expected an 'approaching' WARNING, found none"
+        assert "gfs_seamless" in approach_lines[0]
+        assert "icon_seamless" not in approach_lines[0], (
+            "icon_seamless's ewma_z=0.2 is well under the 1.0 half-trip line "
+            "and must not be flagged as approaching"
+        )
+
+    def test_already_quarantined_model_not_flagged_as_approaching(
+        self, minimal_mocks, monkeypatch, caplog
+    ):
+        """A model that's ALREADY quarantined isn't 'approaching' anything --
+        it already tripped. Must not appear in the approaching-WARNING list
+        even with a high ewma_z."""
+        import logging
+
+        import cron
+
+        marker = minimal_mocks / ".last_quarantine_scan"
+        monkeypatch.setattr(cron, "LAST_QUARANTINE_SCAN_PATH", marker)
+        monkeypatch.setattr(
+            "weather_markets.scan_member_quarantine",
+            lambda: {"newly_quarantined": [], "released": [], "blocked_by_floor": []},
+        )
+        monkeypatch.setattr(
+            "weather_markets.load_member_quarantine_state",
+            lambda: {"gfs_seamless": {"quarantined": True, "ewma_z": 3.0}},
+        )
+
+        import main
+
+        with caplog.at_level(logging.WARNING):
+            main.cmd_cron._called_from_loop = True
+            try:
+                main.cmd_cron(MagicMock())
+            finally:
+                main.cmd_cron._called_from_loop = False
+
+        approach_lines = [
+            r.message
+            for r in caplog.records
+            if "approaching the quarantine" in r.message
+        ]
+        assert not approach_lines, (
+            "an already-quarantined model must not be logged as 'approaching' "
+            f"the trip line: {approach_lines}"
+        )
+
+    def test_status_log_failure_does_not_crash_cron(self, minimal_mocks, monkeypatch):
+        """Mirrors test_scan_failure_does_not_crash_cron -- a failure in the
+        new status-logging block specifically (not the scan itself) must
+        not abort the rest of cron, and the marker must still be written
+        since the actual scan succeeded."""
+        import cron
+
+        marker = minimal_mocks / ".last_quarantine_scan"
+        monkeypatch.setattr(cron, "LAST_QUARANTINE_SCAN_PATH", marker)
+        monkeypatch.setattr(
+            "weather_markets.scan_member_quarantine",
+            lambda: {"newly_quarantined": [], "released": [], "blocked_by_floor": []},
+        )
+
+        def _raise():
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("weather_markets.load_member_quarantine_state", _raise)
+
+        import main
+
+        main.cmd_cron._called_from_loop = True
+        try:
+            main.cmd_cron(MagicMock())  # must not raise
+        finally:
+            main.cmd_cron._called_from_loop = False
+
+        assert marker.exists(), (
+            "the scan itself succeeded -- only the status-log convenience "
+            "block failed -- so the marker must still be written"
+        )
+
 
 class TestCmdUndo:
     """cmd_undo (main.py) wraps paper.undo_last_trade for the `undo` CLI

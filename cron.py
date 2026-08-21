@@ -1183,6 +1183,9 @@ def _cmd_cron_body(
             else 999.0
         )
         if _quarantine_scan_age >= 1:
+            from weather_markets import _QUARANTINE_CANDIDATE_MODELS as _Q_MODELS
+            from weather_markets import _QUARANTINE_TRIP_Z as _Q_TRIP_Z
+            from weather_markets import load_member_quarantine_state as _load_q_state
             from weather_markets import scan_member_quarantine as _scan_quarantine
 
             _q_result = _scan_quarantine()
@@ -1201,6 +1204,45 @@ def _cmd_cron_body(
                     "cmd_cron: ensemble member(s) qualify for quarantine but "
                     "blocked by the active-member floor: %s",
                     _q_result["blocked_by_floor"],
+                )
+            # Daily ewma_z status line, logged every scan (not just when
+            # something actually changes) -- z tends to sit well under the
+            # trip line for long stretches (see backlog.txt "MEMBER
+            # QUARANTINE DETECTION STATISTIC SWAPPED"), so tracking its
+            # drift day-to-day is the only way to see a real problem
+            # building before it actually trips. WARNING once any
+            # non-quarantined candidate's ewma_z crosses half the trip
+            # threshold, so it's easy to grep for without reading every
+            # day's INFO line.
+            try:
+                _q_state = _load_q_state()
+                _q_status_parts = []
+                _q_approaching = []
+                for _q_model in _Q_MODELS:
+                    _q_entry = _q_state.get(_q_model)
+                    if not isinstance(_q_entry, dict) or "ewma_z" not in _q_entry:
+                        continue
+                    _q_ewma_z = _q_entry["ewma_z"]
+                    _q_status_parts.append(f"{_q_model}={_q_ewma_z:.2f}")
+                    if not _q_entry.get("quarantined") and _q_ewma_z >= 0.5 * _Q_TRIP_Z:
+                        _q_approaching.append(f"{_q_model} (ewma_z={_q_ewma_z:.2f})")
+                if _q_status_parts:
+                    _log.info(
+                        "cmd_cron: quarantine ewma_z (trip=%.1f): %s",
+                        _Q_TRIP_Z,
+                        ", ".join(_q_status_parts),
+                    )
+                if _q_approaching:
+                    _log.warning(
+                        "cmd_cron: ensemble member(s) approaching the quarantine "
+                        "trip line (ewma_z >= %.1f): %s",
+                        0.5 * _Q_TRIP_Z,
+                        _q_approaching,
+                    )
+            except Exception as _q_status_exc:
+                _log.debug(
+                    "cmd_cron: quarantine ewma_z status log failed: %s",
+                    _q_status_exc,
                 )
             LAST_QUARANTINE_SCAN_PATH.parent.mkdir(exist_ok=True)
             LAST_QUARANTINE_SCAN_PATH.touch()
