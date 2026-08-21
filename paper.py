@@ -1433,6 +1433,11 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
                 try:
                     from weather_markets import gaussian_probability
 
+                    # sigma/prob_threshold are only ever set inside the
+                    # `condition_type in ("above", "below")` guard above, so
+                    # this always holds -- assert rather than re-check,
+                    # purely to narrow the type for mypy.
+                    assert condition_type in ("above", "below")
                     implied_prob = gaussian_probability(
                         predicted_temp, prob_threshold, sigma, condition_type
                     )
