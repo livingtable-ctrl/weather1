@@ -3459,16 +3459,34 @@ _QUARANTINE_RELEASE_Z = 0.5  # ewma_z must fall to/below this to release (asymme
 _QUARANTINE_MIN_RECENT_N = 20  # warm-up floor, matches _weights_from_mae's min_n
 _QUARANTINE_MIN_ACTIVE = 2  # never let quarantine drop active members below this
 _QUARANTINE_RECENT_DAYS = 14
-_QUARANTINE_MIN_EFFECT_F = 0.5  # minimum practical own-vs-peer MAE gap (°F) to
-# trip, evaluated ALONGSIDE (not instead of) the z-threshold -- a two-sample
-# standard error shrinks as ~1/sqrt(n), so at high enough sample sizes a
-# trivial, practically-meaningless MAE gap becomes "statistically
-# significant" on the z-test alone. This floor keeps a real-world-sized
-# difference required regardless of how much data has accumulated. Applied
-# only to the TRIP decision (pass 2), not to whether ewma_z itself updates --
-# ewma_z must keep tracking the true z every scan so RELEASE (which needs
-# ewma_z to fall, not the effect size to shrink further) still works
-# correctly for an already-quarantined member.
+_QUARANTINE_MIN_EFFECT = 0.02  # minimum practical own-vs-peer Brier-score gap
+# (dimensionless, NOT °F -- this statistic was MAE-based through commit
+# 2315636d/ae4a823b/b018aa24; see scan_member_quarantine()'s docstring for
+# why it was swapped to Brier) to trip, evaluated ALONGSIDE (not instead of)
+# the z-threshold -- a two-sample standard error shrinks as ~1/sqrt(n), so
+# at high enough sample sizes a trivial, practically-meaningless Brier gap
+# becomes "statistically significant" on the z-test alone. This floor keeps
+# a real-world-sized difference required regardless of how much data has
+# accumulated. Applied only to the TRIP decision (pass 2), not to whether
+# ewma_z itself updates -- ewma_z must keep tracking the true z every scan
+# so RELEASE (which needs ewma_z to fall, not the effect size to shrink
+# further) still works correctly for an already-quarantined member.
+#
+# Calibrated 2026-08-21, anchored to this codebase's OWN established
+# Brier-scale decision gap -- tracker.py's graduation gate (0.23) vs
+# retirement threshold (0.25) already treats a 0.02 Brier gap as
+# decision-grade, so this floor reuses that fixed, already-load-bearing
+# number rather than deriving a fresh one. (An earlier version of this
+# calibration used 25% of the real observed worst-vs-peer-mean gap on
+# live production data -- opus review MEDIUM-1/MEDIUM-2 found that
+# anchor unstable: a single new settlement moved the observed gap by
+# ~39%, and at the real observed dispersion the floor was ~17x smaller
+# than the effect size the z>=2.0 threshold alone already requires,
+# making it a de facto no-op. 0.02 doesn't have either problem -- it's
+# derived from a fixed codebase constant, not a small live sample, and
+# real observed gaps as of this date (~0.017-0.035 across all 3
+# candidates) sit close enough to it that it's a genuine, binding
+# floor rather than either an always-pass or a never-pass gate.)
 
 _member_quarantine_state_cache: dict = {}
 _member_quarantine_state_cache_key: tuple[str, float] | None = None  # (path, mtime)
@@ -3590,13 +3608,30 @@ def _quarantine_cache_tag() -> str:
 def scan_member_quarantine() -> dict[str, list[str]]:
     """Update each candidate model's EWMA drift score and quarantine/release as needed.
 
+    Detection statistic: per-model BRIER SCORE (implied probability vs real
+    trade outcome, tracker.get_member_brier()) -- not MAE. This mechanism
+    originally used MAE (magnitude-only, blind to threshold proximity);
+    monitoring it against real production data found MAE (and even raw
+    threshold-crossing win/loss) could reward a confidently-wrong, merely
+    luckily-biased forecast, so it was swapped to Brier, which properly
+    penalizes that case and matches how the rest of this codebase already
+    treats Brier as the authoritative accuracy metric
+    (tracker.brier_score_by_method, strategy retirement/graduation gates).
+    Real 2026-08-21 cross-check on production data: on a small (n=19)
+    recent-trades-only sample, ecmwf_aifs025_ensemble scored worse than
+    gfs_seamless by Brier -- but n=19 sits below _QUARANTINE_MIN_RECENT_N,
+    so that sample alone would never drive a trip; the full 14-day window
+    used here (n=32/model) still shows gfs_seamless worst. This mechanism
+    is deliberately generic -- it evaluates all candidates and flags
+    whichever is actually worst, not tuned around gfs_seamless specifically.
+
     Peer-relative design: for each candidate model, compares its own recent
     (_QUARANTINE_RECENT_DAYS-day, by logged_at -- i.e. scored recently, not
     necessarily FOR a recent target_date; a backfill re-scoring old dates
-    would land here too) MAE against the mean recent MAE of the OTHER
-    candidates that were not already quarantined going into this scan
-    (excluding an already-known-bad peer keeps it from inflating what counts
-    as "normal" and masking a second bad member).
+    would land here too) Brier score against the mean recent Brier score of
+    the OTHER candidates that were not already quarantined going into this
+    scan (excluding an already-known-bad peer keeps it from inflating what
+    counts as "normal" and masking a second bad member).
 
     Normalised by the POOLED two-sample standard error of (own mean - peer
     mean), not just own's standard error alone: peer_mean is itself an
@@ -3613,12 +3648,12 @@ def scan_member_quarantine() -> dict[str, list[str]]:
     overlapping recent/baseline window muted real drift toward z=0, but even
     after fixing the windows to be non-overlapping, a live production
     re-check found the self-relative framing itself was wrong for the
-    failure this feature targets: gfs_seamless's OWN recent MAE can be
+    failure this feature targets: gfs_seamless's OWN recent MAE could be
     better than its OWN older history (its worst stretch having aged out of
-    the recent window) while it is STILL the worst of the three live
-    candidates right now -- exactly the case a cross-model comparison
+    the recent window) while it was STILL the worst of the three live
+    candidates at the time -- exactly the case a cross-model comparison
     catches and a self-relative one does not. Peer-relative comparison also
-    needs only one data source (recent_acc), removing the earlier design's
+    needs only one data source (recent_brier), removing the earlier design's
     dependency on a fragile, often-data-starved long-history baseline
     window.
 
@@ -3630,14 +3665,28 @@ def scan_member_quarantine() -> dict[str, list[str]]:
     ewma_z=1.0) -- an extreme-enough single reading legitimately trips
     immediately by design, it is not a bug.
 
-    TRIP additionally requires the raw own-vs-peer MAE gap to clear
-    _QUARANTINE_MIN_EFFECT_F in absolute °F terms, not just the z-threshold:
-    the two-sample SE shrinks as ~1/sqrt(n), so a purely statistical
-    threshold alone would eventually treat an arbitrarily small, practically
-    meaningless MAE gap as "significant" once enough data accumulates.
-    RELEASE is not floored this way -- it only needs ewma_z to fall, since
-    an already-quarantined member's ongoing z is what actually needs to
-    normalize, not a fresh minimum-effect test.
+    A model whose stored state predates this MAE->Brier swap (no
+    last_own_brier/last_peer_mean_brier keys yet) has its ewma_z reset to
+    0.0 the first time it's seen post-swap, rather than carrying forward an
+    MAE-scale EWMA value into a Brier-scale one -- the two statistics are on
+    incompatible scales/units and silently blending them would corrupt the
+    EWMA average. If that model was ALREADY quarantined going into this
+    reset scan, RELEASE is explicitly suppressed for that one scan (even
+    though the reset ewma_z = 0.2*fresh_z will almost always sit at or
+    below the release line) -- otherwise the reset itself would silently
+    dump a genuinely-still-bad member back into the live blend based on a
+    single fresh reading, discarding all accumulated hysteresis. ewma_z
+    still updates normally in the same scan, so the NEXT scan's release
+    check uses real, already-smoothed momentum, same as any other model.
+
+    TRIP additionally requires the raw own-vs-peer Brier gap to clear
+    _QUARANTINE_MIN_EFFECT, not just the z-threshold: the two-sample SE
+    shrinks as ~1/sqrt(n), so a purely statistical threshold alone would
+    eventually treat an arbitrarily small, practically meaningless Brier gap
+    as "significant" once enough data accumulates. RELEASE is not floored
+    this way -- it only needs ewma_z to fall, since an already-quarantined
+    member's ongoing z is what actually needs to normalize, not a fresh
+    minimum-effect test.
 
     Returns {"newly_quarantined": [...], "released": [...], "blocked_by_floor": [...]}.
 
@@ -3652,11 +3701,19 @@ def scan_member_quarantine() -> dict[str, list[str]]:
       (recent.n or an available-peer floor fails) cannot be evaluated for
       release this scan and stays quarantined -- logged at WARNING each such
       scan so it doesn't silently freeze forever unnoticed.
+    - get_historical_sigma() (used to convert each model's raw forecast
+      into the implied probability that Brier is scored against) is NOT
+      model-specific -- the same sigma is used for every model. A model
+      with genuinely different forecast-spread characteristics (e.g.
+      reported ECMWF AIFS ensemble overdispersion) isn't corrected for by
+      this Brier calculation; it only captures whether each model's point
+      forecast lands on the right side of the threshold. Accepted
+      limitation, not addressed by this mechanism.
     """
     import copy
     import math as _math
 
-    from tracker import get_member_accuracy
+    from tracker import get_member_brier
 
     models = _QUARANTINE_CANDIDATE_MODELS
     # Deep copy, not the cached object itself: if _save_member_quarantine_state
@@ -3678,7 +3735,7 @@ def scan_member_quarantine() -> dict[str, list[str]]:
         if isinstance(state.get(m), dict) and state[m].get("quarantined")
     }
 
-    recent_acc = get_member_accuracy(days_back=_QUARANTINE_RECENT_DAYS)
+    recent_brier = get_member_brier(days_back=_QUARANTINE_RECENT_DAYS)
 
     now_iso = datetime.now(UTC).isoformat()
     released: list[str] = []
@@ -3694,17 +3751,34 @@ def scan_member_quarantine() -> dict[str, list[str]]:
         if not isinstance(entry, dict):
             entry = {}
         entry.setdefault("quarantined", False)
-        ewma_z_prev = entry.get("ewma_z", 0.0)
+        # Pre-swap state has last_own_mae but no last_own_brier -- its
+        # ewma_z was computed on the old MAE scale and must not be carried
+        # forward into the new Brier-scale EWMA (see docstring). Reset to
+        # 0.0, same as a model with no prior state at all.
+        is_legacy_mae_state = "last_own_brier" not in entry and "last_own_mae" in entry
+        ewma_z_prev = 0.0 if is_legacy_mae_state else entry.get("ewma_z", 0.0)
+        # A model quarantined under the old MAE statistic must not release
+        # on the very same scan its ewma_z gets reset to 0 -- that reset is
+        # about unit-compatibility, not a signal the model has recovered.
+        # Without this, ewma_z = 0.2*z on the reset scan (rel="0.4589 max
+        # observed on real data" for gfs_seamless), which is <= the 0.5
+        # release line for essentially any real z, silently discarding all
+        # hysteresis and dumping a genuinely-still-bad member straight back
+        # into the live blend based on one fresh (and still-uncertain)
+        # Brier reading. Suppressed for exactly one scan; ewma_z still
+        # updates normally so the NEXT scan's release check uses real,
+        # already-smoothed momentum.
+        suppress_release_this_scan = is_legacy_mae_state and entry.get("quarantined")
         entry["last_scan_at"] = now_iso
 
-        own = recent_acc.get(model)
+        own = recent_brier.get(model)
         peers = [
-            recent_acc[m2]
+            recent_brier[m2]
             for m2 in models
             if m2 != model
             and m2 not in pre_scan_quarantined
-            and recent_acc.get(m2)
-            and recent_acc[m2]["n"] >= _QUARANTINE_MIN_RECENT_N
+            and recent_brier.get(m2)
+            and recent_brier[m2]["n"] >= _QUARANTINE_MIN_RECENT_N
         ]
         if (
             not own
@@ -3724,30 +3798,43 @@ def scan_member_quarantine() -> dict[str, list[str]]:
                 )
             continue
 
-        peer_mean = sum(p["mae"] for p in peers) / len(peers)
+        peer_mean = sum(p["brier"] for p in peers) / len(peers)
         own_var = own["std"] ** 2 / own["n"]
         peer_pool_var = sum(p["std"] ** 2 / p["n"] for p in peers) / (len(peers) ** 2)
         se = _math.sqrt(own_var + peer_pool_var)
-        effect_f = own["mae"] - peer_mean
-        z = effect_f / se if se > 0 else 0.0
+        effect = own["brier"] - peer_mean
+        z = effect / se if se > 0 else 0.0
         ewma_z = (
             _QUARANTINE_EWMA_LAMBDA * z + (1 - _QUARANTINE_EWMA_LAMBDA) * ewma_z_prev
         )
 
+        entry.pop("last_own_mae", None)
+        entry.pop("last_peer_mean_mae", None)
+        entry.pop("last_effect_f", None)
         entry.update(
             {
                 "ewma_z": round(ewma_z, 4),
                 "last_z": round(z, 4),
-                "last_effect_f": round(effect_f, 4),
-                "last_own_mae": own["mae"],
-                "last_peer_mean_mae": round(peer_mean, 4),
+                "last_effect": round(effect, 4),
+                "last_own_brier": own["brier"],
+                "last_peer_mean_brier": round(peer_mean, 4),
                 "last_n_own": own["n"],
                 "last_n_peers": len(peers),
             }
         )
         state[model] = entry
 
-        if entry.get("quarantined") and ewma_z <= _QUARANTINE_RELEASE_Z:
+        if suppress_release_this_scan:
+            _log.warning(
+                "[MemberQuarantine] %s stays quarantined this scan despite "
+                "ewma_z=%.4f -- first Brier-scale reading after the MAE->"
+                "Brier swap, release suppressed for one scan so a real "
+                "MAE-era quarantine isn't discarded on a single fresh "
+                "reading",
+                model,
+                ewma_z,
+            )
+        elif entry.get("quarantined") and ewma_z <= _QUARANTINE_RELEASE_Z:
             entry["quarantined"] = False
             entry["released_at"] = now_iso
             released.append(model)
@@ -3759,8 +3846,8 @@ def scan_member_quarantine() -> dict[str, list[str]]:
             )
 
     # Pass 2: quarantine worst-first, capped by remaining floor room. Trip
-    # requires BOTH the z-threshold AND a practically-meaningful MAE gap
-    # (_QUARANTINE_MIN_EFFECT_F) -- see docstring.
+    # requires BOTH the z-threshold AND a practically-meaningful Brier gap
+    # (_QUARANTINE_MIN_EFFECT) -- see docstring.
     active_count = sum(1 for m in models if not state.get(m, {}).get("quarantined"))
     room = max(0, active_count - _QUARANTINE_MIN_ACTIVE)
 
@@ -3770,7 +3857,7 @@ def scan_member_quarantine() -> dict[str, list[str]]:
             for m in models
             if not state.get(m, {}).get("quarantined")
             and state.get(m, {}).get("ewma_z", 0.0) >= _QUARANTINE_TRIP_Z
-            and state.get(m, {}).get("last_effect_f", 0.0) >= _QUARANTINE_MIN_EFFECT_F
+            and state.get(m, {}).get("last_effect", 0.0) >= _QUARANTINE_MIN_EFFECT
         ),
         key=lambda m: (-state[m]["ewma_z"], m),
     )
@@ -3791,11 +3878,11 @@ def scan_member_quarantine() -> dict[str, list[str]]:
         newly_quarantined.append(model)
         room -= 1
         _log.warning(
-            "[MemberQuarantine] quarantined %s (ewma_z=%.2f >= %.2f, effect=%.2f°F)",
+            "[MemberQuarantine] quarantined %s (ewma_z=%.2f >= %.2f, effect=%.4f)",
             model,
             state[model]["ewma_z"],
             _QUARANTINE_TRIP_Z,
-            state[model].get("last_effect_f", 0.0),
+            state[model].get("last_effect", 0.0),
         )
 
     saved = _save_member_quarantine_state(state)
@@ -6059,7 +6146,9 @@ def _days_out_from_close_time(close_dt: datetime) -> int:
     return max(0, (close_dt.date() - datetime.now(UTC).date()).days)
 
 
-def _time_risk(close_time_str: str, tz: str) -> tuple[str, float]:
+def _time_risk(
+    close_time_str: str, tz: str, now: datetime | None = None
+) -> tuple[str, float]:
     """
     Determine time-of-day risk level and forecast sigma multiplier.
 
@@ -6071,6 +6160,14 @@ def _time_risk(close_time_str: str, tz: str) -> tuple[str, float]:
       "HIGH" / 1.0 — far-out market, no timing advantage
 
     sigma_multiplier < 1.0 means reduce forecast uncertainty (we know more).
+
+    now defaults to the real current time (live decision-time callers, e.g.
+    analyze_trade()) but can be overridden to reconstruct what the risk
+    tier/multiplier WOULD HAVE BEEN as of a past timestamp -- needed by
+    paper._score_ensemble_members()/tracker.backfill_member_brier() to
+    recompute the same sigma_mult the live engine applied when the trade was
+    actually placed (entered_at), since scoring happens well after
+    settlement, when "now" is long past close_time.
     """
     close_dt = _safe_parse_close_time(close_time_str)
     if close_dt is None:
@@ -6078,10 +6175,11 @@ def _time_risk(close_time_str: str, tz: str) -> tuple[str, float]:
     try:
         from zoneinfo import ZoneInfo
 
-        hours_to_close = (close_dt - datetime.now(UTC)).total_seconds() / 3600
+        ref_now = now if now is not None else datetime.now(UTC)
+        hours_to_close = (close_dt - ref_now).total_seconds() / 3600
         local_close = close_dt.astimezone(ZoneInfo(tz))
         local_hour = local_close.hour
-        closes_today = local_close.date() == datetime.now(ZoneInfo(tz)).date()
+        closes_today = local_close.date() == ref_now.astimezone(ZoneInfo(tz)).date()
         if hours_to_close <= 2:
             return ("LOW", 0.5)
         elif closes_today and local_hour >= 20:

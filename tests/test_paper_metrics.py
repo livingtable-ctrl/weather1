@@ -575,3 +575,285 @@ def test_score_ensemble_members_skips_absent_models(tmp_path, monkeypatch):
             ).fetchall()
         ]
     assert rows == [("blended", 84.2)], f"expected only a 'blended' row, got: {rows}"
+
+
+# ---------------------------------------------------------------------------
+# MAE -> Brier quarantine-statistic swap: _score_ensemble_members now also
+# computes implied_prob/brier per model when condition_type/threshold are
+# resolvable from the predictions table (see plan "Swap the quarantine
+# detection statistic from MAE to per-model Brier score").
+# ---------------------------------------------------------------------------
+
+
+def test_score_ensemble_members_populates_brier_when_condition_resolvable(
+    tmp_path, monkeypatch
+):
+    """A trade with a matching predictions row (condition_type='above') and a
+    condition_threshold on the trade must get real implied_prob/brier values,
+    matching a direct gaussian_probability() computation."""
+    import paper
+    import tracker
+    from weather_markets import gaussian_probability, get_historical_sigma
+
+    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    ticker = "KXHIGHNY-26JUL04-T85"
+    with tracker._conn() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?,1)",
+            (ticker,),
+        )
+        con.execute("UPDATE outcomes SET settled_temp_f=88.0 WHERE ticker=?", (ticker,))
+        con.execute(
+            "INSERT INTO predictions (ticker, condition_type, predicted_at) "
+            "VALUES (?, 'above', datetime('now'))",
+            (ticker,),
+        )
+
+    trade = {
+        "ticker": ticker,
+        "city": "NYC",
+        "target_date": "2026-07-04",
+        "condition_threshold": 85.0,
+        "model_forecast_means": {"icon_seamless": 84.0, "gfs_seamless": 86.0},
+        "forecast_temp": 84.2,
+    }
+    paper._score_ensemble_members(trade, outcome_yes=True)
+
+    with tracker._conn() as con:
+        rows = dict(
+            (r[0], (r[1], r[2]))
+            for r in con.execute(
+                "SELECT model, implied_prob, brier FROM ensemble_member_scores "
+                "WHERE city='NYC'"
+            ).fetchall()
+        )
+
+    sigma = get_historical_sigma("NYC", 7, "max")
+    # sigma_mult=1.0 (no close_time on this trade -> _time_risk defaults to
+    # HIGH/1.0), so sigma here matches production unmultiplied. threshold is
+    # the continuous decision boundary (+0.5 for 'above'), NOT the raw
+    # ticker value 85.0 -- see paper._score_ensemble_members's own comment
+    # on why (Kalshi's real rule is "greater than 85", boundary is 85.5).
+    for model, predicted_temp in (("icon_seamless", 84.0), ("gfs_seamless", 86.0)):
+        expected_prob = gaussian_probability(predicted_temp, 85.5, sigma, "above")
+        expected_brier = (expected_prob - 1.0) ** 2
+        got_prob, got_brier = rows[model]
+        assert got_prob is not None and abs(got_prob - expected_prob) < 0.001, (
+            f"{model}: expected implied_prob={expected_prob}, got {got_prob}"
+        )
+        assert got_brier is not None and abs(got_brier - expected_brier) < 0.001, (
+            f"{model}: expected brier={expected_brier}, got {got_brier}"
+        )
+
+
+def test_score_ensemble_members_below_condition_uses_minus_half_boundary(
+    tmp_path, monkeypatch
+):
+    """(opus-review MEDIUM-7) condition_type='below' was untested -- a
+    hardcoded 'above' at the call site would have passed every other test.
+    'below' must use threshold-0.5, not threshold or threshold+0.5."""
+    import paper
+    import tracker
+    from weather_markets import gaussian_probability, get_historical_sigma
+
+    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    ticker = "KXLOWNY-26JUL04-T40"
+    with tracker._conn() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?,1)",
+            (ticker,),
+        )
+        con.execute("UPDATE outcomes SET settled_temp_f=35.0 WHERE ticker=?", (ticker,))
+        con.execute(
+            "INSERT INTO predictions (ticker, condition_type, predicted_at) "
+            "VALUES (?, 'below', datetime('now'))",
+            (ticker,),
+        )
+
+    trade = {
+        "ticker": ticker,
+        "city": "NYC",
+        "target_date": "2026-07-04",
+        "condition_threshold": 40.0,
+        "model_forecast_means": {"icon_seamless": 38.0},
+        "forecast_temp": 38.2,
+    }
+    paper._score_ensemble_members(trade, outcome_yes=True)
+
+    with tracker._conn() as con:
+        row = con.execute(
+            "SELECT implied_prob, brier FROM ensemble_member_scores "
+            "WHERE city='NYC' AND model='icon_seamless'"
+        ).fetchone()
+
+    sigma = get_historical_sigma("NYC", 7, "max")
+    expected_prob = gaussian_probability(38.0, 39.5, sigma, "below")
+    expected_brier = (expected_prob - 1.0) ** 2
+    assert row["implied_prob"] is not None
+    assert abs(row["implied_prob"] - expected_prob) < 0.001, (
+        f"expected implied_prob={expected_prob}, got {row['implied_prob']} "
+        f"-- likely used threshold or threshold+0.5 instead of threshold-0.5"
+    )
+    assert abs(row["brier"] - expected_brier) < 0.001
+
+
+def test_score_ensemble_members_applies_sigma_mult_from_time_risk(
+    tmp_path, monkeypatch
+):
+    """(opus-review HIGH-2) sigma must be discounted by the SAME sigma_mult
+    the live engine applied at decision time (_time_risk, reconstructed
+    as-of trade['entered_at']), not the raw undiscounted climatological
+    sigma -- verified here via a close_time within 2h of entered_at, which
+    _time_risk() maps to sigma_mult=0.5."""
+    import paper
+    import tracker
+    from weather_markets import gaussian_probability, get_historical_sigma
+
+    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    ticker = "KXHIGHNY-26JUL04-T85"
+    with tracker._conn() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?,1)",
+            (ticker,),
+        )
+        con.execute("UPDATE outcomes SET settled_temp_f=88.0 WHERE ticker=?", (ticker,))
+        con.execute(
+            "INSERT INTO predictions (ticker, condition_type, predicted_at) "
+            "VALUES (?, 'above', datetime('now'))",
+            (ticker,),
+        )
+
+    trade = {
+        "ticker": ticker,
+        "city": "NYC",
+        "target_date": "2026-07-04",
+        "condition_threshold": 85.0,
+        "model_forecast_means": {"icon_seamless": 84.0},
+        "forecast_temp": 84.2,
+        # entered_at within 2h of close_time -> _time_risk() -> ("LOW", 0.5)
+        "entered_at": "2026-07-04T17:00:00+00:00",
+        "close_time": "2026-07-04T18:30:00+00:00",
+    }
+    paper._score_ensemble_members(trade, outcome_yes=True)
+
+    with tracker._conn() as con:
+        row = con.execute(
+            "SELECT implied_prob FROM ensemble_member_scores "
+            "WHERE city='NYC' AND model='icon_seamless'"
+        ).fetchone()
+
+    raw_sigma = get_historical_sigma("NYC", 7, "max")
+    expected_prob_discounted = gaussian_probability(
+        84.0, 85.5, raw_sigma * 0.5, "above"
+    )
+    expected_prob_undiscounted = gaussian_probability(84.0, 85.5, raw_sigma, "above")
+    assert abs(row["implied_prob"] - expected_prob_undiscounted) > 0.001, (
+        "test setup bug: discounted and undiscounted sigma must produce "
+        "meaningfully different probabilities here, or this test can't "
+        "distinguish the two"
+    )
+    assert abs(row["implied_prob"] - expected_prob_discounted) < 0.001, (
+        f"expected implied_prob computed with sigma_mult=0.5 applied "
+        f"({expected_prob_discounted}), got {row['implied_prob']} -- "
+        f"sigma_mult from _time_risk() is not being applied"
+    )
+
+
+def test_score_ensemble_members_brier_stays_null_without_predictions_row(
+    tmp_path, monkeypatch
+):
+    """No matching predictions row -> condition_type is unresolvable ->
+    implied_prob/brier stay NULL, but MAE logging (predicted_temp/actual_temp)
+    still happens (soft degradation, not a hard failure)."""
+    import paper
+    import tracker
+
+    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    ticker = "KXHIGHNY-26JUL04-T85"
+    with tracker._conn() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?,1)",
+            (ticker,),
+        )
+        con.execute("UPDATE outcomes SET settled_temp_f=88.0 WHERE ticker=?", (ticker,))
+        # deliberately no predictions row for this ticker
+
+    trade = {
+        "ticker": ticker,
+        "city": "NYC",
+        "target_date": "2026-07-04",
+        "condition_threshold": 85.0,
+        "model_forecast_means": {"icon_seamless": 84.0},
+        "forecast_temp": 84.2,
+    }
+    paper._score_ensemble_members(trade, outcome_yes=True)
+
+    with tracker._conn() as con:
+        row = con.execute(
+            "SELECT predicted_temp, implied_prob, brier FROM ensemble_member_scores "
+            "WHERE city='NYC' AND model='icon_seamless'"
+        ).fetchone()
+    assert row is not None
+    predicted_temp, implied_prob, brier = row
+    assert abs(predicted_temp - 84.0) < 0.001
+    assert implied_prob is None
+    assert brier is None
+
+
+def test_score_ensemble_members_skips_brier_for_non_directional_condition(
+    tmp_path, monkeypatch
+):
+    """condition_type='between' (or any value other than above/below) must
+    skip Brier computation without raising, and MAE logging still fires."""
+    import paper
+    import tracker
+
+    monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "test.db")
+    tracker._db_initialized = False
+    tracker.init_db()
+
+    ticker = "KXHIGHNY-26JUL04-T85"
+    with tracker._conn() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?,1)",
+            (ticker,),
+        )
+        con.execute("UPDATE outcomes SET settled_temp_f=88.0 WHERE ticker=?", (ticker,))
+        con.execute(
+            "INSERT INTO predictions (ticker, condition_type, predicted_at) "
+            "VALUES (?, 'between', datetime('now'))",
+            (ticker,),
+        )
+
+    trade = {
+        "ticker": ticker,
+        "city": "NYC",
+        "target_date": "2026-07-04",
+        "condition_threshold": 85.0,
+        "model_forecast_means": {"icon_seamless": 84.0},
+        "forecast_temp": 84.2,
+    }
+    paper._score_ensemble_members(trade, outcome_yes=True)
+
+    with tracker._conn() as con:
+        row = con.execute(
+            "SELECT predicted_temp, implied_prob, brier FROM ensemble_member_scores "
+            "WHERE city='NYC' AND model='icon_seamless'"
+        ).fetchone()
+    assert row is not None
+    predicted_temp, implied_prob, brier = row
+    assert abs(predicted_temp - 84.0) < 0.001
+    assert implied_prob is None
+    assert brier is None

@@ -23094,3 +23094,201 @@ Why not now: out of batch-06's scope (that batch's item 3 named a specific
   distinction) when picked up -- verify caller/consumer for each function
   first, the same "confirm before assuming display-only" lesson M6 caught
   in this same batch's own review.
+
+[RESOLVED 2026-08-21 -- see resolution below.] MEMBER QUARANTINE DETECTION
+STATISTIC SWAPPED FROM MAE TO PER-MODEL BRIER SCORE
+Priority: High -- gates the live ensemble blend; this is the same
+  mechanism as the ENSEMBLE MODEL QUALITY entry above (backlog.txt:22540),
+  which shipped MAE-based.
+
+Problem:
+  Monitoring the MAE-based quarantine mechanism (shipped 2026-08-19/20,
+  commits 2315636d/ae4a823b/b018aa24) against real production cron runs
+  found it would not trip in time: the "ensemble" method's trade-level
+  directional accuracy sat at 35% (7/20, paper.get_all_trades()) while
+  gfs_seamless's peer-relative MAE z-score sat only barely over the 2.0
+  trip threshold -- EWMA's asymptotic-approach property meant another
+  ~18+ days of scans before it would actually trip, despite the underlying
+  problem being severe and unchanged. Digging further: a cruder per-model
+  directional check (does each model's raw forecast cross the market
+  threshold on the correct side) showed gfs_seamless was actually the BEST
+  of the three models (57.9% win rate) -- not the worst -- because its
+  known warm bias happened to align with "above-threshold" outcomes during
+  a hot stretch, by luck, not skill. Neither MAE (magnitude-only, blind to
+  threshold proximity) nor raw threshold-crossing win/loss (rewards a
+  biased-but-lucky call) is a trustworthy signal for this failure mode.
+
+Resolution (2026-08-21):
+  Swapped the detection statistic to per-model BRIER SCORE: each model's
+  raw forecast temp is converted to a calibrated implied probability (the
+  existing weather_markets.gaussian_probability() + get_historical_sigma())
+  and scored against the real trade outcome, matching how the rest of this
+  codebase already treats Brier score as the authoritative accuracy metric
+  (tracker.brier_score_by_method, strategy retirement/graduation gates).
+  The EWMA/pooled-SE/asymmetric-hysteresis/floor machinery in
+  scan_member_quarantine() needed zero structural changes -- it only ever
+  consumes own[stat]/peer[stat]/.std/.n, agnostic to which stat that is.
+    - Schema: ensemble_member_scores gained implied_prob/brier columns
+      (_SCHEMA_VERSION 59->61).
+    - tracker.log_member_score() gained optional implied_prob/brier params.
+    - paper._score_ensemble_members() (the live settlement-time hook) now
+      also resolves condition_type from the raw predictions table (NOT the
+      multiday_predictions view, which excludes days_out=0 and would
+      silently blank same-day trades) and computes implied_prob/brier per
+      model when condition_type is above/below and a threshold exists;
+      soft-degrades to brier=None (MAE logging still fires) for quick-buy
+      trades with no predictions row, or non-directional conditions.
+    - New tracker.get_member_brier(days_back=14) mirrors get_member_accuracy()'s
+      shape exactly ({model: {brier, n, std, city_breakdown, city_n_breakdown}}).
+    - New tracker.backfill_member_brier(trades) -- ensemble_member_scores has
+      no ticker column (can't iterate it directly), so this takes paper trade
+      records as a param and joins ticker->condition_type/settled_temp_f the
+      same way the live path does. Safe to re-run (UPDATE ... WHERE brier IS
+      NULL); per-trade try/except so one malformed record doesn't abort the
+      batch. Wired as `backfill-member-brier` CLI command (main.py, mirroring
+      the existing backfill-ensemble-var precedent).
+    - scan_member_quarantine(): renamed _QUARANTINE_MIN_EFFECT_F ->
+      _QUARANTINE_MIN_EFFECT (dropped the °F-specific naming/units -- the
+      WARNING log line's "%.2f°F" format was also fixed to a unitless
+      "%.4f", since Brier scores need more precision than a 2-decimal °F
+      value). Added a one-time state-reset: a model whose stored state
+      predates this swap (has last_own_mae but no last_own_brier) has its
+      ewma_z reset to 0.0 rather than carrying an MAE-scale EWMA value
+      forward into the Brier-scale one -- the two statistics are on
+      incompatible units and silently blending them would corrupt the
+      running average. Legacy MAE-era keys are stripped once an entry is
+      rewritten.
+  Independent opus review (effort=high) before push found 2 HIGH and 7
+  MEDIUM real issues in the first implementation, all fixed here (not
+  deferred):
+    HIGH-1: implied_prob/brier used the RAW ticker threshold
+      (trade["condition_threshold"], e.g. 85.0 for a T85 "above" ticker)
+      instead of the continuous decision boundary the rest of this codebase
+      uses for probability math (utils.prob_threshold()/weather_markets.
+      _prob_threshold(): threshold+0.5 for above, threshold-0.5 for below --
+      Kalshi's real rule is "greater than N", so integer settlement must be
+      N+1 or higher; the live engine's own Gaussian call already does this,
+      weather_markets.py's analyze_trade path). Every stored implied_prob
+      was systematically biased toward YES. Fixed in both
+      paper._score_ensemble_members() and tracker.backfill_member_brier().
+    HIGH-2: sigma used the raw, undiscounted get_historical_sigma() output
+      instead of sigma * sigma_mult, where sigma_mult is the time-of-day/
+      horizon uncertainty discount from _time_risk() that the live engine
+      always applies (up to 2x tighter near close). Fixed by giving
+      _time_risk() an optional now= override (existing 2 live call sites
+      unaffected, default unchanged) so both scoring paths can reconstruct
+      what sigma_mult WOULD HAVE BEEN as of trade["entered_at"], not "now"
+      (which is long after close_time by the time a trade settles).
+    Both together moved the real 14-day-window numbers only modestly (gfs
+    z: 0.459->0.454; see corrected real-data verification below) -- the
+    review's own re-derivation found this was "luck of this sample, not a
+    bound," i.e. NOT guaranteed to stay small in general.
+    MEDIUM-1/MEDIUM-2: the original calibration (25% of the real observed
+    worst-vs-peer-mean gap, n=32) was unstable -- a single new settlement
+    moved the observed gap ~39%, and at the real observed dispersion the
+    resulting floor (0.008) was ~17x smaller than the effect size the
+    z>=2.0 threshold alone already requires, making it a near no-op.
+    Re-anchored _QUARANTINE_MIN_EFFECT to 0.02 instead -- this codebase's
+    OWN already-load-bearing Brier decision gap (graduation gate 0.23 vs
+    retirement threshold 0.25), a fixed constant rather than a small live
+    sample.
+    MEDIUM-3: the legacy-state ewma_z reset (see below) left the
+    `quarantined` flag untouched, so a model quarantined under MAE would
+    silently auto-release on the very first Brier-scale scan (ewma_z =
+    0.2*fresh_z sits at/below the 0.5 release line for essentially any real
+    z). Fixed: release is explicitly suppressed for exactly one scan when
+    a currently-quarantined model hits the legacy-reset path; ewma_z still
+    updates normally so the next scan's release check uses real momentum.
+    MEDIUM-4: log_member_score()'s INSERT OR IGNORE means a second
+    settlement for an already-logged (city,model,target_date,var) key with
+    NULL brier can never get a computable Brier retroactively without
+    running the (not cron-wired) backfill. Documented as a known,
+    accepted gap -- not fixed here, backfill_member_brier() already exists
+    as the repair path.
+    MEDIUM-5/MEDIUM-6: backfill_member_brier()'s early `continue`s (not
+    settled, no model_forecast_means) didn't increment any counter, so
+    "238 trades, 198 rows updated, 0 errored" looked like near-total
+    success when only 34/238 trades were ever evaluated. Fixed: every
+    `continue` now increments `skipped`, and the except block now logs the
+    real exception via _log.debug instead of swallowing it silently.
+    MEDIUM-7: `condition_type='below'` was completely untested in both
+    scoring paths -- a hardcoded 'above' at either call site would have
+    passed every other test. Added a below-direction test (with an exact
+    expected-probability assertion) to both test_paper_metrics.py and
+    test_tracker.py.
+    Also added a regression guard (opus-review finding, no severity tier
+    assigned) pinning _QUARANTINE_MIN_EFFECT to a sane fraction of the
+    Brier scale (0, 0.1) -- previously nothing in the suite would have
+    caught the floor being raised past 1.0 (a permanent quarantine
+    disable), since the largest effect any existing test constructs is 4.5.
+  Calibrated _QUARANTINE_MIN_EFFECT against real data (after the HIGH-1/
+  HIGH-2 fixes): re-ran the corrected backfill against live production data
+  (238 trades, 198 ensemble_member_scores rows updated, 204 now correctly
+  counted as skipped, 0 errored), then measured the real worst-vs-peer-mean
+  Brier gap on the current 14-day window (tracker.get_member_brier, n=32/
+  model): gfs_seamless (own=0.3549) vs peer mean of icon_seamless/
+  ecmwf_aifs025_ensemble (0.3202) = 0.0347 gap -- close to but not identical
+  to the pre-fix 0.0321, confirming the bugs' net effect on THIS sample was
+  modest. Floor set to 0.02 per the re-anchored methodology above (not a
+  fraction of this sample); 0.0347 > 0.02, so the floor stays genuinely
+  binding without accidentally gating the real motivating case.
+  Real-data verification (important, non-obvious result, unaffected by the
+  HIGH-1/HIGH-2 corrections): computing the actual peer-relative z-scores on
+  the real 14-day window gives gfs_seamless z=0.454, ecmwf_aifs025_ensemble
+  z=0.274, icon_seamless z=-0.892 (best). gfs_seamless is still the worst by
+  Brier, consistent with the original MAE-era finding -- but the z is
+  nowhere near the 2.0 trip threshold. This is NOT a bug: it means the
+  Brier swap, on today's real data, would not immediately flag anything --
+  GFS's Brier disadvantage over its peers right now is real but modest
+  (~0.03 gap), not the sharp signal the "35% directional accuracy" framing
+  implied. The mechanism is working as designed; it simply isn't finding an
+  extreme signal on the current window. Separately, an independent ad-hoc
+  check on a smaller (n=19, below _QUARANTINE_MIN_RECENT_N=20), more
+  recent-trades-only sample found ecmwf_aifs025_ensemble scoring worse than
+  gfs_seamless -- a real, reproduced result, but on a sample too small for
+  the mechanism to act on by its own design; the full 14-day/n=32 window
+  used for calibration still shows gfs_seamless worst. Documented in
+  scan_member_quarantine()'s own docstring as evidence the mechanism is
+  deliberately generic (evaluates all candidates, flags whichever is
+  actually worst) rather than tuned around a "gfs is the culprit"
+  assumption.
+  Known, documented limitations (see scan_member_quarantine() docstring):
+  get_historical_sigma() is not model-specific (same climatological sigma
+  used for every model's gaussian_probability() call -- sigma_mult, the
+  time-of-day/horizon discount, is now applied per-trade correctly per
+  HIGH-2 above, but a model with genuinely different forecast-SPREAD
+  characteristics -- e.g. reported ECMWF AIFS ensemble overdispersion --
+  still isn't corrected for); tracker.purge_old_predictions()'s 730-day
+  retention means very old settled trades that have already been purged
+  can't be backfilled (low urgency, real trade history is only ~3 months
+  old); log_member_score()'s INSERT OR IGNORE can permanently strand a
+  computable Brier behind an already-logged NULL row until the (manual,
+  not cron-wired) backfill repairs it (MEDIUM-4 above).
+  Tests (exact counts, collected via pytest --collect-only -- an opus-
+  review LOW finding caught an earlier draft of this note overstating
+  them): 5 new in tests/test_paper_metrics.py (brier population w/ exact
+  expected-value assertion, below-direction, sigma_mult reconstruction,
+  no-predictions-row degradation, non-directional-condition skip; 5
+  pre-existing MAE-era tests in the same file untouched) = 10 total.
+  8 new in tests/test_tracker.py (TestGetMemberBrier: 6, TestBackfillMemberBrier:
+  6 base + below-direction + sigma_mult = 8) = 14 total. 3 new in
+  TestMemberQuarantineScan (tests/test_weather_markets.py): legacy-state
+  ewma_z reset, legacy-state release-suppression (MEDIUM-3), floor
+  sane-bounds regression guard (MEDIUM-6) -- plus the pre-existing 17-test
+  MAE-era suite fully renamed to Brier/get_member_brier (2 of those needed
+  real numeric rework, not just a rename, since the floor's scale changed:
+  their synthetic n had to grow from 10k to 2.5M to keep testing the same
+  "statistically significant but practically trivial" edge case) = 20
+  total in that class, 23 total including TestMemberQuarantineBlendHooks
+  (unchanged, 3 tests). All scoped runs green; full suite for all three
+  test files re-run clean after every fix above.
+  Plan reviewed by 5 parallel adversarial passes before implementation
+  (correctness/design, statistical soundness incl. the real-data
+  aifs-vs-gfs cross-check above, schema/query correctness, test plan/
+  calibration approach) per explicit user request ("review the plan 20
+  seperate times"); every finding incorporated into the plan before
+  ExitPlanMode approval. A further independent opus review (effort=high)
+  ran on the finished implementation before push per this project's
+  standing workflow ("a fix needs its own review too") and found the
+  HIGH/MEDIUM issues detailed above -- all fixed prior to push, not
+  deferred.

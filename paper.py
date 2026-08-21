@@ -1338,6 +1338,24 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
             trade.get("ticker", "?"),
         )
         return
+    # condition_type for the Brier-score computation below. Query the raw
+    # predictions table, NOT the multiday_predictions view -- the view
+    # excludes days_out=0 (same-day trades), which would silently skip Brier
+    # logging for every same-day settlement. Trades placed via the
+    # quick-buy paths never call log_prediction(), so this can legitimately
+    # come back None -- Brier logging is skipped for those, MAE logging
+    # below still fires (soft degradation, not an error).
+    condition_type = None
+    try:
+        with _conn() as con:
+            row2 = con.execute(
+                "SELECT condition_type FROM predictions WHERE ticker = ? "
+                "ORDER BY predicted_at DESC LIMIT 1",
+                (trade.get("ticker", ""),),
+            ).fetchone()
+            condition_type = row2[0] if row2 else None
+    except Exception:
+        condition_type = None
     # backlog.txt "GENERALIZED PER-MODEL ACCURACY TRACKING" (2026-07-23):
     # generic model->forecast_mean mapping, replacing the old hardcoded
     # icon_forecast_mean/gfs_forecast_mean/ecmwf_*_forecast_mean fields — any
@@ -1357,12 +1375,81 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
     # pipelines this might suggest at a glance.
     model_means: dict[str, float | None] = dict(trade.get("model_forecast_means") or {})
     model_means["blended"] = trade.get("forecast_temp")
+    raw_threshold = trade.get("condition_threshold")
+    # Per-model implied probability + Brier score, feeding the quarantine
+    # mechanism's Brier-based detection statistic (get_member_brier()).
+    # Only computable when condition_type/threshold are resolvable -- for
+    # "between" conditions or missing predictions rows, implied_prob/brier
+    # stay None and only MAE logging happens (soft degradation).
+    sigma = None
+    prob_threshold = None
+    if condition_type in ("above", "below") and raw_threshold is not None:
+        try:
+            from datetime import date
+
+            from weather_markets import _CITY_TZ, _time_risk, get_historical_sigma
+
+            month = date.fromisoformat(target_date).month
+            # utils.prob_threshold()'s continuous decision boundary, NOT the
+            # raw ticker threshold: Kalshi's actual rule is "greater than N"
+            # (integer settlement >= N+1), so the boundary that tiles with
+            # the adjacent between-bucket is N+0.5 (N-0.5 for below). This
+            # must match the SAME convention the live engine's own Gaussian
+            # call uses (weather_markets._prob_threshold(condition)) or the
+            # implied probability is systematically biased toward YES.
+            prob_threshold = (
+                raw_threshold + 0.5
+                if condition_type == "above"
+                else raw_threshold - 0.5
+            )
+            # sigma_mult (time-of-day/horizon uncertainty discount,
+            # _time_risk()) must be reconstructed AS OF trade entry, not
+            # "now" (settlement happens well after close_time) -- mirrors
+            # the live engine's own sigma_gauss = get_historical_sigma(...)
+            # * sigma_mult (weather_markets.py's analyze_trade Gaussian
+            # path), so this Brier score reflects the same uncertainty the
+            # live decision was actually made under.
+            tz = _CITY_TZ.get(city, "America/New_York")
+            entered_at_str = trade.get("entered_at")
+            as_of = (
+                datetime.fromisoformat(entered_at_str.replace("Z", "+00:00"))
+                if entered_at_str
+                else None
+            )
+            _, sigma_mult = _time_risk(trade.get("close_time", ""), tz, now=as_of)
+            sigma = get_historical_sigma(city, month, var) * sigma_mult
+        except Exception:
+            sigma = None
+            prob_threshold = None
     try:
         from tracker import log_member_score as _log_ms
 
         for model, predicted_temp in model_means.items():
-            if predicted_temp is not None:
-                _log_ms(city, model, predicted_temp, actual_temp, target_date, var=var)
+            if predicted_temp is None:
+                continue
+            implied_prob = None
+            brier = None
+            if sigma is not None and prob_threshold is not None:
+                try:
+                    from weather_markets import gaussian_probability
+
+                    implied_prob = gaussian_probability(
+                        predicted_temp, prob_threshold, sigma, condition_type
+                    )
+                    brier = (implied_prob - float(outcome_yes)) ** 2
+                except Exception:
+                    implied_prob = None
+                    brier = None
+            _log_ms(
+                city,
+                model,
+                predicted_temp,
+                actual_temp,
+                target_date,
+                var=var,
+                implied_prob=implied_prob,
+                brier=brier,
+            )
     except Exception as exc:
         _log.debug("_score_ensemble_members: skipped tracker update: %s", exc)
 

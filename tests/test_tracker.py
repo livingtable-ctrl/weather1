@@ -3241,6 +3241,90 @@ class TestGetMemberAccuracyStd(unittest.TestCase):
         self.assertEqual(result["icon_seamless"]["std"], 0.0)
 
 
+class TestGetMemberBrier(unittest.TestCase):
+    """get_member_brier() -- the Brier-score counterpart to
+    get_member_accuracy(), feeding weather_markets.scan_member_quarantine()'s
+    planned MAE->Brier swap. Same {model: {brier, n, std, city_breakdown,
+    city_n_breakdown}} shape, aggregating the brier column instead of
+    computing MAE from predicted/actual temps."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _insert(self, city, model, brier, target_date, age_days=1):
+        with tracker._conn() as con:
+            con.execute(
+                """INSERT INTO ensemble_member_scores
+                   (city, model, predicted_temp, actual_temp, target_date, var,
+                    brier, logged_at)
+                   VALUES (?, ?, 70.0, 72.0, ?, 'max', ?, datetime('now', ? || ' days'))""",
+                (city, model, target_date, brier, f"-{age_days}"),
+            )
+
+    def test_mean_and_std_of_brier_column(self):
+        self._insert("NYC", "icon_seamless", 0.10, "2026-08-01")
+        self._insert("NYC", "icon_seamless", 0.20, "2026-08-02")
+        self._insert("NYC", "icon_seamless", 0.30, "2026-08-03")
+        result = tracker.get_member_brier(days_back=14)
+        import statistics as _stats
+
+        self.assertAlmostEqual(result["icon_seamless"]["brier"], 0.20, places=4)
+        self.assertAlmostEqual(
+            result["icon_seamless"]["std"], _stats.stdev([0.10, 0.20, 0.30]), places=4
+        )
+        self.assertEqual(result["icon_seamless"]["n"], 3)
+
+    def test_excludes_null_brier_rows(self):
+        self._insert("NYC", "icon_seamless", 0.10, "2026-08-01")
+        # NULL-brier row (e.g. a "between" condition, or MAE-only legacy row)
+        with tracker._conn() as con:
+            con.execute(
+                """INSERT INTO ensemble_member_scores
+                   (city, model, predicted_temp, actual_temp, target_date, var,
+                    brier, logged_at)
+                   VALUES ('NYC', 'icon_seamless', 70.0, 72.0, '2026-08-02', 'max',
+                           NULL, datetime('now', '-1 days'))"""
+            )
+        result = tracker.get_member_brier(days_back=14)
+        self.assertEqual(result["icon_seamless"]["n"], 1)
+
+    def test_excludes_blended_model(self):
+        self._insert("NYC", "blended", 0.15, "2026-08-01")
+        self._insert("NYC", "icon_seamless", 0.10, "2026-08-02")
+        result = tracker.get_member_brier(days_back=14)
+        self.assertNotIn("blended", result)
+        self.assertIn("icon_seamless", result)
+
+    def test_excludes_rows_outside_days_back_window(self):
+        self._insert("NYC", "icon_seamless", 0.10, "2026-08-01", age_days=1)
+        self._insert("NYC", "icon_seamless", 0.50, "2026-06-01", age_days=90)
+        result = tracker.get_member_brier(days_back=14)
+        self.assertEqual(result["icon_seamless"]["n"], 1)
+        self.assertAlmostEqual(result["icon_seamless"]["brier"], 0.10, places=4)
+
+    def test_city_breakdown(self):
+        self._insert("NYC", "icon_seamless", 0.10, "2026-08-01")
+        self._insert("Chicago", "icon_seamless", 0.30, "2026-08-01")
+        result = tracker.get_member_brier(days_back=14)
+        self.assertAlmostEqual(result["icon_seamless"]["city_breakdown"]["NYC"], 0.10)
+        self.assertAlmostEqual(
+            result["icon_seamless"]["city_breakdown"]["Chicago"], 0.30
+        )
+        self.assertEqual(result["icon_seamless"]["city_n_breakdown"]["NYC"], 1)
+
+    def test_empty_when_no_rows(self):
+        self.assertEqual(tracker.get_member_brier(days_back=14), {})
+
+
 class TestBackfillEnsembleMemberScoresVar(unittest.TestCase):
     """backfill_ensemble_member_scores_var() -- recovers var for legacy
     ensemble_member_scores rows logged before log_member_score() call sites
@@ -3414,6 +3498,229 @@ class TestBackfillEnsembleMemberScoresVar(unittest.TestCase):
                 "ORDER BY id LIMIT 1",
                 (city, model, target_date),
             ).fetchone()["id"]
+
+
+class TestBackfillMemberBrier(unittest.TestCase):
+    """backfill_member_brier() -- one-off recovery pass populating
+    implied_prob/brier on existing ensemble_member_scores rows, from paper
+    trade records (not SQL-seeded rows -- this function takes trades: list[dict]
+    as a param, unlike backfill_ensemble_member_scores_var above)."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _seed(
+        self, ticker, city, target_date, condition_type, settled_temp_f, var="max"
+    ):
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT OR IGNORE INTO outcomes (ticker, settled_yes) VALUES (?, 1)",
+                (ticker,),
+            )
+            con.execute(
+                "UPDATE outcomes SET settled_temp_f = ? WHERE ticker = ?",
+                (settled_temp_f, ticker),
+            )
+            con.execute(
+                "INSERT INTO predictions (ticker, city, condition_type, predicted_at) "
+                "VALUES (?, ?, ?, datetime('now'))",
+                (ticker, city, condition_type),
+            )
+            con.execute(
+                """INSERT INTO ensemble_member_scores
+                   (city, model, predicted_temp, actual_temp, target_date, var, logged_at)
+                   VALUES (?, 'icon_seamless', 84.0, ?, ?, ?, datetime('now'))""",
+                (city, settled_temp_f, target_date, var),
+            )
+
+    def _make_trade(self, ticker, city, target_date, threshold, outcome, means):
+        return {
+            "ticker": ticker,
+            "city": city,
+            "target_date": target_date,
+            "condition_threshold": threshold,
+            "outcome": outcome,
+            "settled": True,
+            "model_forecast_means": means,
+        }
+
+    def test_backfills_matching_row(self):
+        self._seed("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04", "above", 88.0)
+        trade = self._make_trade(
+            "KXHIGHNY-26JUL04-T85",
+            "NYC",
+            "2026-07-04",
+            85.0,
+            "yes",
+            {"icon_seamless": 84.0},
+        )
+        updated, skipped, errored = tracker.backfill_member_brier([trade])
+        self.assertEqual((updated, skipped, errored), (1, 0, 0))
+
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT implied_prob, brier FROM ensemble_member_scores "
+                "WHERE city='NYC' AND model='icon_seamless'"
+            ).fetchone()
+        self.assertIsNotNone(row["implied_prob"])
+        self.assertIsNotNone(row["brier"])
+
+    def test_idempotent_rerun(self):
+        """Positive control: the brier IS NULL guard must actually work, not
+        just happen to pass on the first run -- a second run against the
+        same trade must update zero rows."""
+        self._seed("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04", "above", 88.0)
+        trade = self._make_trade(
+            "KXHIGHNY-26JUL04-T85",
+            "NYC",
+            "2026-07-04",
+            85.0,
+            "yes",
+            {"icon_seamless": 84.0},
+        )
+        first = tracker.backfill_member_brier([trade])
+        second = tracker.backfill_member_brier([trade])
+        self.assertEqual(first, (1, 0, 0))
+        self.assertEqual(second, (0, 0, 0))
+
+    def test_skips_unsettled_trade(self):
+        self._seed("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04", "above", 88.0)
+        trade = self._make_trade(
+            "KXHIGHNY-26JUL04-T85",
+            "NYC",
+            "2026-07-04",
+            85.0,
+            "yes",
+            {"icon_seamless": 84.0},
+        )
+        trade["settled"] = False
+        updated, skipped, errored = tracker.backfill_member_brier([trade])
+        self.assertEqual((updated, skipped, errored), (0, 1, 0))
+
+    def test_skips_non_directional_condition(self):
+        self._seed("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04", "between", 88.0)
+        trade = self._make_trade(
+            "KXHIGHNY-26JUL04-T85",
+            "NYC",
+            "2026-07-04",
+            85.0,
+            "yes",
+            {"icon_seamless": 84.0},
+        )
+        updated, skipped, errored = tracker.backfill_member_brier([trade])
+        self.assertEqual((updated, skipped, errored), (0, 1, 0))
+
+    def test_skips_trade_without_settled_temp(self):
+        # No outcomes/predictions row seeded at all for this ticker.
+        trade = self._make_trade(
+            "KXHIGHNY-26JUL04-T99",
+            "NYC",
+            "2026-07-04",
+            85.0,
+            "yes",
+            {"icon_seamless": 84.0},
+        )
+        updated, skipped, errored = tracker.backfill_member_brier([trade])
+        self.assertEqual((updated, skipped, errored), (0, 1, 0))
+
+    def test_malformed_trade_counted_as_errored_not_fatal(self):
+        """A trade with a broken model_forecast_means shape must not abort
+        the whole batch -- it's counted as errored and the rest still runs."""
+        self._seed("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04", "above", 88.0)
+        good_trade = self._make_trade(
+            "KXHIGHNY-26JUL04-T85",
+            "NYC",
+            "2026-07-04",
+            85.0,
+            "yes",
+            {"icon_seamless": 84.0},
+        )
+        bad_trade = self._make_trade(
+            "KXHIGHNY-26JUL04-T85",
+            "NYC",
+            "2026-07-04",
+            85.0,
+            "yes",
+            "not-a-dict",
+        )
+        updated, skipped, errored = tracker.backfill_member_brier(
+            [bad_trade, good_trade]
+        )
+        self.assertEqual(errored, 1)
+        self.assertEqual(updated, 1)
+
+    def test_below_condition_uses_minus_half_boundary(self):
+        """(opus-review MEDIUM-7) condition_type='below' was untested here --
+        a hardcoded 'above' at the call site would have passed every other
+        test in this class. Must match paper._score_ensemble_members's own
+        below-direction test exactly (same threshold-0.5 boundary)."""
+        from weather_markets import gaussian_probability, get_historical_sigma
+
+        self._seed("KXLOWNY-26JUL04-T40", "NYC", "2026-07-04", "below", 35.0, var="min")
+        trade = self._make_trade(
+            "KXLOWNY-26JUL04-T40",
+            "NYC",
+            "2026-07-04",
+            40.0,
+            "yes",
+            {"icon_seamless": 38.0},
+        )
+        updated, skipped, errored = tracker.backfill_member_brier([trade])
+        self.assertEqual((updated, skipped, errored), (1, 0, 0))
+
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT implied_prob, brier FROM ensemble_member_scores "
+                "WHERE city='NYC' AND model='icon_seamless'"
+            ).fetchone()
+        sigma = get_historical_sigma("NYC", 7, "max")
+        expected_prob = gaussian_probability(38.0, 39.5, sigma, "below")
+        self.assertAlmostEqual(row["implied_prob"], expected_prob, places=3)
+
+    def test_applies_sigma_mult_from_time_risk(self):
+        """(opus-review HIGH-2) Must reconstruct the SAME sigma_mult the
+        live engine applied at decision time, not the raw climatological
+        sigma -- mirrors paper._score_ensemble_members's own test."""
+        from weather_markets import gaussian_probability, get_historical_sigma
+
+        self._seed("KXHIGHNY-26JUL04-T85", "NYC", "2026-07-04", "above", 88.0)
+        trade = self._make_trade(
+            "KXHIGHNY-26JUL04-T85",
+            "NYC",
+            "2026-07-04",
+            85.0,
+            "yes",
+            {"icon_seamless": 84.0},
+        )
+        # entered_at within 2h of close_time -> _time_risk() -> ("LOW", 0.5)
+        trade["entered_at"] = "2026-07-04T17:00:00+00:00"
+        trade["close_time"] = "2026-07-04T18:30:00+00:00"
+        updated, skipped, errored = tracker.backfill_member_brier([trade])
+        self.assertEqual((updated, skipped, errored), (1, 0, 0))
+
+        with tracker._conn() as con:
+            row = con.execute(
+                "SELECT implied_prob FROM ensemble_member_scores "
+                "WHERE city='NYC' AND model='icon_seamless'"
+            ).fetchone()
+        raw_sigma = get_historical_sigma("NYC", 7, "max")
+        expected_discounted = gaussian_probability(84.0, 85.5, raw_sigma * 0.5, "above")
+        expected_undiscounted = gaussian_probability(84.0, 85.5, raw_sigma, "above")
+        self.assertGreater(
+            abs(row["implied_prob"] - expected_undiscounted),
+            0.001,
+            "test setup bug: discounted/undiscounted must differ meaningfully",
+        )
+        self.assertAlmostEqual(row["implied_prob"], expected_discounted, places=3)
 
 
 class TestCalibrationByCityConditionTypeGrpB(unittest.TestCase):

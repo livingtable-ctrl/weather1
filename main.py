@@ -7391,6 +7391,37 @@ def cmd_backfill_ensemble_var() -> None:
         )
 
 
+def cmd_backfill_member_brier() -> None:
+    """One-off recovery pass populating implied_prob/brier on existing
+    ensemble_member_scores rows, from settled paper trades. Run this once
+    after implied_prob/brier logging has shipped, to avoid a 1-2 week cold
+    start before weather_markets.scan_member_quarantine()'s Brier-based
+    detection statistic has enough data (_QUARANTINE_MIN_RECENT_N per model
+    in its 14-day window). Safe to re-run — only ever touches rows where
+    brier IS NULL."""
+    from paper import get_all_trades
+    from tracker import backfill_member_brier
+
+    print("Backfilling ensemble_member_scores.implied_prob/brier from settled trades…")
+    trades = get_all_trades()
+    updated, skipped, errored = backfill_member_brier(trades)
+    print(f"\nDone — {updated} row(s) backfilled.")
+    if skipped:
+        print(
+            yellow(
+                f"  {skipped} trade(s) skipped — no resolvable condition_type/"
+                "threshold, or settled_temp_f not yet in outcomes."
+            )
+        )
+    if errored:
+        print(
+            yellow(
+                f"  {errored} trade(s) errored while computing (malformed record) "
+                "— counted and skipped, rest of the batch still ran."
+            )
+        )
+
+
 # ── Interactive menu ──────────────────────────────────────────────────────────
 
 
@@ -10237,6 +10268,8 @@ def main():
         cmd_backfill_daily_temp_settlement()
     elif cmd in ("backfill-ensemble-var", "backfill_ensemble_var"):
         cmd_backfill_ensemble_var()
+    elif cmd in ("backfill-member-brier", "backfill_member_brier"):
+        cmd_backfill_member_brier()
     elif cmd in ("settings", "config-settings"):
         cmd_settings(client)
     elif cmd == "onboard":

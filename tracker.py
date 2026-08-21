@@ -27,7 +27,7 @@ DB_PATH.parent.mkdir(exist_ok=True)
 
 _db_initialized = False
 
-_SCHEMA_VERSION = 59  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 61  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     # v1 → v2: add condition_type column (if not already added)
@@ -369,6 +369,10 @@ _MIGRATIONS = [
     # backfill for this column itself, same reasoning as every other column
     # added this way.
     "ALTER TABLE predictions ADD COLUMN signal_values TEXT",
+    # Per-model implied probability + Brier score for ensemble_member_scores,
+    # feeding the quarantine mechanism's planned MAE->Brier swap.
+    "ALTER TABLE ensemble_member_scores ADD COLUMN implied_prob REAL",
+    "ALTER TABLE ensemble_member_scores ADD COLUMN brier REAL",
 ]
 
 
@@ -5584,6 +5588,144 @@ def backfill_ensemble_member_scores_var() -> tuple[int, int, int]:
     return updated, unresolved, duplicate_conflict
 
 
+def backfill_member_brier(trades: list[dict]) -> tuple[int, int, int]:
+    """One-off recovery pass to populate implied_prob/brier on existing
+    ensemble_member_scores rows, for trades settled before those columns
+    existed (or before this backfill has been run once against history).
+    Feeds get_member_brier(), which weather_markets.scan_member_quarantine()
+    uses as its detection statistic.
+
+    ensemble_member_scores has no ticker column (see log_member_score()'s
+    docstring), so this can't iterate that table directly -- instead it
+    takes paper trade records as a param (mirroring get_stop_loss_accuracy's
+    paper-data-passed-in pattern, since tracker.py deliberately never
+    imports paper) and joins ticker->condition_type/settled_temp_f the same
+    way paper._score_ensemble_members does live.
+
+    Not cron-wired -- meant to be run once manually (see
+    main.cmd_backfill_member_brier) after implied_prob/brier logging has
+    shipped, to avoid a 1-2 week cold start before the quarantine mechanism
+    has enough Brier data. Safe to re-run: the UPDATE only ever touches rows
+    where brier IS NULL, so already-backfilled rows are left alone.
+
+    Scope: paper trades only. No evidence execution_log (live trades)
+    carries model_forecast_means/condition_threshold in the same shape.
+
+    Returns (updated, skipped, errored):
+      - updated: number of ensemble_member_scores rows that got
+        implied_prob/brier set (one per model per trade)
+      - skipped: trades with no resolvable condition_type/threshold/
+        settled_temp_f -- soft degradation, same eligibility bar as the
+        live _score_ensemble_members path
+      - errored: trades that raised while computing (malformed record
+        shape) -- counted and skipped rather than aborting the whole batch
+    """
+    import datetime as _dt
+
+    from weather_markets import (
+        _CITY_TZ,
+        _time_risk,
+        _var_from_ticker_prefix,
+        gaussian_probability,
+        get_historical_sigma,
+    )
+
+    init_db()
+    updated = 0
+    skipped = 0
+    errored = 0
+    with _conn() as con:
+        for trade in trades:
+            try:
+                if not trade.get("settled"):
+                    skipped += 1
+                    continue
+                model_means = trade.get("model_forecast_means") or {}
+                if not model_means:
+                    skipped += 1
+                    continue
+                ticker = trade.get("ticker", "")
+                city = trade.get("city")
+                target_date = trade.get("target_date")
+                raw_threshold = trade.get("condition_threshold")
+                outcome = trade.get("outcome")
+                if (
+                    not city
+                    or not target_date
+                    or raw_threshold is None
+                    or outcome not in ("yes", "no")
+                ):
+                    skipped += 1
+                    continue
+                var = (
+                    trade.get("var") or _var_from_ticker_prefix(ticker.upper()) or "max"
+                )
+
+                row = con.execute(
+                    "SELECT settled_temp_f FROM outcomes_valid WHERE ticker = ?",
+                    (ticker,),
+                ).fetchone()
+                if row is None or row[0] is None:
+                    skipped += 1
+                    continue
+
+                pred_row = con.execute(
+                    "SELECT condition_type FROM predictions WHERE ticker = ? "
+                    "ORDER BY predicted_at DESC LIMIT 1",
+                    (ticker,),
+                ).fetchone()
+                condition_type = pred_row[0] if pred_row else None
+                if condition_type not in ("above", "below"):
+                    skipped += 1
+                    continue
+
+                # See paper._score_ensemble_members()'s matching comment:
+                # must use the same continuous decision boundary (+/-0.5,
+                # not the raw ticker threshold) and the same as-of-entry
+                # sigma_mult horizon discount as the live engine, or this
+                # backfill would silently diverge from what the live path
+                # produces for the same trade.
+                prob_threshold = (
+                    raw_threshold + 0.5
+                    if condition_type == "above"
+                    else raw_threshold - 0.5
+                )
+                tz = _CITY_TZ.get(city, "America/New_York")
+                entered_at_str = trade.get("entered_at")
+                as_of = (
+                    _dt.datetime.fromisoformat(entered_at_str.replace("Z", "+00:00"))
+                    if entered_at_str
+                    else None
+                )
+                _, sigma_mult = _time_risk(trade.get("close_time", ""), tz, now=as_of)
+                month = _dt.date.fromisoformat(target_date).month
+                sigma = get_historical_sigma(city, month, var) * sigma_mult
+                outcome_yes = 1.0 if outcome == "yes" else 0.0
+
+                for model, predicted_temp in model_means.items():
+                    if predicted_temp is None:
+                        continue
+                    implied_prob = gaussian_probability(
+                        predicted_temp, prob_threshold, sigma, condition_type
+                    )
+                    brier = (implied_prob - outcome_yes) ** 2
+                    cur = con.execute(
+                        "UPDATE ensemble_member_scores SET implied_prob = ?, brier = ? "
+                        "WHERE city = ? AND model = ? AND target_date = ? AND var = ? "
+                        "AND brier IS NULL",
+                        (implied_prob, brier, city, model, target_date, var),
+                    )
+                    updated += cur.rowcount
+            except Exception as exc:
+                errored += 1
+                _log.debug(
+                    "backfill_member_brier: errored on trade %s: %s",
+                    trade.get("ticker", "?"),
+                    exc,
+                )
+    return updated, skipped, errored
+
+
 def log_member_score(
     city: str,
     model: str,
@@ -5591,12 +5733,20 @@ def log_member_score(
     actual_temp: float,
     target_date_str: str,
     var: str | None = None,
+    implied_prob: float | None = None,
+    brier: float | None = None,
 ) -> None:
     """Log an ensemble member's temperature prediction vs actuals for accuracy tracking.
 
     var should be "max" for daily-HIGH markets or "min" for daily-LOW markets —
     daily-high and daily-low forecast errors have different sign/magnitude and
     must not be pooled (see get_dynamic_station_bias).
+
+    implied_prob/brier are optional: the model's own forecast converted to a
+    calibrated probability against the trade's market threshold, and the
+    resulting Brier score vs the real outcome. Only populated when the
+    caller has a resolvable condition_type/threshold for this settlement
+    (see paper._score_ensemble_members) -- feeds get_member_brier().
 
     Deduplicates on (city, model, target_date, var) via idx_ems_dedup — multiple
     trades settling in the same city/date (e.g. two thresholds on one market)
@@ -5608,10 +5758,20 @@ def log_member_score(
         con.execute(
             """
             INSERT OR IGNORE INTO ensemble_member_scores
-              (city, model, predicted_temp, actual_temp, target_date, var, logged_at)
-            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+              (city, model, predicted_temp, actual_temp, target_date, var,
+               implied_prob, brier, logged_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             """,
-            (city, model, predicted_temp, actual_temp, target_date_str, var),
+            (
+                city,
+                model,
+                predicted_temp,
+                actual_temp,
+                target_date_str,
+                var,
+                implied_prob,
+                brier,
+            ),
         )
 
 
@@ -5671,6 +5831,59 @@ def get_member_accuracy(days_back: int = 60) -> dict:
             # R25: per-city observation counts so _weights_from_mae can gate on
             # sample size rather than number of distinct cities.
             "city_n_breakdown": {c: len(v) for c, v in city_errs.items()},
+        }
+    return result
+
+
+def get_member_brier(days_back: int = 14) -> dict:
+    """
+    Per-model Brier score filtered to recent settlements, used by
+    weather_markets.scan_member_quarantine() as the trade-relevant
+    detection statistic (replacing get_member_accuracy's MAE).
+    Returns {model: {brier: float, n: int, std: float, city_breakdown:
+    {city: brier}, city_n_breakdown: {city: n}}}
+
+    std is the sample stdev of the per-observation Brier scores -- used the
+    same way get_member_accuracy's std is, for the peer-relative drift
+    check's standard-error computation.
+    """
+    import statistics as _stats
+
+    init_db()
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT model, city, brier
+            FROM ensemble_member_scores
+            WHERE brier IS NOT NULL
+              AND model != 'blended'
+              AND logged_at >= datetime('now', ? || ' days')
+            """,
+            (f"-{days_back}",),
+        ).fetchall()
+
+    if not rows:
+        return {}
+
+    by_model: dict[str, list[tuple[str, float]]] = {}
+    for r in rows:
+        by_model.setdefault(r["model"], []).append((r["city"], r["brier"]))
+
+    result: dict = {}
+    for model, entries in by_model.items():
+        scores = [b for _, b in entries]
+        brier = sum(scores) / len(scores)
+        std = _stats.stdev(scores) if len(scores) > 1 else 0.0
+        city_scores: dict[str, list[float]] = {}
+        for city, b in entries:
+            city_scores.setdefault(city, []).append(b)
+        city_brier = {c: sum(v) / len(v) for c, v in city_scores.items()}
+        result[model] = {
+            "brier": round(brier, 4),
+            "n": len(entries),
+            "std": round(std, 4),
+            "city_breakdown": {c: round(v, 4) for c, v in city_brier.items()},
+            "city_n_breakdown": {c: len(v) for c, v in city_scores.items()},
         }
     return result
 

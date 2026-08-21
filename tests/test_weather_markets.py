@@ -4897,21 +4897,28 @@ class TestMemberQuarantineScan:
     exclude a member: repeats = max(1, round(w * 2)) always includes at
     least one copy).
 
+    Detection statistic is per-model BRIER SCORE (tracker.get_member_brier()),
+    not MAE -- swapped after monitoring the original MAE-based version
+    against real production data found MAE (and even raw threshold-crossing
+    win/loss) could reward a confidently-wrong, merely luckily-biased
+    forecast. See scan_member_quarantine()'s own docstring for the full
+    rationale.
+
     Peer-relative design (redesigned after an independent opus review found
     the original self-relative/own-history design would never have caught
     the live failure it was built for -- gfs_seamless's own recent MAE can
     be better than its own older history while still being the worst of the
-    3 live candidates right now). z = (own.mae - mean(non-quarantined peers'
-    recent MAE)) / se, where se is the POOLED two-sample standard error
-    (own's own std/sqrt(n) combined with each peer's, not just own's alone
-    -- a second independent review found the one-sample version put the
-    live gfs_seamless case right at the trip boundary purely from ignoring
-    peer_mean's own sampling uncertainty). See _se() below, which mirrors
-    scan_member_quarantine()'s exact formula so test numbers can't silently
-    drift out of sync with a future formula change."""
+    3 live candidates right now). z = (own.brier - mean(non-quarantined
+    peers' recent brier)) / se, where se is the POOLED two-sample standard
+    error (own's own std/sqrt(n) combined with each peer's, not just own's
+    alone -- a second independent review found the one-sample version put
+    the live gfs_seamless case right at the trip boundary purely from
+    ignoring peer_mean's own sampling uncertainty). See _se() below, which
+    mirrors scan_member_quarantine()'s exact formula so test numbers can't
+    silently drift out of sync with a future formula change."""
 
-    def _fake_acc(self, recent: dict):
-        """Fake tracker.get_member_accuracy(days_back=...) -- scan_member_
+    def _fake_brier(self, recent: dict):
+        """Fake tracker.get_member_brier(days_back=...) -- scan_member_
         quarantine() makes exactly ONE call now (no baseline/end_days_back)."""
 
         def _fake(days_back=14):
@@ -4919,9 +4926,9 @@ class TestMemberQuarantineScan:
 
         return _fake
 
-    def _stats(self, mae, n, std=1.0):
+    def _stats(self, brier, n, std=1.0):
         return {
-            "mae": mae,
+            "brier": brier,
             "n": n,
             "std": std,
             "city_breakdown": {},
@@ -4947,15 +4954,15 @@ class TestMemberQuarantineScan:
 
     def test_warmup_floor_own_n_blocks_trip(self, monkeypatch):
         """own.n below the floor must never update ewma_z/trip, however bad
-        the MAE looks, even with well-observed peers."""
+        the Brier score looks, even with well-observed peers."""
         import weather_markets as wm
 
         recent = {
-            "gfs_seamless": self._stats(mae=20.0, n=5, std=1.0),  # n<20
-            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=0.9, n=5, std=1.0),  # n<20
+            "icon_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         wm.scan_member_quarantine()
         state = wm.load_member_quarantine_state()
         assert not state.get("gfs_seamless", {}).get("quarantined")
@@ -4967,11 +4974,11 @@ class TestMemberQuarantineScan:
         import weather_markets as wm
 
         recent = {
-            "gfs_seamless": self._stats(mae=20.0, n=30, std=1.0),
-            "icon_seamless": self._stats(mae=2.0, n=5, std=1.0),  # n<20
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=5, std=1.0),  # n<20
+            "gfs_seamless": self._stats(brier=0.9, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=0.2, n=5, std=1.0),  # n<20
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=5, std=1.0),  # n<20
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         wm.scan_member_quarantine()
         state = wm.load_member_quarantine_state()
         assert not state.get("gfs_seamless", {}).get("quarantined")
@@ -4981,11 +4988,11 @@ class TestMemberQuarantineScan:
         import weather_markets as wm
 
         recent = {
-            "gfs_seamless": self._stats(mae=20.0, n=30, std=0.0),
-            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=0.9, n=30, std=0.0),
+            "icon_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         wm.scan_member_quarantine()
         state = wm.load_member_quarantine_state()
         assert not state.get("gfs_seamless", {}).get("quarantined")
@@ -5001,13 +5008,13 @@ class TestMemberQuarantineScan:
         import weather_markets as wm
 
         se = self._se()  # 2 peers (icon, aifs), default std/n for all 3
-        own_mae = 2.0 + 4.0 * se  # peer_mean = mean(2.0, 2.0) = 2.0
+        own_brier = 0.2 + 4.0 * se  # peer_mean = mean(0.2, 0.2) = 0.2
         recent = {
-            "gfs_seamless": self._stats(mae=own_mae, n=30, std=1.0),
-            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=own_brier, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         wm.scan_member_quarantine()
         state = wm.load_member_quarantine_state()
         assert state["gfs_seamless"]["last_z"] == pytest.approx(4.0, rel=1e-3)
@@ -5021,18 +5028,18 @@ class TestMemberQuarantineScan:
         very first scan -- ewma = 0.2*10 = 2.0 exactly. This is documented,
         intended behavior, not a bug: a model 10 pooled standard errors off
         its peers on day one should trip immediately, not wait. (The
-        MIN_EFFECT_F floor is also cleared here -- own-vs-peer gap is
-        10*se, comfortably above 0.5°F.)"""
+        MIN_EFFECT floor is also cleared here -- own-vs-peer gap is 10*se,
+        comfortably above the 0.008 floor.)"""
         import weather_markets as wm
 
         se = self._se()
-        own_mae = 2.0 + 10.0 * se
+        own_brier = 0.2 + 10.0 * se
         recent = {
-            "gfs_seamless": self._stats(mae=own_mae, n=30, std=1.0),
-            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=own_brier, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         result = wm.scan_member_quarantine()
         state = wm.load_member_quarantine_state()
         assert state["gfs_seamless"]["ewma_z"] == pytest.approx(2.0, rel=1e-3)
@@ -5049,13 +5056,13 @@ class TestMemberQuarantineScan:
         import weather_markets as wm
 
         se = self._se()
-        own_mae = 2.0 + 4.0 * se
+        own_brier = 0.2 + 4.0 * se
         recent = {
-            "gfs_seamless": self._stats(mae=own_mae, n=30, std=1.0),
-            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=own_brier, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         wm.scan_member_quarantine()
         assert not wm.load_member_quarantine_state()["gfs_seamless"]["quarantined"]
         wm.scan_member_quarantine()
@@ -5069,25 +5076,31 @@ class TestMemberQuarantineScan:
         self, monkeypatch
     ):
         """MEDIUM-2 (review): a purely statistical z-threshold shrinks its
-        required MAE gap as ~1/sqrt(n), so at a large enough n a trivial,
+        required Brier gap as ~1/sqrt(n), so at a large enough n a trivial,
         practically meaningless gap could become "significant". Simulate
         that directly with a huge n (own.std tiny relative to n so se is
         tiny) producing z well past 2.0 from a gap well under
-        _QUARANTINE_MIN_EFFECT_F (0.5°F) -- must NOT trip."""
+        _QUARANTINE_MIN_EFFECT (0.008, Brier-scale) -- must NOT trip.
+        n=2.5M (not 10k, as the old °F-scale version of this test used) --
+        the floor shrank from 0.5°F to 0.008 when the statistic swapped
+        to Brier, so a far smaller se (far larger n) is needed to keep the
+        constructed effect size under the new floor while still producing
+        z=10. Purely arithmetic (get_member_brier is mocked, no real rows
+        are created), so the large n has no real runtime cost."""
         import weather_markets as wm
 
-        se = self._se(own_n=10_000, peer_ns=(10_000, 10_000))
-        # z=10 from this tiny se still means a real MAE gap far under 0.5°F.
-        own_mae = 2.0 + 10.0 * se
-        assert own_mae - 2.0 < wm._QUARANTINE_MIN_EFFECT_F, (
+        se = self._se(own_n=2_500_000, peer_ns=(2_500_000, 2_500_000))
+        # z=10 from this tiny se still means a real Brier gap far under 0.008.
+        own_brier = 0.3 + 10.0 * se
+        assert own_brier - 0.3 < wm._QUARANTINE_MIN_EFFECT, (
             "test setup bug: effect size isn't actually below the floor"
         )
         recent = {
-            "gfs_seamless": self._stats(mae=own_mae, n=10_000, std=1.0),
-            "icon_seamless": self._stats(mae=2.0, n=10_000, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=10_000, std=1.0),
+            "gfs_seamless": self._stats(brier=own_brier, n=2_500_000, std=1.0),
+            "icon_seamless": self._stats(brier=0.3, n=2_500_000, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.3, n=2_500_000, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         result = wm.scan_member_quarantine()
         state = wm.load_member_quarantine_state()
         assert state["gfs_seamless"]["ewma_z"] >= wm._QUARANTINE_TRIP_Z, (
@@ -5095,7 +5108,7 @@ class TestMemberQuarantineScan:
         )
         assert not state["gfs_seamless"]["quarantined"], (
             "must not trip on statistical significance alone when the "
-            "practical MAE gap is below the minimum effect size floor"
+            "practical Brier gap is below the minimum effect size floor"
         )
         assert result["newly_quarantined"] == []
 
@@ -5113,13 +5126,13 @@ class TestMemberQuarantineScan:
             {"gfs_seamless": {"quarantined": True, "ewma_z": 1.0}}
         )
         se = self._se()
-        own_mae = 2.0 + 1.0 * se
+        own_brier = 0.2 + 1.0 * se
         recent = {
-            "gfs_seamless": self._stats(mae=own_mae, n=30, std=1.0),
-            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=own_brier, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         wm.scan_member_quarantine()
         state = wm.load_member_quarantine_state()
         assert 0.5 < state["gfs_seamless"]["ewma_z"] < 2.0, (
@@ -5139,11 +5152,11 @@ class TestMemberQuarantineScan:
         )
         # own == peer_mean exactly -> z=0 -> new ewma_z = 0.2*0 + 0.8*0.6 = 0.48 <= 0.5
         recent = {
-            "gfs_seamless": self._stats(mae=2.0, n=30, std=1.0),
-            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         result = wm.scan_member_quarantine()
         assert "gfs_seamless" in result["released"]
         assert not wm.load_member_quarantine_state()["gfs_seamless"]["quarantined"]
@@ -5159,11 +5172,11 @@ class TestMemberQuarantineScan:
             {"gfs_seamless": {"quarantined": True, "ewma_z": 3.0}}
         )
         recent = {
-            "gfs_seamless": self._stats(mae=20.0, n=5, std=1.0),  # n<20 now
-            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=0.9, n=5, std=1.0),  # n<20 now
+            "icon_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         result = wm.scan_member_quarantine()
         state = wm.load_member_quarantine_state()
         assert state["gfs_seamless"]["quarantined"]
@@ -5174,28 +5187,28 @@ class TestMemberQuarantineScan:
     def test_peer_mean_excludes_already_quarantined_peer(self, monkeypatch):
         """A peer that was ALREADY quarantined going into this scan must not
         count toward another model's "normal" reference -- including its
-        bad MAE would inflate peer_mean and could mask a second bad member.
-        icon is pre-quarantined with a wildly bad recent.mae (999); if that
-        leaked into gfs's peer computation, gfs's z would come out strongly
-        NEGATIVE (10 vs a ~500 peer average) instead of strongly positive."""
+        bad Brier score would inflate peer_mean and could mask a second bad
+        member. icon is pre-quarantined with a wildly bad recent.brier
+        (0.99); if that leaked into gfs's peer computation, gfs's z would
+        come out strongly NEGATIVE instead of strongly positive."""
         import weather_markets as wm
 
         wm._save_member_quarantine_state(
             {"icon_seamless": {"quarantined": True, "ewma_z": 5.0}}
         )
         recent = {
-            "gfs_seamless": self._stats(mae=10.0, n=30, std=1.0),
-            "icon_seamless": self._stats(mae=999.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=0.5, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=0.99, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         wm.scan_member_quarantine()
         state = wm.load_member_quarantine_state()
-        # peer_mean for gfs must be just aifs's 2.0 (icon excluded) -- ONE
+        # peer_mean for gfs must be just aifs's 0.2 (icon excluded) -- ONE
         # peer, not two, so the SE used here must reflect that.
         se_one_peer = self._se(peer_ns=(30,))
         assert state["gfs_seamless"]["last_z"] == pytest.approx(
-            (10.0 - 2.0) / se_one_peer, rel=1e-3
+            (0.5 - 0.2) / se_one_peer, rel=1e-3
         )
         assert state["gfs_seamless"]["last_z"] > 0
 
@@ -5207,13 +5220,16 @@ class TestMemberQuarantineScan:
 
         # gfs peer_mean = mean(icon=9, aifs=2) = 5.5 -> effect=4.5, big z
         # icon peer_mean = mean(gfs=10, aifs=2) = 6.0 -> effect=3.0, big z
-        # gfs is worse (higher z/ewma) -> gfs quarantined, icon blocked.
+        # gfs is worse (higher z/ewma) -> gfs quarantined, icon blocked. (Large
+        # synthetic magnitudes, not realistic Brier values -- this is pure
+        # mocked arithmetic exercising a single-scan trip, same as the
+        # cold-start-extreme test's large own_brier construction.)
         recent = {
-            "gfs_seamless": self._stats(mae=10.0, n=30, std=1.0),
-            "icon_seamless": self._stats(mae=9.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=10.0, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=9.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=2.0, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         result = wm.scan_member_quarantine()
         assert result["newly_quarantined"] == ["gfs_seamless"]
         assert result["blocked_by_floor"] == ["icon_seamless"]
@@ -5224,16 +5240,17 @@ class TestMemberQuarantineScan:
     def test_deterministic_tiebreak_on_exact_equal_ewma_z(self, monkeypatch):
         """Exact-float-tie between two candidates: alphabetically-first model
         name wins the tie-break (is quarantined). gfs and icon given equal
-        mae -> by symmetry each one's peer_mean (computed from the OTHER two)
-        is identical, producing an exact z/ewma_z tie."""
+        (large, synthetic) brier -> by symmetry each one's peer_mean
+        (computed from the OTHER two) is identical, producing an exact
+        z/ewma_z tie clearing the trip line on a single scan."""
         import weather_markets as wm
 
         recent = {
-            "gfs_seamless": self._stats(mae=12.0, n=30, std=1.0),
-            "icon_seamless": self._stats(mae=12.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=12.0, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=12.0, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=2.0, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         result = wm.scan_member_quarantine()
         state = wm.load_member_quarantine_state()
         assert state["gfs_seamless"]["ewma_z"] == pytest.approx(
@@ -5270,20 +5287,20 @@ class TestMemberQuarantineScan:
         )
 
     def test_stray_tracked_models_never_affect_peers_floor_or_room(self, monkeypatch):
-        """ecmwf_ifs025/gem_global -- tracked by get_member_accuracy() but NOT
+        """ecmwf_ifs025/gem_global -- tracked by get_member_brier() but NOT
         real candidates for this blend -- must have zero effect on peer-mean
-        computation or the active-member floor/room math, even with
-        terrible MAE."""
+        computation or the active-member floor/room math, even with a
+        terrible Brier score."""
         import weather_markets as wm
 
         recent = {
-            "gfs_seamless": self._stats(mae=2.0, n=30, std=1.0),
-            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
-            "ecmwf_ifs025": self._stats(mae=50.0, n=30, std=1.0),
-            "gem_global": self._stats(mae=50.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_ifs025": self._stats(brier=0.99, n=30, std=1.0),
+            "gem_global": self._stats(brier=0.99, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         result = wm.scan_member_quarantine()
         assert result["newly_quarantined"] == []
         assert result["blocked_by_floor"] == []
@@ -5314,13 +5331,13 @@ class TestMemberQuarantineScan:
             lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")),
         )
         se = self._se()
-        own_mae = 2.0 + 10.0 * se
+        own_brier = 0.2 + 10.0 * se
         recent = {
-            "gfs_seamless": self._stats(mae=own_mae, n=30, std=1.0),
-            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=own_brier, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         result = wm.scan_member_quarantine()  # computes a real change, save fails
         assert result["newly_quarantined"] == ["gfs_seamless"], (
             "test setup bug: the scan itself must have decided to quarantine"
@@ -5336,11 +5353,11 @@ class TestMemberQuarantineScan:
         import weather_markets as wm
 
         recent = {
-            "gfs_seamless": self._stats(mae=5.0, n=30, std=1.0),
-            "icon_seamless": self._stats(mae=2.0, n=30, std=1.0),
-            "ecmwf_aifs025_ensemble": self._stats(mae=2.0, n=30, std=1.0),
+            "gfs_seamless": self._stats(brier=0.5, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
         }
-        monkeypatch.setattr("tracker.get_member_accuracy", self._fake_acc(recent))
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
         wm.scan_member_quarantine()
         # Fresh read, simulating a new process. Non-zero expected values (not
         # just presence of the ewma_z key) so this can't pass vacuously if
@@ -5349,10 +5366,115 @@ class TestMemberQuarantineScan:
         se = self._se()
         assert "gfs_seamless" in reloaded
         assert reloaded["gfs_seamless"]["ewma_z"] == pytest.approx(
-            0.2 * (5.0 - 2.0) / se, rel=1e-3
+            0.2 * (0.5 - 0.2) / se, rel=1e-3
         )
-        assert reloaded["gfs_seamless"]["last_own_mae"] == pytest.approx(5.0)
+        assert reloaded["gfs_seamless"]["last_own_brier"] == pytest.approx(0.5)
         assert "last_scan_at" in reloaded["gfs_seamless"]
+
+    def test_legacy_mae_state_resets_ewma_z_instead_of_carrying_it_forward(
+        self, monkeypatch
+    ):
+        """A state file predating the MAE->Brier swap (has last_own_mae, no
+        last_own_brier) must have its ewma_z reset to 0.0 before this scan's
+        EWMA update, not blended as if it were already on the Brier scale --
+        the two statistics are on incompatible units. Also verifies the
+        legacy keys are cleared once the entry is rewritten."""
+        import weather_markets as wm
+
+        wm._save_member_quarantine_state(
+            {
+                "gfs_seamless": {
+                    "quarantined": False,
+                    "ewma_z": 1.95,  # near the OLD MAE-era trip line
+                    "last_own_mae": 5.37,
+                    "last_peer_mean_mae": 3.49,
+                    "last_effect_f": 1.88,
+                }
+            }
+        )
+        recent = {
+            "gfs_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
+        wm.scan_member_quarantine()
+        state = wm.load_member_quarantine_state()
+        # own == peer_mean -> z=0 this scan -> ewma_z = 0.2*0 + 0.8*ewma_z_prev.
+        # If the stale 1.95 leaked through, ewma_z would be 0.8*1.95=1.56;
+        # reset-to-0 means it must be exactly 0.0.
+        assert state["gfs_seamless"]["ewma_z"] == pytest.approx(0.0, abs=1e-9), (
+            f"stale MAE-scale ewma_z leaked into the Brier-scale EWMA: "
+            f"{state['gfs_seamless']['ewma_z']}"
+        )
+        assert "last_own_mae" not in state["gfs_seamless"]
+        assert "last_peer_mean_mae" not in state["gfs_seamless"]
+        assert "last_effect_f" not in state["gfs_seamless"]
+        assert "last_own_brier" in state["gfs_seamless"]
+
+    def test_legacy_mae_state_does_not_auto_release_a_quarantined_model(
+        self, monkeypatch
+    ):
+        """(opus-review MEDIUM-3) A model that WAS quarantined under MAE must
+        not silently release on the same scan its ewma_z gets reset to 0 --
+        the reset is about unit-compatibility, not evidence of recovery.
+        own==peer_mean here (z=0), so ewma_z=0.2*0=0.0 <= the 0.5 release
+        line -- without suppression this would release every time."""
+        import weather_markets as wm
+
+        wm._save_member_quarantine_state(
+            {
+                "gfs_seamless": {
+                    "quarantined": True,
+                    "ewma_z": 3.0,  # comfortably past the OLD MAE-era trip line
+                    "last_own_mae": 8.0,
+                    "last_peer_mean_mae": 2.0,
+                    "last_effect_f": 6.0,
+                }
+            }
+        )
+        recent = {
+            "gfs_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "icon_seamless": self._stats(brier=0.2, n=30, std=1.0),
+            "ecmwf_aifs025_ensemble": self._stats(brier=0.2, n=30, std=1.0),
+        }
+        monkeypatch.setattr("tracker.get_member_brier", self._fake_brier(recent))
+        result = wm.scan_member_quarantine()
+        state = wm.load_member_quarantine_state()
+        assert state["gfs_seamless"]["quarantined"], (
+            "must stay quarantined on the legacy-reset scan even though "
+            "ewma_z resets to a value under the release line"
+        )
+        assert state["gfs_seamless"]["ewma_z"] == pytest.approx(0.0, abs=1e-9), (
+            "ewma_z itself must still update normally -- only the release "
+            "decision is suppressed, not the EWMA computation"
+        )
+        assert result["released"] == []
+
+        # Next scan (no longer legacy -- last_own_brier now present): if the
+        # real signal stays at z=0, ewma_z stays 0.0 <= release line, and
+        # THIS scan must release normally -- suppression is one-scan-only.
+        result2 = wm.scan_member_quarantine()
+        assert result2["released"] == ["gfs_seamless"]
+        assert not wm.load_member_quarantine_state()["gfs_seamless"]["quarantined"]
+
+    def test_quarantine_min_effect_is_within_sane_brier_scale_bounds(self):
+        """Regression guard (opus-review MEDIUM-6): nothing else in this
+        suite would catch _QUARANTINE_MIN_EFFECT being raised to an absurd
+        value -- the largest effect any existing test constructs is 4.5
+        (std=1.0 synthetic mocks), so the floor could be set anywhere up to
+        ~2.2, including values well past 1.0 (a permanent quarantine
+        disable, since real Brier scores are bounded to [0,1]), and every
+        other test would still pass. Pin it to a small fraction of the real
+        Brier scale (real forecasts run ~0.15-0.35 per this codebase's own
+        established scale -- graduation gate 0.23, retirement threshold
+        0.25) instead."""
+        import weather_markets as wm
+
+        assert 0 < wm._QUARANTINE_MIN_EFFECT < 0.1, (
+            f"_QUARANTINE_MIN_EFFECT={wm._QUARANTINE_MIN_EFFECT} is outside "
+            f"a sane fraction of the real Brier scale"
+        )
 
 
 class TestMemberQuarantineBlendHooks:
