@@ -62,7 +62,7 @@ Confirm conservative values are set for the first live week. Unlike a flat-dolla
 | `MAX_VAR_DOLLARS` | 200.0 (flat dollars) | Pre-trade VaR gate — skips a candidate trade if it would push 5th-percentile portfolio loss past this |
 | `MAX_SINGLE_TICKER_EXPOSURE` | 0.10 (fraction of balance) | Per-ticker exposure cap |
 | `MAX_CORRELATED_EXPOSURE` | 0.35 (hardcoded, not env-configurable) | Combined cap across a correlated city group |
-| `KELLY_CAP` | 0.25 (hardcoded, not env-configurable) | Max Kelly fraction per position |
+| `KELLY_CAP` | 0.25 (fraction of balance) | Max Kelly fraction per position |
 
 There is **no hard cap on the number of open positions** — risk is controlled via the VaR/Kelly/exposure limits above, not a position count. For the first live week, consider tightening `MAX_DAILY_LOSS_PCT` and `MAX_VAR_DOLLARS` below their defaults rather than raising them.
 
@@ -100,10 +100,11 @@ All tests must pass. A failure in `test_trading_gates.py` means the safety gate 
 ```bash
 # Run one real cron cycle to confirm no import errors, DB connectivity, API reachability.
 # cron never OPENS a new live position (buy) regardless of LIVE_TRADING_ENABLED
-# — only `watch --auto --live` does. It CAN still place a real live SELL to
-# protect an already-open position (stop-loss/breakeven/model exit) if one
-# exists from a prior `watch --live` session — this dry run is only "safe by
-# design" when no live position is currently open; check first if unsure.
+# — only `watch --auto --live`, `buy`/`sell`, and `analyze`'s quick-buy prompt
+# do that. cron CAN still place a real live SELL to protect an already-open
+# position (stop-loss/breakeven/model exit) if one exists from a prior
+# `watch --live` session — this dry run is only "safe by design" when no live
+# position is currently open; check first if unsure.
 python main.py cron 2>&1 | tail -30
 ```
 
@@ -131,9 +132,9 @@ print('Gate:', 'PASS' if allowed else 'BLOCKED', '—', reason)
 python main.py watch --auto --live
 ```
 
-`python main.py cron` never opens a new live position (buys) — only `watch --auto --live` does. Watch the first cycle's output carefully. If the gate blocks, the bot logs `Live trading gate blocked: <reason>` (in red) and raises `RuntimeError` rather than placing anything — confirm you see neither an unexpected block nor a silent placement with no log trace.
+`python main.py cron` never opens a new live position (buys) — `watch --auto --live` (the automated loop), `buy`/`sell` (manual `cmd_order`), and `analyze`'s interactive quick-buy prompt are the only paths that open new live exposure. Watch the first cycle's output carefully. If the gate blocks, the bot logs `Live trading gate blocked: <reason>` (in red) and raises `RuntimeError` rather than placing anything — confirm you see neither an unexpected block nor a silent placement with no log trace.
 
-Note: `cron` can still place a real live SELL order to protect an already-open position (stop-loss/breakeven/model exit) even though it never originates new live exposure — see its `_check_live_position_exits`/`_check_live_model_exits` calls. "Never places live orders" understates this; the accurate claim is "never opens a new one."
+Note: `cron` (and `loop`, which dispatches to it) can still place a real live SELL order to protect an already-open position (stop-loss/breakeven/model exit) even though it never originates new live exposure — see its `_check_live_position_exits`/`_check_live_model_exits` calls. `watch --live` alone (without `--auto`) can do the same. "Never places live orders" understates this; the accurate claim is "never opens a new one."
 
 ---
 
@@ -249,12 +250,14 @@ sed -i '/LIVE_TRADING_ENABLED/d' .env
 
 The `LiveTradingGate.check()` method (in `trading_gates.py`) blocks live orders if **any** of the following are true:
 
-1. `KALSHI_ENV != "prod"`
-2. `LIVE_TRADING_ENABLED != "true"` (env var)
-3. `paper.is_paused_drawdown()` returns `True`
-4. `paper.is_streak_paused()` returns `True`
-5. `paper.is_daily_loss_halted()` returns `True`
-6. `paper.is_accuracy_halted()` returns `True`
-7. `paper.graduation_check()` returns `None`
+1. `utils.is_trading_paused()` returns `True` (`TRADING_PAUSED` env var set)
+2. The kill switch file (`data/.kill_switch`) exists
+3. The prod check: when a client is passed (every real live-order call site), its own `base_url` isn't pointed at prod; only when no client is passed (a fallback for callers/tests not yet updated) does this fall back to a plain `KALSHI_ENV != "prod"` read instead
+4. `LIVE_TRADING_ENABLED != "true"` (env var)
+5. `paper.is_paused_drawdown()` returns `True`
+6. `paper.is_streak_paused()` returns `True`
+7. `paper.is_daily_loss_halted()` returns `True`
+8. `paper.is_accuracy_halted()` returns `True`
+9. `paper.graduation_check()` returns `None`
 
-All seven gates must pass simultaneously (checked cheapest-first, DB/Brier check last). There is no override short of modifying source code.
+All nine gates must pass simultaneously, roughly cheapest-first though not exactly — `trading_gates.py` itself notes gates 5-6 now also do an execution_log table scan, ahead of some of the plain file/env reads above them; the DB/Brier check (gate 9) still runs last regardless. Most gates require either changing the underlying condition (settling more trades, waiting out a halt) or modifying source code; a couple have their own dedicated operator override — `python main.py resume` clears gate 2 (the kill switch), and `python main.py admin accuracy-override` can temporarily lift gate 8 (the accuracy halt). There is no single override that lifts the whole gate chain at once.

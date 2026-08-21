@@ -707,8 +707,11 @@ class KalshiClient:
                 _e,
             )
         # Third pass: an IOC/FOK order with no fill is finalized as canceled, not
-        # resting/executed -- no live caller uses IOC/FOK today (all pass
-        # good_till_canceled), but this keeps the lookup correct if that changes.
+        # resting/executed -- this is a genuinely exercised path, not just a
+        # forward-looking safeguard: order_executor._exit_live_position,
+        # order_executor._replace_live_order (the watch --live taker-cross
+        # reprice path), and main.py's cmd_order (live path) all pass
+        # immediate_or_cancel.
         # A canceled order with a nonzero fill still landed partially; a canceled
         # order with zero fill genuinely never landed, so report not-found (None)
         # so the caller can safely retry.

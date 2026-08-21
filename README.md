@@ -115,7 +115,7 @@ Opens a numbered menu with every feature. Good starting point.
 | `python main.py ab-summary` | Show A/B experiment results |
 | `python main.py backfill-emos` | Backfill historical ensemble mean/variance for EMOS calibration |
 | `python main.py backfill-price-history` | Backfill OHLC candlestick history for settled tickers missing it |
-| `python main.py override <set\|clear\|status> [mins]` | Temporarily pause auto-trading without activating the kill switch |
+| `python main.py override <pause\|unpause\|status> [mins]` | Temporarily pause auto-trading without activating the kill switch |
 | `python main.py kill` | Activate kill switch to halt all trading |
 | `python main.py resume` | Resume trading after kill switch or black swan halt |
 | `python main.py settlement-monitor` | Run settlement lag monitor |
@@ -189,8 +189,8 @@ Run `python main.py kill` to halt all auto-trading immediately. Run `python main
 For a temporary pause (e.g. 60 minutes) without touching the kill switch:
 
 ```
-python main.py override set 60
-python main.py override clear
+python main.py override pause 60
+python main.py override unpause
 python main.py override status
 ```
 

@@ -409,6 +409,135 @@ class TestKalshiEnvLiveRead:
                 os.environ["KALSHI_ENV"] = original
 
 
+class TestComputeLiveOrdersPossible:
+    """_compute_live_orders_possible() drives the KALSHI_ENV=prod startup
+    banner's "can this command place a live order" claim. Must recognize
+    every real live-order-capable CLI path -- opus review of this batch's
+    first version (which covered only buy/sell/analyze) traced 4 more via
+    cron.py/main.py source and caught 2 tests that asserted the wrong
+    answer outright (cron and watch --live were hard-coded False despite
+    cron.py's own comment, LIVE_TRADING_RUNBOOK.md, and COMMANDS.md all
+    documenting them as live-capable) -- see _compute_live_orders_possible's
+    docstring for the traced list and why each path is real."""
+
+    def test_watch_live_is_true(self):
+        """--live alone (no --auto) still unlocks cmd_watch's `if live:`
+        block (main.py's cmd_watch dispatch: live="--live" in args,
+        independent of auto_trade) -- protective exits/reprice/poll all run
+        regardless of --auto."""
+        import main
+
+        assert main._compute_live_orders_possible("watch", ["--live"]) is True
+
+    def test_watch_auto_live_is_true(self):
+        import main
+
+        assert main._compute_live_orders_possible("watch", ["--auto", "--live"]) is True
+
+    def test_watch_without_live_is_false(self):
+        """Positive control: dropping --live (with or without --auto) must
+        flip back to False -- cmd_watch's `if live:` block never runs
+        without it, proving the flag check is real and not a stub that
+        always returns True for cmd == 'watch'."""
+        import main
+
+        assert main._compute_live_orders_possible("watch", []) is False
+        assert main._compute_live_orders_possible("watch", ["--auto"]) is False
+
+    def test_buy_is_true(self):
+        import main
+
+        args = ["SOME-TICKER", "yes", "1"]
+        assert main._compute_live_orders_possible("buy", args) is True
+
+    def test_sell_is_true(self):
+        import main
+
+        args = ["SOME-TICKER", "yes", "1"]
+        assert main._compute_live_orders_possible("sell", args) is True
+
+    def test_analyze_is_true(self):
+        import main
+
+        assert main._compute_live_orders_possible("analyze", []) is True
+
+    def test_menu_and_bare_invocation_are_true(self):
+        """The interactive menu (`menu` cmd, or no args at all -- main.py's
+        `if not args:` branch) reaches the exact same cmd_analyze ->
+        _quick_paper_buy live-order path as `analyze` via its "Analyze"
+        option (main.py's cmd_menu)."""
+        import main
+
+        assert main._compute_live_orders_possible("menu", []) is True
+        assert main._compute_live_orders_possible("", []) is True
+
+    def test_cron_and_loop_are_true(self):
+        """cron (and loop, which dispatches to cmd_cron) never open new
+        live positions, but they DO place real live SELL orders to protect
+        an already-open position -- cron.py's own comment says so verbatim,
+        and LIVE_TRADING_RUNBOOK.md documents it. A prior version of this
+        function hard-coded these to False; this is the regression guard."""
+        import main
+
+        assert main._compute_live_orders_possible("cron", []) is True
+        assert main._compute_live_orders_possible("loop", []) is True
+
+    def test_unrelated_command_is_false(self):
+        """Positive control: an adjacent read-only/paper-only command with
+        no live-order path at all must stay False, proving the cmd-
+        membership check isn't vacuously True for everything."""
+        import main
+
+        assert main._compute_live_orders_possible("paper", ["buy"]) is False
+        assert main._compute_live_orders_possible("balance", []) is False
+        assert main._compute_live_orders_possible("positions", []) is False
+
+
+class TestLiveOrderPathsGuard:
+    """Regression guard for the exact bug class that caused
+    _compute_live_orders_possible to twice ship under-scoped (AUD-0014's
+    original fix, then this batch's own first pass, per opus review): a new
+    trading_gates.pre_live_trade_check() call site added anywhere in this
+    repo without a matching update to _compute_live_orders_possible's
+    docstring/logic. This test enumerates known call sites by source-count
+    rather than by name, so it fails loudly (not silently) the moment a new
+    one appears -- forcing a human to re-verify whether the banner needs
+    updating, rather than the drift going unnoticed like the last two times.
+    """
+
+    def test_pre_live_trade_check_call_site_count_is_known(self):
+        import inspect
+        from pathlib import Path
+
+        import main
+
+        repo_root = Path(inspect.getfile(main)).parent
+        total = 0
+        for relpath in ("main.py", "order_executor.py"):
+            text = (repo_root / relpath).read_text(encoding="utf-8")
+            total += text.count("pre_live_trade_check(client)")
+        # Known at the time _compute_live_orders_possible's docstring was
+        # last audited (2026-08-20 opus review): main.py has 2
+        # (_quick_paper_buy, cmd_order), order_executor.py has 5
+        # (_replace_live_order, _amend_live_order, _exit_live_position,
+        # _micro_live_gate_ok, _place_live_order -- the last two are reached
+        # only through the ENABLE_MICRO_LIVE-gated block in
+        # _auto_place_trades, which is permanently dead code today since
+        # utils.ENABLE_MICRO_LIVE is a hardcoded False constant, not an env
+        # read; if that ever changes, re-verify whether a non-`--live` watch/
+        # cron invocation can reach it too). If this count changes, a new
+        # live-order call site was added or removed -- re-verify
+        # _compute_live_orders_possible still covers every CLI path that
+        # reaches it before updating this number.
+        assert total == 7, (
+            f"pre_live_trade_check(client) call-site count changed to {total} "
+            "(was 7) -- a live-order call site was added/removed. Re-verify "
+            "_compute_live_orders_possible()'s docstring/logic still covers "
+            "every CLI path that reaches trading_gates.pre_live_trade_check() "
+            "before updating this expected count."
+        )
+
+
 # ── is_all_null: dead-model detection (200 OK + all-null payload) ────────────
 
 

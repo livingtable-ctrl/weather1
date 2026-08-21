@@ -1944,10 +1944,11 @@ RESOLUTION 2026-08-17:
   LIVE ORDERS..." (below) and "paper.check_position_limits' EXPOSURE CAPS
   ARE STRUCTURALLY BLIND TO REAL LIVE POSITIONS..." (below).
 
-[OPEN 2026-08-17 -- new, split out of the "MANUAL cmd_order LIVE ORDERS..."
-  entry above per the same-payload test: this is a startup console message,
-  not part of that entry's post-fill recording path, so it's a genuinely
-  separate consumer rather than an inline fix] KALSHI_ENV=prod STARTUP
+[RESOLVED 2026-08-20 -- batch-05, same fix as AUD-0014/AUD-0031; split out
+  of the "MANUAL cmd_order LIVE ORDERS..." entry above per the same-payload
+  test: this is a startup console message, not part of that entry's
+  post-fill recording path, so it's a genuinely separate consumer rather
+  than an inline fix] KALSHI_ENV=prod STARTUP
   BANNER WRONGLY CLAIMS ONLY `watch --auto --live` CAN PLACE LIVE ORDERS --
   FALSE FOR cmd_order (buy/sell) ONCE LIVE_TRADING_ENABLED=true
 Priority: Medium -- informational/console-accuracy only, no trading-
@@ -1990,6 +1991,45 @@ Recommendation (not yet actioned -- filed for later decision):
   already uses for its own "no client passed" case (trading_gates.py:57-64).
   Needs a design decision on exact wording/placement (AskUserQuestion) before
   implementing -- not guessed at here.
+
+Resolution 2026-08-20 (batch-05): Implemented per this entry's own
+  recommendation, then substantially widened after independent opus review
+  (effort:high) caught that the first pass was itself under-scoped in the
+  same way the original bug was. New main._compute_live_orders_possible(cmd,
+  args) helper (extracted for unit testability, called from main()'s banner
+  block) traces every trading_gates.pre_live_trade_check(client) call site
+  in the repo back to the CLI cmd value(s) that reach it. Final set: `watch`
+  with `--live` (with or without `--auto` -- review caught that cmd_watch's
+  `if live:` block is gated on `--live` alone, not the flag pair the first
+  pass required), `buy`/`sell` (cmd_order), `analyze` (cmd_analyze's
+  interactive quick-buy prompt, _quick_paper_buy), `menu` and bare/no-args
+  invocation (both reach the interactive menu's "Analyze" option, i.e. the
+  same _quick_paper_buy path -- review caught this too), and `cron`/`loop`
+  (review caught these can place a real live SELL to protect an existing
+  position via _check_live_position_exits/_check_live_model_exits, per
+  cron.py's own code comment -- they never open new exposure, but the
+  banner's question is "can this place a live order," not "can this open
+  new exposure"). Did NOT take this entry's suggested
+  `LIVE_TRADING_ENABLED`-only fallback approach (the client object not
+  existing yet at banner time) -- unnecessary, since the helper only needs
+  `cmd`/`args`, both already in scope at the banner's call site.
+  New TestLiveOrderPathsGuard regression guard (source-counts
+  pre_live_trade_check(client) call sites across main.py/order_executor.py,
+  currently 7) so a future new live-order call site added without a
+  matching banner update fails loudly instead of silently drifting again --
+  this is the second time this exact helper shipped under-scoped (AUD-0014's
+  original recommendation covered only buy/sell; this batch's own first pass
+  added analyze but still missed 4 more paths).
+  Tests: tests/test_phase2_batch_l.py::TestComputeLiveOrdersPossible (8) +
+  TestLiveOrderPathsGuard (1) -- 9 new, incl. positive controls on both the
+  watch flag check and the cmd-membership check. Mutation-tested via Edit
+  revert/restore at two points: the initial buy/sell/analyze-only version
+  (3 tests failed as expected) and the review-fixed version reverted back to
+  it a second time after widening (3 different tests -- watch-live/menu-
+  bare/cron-loop -- failed as expected, confirming the widened tests
+  actually catch the exact regression the review found).
+  55 tests collected in tests/test_phase2_batch_l.py, all passing; 48 in
+  tests/test_trading.py, all passing. ruff + ruff-format + mypy clean.
 
 [RESOLVED 2026-08-18 -- fixed together with AUD-0001/AUD-0002/AUD-0005/
   AUD-0009/AUD-0012 (2026-08-18 max-depth audit batch-01, same root cause);
@@ -20782,7 +20822,7 @@ Resolution 2026-08-19: Routed through execution_log, not removed (user's
   success->pending, failure->failed as a positive control, and
   OrderStatusUnknownError->unknown with client_order_id preserved).
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] LIVE_TRADING_RUNBOOK.md falsely claims only `watch --auto --live` can place live orders
+[RESOLVED 2026-08-20 -- batch-02 (runbook text) + batch-05 (banner, closing the addendum below)] LIVE_TRADING_RUNBOOK.md falsely claims only `watch --auto --live` can place live orders
 Priority: HIGH (audit id AUD-0011, status CONFIRMED, confidence VERY HIGH, evidence E1)
 
 Problem:
@@ -20803,6 +20843,23 @@ ADDENDUM 2026-08-19 (batch-02, AUD-0013's own fix, expanded after round-2
   Also still open: whatever the backlog.txt:1947-1952 cross-reference in
   this entry's Problem text points to -- not verified by batch-02, re-check
   it's still accurate before closing this entry.
+
+Resolution 2026-08-20 (batch-05): The two remaining open threads are now
+  both closed. The main.py startup banner (this entry's third cited
+  location) is fixed -- see the Resolution note on the backlog.txt:1947
+  "KALSHI_ENV=prod STARTUP BANNER..." entry above (same fix, same commit).
+  The backlog.txt:1947-1952 cross-reference re-verified this session: it
+  pointed at exactly that same banner entry, confirmed still accurate and
+  now itself resolved. Independent opus review of this batch's first-pass
+  banner fix also caught that LIVE_TRADING_RUNBOOK.md:102-103/134 (fixed by
+  batch-02) still said "only `watch --auto --live`" opens new live
+  exposure -- true of batch-02's own narrower scope at the time, but by the
+  time this entry closes, `buy`/`sell`/`analyze` are also known to open new
+  exposure, so those two lines were reworded again this session to name all
+  three. This entry (AUD-0011) is fully resolved across all three
+  originally-cited locations: LIVE_TRADING_RUNBOOK.md (batch-02, reworded
+  further batch-05), the cron.py comment (batch-02), and the main.py banner
+  (batch-05, here).
 
 [RESOLVED 2026-08-18 -- fixed as part of batch-01, same change as AUD-0001; see the Resolution note under AUD-0001's own entry above] _poll_pending_orders and _count_open_live_orders can silently lose a genuinely still-open live order once enough interleaved (mostly paper) orders accumulate in the shared execution_log orders table
 Priority: HIGH (audit id AUD-0012, status CONFIRMED, confidence MEDIUM, evidence E2)
@@ -20884,7 +20941,7 @@ Resolution 2026-08-19: Added exactly as recommended -- cmd_watch's `if live:`
   project's scale-review-to-change-size convention) -- see the addendum note
   at the end of this entry once that review and any resulting fixes land.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] KALSHI_ENV=prod startup banner wrongly claims only `watch --auto --live` can place live orders
+[RESOLVED 2026-08-20 -- batch-05, same fix as the backlog.txt:1947 and AUD-0031 entries] KALSHI_ENV=prod startup banner wrongly claims only `watch --auto --live` can place live orders
 Priority: MEDIUM (audit id AUD-0014, status CONFIRMED, confidence HIGH, evidence E1)
 Files: main.py
 
@@ -20894,6 +20951,19 @@ Problem:
   Financial risk: Indirect -- a misleading safety banner could make an operator less careful than the banner implies is necessary, though trading_gates.LiveTradingGate.check() still enforces the real safety chain...
   Recommendation: Update _live_orders_possible to also cover cmd_order-dispatching commands. IMPORTANT CORRECTION: the actual dispatch condition to add is `cmd in ("buy", "sell")`, NOT `cmd == "order"` as the original finding recommended -- main.py has no literal "order" command; grepped `cmd == "order"` repo-wide...
   Full record: audit/AUDIT_REPORT.json (id AUD-0014), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-20 (batch-05): Implemented per this entry's correction
+  (`cmd in ("buy", "sell")`), plus `cmd == "analyze"` per AUD-0031's
+  independent finding of a third live-capable path -- then widened again
+  after independent opus review found 4 MORE live-capable paths the first
+  pass (this entry + AUD-0031's) still missed: `watch --live` alone
+  (without `--auto`), the interactive menu / bare invocation (same
+  _quick_paper_buy path as `analyze`), and `cron`/`loop` (live SELL only,
+  never opens new exposure, but still a real live order). See the full
+  implementation/test writeup on the backlog.txt:1947 "KALSHI_ENV=prod
+  STARTUP BANNER..." entry above (same commit, same
+  _compute_live_orders_possible() helper resolves all three of that entry,
+  this one, and AUD-0031's banner half).
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] KalshiClient env comparison fails open to PROD_BASE for any non-exact 'demo' string
 Priority: MEDIUM (audit id AUD-0015, status CONFIRMED, confidence VERY HIGH, evidence E2)
@@ -21119,7 +21189,7 @@ Resolution 2026-08-20: Per user's AskUserQuestion choice, both of the
   paper.py's "fixed 10s budget" in its worst-case-latency writeup -- updated
   to 30s. Full scoped suite passes; ruff+ruff-format+mypy clean.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] e5331a8d's two self-disclosed follow-up gaps remain open, and the startup banner is wrong about a third live-capable command path
+[RESOLVED 2026-08-20 -- check_position_limits half fixed 2026-08-18 by 8bdff1e5 (batch-01), banner half fixed 2026-08-20 (batch-05)] e5331a8d's two self-disclosed follow-up gaps remain open, and the startup banner is wrong about a third live-capable command path
 Priority: MEDIUM (audit id AUD-0031, status CONFIRMED, confidence HIGH, evidence E2)
 Files: main.py, paper.py
 
@@ -21131,26 +21201,75 @@ Problem:
   Recommendation: Fix the banner's condition to cover all live-capable commands, and extend check_position_limits to read execution_log for live-position exposure, per the backlog follow-ups e5331a8d itself filed.
   Full record: audit/AUDIT_REPORT.json (id AUD-0031), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] LIVE_TRADING_RUNBOOK.md's Appendix gate list is incomplete — omits TRADING_PAUSED and kill switch, miscounts 'seven' gates
+Resolution 2026-08-20 (batch-05): Both halves confirmed resolved.
+  check_position_limits half: already fixed 2026-08-18 by commit 8bdff1e5
+  ("make risk gates see real live positions/losses, not just the paper
+  ledger") -- verified this session that check_position_limits' exposure
+  getters route through paper.get_all_open_positions(), which combines
+  paper_trades.json with execution_log-sourced live positions; no further
+  action needed here. Banner half: fixed via the same
+  _compute_live_orders_possible() change as AUD-0014/backlog.txt:1947,
+  extended to also cover `cmd == "analyze"` per this entry's own
+  correction -- confirmed by tracing main.py's _quick_paper_buy (called
+  only from cmd_analyze) to its own live-order gate, identical in shape to
+  cmd_order's. Independent opus review of that first pass then found 4 more
+  live-capable command paths this entry's own scope didn't cover either
+  (`watch --live` alone, menu/bare invocation, `cron`/`loop`) -- see the
+  backlog.txt:1947 entry's Resolution note for the full corrected list,
+  test writeup, and mutation-testing evidence (same commit resolves all
+  three of that entry, AUD-0014, and this one).
+
+[RESOLVED 2026-08-20 -- batch-05] LIVE_TRADING_RUNBOOK.md's Appendix gate list is incomplete — omits TRADING_PAUSED and kill switch, miscounts 'seven' gates
 Priority: MEDIUM (audit id AUD-0032, status CONFIRMED, confidence VERY HIGH, evidence E1)
 
 Problem:
   Read full trading_gates.py — LiveTradingGate.check() has 9 sequential gate checks: is_trading_paused() (line 39), KILL_SWITCH_PATH.exists() (line 48), prod base_url/KALSHI_ENV (51-64), LIVE_TRADING_ENABLED (69), is_paused_drawdown (85), is_streak_paused (91), is_daily_loss_halted (101), is_accuracy_halted (107), graduation_check (114). Read LIVE_TRADING_RUNBOOK.md:230-242 Appendix — it lists exactly the last 7 of these 9 (numbered 1-7) and states 'All seven gates must pass simultaneously', omitting TRADING_PAUSED and the kill switch entirely. Exact match to the claim.
   Full record: audit/AUDIT_REPORT.json (id AUD-0032), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] LIVE_TRADING_RUNBOOK.md incorrectly states KELLY_CAP is 'hardcoded, not env-configurable'
+Resolution 2026-08-20 (batch-05): Appendix rewritten to list all 9 gates in
+  trading_gates.py's actual check order (TRADING_PAUSED and kill switch
+  added as gates 1-2, existing 7 renumbered 3-9), "seven" corrected to
+  "nine". Adjacency fix (same sentence being rewritten, step-27 same-payload
+  test): the closing "There is no override short of modifying source code"
+  line was itself already inaccurate before this change -- `python main.py
+  resume` clears the kill switch gate and `python main.py admin
+  accuracy-override` can temporarily lift the accuracy-halt gate, both
+  genuine runtime overrides with no source change. Reworded to state only
+  what was verified (those two gates' real override commands) rather than
+  the blanket "no override" claim. Doc-only change, no test needed.
+
+[RESOLVED 2026-08-20 -- batch-05] LIVE_TRADING_RUNBOOK.md incorrectly states KELLY_CAP is 'hardcoded, not env-configurable'
 Priority: MEDIUM (audit id AUD-0033, status CONFIRMED, confidence VERY HIGH, evidence E1)
 
 Problem:
   Read LIVE_TRADING_RUNBOOK.md:65 — table row reads exactly 'KELLY_CAP | 0.25 (hardcoded, not env-configurable) | Max Kelly fraction per position'. Read utils.py:106 — `KELLY_CAP: float = float(os.getenv("KELLY_CAP", "0.25"))`, an env-var read with a default, directly contradicting the doc. Confirmed exact match to citation.
   Full record: audit/AUDIT_REPORT.json (id AUD-0033), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] README.md documents `override set/clear` command syntax that doesn't exist — real CLI is `pause/unpause`
+Resolution 2026-08-20 (batch-05): Row corrected to '0.25 (fraction of
+  balance)', matching the sibling MAX_SINGLE_TICKER_EXPOSURE row's style
+  exactly (both are genuinely env-configurable). Left the adjacent
+  MAX_CORRELATED_EXPOSURE row's '(hardcoded, not env-configurable)'
+  annotation untouched -- verified separately in 2026-07-08's
+  8bdeeeab, that one is accurate (paper.py has no os.getenv/_env_float call
+  for it). Doc-only change, no test needed.
+
+[RESOLVED 2026-08-20 -- batch-05] README.md documents `override set/clear` command syntax that doesn't exist — real CLI is `pause/unpause`
 Priority: MEDIUM (audit id AUD-0034, status CONFIRMED, confidence VERY HIGH, evidence E1)
 
 Problem:
   Read README.md — line 118 documents `override <set|clear|status>`, lines 192-194 show `override set 60` / `override clear` / `override status` usage examples. Read main.py cmd_override (line 3249 onward) — only handles action == 'unpause'/'status' (3261) and action == 'pause' (3283); any other action (including 'set'/'clear') falls through to lines 3298-3299 printing 'Unknown override action: ...' with correct usage text 'override pause [minutes] | unpause | status'. Read COMMANDS.md:98-100 — correctly documents pause/unpause/status, confirming the two docs contradict each other and README is...
   Full record: audit/AUDIT_REPORT.json (id AUD-0034), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-20 (batch-05): README.md's command table row and the
+  three usage examples both corrected to `override pause [minutes] |
+  unpause | status` / `override pause 60` / `override unpause` / `override
+  status`, matching COMMANDS.md and cmd_override's real implementation
+  exactly. Note while verifying: cmd_override reads/writes
+  paths.MANUAL_OVERRIDE_PATH (a JSON file), a completely separate mechanism
+  from the TRADING_PAUSED env var gate in trading_gates.py -- confirmed
+  MANUAL_OVERRIDE_PATH is only consulted by cron.py's automated loop, not
+  by LiveTradingGate.check() at all, so this fix does not touch or claim
+  anything about the AUD-0032 gate list. Doc-only change, no test needed.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py's CSRF header enforcement (X-Requested-With) has no test that proves it is actually enforced
 Priority: MEDIUM (audit id AUD-UNMATCHED-56, status CONFIRMED, confidence HIGH, evidence E1)
@@ -21704,7 +21823,7 @@ Problem:
   Grepped NOTIFY_CHANNELS across README.md/notify.py/.env.example. README.md:278 reads default `desktop,discord`. notify.py:42 reads `os.getenv("NOTIFY_CHANNELS", "desktop,pushover,ntfy,discord,email")`. .env.example:43 sets `NOTIFY_CHANNELS=desktop,pushover,ntfy,discord,email`. Code and .env.example agree with each other and disagree with README exactly as claimed.
   Full record: audit/AUDIT_REPORT.json (id AUD-0065), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] kalshi_client.py docstring claims 'no live caller uses IOC/FOK today' — now false after e5331a8d
+[RESOLVED 2026-08-20 -- batch-05] kalshi_client.py docstring claims 'no live caller uses IOC/FOK today' — now false after e5331a8d
 Priority: LOW (audit id AUD-UNMATCHED-61, status CONFIRMED, confidence MEDIUM, evidence E1)
 
 Problem:
@@ -21714,6 +21833,12 @@ Problem:
   Financial risk: None directly -- this is a comment, not logic. Low risk that a future maintainer removes the 'unreachable' third-pass lookup based on the stale comment, which would then break IOC order...
   Recommendation: Update the comment to note that main.cmd_order (live path) and order_executor._exit_live_position both pass immediate_or_cancel, so this third lookup pass is now a genuinely exercised code path, not merely a forward-looking safeguard.
   Full record: audit/AUDIT_REPORT.json (id AUD-UNMATCHED-61), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-20 (batch-05): Comment updated exactly per the
+  recommendation -- now states this is a genuinely exercised path via
+  order_executor._exit_live_position and main.py's cmd_order (live path),
+  not a forward-looking safeguard. Comment-only change (no behavior
+  touched), no test needed.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Far-tail rain climatology blend's additive dry-tilt shift is floor-clipped at 0.0, under-applying the correction for near-zero precipitation distributions
 Priority: INFO (audit id AUD-0066, status CONFIRMED, confidence HIGH, evidence E1)

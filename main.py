@@ -559,6 +559,49 @@ def _market_base_url() -> str:
     return "https://kalshi.com" if _kalshi_env() == "prod" else "https://demo.kalshi.co"
 
 
+def _compute_live_orders_possible(cmd: str, args: list) -> bool:
+    """True if this CLI invocation's command can reach a real live order --
+    either opening new exposure or placing a protective SELL on an existing
+    live position. Used only for the startup banner's informational message
+    -- the actual safety enforcement is trading_gates.LiveTradingGate.check()
+    itself, which this function has no bearing on.
+
+    Every code path below was traced to its own `client.base_url != DEMO_BASE`
+    + `trading_gates.pre_live_trade_check()` gate (directly, or via cron.py's
+    own `if client is not None:` live-position-protection block) -- opus
+    review of AUD-0014/AUD-0031's original fix caught that the first version
+    of this function only covered `buy`/`sell`/`analyze`, missing 4 more real
+    paths (HIGH-1/2/3, 2026-08-20 review). This list is a hand-maintained
+    mirror, not derived from the gate itself -- if a new pre_live_trade_check
+    call site is added anywhere in main.py/cron.py/order_executor.py, this
+    function needs a matching update. See TestLiveOrderPathsGuard in
+    tests/test_phase2_batch_l.py for a regression guard on that drift.
+
+    Known live-capable paths (opens new exposure unless noted):
+      - `watch --live` (with or without `--auto`) -- live=True unlocks
+        cmd_watch's `if live:` block (order poll/reprice/protective exits;
+        `--auto` additionally enables new-position auto-trading)
+      - `buy`/`sell` (cmd_order)
+      - `analyze` (cmd_analyze's interactive quick-buy prompt, _quick_paper_buy)
+      - `menu` / no-args (the interactive menu's "Analyze" option reaches the
+        exact same cmd_analyze -> _quick_paper_buy path as above)
+      - `cron` / `loop` (loop dispatches to cron) -- SELL-only: protects an
+        already-open live position via _check_live_position_exits/
+        _check_live_model_exits, never opens new exposure (see
+        LIVE_TRADING_RUNBOOK.md Part 1.7/Part 2 for the opens-vs-protects
+        distinction)
+    """
+    return (cmd == "watch" and "--live" in args) or cmd in (
+        "buy",
+        "sell",
+        "analyze",
+        "menu",
+        "",
+        "cron",
+        "loop",
+    )
+
+
 # L-12: MARKET_BASE_URL is dead — nothing reads it; _market_base_url() is used instead.
 # Kept here to avoid breaking any external scripts that might import it.
 MARKET_BASE_URL = (
@@ -3443,7 +3486,12 @@ def cmd_brief(client: KalshiClient, send_email: bool = False) -> None:
 def cmd_analyze(
     client: KalshiClient,
     min_edge: float | None = None,
-    live: bool = False,  # --live reserved; analyze is display-only
+    # --live only toggles the live-price display below (COMMANDS.md) -- it
+    # does NOT gate order placement. This command can still place a real
+    # live order regardless of this flag, via the interactive quick-buy
+    # prompt at the end (_quick_paper_buy) -- see
+    # _compute_live_orders_possible()'s docstring.
+    live: bool = False,
 ):
     if min_edge is None:
         min_edge = MIN_EDGE
@@ -9908,22 +9956,23 @@ def main():
 
     if _kalshi_env() == "prod":
         # KALSHI_ENV=prod always means real market data + your real account balance.
-        # It does NOT mean this command can place live orders — cron/loop never pass
-        # live=True to _auto_place_trades, and ENABLE_MICRO_LIVE is hard-disabled in
-        # utils.py. Only `watch --auto --live` actually routes orders to the live API.
-        _live_orders_possible = cmd == "watch" and "--auto" in args and "--live" in args
+        # It does NOT mean this command can place live orders -- see
+        # _compute_live_orders_possible()'s docstring for the full, traced list
+        # of command paths that actually can (AUD-0014/AUD-0031/2026-08-20
+        # review: this previously only recognized `watch --auto --live`, then
+        # only `buy`/`sell`/`analyze` -- both versions missed real paths).
+        _live_orders_possible = _compute_live_orders_possible(cmd, args)
         _log.warning("=" * 60)
         if _live_orders_possible:
             _log.warning(
-                "RUNNING IN PRODUCTION MODE — LIVE ORDERS ENABLED (watch --auto --live)"
+                "RUNNING IN PRODUCTION MODE — LIVE ORDERS ENABLED "
+                "(this command can place a real live order)"
             )
         else:
             _log.warning(
                 "RUNNING IN PRODUCTION MODE — reading real market data and balance"
             )
-            _log.warning(
-                "Live orders are NOT placed by this command — only `watch --auto --live` can"
-            )
+            _log.warning("Live orders are NOT placed by this command")
         _log.warning(
             "KALSHI_ENV=prod | STARTING_BALANCE=$%.2f",
             float(os.getenv("STARTING_BALANCE", "1000")),
