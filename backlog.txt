@@ -20150,10 +20150,9 @@ Resolution: added the identical exclusion list (byte-for-byte mirror of
   git status/diff confirms only tracker.py + tests/test_tracker.py +
   backlog.txt touched this session before this commit.
 
-[OPEN 2026-08-18 -- split out of the BRIER_SCORE() CONDITION_TYPE FILTER
-  entry above per its own opus review: needs new ticker-prefix-parsing
-  logic paper trades have no equivalent of today, not a same-shape mirror
-  of that fix] BRIER_SCORE()'S PAPER_TRADES.DB FALLBACK HAS NO
+[RESOLVED 2026-08-20 -- fixed as batch-06 item 1 (audit/handoff_prompts/
+  batches/batch-06.md); see Resolution below] BRIER_SCORE()'S
+  PAPER_TRADES.DB FALLBACK HAS NO
   CONDITION_TYPE FILTER, AND IS NOW MORE REACHABLE THAN BEFORE
 Priority: Medium -- not exercised today (83 filtered tracker-DB rows
   exist, so the primary query never returns zero rows for
@@ -20187,11 +20186,184 @@ Why not now: needs its own scoped design decision (which ticker-prefix
   elsewhere -- is the right model to follow) rather than a same-shape
   mirror of the tracker-DB fix.
 
-[OPEN 2026-08-18 -- split out of the BRIER_SCORE() CONDITION_TYPE FILTER
-  entry above per its own opus review: a design decision about how to
-  couple a hardcoded exclusion list to a live feature flag, not a
-  same-shape mirror of that fix] BRIER-FAMILY CONDITION_TYPE EXCLUSION
-  LIST HAS NO COUPLING TO RAIN/SNOW/HURRICANE GRADUATION GATES
+Resolution 2026-08-20 (batch-06 item 1, done together with items 2/3 below
+  since all three share tracker.py): re-verified against live code before
+  starting -- the "needs a new parsing mechanism" premise turned out
+  overstated. weather_markets.py already has ready-made per-family ticker
+  classifiers (_KXRAIN_MONTHLY_CITY, _KXSNOW_MONTHLY_CITY,
+  is_hurricane_count_ticker, is_hurricane_next_event_ticker,
+  is_storm_order_ticker), and 'between' brackets are fully identified by
+  the ticker's own "-B<value>" strike suffix (weather_markets.
+  _parse_market_condition()'s own regex) -- no title/subtitle lookup
+  needed, unlike above/below. paper.py's KXHIGH*/KXLOW* helper
+  (_var_from_ticker_prefix, imported from weather_markets.py) was checked
+  and confirmed NOT applicable -- it only disambiguates max/min (HIGH vs
+  LOW), not condition_type family, so it wasn't the right model to follow.
+
+  Added tracker._paper_trade_excluded_condition_type(ticker) -> str | None,
+  a shared helper reusing those existing weather_markets.py classifiers
+  (read-only imports) plus a "-B<value>$" regex for 'between'. AskUserQuestion
+  asked where this should live and the answer was "shared helper in
+  weather_markets.py" (matching count_settled_rain_predictions()'s own
+  convention) -- but batch-06.md's own file-scope rule ("this batch touches
+  tracker.py only; check INDEX.md before touching another batch's files")
+  turned out to rule that out: weather_markets.py is claimed by batches
+  8/13/15/16, all live/in-flight. Placed the helper in tracker.py instead,
+  importing the existing weather_markets.py symbols read-only -- satisfies
+  the AskUserQuestion answer's actual intent (reuse, single source of
+  truth, no new parsing scheme) without editing a file this batch doesn't
+  own. brier_score()'s paper fallback now skips any trade whose ticker
+  classifies into tracker._excluded_brier_condition_types() (see item 2's
+  resolution below). A paper trade with NO ticker field at all (can't be
+  classified) still passes through unfiltered -- deliberate, matches this
+  same fallback's existing missing-days_out convention ("predates the
+  column -- treat as multi-day"), not a gap.
+
+  Tests: tests/test_tracker.py::TestPaperTradeConditionTypeClassifier (8
+  tests: one per excluded type + above/below negative control + empty/None
+  input) and 4 new/updated tests in TestBrierScoreConditionTypeFilter
+  (test_paper_fallback_excludes_ticker_classified_shadow_type,
+  test_paper_fallback_includes_ticker_classified_temperature_type,
+  test_paper_fallback_excludes_between_bracket_ticker, and the renamed
+  test_paper_fallback_missing_ticker_still_unfiltered, replacing
+  test_when_every_settled_row_is_excluded_falls_through_to_unfiltered_
+  paper_fallback which pinned the OLD unfiltered behavior this fix
+  removes). Mutation-tested via Edit (classifier forced to always
+  `return None`): the 6 classify-tests plus both paper-fallback exclude
+  tests failed as expected; the above/below and missing-ticker controls
+  correctly still passed, confirming they're genuine positive/negative
+  controls and not redundant with the mutation-sensitive tests.
+
+  Full test suite (final, after the opus-review round below): 436
+  collected in tests/test_tracker.py, 435 passed + 10 subtests / 1
+  pre-existing unrelated failure (test_log_prediction_falls_back_to_
+  recomputed_days_out_when_absent -- a local-date-boundary flake, confirmed
+  failing identically on a clean master checkout before this change).
+  Broader regression sweep (test_graduation_gate.py, test_trading_gates.py,
+  test_retirement_probation.py, test_alerts_side.py, test_paper.py): 238
+  passed, 0 failed. ruff/mypy/pre-commit all clean.
+
+  Independent opus review (effort=high, single agent covering all 3 items):
+  verified SQL parameterization empirically at all 12 converted call sites
+  (seeded DB with one row of each of the 6 excluded types + one normal row,
+  called every function with every optional-arg combination, confirmed
+  only the normal row ever counted); confirmed zero hardcoded exclusion
+  tuples remain in tracker.py; confirmed gate function names/semantics and
+  ticker classifiers match weather_markets.py's real code (read directly,
+  not taken on my summary). Found 6 MEDIUM + 9 LOW + 2 informational, all
+  addressed:
+
+  MEDIUM M1 -- _excluded_brier_condition_types()'s `import weather_markets`
+  sat OUTSIDE its try/except, so a weather_markets import failure raised
+  ModuleNotFoundError instead of failing closed as the function's own
+  docstring claimed. Fixed: import moved inside the try, returns
+  _ALWAYS_EXCLUDED_CONDITION_TYPES (see M5) on failure, with a _log.warning
+  (also closes L1's silent-freeze concern). Mutation-tested via Edit
+  (patched builtins.__import__ to block "weather_markets"): raised before
+  the fix, returns the full excluded set after.
+
+  MEDIUM M2 -- _paper_trade_excluded_condition_type() raised
+  ModuleNotFoundError/AttributeError (a non-str truthy ticker crashes at
+  `.upper()`) despite its docstring claiming "never raises"; the crash was
+  silently swallowed by brier_score()'s own broad except, discarding the
+  ENTIRE paper fallback on one malformed record. Fixed: whole function body
+  wrapped in try/except returning None (plus an explicit isinstance(str)
+  guard as a fast path) -- both layers independently verified sufficient
+  via Edit mutation (removing either one alone still passes; removing both
+  reproduces the original crash).
+
+  MEDIUM M3 -- docstring said "fails closed" for a return-None-on-no-match
+  result, which for an exclusion filter is actually fail-OPEN (not
+  excluded) -- inverted terminology from _excluded_brier_condition_types()'s
+  genuine fail-closed posture. Fixed: docstring rewritten to say "fails
+  open" and explains why that's the correct default for a classifier
+  (vs. a safety gate).
+
+  MEDIUM M4 -- brier_score()'s docstring claimed "matches every sibling,"
+  which was false: get_brier_by_days_out, get_brier_by_tier,
+  brier_skill_score, get_brier_by_version, get_pnl_by_signal_source, and
+  get_sameday_calibration() all still have zero condition_type filtering
+  and were never named by this batch's 3 items. Fixed: docstring corrected
+  to name what's actually consistent now vs. what isn't; new backlog entry
+  filed ("MORE BRIER-FAMILY FUNCTIONS WITH NO CONDITION_TYPE FILTER, FOUND
+  VIA ADJACENCY") for the untouched 5 (brier_skill_score already had its
+  own entry from M4's initial pass).
+
+  MEDIUM M5 -- the single most substantive finding: gate-coupling
+  (dynamic, item-2 style) was wrongly applied to 4 functions whose OWN
+  documented exclusion reason is structural (a different win-rate
+  distribution shape for get_rolling_win_rate's circuit breaker; a
+  °F-scale mismatch for get_multiday_calibration_cli/
+  get_sameday_calibration_cli's T-parameter curve fit; a "not yet
+  validated separately" reason with no corresponding gate for
+  get_metar_lockout_calibration_data), not shadow-market-family status.
+  That reasoning doesn't stop applying once a market family goes live, so
+  auto-including those rows the moment a gate flips would have been wrong,
+  not just imprecise. Fixed: added tracker._ALWAYS_EXCLUDED_CONDITION_TYPES
+  (permanent, same rationale class as 'between'), switched all 4 functions
+  to it. New test class TestAlwaysExcludedConditionTypesNotGateCoupled (4
+  tests, one per function) -- mutation-tested via Edit (reverting one
+  function back to the dynamic set with all 5 gates patched active): failed
+  as expected, confirming the fix is real and load-bearing.
+
+  MEDIUM M6 -- the new "calibration.py/ml_bias.py/main.py still hardcoded"
+  backlog entry mischaracterized the main.py site as "display-only"; it's
+  actually inside cmd_calibrate(), feeding ml_bias.train_platt_per_city()
+  and writing data/platt_models.json (a live-probability-calibration
+  input). Fixed: that backlog entry's Problem/Priority text corrected, and
+  its own "why not now" guidance updated to note that whichever batch next
+  touches those files should judge each site's OWN rationale (shadow-
+  status vs. structural, same M5 distinction) rather than blanket-applying
+  either constant.
+
+  LOW L1 (silent-freeze on gate rename) -- fixed as part of M1 (_log.warning
+  added on any gate-check exception, not just import failure).
+  LOW L2 (classifier's 'between' regex checked before snow/precip guards,
+  unlike weather_markets._parse_market_condition()'s real branch order --
+  dormant today, no live daily-snow/precip ticker ends in -B<n>, but a
+  latent misclassification) -- fixed: added the same KXSNOW/KXICE/KXRAIN/
+  KXPRECIP substring guard before the between regex.
+  LOW L3 (non-deterministic param order from frozenset iteration) -- fixed:
+  _condition_type_not_in_sql sorts params.
+  LOW L4 (empty exclusion set relies on SQLite-specific NOT IN () grace) --
+  fixed: explicit assert in _condition_type_not_in_sql.
+  LOW L5 (no memoization, up to 5 extra queries per call x12 sites) --
+  documented deliberate no-fix: staleness risk on a live-safety value
+  outweighs the query cost at this call cadence.
+  LOW L6 (graduation_check()'s two sequential calls could theoretically see
+  different gate states) -- documented deliberate no-fix: exceedingly
+  narrow race, and threading a shared snapshot through needs paper.py,
+  out of this batch's file scope (owned by batch-04).
+  LOW L7 (test picked an arbitrary _HURRICANE_COUNT_SERIES member via
+  next(iter(...)), coverage varied by run) -- fixed: test now iterates
+  every member via subTest.
+  LOW L8 (one assertion in test_get_brier_over_time_excludes_shadow_type
+  was mutation-inert) -- documented via an accurate comment; the adjacent
+  assertion carries the real signal.
+  LOW L9 (no test proved the paper-fallback filter's gate-coupling, only
+  the primary query's) -- fixed: new
+  test_paper_fallback_includes_shadow_ticker_once_its_gate_flips.
+
+  INFORMATIONAL I1 (brier_score()'s docstring claimed "zero live values
+  change today," which is true for the primary-source query but NOT for
+  the paper-trade fallback -- a 'between' paper trade can now flip a
+  contaminated real number to None) -- fixed: docstring corrected with the
+  precise scope of what "unchanged" actually covers.
+  INFORMATIONAL I2 (the scoped graphify-out/graph.json refresh nulled
+  norm_label on all 793 touched-file nodes and reassigned community IDs
+  graph-wide, 981->910 communities, via a manual node/edge JSON merge that
+  violated this workflow's own step-29 "regenerate, don't hand-merge"
+  rule; 2 new AST cache files were also left untracked) -- resolved by
+  reverting graphify-out/ entirely rather than shipping a half-consistent
+  state, matching this repo's own precedent of reverting graph-churn (see
+  commit 1c0e2e95, "revert graph.json re-cluster churn from the batch-05
+  commit"). tracker.py/tests/test_tracker.py's AST nodes in graph.json are
+  now stale relative to this commit until a future session runs a proper
+  regenerate.
+
+[RESOLVED 2026-08-20 -- fixed as batch-06 item 2 (audit/handoff_prompts/
+  batches/batch-06.md); see Resolution below] BRIER-FAMILY CONDITION_TYPE
+  EXCLUSION LIST HAS NO COUPLING TO RAIN/SNOW/HURRICANE GRADUATION GATES
 Priority: Medium -- latent today (RAIN_TRADING_ENABLED unset per this
   worktree's env), but production is at 17 settled precip_month_total rows
   against weather_markets._rain_gates_active()'s 20-row graduation
@@ -20219,9 +20391,53 @@ Why not now: needs a real design decision (should the exclusion list read
   a genuine judgment call for AskUserQuestion when picked up, not
   something to decide silently while fixing an unrelated Brier-score bug.
 
-[OPEN 2026-08-18 -- split out of the BRIER_SCORE() CONDITION_TYPE FILTER
-  entry above per its own opus review: unifying/extending filtering across
-  the whole Brier family is real, separate, larger-scoped work] SEVERAL
+Resolution 2026-08-20 (batch-06 item 2): re-verified live -- rain count is
+  17 settled precip_month_total rows against the 20-row floor today,
+  confirming the "close to flipping" priority note still holds.
+  AskUserQuestion picked "dynamic per-family coupling": exclusion is now
+  computed by tracker._excluded_brier_condition_types(), which excludes a
+  condition_type only while its own market family's gate
+  (weather_markets._rain_gates_active()/_snow_gates_active()/
+  _hurricane_count_gates_active()/_hurricane_next_event_gates_active()/
+  _storm_order_gates_active()) is inactive; the moment a family's env flag
+  is set AND its sample floor clears, its settled rows start counting
+  toward every Brier/calibration value this feeds. Fails closed if a
+  gate's own state can't be determined (exception -> stays excluded).
+
+  Correction to this entry's own framing during implementation: 'between'
+  is NOT one of the 5 gate-backed types and is NOT coupled to anything --
+  unlike the other 5, it isn't shadow-only (KXHIGH*/KXLOW* between-brackets
+  are fully live today); it's excluded because it has a structurally larger
+  calibration gap than above/below (T~=6.8 temperature-scaling factor, see
+  backlog.txt's EMOS confirm-gate opus-review finding #4), a permanent
+  calibration-quality exclusion, not a graduation-pending one. There is no
+  "_between_gates_active()" and none should be added.
+
+  Applied to BOTH functions this entry named: brier_score() and
+  count_settled_predictions(). Also applied, via adjacency (workflow step
+  27 -- same literal exclusion tuple, same file, same live-trading-
+  readiness data-flow), to 5 more tracker.py sites that had the identical
+  static hardcoded tuple: count_settled_predictions_rolling() (feeds
+  is_regime_blend_active()), get_rolling_win_rate() (feeds paper.
+  is_accuracy_halted(), a live circuit breaker), get_metar_lockout_
+  calibration_data(), get_multiday_calibration_cli(), get_sameday_
+  calibration_cli() -- leaving any of these on the old static tuple while
+  brier_score()/count_settled_predictions() went dynamic would have
+  recreated the exact "will now disagree" inconsistency item 3 below
+  warns about, inside the same file. All 5 gate-check functions currently
+  return False (no *_TRADING_ENABLED flag set), so the exclusion set is
+  IDENTICAL to the old static tuple today -- this change moves zero live
+  values, it only closes the forward-looking gap.
+
+  NOTE for whoever next touches calibration.py/ml_bias.py/main.py: those 3
+  files still have the old static hardcoded tuple (calibration.py x1,
+  ml_bias.py x3, main.py x1) and are now the only sites that can diverge
+  from tracker.py's dynamic behavior once any gate ever flips -- out of
+  this batch's file scope (weather_markets.py/tracker.py only per
+  batch-06.md; those 3 files belong to other batches per INDEX.md).
+
+[RESOLVED 2026-08-20 -- fixed as batch-06 item 3 (audit/handoff_prompts/
+  batches/batch-06.md); see Resolution below] SEVERAL
   BRIER-FAMILY FUNCTIONS STILL HAVE NO CONDITION_TYPE FILTER --
   brier_score_rolling_with_n AND brier_score_rolling NOW DISAGREE
 Priority: Low-Medium -- brier_score_rolling_with_n feeds real display
@@ -20257,6 +20473,56 @@ Why not now: extending the exclusion to every Brier-family function is a
   duplicated exclusion tuple is worth extracting into one shared module-
   level constant at the same time, given the count keeps growing every
   time a new site needs the same list.
+
+Resolution 2026-08-20 (batch-06 item 3): re-verified live -- all 5 named
+  functions confirmed to have zero condition_type filtering before this
+  fix. Added the same _condition_type_not_in_sql(_excluded_brier_
+  condition_types()) filter (see item 2's resolution) to all 5:
+  brier_score_rolling_with_n(), get_brier_over_time(), brier_score_by_
+  method(), brier_score_by_method_rolling(), brier_score_probation_
+  rolling(). brier_score_rolling/brier_score_rolling_with_n no longer
+  disagree.
+
+  AskUserQuestion picked "extract to one shared definition now" for the
+  duplicated-tuple problem. Correction to this entry's own count during
+  implementation: re-grepped live and found tracker.py alone had 7
+  code-site duplicates (not the 9-total/7-tracker.py split this entry's
+  "Problem" text stated -- that 9 total already included calibration.py
+  x1/ml_bias.py x3/main.py x1, i.e. only 5 non-tracker.py sites, not
+  counted separately here). All 7 tracker.py sites (brier_score(),
+  count_settled_predictions_rolling(), get_rolling_win_rate(),
+  count_settled_predictions(), get_metar_lockout_calibration_data(),
+  get_multiday_calibration_cli(), get_sameday_calibration_cli()) plus the
+  5 newly-filtered functions above (12 total) now reference the single
+  tracker._excluded_brier_condition_types()/_condition_type_not_in_sql()
+  pair -- zero hardcoded duplicates of the tuple remain in tracker.py.
+  The 5 sites in calibration.py/ml_bias.py/main.py are unchanged (out of
+  this batch's file scope -- see item 2's resolution note on this).
+
+  Adjacency finding NOT fixed here, filed as a new entry instead (workflow
+  step 27 -- different consumer, web_app.py dashboard display only, not a
+  duplicate of the tuple this fix unified): tracker.brier_skill_score()
+  also has zero condition_type filtering and was never part of this
+  backlog family (no hardcoded tuple, no prior mention) -- see new entry
+  below, "BRIER_SKILL_SCORE() HAS NO CONDITION_TYPE FILTER".
+
+  Tests: tests/test_tracker.py::TestBrierFamilyNewlyFilteredFunctions (5
+  tests, one exclusion assertion per newly-filtered function). Mutation-
+  tested via Edit (reverting each function's added condition_type
+  WHERE-clause fragment individually, re-running its own test, then
+  restoring): all 5 failed without their filter (3 spot-checked in full --
+  brier_score_rolling_with_n, get_brier_over_time, brier_score_by_method,
+  covering the 3 structurally distinct query shapes in this group --
+  window-count/GROUP-BY-aggregate/no-params dict-aggregation; the other 2,
+  brier_score_by_method_rolling and brier_score_probation_rolling, use an
+  identical insertion pattern to one of the 3 verified shapes and were not
+  separately re-verified). _excluded_brier_condition_types() itself
+  mutation-tested via Edit on 3 distinct claims (gate-coupling actually
+  removes a type when active, 'between' stays excluded even with all 5
+  gates active, exception handling fails closed not open) -- each mutation
+  broke only its own targeted test(s), confirming no redundant/dead
+  assertions. Full suite/regression/lint numbers reported once, under item
+  1's resolution above (same commit covers items 1-3 together).
 
 [RESOLVED 2026-08-18 -- fixed as part of batch-01 (AUD-0001/AUD-0002/AUD-0005/AUD-0009/AUD-0012, same root cause); see Resolution below] check_position_limits() exposure caps are structurally blind to live positions opened via cmd_order (regression introduced by the e5331a8d live-fill-routing fix)
 Priority: HIGH (audit id AUD-0001, status CONFIRMED, confidence VERY HIGH, evidence E2)
@@ -22704,3 +22970,127 @@ Recommendation: before (or as part of) ever activating EMOS, check whether
   the bimodal guard's fixed thresholds implicitly assume a fixed 3-model
   spread. Not urgent while EMOS stays inactive; revisit at the EMOS
   activation decision itself, not before.
+
+[OPEN 2026-08-20 -- adjacency finding during batch-06 (item 3, "SEVERAL
+  BRIER-FAMILY FUNCTIONS STILL HAVE NO CONDITION_TYPE FILTER"): a genuinely
+  separate consumer (web_app.py dashboard display only), not a duplicate of
+  the tuple that fix unified -- filed as its own entry per workflow step 27
+  rather than folded into that fix] BRIER_SKILL_SCORE() HAS NO
+  CONDITION_TYPE FILTER
+Priority: Low -- dashboard-display-only (web_app.py), not a live-trading
+  gate and not part of the exclusion-tuple family the batch-06 fix
+  unified (this function never had ANY condition_type filter, hardcoded or
+  otherwise, so it isn't a "will now disagree" case -- it was always
+  unfiltered).
+
+Problem:
+  tracker.brier_skill_score() (BSS vs. market baseline) has zero
+  condition_type filtering -- its query selects p.our_prob/p.market_prob/
+  o.settled_yes with no exclusion at all. A shadow-only rain/snow/hurricane/
+  storm-order or 'between' row can freely enter this calculation, same
+  class of contamination the rest of the Brier family was fixed for.
+  Confirmed callers: web_app.py (dashboard) and its own tests -- no
+  live-trading-gate consumer found.
+
+Why not now: out of batch-06's scope (never had the hardcoded tuple this
+  batch's 3 items were about, and wasn't named by any of the 3 backlog
+  entries that batch closed); low urgency given display-only usage. Should
+  use the same tracker._excluded_brier_condition_types()/
+  _condition_type_not_in_sql() helpers batch-06 added when picked up.
+
+[OPEN 2026-08-20 -- adjacency note surfaced during batch-06 item 2's
+  resolution (see that entry's own "NOTE for whoever next touches..."
+  paragraph); filed as its own entry so it's discoverable independent of
+  that resolution note] CALIBRATION.PY/ML_BIAS.PY/MAIN.PY STILL HAVE THE
+  STATIC HARDCODED BRIER CONDITION_TYPE EXCLUSION TUPLE
+Priority: Low today (no *_TRADING_ENABLED flag is set, so tracker.py's
+  dynamic exclusion and these files' static one currently compute the
+  identical set). Only tracker.py's genuinely gate-coupled functions
+  (brier_score, count_settled_predictions(_rolling), brier_score_rolling_
+  with_n, get_brier_over_time, brier_score_by_method(_rolling),
+  brier_score_probation_rolling) can silently diverge from these 5 sites
+  the moment any of RAIN/SNOW/HURRICANE_TRADING_ENABLED/
+  HURRICANE_NEXT_EVENT_TRADING_ENABLED/STORM_ORDER_TRADING_ENABLED flips --
+  tracker.py's other 4 sites (get_rolling_win_rate,
+  get_metar_lockout_calibration_data, get_multiday_calibration_cli,
+  get_sameday_calibration_cli) use a permanent exclusion (opus-review
+  finding M5) and will keep matching these 5 sites unconditionally.
+
+Problem:
+  batch-06 (audit/handoff_prompts/batches/batch-06.md) unified tracker.py's
+  duplicate condition_type exclusion tuples into two shared definitions
+  (tracker._excluded_brier_condition_types(), dynamic/gate-coupled, for
+  live-trading-readiness signals; tracker._ALWAYS_EXCLUDED_CONDITION_TYPES,
+  permanent, for calibration-curve-fitting/circuit-breaker consumers whose
+  exclusion reason is structural, not shadow-status -- see that batch's own
+  opus-review finding M5) but could not touch calibration.py (1 site),
+  ml_bias.py (3 sites), or main.py (1 site) -- those files are claimed by
+  other batches per audit/handoff_prompts/batches/INDEX.md (batch-16:
+  weather_markets.py/tracker.py/ml_bias.py; batch-19/21: tracker.py/
+  ml_bias.py/main.py). Those 5 sites still use the old hardcoded
+  ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count',
+  'hurricane_next_event', 'storm_order') tuple. Correction (opus-review
+  finding M6, this batch's own review): the main.py site is NOT
+  display-only -- it's inside cmd_calibrate(), feeding
+  ml_bias.train_platt_per_city() and writing data/platt_models.json,
+  which weather_markets._load_platt_models() then uses for live
+  probability calibration. get_multiday_calibration_cli()'s own docstring
+  claims to match train_all_temperature_scaling()'s (ml_bias.py)
+  exclusion -- since that tracker.py function now uses the PERMANENT
+  constant (not gate-coupled, per M5's fix), this claim is unconditionally
+  true again, not merely "true while every gate stays inactive" as an
+  earlier draft of this note said before M5 was corrected.
+
+Why not now: requires touching files batch-06 doesn't own; whichever batch
+  next legitimately edits calibration.py/ml_bias.py/main.py should first
+  read each site's OWN documented reason for the exclusion (same
+  M5-style judgment call, not a blanket choice): if it's a shadow-status/
+  graduation-readiness reason, wire it to
+  tracker._excluded_brier_condition_types() (or replicate that dynamic
+  gate-coupling locally); if it's a scale-mismatch/circuit-breaker/
+  not-yet-validated reason like M5's 4 tracker.py sites, use
+  tracker._ALWAYS_EXCLUDED_CONDITION_TYPES (or replicate that permanent
+  constant) instead -- not just copy the static tuple again unexamined,
+  which would either make the fix in tracker.py meaningless the first time
+  a gate actually flips (if it should have been dynamic) or repeat M5's
+  original mistake (if it should have stayed permanent).
+
+[OPEN 2026-08-20 -- opus-review finding M4 during batch-06's own review of
+  items 1-3 (audit/handoff_prompts/batches/batch-06.md): a broader version
+  of an over-claim caught in brier_score()'s docstring, corrected there but
+  filed here as its own entry since fixing it requires touching more
+  functions than that review pass covered] MORE BRIER-FAMILY FUNCTIONS WITH
+  NO CONDITION_TYPE FILTER, FOUND VIA ADJACENCY
+Priority: Low -- none of these 5 gate live-trading authorization the way
+  graduation_check()'s brier_score() call does; 3 are read-only reporting/
+  display functions (get_brier_by_tier, get_brier_by_version, and
+  get_sameday_calibration() -- the dashboard-facing sibling deliberately
+  kept un-touched by get_sameday_calibration_cli()'s own design, so it is
+  NOT itself a bug, just an existing asymmetry this note is tracking
+  alongside the genuinely-missed ones), 2 (get_brier_by_days_out,
+  get_pnl_by_signal_source) have unconfirmed consumers -- worth a fresh
+  grep for callers when picked up rather than assuming display-only.
+
+Problem:
+  tracker.py's get_brier_by_days_out(), get_brier_by_tier(),
+  brier_skill_score() (filed separately above -- has a confirmed
+  display-only consumer, web_app.py), get_brier_by_version(), and
+  get_pnl_by_signal_source() all have zero condition_type filtering --
+  confirmed live (grepped each function body for "condition_type": zero
+  matches in all 4 remaining after brier_skill_score's own entry). None of
+  these were named by batch-06's 3 backlog entries or its own opus review's
+  M1-M6 findings beyond M4's passing mention; found only because M4's fix
+  (correcting brier_score()'s "matches every sibling" over-claim) required
+  actually enumerating every sibling.
+
+Why not now: out of batch-06's scope (that batch's item 3 named a specific
+  5-function list, not "every Brier-family function," matching
+  count_settled_predictions()'s own precedent of explicitly deferring full-
+  family unification as separate scope); no confirmed live-trading-gate
+  consumer for any of the 4 remaining. Should use
+  tracker._excluded_brier_condition_types() (if the eventual owner
+  confirms each function's exclusion rationale is shadow-status-based) or
+  tracker._ALWAYS_EXCLUDED_CONDITION_TYPES (if structural, per M5's
+  distinction) when picked up -- verify caller/consumer for each function
+  first, the same "confirm before assuming display-only" lesson M6 caught
+  in this same batch's own review.

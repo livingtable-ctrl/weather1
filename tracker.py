@@ -1684,15 +1684,26 @@ def brier_score_by_method(min_samples: int = 20) -> dict[str, float]:
     Brier score broken down by method string (e.g. 'ensemble', 'normal_dist').
     Returns {method: brier} for methods with enough data.
     Excludes same-day trades (days_out=0) so same-day METAR results don't skew method scores.
+
+    Excludes the same _excluded_brier_condition_types() population as
+    brier_score() (backlog.txt "SEVERAL BRIER-FAMILY FUNCTIONS STILL HAVE NO
+    CONDITION_TYPE FILTER" -- previously unfiltered).
     """
     init_db()
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _excluded_brier_condition_types()
+    )
     with _conn() as con:
-        rows = con.execute("""
+        rows = con.execute(
+            f"""
             SELECT p.method, p.our_prob, o.settled_yes
             FROM multiday_predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.method IS NOT NULL
-        """).fetchall()
+              AND {cond_clause}
+            """,
+            cond_params,
+        ).fetchall()
 
     by_method: dict[str, list] = {}
     for r in rows:
@@ -1713,16 +1724,27 @@ def brier_score_by_method_rolling(
 
     Count-based (not time-based) so cadence-uneven methods still get a stable
     sample size — mirrors get_rolling_win_rate()'s windowing convention.
+
+    Excludes the same _excluded_brier_condition_types() population as
+    brier_score() (backlog.txt "SEVERAL BRIER-FAMILY FUNCTIONS STILL HAVE NO
+    CONDITION_TYPE FILTER" -- previously unfiltered).
     """
     init_db()
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _excluded_brier_condition_types()
+    )
     with _conn() as con:
-        rows = con.execute("""
+        rows = con.execute(
+            f"""
             SELECT p.method, p.our_prob, o.settled_yes
             FROM multiday_predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL AND p.method IS NOT NULL
+              AND {cond_clause}
             ORDER BY o.settled_at DESC
-        """).fetchall()
+            """,
+            cond_params,
+        ).fetchall()
 
     by_method_recent: dict[str, list] = {}
     for r in rows:
@@ -1855,19 +1877,28 @@ def brier_score_probation_rolling(
     matching every other method-level Brier query's convention.
 
     Returns None if fewer than min_samples probation predictions have settled.
+
+    Excludes the same _excluded_brier_condition_types() population as
+    brier_score() (backlog.txt "SEVERAL BRIER-FAMILY FUNCTIONS STILL HAVE NO
+    CONDITION_TYPE FILTER" -- this function gates auto-unretirement of a
+    retired method and was previously unfiltered).
     """
     init_db()
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _excluded_brier_condition_types()
+    )
     with _conn() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT p.our_prob, o.settled_yes
             FROM multiday_predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.method = ? AND p.is_probation = 1 AND p.our_prob IS NOT NULL
+              AND {cond_clause}
             ORDER BY o.settled_at DESC
             LIMIT ?
             """,
-            (method, window),
+            (method, *cond_params, window),
         ).fetchall()
 
     if len(rows) < min_samples:
@@ -1912,6 +1943,232 @@ def get_component_attribution() -> dict[str, dict]:
         src: {"n": len(errs), "brier": sum(errs) / len(errs)}
         for src, errs in by_source.items()
     }
+
+
+# Every function below that scores/counts settled multi-day predictions for a
+# calibration or live-trading-readiness purpose excludes this same 6-type
+# condition_type set (backlog.txt "BRIER-FAMILY CONDITION_TYPE EXCLUSION LIST
+# HAS NO COUPLING TO RAIN/SNOW/HURRICANE GRADUATION GATES" and "SEVERAL
+# BRIER-FAMILY FUNCTIONS STILL HAVE NO CONDITION_TYPE FILTER") -- previously
+# duplicated as a hardcoded tuple literal in 7 separate functions in this
+# file alone (plus 5 more sites in calibration.py/ml_bias.py/main.py, out of
+# this fix's scope -- those live in other files this change does not touch).
+# Consolidated here as the single source of truth, matching this codebase's
+# established convention for shared classification data (e.g.
+# weather_markets._KXRAIN_MONTHLY_CITY).
+_GATE_COUPLED_EXCLUDED_CONDITION_TYPES: tuple[tuple[str, str], ...] = (
+    ("precip_month_total", "_rain_gates_active"),
+    ("snow_month_total", "_snow_gates_active"),
+    ("hurricane_count", "_hurricane_count_gates_active"),
+    ("hurricane_next_event", "_hurricane_next_event_gates_active"),
+    ("storm_order", "_storm_order_gates_active"),
+)
+
+
+# backlog.txt opus-review finding M5 (batch-06): NOT every consumer of the
+# 6-type exclusion is a graduation/live-trading-readiness signal that should
+# start counting a market family's rows the moment it goes live. Some are
+# fitting a temperature-SCALE-specific calibration curve or circuit-breaker
+# window that stays structurally invalid for a non-temperature type
+# regardless of shadow/live status -- exactly the same reasoning that already
+# keeps 'between' permanently excluded from every consumer (structural
+# calibration-gap mismatch, not shadow-status). Use this constant, not
+# _excluded_brier_condition_types(), for any consumer whose OWN docstring
+# gives a scale/distribution-shape/not-yet-validated reason rather than a
+# shadow-only-market-family reason.
+_ALWAYS_EXCLUDED_CONDITION_TYPES: frozenset[str] = frozenset(
+    {"between"} | {ct for ct, _ in _GATE_COUPLED_EXCLUDED_CONDITION_TYPES}
+)
+
+
+def _excluded_brier_condition_types() -> frozenset[str]:
+    """Condition types to exclude from Brier/calibration-QUALITY-SIGNAL
+    queries right now -- i.e. functions whose own docstring's reason for
+    excluding a type is that market family being shadow-only (not yet
+    receiving real capital), not a structural/scale mismatch. See
+    _ALWAYS_EXCLUDED_CONDITION_TYPES's docstring for the distinction and
+    which consumers use which.
+
+    Dynamically coupled to each shadow-only market family's own live-trading
+    gate (weather_markets._rain_gates_active() etc.): a condition_type is
+    excluded only while its family's gate is still inactive (env flag unset
+    or sample floor not yet cleared). The moment a family actually goes live,
+    its settled rows start counting toward every calibration/gate value this
+    exclusion feeds -- closing the gap where a market family receiving real
+    capital could be permanently excluded from the Brier value that gates ALL
+    live trading, with nothing to notice or adjust (backlog.txt finding this
+    generalizes from). Fails closed: if a gate's own state (or even
+    weather_markets itself) can't be determined/imported, every gate-backed
+    condition_type stays excluded, and a warning is logged so a rename/typo
+    that silently kills the coupling (opus-review finding L1) doesn't go
+    unnoticed the way count_settled_snow_predictions()'s own pre-fix
+    silent-freeze bug once did.
+
+    'between' is NOT gate-coupled and is always excluded unconditionally --
+    unlike the 5 types above, it isn't shadow-only (KXHIGH*/KXLOW*
+    between-brackets are fully live today, same as above/below). It's
+    excluded because it has a genuinely different, structurally larger
+    calibration gap than above/below (T~=6.8 temperature-scaling factor vs.
+    global/above/below's much smaller correction -- see backlog.txt's EMOS
+    confirm-gate opus-review finding #4) that would distort a shared
+    aggregate Brier score meant to represent overall model quality. There is
+    no "_between_gates_active()" to couple to, and none should be added --
+    this exclusion is permanent by design, not a graduation-pending status.
+
+    Deliberate no-fix decisions from opus review (documented per-finding,
+    not silently dropped):
+    L5 (no memoization -- up to 5 gate-check queries + connections per call,
+    x12 call sites): not cached, since a gate's live state can change
+    mid-process and this feeds a live-trading safety value -- staleness
+    risk outweighs the query cost, which is small relative to this
+    codebase's cron/dashboard call cadence (not a per-trade hot path).
+    L6 (paper.graduation_check() calls count_settled_predictions() then
+    brier_score() separately, each recomputing this set -- a gate flip
+    between the two calls could theoretically make count and score
+    disagree): accepted as a benign, exceedingly narrow race (a gate flip
+    requires both an env var change AND crossing a 20-row sample floor,
+    not something that happens between two sequential function calls in
+    practice); threading one shared snapshot through both calls would
+    require editing paper.py, which is out of this batch's file scope
+    (paper.py is owned by batch-04, "Concurrency / locking").
+    """
+    excluded = {"between"}
+    try:
+        import weather_markets as _wm
+    except Exception as exc:
+        _log.warning(
+            "_excluded_brier_condition_types: weather_markets import failed "
+            "(%s) -- failing closed, excluding all gate-backed types",
+            exc,
+        )
+        return _ALWAYS_EXCLUDED_CONDITION_TYPES
+
+    for condition_type, gate_fn_name in _GATE_COUPLED_EXCLUDED_CONDITION_TYPES:
+        try:
+            gate_fn = getattr(_wm, gate_fn_name)
+            if not gate_fn():
+                excluded.add(condition_type)
+        except Exception as exc:
+            _log.warning(
+                "_excluded_brier_condition_types: gate check %s failed (%s) "
+                "-- failing closed, excluding %s",
+                gate_fn_name,
+                exc,
+                condition_type,
+            )
+            excluded.add(condition_type)
+    return frozenset(excluded)
+
+
+def _condition_type_not_in_sql(excluded: frozenset[str]) -> tuple[str, list[str]]:
+    """Build the "(p.condition_type IS NULL OR p.condition_type NOT IN (...))"
+    clause fragment plus its params list, sized to `excluded`'s current
+    length -- exclusion count varies at runtime now that it's gate-coupled,
+    so this can't be a fixed-arity literal the way the old hardcoded tuple
+    was. Params are sorted for deterministic query text/logs across process
+    restarts (a plain frozenset's iteration order depends on PYTHONHASHSEED)
+    -- opus-review finding L3.
+
+    Requires a non-empty `excluded` -- `NOT IN ()` (zero elements) is a
+    SQLite-specific extension most other engines reject, and nothing else
+    in this codebase should ever assume it works (opus-review finding L4).
+    Not reachable via either real caller today ('between' is always present
+    in both _excluded_brier_condition_types() and
+    _ALWAYS_EXCLUDED_CONDITION_TYPES), but asserted explicitly rather than
+    silently relying on that invariant holding forever."""
+    assert excluded, "condition_type exclusion set must never be empty"
+    params = sorted(excluded)
+    placeholders = ", ".join("?" * len(params))
+    clause = f"(p.condition_type IS NULL OR p.condition_type NOT IN ({placeholders}))"
+    return clause, params
+
+
+def _paper_trade_excluded_condition_type(ticker: str) -> str | None:
+    """Classify a paper-trade ticker into one of the 6
+    _excluded_brier_condition_types() buckets, or None if it isn't one of
+    them. Paper trade records carry no condition_type column of their own --
+    only ticker/var -- so this derives the same classification predictions
+    rows get from log_prediction's analysis dict purely from the ticker
+    string, reusing weather_markets.py's existing per-family ticker
+    classifiers rather than inventing a new parsing scheme (backlog.txt
+    "BRIER_SCORE()'S PAPER_TRADES.DB FALLBACK HAS NO CONDITION_TYPE
+    FILTER"). Keep this in sync with _excluded_brier_condition_types()'s
+    6-type vocabulary if that set ever changes.
+
+    'between' is identified by the ticker's own "-B<value>" strike suffix --
+    the same regex weather_markets._parse_market_condition() uses to tell
+    bucket markets from above/below directional ones. Unlike above/below
+    (which need title text to disambiguate direction), 'between' is fully
+    determined by the ticker alone, so no title/subtitle lookup is needed
+    here -- convenient, since paper trade records don't carry the market
+    title anyway. The B-suffix check runs LAST, after the snow/precip
+    guard below -- _parse_market_condition() itself checks its snow/ice and
+    precip branches (weather_markets.py's SNOW_SERIES/PRECIP_SERIES
+    substring checks) BEFORE ever reaching its own T/B temperature regex, so
+    a (currently-hypothetical) daily KXSNOW*/KXICE*/KXRAIN*/KXPRECIP*
+    ticker ending in "-B<n>" must be excluded from the 'between' match here
+    too, or it would be misclassified (opus-review finding L2) -- it isn't
+    one of this function's 6 excluded types either way (precip_snow/
+    precip_any/precip_above aren't excluded from Brier), so the correct
+    result for it is None, not 'between'.
+
+    Fails OPEN (returns None -- not excluded) whenever the ticker can't be
+    matched to a known excluded pattern, INCLUDING when classification
+    itself raises (weather_markets import failure, unexpected non-str
+    input) -- deliberately the opposite posture from
+    _excluded_brier_condition_types()'s fail-CLOSED exception handling
+    (opus-review findings M2/M3): that function gates which market
+    families count toward a live-trading safety value, so an unknown state
+    defaults to the safer "stays excluded" outcome; this function's job is
+    narrower (classify one already-included paper trade's ticker), and a
+    genuinely unclassifiable/malformed ticker should default to "leave it
+    in the population" -- the same missing-data convention this exact
+    fallback already applies to a missing `days_out` field. Matches every
+    sibling ticker classifier's own no-exception contract
+    (is_hurricane_count_ticker etc.) from the caller's perspective, even
+    though internally it now catches rather than never raising in the
+    first place."""
+    try:
+        if not isinstance(ticker, str) or not ticker:
+            return None
+        import re
+
+        from weather_markets import (
+            _KXRAIN_MONTHLY_CITY,
+            _KXSNOW_MONTHLY_CITY,
+            is_hurricane_count_ticker,
+            is_hurricane_next_event_ticker,
+            is_storm_order_ticker,
+        )
+
+        ticker_upper = ticker.upper()
+        if is_hurricane_count_ticker(ticker_upper):
+            return "hurricane_count"
+        if is_hurricane_next_event_ticker(ticker_upper):
+            return "hurricane_next_event"
+        if is_storm_order_ticker(ticker_upper):
+            return "storm_order"
+        if any(ticker_upper.startswith(p) for p in _KXRAIN_MONTHLY_CITY):
+            return "precip_month_total"
+        if any(ticker_upper.startswith(p) for p in _KXSNOW_MONTHLY_CITY):
+            return "snow_month_total"
+        # Mirrors weather_markets._parse_market_condition()'s own
+        # SNOW_SERIES={"KXSNOW","KXICE"}/PRECIP_SERIES={"KXRAIN","KXSNOW",
+        # "KXPRECIP"} substring checks, which run before that function's T/B
+        # regex -- see docstring note above (opus-review finding L2).
+        if any(s in ticker_upper for s in ("KXSNOW", "KXICE", "KXRAIN", "KXPRECIP")):
+            return None
+        if re.search(r"-B\d+(?:\.\d+)?$", ticker_upper):
+            return "between"
+        return None
+    except Exception as exc:
+        _log.warning(
+            "_paper_trade_excluded_condition_type: classification failed for "
+            "%r (%s) -- treating as not-excluded",
+            ticker,
+            exc,
+        )
+        return None
 
 
 def brier_score(
@@ -1972,63 +2229,77 @@ def brier_score(
     since this docstring is the permanent in-code record of the audit's single
     most consequential finding.
 
-    NOT a full fix for the Brier-family: this exclusion is NOT applied to this
-    module's other Brier-adjacent functions, several of which have zero
-    condition_type filtering of any kind -- brier_score_rolling_with_n (feeds
-    main.py/output_formatters.py/pdf_report.py/web_app.py display paths),
-    get_brier_over_time (feeds cron.py's operator-facing two-consecutive-weeks
-    Brier alert), brier_score_by_method(_rolling), brier_score_probation_rolling
-    (gates auto-unretirement of a retired method). brier_score_rolling (this
-    module, a thin cutoff_days wrapper around this function, no non-test callers)
-    is now filtered while brier_score_rolling_with_n -- its documented sibling
-    over the same window -- is not; they will now disagree. Extending the filter
-    to the rest of the Brier family is real, separate, larger-scoped work than
-    this fix (tracked in backlog.txt) -- do not read "matches every sibling" as
-    "the whole Brier family is now consistent."
+    UPDATE 2026-08-20 (backlog.txt "BRIER-FAMILY CONDITION_TYPE EXCLUSION LIST
+    HAS NO COUPLING..." / "SEVERAL BRIER-FAMILY FUNCTIONS STILL HAVE NO
+    CONDITION_TYPE FILTER" / "PAPER_TRADES.DB FALLBACK HAS NO CONDITION_TYPE
+    FILTER" -- all three closed together): the exclusion list is no longer a
+    static hardcoded tuple. count_settled_predictions_rolling,
+    brier_score_rolling_with_n, get_brier_over_time,
+    brier_score_by_method(_rolling), and brier_score_probation_rolling now
+    reference _excluded_brier_condition_types() (dynamic, gate-coupled --
+    see that function's own docstring), the same source this function uses.
+    get_rolling_win_rate, get_metar_lockout_calibration_data,
+    get_multiday_calibration_cli, and get_sameday_calibration_cli reference
+    _ALWAYS_EXCLUDED_CONDITION_TYPES instead (opus-review finding M5,
+    corrected during this same fix): their own docstrings give a
+    structural/scale-mismatch reason for the exclusion, not a shadow-
+    market-family one, so gate-coupling them would have been wrong, not
+    just imprecise -- see _ALWAYS_EXCLUDED_CONDITION_TYPES's docstring for
+    the distinction. The paper-trade fallback below is now filtered too,
+    via _paper_trade_excluded_condition_type().
 
-    Two non-test callers see an unannounced-until-now value shift from this fix
-    (both audited, neither broken): alerts.py's Black Swan Brier-collapse check
-    (threshold 0.30) now sees a HIGHER all-time value -- makes that halt strictly
-    MORE likely to fire (fail-safe direction); main.py's backtest-drift warning
-    (fires when recent_brier > all_time_brier + 0.05) now compares against a
-    higher all_time_brier too -- makes that warning LESS likely to fire, and
-    backtest.py's train_brier side of that comparison has no condition_type
-    concept of its own, so the comparison is now asymmetrically filtered.
+    NOT "every sibling" (opus-review finding M4, corrected here): this
+    module still has unfiltered condition_type-adjacent functions this fix
+    did not touch -- get_brier_by_days_out, get_brier_by_tier,
+    brier_skill_score, get_brier_by_version, get_pnl_by_signal_source, and
+    get_sameday_calibration() (the dashboard-facing sibling of
+    get_sameday_calibration_cli, which deliberately differs from it by
+    design -- see get_sameday_calibration_cli()'s own docstring). None of
+    these were named by any of the 3 backlog entries this fix closes; see
+    backlog.txt "MORE BRIER-FAMILY FUNCTIONS WITH NO CONDITION_TYPE FILTER,
+    FOUND VIA ADJACENCY" for the follow-up. All 5 gate-backed types
+    currently resolve to "still excluded" everywhere in this file (no
+    RAIN/SNOW/HURRICANE*/STORM_ORDER_TRADING_ENABLED flag is set today), so
+    the PRIMARY-SOURCE query's value is unchanged today -- purely closes
+    the forward-looking gap there.
 
-    KNOWN REMAINING GAPS (tracked in backlog.txt, not fixed here -- each needs its
-    own scoped design decision, not a same-shape mirror of this fix):
-    (1) paper_trades.db fallback path below has no equivalent filter -- paper
-        trade records carry no condition_type field at all (only ticker/var), so
-        filtering it would require deriving condition type from the ticker string
-        prefix, a new parsing mechanism that doesn't exist elsewhere for paper
-        trades. This fix makes that fallback MORE reachable than before (any DB
-        state where every settled multi-day prediction is now-excluded pushes the
-        primary query to zero rows, falling through to this unfiltered path) --
-        not exercised today (83 filtered rows exist), but no longer purely
-        hypothetical the way it was pre-fix.
-    (2) The exclusion list is a hardcoded tuple with no coupling to
-        weather_markets._rain_gates_active()/RAIN_TRADING_ENABLED. Production
-        currently has 17 settled precip_month_total rows against that gate's
-        20-row threshold to let rain markets graduate into real trading -- the
-        moment that flips, this function permanently excludes the calibration of
-        a market family receiving real capital, with nothing to notice or adjust.
-        Inherited from count_settled_predictions() (same tuple, same gap), but
-        this fix propagates it into the gate's VALUE as well as its sample COUNT,
-        a strictly larger blast radius. Same latent risk for snow/hurricane.
+    Correction (opus-review finding I1): that "unchanged today" claim does
+    NOT extend to the paper-trade fallback below. Unlike the 5 gate-backed
+    types, 'between' is excluded from paper trades too and 'between'-bracket
+    trading is live today -- so in the (currently rare, DB-state-dependent)
+    case where the primary query returns 0 rows and the fallback is
+    actually reached, this fix CAN change today's real return value: any
+    'between' paper trades that would previously have counted in the
+    fallback are now excluded, which can turn a real Brier number into
+    None where the un-fixed code would have returned a contaminated value.
+    Fail-safe direction (None makes graduation_check() decline to authorize
+    rather than authorize on contaminated data), but it is a real value
+    change on that specific path, not zero.
+
+    Two non-test callers saw a value shift from the original 2026-08 filter
+    (both audited, neither broken, unaffected by this update since the
+    exclusion set is unchanged today): alerts.py's Black Swan Brier-collapse
+    check (threshold 0.30) sees a HIGHER all-time value -- makes that halt
+    strictly MORE likely to fire (fail-safe direction); main.py's
+    backtest-drift warning (fires when recent_brier > all_time_brier + 0.05)
+    compares against a higher all_time_brier too -- makes that warning LESS
+    likely to fire, and backtest.py's train_brier side of that comparison has
+    no condition_type concept of its own, so the comparison is asymmetrically
+    filtered.
     """
     init_db()
     table = "multiday_predictions" if min_days_out > 0 else "predictions"
+    excluded = _excluded_brier_condition_types()
+    cond_clause, cond_params = _condition_type_not_in_sql(excluded)
     with _conn() as con:
         query = f"""
             SELECT p.our_prob, o.settled_yes
             FROM {table} p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
-              AND (p.condition_type IS NULL
-                   OR p.condition_type NOT IN
-                      ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
+              AND {cond_clause}
         """
-        params: list = []
+        params: list = list(cond_params)
         if city:
             query += " AND p.city = ?"
             params.append(city)
@@ -2068,6 +2339,9 @@ def brier_score(
             if prob is None or outcome not in ("yes", "no"):
                 continue
             if city and t.get("city") != city:
+                continue
+            ticker = t.get("ticker")
+            if ticker and _paper_trade_excluded_condition_type(ticker) in excluded:
                 continue
             # NULL/missing days_out in paper trades predates the column — treat as multi-day.
             trade_days_out = t.get("days_out")
@@ -2111,10 +2385,18 @@ def brier_score_rolling(weeks: int = 3) -> float | None:
 def brier_score_rolling_with_n(weeks: int = 3) -> tuple[float | None, int]:
     """Returns (brier, n) for the rolling window in a single query.
 
-    Use this at display sites that need to show the sample count alongside the score.
+    Use this at display sites that need to show the sample count alongside the
+    score. Excludes the same _excluded_brier_condition_types() population as
+    brier_score() (backlog.txt "SEVERAL BRIER-FAMILY FUNCTIONS STILL HAVE NO
+    CONDITION_TYPE FILTER" -- this function feeds main.py/output_formatters.py/
+    pdf_report.py/web_app.py display paths and was previously undocumented-
+    inconsistent with its cutoff_days-wrapper sibling brier_score_rolling()).
     """
     init_db()
     days = weeks * 7
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _excluded_brier_condition_types()
+    )
     with _conn() as con:
         rows = con.execute(
             f"""
@@ -2123,7 +2405,9 @@ def brier_score_rolling_with_n(weeks: int = 3) -> tuple[float | None, int]:
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND o.settled_at >= datetime('now', '-{days} days')
-            """
+              AND {cond_clause}
+            """,
+            cond_params,
         ).fetchall()
     n = len(rows)
     if not rows:
@@ -2142,18 +2426,22 @@ def count_settled_predictions_rolling(weeks: int = 3) -> int:
     that entry's own independent review: a live-trading-readiness gate
     should not count monthly rain/snow or two-sided 'between' rows any more
     here than it does in count_settled_predictions()).
+    Now sourced from _excluded_brier_condition_types() (dynamic, gate-coupled)
+    instead of a hardcoded tuple duplicate of count_settled_predictions()'s own.
     """
     init_db()
     days = weeks * 7
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _excluded_brier_condition_types()
+    )
     with _conn() as con:
         row = con.execute(
-            f"SELECT COUNT(*) FROM multiday_predictions p "
-            f"JOIN outcomes_valid o ON p.ticker = o.ticker "
-            f"WHERE p.our_prob IS NOT NULL "
+            "SELECT COUNT(*) FROM multiday_predictions p "
+            "JOIN outcomes_valid o ON p.ticker = o.ticker "
+            "WHERE p.our_prob IS NOT NULL "
             f"  AND o.settled_at >= datetime('now', '-{days} days') "
-            f"  AND (p.condition_type IS NULL "
-            f"       OR p.condition_type NOT IN "
-            f"          ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))"
+            f"  AND {cond_clause}",
+            cond_params,
         ).fetchone()
     return row[0] if row else 0
 
@@ -2182,22 +2470,31 @@ def get_rolling_win_rate(window: int = 20) -> tuple[float | None, int]:
     rolling window carries an entirely different win-rate distribution than
     a directional temperature call and could either mask real temperature-
     model degradation or falsely trip the halt on unrelated volatility.
+
+    Now sourced from _ALWAYS_EXCLUDED_CONDITION_TYPES, NOT the dynamic
+    gate-coupled _excluded_brier_condition_types() (opus-review finding M5,
+    batch-06): this function's own exclusion rationale above is structural
+    (a different win-rate distribution shape that could mask/falsely-trip
+    the circuit breaker) not shadow-market-family status -- that reasoning
+    doesn't stop applying the moment a family goes live, so it must stay
+    permanently excluded like 'between', not auto-include once a gate flips.
     """
     init_db()
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _ALWAYS_EXCLUDED_CONDITION_TYPES
+    )
     with _conn() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT o.settled_yes, p.our_prob
             FROM multiday_predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
-              AND (p.condition_type IS NULL
-                   OR p.condition_type NOT IN
-                      ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
+              AND {cond_clause}
             ORDER BY o.settled_at DESC
             LIMIT ?
             """,
-            (window,),
+            (*cond_params, window),
         ).fetchall()
     count = len(rows)
     if count == 0:
@@ -2294,17 +2591,32 @@ def count_settled_predictions() -> int:
     combination settling more than once (i.e. real ladder-bracket
     duplication, not a high/low pair) -- that would be the actual trigger
     condition this entry was watching for, and did not find.
+
+    UPDATE 2026-08-20 (backlog.txt "BRIER-FAMILY CONDITION_TYPE EXCLUSION LIST
+    HAS NO COUPLING TO RAIN/SNOW/HURRICANE GRADUATION GATES"): the exclusion
+    list above is no longer a static hardcoded tuple -- it's now
+    _excluded_brier_condition_types(), dynamically coupled to each shadow-only
+    market family's own live-trading gate (weather_markets._rain_gates_active()
+    etc.). Once RAIN_TRADING_ENABLED (or the snow/hurricane/storm-order
+    equivalent) flips and that family's own sample floor clears, its settled
+    rows start counting toward this maturity gate too -- closing the exact gap
+    this backlog entry named ("the moment that flips, this function
+    permanently excludes the calibration of a market family receiving real
+    capital, with nothing to notice or adjust"). No gate is active today, so
+    this changes zero live values now.
     """
     init_db()
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _excluded_brier_condition_types()
+    )
     with _conn() as con:
         row = con.execute(
-            """
+            f"""
             SELECT COUNT(*) FROM multiday_predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
-            WHERE (p.condition_type IS NULL
-                   OR p.condition_type NOT IN
-                      ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
-            """
+            WHERE {cond_clause}
+            """,
+            cond_params,
         ).fetchone()
     return row[0] if row else 0
 
@@ -2904,11 +3216,22 @@ def get_metar_lockout_calibration_data() -> list[dict]:
     get_sameday_calibration_cli) -- between/precip/etc. share the lock-in
     formula but weren't part of the calibration gap this measures, and are
     deliberately excluded from correction until validated separately.
+
+    Now sourced from _ALWAYS_EXCLUDED_CONDITION_TYPES, NOT the dynamic
+    gate-coupled _excluded_brier_condition_types() (opus-review finding M5,
+    batch-06): "until validated separately" above is a validation-pending
+    reason, not a shadow-market-family one -- there's no mechanism that
+    would ever mark a type "validated" the moment a live-trading gate
+    flips, so coupling this to those gates was simply wrong, not just
+    imprecise.
     """
     init_db()
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _ALWAYS_EXCLUDED_CONDITION_TYPES
+    )
     with _conn() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT p.our_prob, o.settled_yes
             FROM predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
@@ -2916,11 +3239,9 @@ def get_metar_lockout_calibration_data() -> list[dict]:
               AND o.settled_yes IS NOT NULL
               AND p.days_out = 0
               AND p.method = 'metar_lockout'
-              AND (p.condition_type IS NULL
-                   OR p.condition_type NOT IN
-                      ('between', 'precip_month_total', 'snow_month_total',
-                       'hurricane_count', 'hurricane_next_event', 'storm_order'))
-            """
+              AND {cond_clause}
+            """,
+            cond_params,
         ).fetchall()
     return [{"our_prob": float(r[0]), "settled_yes": int(r[1])} for r in rows]
 
@@ -3059,6 +3380,11 @@ def get_brier_over_time(weeks: int = 12, min_days_out: int = 1) -> list[dict]:
 
     Returns [{"week": "2025-W40", "brier": 0.21}, ...] sorted ascending.
     Returns an empty list if no settled predictions exist in the window.
+
+    Excludes the same _excluded_brier_condition_types() population as
+    brier_score() (backlog.txt "SEVERAL BRIER-FAMILY FUNCTIONS STILL HAVE NO
+    CONDITION_TYPE FILTER" -- this function feeds cron.py's operator-facing
+    two-consecutive-weeks Brier alert, previously unfiltered).
     """
     init_db()
     # SQLite-format cutoff (not Python isoformat) -- predicted_at is written by
@@ -3067,6 +3393,9 @@ def get_brier_over_time(weeks: int = 12, min_days_out: int = 1) -> list[dict]:
     # the boundary date (' ' < 'T'), silently dropping the whole boundary day.
     cutoff = (datetime.now(UTC) - timedelta(weeks=weeks)).strftime("%Y-%m-%d %H:%M:%S")
     table = "multiday_predictions" if min_days_out > 0 else "predictions"
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _excluded_brier_condition_types()
+    )
     with _conn() as con:
         rows = con.execute(
             f"""
@@ -3079,10 +3408,11 @@ def get_brier_over_time(weeks: int = 12, min_days_out: int = 1) -> list[dict]:
             JOIN outcomes_valid o ON o.ticker = p.ticker
             WHERE p.predicted_at >= ?
               AND p.our_prob IS NOT NULL
+              AND {cond_clause}
             GROUP BY week
             ORDER BY week
             """,
-            (cutoff,),
+            (cutoff, *cond_params),
         ).fetchall()
     return [{"week": row["week"], "brier": round(row["brier"], 4)} for row in rows]
 
@@ -3483,20 +3813,36 @@ def get_multiday_calibration_cli() -> dict:
     apply_temperature_scaling() (ml_bias.py): days_out=0 uses "sameday" exclusively,
     everything else falls back to condition_type then "global", so "global" IS the
     multiday T, not a separate catch-all.
+
+    Now sourced from _ALWAYS_EXCLUDED_CONDITION_TYPES, NOT the dynamic
+    gate-coupled _excluded_brier_condition_types() (opus-review finding M5,
+    batch-06): the "inches-scale/basin-shaped probability doesn't belong in
+    a °F-tuned calibration curve" reason above is a physical-scale mismatch
+    for fitting the temperature_scale.json T-parameter, not a shadow-
+    market-family one -- it stays true forever regardless of any
+    RAIN/SNOW/HURRICANE_TRADING_ENABLED flag, so this must stay permanently
+    excluded like 'between', not auto-include once a gate flips. Matches
+    ml_bias.py's train_all_temperature_scaling() (still a static hardcoded
+    tuple, out of this fix's file scope) by construction now, not just
+    coincidentally today (backlog.txt follow-up still filed for the
+    ml_bias.py/calibration.py/main.py sites to migrate onto this shared
+    constant when their own batch touches those files).
     """
     init_db()
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _ALWAYS_EXCLUDED_CONDITION_TYPES
+    )
     with _conn() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT p.our_prob, o.settled_yes
             FROM multiday_predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
-              AND (p.condition_type IS NULL
-                   OR p.condition_type NOT IN
-                      ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
-            """
+              AND {cond_clause}
+            """,
+            cond_params,
         ).fetchall()
 
     t_multiday = _read_temperature_scale_key("global")
@@ -3518,21 +3864,29 @@ def get_sameday_calibration_cli() -> dict:
     Returns {n, gate, gate_met, brier, t_sameday, calibration_buckets} — no
     by_time_of_day breakdown (the CLI doesn't currently surface it; dashboard's
     get_sameday_calibration() remains the source for that).
+
+    Now sourced from _ALWAYS_EXCLUDED_CONDITION_TYPES, NOT the dynamic
+    gate-coupled _excluded_brier_condition_types() (opus-review finding M5,
+    batch-06) -- same °F-scale-mismatch reasoning as
+    get_multiday_calibration_cli(), see that function's docstring for the
+    full explanation and the ml_bias.py/calibration.py/main.py note.
     """
     init_db()
+    cond_clause, cond_params = _condition_type_not_in_sql(
+        _ALWAYS_EXCLUDED_CONDITION_TYPES
+    )
     with _conn() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT p.our_prob, o.settled_yes
             FROM predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
               AND p.days_out = 0
-              AND (p.condition_type IS NULL
-                   OR p.condition_type NOT IN
-                      ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
-            """
+              AND {cond_clause}
+            """,
+            cond_params,
         ).fetchall()
 
     t_sameday = _read_temperature_scale_key("sameday")

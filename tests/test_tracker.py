@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -703,7 +703,15 @@ class TestBrierScoreConditionTypeFilter(unittest.TestCase):
     test_does_not_exclude_below_or_null_condition_type is a deliberate positive
     control for a DIFFERENT property (the exclusion is a specific list, not an
     accidentally-broad allowlist) and correctly still passes without the filter --
-    it was never meant to be mutation-sensitive to this particular change."""
+    it was never meant to be mutation-sensitive to this particular change.
+
+    UPDATE 2026-08-20: the exclusion source is now _excluded_brier_condition_types()
+    (dynamic, gate-coupled -- see TestExcludedBrierConditionTypes) instead of a
+    hardcoded tuple, and the paper-trade fallback below now has its own
+    ticker-based filter (see TestPaperTradeConditionTypeClassifier and the
+    test_paper_fallback_* tests below) -- backlog.txt "BRIER-FAMILY CONDITION_TYPE
+    EXCLUSION LIST HAS NO COUPLING..." and "PAPER_TRADES.DB FALLBACK HAS NO
+    CONDITION_TYPE FILTER", both closed."""
 
     def setUp(self):
         self._tmpdir = tempfile.mkdtemp()
@@ -821,18 +829,22 @@ class TestBrierScoreConditionTypeFilter(unittest.TestCase):
         bs_after = tracker.brier_score(min_days_out=0)
         self.assertAlmostEqual(bs_after, 0.0, places=6)
 
-    def test_when_every_settled_row_is_excluded_falls_through_to_unfiltered_paper_fallback(
+    def test_paper_fallback_missing_ticker_still_unfiltered(
         self,
     ):
-        """Opus-review-flagged (MEDIUM): this fix makes the paper_trades.db
-        fallback MORE reachable than before -- any DB state where every settled
-        multi-day prediction is a now-excluded type pushes the primary query to
-        zero rows, falling through to a path with NO condition_type filter at
-        all. This test pins that this actually happens and that the fallback
-        path is genuinely unfiltered (uses whatever paper.get_all_trades()
-        returns, contamination and all) -- it does NOT assert this is safe, it
-        documents the real, currently-dormant exposure described in the
-        docstring's KNOWN REMAINING GAPS section."""
+        """UPDATE 2026-08-20 (backlog.txt "BRIER_SCORE()'S PAPER_TRADES.DB
+        FALLBACK HAS NO CONDITION_TYPE FILTER", now closed): the fallback IS
+        filtered now via _paper_trade_excluded_condition_type(ticker) -- see
+        test_paper_fallback_excludes_ticker_classified_shadow_type below. This
+        narrower test documents the one deliberate remaining gap: a paper
+        trade record with NO ticker field at all can't be classified, so it
+        is NOT excluded (fails open on missing data) -- the same convention
+        this exact fallback already applies to a missing `days_out` field
+        ("NULL/missing days_out in paper trades predates the column -- treat
+        as multi-day"). This is intentional, not an oversight: a genuinely
+        malformed/legacy record without even a ticker is rare, and defaulting
+        it to "not one of the 6 excluded types" matches the fallback's
+        pre-existing behavior for every other unclassifiable case."""
         # Every settled tracker-DB row is an excluded type -> primary query returns 0 rows.
         self._insert("TK-ONLY-SHADOW", 0.5, True, condition_type="between")
 
@@ -840,6 +852,7 @@ class TestBrierScoreConditionTypeFilter(unittest.TestCase):
             "entry_prob": 0.9,
             "outcome": "no",  # error = 0.81 -- would fail a 0.23 gate outright
             "city": None,
+            # deliberately no "ticker" key
         }
         from unittest.mock import patch
 
@@ -848,6 +861,507 @@ class TestBrierScoreConditionTypeFilter(unittest.TestCase):
 
         self.assertIsNotNone(bs)
         self.assertAlmostEqual(bs, 0.81, places=6)
+
+    def test_paper_fallback_excludes_ticker_classified_shadow_type(self):
+        """The paper-trade fallback now derives condition_type from the
+        ticker string (weather_markets.py's per-family classifiers) and
+        excludes a shadow-only match, same as the primary-source query."""
+        self._insert("TK-ONLY-SHADOW", 0.5, True, condition_type="between")
+
+        shadow_trade = {
+            "ticker": "KXRAINDENM-26JUL-7",  # monthly rain ladder -> precip_month_total
+            "entry_prob": 0.9,
+            "outcome": "no",  # error = 0.81 -- would fail a 0.23 gate outright if counted
+            "city": None,
+        }
+        from unittest.mock import patch
+
+        with patch("paper.get_all_trades", return_value=[shadow_trade]):
+            bs = tracker.brier_score()
+
+        # No rows survive (tracker-DB row excluded, paper row excluded too) -> None.
+        self.assertIsNone(bs)
+
+    def test_paper_fallback_includes_shadow_ticker_once_its_gate_flips(self):
+        """Opus-review finding L9: the paper-fallback filter's membership
+        check (`_paper_trade_excluded_condition_type(ticker) in excluded`)
+        is coupled to the SAME dynamic _excluded_brier_condition_types() the
+        primary-source query uses -- verify the coupling actually flows
+        through to the fallback path, not just the primary query (which
+        test_gate_active_removes_its_own_condition_type_from_exclusion in
+        TestExcludedBrierConditionTypes already covers on its own)."""
+        self._insert("TK-ONLY-SHADOW", 0.5, True, condition_type="between")
+
+        rain_trade = {
+            "ticker": "KXRAINDENM-26JUL-7",  # monthly rain ladder -> precip_month_total
+            "entry_prob": 0.9,
+            "outcome": "no",  # error = 0.81
+            "city": None,
+        }
+        import weather_markets as wm
+
+        with (
+            patch.object(wm, "_rain_gates_active", return_value=True),
+            patch.object(wm, "_snow_gates_active", return_value=False),
+            patch.object(wm, "_hurricane_count_gates_active", return_value=False),
+            patch.object(wm, "_hurricane_next_event_gates_active", return_value=False),
+            patch.object(wm, "_storm_order_gates_active", return_value=False),
+            patch("paper.get_all_trades", return_value=[rain_trade]),
+        ):
+            bs = tracker.brier_score()
+
+        # Rain's gate is active -> precip_month_total no longer excluded ->
+        # the paper trade counts.
+        self.assertIsNotNone(bs)
+        self.assertAlmostEqual(bs, 0.81, places=6)
+
+    def test_paper_fallback_includes_ticker_classified_temperature_type(self):
+        """Positive control for the test above: a paper trade whose ticker
+        classifies as a NORMAL (non-excluded) temperature market must still
+        be counted -- proves the new filter is a specific exclusion, not an
+        accidental blanket drop of every paper trade with a ticker."""
+        self._insert("TK-ONLY-SHADOW", 0.5, True, condition_type="between")
+
+        temp_trade = {
+            "ticker": "KXHIGHNY-26AUG20-T68",  # ordinary above/below ticker
+            "entry_prob": 0.9,
+            "outcome": "no",  # error = 0.81
+            "city": None,
+        }
+        from unittest.mock import patch
+
+        with patch("paper.get_all_trades", return_value=[temp_trade]):
+            bs = tracker.brier_score()
+
+        self.assertIsNotNone(bs)
+        self.assertAlmostEqual(bs, 0.81, places=6)
+
+    def test_paper_fallback_excludes_between_bracket_ticker(self):
+        """The 'between' bucket is identified by ticker suffix alone
+        (-B<value>), a different code path from the prefix-based rain/snow/
+        hurricane/storm-order checks -- covered separately since it's the one
+        excluded type with no dedicated market-family gate."""
+        self._insert("TK-ONLY-SHADOW", 0.5, True, condition_type="between")
+
+        between_trade = {
+            "ticker": "KXHIGHNY-26AUG20-B67.5",
+            "entry_prob": 0.9,
+            "outcome": "no",  # error = 0.81
+            "city": None,
+        }
+        from unittest.mock import patch
+
+        with patch("paper.get_all_trades", return_value=[between_trade]):
+            bs = tracker.brier_score()
+
+        self.assertIsNone(bs)
+
+
+class TestExcludedBrierConditionTypes(unittest.TestCase):
+    """Tests for tracker._excluded_brier_condition_types() (backlog.txt
+    "BRIER-FAMILY CONDITION_TYPE EXCLUSION LIST HAS NO COUPLING TO
+    RAIN/SNOW/HURRICANE GRADUATION GATES"): the exclusion set is dynamically
+    coupled to each shadow-only market family's own live-trading gate,
+    except 'between' which has no gate and is always excluded. Mutation-
+    tested via Edit (temporarily changing `if not gate_fn():` to
+    `if True:` so no gate flip could ever remove a type from the exclusion
+    set, re-running, then restoring): test_gate_active_removes_its_own_
+    condition_type_from_exclusion fails under that mutation (asserts a type
+    IS removed); test_between_always_excluded_even_when_all_gates_active
+    correctly still passes (between's exclusion doesn't depend on any gate,
+    so that mutation can't affect it) -- confirming it's a genuine positive
+    control for the gate-independence claim, not a redundant duplicate."""
+
+    def test_all_gates_inactive_excludes_all_six(self):
+        """Matches today's real production state (no *_TRADING_ENABLED flag
+        set) -- same 6-type set the old hardcoded tuple always excluded."""
+        import weather_markets as wm
+
+        with (
+            patch.object(wm, "_rain_gates_active", return_value=False),
+            patch.object(wm, "_snow_gates_active", return_value=False),
+            patch.object(wm, "_hurricane_count_gates_active", return_value=False),
+            patch.object(wm, "_hurricane_next_event_gates_active", return_value=False),
+            patch.object(wm, "_storm_order_gates_active", return_value=False),
+        ):
+            excluded = tracker._excluded_brier_condition_types()
+
+        self.assertEqual(
+            excluded,
+            frozenset(
+                {
+                    "between",
+                    "precip_month_total",
+                    "snow_month_total",
+                    "hurricane_count",
+                    "hurricane_next_event",
+                    "storm_order",
+                }
+            ),
+        )
+
+    def test_gate_active_removes_its_own_condition_type_from_exclusion(self):
+        """When a family's gate flips active, its condition_type stops being
+        excluded -- the other 4 gate-backed types (all still inactive) and
+        'between' remain excluded."""
+        import weather_markets as wm
+
+        with (
+            patch.object(wm, "_rain_gates_active", return_value=True),
+            patch.object(wm, "_snow_gates_active", return_value=False),
+            patch.object(wm, "_hurricane_count_gates_active", return_value=False),
+            patch.object(wm, "_hurricane_next_event_gates_active", return_value=False),
+            patch.object(wm, "_storm_order_gates_active", return_value=False),
+        ):
+            excluded = tracker._excluded_brier_condition_types()
+
+        self.assertNotIn("precip_month_total", excluded)
+        self.assertIn("snow_month_total", excluded)
+        self.assertIn("between", excluded)
+
+    def test_between_always_excluded_even_when_all_gates_active(self):
+        """'between' has no gate of its own -- it must stay excluded even in
+        the hypothetical where every other market family has gone live."""
+        import weather_markets as wm
+
+        with (
+            patch.object(wm, "_rain_gates_active", return_value=True),
+            patch.object(wm, "_snow_gates_active", return_value=True),
+            patch.object(wm, "_hurricane_count_gates_active", return_value=True),
+            patch.object(wm, "_hurricane_next_event_gates_active", return_value=True),
+            patch.object(wm, "_storm_order_gates_active", return_value=True),
+        ):
+            excluded = tracker._excluded_brier_condition_types()
+
+        self.assertEqual(excluded, frozenset({"between"}))
+
+    def test_gate_exception_fails_closed(self):
+        """If a gate function's own state can't be determined (raises), its
+        condition_type must stay excluded rather than silently being treated
+        as live -- matches this exclusion's safety-gate posture."""
+        import weather_markets as wm
+
+        with (
+            patch.object(
+                wm, "_rain_gates_active", side_effect=RuntimeError("db locked")
+            ),
+            patch.object(wm, "_snow_gates_active", return_value=False),
+            patch.object(wm, "_hurricane_count_gates_active", return_value=False),
+            patch.object(wm, "_hurricane_next_event_gates_active", return_value=False),
+            patch.object(wm, "_storm_order_gates_active", return_value=False),
+        ):
+            excluded = tracker._excluded_brier_condition_types()
+
+        self.assertIn("precip_month_total", excluded)
+
+    def test_weather_markets_import_failure_fails_closed(self):
+        """Opus-review finding M1: the original implementation had
+        `import weather_markets as _wm` OUTSIDE the try/except, so a
+        weather_markets import failure raised ModuleNotFoundError instead
+        of failing closed like every gate-check exception already did --
+        contradicting this function's own docstring. Simulate an import
+        failure by making the `weather_markets` name unresolvable."""
+        import builtins
+
+        real_import = builtins.__import__
+
+        def _blocked_import(name, *args, **kwargs):
+            if name == "weather_markets":
+                raise ImportError("simulated import failure")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=_blocked_import):
+            excluded = tracker._excluded_brier_condition_types()
+
+        # Must not raise, and must exclude every gate-backed type (fail closed).
+        self.assertEqual(excluded, tracker._ALWAYS_EXCLUDED_CONDITION_TYPES)
+
+
+class TestPaperTradeConditionTypeClassifier(unittest.TestCase):
+    """Tests for tracker._paper_trade_excluded_condition_type() (backlog.txt
+    "BRIER_SCORE()'S PAPER_TRADES.DB FALLBACK HAS NO CONDITION_TYPE FILTER").
+    Mutation-tested via Edit (temporarily making the function always `return
+    None`, re-running, then restoring): every test below except
+    test_normal_above_below_ticker_returns_none and
+    test_empty_or_none_ticker_returns_none fails under that mutation --
+    those two are deliberate positive/negative controls whose expected
+    result (None) is unaffected by it."""
+
+    def test_classifies_rain_monthly_ticker(self):
+        self.assertEqual(
+            tracker._paper_trade_excluded_condition_type("KXRAINDENM-26JUL-7"),
+            "precip_month_total",
+        )
+
+    def test_classifies_snow_monthly_ticker(self):
+        import weather_markets as wm
+
+        snow_prefix = next(iter(wm._KXSNOW_MONTHLY_CITY))
+        self.assertEqual(
+            tracker._paper_trade_excluded_condition_type(f"{snow_prefix}-26JAN-5"),
+            "snow_month_total",
+        )
+
+    def test_classifies_hurricane_count_ticker(self):
+        """Covers every member of _HURRICANE_COUNT_SERIES, not an arbitrary
+        one via next(iter(...)) -- opus-review finding L7: a set-order-
+        dependent pick meant coverage of the 5 real series (including the
+        EPAC/CPAC-infix shapes like KXHURRICANE) varied by process/run."""
+        import weather_markets as wm
+
+        self.assertTrue(wm._HURRICANE_COUNT_SERIES)
+        for series in wm._HURRICANE_COUNT_SERIES:
+            with self.subTest(series=series):
+                self.assertEqual(
+                    tracker._paper_trade_excluded_condition_type(f"{series}-26-T3"),
+                    "hurricane_count",
+                )
+
+    def test_classifies_hurricane_next_event_ticker(self):
+        self.assertEqual(
+            tracker._paper_trade_excluded_condition_type("KXNEXTHURDATE-26AUG20"),
+            "hurricane_next_event",
+        )
+
+    def test_classifies_storm_order_ticker(self):
+        self.assertEqual(
+            tracker._paper_trade_excluded_condition_type("KXFIRSTHURRICANE-26-ARTHUR"),
+            "storm_order",
+        )
+
+    def test_classifies_between_bracket_ticker(self):
+        self.assertEqual(
+            tracker._paper_trade_excluded_condition_type("KXHIGHNY-26AUG20-B67.5"),
+            "between",
+        )
+
+    def test_normal_above_below_ticker_returns_none(self):
+        """Positive control: an ordinary T-suffix (above/below) ticker is NOT
+        one of the 6 excluded types and must classify as None."""
+        self.assertIsNone(
+            tracker._paper_trade_excluded_condition_type("KXHIGHNY-26AUG20-T68")
+        )
+
+    def test_empty_or_none_ticker_returns_none(self):
+        self.assertIsNone(tracker._paper_trade_excluded_condition_type(""))
+        self.assertIsNone(tracker._paper_trade_excluded_condition_type(None))
+
+    def test_non_str_ticker_does_not_raise(self):
+        """Opus-review finding M2: a truthy non-str `ticker` (e.g. a paper
+        trade record with a malformed/wrong-typed ticker field) used to
+        raise AttributeError at `.upper()` before the docstring's "never
+        raises" claim was made true -- verify every non-str shape from the
+        original review's reproduction is now handled."""
+        for bad_ticker in (123, 45.6, ["x"], {"a": 1}, object()):
+            with self.subTest(bad_ticker=bad_ticker):
+                self.assertIsNone(
+                    tracker._paper_trade_excluded_condition_type(bad_ticker)
+                )
+
+
+class TestBrierFamilyNewlyFilteredFunctions(unittest.TestCase):
+    """Tests for the 5 Brier-family functions that had ZERO condition_type
+    filtering before this fix (backlog.txt "SEVERAL BRIER-FAMILY FUNCTIONS
+    STILL HAVE NO CONDITION_TYPE FILTER"): brier_score_rolling_with_n(),
+    get_brier_over_time(), brier_score_by_method(), brier_score_by_method_
+    rolling(), brier_score_probation_rolling(). One mutation-testable
+    exclusion assertion per function (mutation-tested via Edit: temporarily
+    reverting each function's added condition_type WHERE-clause fragment,
+    re-running, then restoring -- each test below failed without its
+    function's filter and passes with it)."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_newly_filtered.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _insert(
+        self, ticker, our_prob, settled_yes, condition_type="above", method="ensemble"
+    ):
+        analysis = {
+            "condition": {"type": condition_type, "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.50,
+            "edge": our_prob - 0.50,
+            "method": method,
+            "n_members": 20,
+        }
+        tracker.log_prediction(ticker, "NYC", date(2099, 1, 1), analysis)
+        tracker.log_outcome(ticker, settled_yes)
+
+    def test_brier_score_rolling_with_n_excludes_shadow_type(self):
+        self._insert("TK-BASE", 1.0, True, condition_type="above")  # perfect
+        self._insert(
+            "TK-SHADOW", 0.0, True, condition_type="between"
+        )  # would be error=1.0
+        brier, n = tracker.brier_score_rolling_with_n(weeks=52)
+        self.assertEqual(n, 1)
+        self.assertAlmostEqual(brier, 0.0, places=6)
+
+    def test_get_brier_over_time_excludes_shadow_type(self):
+        self._insert("TK-BASE", 1.0, True, condition_type="above")
+        self._insert("TK-SHADOW", 0.0, True, condition_type="storm_order")
+        weeks = tracker.get_brier_over_time(weeks=52)
+        # Both rows land in the same ISO week, so a bare len(weeks)==1 check
+        # would hold with or without the filter (opus-review finding L8) --
+        # the brier value below is the mutation-sensitive assertion: if the
+        # shadow row leaked in, this would average to a non-zero value.
+        self.assertEqual(len(weeks), 1)
+        self.assertAlmostEqual(weeks[0]["brier"], 0.0, places=6)
+
+    def test_brier_score_by_method_excludes_shadow_type(self):
+        for i in range(20):
+            self._insert(f"TK-BASE-{i}", 1.0, True, condition_type="above")
+        for i in range(20):
+            self._insert(f"TK-SHADOW-{i}", 0.0, True, condition_type="hurricane_count")
+        result = tracker.brier_score_by_method(min_samples=20)
+        self.assertIn("ensemble", result)
+        self.assertAlmostEqual(result["ensemble"], 0.0, places=6)
+
+    def test_brier_score_by_method_rolling_excludes_shadow_type(self):
+        self._insert("TK-BASE", 1.0, True, condition_type="above")
+        self._insert("TK-SHADOW", 0.0, True, condition_type="hurricane_next_event")
+        result = tracker.brier_score_by_method_rolling(window=20, min_samples=1)
+        self.assertIn("ensemble", result)
+        self.assertAlmostEqual(result["ensemble"], 0.0, places=6)
+
+    def test_brier_score_probation_rolling_excludes_shadow_type(self):
+        for ticker, prob, settled, ctype in [
+            ("TK-BASE-0", 1.0, True, "above"),
+            ("TK-BASE-1", 1.0, True, "above"),
+            ("TK-SHADOW-0", 0.0, True, "snow_month_total"),
+            ("TK-SHADOW-1", 0.0, True, "snow_month_total"),
+        ]:
+            self._insert(ticker, prob, settled, condition_type=ctype)
+            with tracker._conn() as con:
+                con.execute(
+                    "UPDATE predictions SET is_probation = 1 WHERE ticker = ?",
+                    (ticker,),
+                )
+        result = tracker.brier_score_probation_rolling(
+            "ensemble", window=20, min_samples=2
+        )
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result, 0.0, places=6)
+
+
+class TestAlwaysExcludedConditionTypesNotGateCoupled(unittest.TestCase):
+    """Tests for opus-review finding M5 (batch-06): get_rolling_win_rate(),
+    get_metar_lockout_calibration_data(), get_multiday_calibration_cli(),
+    and get_sameday_calibration_cli() must stay excluded for all 6
+    condition_types EVEN when every market-family gate is active --
+    their own docstrings give a structural/scale-mismatch/not-yet-
+    validated reason for the exclusion, not a shadow-market-family one,
+    so (unlike brier_score()/count_settled_predictions()/the 5 functions
+    in TestBrierFamilyNewlyFilteredFunctions) they must NOT auto-include a
+    type's rows just because that family went live. Mutation-tested via
+    Edit (reverting each function's _ALWAYS_EXCLUDED_CONDITION_TYPES back
+    to _excluded_brier_condition_types(), re-running, then restoring): all
+    4 tests below failed under that mutation with every gate patched
+    active, confirming they'd have wrongly started counting the shadow row
+    if M5 hadn't been fixed."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_always_excluded.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _insert(
+        self,
+        ticker,
+        our_prob,
+        settled_yes,
+        condition_type="above",
+        method="ensemble",
+        days_out=None,
+    ):
+        analysis = {
+            "condition": {"type": condition_type, "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.50,
+            "edge": our_prob - 0.50,
+            "method": method,
+            "n_members": 20,
+        }
+        if days_out is not None:
+            analysis["days_out"] = days_out
+        tracker.log_prediction(ticker, "NYC", date(2099, 1, 1), analysis)
+        tracker.log_outcome(ticker, settled_yes)
+
+    def _all_gates_active(self):
+        import weather_markets as wm
+
+        return (
+            patch.object(wm, "_rain_gates_active", return_value=True),
+            patch.object(wm, "_snow_gates_active", return_value=True),
+            patch.object(wm, "_hurricane_count_gates_active", return_value=True),
+            patch.object(wm, "_hurricane_next_event_gates_active", return_value=True),
+            patch.object(wm, "_storm_order_gates_active", return_value=True),
+        )
+
+    def test_get_rolling_win_rate_stays_excluded_with_all_gates_active(self):
+        self._insert("TK-BASE", 1.0, True, condition_type="above")
+        self._insert("TK-SHADOW", 0.0, True, condition_type="precip_month_total")
+        p1, p2, p3, p4, p5 = self._all_gates_active()
+        with p1, p2, p3, p4, p5:
+            win_rate, count = tracker.get_rolling_win_rate(window=20)
+        # If precip_month_total leaked in, count would be 2 and win_rate < 1.0.
+        self.assertEqual(count, 1)
+        self.assertAlmostEqual(win_rate, 1.0, places=6)
+
+    def test_get_metar_lockout_calibration_data_stays_excluded_with_all_gates_active(
+        self,
+    ):
+        self._insert(
+            "TK-BASE",
+            1.0,
+            True,
+            condition_type="above",
+            method="metar_lockout",
+            days_out=0,
+        )
+        self._insert(
+            "TK-SHADOW",
+            0.0,
+            True,
+            condition_type="hurricane_count",
+            method="metar_lockout",
+            days_out=0,
+        )
+        p1, p2, p3, p4, p5 = self._all_gates_active()
+        with p1, p2, p3, p4, p5:
+            rows = tracker.get_metar_lockout_calibration_data()
+        self.assertEqual(len(rows), 1)
+
+    def test_get_multiday_calibration_cli_stays_excluded_with_all_gates_active(self):
+        self._insert("TK-BASE", 1.0, True, condition_type="above")
+        self._insert("TK-SHADOW", 0.0, True, condition_type="snow_month_total")
+        p1, p2, p3, p4, p5 = self._all_gates_active()
+        with p1, p2, p3, p4, p5:
+            result = tracker.get_multiday_calibration_cli()
+        self.assertEqual(result["n"], 1)
+
+    def test_get_sameday_calibration_cli_stays_excluded_with_all_gates_active(self):
+        self._insert("TK-BASE", 1.0, True, condition_type="above", days_out=0)
+        self._insert("TK-SHADOW", 0.0, True, condition_type="storm_order", days_out=0)
+        p1, p2, p3, p4, p5 = self._all_gates_active()
+        with p1, p2, p3, p4, p5:
+            result = tracker.get_sameday_calibration_cli()
+        self.assertEqual(result["n"], 1)
 
 
 class TestBrierByConditionTypeRolling(unittest.TestCase):
