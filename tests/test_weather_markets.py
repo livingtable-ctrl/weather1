@@ -6504,15 +6504,33 @@ class TestComputePersistenceProbRefactorSafetyNet:
             "persistence signal entirely"
         )
 
-    def test_uses_instantaneous_temp_for_min_var(self, monkeypatch):
-        """var='min' must use the instantaneous current temp, not max_temp_f
-        (the daily-max special case only applies to var='max')."""
+    def test_uses_metar_daily_extreme_when_station_available_for_min_var(
+        self, monkeypatch
+    ):
+        """AUD-0020 fix: var='min' at days_out=0 with a resolvable METAR
+        station must prefer the real running daily LOW from metar.fetch_
+        metar_daily_extreme(..., "min") over the instantaneous current temp,
+        symmetric with var='max''s existing daily-high preference (the
+        morning low may have already occurred and be lower than 'right
+        now'). Supersedes the old test_uses_instantaneous_temp_for_min_var,
+        which asserted the pre-fix behavior this fix eliminates."""
+        import metar as _metar
         import weather_markets as wm
 
         monkeypatch.setattr(
             "nws.get_live_observation",
-            lambda *a, **kw: {"max_temp_f": 82.0, "temp_f": 61.0},
+            lambda *a, **kw: {"temp_f": 61.0, "timestamp": "", "description": ""},
         )
+        monkeypatch.setattr(wm, "_metar_station_for_city", lambda city: "KJFK")
+        captured_extreme_args = {}
+
+        def _fake_daily_extreme(station, city_tz, target_date, extreme):
+            captured_extreme_args["station"] = station
+            captured_extreme_args["city_tz"] = city_tz
+            captured_extreme_args["extreme"] = extreme
+            return 58.0
+
+        monkeypatch.setattr(_metar, "fetch_metar_daily_extreme", _fake_daily_extreme)
         captured = {}
 
         def _fake_persistence(cond_type, lo, hi, current_temp):
@@ -6529,7 +6547,50 @@ class TestComputePersistenceProbRefactorSafetyNet:
             days_out=0,
         )
         assert result == pytest.approx(0.33)
-        assert captured["current_temp"] == pytest.approx(61.0)
+        assert captured["current_temp"] == pytest.approx(58.0), (
+            "must use the real METAR daily min (58.0), not the instantaneous "
+            "current temp (61.0), for a var='min' days_out=0 lookup with a "
+            "resolvable station"
+        )
+        assert captured_extreme_args == {
+            "station": "KJFK",
+            "city_tz": "America/New_York",
+            "extreme": "min",
+        }
+
+    def test_no_metar_station_falls_back_to_instantaneous_temp_for_min_var(
+        self, monkeypatch
+    ):
+        """var='min' with no resolvable METAR station must still fall back
+        to the instantaneous temp_f, mirroring var='max''s existing
+        no-station fallback test."""
+        import weather_markets as wm
+
+        monkeypatch.setattr(
+            "nws.get_live_observation",
+            lambda *a, **kw: {"temp_f": 61.0, "timestamp": "", "description": ""},
+        )
+        monkeypatch.setattr(wm, "_metar_station_for_city", lambda city: None)
+        captured = {}
+
+        def _fake_persistence(cond_type, lo, hi, current_temp):
+            captured["current_temp"] = current_temp
+            return 0.33
+
+        monkeypatch.setattr("climatology.persistence_prob", _fake_persistence)
+        result = wm._compute_persistence_prob(
+            "NYC",
+            (40.0, -74.0, "America/New_York"),
+            {"type": "below", "threshold": 65.0},
+            "min",
+            61.0,
+            days_out=0,
+        )
+        assert result == pytest.approx(0.33)
+        assert captured["current_temp"] == pytest.approx(61.0), (
+            "with no METAR station available, must fall back to the "
+            "instantaneous temp_f (61.0)"
+        )
 
     def test_exception_in_lookup_returns_none_not_raises(self, monkeypatch):
         import weather_markets as wm

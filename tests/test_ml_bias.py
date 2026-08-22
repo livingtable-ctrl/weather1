@@ -1956,6 +1956,192 @@ class TestFitAndSaveMetarCalibration:
         assert result is None
         assert not cal_path.exists()
 
+    def test_warns_when_calibrated_ceiling_crosses_force_close_threshold(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """AUD-0038: a future retrain whose fit pushes the calibrated output
+        range past cron.py's >=0.80 force-close gate must log a WARNING
+        (not fail silently). fit=(0.13, 0.13, 0.94) is a tight boundary
+        case (independent-review-strengthened, replacing an earlier
+        a=b=5.0 test that drove both ceilings to ~1.0 simultaneously and so
+        couldn't isolate which one -- or the >=0.80 comparison itself --
+        actually triggered the warning): it yields a YES-lock ceiling of
+        ~0.8009 (just over the gate) while the NO-lock ceiling (~0.3803)
+        stays well clear and neither direction trips the correction-cap
+        bypass, so only the YES ceiling crossing >=0.80 can explain the
+        warning firing."""
+        import logging
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        cal_path = tmp_path / "metar_lockout_calibration.json"
+        monkeypatch.setattr(ml_bias, "_METAR_CALIBRATION_PATH", cal_path)
+        monkeypatch.setattr(tracker, "get_metar_lockout_calibration_data", lambda: [])
+        monkeypatch.setattr(
+            ml_bias, "fit_metar_calibration", lambda rows: (0.13, 0.13, 0.94)
+        )
+
+        with caplog.at_level(logging.WARNING, logger="ml_bias"):
+            result = ml_bias.fit_and_save_metar_calibration()
+
+        assert result == (0.13, 0.13, 0.94)
+        assert any("force-close gate" in r.message for r in caplog.records), (
+            "expected a WARNING naming the crossed force-close gate"
+        )
+
+    def test_no_warning_when_calibrated_ceiling_stays_just_below_threshold(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """Tight positive control for the above: fit=(0.12, 0.12, 0.94)
+        differs from the warning test's fit by only 0.01 in `a`/`b` and
+        yields a YES-lock ceiling of ~0.7953 -- just under the gate, with
+        the NO-lock ceiling and bypass logic unchanged from the warning
+        case. A mutant that flips >= to >, or changes the 0.80 constant,
+        would pass the previous test but is caught here (or vice versa)."""
+        import logging
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        cal_path = tmp_path / "metar_lockout_calibration.json"
+        monkeypatch.setattr(ml_bias, "_METAR_CALIBRATION_PATH", cal_path)
+        monkeypatch.setattr(tracker, "get_metar_lockout_calibration_data", lambda: [])
+        monkeypatch.setattr(
+            ml_bias, "fit_metar_calibration", lambda rows: (0.12, 0.12, 0.94)
+        )
+
+        with caplog.at_level(logging.WARNING, logger="ml_bias"):
+            result = ml_bias.fit_and_save_metar_calibration()
+
+        assert result == (0.12, 0.12, 0.94)
+        assert not any("force-close gate" in r.message for r in caplog.records)
+
+    def test_no_warning_missed_production_coefficients_stay_dormant(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """The real currently-fitted production coefficients (a=b=0.2262,
+        c=0.4001, verified dormant by AUD-0035/AUD-0038) must not emit the
+        warning -- a real-world sanity check distinct from the synthetic
+        boundary cases above."""
+        import logging
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        cal_path = tmp_path / "metar_lockout_calibration.json"
+        monkeypatch.setattr(ml_bias, "_METAR_CALIBRATION_PATH", cal_path)
+        monkeypatch.setattr(tracker, "get_metar_lockout_calibration_data", lambda: [])
+        monkeypatch.setattr(
+            ml_bias,
+            "fit_metar_calibration",
+            lambda rows: (0.22619580826228397, 0.22619580826228397, 0.4000758536385143),
+        )
+
+        with caplog.at_level(logging.WARNING, logger="ml_bias"):
+            result = ml_bias.fit_and_save_metar_calibration()
+
+        assert result is not None
+        assert not any("force-close gate" in r.message for r in caplog.records)
+
+    def test_warns_via_correction_cap_bypass_even_when_naive_ceiling_is_low(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """Independent-review regression guard (F3): a naive ceiling model
+        that ignores settlement_monitor._calibrate_metar_settlement_
+        confidence's own correction-cap bypass (returns the RAW,
+        uncalibrated confidence whenever the correction delta exceeds
+        _METAR_CORRECTION_LIMIT=0.60) is INVERTED from the actual risk. A
+        fit that pushes the calibrated value down hard produces a LOW
+        naive ceiling (no warning) while being MORE likely to trip the
+        0.60 cap and let the raw 0.97 confidence reach cron.py uncapped.
+        fit=(0.1, 0.1, 1.0) calibrates to ~0.79/~0.34 (both under 0.80 --
+        a naive model would stay silent), but its NO-direction correction
+        delta is ~0.63 > 0.60, so the bypass fires and the EFFECTIVE
+        NO-lock confidence cron.py actually receives is the raw 0.97 --
+        the fix must warn on this fit."""
+        import logging
+
+        import ml_bias
+        import tracker
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        cal_path = tmp_path / "metar_lockout_calibration.json"
+        monkeypatch.setattr(ml_bias, "_METAR_CALIBRATION_PATH", cal_path)
+        monkeypatch.setattr(tracker, "get_metar_lockout_calibration_data", lambda: [])
+        monkeypatch.setattr(
+            ml_bias, "fit_metar_calibration", lambda rows: (0.1, 0.1, 1.0)
+        )
+
+        with caplog.at_level(logging.WARNING, logger="ml_bias"):
+            result = ml_bias.fit_and_save_metar_calibration()
+
+        assert result == (0.1, 0.1, 1.0)
+        assert any("force-close gate" in r.message for r in caplog.records), (
+            "expected the correction-cap bypass to be caught by the ceiling model"
+        )
+
+    def test_threshold_literals_match_their_source_of_truth(self):
+        """Independent-review finding (F5): fit_and_save_metar_calibration's
+        _CRON_FORCE_CLOSE_THRESHOLD and _METAR_CORRECTION_LIMIT are
+        hand-copied literals with no structural link to cron.py's actual
+        force-close gate or settlement_monitor.py's actual correction cap
+        -- only a comment ties them together. This doesn't make them
+        structurally coupled, but it does catch drift: if either source
+        value is ever changed without updating this literal, this test
+        fails immediately instead of the ceiling model silently watching
+        the wrong number."""
+        import re
+        from pathlib import Path
+
+        # Deliberately resolved relative to THIS test file, not via paths.py
+        # -- paths.py's project-root resolution always points at the main
+        # clone regardless of which worktree is running, which would make
+        # this test check the wrong checkout's source when run from a
+        # worktree.
+        repo_root = Path(__file__).resolve().parent.parent
+
+        cron_src = (repo_root / "cron.py").read_text(encoding="utf-8")
+        assert re.search(r"_sig_conf\s*>=\s*0\.80", cron_src) is not None, (
+            "cron.py's settlement force-close threshold literal appears to have changed"
+        )
+
+        settlement_src = (repo_root / "settlement_monitor.py").read_text(
+            encoding="utf-8"
+        )
+        # Anchored to the actual assignment (start-of-line, end-of-line) --
+        # review finding: an unanchored version of this regex also matched
+        # the docstring prose a few lines above the real assignment
+        # ("Uses its own correction cap (_METAR_CORRECTION_LIMIT = 0.60)"),
+        # which would keep passing even if the real assignment's value
+        # drifted, since the docstring wasn't updated in lockstep.
+        assert (
+            re.search(r"^\s*_METAR_CORRECTION_LIMIT = 0\.60\s*$", settlement_src, re.M)
+            is not None
+        ), "settlement_monitor.py's correction-cap literal appears to have changed"
+
+        # Round-3 review finding (F8): the checks above only catch the
+        # SOURCE files drifting -- editing ml_bias.py's own local copies of
+        # these literals (inside fit_and_save_metar_calibration itself)
+        # would leave this test green, since neither prior assertion reads
+        # ml_bias.py's own source. Check those too.
+        ml_bias_src = (repo_root / "ml_bias.py").read_text(encoding="utf-8")
+        assert (
+            re.search(r"^\s*_CRON_FORCE_CLOSE_THRESHOLD = 0\.80\b", ml_bias_src, re.M)
+            is not None
+        ), "ml_bias.py's own _CRON_FORCE_CLOSE_THRESHOLD copy appears to have changed"
+        assert (
+            re.search(r"^\s*_METAR_CORRECTION_LIMIT = 0\.60\b", ml_bias_src, re.M)
+            is not None
+        ), "ml_bias.py's own _METAR_CORRECTION_LIMIT copy appears to have changed"
+
 
 class TestCmdCalibrateMetarBlock:
     """cmd_calibrate()'s new METAR lock-in beta-calibration block, mirroring

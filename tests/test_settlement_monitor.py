@@ -271,6 +271,95 @@ class TestCheckBetweenSettlement:
         )
         assert result["locked"] is False
 
+    def test_yes_gated_on_max_temp_not_current_temp_when_current_exceeds_max(self):
+        """AUD-0016 regression guard: a still-rising instantaneous reading
+        (current_temp_f=67.0) that is IN-band must not lock YES when the
+        independently-cached authoritative running high (max_temp_f=65.0)
+        is still below the band — the exact scenario the audit reproduced.
+        Before the fix, comp_temp = max(current_temp_f, max_temp_f) reduced
+        to current_temp_f here and the lock fired off the instantaneous
+        reading alone, contradicting this function's own 'YES only from a
+        REAL max_temp_f' invariant."""
+        from settlement_monitor import _check_between_settlement
+
+        result = _check_between_settlement(
+            current_temp_f=67.0, lower_f=66.5, upper_f=68.5, max_temp_f=65.0
+        )
+        assert result["locked"] is False
+
+    def test_yes_lock_uses_comp_temp_for_clearance_and_reporting(self):
+        """AUD-0016 round-2 fix: clearance (and the reported comp_temp_f)
+        is measured against comp_temp = max(current_temp_f, max_temp_f),
+        not max_temp_f alone -- current_temp_f=70.0 is fresher/higher than
+        max_temp_f=69.5 but still within the band (<= upper_f=71.5), so
+        the lock still fires, but with the NARROWER clearance the fresher
+        reading actually leaves (1.5, not the 2.0 max_temp_f alone would
+        suggest), and comp_temp_f correctly reports 70.0 (the value the
+        confidence was actually computed from), not the stale 69.5."""
+        from settlement_monitor import _check_between_settlement
+
+        # comp_temp = max(70.0, 69.5) = 70.0; clearance = 71.5-70.0 = 1.5
+        # >= margin (1.0) -> locks YES.
+        result = _check_between_settlement(
+            current_temp_f=70.0, lower_f=69.5, upper_f=71.5, max_temp_f=69.5
+        )
+        assert result["locked"] is True
+        assert result["outcome"] == "yes"
+        assert result["confidence"] == pytest.approx(0.775, abs=0.001)
+        assert result["comp_temp_f"] == pytest.approx(70.0)
+
+    def test_yes_lock_still_fires_for_a_small_stale_max_disagreement(self):
+        """Positive control: a SMALL disagreement between current_temp_f
+        and max_temp_f (0.5°F) doesn't automatically block the lock --
+        only when the remaining clearance actually drops below the margin
+        (see the next test) does it refuse. Proves the mechanism is
+        "insufficient remaining margin", not "any divergence at all"."""
+        from settlement_monitor import _check_between_settlement
+
+        # max_temp_f=66.5 is at the lower edge of [66.5, 68.5]; comp_temp
+        # = max(67.0, 66.5) = 67.0; clearance = 68.5-67.0 = 1.5 >= margin
+        # (1.0) -> still locks YES.
+        result = _check_between_settlement(
+            current_temp_f=67.0, lower_f=66.5, upper_f=68.5, max_temp_f=66.5
+        )
+        assert result["locked"] is True
+        assert result["outcome"] == "yes"
+
+    def test_yes_refused_when_fresher_current_temp_eats_the_full_margin(self):
+        """Round-2 independent-review regression guard: the FIRST version
+        of the AUD-0016 fix measured clearance against max_temp_f alone
+        (not comp_temp), which made the gate MORE permissive than pre-fix
+        HEAD in exactly this scenario -- current_temp_f=68.0 is fresher/
+        higher than max_temp_f=66.5 and still within the band, but a
+        clearance measured against the stale max_temp_f (2.0) would
+        overstate the true margin; measured correctly against comp_temp
+        (0.5), it's below the 1.0 margin and must NOT lock. The first fix
+        incorrectly locked this at confidence 0.80 -- exactly cron.py's
+        force-close threshold."""
+        from settlement_monitor import _check_between_settlement
+
+        # comp_temp = max(68.0, 66.5) = 68.0; clearance = 68.5-68.0 = 0.5
+        # < margin (1.0) -> must NOT lock.
+        result = _check_between_settlement(
+            current_temp_f=68.0, lower_f=66.5, upper_f=68.5, max_temp_f=66.5
+        )
+        assert result["locked"] is False
+
+    def test_yes_refused_when_current_temp_has_cleared_the_band_entirely(self):
+        """Round-1 independent-review regression guard (the original
+        counter-example): current_temp_f=70.0 has already cleared
+        upper_f=68.5 entirely, while max_temp_f=66.5 is stale and still
+        shows in-band. comp_temp=70.0 pushes clearance negative
+        (68.5-70.0=-1.5), which fails the margin check outright -- no
+        separate veto needed once clearance is measured against comp_temp
+        rather than max_temp_f."""
+        from settlement_monitor import _check_between_settlement
+
+        result = _check_between_settlement(
+            current_temp_f=70.0, lower_f=66.5, upper_f=68.5, max_temp_f=66.5
+        )
+        assert result["locked"] is False
+
 
 class TestBTickerParsing:
     """B-ticker (between-bucket) detection in check_city_settlement."""
@@ -338,6 +427,80 @@ class TestBTickerParsing:
         assert signals[0]["ticker"] == "KXHIGHNY-26MAY17-B70.5"
         assert signals[0]["comp_temp_f"] == pytest.approx(69.5)
         assert signals[0]["max_temp_f"] == pytest.approx(69.5)
+
+    def test_b_ticker_log_labels_daily_high_when_comp_temp_is_max_temp(self, caplog):
+        """Round-3 independent-review regression guard (F2): the log-label
+        fix (settlement_monitor.py's check_city_settlement) was previously
+        untested -- a mutation reverting its condition to the weaker
+        `max_temp_f is not None` check survived the full suite. When
+        comp_temp_f actually equals max_temp_f (the ordinary case), the
+        log line must say "daily-high"."""
+        import logging
+        from datetime import datetime
+        from unittest.mock import patch
+
+        import settlement_monitor as sm
+
+        fake_obs = {"current_temp_f": 68.0, "obs_time": datetime.now(UTC)}
+        mock_market = {
+            "direction": "between",
+            "lower": 69.5,
+            "upper": 71.5,
+            "ticker": "KXHIGHNY-26MAY17-B70.5",
+            "threshold": None,
+        }
+
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            patch("metar.fetch_metar_daily_extreme", return_value=69.5),
+            caplog.at_level(logging.INFO, logger="settlement_monitor"),
+        ):
+            signals = sm.check_city_settlement("NYC", [mock_market])
+
+        assert len(signals) == 1
+        assert any("daily-high" in r.message for r in caplog.records), (
+            "expected the log line to label comp_temp_f as daily-high"
+        )
+        assert not any("current reading" in r.message for r in caplog.records)
+
+    def test_b_ticker_log_labels_current_reading_when_comp_temp_is_current_temp(
+        self, caplog
+    ):
+        """Positive control for the above: when current_temp_f is FRESHER/
+        higher than max_temp_f (comp_temp_f ends up equal to
+        current_temp_f, not max_temp_f), the log line must say "current
+        reading", not "daily-high" -- proving the label condition actually
+        distinguishes the two sources rather than only checking whether
+        max_temp_f was available."""
+        import logging
+        from datetime import datetime
+        from unittest.mock import patch
+
+        import settlement_monitor as sm
+
+        # current_temp_f=70.0 > max_temp_f=69.5 -> comp_temp_f=70.0.
+        fake_obs = {"current_temp_f": 70.0, "obs_time": datetime.now(UTC)}
+        mock_market = {
+            "direction": "between",
+            "lower": 69.5,
+            "upper": 71.5,
+            "ticker": "KXHIGHNY-26MAY17-B70.5",
+            "threshold": None,
+        }
+
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            patch("metar.fetch_metar_daily_extreme", return_value=69.5),
+            caplog.at_level(logging.INFO, logger="settlement_monitor"),
+        ):
+            signals = sm.check_city_settlement("NYC", [mock_market])
+
+        assert len(signals) == 1
+        assert signals[0]["comp_temp_f"] == pytest.approx(70.0)
+        assert any("current reading" in r.message for r in caplog.records), (
+            "expected the log line to label comp_temp_f as current reading"
+        )
+        assert not any("daily-high" in r.message for r in caplog.records)
 
     def test_b_ticker_no_signal_when_max_temp_unavailable_despite_in_band_reading(
         self,

@@ -557,6 +557,78 @@ def fit_and_save_metar_calibration() -> tuple[float, float, float] | None:
         c,
         len(rows),
     )
+
+    # AUD-0038: cron.py's settlement-lag force-close gate (>=0.80) is
+    # currently unreachable under typical fits (see
+    # settlement_monitor.py's _calibrate_metar_settlement_confidence
+    # docstring for the derivation) -- but that's a fact about a SPECIFIC
+    # fit, not a durable guarantee, since this function refits weekly from
+    # live data with no bound tying its output to that threshold. Warn
+    # loudly (not silently) the moment a refit's output range would
+    # actually reach the gate, so a dormant->active transition is visible
+    # instead of only discovered after it's already force-closed a trade.
+    _CRON_FORCE_CLOSE_THRESHOLD = 0.80  # must track cron.py's literal >= 0.80
+    # metar._dynamic_lock_in_confidence() hard-bounds its raw
+    # (direction-relative) confidence to [0.72, 0.97] -- see that
+    # function's own docstring. apply_metar_calibration's derivative wrt
+    # raw_p_yes is a/s + b/(1-s); fit_metar_calibration always returns
+    # a==b (see its own docstring), and both are required > 0 by
+    # _fit_platt, so the function is monotonic increasing in raw_p_yes for
+    # every fit this codebase actually produces. (apply_metar_calibration's
+    # own docstring notes the general asymmetric a!=b form is kept for a
+    # possible future fit source -- if one is ever added, this
+    # monotonicity assumption would need re-deriving for that case.) So
+    # the YES-lock ceiling is at raw_p_yes=0.97 and the NO-lock ceiling is
+    # at raw_p_yes=1-0.97=0.03.
+    #
+    # The EFFECTIVE confidence cron.py actually sees is NOT simply the
+    # calibrated value -- settlement_monitor._calibrate_metar_settlement_
+    # confidence() bypasses calibration entirely (returns the raw,
+    # uncapped confidence) whenever the correction delta exceeds its own
+    # _METAR_CORRECTION_LIMIT (0.60). A ceiling model that ignores this
+    # bypass is inverted from the actual risk (caught by independent
+    # review): a fit that pushes the calibrated value DOWN hard produces a
+    # LOW computed ceiling (no warning) while being MORE likely to trip
+    # the 0.60 cap and let the raw 0.97/0.97 pass through uncalibrated --
+    # e.g. fit=(0.1, 0.1, 1.0) calibrates to ~0.79/~0.34 (both under 0.80,
+    # no warning) but its NO-direction delta is ~0.63 > 0.60, so the
+    # bypass fires and cron.py actually sees the raw 0.97. Mirror the
+    # bypass here so the ceiling model matches what cron.py really gets.
+    _METAR_CORRECTION_LIMIT = 0.60  # must track settlement_monitor.py's own
+
+    def _effective_ceiling(raw_confidence: float, outcome: str) -> float:
+        # Mirrors _calibrate_metar_settlement_confidence's own
+        # raw_p_yes/new_confidence/delta derivation exactly.
+        raw_p_yes = raw_confidence if outcome == "yes" else (1.0 - raw_confidence)
+        new_p_yes = apply_metar_calibration(raw_p_yes, fit)
+        new_confidence = new_p_yes if outcome == "yes" else (1.0 - new_p_yes)
+        delta = abs(new_confidence - raw_confidence)
+        if delta > _METAR_CORRECTION_LIMIT:
+            return raw_confidence
+        return max(0.01, min(0.99, new_confidence))
+
+    _yes_ceiling = _effective_ceiling(0.97, "yes")
+    _no_ceiling = _effective_ceiling(0.97, "no")
+    _ceiling = max(_yes_ceiling, _no_ceiling)
+    if _ceiling >= _CRON_FORCE_CLOSE_THRESHOLD:
+        # "effective" not "calibrated" -- _ceiling may be the RAW,
+        # uncalibrated confidence when the correction-cap bypass fired
+        # (review finding: the earlier "reaches calibrated confidence"
+        # wording was misleading in exactly that case, the one thing this
+        # fix exists to distinguish from a genuinely well-calibrated fit).
+        _log.warning(
+            "fit_and_save_metar_calibration: newly fitted a=%.4f b=%.4f "
+            "c=%.4f (n=%d) reaches effective confidence %.3f, crossing "
+            "cron.py's >=%.2f settlement force-close gate -- this path is "
+            "no longer dormant, review before it force-closes a live trade",
+            a,
+            b,
+            c,
+            len(rows),
+            _ceiling,
+            _CRON_FORCE_CLOSE_THRESHOLD,
+        )
+
     return fit
 
 

@@ -21390,7 +21390,7 @@ Round-2 addendum 2026-08-21: a second independent opus review (effort=high,
   pre-existing skips, 0 failures. ruff/ruff-format/mypy clean via the
   actual pre-commit hooks.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Between-bucket settlement lock-in can lock YES off the instantaneous METAR reading despite a lower authoritative daily-high, contradicting its own documented invariant
+[RESOLVED 2026-08-21 -- batch-08] Between-bucket settlement lock-in can lock YES off the instantaneous METAR reading despite a lower authoritative daily-high, contradicting its own documented invariant
 Priority: MEDIUM (audit id AUD-0016, status CONFIRMED, confidence VERY HIGH, evidence E2)
 Files: settlement_monitor.py, metar.py, cron.py, tests/test_settlement_monitor.py
 
@@ -21401,6 +21401,138 @@ Problem:
   Financial risk: Feeds paper.close_paper_early() with no human review; a forced YES close on a temperature that has only just entered the band and may still climb books an incorrect settlement outcome, corrupting...
   Recommendation: Gate the in-band/YES check on max_temp_f itself, not max(current_temp_f, max_temp_f); use current_temp_f only for the already-correctly-reasoned NO branch. Add a regression test with max_temp_f present-but-lower-than-current_temp_f.
   Full record: audit/AUDIT_REPORT.json (id AUD-0016), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-21: Three-pass fix, each pass caught by an independent
+  opus review (effort:high) finding a real regression in the previous
+  pass -- self-review alone would have shipped either of the first two.
+  PASS 1 implemented the recommendation literally: gate strictly on
+  max_temp_f, drop comp_temp/max(current_temp_f, max_temp_f) entirely for
+  the YES branch. Review 1 found this let a merely-stale max_temp_f
+  override a FRESHER current_temp_f that had already cleared the band
+  (current=70.0 above a [66.5,68.5] band, stale max_temp_f=66.5 still
+  in-band -> locked YES) -- reopening the exact "two independently-cached
+  METAR fetches momentarily disagreeing" hazard this module's NO branch is
+  documented to guard against, just in the YES direction (confirmed via
+  fetch_metar_daily_extreme's own docstring: current_temp_f and max_temp_f
+  are genuinely separate cached fetches that CAN disagree). Surfaced the
+  resulting design choice via AskUserQuestion given the financial stakes
+  (paper P&L feeds is_accuracy_halted -> LiveTradingGate) rather than
+  guessing.
+  PASS 2 (user-selected fix): keep gating membership on max_temp_f (still
+  addresses the original audit's concern) but ADD a fresher-reading veto
+  -- refuse YES if current_temp_f itself has cleared upper_f. Review 2
+  found this veto only covers the extreme sub-case: it kept using
+  max_temp_f (not comp_temp) for the CLEARANCE calculation, which is
+  STRICTLY MORE PERMISSIVE than pre-batch HEAD for the whole disagreement
+  window between max_temp_f and upper_f (e.g. current=68.0, stale
+  max_temp_f=66.5, band=[66.5,68.5]: HEAD correctly refused; pass 2 locked
+  YES at confidence 0.800 -- exactly cron.py's force-close threshold). The
+  batch's own "positive control" test encoded this regression as intended
+  behavior.
+  PASS 3 (FINAL, review-2-recommended minimal fix): keep membership gated
+  on max_temp_f (unchanged, addresses the original audit's concern), but
+  measure CLEARANCE against comp_temp instead of max_temp_f, and remove
+  the pass-2 veto entirely (redundant once clearance uses comp_temp: since
+  comp_temp >= max_temp_f always, using comp_temp can only SHRINK the
+  measured clearance relative to max_temp_f, never grow it -- so this
+  can't resurrect the original AUD-0016 bug, which required max_temp_f
+  itself to be in-band independent of comp_temp -- while it correctly
+  refuses the lock the instant a fresher current_temp_f eats into the
+  margin, all the way to current_temp_f clearing upper_f outright, which
+  drives clearance negative and fails the margin check with no separate
+  veto needed). Returned "comp_temp_f" on a YES lock now reports comp_temp
+  (the value clearance/confidence were actually computed from), not
+  max_temp_f -- safe because locked=True guarantees comp_temp <= upper_f -
+  margin, so it's never outside the band that justified the lock.
+  Also fixed, same review passes, same file/function area (adjacency, step
+  18): (1) check_city_settlement's between-bucket signal log line
+  unconditionally said "daily-high" even when the logged comp_temp_f value
+  was really just current_temp_f (whenever current > max_temp_f, which
+  comp_temp_f can still equal even with max_temp_f present) -- exactly the
+  mislabeling class the AC3 bug's own postmortem says let it go unnoticed.
+  Now labels "daily-high" vs "current reading" based on whether comp_temp_f
+  actually equals max_temp_f, not merely whether max_temp_f was available
+  (review 1's first attempt at this fix used the weaker "available" check,
+  which review 2 caught as still wrong for the current>max_temp_f case).
+  Confirmed the between-bucket branch is HIGH-series-only (settlement_
+  monitor.py only ever monitors KXHIGH* series per _CITY_SERIES_TICKER's
+  own startswith("KXHIGH") filter, already documented in this function's
+  docstring) -- no LOW-market variant of this bug exists to fix alongside
+  it.
+  Final tests in tests/test_settlement_monitor.py::TestCheckBetweenSettlement
+  (replacing the pass-1/pass-2 tests that encoded now-superseded behavior):
+  test_yes_gated_on_max_temp_not_current_temp_when_current_exceeds_max
+  (original audit repro, current=67.0/max=65.0, locked=False -- unaffected
+  by any pass since max_temp_f itself is below-band); test_yes_lock_uses_
+  comp_temp_for_clearance_and_reporting (current=70.0/max=69.5/band=
+  [69.5,71.5]: locks YES with the NARROWER clearance comp_temp implies --
+  confidence 0.775 not the 0.80 max_temp_f alone would give -- and
+  comp_temp_f correctly reports 70.0); test_yes_lock_still_fires_for_a_
+  small_stale_max_disagreement (positive control: a small 0.5F disagreement
+  still leaves enough margin to lock, proving the mechanism is "margin",
+  not "any disagreement blocks"); test_yes_refused_when_fresher_current_
+  temp_eats_the_full_margin (review-2's exact counter-example, current=
+  68.0/max=66.5/band=[66.5,68.5], now correctly locked=False);
+  test_yes_refused_when_current_temp_has_cleared_the_band_entirely
+  (review-1's original counter-example, current=70.0/max=66.5, still
+  correctly locked=False, now via negative clearance rather than a
+  separate veto).
+  Mutation-tested each behavior independently via Edit (not string-replace
+  scripts) across all three passes: reverting the membership gate to
+  comp_temp, reverting clearance from comp_temp back to max_temp_f, and
+  reverting the comp_temp_f reporting field each broke exactly their own
+  targeted test(s) and no others; every mutation reverted before
+  continuing.
+  A THIRD independent opus review confirmed pass 3's fix is correct via
+  an independent mathematical containment proof (round-3's YES-locked set
+  is a strict subset of pre-batch HEAD's, so it cannot resurrect the
+  round-2 permissiveness regression) plus brute-force numerical scanning
+  -- but caught that the log-label fix's mutation-test claim above was
+  FALSE at the time it was written: no test asserted the log line's
+  content, so reverting the label condition to its weaker pre-fix form
+  (`max_temp_f is not None`, dropping the `comp_temp_f == max_temp_f`
+  check) silently passed the full suite. Fixed by adding two real tests in
+  tests/test_settlement_monitor.py::TestBTickerParsing (test_b_ticker_log_
+  labels_daily_high_when_comp_temp_is_max_temp and its positive control
+  test_b_ticker_log_labels_current_reading_when_comp_temp_is_current_temp,
+  via caplog) and re-running the exact mutation described above through
+  check_city_settlement's integration path -- now correctly fails on the
+  "current reading" case. The claim above is corrected to no longer
+  include the log-label condition among the originally-verified mutations
+  (it's now covered by its own dedicated tests instead).
+  Round 3 also surfaced a real MEDIUM finding OUTSIDE this batch's file
+  scope (step 27: different function, different consumer, needs its own
+  review cycle) -- weather_markets._metar_lock_in (the settlement_monitor
+  sibling this fix's own comments repeatedly cite) has the IDENTICAL
+  AUD-0016 defect on the live trade-entry path, never fixed to combine
+  current_temp_f with its daily-extreme cache. Filed as its own OPEN
+  backlog entry (see "weather_markets._metar_lock_in never combines..."
+  near the end of this file) rather than folded into this batch, per the
+  batch's own file-scope boundary and the genuinely-out-of-scope bar (a
+  live-entry-path fix needing its own multi-round review, not a quick
+  adjacent tweak).
+  Final scoped suite (tests/test_settlement_monitor.py, tests/
+  test_weather_markets.py, tests/test_ml_bias.py -- the same 3 files
+  batch-08's other items also touch): 400 passed, 4 skipped, 0 failed.
+  ruff/ruff-format/mypy via the actual pre-commit hook: all passed.
+  Independent review also flagged (all addressed, see AUD-0038's own
+  resolution note for F3/F5/F7; the rest below are documented no-ops, not
+  silently dropped per this project's workflow rule): (a) informational --
+  the between-bucket path never goes through _calibrate_metar_settlement_
+  confidence at all (T-ticker-only), so its own NO branch reaching >=0.80
+  is semantically correct today (a genuinely far-off bucket) and not a bug
+  -- but it means AUD-0035/AUD-0038's "dormant" framing only covers the
+  T-ticker calibration path, not this between-bucket path; the YES branch
+  can also reach 0.80 (2F band, full clearance, confirmed possible before
+  and after this batch) -- no code change, noted here for anyone
+  revisiting the force-close gate's overall reachability. (b) informational
+  -- AUD-0020 (below) extends an existing pre-b0f4cad2 pattern (daily-
+  extreme substituted into a persistence baseline meant for near-term/
+  hourly markets, and into a distribution that puts ~50% of its mass in a
+  now-physically-impossible direction once fed a running extreme) from
+  var="max" to var="min" symmetrically, exactly as this batch's own
+  recommendation asked; both concerns are pre-existing for the max side
+  already in production and out of scope for this batch to redesign.
 
 [RESOLVED 2026-08-21 -- batch-07] _target_date_due() still compares city-local target_date against UTC-today, missed by the 0100bffe/6364b38b fix sweep
 Priority: MEDIUM (audit id AUD-0017, status CONFIRMED, confidence VERY HIGH, evidence E2)
@@ -21444,7 +21576,7 @@ Resolution 2026-08-21 (batch-09 item 2): rewrote .env.example:45-49's
   UNPROTECTED escape hatch), mutation-tested by removing the raise and
   confirming the negative test fails.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _compute_persistence_prob's same-day daily-extreme fix (b0f4cad2) covers only var="max" (HIGH markets); var="min" (LOW markets) still uses the instantaneous METAR reading instead of the true running daily low
+[RESOLVED 2026-08-21 -- batch-08] _compute_persistence_prob's same-day daily-extreme fix (b0f4cad2) covers only var="max" (HIGH markets); var="min" (LOW markets) still uses the instantaneous METAR reading instead of the true running daily low
 Priority: MEDIUM (audit id AUD-0020, status CONFIRMED, confidence HIGH, evidence E1)
 Files: weather_markets.py, metar.py, tests/test_weather_markets.py, backlog.txt
 
@@ -21455,6 +21587,29 @@ Problem:
   Financial risk: This is a real (non-shadow) input to live trade probability/edge calculation for same-day LOW-type daily and hourly temperature markets whenever METAR has not yet locked. At a diluted 15% blend...
   Recommendation: Generalize the var=="max" branch in _compute_persistence_prob to also handle var=="min" symmetrically, calling metar.fetch_metar_daily_extreme(station, tz, local_today, "min") when var=="min" and days_out==0, falling back to temp_f exactly as the max branch does on failure. Update or replace the...
   Full record: audit/AUDIT_REPORT.json (id AUD-0020), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-21: Implemented exactly the recommendation, generalizing
+  the existing var=="max" guard to `var in ("max", "min")` and passing the
+  `var` parameter straight through to fetch_metar_daily_extreme's `extreme`
+  argument (it's already always the literal "max"/"min" string throughout
+  this codebase, confirmed by tracing every call site) instead of the
+  hardcoded "max" literal -- mirroring _metar_lock_in's existing max/min-
+  symmetric pattern in the same file. Replaced tests/test_weather_markets.
+  py's test_uses_instantaneous_temp_for_min_var (which asserted the pre-fix
+  behavior this change eliminates) with two new tests in
+  TestComputePersistenceProbRefactorSafetyNet: test_uses_metar_daily_
+  extreme_when_station_available_for_min_var (mirrors the existing max-side
+  test, asserts fetch_metar_daily_extreme is called with extreme="min" and
+  its return value is used, not the instantaneous temp) and test_no_metar_
+  station_falls_back_to_instantaneous_temp_for_min_var (no-station fallback
+  case, mirroring the existing max-side fallback test). Mutation-tested by
+  reverting the guard back to `var == "max"` (via Edit) -- the new min-var
+  daily-extreme test failed as expected (fallback test correctly still
+  passed, since that path was never broken); reverted the mutation before
+  continuing. Scoped suite (tests/test_settlement_monitor.py, tests/
+  test_weather_markets.py, tests/test_ml_bias.py): 396 collected, 392
+  passed, 4 skipped, 0 failed. ruff/ruff-format/mypy via the actual
+  pre-commit hook: all passed.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _log_shadow_predictions() re-opens the paper ledger and a fresh SQLite connection once per shadow ticker per cron cycle instead of once per batch
 Priority: MEDIUM (audit id AUD-0021, status CONFIRMED, confidence VERY HIGH, evidence E3)
@@ -21719,7 +21874,7 @@ Problem:
   Recommendation: Add test_halt_with_correct_password_but_no_csrf_header_returns_401 (and similarly for /api/run_cron, /api/resume) using a header dict with only Authorization set, asserting 401 -- mirroring the existing wrong-password test's structure but isolating the other half of the AND condition.
   Full record: audit/AUDIT_REPORT.json (id AUD-UNMATCHED-56), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] METAR settlement-lag force-close gate (cron.py's >=0.80 threshold) is mathematically unreachable under the currently fitted calibration model
+[RESOLVED 2026-08-21 -- batch-08, no-op] METAR settlement-lag force-close gate (cron.py's >=0.80 threshold) is mathematically unreachable under the currently fitted calibration model
 Priority: LOW (audit id AUD-0035, status CONFIRMED, confidence VERY HIGH, evidence E2)
 Files: cron.py, settlement_monitor.py, metar.py, ml_bias.py
 
@@ -21729,6 +21884,23 @@ Problem:
   Financial risk: Currently near-zero per the settlement_monitor.py docstring's own claim (cron.log/schtasks checks reportedly show this path has never fired against real trades) -- not independently re-verified this...
   Recommendation: Per backlog.txt's own entry: rescale the 0.80 threshold to the calibrated scale, or fit a settlement-path-specific calibration model once enough settlement-lag outcome rows exist.
   Full record: audit/AUDIT_REPORT.json (id AUD-0035), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-21: Deliberate no-op, explicit reasoned decision (not a
+  silent drop). Re-verified this session against the LIVE currently-fitted
+  calibration file (data/metar_lockout_calibration.json in the main clone,
+  refit 2026-08-20T21:53:35Z -- one day after the audit, same a=b=
+  0.22619580826228397/c=0.4000758536385143 coefficients and n=33, so the
+  refit converged to the identical fit): calibrated ceiling still 0.766
+  (YES) / 0.595 (NO), still below cron.py's >=0.80 gate. The finding's own
+  recommendation is explicitly conditional ("once enough settlement-lag
+  outcome rows exist") and settlement_monitor.py's own docstring says not
+  to rescale the gate speculatively before that data exists -- doing so
+  now would be inventing a threshold with no real settlement-lag outcome
+  data to calibrate it against. What this session DID ship instead is
+  AUD-0038's fix immediately below, which is the actionable half of this
+  same gap: an automated warning the moment a future refit's ceiling
+  actually crosses 0.80, so this dormancy fact stops being something that
+  has to be manually re-verified session to session.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Live cmd_order sell only closes the oldest of multiple tracked live positions sharing the same ticker+side (operator-warned, not auto-fixed)
 Priority: LOW (audit id AUD-0036, status CONFIRMED, confidence HIGH, evidence E1)
@@ -21741,7 +21913,7 @@ Problem:
   Recommendation: Already correctly deferred by its own authors pending the exposure-cap fix (Finding 1), which is the real root cause preventing duplicate live entries from accumulating. No independent action recommended.
   Full record: audit/AUDIT_REPORT.json (id AUD-0036), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] METAR-calibrated T-ticker settlement force-close gate's 'currently dormant' status is a coefficient-snapshot fact, not a durable invariant, given weekly auto-retrain
+[RESOLVED 2026-08-21 -- batch-08] METAR-calibrated T-ticker settlement force-close gate's 'currently dormant' status is a coefficient-snapshot fact, not a durable invariant, given weekly auto-retrain
 Priority: LOW (audit id AUD-0038, status CONFIRMED, confidence HIGH, evidence E2)
 Files: settlement_monitor.py, ml_bias.py, metar.py, cron.py
 
@@ -21752,6 +21924,93 @@ Problem:
   Financial risk: Low today (path is dormant); the risk is a future, unreviewed transition to active behavior in a path whose YES-branch has the separate correctness issue reported in Finding 1 above (the...
   Recommendation: Add a lightweight check at retrain time comparing the newly-fitted calibration's output range against cron.py's 0.80 force-close threshold, so a transition from dormant to active is visible rather than silent.
   Full record: audit/AUDIT_REPORT.json (id AUD-0038), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-21: Implemented the recommendation inside ml_bias.
+  fit_and_save_metar_calibration() itself (user-confirmed placement, not
+  cron.py's call site alone) -- this is the single canonical implementation
+  already shared by both `py main.py calibrate` and cron.py's weekly
+  auto-retrain block (per its own docstring), so the check now protects
+  both callers rather than only the scheduled one. After a successful fit
+  and save, computes the EFFECTIVE confidence ceiling cron.py would
+  actually see -- not just the naive calibrated value. Independent opus
+  review (effort:high) caught that a first-pass naive ceiling model (just
+  apply_metar_calibration(0.97/0.03, fit)) was inverted from the real risk:
+  settlement_monitor._calibrate_metar_settlement_confidence bypasses
+  calibration entirely (returns the RAW, uncapped confidence) whenever the
+  correction delta exceeds its own _METAR_CORRECTION_LIMIT (0.60) -- and a
+  fit that pushes the calibrated value down hard produces both a LOW naive
+  ceiling (no warning under the naive model) AND is more likely to trip
+  that 0.60 cap, letting the raw 0.97 reach cron.py uncapped. Fixed by
+  mirroring _calibrate_metar_settlement_confidence's exact raw_p_yes/
+  new_confidence/delta/bypass derivation in a new _effective_ceiling()
+  helper, so the ceiling model matches what cron.py actually receives.
+  Five tests in tests/test_ml_bias.py::TestFitAndSaveMetarCalibration
+  (up from an initial two, strengthened after review found the originals
+  were weak mutation guards -- a=b=5.0 drove both ceilings to ~1.0
+  simultaneously, isolating neither the YES/NO direction nor the >=0.80
+  comparison itself): test_warns_when_calibrated_ceiling_crosses_force_
+  close_threshold and test_no_warning_when_calibrated_ceiling_stays_just_
+  below_threshold are a tight boundary pair (fit=(0.13,0.13,0.94) ->
+  ceiling~0.8009 warns; fit=(0.12,0.12,0.94) -> ceiling~0.7953 doesn't,
+  differing by only 0.01 in a/b, isolating the YES direction with the NO
+  ceiling and bypass logic held constant); test_no_warning_missed_
+  production_coefficients_stay_dormant keeps the real production-
+  coefficient sanity check; test_warns_via_correction_cap_bypass_even_
+  when_naive_ceiling_is_low is the new regression guard for the review
+  finding (fit=(0.1,0.1,1.0): both naive ceilings ~0.79/~0.34, but the
+  NO-direction correction delta ~0.63 exceeds the 0.60 cap, so the
+  bypass hands cron.py the raw 0.97 -- must still warn). Also added
+  test_threshold_literals_match_their_source_of_truth (review finding:
+  the 0.80/0.60 literals were hand-copied with only a comment tying them
+  to cron.py/settlement_monitor.py -- this doesn't structurally couple
+  them but does catch drift via a regex check against each file's real
+  source, resolved relative to the test file's own path rather than
+  paths.py's project-root helper, since that helper always resolves to
+  the main clone regardless of which worktree is running). Mutation-tested
+  each independently via Edit (not string-replace scripts): disabling the
+  correction-cap bypass broke exactly the bypass regression test and no
+  others; changing cron.py's literal broke exactly the drift-detection
+  test. Also tightened the monotonicity justification comment (review
+  finding: cited only a>0, but the derivative also needs b>0 -- true for
+  every fit this codebase produces since fit_metar_calibration always
+  returns a==b, both required >0 by _fit_platt, now stated explicitly with
+  the caveat that apply_metar_calibration's docstring keeps the general
+  a!=b form for a possible future fit source).
+  Independent review noted, not fixed (informational, no code bug): the
+  between-bucket settlement path never runs through this T-ticker-only
+  calibration at all -- see AUD-0016's own resolution note above for that
+  scope clarification.
+  A SECOND independent opus review (required by this project's workflow
+  whenever a review's findings get fixed) caught two more issues in the
+  fix itself: (1) the drift-detection test's settlement_monitor.py regex
+  was unanchored and matched a docstring's PROSE mention of
+  "_METAR_CORRECTION_LIMIT = 0.60" a few lines above the real assignment,
+  so the real assignment could drift to any value and the test would keep
+  passing -- fixed with an anchored `^\s*_METAR_CORRECTION_LIMIT = 0\.60\s*$`
+  (re.M) that only matches the actual code, mutation-tested by changing the
+  real assignment to 0.55 (test correctly fails) and reverting; (2) the
+  warning log message said "reaches calibrated confidence %.3f" even in
+  the bypass branch, where the reported value is actually the RAW,
+  uncalibrated confidence -- exactly the distinction this fix exists to
+  surface -- reworded to "reaches effective confidence".
+  A THIRD independent opus review (scoped to AUD-0016's own fix, since
+  that's what pass 2/3 of that entry's review chain touched) additionally
+  numerically re-verified every claimed test value in this entry's fits
+  (via independent brute-force scanning across the full _fit_platt-
+  reachable coefficient space, not just re-deriving the four cited
+  examples) and confirmed _effective_ceiling's endpoint-only evaluation
+  (raw=0.97 both directions) never misses an interior crossing of the 0.80
+  gate -- also caught that the drift-detection test only checked cron.py's
+  and settlement_monitor.py's own literals, not ml_bias.py's OWN local
+  copies of the same two constants -- editing ml_bias.py's copies alone
+  would leave the test green. Fixed by adding two more anchored regex
+  checks against ml_bias.py's own source in the same test, mutation-tested
+  by changing _CRON_FORCE_CLOSE_THRESHOLD's local copy to 0.85 (test
+  correctly fails) and reverting.
+  Final scoped suite (tests/test_settlement_monitor.py, tests/
+  test_weather_markets.py, tests/test_ml_bias.py): 400 passed, 4 skipped,
+  0 failed. ruff/ruff-format/mypy via the actual pre-commit hook: all
+  passed.
 
 [RESOLVED 2026-08-20 -- batch-04] Kill-switch override rename race can crash cmd_cron with uncaught FileExistsError (Path.rename vs os.replace semantics gap)
 Priority: LOW (audit id AUD-0039, status CONFIRMED, confidence HIGH, evidence E2)
@@ -23604,3 +23863,18 @@ Problem:
   A one-off query while re-verifying the AUD-0076 fix's ticker regex against `data/*.db` surfaced 6 distinct ticker-like values in predictions.db's price_improvement table that are placeholder/test-fixture names (e.g. "TK_Chicago"), not real Kalshi tickers, sitting in what should be production-only data.
   Root cause: Not yet investigated -- matches this project's known "manual scripts bypass test DB isolation" pattern ([[feedback_manual_scripts_bypass_test_db_isolation]] in Claude's memory: a python -c script or standalone tool importing tracker.py/paper.py writes to the real DB_PATH since no pytest conftest fixture applies outside pytest), but the specific script/session responsible for these 6 rows hasn't been traced.
   Recommendation: Identify which script wrote these rows (grep for "TK_Chi", "TK_NYC" etc. across scripts/one-offs in git history), confirm no downstream code reads price_improvement without filtering them out, and either delete the 6 rows or add a name-based exclusion if deletion is unsafe for any reason.
+
+[OPEN 2026-08-21 -- found by round-3 independent review of batch-08 (AUD-0016's settlement_monitor.py fix), filed for tracking, out of scope for that batch, not yet investigated or fixed this session] weather_markets._metar_lock_in never combines current_temp_f with the daily-extreme cache -- the identical AUD-0016 defect class, on the LIVE trade-entry path
+Priority: MEDIUM (found by independent opus review, not the original max-depth audit; not yet independently CONFIRMED by a second pass)
+Files: weather_markets.py (_metar_lock_in, both the above/below branch ~L10905-10912 and the between branch ~L10970-10979), metar.py (fetch_metar_daily_extreme, fetch_metar's own caching)
+
+Problem:
+  _metar_lock_in computes `_comp_temp = _daily_ext if _daily_ext is not None else _metar_obs["current_temp_f"]` in BOTH its above/below branch (~L10910-10912) and its between-bucket branch (~L10977-10979) -- unlike settlement_monitor.py's _check_between_settlement (this batch's AUD-0016 fix target), it never takes max()/min() of the daily-extreme cache against the fresher current_temp_f reading. _daily_ext (from metar.fetch_metar_daily_extreme) and current_temp_f (from a separate metar.fetch_metar call) are independently cached with their own TTLs, so they can disagree by however long the gap between the two caches' last refresh is.
+  Root cause: this is the exact defect class AUD-0016 fixed one file over, in this function's own documented "sibling" -- settlement_monitor.py's docstring and several comments in this file explicitly describe _metar_lock_in and _check_between_settlement as mirroring each other's reasoning, but the max(current, daily_ext) hardening AUD-0016 added to the settlement-monitor side was never carried over here.
+  Evidence: independent opus review (round 3 of AUD-0016's own review chain) read weather_markets.py:10905-10979 directly and confirmed no max()/min() combination exists in either branch, in contrast to the just-fixed settlement_monitor.py. Constructed a concrete failure scenario for the between-bucket branch: HIGH market, band [66.5, 68.5], _daily_ext cached at 14:20 = 66.5 (stale), a fresher fetch_metar current at 14:50 = 69.5 (already above the band). _comp_temp = 66.5 (the stale extreme, current_temp_f ignored entirely) -> the YES branch (weather_markets.py ~L11107-11143) sees 66.5 in-band with 2.0F clearance >= the 1.0F margin and locks YES at confidence ~0.738, on a market whose freshest reading shows it has already cleared the band. Both fetch_metar and fetch_metar_daily_extreme use independent ~15-minute-TTL caches (metar.py ~L80-83, ~L258-261 per the reviewer's citation -- not independently re-verified by this session), so a divergence window of this size is the ordinary case, not a rare corner.
+  Financial risk: HIGHER surface than AUD-0016 itself -- this function (_metar_lock_in) feeds analyze_trade's live/paper trade-entry probability directly (the settlement-lag monitor AUD-0016 lives in, by contrast, has reportedly never actually been scheduled to run in production per settlement_monitor.py's own docstring). Not independently quantified this session (no live/paper trade reproduction run); flagging based on the mechanism match to AUD-0016, not a live incident.
+  Recommendation: Apply the same fix this batch landed for settlement_monitor.py's between branch -- for BOTH of _metar_lock_in's branches, combine _daily_ext with current_temp_f via max()/min() (direction matching HIGH-vs-LOW market type) for whichever comparisons determine a YES-direction lock, following the exact reasoning trail AUD-0016 went through across 3 independent review rounds (see this repo's git history / the batch-08 session for that reasoning: gating membership on the daily extreme alone is fine, but CLEARANCE must be measured against the combined value, not the daily extreme alone, or a fresher-but-ignored current reading can silently understate how close the true value already is to the risk edge). Do not apply a naive "gate on daily extreme alone, veto if current crosses the edge" fix -- round 2 of AUD-0016's own review found that pattern is still exploitable in the partial-disagreement window short of the veto's trigger point. This needs its own independent review pass(es) before landing, same as AUD-0016 required, given the higher-traffic live entry path.
+  Also noted by the same review, folded into scope here rather than filed separately: metar.py's docstring (~L243-257) claims the YES-direction staleness hazard is guarded against in "both settlement_monitor._check_between_settlement and weather_markets._metar_lock_in's between branch" -- true for the former after this batch, no longer true for the latter until this entry is fixed; and metar.py:404's "both current callers" comment for fetch_metar_daily_extreme is stale since AUD-0020 (this same batch-08 session) added a third caller, weather_markets._compute_persistence_prob. Update both comments as part of whatever session picks this up.
+  Limitations noted by this session: not independently re-verified (this finding comes from round-3 review of a DIFFERENT batch item, not a fresh independent pass on this specific claim); the metar.py cache-TTL line citations were not re-checked; no live/paper reproduction was run to quantify real-world frequency.
+
+Full record: none (not from the original max-depth audit's AUDIT_REPORT.json/md -- surfaced by independent review during batch-08).

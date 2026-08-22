@@ -232,13 +232,33 @@ def _check_between_settlement(
       running high sitting below the band, even the real max_temp_f, does
       not preclude the true high from still rising into or past the band
       later in the day.
-    • YES — the running daily high is inside [lower, upper] AND has at
-      least half the band width of clearance to the upper edge (the only
-      at-risk edge — the lower edge is already foreclosed, since a running
-      max cannot fall below a value it has already reached). Requires a
-      REAL max_temp_f; never locks YES from the current_temp_f fallback
-      alone — an in-band instantaneous reading proves nothing about whether
-      the true high already passed through or above the band earlier today.
+    • YES — the running daily high (max_temp_f, NOT comp_temp) is inside
+      [lower, upper] — this membership check requires a REAL max_temp_f;
+      never locks YES purely from an in-band current_temp_f when
+      max_temp_f is unavailable, since an in-band instantaneous reading
+      alone proves nothing about whether the true high already passed
+      through or above the band earlier today. Given membership, the
+      CLEARANCE to the upper edge (the only at-risk edge — the lower edge
+      is already foreclosed, since a running max cannot fall below a value
+      it has already reached) is measured against comp_temp, not
+      max_temp_f, and must be at least half the band width. Using
+      comp_temp for clearance (not just for the NO branch) matters
+      specifically when the two independently-cached METAR fetches
+      disagree (current_temp_f fresher/higher than a still-TTL-cached
+      max_temp_f, AUD-0016/round-2 fix, 2026-08-21): since comp_temp >=
+      max_temp_f always, using comp_temp can only SHRINK the measured
+      clearance relative to using max_temp_f, never grow it — so this
+      can't reintroduce the original bug (locking off a still-rising
+      current_temp_f that max_temp_f hasn't caught up to yet, since that
+      requires max_temp_f itself to be in-band, independent of comp_temp)
+      while it DOES correctly refuse a lock the moment a fresher
+      current_temp_f eats into the margin, all the way up to current_
+      temp_f exceeding upper_f entirely (comp_temp - upper_f then negative,
+      failing the margin check outright — no separate veto needed). An
+      earlier version of this fix used max_temp_f for both membership AND
+      clearance with no veto at all, which let a merely-stale max_temp_f
+      understate the true clearance and lock YES in exactly this
+      disagreement window; independent review caught it.
     • Neither — outcome still uncertain.
 
     Args:
@@ -264,7 +284,20 @@ def _check_between_settlement(
             "comp_temp_f": comp_temp,
         }
 
-    if max_temp_f is not None and lower_f <= comp_temp <= upper_f:
+    # Membership gated on max_temp_f alone (NOT comp_temp) -- this is the
+    # AUD-0016 fix: comp_temp reduces to current_temp_f whenever it's
+    # higher than max_temp_f, and gating in-band membership on that would
+    # decide the lock off a still-rising instantaneous reading the
+    # docstring's invariant specifically excludes. Clearance is measured
+    # against comp_temp (NOT max_temp_f) -- this is the round-2 fix: since
+    # comp_temp >= max_temp_f always, this can only shrink the measured
+    # clearance, so it can't resurrect the AUD-0016 bug, but it DOES
+    # correctly refuse the lock the moment a fresher current_temp_f eats
+    # into the margin (down to a negative "clearance" when current_temp_f
+    # has cleared upper_f outright, which fails the margin check with no
+    # separate veto needed). See this function's docstring for the full
+    # derivation and the two independent-review rounds that shaped it.
+    if max_temp_f is not None and lower_f <= max_temp_f <= upper_f:
         risk_clearance = upper_f - comp_temp
         yes_inband_margin = (upper_f - lower_f) / 2.0
         if risk_clearance >= yes_inband_margin:
@@ -273,6 +306,10 @@ def _check_between_settlement(
                 "locked": True,
                 "outcome": "yes",
                 "confidence": confidence,
+                # Surface comp_temp -- the value the clearance/confidence
+                # were actually computed from. Always <= upper_f - margin
+                # here (guaranteed by the risk_clearance check above), so
+                # this is never outside the band that justified the lock.
                 "comp_temp_f": comp_temp,
             }
 
@@ -448,13 +485,30 @@ def check_city_settlement(city: str, active_tickers: list[dict]) -> list[dict]:
                 signal["comp_temp_f"] = lockout["comp_temp_f"]
                 signal["max_temp_f"] = max_temp_f
                 new_signals.append(signal)
+                # Label reflects whether the logged comp_temp_f value IS
+                # the real daily-high, not merely whether max_temp_f was
+                # AVAILABLE -- comp_temp_f = max(current_temp_f, max_temp_f)
+                # can equal current_temp_f even when max_temp_f is present
+                # (whenever the fresher reading is higher), and logging
+                # that as "daily-high" would mislabel it exactly the way
+                # the AC3 bug's false affirmative went unnoticed (mirrors
+                # weather_markets.py's _metar_lock_in's own _ext_kind
+                # pattern for the identical concern). Exact float equality
+                # is safe here: comp_temp_f is only ever set to max_temp_f
+                # unchanged (via max()) or to current_temp_f unchanged, not
+                # a derived/rounded value.
+                _log_ext_kind = (
+                    "daily-high"
+                    if max_temp_f is not None and lockout["comp_temp_f"] == max_temp_f
+                    else "current reading"
+                )
                 _log.info(
                     "SETTLEMENT LAG signal: %s → %s (conf=%.0f%%) — "
-                    "daily-high %.1f°F (current %.1f°F) vs bucket "
-                    "[%.1f, %.1f]°F",
+                    "%s %.1f°F (current %.1f°F) vs bucket [%.1f, %.1f]°F",
                     market["ticker"],
                     lockout["outcome"],
                     lockout["confidence"] * 100,
+                    _log_ext_kind,
                     lockout["comp_temp_f"],
                     obs["current_temp_f"],
                     lower_f,
