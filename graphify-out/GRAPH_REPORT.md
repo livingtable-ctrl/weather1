@@ -1,38 +1,38 @@
-# Graph Report - nifty-shtern-6df333  (2026-08-20)
+# Graph Report - wonderful-nash-8f312c  (2026-08-21)
 
 ## Corpus Check
-- 527 files · ~1,454,163 words
+- 527 files · ~1,470,147 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 13542 nodes · 21827 edges · 1001 communities (759 shown, 242 thin omitted)
-- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 604 edges (avg confidence: 0.64)
+- 13682 nodes · 22072 edges · 1027 communities (777 shown, 250 thin omitted)
+- Extraction: 97% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 545 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `2315636d`
+- Built from commit: `7e85db28`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- pathlib
+- json
 - tracker.py
 - main.py
-- output_formatters.py
+- pdf_report.py
 - weather_markets.py
 - cron.py
 - execution_log.py
 - ALL FINDINGS
 - Position
-- simulate_portfolio
+- _cholesky
 - test_weather_markets.py
-- KalshiClient
-- check_anomalies
+- ._get
+- web_app.py
 - ._condition
-- _auto_place_trades
+- test_shadow_predictions.py
 - conftest.py
 - test_web_app.py
-- test_weather.py
+- _var_from_ticker_prefix
 - test_paper.py
 - TestBetweenLockInDynamicConfidence
 - get_edge_realization_rate
@@ -42,11 +42,11 @@
 - test_live_execution.py
 - add_alert
 - ._market
-- ensemble_stats
+- ._call
 - _price_and_size
 - TestPostFailureDedup
 - P3: Execution Stability — Implementation Plan
-- paper.py
+- portfolio_kelly_fraction
 - TestTradeFlowSettlementCorrelation
 - TestMemberQuarantineScan
 - test_safe_io.py
@@ -64,7 +64,7 @@
 - CircuitBreaker
 - _reprice_or_cancel_pending_orders
 - _recover_pending_orders
-- test_forecast_cache.py
+- ForecastCache
 - ._analysis
 - _fixture_storms
 - ._adjustment
@@ -72,32 +72,32 @@
 - ._mock_response
 - test_trading.py
 - _forecast_model_weights
-- nws.py
+- Grade Audit Module Doc: order_executor.py
 - P2: Risk Control & Capital Safety — Verification Plan
-- _seed_db
+- test_calibration.py
 - _feels_like
 - TestAnalyzeTradeHurricaneGating
 - TestDailyPaperSpend
 - check_black_swan_conditions
-- test_phase3_batch_c.py
+- calibration.py
 - Task 21 (P6.1) — Source SLA logging
 - test_isoformat_cutoff_guard.py
 - _sameday_effective_cap
 - _validate_trade_opportunity
-- TestGetQuintileBias
+- ._seed
 - TestBackfillPriceHistory
 - weather app site V_3 (3)/src/mockData.js
-- ForecastCache
+- count_settled_predictions
 - frontend/src/mockData.js
-- test_regression.py
-- _normal_ladder
+- test_silent_failures.py
+- test_market_implied_distribution.py
 - TestValidateMarketPriceRange
 - Task 42 (P10.4) — Feature sprawl control
 - Task 39 (P7.3) — Liquidity constraints hard cap
 - _storm_order_fixture_storms
 - TestFetchMetar
 - Task 17 (P4.3) — Trade replay function
-- atomic_write_json_with_history
+- test_cleanup_data_dir.py
 - test_city_registry_manifest.py
 - TestFetchMetarDailyExtreme
 - ._seed
@@ -116,9 +116,9 @@
 - _strong_market_analysis
 - ._city
 - walk_forward_backtest
-- test_calibration.py
-- was_traded_today
-- is_all_null
+- check_stop_losses
+- test_dedup.py
+- test_phase2_batch_l.py
 - test_execution_proof.py
 - TestAnalyzeTradeHourlyModel
 - web_app.py Module
@@ -130,9 +130,9 @@
 - TestPortfolioKelly
 - Feature Roadmap Implementation Plan
 - frontend/src/App.jsx
-- calibration.py
+- acis_snow.py
 - TestApplyTemperatureScaling
-- ml_bias.py
+- _compute_hmac
 - _mock_nbs_response
 - _snow_market
 - test_hourly_target_hours.py
@@ -140,43 +140,43 @@
 - TestCmdWatchDisplayScanUnification
 - cloud_backup
 - ABTest
-- Category A: Prediction Pipeline Plan
+- weather_markets.py module
 - FlashCrashCB
-- test_mos_nbp.py
-- settlement_monitor.py
-- kelly_fraction
+- TestFetchNbpPercentiles
+- _check_between_settlement
+- TestKellyFraction
 - _make_analysis
 - test_series_drift.py
 - TestGetModelWeights
 - test_p1_remaining.py
 - TestSignalGraduationCounters
-- nws_prob_from_quantiles
+- _analyze_trade_base_mocks
 - TestPollPendingOrdersExtended
 - _make_enriched
-- sqlite3
+- sigma_audit.py
 - frontend/src/useData.js
 - ._add
 - weather app site V_3 (3)/src/App.jsx
-- test_cron_integration.py
+- integration
 - System Hardening Implementation Plan (P0–P3)
 - coalesce_market_price
 - ._write_open_trades
 - test_retirement_probation.py
 - shared.jsx
-- test_walk_forward.py
+- nws_prob_from_quantiles
 - persistence_prob
-- test_execution_log.py
+- TestWasOrderedRecentlyCanceledSpelling
 - package.json
-- _check_live_position_exits
+- ensemble_stats
 - TestHmacVerification
 - TestParseNbpBulletin
 - TestSystemCooldownElapsed
 - TestKellyCompounding
 - weather_markets.py Module
 - TestCorrelationAppliedFlag
-- test_phase2_batch_p.py
+- pathlib
 - RF1: Silent Exception Swallow
-- ._rain_market
+- TestAnalyzeMonthlyRainTradeEndToEnd
 - TestMetarSettlementCalibration
 - TestCalibrationByCityConditionTypeGrpB
 - weather app site V_3 (3)/src/useData.js
@@ -196,7 +196,7 @@
 - Weather1 Maximum-Depth Forensic Audit — Final Report
 - TestPDOPNA
 - TestSignalGraduationRegistry
-- _get_enso_phase
+- position_correlation_matrix
 - TestGetLivePrecipObs
 - test_snow_markets.py
 - TestBackfillEnsembleMemberScoresVar
@@ -204,7 +204,7 @@
 - AnalyticsTab.jsx
 - BotConfig
 - _validate_checksum
-- AtomicWriteError
+- test_atomic_write_text_emergency_copy_opt_out_skips_recovery_copy
 - test_kelly_property.py
 - _log_live_position
 - test_disputed_row_guard.py
@@ -216,15 +216,15 @@
 - TestDrawdownScaling
 - main.py Module
 - TestAutoPlaceTradeGuards
-- parse_market_price
+- TestConsistency
 - _settled_trade
 - test_date_today_guard.py
-- test_suggested_bets.py
-- _metar_locked_enriched
+- .test_returns_top_n_sorted_by_ev
+- test_edge_threshold.py
 - test_infrastructure.py
 - censoring_correction
 - _log_near_settlement_trades
-- _make_trade
+- check_anomalies
 - test_dead_code_scan.py
 - TestHurricaneCountToDateCache
 - TestCircuitBreakerPersistence
@@ -232,7 +232,7 @@
 - TestStationBiasTables
 - TestBrierScoreConditionTypeFilter
 - _med_market_analysis
-- time_decay_edge
+- TestTimeDecayEdge
 - datetime
 - TestLoadMetarCalibration
 - test_prelog.py
@@ -252,18 +252,18 @@
 - batches/INDEX.md
 - Items in this batch
 - Group C — Model & Forecasting Improvements Implementation Plan
-- CrossProcessLock
+- normal_cdf
 - static/dashboard.js
 - test_forecast_accuracy.py
 - TestNBMFetch
-- test_paper_metrics.py
+- edge_confidence
 - TestMetarFetchNoFabricatedTimestamp
-- test_rain_markets.py
+- TestQuickPaperBuyAndCmdPaperRainGuards
 - Kalshi Weather Dashboard - Overview Tab (Light Theme)
 - Data Integrity Audit Scope (safe_io, checksums)
-- weather_markets.py module
+- tracker.py module
 - Category B: Risk Management Plan
-- TestKellyScalesWithBalance
+- test_risk_control.py
 - test_graduation_gate.py
 - TestAuditSettlementMonthlySnow
 - TestGetMemberBias
@@ -272,9 +272,9 @@
 - authHeader
 - _env_float
 - Phase 4: Dedicated Security Audit
-- test_idempotency.py
+- _build_session
 - liquidity_kelly_scale
-- test_batch01_live_position_visibility.py
+- TestLiveRealizedLossSince
 - TestCountOpenLiveOrders
 - TestPreloadAllSigmaGate
 - get_min_edge_for_confidence
@@ -300,7 +300,7 @@
 - TestBetweenFloorGate
 - Items in this batch
 - Items in this batch
-- calibrate_condition_weights
+- metar.py
 - CRITICAL Issues — 12 Total
 - Profit Optimization Implementation Plan
 - TestExecutionLogMigration
@@ -310,8 +310,8 @@
 - TestDynamicSigma
 - TestHourlyTemperatureProxy
 - TestAmendOrder
-- TestPlaceLiveOrder
-- test_main_cron_smoke.py
+- OrderStatusUnknownError
+- fixture
 - test_p0_10_paper_prelog.py
 - TestGraduationBrierGate
 - is_stale
@@ -342,7 +342,7 @@
 - _target_date_due
 - _parse_temp
 - _cancel_and_verify_safe_to_replace
-- project_root
+- TestParseMarketPrice
 - TestLiveSettlementStreak
 - TestRecordLiveEarlyExitWithRetry
 - TestDynamicCacheTTL
@@ -353,7 +353,7 @@
 - TestMetarLockInZeroThreshold
 - Kalshi Weather Dashboard - Dark Theme
 - main.py module
-- TestKalshiCircuitBreakerSplit
+- _request_with_retry
 - TestAnalyzeTradeMonthlyRainGating
 - TestFetchEnsemblePrecipMultiday
 - TestAuditSettlementMonthlyRain
@@ -362,7 +362,7 @@
 - TestWebSocketSubscribeOrder
 - TestGetBias
 - TestBayesianConfidenceInterval
-- test_paper_cross_process_lock.py
+- _clears_taker_fee
 - TestEdgeDecayCurveConditionType
 - TestSchemaVersionMatchesMigrations
 - TestPriceHistory
@@ -377,33 +377,33 @@
 - Items in this batch
 - Items in this batch
 - Group D: Trading Kelly & Execution Realism Implementation Plan
-- record_live_early_exit
-- portfolio_var
-- _resolve_amend_status
+- test_cron_integration.py
+- test_signal_quality.py
+- TestResolveAmendStatus
 - TestLoadAllSigmasBehavior
-- TestEarlyExitPricingConvention
-- BACKLOG_OPEN.md (auto-generated unfinished-items index)
+- test_data_freshness.py
+- test_hmac_bias.py
 - TestKillSwitchAPI
 - TestWriteCronRunningFlag
 - TestHurricaneCountKeyFromTicker
 - test_integration_live.py
 - TestGetMarketsPagination
-- TestDewPointCorrection
-- _make_app
+- _dew_point_temp_correction
+- test_p0_16_cron_endpoint.py
 - TestLiveFillSlippage
 - TestDirectionalExposure
 - TestClimateIndicesTTL
-- TestParamSweepTemporalSplit
+- TestComputeLiveOrdersPossible
 - TestAbTestMaxTradesMeta
 - TestDailyLossThresholdScalesWithBalance
-- ._insert
+- TestBrierByConditionTypeRolling
 - TestMinProbEdgeGate
 - detect_hedge_opportunity
 - TestMetarLockInLowMarketAsymmetry
 - TestTimeRisk
 - Kalshi Weather Bot — Frontend Handoff
-- fetch_historical_daily
-- test_alerts_side.py
+- acis_precip.py
+- _trade_won
 - Pass 10 — Failure Modes (Section 22)
 - Pass 11 — State: Independent Verification
 - Pass 12 — Concurrency — Evidence Notes
@@ -414,11 +414,11 @@
 - Items in this batch
 - Items in this batch
 - TestAcquireCronLockClosesRace
-- Bug Fixes April 30 2026 Plan
+- paper.py module
 - TestCrossProcessLock
 - Kalshi Weather Bot — Command Reference
-- CircuitOpenError
-- test_config_validation.py
+- .execute
+- date
 - Adversarial Code Audit — Kalshi Weather Trading Bot
 - Phase 2 HIGH Issues Summary
 - _parse_nbp_bulletin
@@ -426,7 +426,7 @@
 - Model Signal Calibration Implementation Plan
 - ._evict_oldest
 - _CrossProcessDataLock
-- TestParsePcpnValue
+- check_city_settlement
 - static/forecast.js
 - TestFetchArchiveTempsCacheWrite
 - test_bug_b_unparseable_date_logging.py
@@ -434,11 +434,11 @@
 - TestSigmaCacheRobustness
 - TestDrawdownTiersRelativeToHalt
 - TestPlaceOrderApiSemantics
-- TestResolveMarketImpliedForAnalysis
+- _auto_place_trades
 - TestDynamicLockInConfidence
 - TestConfigIntegrity
 - TestHighWaterMark
-- TestWeightFilesExist
+- test_phase2_batch_c.py
 - TestClimPriorUseClimatologicalProb
 - TestKalshiEnvLiveRead
 - TestMlRetrainMarkerFile
@@ -456,7 +456,7 @@
 - Pass 18 — Git Forensics
 - Pass 4 (Feature Correctness) — Independent Re-verification (session 3)
 - Pass 5 — Scope B independent re-verification (round 3)
-- _fetch_settled_markets Pagination Helper
+- Bug Fixes April 30 2026 Plan
 - Pass 6 — Kalshi Semantics — Independent Verification
 - Items in this batch
 - Items in this batch
@@ -464,15 +464,15 @@
 - RiskTab.jsx (V3)
 - Items in this batch
 - Items in this batch
-- _brier
+- TestPaperTradeConditionTypeClassifier
 - restore_data
 - Part 4 — Strategies
 - fetch_nbm_forecast
-- _get_current_book
+- audit_settlement
 - TestHistoricalRemainingAndFullMonthSums
 - test_hurricane_markets.py
 - TestFetchSettledMarkets
-- TestFetchPreviousRunEnsemble
+- fetch_mos
 - TestGetLiveOpenPositionsCityDate
 - TestComputeSigmaFromClimate
 - TestLoadAllSigmasMerge
@@ -488,11 +488,11 @@
 - TestGetAccuracyHaltReason
 - TestBreakEvenStop
 - TestGaussianFillSlippage
-- TestSaveEmbedsSHA256
+- ._post
 - TestDrawdownTier4Boundary
 - TestCheckPositionLimitsExposureCaps
 - TestMarketStationMap
-- TestComputeMarketImpliedGroupsMonthlyRain
+- ._rain_market
 - TestCheckPositionLimitsBlocksMonthlyRain
 - TestParseMarketConditionMonthlyRain
 - TestParseAccuracyOverrideArgs
@@ -503,7 +503,7 @@
 - TestEnsembleMemberAccuracyStratified
 - TestCheckConditionTypeWeakness
 - TestGateUnification
-- TestObsProbBetweenSigma
+- obs_prob
 - Pass 16 — Test Quality: independent verification notes
 - Pass 18 — Git Forensics: Independent Verification (session 2, confirms session 1's corrections)
 - season_end_total_distribution Function
@@ -529,7 +529,7 @@
 - P12: Signal Calibration & Market Intelligence — Implementation Plan
 - static/analytics.js
 - TestPaperOrderCityDateServerDerived
-- TestApplySeasonalTilt
+- test_regression.py
 - TestFetchArchiveTempsEnsembleCenter
 - TestExposureDenominator
 - TestResolveLiveBalanceCaching
@@ -545,11 +545,11 @@
 - TestCmdCronQuarantineScanWiring
 - TestStrategyVersioning
 - TestDriftDetection
-- TestPruneApiRequests
-- TestFeatureImportancePruning
+- prune_api_requests
+- system_health.py
 - _safe_price
 - TestRainGatesActive
-- TestIsAccuracyHaltedSprt
+- _save
 - TestBrierSkillScore
 - TestMarketCalibrationAdaptive
 - TestCalibrationByCityConditionType
@@ -564,7 +564,7 @@
 - TestBlendWeightCalibrationPriority
 - TestFetchTemperatureWeatherapi
 - TestKellyFeeRate
-- test_web_analytics.py
+- TestCronConsistencyCheck
 - reference/analytics.js
 - reference/dashboard.js
 - reference/forecast.js
@@ -580,7 +580,7 @@
 - Pass 8 (Mathematics) — Independent Verification
 - Batch 21: Calibration go-live decisions
 - Handoff prompts for the 13 HIGH findings from the 2026-08-18 max-depth audit
-- validate_weight_files
+- TestExcludedBrierConditionTypes
 - Per-File Detailed Findings
 - HIGH PRIORITY: Missing Data Sources
 - Part 7 — Monitoring & Analytics
@@ -592,13 +592,13 @@
 - Task 60 (P11.K) — Inter-model disagreement decomposition
 - Task 62 (P12.B) — Bayesian Lead-Time Blending
 - Task 65 (P12.E) — ECMWF Open Data Integration (Days 4–7 Edge)
-- _set_dashboard_unprotected
-- test_gaussian_prob.py
+- _parse_market_condition
+- get_historical_sigma
 - market_types.py
 - emos_exceedance_prob
 - TestEdgeFlagWired
 - _acquire
-- TestBreakevenStops
+- .place_order
 - TestGaussianEnsembleBlend
 - TestBetweenObsDisabled
 - TestFetchHurdat2RawCacheWrite
@@ -608,17 +608,17 @@
 - TestGetTodayLiveSpendExcludesExitOrders
 - TestMLBias
 - TestTrainBiasModelRainExclusion
-- TestCmdSignals
-- TestSettlementCostBasis
-- TestRegressionBaselineFail
+- TestAccuracyCircuitBreaker
+- ._insert
+- ._passing_gate_patches
 - TestConsistencyArbHaltGuards
 - TestWeeklyBrierAlert
 - TestDriftTightenEdge
 - ErrorBoundary
-- TestProfitFactor
+- _forecast_probability
 - TestDynamicKellyCapMinSamples
 - TestExportTrades
-- TestStreakPausedSortOrder
+- test_idempotency.py
 - TestCovarianceKellyScaleDenom
 - TestCheckPositionLimitsDenom
 - TestFetchArchiveTempsDeterministicSeed
@@ -631,7 +631,7 @@
 - TestGetOptimalThreshold
 - TestGetMemberAccuracyStd
 - TestGetForecastRunTrendFromAnalysis
-- TestDynamicCorrelationMatrix
+- TestBrierFamilyNewlyFilteredFunctions
 - TestStationBiasKeys
 - TestValidateForecastModelKeys
 - TestMemberQuarantineBlendHooks
@@ -678,47 +678,47 @@
 - Task 73 (P12.M) — Liquidity Filtering Pre-Trade Gate
 - Completion Checklist
 - _excepthook
-- append_entry
-- .dump_to_disk
+- TestAlwaysExcludedConditionTypesNotGateCoupled
+- PersistentForecastCache
 - auto_backup
 - TweaksPanel shell + controls
 - TestManualOverrideFailsClosed
 - _fake_strong_signal
-- TestEnrichWithForecastCacheTimestamp
+- test_weather.py
 - generate_weekly_report Function
-- TestCheckPositionLimitsHourlyGuard
+- test_hourly_markets.py
 - TestCheckPositionLimitsHurricaneNextEventConditional
 - TestCheckPositionLimitsStormOrderConditional
-- TestQuickPaperBuyAndCmdPaperStormOrderGuards
+- _daily_var_from_series
 - TestCheckPositionLimitsHurricaneCountConditional
 - TestPlaceOrderSurvivesGetOrderFailure
 - TestPlaceMakerOrderIdempotency
-- TestIsCronRunning
+- KalshiWebSocket
 - TestGetRollingSharpe
 - TestTickerExposureDenominator
 - TestAppendEntry
 - TestTrackerMigrationComments
-- TestUtcToday
-- TestMonteCarloUtcDate
+- test_phase2_batch_h.py
+- _replace_live_order
 - DesignCanvas (pan/zoom review tool)
-- TestCronStartupOrdersUtc
+- _make_db
 - Stale Brier Threshold Display Bug
 - first_hurricane_position Function
 - next_event_outcomes Function
 - place_order Method
-- TestNwsUtcDate
+- TestTtlUntilNextCycle
 - TestQuickPaperBuyRespectsPositionLimits
 - PositionStore Protocol
 - dashboard.js (main dashboard page)
 - TestSourceProbsPassthrough
-- TestClampLastCalibrationCount
+- test_tracker.py
 - TestFetchPreviousRunDailyUsesUtcToday
 - TestLogPredictionSignalValues
 - TestTierAndCapUnification
 - TestAnalysisAttemptDataLoss
 - TestEnsembleMemberThreshold
-- _cmd_watch_live_common_mocks
-- _l7b_common_patches
+- TestBootstrapCIPrecip
+- regime.py
 - TestEntryEdgeVsMidEdge
 - TestLearnedWeightsTTL
 - TestUtcTodayDate
@@ -744,7 +744,7 @@
 - Fix AUD-0011: LIVE_TRADING_RUNBOOK.md falsely claims only `watch --auto --live` can place live orders
 - Fix AUD-0012: _poll_pending_orders / _count_open_live_orders can silently lose a still-open live order
 - Fix AUD-0013: cmd_watch --auto --live has no standalone _recover_pending_orders() call
-- temperature_adjustment
+- _parse_threshold
 - Part 3 — Critical Settlement Mechanics
 - Part 6 — Execution Improvements
 - Part 9 — Prioritized Implementation Backlog
@@ -754,13 +754,13 @@
 - Task 75 (P12.O) — CME Weather Futures Cross-Reference
 - Task 76 (P12.P) — Recency Bias Detection and Fading
 - Task 77 (P12.Q) — Polymarket Cross-Price Comparison
-- TestStationSidForCity
+- get_rolling_win_rate
 - TestCmdSimulateStatusParam
 - TestSaveWalkForwardParams
 - TestWeatherSeriesDerivation
 - TestGetPendingLiveOrdersUnbounded
 - _FakeResponse
-- LiveTradingGate
+- _parse_monthly_ticker_month
 - test_cmd_setup.py
 - Production Readiness Remediation Plan
 - backtest command
@@ -783,7 +783,7 @@
 - TestAcquireCronLockNoPsutil
 - TestAcquireCronLockFailClosed
 - TestAcquireCronLockLivePid
-- TestComputeMarketImpliedExcludesHourly
+- fetch_metar_daily_extreme
 - TestBootstrapCiNextEvent
 - TestKeyPermissions
 - TestWsHealth
@@ -792,44 +792,44 @@
 - TestFitAndSaveMetarCalibration
 - TestCmdCalibrateMetarBlock
 - TestSplitNbpRow
-- TestAnalyzeOnceDirectionalConsensusGates
-- TestCmdTodayDirectionalConsensusGates
+- verify_backup
+- TestAutoPlaceTradesLiveConcentrationCap
 - TestProdStartupWarning
-- TestMosUtcDate
-- TestTrackerUtcDate
+- test_hurricane_gating.py
+- TestKellyFractionFeeDefault
 - TestKellyCapConstant
-- TestSharedAcrossPaperAndLive
+- TestRestoreDataConfirm
 - test_atomic_write_error_message_accurate_when_no_emergency_copy_possible
 - TestGetMemberAccuracyDaysBack
 - TestRetentionPolicy
-- TestLogPredictionMarketImplied
-- TestLogPredictionCalibrationCovariateFields
-- TestLogPredictionNbmQuantileProb
-- TestLogPredictionEcmwfConsensusGap
+- TestPaperLiveSeparation
+- get_price_history
+- .check
+- Grade Audit Module Doc: nws.py
 - TestWebSocketStartOrdering
-- TestPriceImprovementTracking
-- TestCheckEnsembleCircuitHealth
+- _FakeClient
+- TestQuickPaperBuyAndCmdPaperHurricaneNextEventGuards
 - TestGetConsensusProbsEcmwf
 - TestGetGemUkmoMeans
 - TestWeightsFromMaeThinModelIsolation
 - TestMosBlendNoCrossVariableFallback
 - TestAnomalyStatusMatchesRealCheck
-- check_config_integrity
+- client_and_kalshi_mock
 - Pass 18 (Weather Semantics) — Verification Notes
 - Pass 21 — Documentation & Configuration — Evidence Notes
 - Pass 21 — Documentation & Configuration (Sections 31-32)
 - metar_calibration_bound_check.py
-- _env_int
+- count_settled_signal_rows
 - Research Findings: External Systems & Improvement Ideas
 - fetch_afd_discussion
-- TestFetchMonthToDateActual
-- _all_source_files
+- auto_backtest
+- _check_key_permissions
 - TestSeasonBucket
 - test_cron_watchdog.py
 - TestCmdUndo
 - TestSendSystemAlertUsesPersistedCooldown
 - TestCityWfoOffice
-- TestPhase10ConfigKeys
+- TestOppEventKeyLogsOnUnparseableDate
 - TestFetchMosSpecialCodes
 - CityPnLChart
 - EquityCurveChart
@@ -876,7 +876,7 @@
 - No _DATA.is_dir() Guard at Import Time
 - Design Canvas State (Operator dashboard prototype)
 - mockData.js Mock Dataset
-- TestMinneapolisWeights
+- TestMaxOrderLatency
 - bootstrap_ci Function
 - bootstrap_ci_next_event Function
 - exceedance_probability Function
@@ -938,48 +938,48 @@
 - shared.jsx (V3 shared components)
 - Vite Build Config
 - TestStratifiedSplitRemoved
-- test_schema_drift.py
-- TestLogPredictionRunTrend
-- TestLogPredictionLiquidityEdgeScale
-- TestGetModelWeightsExcludesTrackingOnlyModels
+- Grade Audit Module Doc: tracker.py
+- TestCheckPositionLimitsRainConditional
+- TestCmdOrderSnowGuard
+- CircuitOpenError
 - TestRealThresholdDrivesTrading
-- TestCorrelationTablesStayInSync
+- fit_emos
 - TestAdjustedEdgeInAnalyzeTrade
 - .test_la_high_temp_series_detected
 - TestConsensusCacheKeyBetween
 - TestBatchPrewarmEnsembleRateLimitTiering
 - TestKellyCap
 - ErrorBoundary
-- compute_hourly_temperature_proxy
+- TestWeightsFromMaeExcludesTrackingOnlyModels
 - Pass 12 (Concurrency) — Independent Verification Notes
 - Pass 21 (Sections 31 & 32, Documentation & Configuration) — Independent Verification
-- FakeClient
+- _get_strategy_pins
 - FakeStore
 - Initial Git State (Section 3 record)
 - _setup_logging
-- _section_header_re
+- Kill Switch Mid-Placement Gap
 - static/risk.js
-- TestCmdBacktestErrorHandling
-- TestBetweenMarketProbabilityClamp
-- TestPrevRunModelsMatchTracker
-- TestManualOverridePathConsistency
-- test_dead_man.py
+- _unpack_opp
+- cron_env
+- .test_subscribe_message_structure
+- get_black_swan_status
+- record_feature_contribution
 - TestOpenTradesListLivePath
 - TestCancelAnalyze
-- TestBriefCloseable
-- TestMosIntegration
+- test_cron_closes_position_via_check_paper_position_exits
+- test_cron_gate_allows_when_adjusted_edge_above_threshold
 - test_city_wfo_office_matches_live_api
-- TestQuickPaperBuyAutoKellySizing
-- TestExecutionLogSynchronousFull
-- .test_log_prediction_accepts_forecast_cycle
-- tmp_db
+- test_p1_15_empty_anomaly_list_does_not_halt
+- test_anomaly_override_prompt_skipped_when_already_halted
+- test_p1_12_kill_switch_mid_scan_breaks_loop
+- test_cmd_cron_stops_active_websocket_on_exit
 - healthy_system
 - reference/risk.js
 - pass12_concurrency_verify.md
 - pass13_security_verification.md
 - recon.md
 - _Stub
-- test_snow_ticker_places_normally_when_gate_active
+- _place_everything_setup
 - ._seed_baseline
 - .test_audit_settlement_daily_skips_unresolvable_cond_type
 - .test_audit_settlement_daily_reads_expiration_value_regardless_of_var
@@ -997,9 +997,9 @@
 - .test_count_settled_hurricane_next_event_predictions_ignores_lookalike_series
 - .test_count_settled_storm_order_predictions_counts_only_storm_order_tickers
 - .test_count_settled_storm_order_predictions_distinct_ticker_not_raw_rows
-- test_get_quintile_bias_excludes_null_city_rows
-- test_cmd_readiness_fails_when_brier_above_threshold
-- test_cmd_watch_auto_executes_paper_stop_loss
+- test_cron_logs_near_settlement_row_with_real_trade_fields
+- .test_daily_high_ticker_unaffected
+- .test_rain_ticker_unaffected
 - .test_la_renamed_low_ticker
 - .test_la_low_ticker_t_variant
 - .test_boston_renamed_low_ticker
@@ -1011,17 +1011,43 @@
 - variation-editorial.jsx
 - variation-hybrid.jsx
 - variation-terminal.jsx
+- .test_snow_storm_ticker_unaffected
+- .test_kxtropstorm_no_longer_blanket_gated
+- .test_kxfirsthurricane_no_longer_blanket_gated
+- .test_legacy_unprefixed_hur_ticker_gates_out
+- .test_hurricane_landfall_ticker_gates_out_explicitly
+- test_check_emergency_copies_explicit_base_dir_skips_temp_scan
+- test_replace_with_retry_reraises_after_deadline
+- test_replace_with_retry_does_not_retry_other_exceptions
+- test_atomic_write_text_round_trip
+- test_atomic_write_text_creates_parent_dirs
+- test_atomic_write_raises_when_all_retries_fail
+- test_check_emergency_copies_reports_real_files
+- test_rain_ticker_shadow_only_when_gate_inactive
+- test_get_live_market_snapshot_returns_list
+- test_build_stream_data_has_markets_key
+- test_balance_history_range_3mo
+- test_dashboard_route_returns_200_with_title
+- test_analytics_route_returns_200_with_title
+- test_api_graduation_returns_correct_shape
+- test_api_brier_history_returns_list
+- test_api_trades_returns_correct_shape
+- test_forecast_route_returns_200_with_title
+- test_api_forecast_quality_returns_correct_shape
+- test_balance_history_default_50
+- test_price_improvement_endpoint_returns_valid_json
+- test_balance_history_range_all
 
 ## God Nodes (most connected - your core abstractions)
 1. `analyze_trade()` - 152 edges
-2. `_conn()` - 115 edges
-3. `init_db()` - 111 edges
+2. `_conn()` - 117 edges
+3. `init_db()` - 113 edges
 4. `TestDisputedOutcomeTracking` - 92 edges
 5. `KalshiClient` - 91 edges
 6. `_build_app()` - 90 edges
 7. `_auto_place_trades()` - 87 edges
-8. `ALL FINDINGS` - 85 edges
-9. `main()` - 84 edges
+8. `main()` - 86 edges
+9. `ALL FINDINGS` - 85 edges
 10. `ForecastCache` - 83 edges
 
 ## Surprising Connections (you probably didn't know these)
@@ -1033,8 +1059,8 @@
   tests/test_web_app.py → weather app site V_3 (3)/src/tabs/PositionsTab.jsx
 - `get_active_variant()` --semantically_similar_to--> `_paper_min_edge_default()`  [INFERRED] [semantically similar]
   ab_test.py → config.py
-- `CircuitBreaker` --semantically_similar_to--> `check_black_swan_conditions()`  [INFERRED] [semantically similar]
-  circuit_breaker.py → alerts.py
+- `run_anomaly_check()` --references--> `System Priority Checklist`  [EXTRACTED]
+  alerts.py → docs/PRIORITY-CHECKLIST.md
 
 ## Import Cycles
 - None detected.
@@ -1044,83 +1070,83 @@
 - **Live-order safety gate enforcement across every placement site** — trading_gates_livetradinggate, trading_gates_pre_live_trade_check, main_cmd_order, order_executor_place_live_order, order_executor_replace_live_order, order_executor_amend_live_order, order_executor_exit_live_position, order_executor_micro_live_gate_ok [EXTRACTED 0.90]
 - **Live position open/close bookkeeping via closes_position_id** — execution_log_log_order, execution_log_get_filled_unsettled_live_orders, order_executor_exit_live_position, execution_log_record_live_exit_fill, main_cmd_order [INFERRED 0.80]
 
-## Communities (1001 total, 242 thin omitted)
+## Communities (1027 total, 250 thin omitted)
 
-### Community 0 - "pathlib"
+### Community 0 - "json"
 Cohesion: 0.01
-Nodes (251): ab_test.py — Simple A/B testing framework for strategy parameter variants.…, apply_seasonal_tilt(), bootstrap_ci_month_total(), fetch_seasonal_precip_mean_mm(), historical_remaining_and_full_month_sums(), NOAA ACIS StnData (month-to-date actual + historical daily precipitation) and…, GET Open-Meteo Seasonal (monthly=precipitation_mean -- NOT precipitation_sum,…, For each historical year present in `history`, sum the [remaining_start_day,… (+243 more)
+Nodes (300): ab_test.py — Simple A/B testing framework for strategy parameter variants.…, fetch_seasonal_precip_mean_mm(), GET Open-Meteo Seasonal (monthly=precipitation_mean -- NOT precipitation_sum,…, clear_black_swan_state(), _load(), mark_triggered(), Path, Price alerts — notify when a market's YES price crosses a user-set threshold.… (+292 more)
 
 ### Community 1 - "tracker.py"
-Cohesion: 0.02
-Nodes (278): collections, get_feature_summary(), Record the outcome for a settled trade. F4: Uses append-only writes to avoid…, Compute average feature values for winning vs losing trades. Returns a dict…, update_outcome(), flask, itertools, markupsafe (+270 more)
+Cohesion: 0.03
+Nodes (144): collections, Record the outcome for a settled trade. F4: Uses append-only writes to avoid…, update_outcome(), itertools, get_component_attribution returns Brier score by dominant source., test_batch_log_analysis_attempts_none_target_date_writes_null(), test_get_component_attribution_returns_per_source_brier(), test_get_component_attribution_works() (+136 more)
 
 ### Community 2 - "main.py"
-Cohesion: 0.04
-Nodes (174): list_all_summaries(), Return summary stats for all tests found on disk., clear_black_swan_state(), get_black_swan_status(), P10.2: Return active black swan state if any, else None., P10.2: Remove black swan state file (called by cmd_resume). Returns True if…, _fetch_settled_markets(), Fetch settled Kalshi weather markets by iterating known weather series.… (+166 more)
+Cohesion: 0.02
+Nodes (362): list_all_summaries(), Return summary stats for all tests found on disk., bold(), cyan(), dim(), edge_color(), green(), liquidity_color() (+354 more)
 
-### Community 3 - "output_formatters.py"
-Cohesion: 0.04
-Nodes (86): output_formatters.py Grade Audit, output_formatters.py File Grade: median 5/10, pdf_report.py Grade Audit, pdf_report.py File Grade: median 7/10, no red flags, generate_weekly_report() Silent .pdf→.html Switch (7/10), _brier_sparkline(), cmd_admin(), cmd_dashboard() (+78 more)
+### Community 3 - "pdf_report.py"
+Cohesion: 0.21
+Nodes (13): pdf_report.py Grade Audit, pdf_report.py File Grade: median 7/10, no red flags, generate_weekly_report() Silent .pdf→.html Switch (7/10), _generate_html(), _generate_pdf(), generate_weekly_report(), _pdf(), Path (+5 more)
 
 ### Community 4 - "weather_markets.py"
 Cohesion: 0.01
-Nodes (236): climatological_prob(), _climatological_prob_inner(), date, Probability of the market condition based purely on historical observations.…, collections_abc, apply_ml_prob_correction(), has_ml_model(), _load_models() (+228 more)
+Nodes (270): apply_pdo_pna_correction(), _month_to_season(), Map calendar month (1-12) to meteorological season abbreviation., Return temperature bias correction (degrees F) based on PDO/PNA for city and…, climatological_prob(), _climatological_prob_inner(), date, Probability of the market condition based purely on historical observations.… (+262 more)
 
 ### Community 5 - "cron.py"
 Cohesion: 0.02
-Nodes (147): Path, Write alerts list to path using safe_io for resilient disk writes (#8). P3-9:…, P10.2: Load state and run black swan detection. Auto-halts if triggered. Called…, run_black_swan_check(), save_alerts(), Load paper-trade history and run walk_forward_backtest against it. Shared core…, run_paper_walk_forward(), _fetch_noaa_csv_index() (+139 more)
+Nodes (139): AI Hallucination Code Audit Prompt, activate_black_swan_halt(), Load paper trades and run anomaly detection. Log any alerts found. Returns…, P10.2: Activate emergency shutdown. Writes reason file and touches kill switch., P10.2: Load state and run black swan detection. Auto-halts if triggered. Called…, run_anomaly_check(), run_black_swan_check(), Pass 20 repro: param_sweep.py's PAPER_MIN_EDGE sweep values vs. its own… (+131 more)
 
 ### Community 6 - "execution_log.py"
-Cohesion: 0.07
-Nodes (51): execution_log.py Grade Audit, execution_log.py File Grade: median 7-8/10, 2 RF1 promotions, log_order() json.dumps Failure Returns id=0 (7/10), Missing EXECUTION_LOG_PATH Centralization (Possible), add_live_loss(), claim_unknown_order(), _clear_degraded_flag(), _conn() (+43 more)
+Cohesion: 0.04
+Nodes (89): Pass 20 verification (E2): confirm the LiveTradingGate's risk-halt sub-checks…, execution_log.py Grade Audit, execution_log.py File Grade: median 7-8/10, 2 RF1 promotions, log_order() json.dumps Failure Returns id=0 (7/10), Missing EXECUTION_LOG_PATH Centralization (Possible), add_live_loss(), append_entry(), claim_unknown_order() (+81 more)
 
 ### Community 7 - "ALL FINDINGS"
 Cohesion: 0.02
 Nodes (85): ALL FINDINGS, AUD-0001 [HIGH | P0 | E2 | CONFIRMED] check_position_limits() exposure caps structurally blind to live positions (regression from e5331a8d), AUD-0002 [HIGH | P0 | E1 | CONFIRMED] _auto_place_trades' position-count/VaR/concentration gates seeded only from the paper ledger, AUD-0003 [HIGH | P0 | E1 | CONFIRMED] Settlement P&L for taker (IOC)-filled live orders computed with the $0 maker fee, AUD-0004 [HIGH | P0 | E3 | CONFIRMED] graduation_check()'s Brier-score value has zero ticker-family filtering, contaminating the master live-trading gate, AUD-0005 [HIGH | P0 | E2 | CONFIRMED] LiveTradingGate's drawdown/streak checks read only the paper ledger, blind to real live losses, AUD-0006 [HIGH | P0 | E2 | CONFIRMED] cron._acquire_cron_lock() has a TOCTOU race with no OS-level exclusive-create primitive — reproduced, AUD-0007 [HIGH | P1 | E1 | CONFIRMED] Ambiguous place_order() failure can leave a real live position permanently untracked, unprotected, and re-orderable (+77 more)
 
 ### Community 8 - "Position"
-Cohesion: 0.05
-Nodes (47): _live_dict_to_position(), LivePositionStore, Adapt one _get_live_open_positions() dict into the shared Position shape…, PositionStore backed by execution_log's SQLite rows. See…, _midpoint_price Function, check_paper_position_exits(), PaperPositionStore, Adapt one paper_trades.json trade dict into the shared Position shape… (+39 more)
+Cohesion: 0.06
+Nodes (33): _live_dict_to_position(), LivePositionStore, Adapt one _get_live_open_positions() dict into the shared Position shape…, PositionStore backed by execution_log's SQLite rows. See…, _midpoint_price Function, check_paper_position_exits(), PaperPositionStore, Adapt one paper_trades.json trade dict into the shared Position shape… (+25 more)
 
-### Community 9 - "simulate_portfolio"
-Cohesion: 0.04
-Nodes (56): I9: days_out Thread-Through, Grade Audit Module Doc: monte_carlo.py, monte_carlo.py Grade Audit, monte_carlo.py File Grade: mixed, 4 functions flagged fix-before-live, simulate_portfolio() AC3 FAIL: days_out Never Read (6/10), stratified_train_test_split(), System Health Grade Audit, math (+48 more)
+### Community 9 - "_cholesky"
+Cohesion: 0.09
+Nodes (16): _cholesky(), Pure-Python lower-triangular Cholesky decomposition. Returns L such that L @…, Nearest-PSD repair via diagonal (ridge) loading: add a minimal shift to every…, _repair_psd(), Correlated positions (same city/date) should widen P&L distribution vs…, Regression for backlog.txt L569: simulate_portfolio's past-date check must…, The unparseable-date string-compare fallback (`_tdate < _today_mc.isoformat()`)…, Bug A fix (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2): a genuinely… (+8 more)
 
 ### Community 10 - "test_weather_markets.py"
 Cohesion: 0.03
-Nodes (60): 28Â°F < wet_bulb <= 32Â°F â†’ SLR 10, 20Â°F < wet_bulb <= 28Â°F â†’ SLR 15, wet_bulb <= 20Â°F â†’ SLR 20, wet_bulb_temp returns reasonable value for known input., TestSnowLiquidRatio, _ecmwf_gap_test_enriched(), Unit tests for key functions in weather_markets.py and utils.py., analyze_trade result includes model_consensus bool when it returns a result. (+52 more)
+Nodes (73): 28Â°F < wet_bulb <= 32Â°F â†’ SLR 10, 20Â°F < wet_bulb <= 28Â°F â†’ SLR 15, wet_bulb <= 20Â°F â†’ SLR 20, wet_bulb_temp returns reasonable value for known input., TestSnowLiquidRatio, _ecmwf_gap_test_enriched(), _metar_locked_enriched(), Unit tests for key functions in weather_markets.py and utils.py. (+65 more)
 
-### Community 11 - "KalshiClient"
+### Community 11 - "._get"
+Cohesion: 0.15
+Nodes (7): Warn (don't crash) if the API response shape has changed., GET /series/{series_ticker}/markets/{ticker}/candlesticks -- OHLC price…, GET /markets/trades -- public trade-flow history for a single market…, Validate a Kalshi market dict has required fields and sane prices. Returns True…, validate_market(), P3-21: _validate must log an error, not emit a warning., TestKalshiClientValidateLogsError
+
+### Community 12 - "web_app.py"
 Cohesion: 0.05
-Nodes (42): check_overfitting(), Formal overfitting guard: compare in-sample vs out-of-sample Brier scores.…, _check_key_permissions(), KalshiClient, OrderStatusUnknownError, BaseException, Exception, Response (+34 more)
-
-### Community 12 - "check_anomalies"
-Cohesion: 0.13
-Nodes (19): AI Hallucination Code Audit Prompt, ALERT_HALT_THRESHOLDS, activate_black_swan_halt(), check_anomalies(), get_win_rate_window(), Return True if the trade was a net loss (pnl < 0). Breakeven (pnl == 0) is…, Return the `limit` most recently *settled* trades, sorted by settled_at. Pass…, Return the exact win-rate window check_anomalies()'s WIN RATE COLLAPSE gate… (+11 more)
+Nodes (36): get_win_rate_window(), Return True if the trade was a net loss (pnl < 0). Breakeven (pnl == 0) is…, Return the `limit` most recently *settled* trades, sorted by settled_at. Pass…, Return the exact win-rate window check_anomalies()'s WIN RATE COLLAPSE gate…, _recent_settled(), _trade_lost(), DummyClient, _is_cron_running() (+28 more)
 
 ### Community 13 - "._condition"
 Cohesion: 0.07
 Nodes (22): occurred_this_season=True (live cache says >=1 hurricane already this season)…, occurred_this_season=False (live cache confirms 0 so far) must pass a real…, A missing/stale cache (occurred_this_season=None, genuinely UNKNOWN) must run…, cat5_hurricane has no live "already occurred" signal in this pass -- must never…, Deliberately the SAME "HUR_<basin>" key as the season-count model, not a…, Opus-review-caught (2026-08-07, HIGH), verified end-to-end at the analyzer…, Opus-review-caught (2026-08-07, HIGH): occurred_this_season=False (live-…, The fallback in the test above must not fire when the eligible set is actually… (+14 more)
 
-### Community 14 - "_auto_place_trades"
-Cohesion: 0.09
-Nodes (59): _auto_place_trades(), Auto-place paper or live trades for signals not already held. Called from…, _fetch(), _make_flat_opp(), _place_everything_setup(), Tests for _log_shadow_predictions: when a trade would have been placed but…, A signal that _validate_trade_opportunity would reject (here: non-positive…, A ticker with an existing open position must not get re-logged every cron cycle… (+51 more)
+### Community 14 - "test_shadow_predictions.py"
+Cohesion: 0.11
+Nodes (33): _fetch(), _make_flat_opp(), Tests for _log_shadow_predictions: when a trade would have been placed but…, A signal that _validate_trade_opportunity would reject (here: non-positive…, A ticker with an existing open position must not get re-logged every cron cycle…, Multiple opps in one call share a single batched DB connection — confirm both…, Drawdown halt causes the identical 'no trade placed' staleness problem as…, Sanity check for the is_shadow column itself: a real, successfully placed trade… (+25 more)
 
 ### Community 15 - "conftest.py"
 Cohesion: 0.05
-Nodes (56): cron command, clear_metar_cache(), clear_nws_mos_climate_indices_caches(), clear_paper_min_edge_cache(), default_ecmwf_aifs_prob_none(), default_gem_ukmo_means_none(), isolate_circuit_breaker_state(), isolate_climatology_data_dir() (+48 more)
+Nodes (62): cron command, dashboard command, web command, clear_metar_cache(), clear_nws_mos_climate_indices_caches(), clear_paper_min_edge_cache(), default_ecmwf_aifs_prob_none(), default_gem_ukmo_means_none() (+54 more)
 
 ### Community 16 - "test_web_app.py"
-Cohesion: 0.04
-Nodes (59): client(), client_and_kalshi_mock(), _force_demo_env(), fixture, Tests for web_app.py dashboard API endpoints., _get_live_market_snapshot returns list even with no data., _build_stream_data includes markets key., Set DASHBOARD_UNPROTECTED=true so _build_app doesn't require… (+51 more)
+Cohesion: 0.08
+Nodes (25): Tests for web_app.py dashboard API endpoints., ?range=1mo returns only points from the last 30 days., Risk page returns 200 and contains 'Risk'., /api/risk returns city_exposure, directional, expiry_clustering, total_exposure., /api/config must surface both kalshi_fee_rate (taker, reference) and…, Trades page returns 200 and contains 'Trades'., Signals page returns 200 and contains 'Signals'., /api/signals returns log and alerts keys. (+17 more)
 
-### Community 17 - "test_weather.py"
-Cohesion: 0.05
-Nodes (31): Unit tests for weather_markets.py — probability math, condition parsing, fee-…, backlog.txt "NO MARKET-TYPE SEAM" -- single source of truth for the…, Matches the original literal's exact fallback behavior — anything without "LOW"…, "LOWER" contains "LOW" -- confirms the substring check (not an exact-…, backlog.txt "VAR-CONVENTION LITERAL HAND-COPIED ACROSS 7+ FILES BEYOND…, Real, reachable case (not theoretical) -- e.g. an hourly KXTEMPxxxH ticker or a…, "LOWER" contains "LOW" -- same substring-check behavior as…, This codebase's real ticker vocabulary never contains both substrings… (+23 more)
+### Community 17 - "_var_from_ticker_prefix"
+Cohesion: 0.14
+Nodes (13): Log per-model forecast accuracy after settlement for _dynamic_model_weights().…, _score_ensemble_members(), backlog.txt "VAR-CONVENTION LITERAL HAND-COPIED ACROSS 7+ FILES BEYOND…, Real, reachable case (not theoretical) -- e.g. an hourly KXTEMPxxxH ticker or a…, "LOWER" contains "LOW" -- same substring-check behavior as…, This codebase's real ticker vocabulary never contains both substrings…, TestVarFromTickerPrefix, backfill_ensemble_member_scores_var() (+5 more)
 
 ### Community 18 - "test_paper.py"
-Cohesion: 0.04
-Nodes (33): corr_kelly_scale(), position_correlation_matrix(), Build NxN correlation matrix for a list of trades. Correlation rules: Same city…, Scale Kelly fraction down based on max pairwise correlation with existing…, Tests for paper.py — Kelly compounding, balance, order placement, settlement., #79: place_paper_order warns when execution exceeds MAX_ORDER_LATENCY_MS., Explicit cap overrides dynamic Brier cap., Dynamic cap raises above $50 when Brier score is excellent. (+25 more)
+Cohesion: 0.06
+Nodes (25): Tests for paper.py — Kelly compounding, balance, order placement, settlement., Explicit cap overrides dynamic Brier cap., Dynamic cap raises above $50 when Brier score is excellent., Poor-performing method (Brier > 0.20) reduces Kelly by 25%., place_paper_order should record the UTC hour of entry., close_paper_early should settle trade at exit price, not $0/$1., Callers that don't pass reason= (the majority) must not be miscounted as stop-…, paper.get_stop_loss_accuracy() must only pass stop_loss-tagged exits to… (+17 more)
 
 ### Community 19 - "TestBetweenLockInDynamicConfidence"
 Cohesion: 0.05
@@ -1143,36 +1169,36 @@ Cohesion: 0.05
 Nodes (14): backlog.txt "DATA-DRIVEN SIGMA FROM SETTLED HISTORY + CLI-REPORT SETTLEMENT…, opus-review-caught (2026-08-10): every disputed row in production was flagged…, Must refuse a non-finalized market even with a valid expiration_value -- proves…, Companion regression: an ordinary daily ticker must not be routed through the…, Opus-review-caught gap: Denver's KXDENSNOWM ladder has 7 sibling brackets that…, Opus-review-caught gap: an unparseable settled snow ticker is silently dropped…, backlog.txt "HURRICANE MARKETS" -- time-to-next-event model (2026-08-07): must…, Same coarse-SQL-LIKE-prefix-vs-series-EXACT-match risk shape the sibling next-… (+6 more)
 
 ### Community 24 - "test_live_execution.py"
-Cohesion: 0.05
-Nodes (28): _clears_taker_fee(), _get_live_open_positions(), _live_min_edge(), _midpoint_price(), Replicate _validate_trade_opportunity's live min-edge threshold (confidence-…, True if net_edge, recomputed with the REAL taker fee instead of the maker fee…, Return midpoint of current bid/ask for the given side, rounded to 2dp. Handles…, Build a paper-trade-shaped dict from execution_log's filled-unsettled live… (+20 more)
+Cohesion: 0.06
+Nodes (28): _check_live_model_exits(), _check_live_position_exits(), _get_current_book(), _get_live_open_positions(), Return a market-price-shaped dict ({"yes_bid": ..., "yes_ask": ...}) with the…, Build a paper-trade-shaped dict from execution_log's filled-unsettled live…, Protect open live positions with stop-loss and breakeven-stop checks, reusing…, Live equivalent of _check_early_exits (paper-only, above): re-analyze each open… (+20 more)
 
 ### Community 25 - "add_alert"
 Cohesion: 0.07
-Nodes (28): add_alert(), check_alerts(), get_alerts(), _load(), mark_triggered(), Fetch current YES prices for all alert tickers and check which alerts have been…, Mark an alert as triggered. #91: Records triggered_at timestamp for cooldown…, Add a price alert. Args: ticker: Market ticker (e.g. "KXHIGHNY-26APR09-T72")… (+20 more)
+Nodes (25): add_alert(), check_alerts(), get_alerts(), Fetch current YES prices for all alert tickers and check which alerts have been…, Add a price alert. Args: ticker: Market ticker (e.g. "KXHIGHNY-26APR09-T72")…, Remove an alert by ID. Returns True if found and removed, False otherwise., Return all active alerts. #91: An alert with a cooldown is re-armed after the…, remove_alert() (+17 more)
 
 ### Community 26 - "._market"
 Cohesion: 0.06
 Nodes (18): kt is deliberately derived downstream from event_type via…, End-to-end through the real dispatcher, confirms the branch is actually wired…, Same KXHURCAT-bug-class concern the hurricane-count branch's own test…, A season_year not yet in _ATLANTIC_STORM_NAMES_BY_SEASON must never silently…, Same cross-check discipline _parse_hurricane_count_condition established: a…, End-to-end through the real dispatcher, confirms the branch is actually wired…, Same KXHURCAT-bug-class concern the sibling branches' own tests document: a…, Confirmed live 2026-08-03: every one of these 5 series' open+ settled markets… (+10 more)
 
-### Community 27 - "ensemble_stats"
-Cohesion: 0.05
-Nodes (27): Weights must stay >= 0 when scale > 1 (tight spread)., ensemble_stats must flag all-identical members as degenerate., 10 identical values (std=0) with n>5 must be degenerate=True., Normal spread must not be flagged as degenerate., Exactly 5 identical members: degenerate threshold requires >5., 6 identical members triggers degenerate=True., Empty input returns empty dict (no degenerate key)., degenerate key must be present for any non-empty input. (+19 more)
+### Community 27 - "._call"
+Cohesion: 0.08
+Nodes (17): Weights must stay >= 0 when scale > 1 (tight spread)., ensemble_stats must flag all-identical members as degenerate., 10 identical values (std=0) with n>5 must be degenerate=True., Normal spread must not be flagged as degenerate., Exactly 5 identical members: degenerate threshold requires >5., 6 identical members triggers degenerate=True., Empty input returns empty dict (no degenerate key)., degenerate key must be present for any non-empty input. (+9 more)
 
 ### Community 28 - "_price_and_size"
 Cohesion: 0.07
 Nodes (25): _metar_locked_temp_result(), _ny_tomorrow(), _prices(), date, Tests for weather_markets._price_and_size — the shared entry-price/EV/Kelly…, Regression for a bug the opus review caught in this consolidation: the original…, Precip/snow's original behavior: no fallback when yes_ask==0 on a YES-side…, Temperature's original guard, restored via yes_side_ask_fallback=True:… (+17 more)
 
 ### Community 29 - "TestPostFailureDedup"
-Cohesion: 0.06
-Nodes (24): If _post raises but the order exists on exchange, return it without re-raising.…, If _post raises and reconciliation POSITIVELY confirms no matching order exists…, AUD-0007: if _post raises AND reconciliation itself couldn't confirm either way…, When all 3 lookup passes genuinely complete and none match,…, AUD-0007: a lookup pass that itself raises must be reported as uncertain=True,…, AUD-0007: the chosen (conservative) design marks uncertain=True on ANY single…, Opus review follow-up (AUD-0007): the 3 reconciliation lookups previously…, Opus review follow-up: a 200 response missing the expected 'orders' key (a… (+16 more)
+Cohesion: 0.08
+Nodes (19): If _post raises but the order exists on exchange, return it without re-raising.…, If _post raises and reconciliation POSITIVELY confirms no matching order exists…, AUD-0007: if _post raises AND reconciliation itself couldn't confirm either way…, When all 3 lookup passes genuinely complete and none match,…, AUD-0007: a lookup pass that itself raises must be reported as uncertain=True,…, AUD-0007: the chosen (conservative) design marks uncertain=True on ANY single…, Opus review follow-up (AUD-0007): the 3 reconciliation lookups previously…, Opus review follow-up: a 200 response missing the expected 'orders' key (a… (+11 more)
 
 ### Community 30 - "P3: Execution Stability — Implementation Plan"
 Cohesion: 0.04
 Nodes (45): 12.1 Add module-level constant, 12.2 Add helper functions, 12.3 Wire into cmd_cron, 12.4 Write tests, 12.5 Verify Task 12, 12.6 Commit Task 12, 13.1 Add module-level constant (none required — uses execution_log directly), 13.2 Add `_check_startup_orders()` helper (+37 more)
 
-### Community 31 - "paper.py"
-Cohesion: 0.03
-Nodes (147): AGGREGATE-ONLY P&L ACCOUNTING entry, EXPOSURE CAPS STRUCTURALLY BLIND entry, MANUAL cmd_order LIVE ORDERS entry, BACKLOG_OPEN L1947, BACKLOG_OPEN L1994, KALSHI_ENV=prod STARTUP BANNER entry, Kill Switch Mid-Placement Gap, _cmd_cron_body() AC1 Kill-Switch Mid-Placement Gap (6/10) (+139 more)
+### Community 31 - "portfolio_kelly_fraction"
+Cohesion: 0.05
+Nodes (43): AGGREGATE-ONLY P&L ACCOUNTING entry, EXPOSURE CAPS STRUCTURALLY BLIND entry, MANUAL cmd_order LIVE ORDERS entry, BACKLOG_OPEN L1947, BACKLOG_OPEN L1994, KALSHI_ENV=prod STARTUP BANNER entry, Live Trading Runbook, _micro_live_gate_ok() (+35 more)
 
 ### Community 32 - "TestTradeFlowSettlementCorrelation"
 Cohesion: 0.07
@@ -1180,15 +1206,15 @@ Nodes (15): log_trades / get_trade_history -- PUBLIC TRADES REST BACKFILL storag
 
 ### Community 33 - "TestMemberQuarantineScan"
 Cohesion: 0.09
-Nodes (21): fixture, Opus review finding on the GENERALIZED PER-MODEL ACCURACY TRACKING Pass 2 diff:…, scan_member_quarantine() -- generic, per-model quarantine one layer above…, Fake tracker.get_member_accuracy(days_back=...) -- scan_member_ quarantine()…, Mirrors scan_member_quarantine()'s own pooled-SE formula exactly: se =…, own.n below the floor must never update ewma_z/trip, however bad the MAE looks,…, A model with plenty of its own data still can't be judged if every OTHER…, ewma_z_prev is seeded at 0.0, not the first raw z -- an ORDINARY bad first… (+13 more)
+Nodes (22): fixture, scan_member_quarantine() -- generic, per-model quarantine one layer above…, Fake tracker.get_member_brier(days_back=...) -- scan_member_ quarantine() makes…, Mirrors scan_member_quarantine()'s own pooled-SE formula exactly: se =…, own.n below the floor must never update ewma_z/trip, however bad the Brier…, A model with plenty of its own data still can't be judged if every OTHER…, ewma_z_prev is seeded at 0.0, not the first raw z -- an ORDINARY bad first…, The seeded-at-0 smoothing bounds an ORDINARY bad reading (see above) but does… (+14 more)
 
 ### Community 34 - "test_safe_io.py"
 Cohesion: 0.05
-Nodes (38): Verify a backup file's CRC32 (legacy) and SHA-256 checksums. Returns True on…, verify_backup(), Passing an explicit base_dir (as most tests in this file do, for isolation)…, Opus-review-caught: datetime.fromtimestamp() can raise on a corrupt or out-of-…, P1-5: valid 64-char checksum must pass validation., Retries through N PermissionErrors, then returns normally once os.replace…, A PermissionError that never clears must eventually re-raise (not hang forever…, A non-PermissionError failure (e.g. a genuine disk-full OSError) must propagate… (+30 more)
+Nodes (32): Opus-review-caught: datetime.fromtimestamp() can raise on a corrupt or out-of-…, P1-5: valid 64-char checksum must pass validation., Retries through N PermissionErrors, then returns normally once os.replace…, atomic_write_text must go through the same _atomic_write_payload core as…, Mirrors test_atomic_write_emergency_copy_written_on_failure below for…, The actual bug class backlog.txt "hurricane_climatology. fetch_hurdat2_raw's…, P1-6: emergency copy is written to fallback_dir before raising., backlog.txt "climate_indices.py's PDO/PNA CACHE AND backtest.py's OWN CACHE… (+24 more)
 
 ### Community 35 - "_model_weights"
-Cohesion: 0.06
-Nodes (34): No tracker MAE data, no learned weights → pure seasonal baseline., Priority-2 (learned_weights.json) is a partial dict — the model it omits must…, When tracker MAE data exists, it blends against the seasonal baseline directly…, A corrupted (non-dict) learned_weights.json entry for a city must not crash --…, A stray tracked value (e.g. "blended", not a real model) in mae_weights must…, GRADUATE GEM/UKMO generalization: a model _weights_from_mae() reports (i.e. it…, Same generalization for tier 2 (learned_weights.json): a previously learned…, ecmwf_ifs025 is real, currently-tracked data (feeds _forecast_model_weights()'s… (+26 more)
+Cohesion: 0.13
+Nodes (12): No tracker MAE data, no learned weights → pure seasonal baseline., Priority-2 (learned_weights.json) is a partial dict — the model it omits must…, When tracker MAE data exists, it blends against the seasonal baseline directly…, A corrupted (non-dict) learned_weights.json entry for a city must not crash --…, A stray tracked value (e.g. "blended", not a real model) in mae_weights must…, GRADUATE GEM/UKMO generalization: a model _weights_from_mae() reports (i.e. it…, Same generalization for tier 2 (learned_weights.json): a previously learned…, ecmwf_ifs025 is real, currently-tracked data (feeds _forecast_model_weights()'s… (+4 more)
 
 ### Community 36 - "tweaks-panel.jsx"
 Cohesion: 0.05
@@ -1199,20 +1225,20 @@ Cohesion: 0.05
 Nodes (39): 26.1 Add `KILL_SWITCH_PATH` constant to `main.py`, 26.2 Add guard in `_auto_place_trades`, 26.3 Add CLI commands `cmd_halt` and `cmd_resume`, 26.4 Add API endpoints to `web_app.py`, 26.5 Write tests, 26.6 Verify Task 26, 26.7 Commit Task 26, 27.1 Add `PAUSE_TRADING_PATH` to `main.py` (+31 more)
 
 ### Community 38 - "ZoneInfo"
-Cohesion: 0.13
-Nodes (26): _capturing_run(), _extract(), _make_fake_dt(), datetime, cmd_schedule() must register a settlement-monitor task that spans every tracked…, Jan: Eastern EST(-5) through Pacific PST(-8)/Arizona MST(-7, unchanged) --…, Regression coverage for a real bug found in this implementation: snapshotting…, Regression coverage for a real bug hit while implementing this: an earlier… (+18 more)
+Cohesion: 0.10
+Nodes (32): _capturing_run(), _extract(), _make_fake_dt(), datetime, cmd_schedule() must register a settlement-monitor task that spans every tracked…, Jan: Eastern EST(-5) through Pacific PST(-8)/Arizona MST(-7, unchanged) --…, Regression coverage for a real bug found in this implementation: snapshotting…, Regression coverage for a real bug hit while implementing this: an earlier… (+24 more)
 
 ### Community 39 - "test_p9_p10.py"
-Cohesion: 0.06
-Nodes (37): _log_settled(), Tests for P9/P10 features: - P9.1: Strategy versioning (get_brier_by_version,…, get_recent_city_correlations skips pairs with fewer than min_pairs common dates., Helper: log a prediction with forecast_temp_f + a matching settled outcome,…, Seattle has no _CORRELATED_CITY_GROUPS entry (deliberately standalone) — must…, NYC has a correlated group but the DB is empty — (0.0, 0)., Boston (corr 0.85) and Washington (corr 0.75) both ran 2F warm on NYC's HIGH…, Boston (corr 0.85, error +4F) and Philadelphia (corr 0.80, error -2F) disagree… (+29 more)
+Cohesion: 0.05
+Nodes (38): _log_settled(), Tests for P9/P10 features: - P9.1: Strategy versioning (get_brier_by_version,…, get_recent_city_correlations skips pairs with fewer than min_pairs common dates., Helper: log a prediction with forecast_temp_f + a matching settled outcome,…, Seattle has no _CORRELATED_CITY_GROUPS entry (deliberately standalone) — must…, NYC has a correlated group but the DB is empty — (0.0, 0)., Boston (corr 0.85) and Washington (corr 0.75) both ran 2F warm on NYC's HIGH…, Boston (corr 0.85, error +4F) and Philadelphia (corr 0.80, error -2F) disagree… (+30 more)
 
 ### Community 40 - "TestCmdOrderLiveRecording"
 Cohesion: 0.08
-Nodes (20): Positive control for the test above: demo/paper mode keeps the prior GTC…, A genuinely dead IOC order (no match at all -- Kalshi status "canceled" with a…, Opus review (2026-08-17), H3: without close_time, a position fails…, AUD-0010: _quick_paper_buy()'s maker-order branch places a REAL live order via…, Positive control: confirms the bookkeeping wiring actually differentiates…, AUD-0007 applied to AUD-0010's fix: an ambiguous placement outcome through this…, Opus review follow-up (HIGH): a DEMO_BASE client reaches this branch too (the…, backlog.txt "MANUAL cmd_order LIVE ORDERS..." entry: a real live fill placed… (+12 more)
+Nodes (15): Positive control for the test above: demo/paper mode keeps the prior GTC…, A genuinely dead IOC order (no match at all -- Kalshi status "canceled" with a…, Opus review (2026-08-17), H3: without close_time, a position fails…, backlog.txt "MANUAL cmd_order LIVE ORDERS..." entry: a real live fill placed…, Minimal market/enriched/analysis triple covering every field cmd_order's post-…, The core fix: a real live BUY via cmd_order must be logged live=True in…, Opus review follow-up (round 2): cmd_order's post-placement bookkeeping write…, Positive control for the test above: a DEMO (non-live) buy, with the exact same… (+7 more)
 
 ### Community 41 - "TestEmos"
 Cohesion: 0.07
-Nodes (21): deactivate_emos(), get_emos_status(), _load_emos_params(), Return cached (a, b, c, d) from emos_params.json, or None if not trained. Re-…, Persist EMOS parameters and clear the in-process cache., Return {"active": bool, "a"/"b"/"c"/"d"/"n"/"mean_crps"/"fitted_at": ...}…, Reset T_global/T_above/T_below/T_between to 1.0 (identity/no-op) in…, Restore global/above/below/between to their pre-EMOS-activation T values from… (+13 more)
+Nodes (19): get_emos_status(), _load_emos_params(), Return cached (a, b, c, d) from emos_params.json, or None if not trained. Re-…, Persist EMOS parameters and clear the in-process cache., Return {"active": bool, "a"/"b"/"c"/"d"/"n"/"mean_crps"/"fitted_at": ...}…, Reset T_global/T_above/T_below/T_between to 1.0 (identity/no-op) in…, Restore global/above/below/between to their pre-EMOS-activation T values from…, reset_temperature_scale_for_emos() (+11 more)
 
 ### Community 42 - "test_debug_fixes.py"
 Cohesion: 0.05
@@ -1231,24 +1257,24 @@ Cohesion: 0.07
 Nodes (37): bootstrap_ci(), bootstrap_ci_next_event(), _cache_is_stale(), _cache_path(), count_as_of_day(), exceedance_probability(), fetch_hurdat2_raw(), first_hurricane_position() (+29 more)
 
 ### Community 46 - "CircuitBreaker"
-Cohesion: 0.09
-Nodes (13): CircuitBreaker class, CircuitBreaker, Prevent automatic probing for the rest of this process lifetime. Call this…, Wall-clock seconds since the circuit opened; 0.0 if currently closed., Seconds remaining before the circuit allows a probe; 0.0 if closed or half-open., Tests for CircuitBreaker — open/close/half-open, backoff, wall-clock., Backoff accumulates across open/close cycles — success does not reset it., backoff_multiplier=1.0 (default) never changes recovery_timeout. (+5 more)
+Cohesion: 0.08
+Nodes (14): CircuitBreaker class, CircuitBreaker, Prevent automatic probing for the rest of this process lifetime. Call this…, Wall-clock seconds since the circuit opened; 0.0 if currently closed., Seconds remaining before the circuit allows a probe; 0.0 if closed or half-open., kalshi_client._kalshi_cb_read / _kalshi_cb_write / _request_with_retry, Tests for CircuitBreaker — open/close/half-open, backoff, wall-clock., Backoff accumulates across open/close cycles — success does not reset it. (+6 more)
 
 ### Community 47 - "_reprice_or_cancel_pending_orders"
-Cohesion: 0.09
-Nodes (16): _amend_live_order(), Place a replacement order for a just-canceled resting order (reprice or taker-…, Reprice a resting live order in place via Kalshi's atomic amend endpoint,…, Reprice-or-cancel resting live orders based on this cycle's fresh market…, _replace_live_order(), _reprice_or_cancel_pending_orders(), The core reprice-or-cancel policy: cancel on edge decay, cancel+ replace as…, Younger than _MIN_REST_MINUTES_BEFORE_REPRICE (2 min) -> left resting… (+8 more)
+Cohesion: 0.10
+Nodes (17): _amend_live_order(), _midpoint_price(), Return midpoint of current bid/ask for the given side, rounded to 2dp. Handles…, Reprice a resting live order in place via Kalshi's atomic amend endpoint,…, Reprice-or-cancel resting live orders based on this cycle's fresh market…, _reprice_or_cancel_pending_orders(), The core reprice-or-cancel policy: cancel on edge decay, cancel+ replace as…, Younger than _MIN_REST_MINUTES_BEFORE_REPRICE (2 min) -> left resting… (+9 more)
 
 ### Community 48 - "_recover_pending_orders"
 Cohesion: 0.07
-Nodes (19): Reconcile 'pending' AND 'unknown' execution_log rows against the Kalshi API at…, _recover_pending_orders(), A malformed 'unknown' row with no stored client_order_id must be skipped safely…, Regression guard: the pending-rows loop's early return used to make the whole…, Opus review follow-up: the previous version of this test's name implied a…, 2026-07-09: Kalshi's real order-status enum is resting/canceled/executed --…, A pending row whose order actually executed must resolve to this bot's internal…, F9: Kalshi has no distinct 'partially filled' status -- an order that fills… (+11 more)
+Nodes (20): Reconcile 'pending' AND 'unknown' execution_log rows against the Kalshi API at…, _recover_pending_orders(), Opus review follow-up (round 2, MEDIUM): _recover_pending_orders runs…, A malformed 'unknown' row with no stored client_order_id must be skipped safely…, Regression guard: the pending-rows loop's early return used to make the whole…, Opus review follow-up: the previous version of this test's name implied a…, 2026-07-09: Kalshi's real order-status enum is resting/canceled/executed --…, A pending row whose order actually executed must resolve to this bot's internal… (+12 more)
 
-### Community 49 - "test_forecast_cache.py"
+### Community 49 - "ForecastCache"
 Cohesion: 0.06
-Nodes (45): Grade Audit Module Doc: forecast_cache.py, PersistentForecastCache, ForecastCache with whole-dict persistence to a JSON file. For permanent…, get_with_ts returns (None, False, 0.0) when the entry has expired., P1-1: wall_clock_fetch_ts must reflect when the entry was stored, not now. We…, get_with_ts honours per-entry TTL set via set_with_ttl., prune_expired() uses per-entry TTL for set_with_ttl() entries., L5-A: just before a model cycle, TTL is short; just after, TTL is long. At… (+37 more)
+Nodes (38): Grade Audit Module Doc: forecast_cache.py, ForecastCache class, ForecastCache, Thread-safe dict-based cache with per-entry TTL and LRU eviction. Keys are…, PersistentForecastCache class, get_with_ts returns (None, False, 0.0) when the entry has expired., P1-1: wall_clock_fetch_ts must reflect when the entry was stored, not now. We…, get_with_ts honours per-entry TTL set via set_with_ttl. (+30 more)
 
 ### Community 50 - "._analysis"
-Cohesion: 0.13
-Nodes (14): Behavior lock, not a regression guard for this fix specifically -- passes…, This is the real regression guard for the finding: a shadow-only (e.g.…, Behavior lock, not a regression guard for this fix specifically -- passes…, The city/target_date_str passed to check_position_limits must be the REAL…, TRADING_PAUSED must block even when check_position_limits() would have said…, The real point of the round-2 fix: check_position_limits() itself raising must…, KXHURCAT (per-storm category) has no model at all -- must refuse…, Round-2 review caught: the limit-check-failed branch used to `return` early,… (+6 more)
+Cohesion: 0.09
+Nodes (18): Behavior lock, not a regression guard for this fix specifically -- passes…, This is the real regression guard for the finding: a shadow-only (e.g.…, Behavior lock, not a regression guard for this fix specifically -- passes…, The city/target_date_str passed to check_position_limits must be the REAL…, TRADING_PAUSED must block even when check_position_limits() would have said…, The real point of the round-2 fix: check_position_limits() itself raising must…, KXHURCAT (per-storm category) has no model at all -- must refuse…, Round-2 review caught: the limit-check-failed branch used to `return` early,… (+10 more)
 
 ### Community 51 - "_fixture_storms"
 Cohesion: 0.07
@@ -1267,44 +1293,44 @@ Cohesion: 0.07
 Nodes (16): R-42: _fetch_asos_daily_temp must use precise sts/ets timestamps, not day1/day2…, The HTTP request must use sts/ets, never day1/day2/year1/year2., A colder reading on the following local day must NOT be picked up as the target…, HIGH markets don't need the next-day extension; peak stays on target day., Same same-day-only rule, exercised on a station/timezone the fix's own…, Same-day-only rule on a 23-hour local day (US DST spring-forward, 2026-03-08 —…, Same-day-only rule on a 25-hour local day (US DST fall-back, 2026-11-01 — the…, backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item 3:… (+8 more)
 
 ### Community 55 - "test_trading.py"
-Cohesion: 0.07
-Nodes (34): Tests for Phase 5 trading improvements: #49 dynamic correlation matrix #50…, After a paper position settles, was_traded_today() must still block re-entry on…, log_prediction(city=None) must write nothing to the DB (L4-B)., With only min_samples rows, the returned bias must be strictly smaller in…, With many samples the shrinkage factor is negligible — bias stays near its raw…, Run _auto_place_trades with portfolio_kelly_fraction mocked to a pass-through…, Two same-city/date/HIGH-series brackets with a 3:1 edge ratio (0.18 vs 0.06)…, A single opportunity with no same-event siblings must pass its… (+26 more)
+Cohesion: 0.04
+Nodes (59): _cmd_watch_live_common_mocks(), _l7b_common_patches(), Tests for Phase 5 trading improvements: #49 dynamic correlation matrix #50…, After a paper position settles, was_traded_today() must still block re-entry on…, log_prediction(city=None) must write nothing to the DB (L4-B)., get_quintile_bias must ignore rows where city IS NULL even when no city filter…, With only min_samples rows, the returned bias must be strictly smaller in…, With many samples the shrinkage factor is negligible — bias stays near its raw… (+51 more)
 
 ### Community 56 - "_forecast_model_weights"
-Cohesion: 0.08
-Nodes (20): When tracker has 10+ model rows, _forecast_model_weights returns tracker…, When tracker data covers only some models (e.g. ECMWF has zero rows for this…, When tracker has no rows (empty dict), _forecast_model_weights falls back to…, TestForecastModelWeightsTrackerIntegration, When learned_weights.json has NYC weights, they're returned for NYC., No city → seasonal fallback (no learned weights lookup)., Dynamic tracker weights take priority over learned_weights.json., TestPerCityLearnedWeights (+12 more)
+Cohesion: 0.05
+Nodes (31): _forecast_model_weights gives ECMWF +0.5 extra during El NiÃ±o winter., When tracker has 10+ model rows, _forecast_model_weights returns tracker…, When tracker data covers only some models (e.g. ECMWF has zero rows for this…, When tracker has no rows (empty dict), _forecast_model_weights falls back to…, TestEnsoPhase, TestForecastModelWeightsTrackerIntegration, La Niña winter should give ECMWF higher weight than neutral., ENSO should not affect summer weights (not winter). (+23 more)
 
-### Community 57 - "nws.py"
-Cohesion: 0.06
-Nodes (47): base64, client_order_id Idempotency Check, Grade Audit Module Doc: kalshi_client.py, Grade Audit Module Doc: order_executor.py, _check_key_permissions() Windows icacls Untested Gap (7/10), kalshi_client.py Grade Audit, kalshi_client.py File Grade: median 8/10, no active bugs, place_order() client_order_id Idempotency Design (8/10) (+39 more)
+### Community 57 - "Grade Audit Module Doc: order_executor.py"
+Cohesion: 0.33
+Nodes (7): client_order_id Idempotency Check, _drawdown_snapshot() Effective Balance Gate, Graduation Brier Threshold (≤0.23), Grade Audit Module Doc: kalshi_client.py, Grade Audit Module Doc: main.py, Grade Audit Module Doc: order_executor.py, Grade Audit Module Doc: paper.py
 
 ### Community 58 - "P2: Risk Control & Capital Safety — Verification Plan"
 Cohesion: 0.06
 Nodes (32): Commit sequence, Expected final output, Expected output — Task 10, Expected output — Task 11, Expected output — Task 43, Expected output — Task 47, Expected output — Task 9, Full test file (complete, all tasks) (+24 more)
 
-### Community 59 - "_seed_db"
-Cohesion: 0.09
-Nodes (18): _make_winter_rows(), 60 winter predictions → winter weights present and sum to 1.0., 10 predictions (< 20) → season returned with neutral uncalibrated defaults., Seed a minimal predictions + outcomes DB for calibration tests., Rows missing ensemble_prob/nws_prob/clim_prob must not count toward threshold., backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 (review- caught, defense-…, backlog.txt Snow Step 2: the identical defense-in-depth check, mirrored for…, 55 NYC predictions (>= 50) → NYC weights present and valid. (+10 more)
+### Community 59 - "test_calibration.py"
+Cohesion: 0.06
+Nodes (33): load_city_weights(), load_condition_weights(), load_seasonal_weights(), Load seasonal weights from JSON. Returns {} if file missing., Load per-city weights from JSON. Returns {} if file missing., Load per-condition-type weights from JSON. Returns {} if file missing., _make_winter_rows(), Path (+25 more)
 
 ### Community 60 - "_feels_like"
 Cohesion: 0.08
 Nodes (19): Standard cold+wind, no humidity penalty., temp<=50, wind>=3, humidity>=70 â†’ wind chill + humidity penalty., temp<=50, no strong wind, humidity>=70 â†’ humidity penalty only., temp>=80, humidity>=40 â†’ heat index above raw temp., Comfortable conditions return raw temp., TestFeelsLike, temp=38, humidity=90 → result < 38 (moist-cold penalty)., Cold with low humidity and light wind → close to actual (NWS wind chill). (+11 more)
 
 ### Community 61 - "TestAnalyzeTradeHurricaneGating"
-Cohesion: 0.06
-Nodes (17): _faustro_hurricane_market(), Regression control: an ordinary daily HIGH ticker must still reach its normal…, Regression control: the hurricane marker check must not accidentally collide…, Regression control for the specific false-positive risk a substring-based check…, Live-confirmed real ticker with 8 open markets as of 2026-07-26 -- the original…, Live-confirmed real ticker with 53 open markets as of 2026-07-26 -- also missed…, Same "reach the real dispatch through the public entry point, not just the…, Now one of the 5 season-count series with a real model (2026-08-03) -- same… (+9 more)
+Cohesion: 0.14
+Nodes (7): Same "reach the real dispatch through the public entry point, not just the…, Now one of the 5 season-count series with a real model (2026-08-03) -- same…, backlog.txt "HURRICANE MARKETS" -- time-to-next-event model (2026-08-07):…, Opus-review-caught: every other test in this file (and the two…, A next-event ticker whose close_time has already passed must be caught by its…, backlog.txt "HURRICANE MARKETS" -- season-count model (2026-08-03): KXHURCTOT…, TestAnalyzeTradeHurricaneGating
 
 ### Community 62 - "TestDailyPaperSpend"
-Cohesion: 0.13
-Nodes (10): _make_trade(), test_phase2_batch_n.py — Tests for order_executor daily spend cap separation.…, _daily_paper_spend() must only sum multi-day trade costs., TestDailyPaperSpend, _make_trade(), test_phase2_batch_o.py — Tests for same-day spend cap (MAX_SAME_DAY_SPEND).…, _daily_sameday_spend() must only sum days_out==0 trade costs., The two caps read from non-overlapping trade subsets — no double-counting. (+2 more)
+Cohesion: 0.12
+Nodes (12): _daily_sameday_spend(), Sum of same-day paper trade costs placed today (UTC date). Used for same-day…, _make_trade(), test_phase2_batch_n.py — Tests for order_executor daily spend cap separation.…, _daily_paper_spend() must only sum multi-day trade costs., TestDailyPaperSpend, _make_trade(), test_phase2_batch_o.py — Tests for same-day spend cap (MAX_SAME_DAY_SPEND).… (+4 more)
 
 ### Community 63 - "check_black_swan_conditions"
-Cohesion: 0.07
-Nodes (15): check_black_swan_conditions(), P10.2: Detect extreme abnormal conditions that warrant emergency shutdown.…, P1-14: 12 consecutive NO-side wins must not trigger black swan., P1-14: 12 consecutive NO-side losses (outcome='yes') trigger black swan., Regression tests for the lower-severity Fable findings fixed alongside the…, Deep-review followup: an early `if not trades: return triggered` used to skip…, balance isn't actually used in the daily-loss math (only peak_balance is) — the…, Deep-review followup: t.get("settled_at", "") only covers a MISSING key -- a… (+7 more)
+Cohesion: 0.08
+Nodes (14): check_black_swan_conditions(), P10.2: Detect extreme abnormal conditions that warrant emergency shutdown.…, Regression tests for the lower-severity Fable findings fixed alongside the…, A trade record with days_out=None (key present, not absent) must not TypeError…, A Brier-check exception (e.g. a locked tracker.db) must be treated as…, Deep-review followup: an early `if not trades: return triggered` used to skip…, balance isn't actually used in the daily-loss math (only peak_balance is) — the…, Deep-review followup: t.get("settled_at", "") only covers a MISSING key -- a… (+6 more)
 
-### Community 64 - "test_phase3_batch_c.py"
-Cohesion: 0.11
-Nodes (16): calibration._brier / _CITY_MIN / _best_weights / calibrate_city_weights, calibration cutoff_date temporal isolation (seasonal/city/condition), _make_db(), Phase 3 Batch C regression tests: P3-1, P3-7, P3-16, P3-17, P3-25., P3-25: _CITY_MIN must be 50., P3-7: _best_weights uses random search; gate returns equal weights when no…, Seed a predictions+outcomes DB for calibration tests., Same data → same weights (random search uses fixed seed=42). (+8 more)
+### Community 64 - "calibration.py"
+Cohesion: 0.05
+Nodes (45): Pass 14 (Performance) repro: measure the real per-call cost of the two…, _best_weights(), _brier(), calibration._brier / _CITY_MIN / _best_weights / calibrate_city_weights, calibrate_and_save(), calibrate_city_weights(), calibrate_condition_weights(), calibrate_seasonal_weights() (+37 more)
 
 ### Community 65 - "Task 21 (P6.1) — Source SLA logging"
 Cohesion: 0.06
@@ -1322,9 +1348,9 @@ Nodes (31): Effective same-day slot cap for the current UTC hour. Dynamic mode: 
 Cohesion: 0.12
 Nodes (28): Pre-execution validation gate for auto-placed trades (P1.1+P1.2). Returns (ok,…, _validate_trade_opportunity(), _opp(), Tests for P1.1+P1.2 — _validate_trade_opportunity() pre-trade gate., Without ensemble_spread key, fall back to flat PAPER_MIN_EDGE threshold (0.05)., ensemble_spread=0.20 (LOW tier) requires edge >= 0.10; edge=0.08 should be…, opp["edge"] present but None (as opposed to simply absent) must not raise…, opp["net_edge"] present but None must not raise TypeError from `edge <= 0` —… (+20 more)
 
-### Community 69 - "TestGetQuintileBias"
-Cohesion: 0.08
-Nodes (15): #13 - get_market_calibration() must use equal-frequency buckets and accept…, n_buckets parameter should control number of output buckets., Buckets should be roughly equal in count (quantile, not equal-width)., Each bucket must have the required keys., Default call (no args) should use 10 buckets., E1: per-quintile bias correction., Insert n settled predictions at our_prob in quintile of our_prob., With no data in the target quintile, returns global bias. (+7 more)
+### Community 69 - "._seed"
+Cohesion: 0.06
+Nodes (21): #13 - get_market_calibration() must use equal-frequency buckets and accept…, n_buckets parameter should control number of output buckets., Buckets should be roughly equal in count (quantile, not equal-width)., Each bucket must have the required keys., Default call (no args) should use 10 buckets., backfill_member_brier() -- one-off recovery pass populating implied_prob/brier…, Positive control: the brier IS NULL guard must actually work, not just happen…, A trade with a broken model_forecast_means shape must not abort the whole batch… (+13 more)
 
 ### Community 70 - "TestBackfillPriceHistory"
 Cohesion: 0.10
@@ -1334,21 +1360,21 @@ Nodes (10): tracker.backfill_price_history(client) -- the one-off recovery pass 
 Cohesion: 0.06
 Nodes (30): agedPositions, alerts, balanceHist, balanceWalk(), brierByDays, brierHist, _brng(), calibration (+22 more)
 
-### Community 72 - "ForecastCache"
+### Community 72 - "count_settled_predictions"
 Cohesion: 0.09
-Nodes (16): ForecastCache, Remove all expired entries. Returns the number of entries removed., Thread-safe dict-based cache with per-entry TTL and LRU eviction. Keys are…, Return the TTL for an entry: per-entry (3-tuple) or class default (2-tuple)., Return (value, hit, wall_clock_fetch_ts). wall_clock_fetch_ts is derived from…, prune_expired() removes all expired entries and returns the correct count., prune_expired() only removes expired entries — fresh entries survive., prune_expired() on an empty cache returns 0 without error. (+8 more)
+Nodes (30): _method_kelly_multiplier(), Scale Kelly by per-method Brier. Poor method (Brier > 0.20) → 0.75×. Uses a…, brier_score_by_method(), brier_score_by_method_rolling(), brier_score_probation_rolling(), _calibration_curve(), _condition_type_not_in_sql(), count_settled_predictions() (+22 more)
 
 ### Community 73 - "frontend/src/mockData.js"
 Cohesion: 0.07
 Nodes (29): agedPositions, alerts, balanceHist, balanceWalk(), brierByDays, brierHist, _brng(), calibration (+21 more)
 
-### Community 74 - "test_regression.py"
-Cohesion: 0.08
-Nodes (29): _DEFAULT_CORRELATIONS Dict, Paper Trading Ledger Module, STARTING_BALANCE, Regression test: Brier score must not degrade more than 1% after refactors., cmd_simulate must call backtest._fetch_settled_markets (series-based), not…, get_weather_markets must not call client.get_markets() without series_ticker.…, When MC clamps a probability, the UI should explain this is expected/defensive., test_brier_score_not_degraded() (+21 more)
+### Community 74 - "test_silent_failures.py"
+Cohesion: 0.16
+Nodes (15): _make_enriched(), _patch_analyze_prereqs(), Tests for P0.4 — Silent failure elimination. Every failure in the trading path…, If nws_prob raises, the failure must be logged., Minimal enriched dict that passes all analyze_trade gates., If climatological_prob raises, the failure must be logged., If log_price_improvement raises after a paper order, it must be logged., If log_api_request raises inside _request_with_retry, it must be logged. (+7 more)
 
-### Community 75 - "_normal_ladder"
-Cohesion: 0.09
-Nodes (13): _market(), _normal_ladder(), _rain_ladder(), _rain_market(), A single KXRAIN*M monthly-rain bracket -- strike_type="greater" matches every…, Build a rain sibling ladder whose mid-prices are the *exact* implied…, backlog.txt "RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET- IMPLIED…, Backward compatibility: existing temperature callers that don't pass… (+5 more)
+### Community 75 - "test_market_implied_distribution.py"
+Cohesion: 0.07
+Nodes (17): _market(), _normal_ladder(), _rain_ladder(), _rain_market(), Tests for weather_markets.fit_market_implied_distribution and…, A single KXRAIN*M monthly-rain bracket -- strike_type="greater" matches every…, Build a rain sibling ladder whose mid-prices are the *exact* implied…, backlog.txt "RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET- IMPLIED… (+9 more)
 
 ### Community 76 - "TestValidateMarketPriceRange"
 Cohesion: 0.12
@@ -1374,9 +1400,9 @@ Nodes (15): _fresh_obs_time(), P1-2: response with no obsTime key → None (no f
 Cohesion: 0.07
 Nodes (27): 15.1 Add `_log_decision` helper to `main.py`, 15.2 Call `_log_decision` in `_auto_place_trades`, 15.3 Write tests, 15.4 Verify Task 15, 15.5 Commit Task 15, 16.1 Add `_write_cron_metrics` to `main.py`, 16.2 Wire into `cmd_cron`, 16.3 Write tests (+19 more)
 
-### Community 82 - "atomic_write_json_with_history"
-Cohesion: 0.10
-Nodes (19): atomic_write_json_with_history(), Does not expose emergency_copy -- this function exists specifically to preserve…, data_dir(), _patched_cleanup(), fixture, Path, P0-15: cleanup_data_dir must not delete permanent calibration files., An ephemeral file modified within 2 days must not be deleted. (+11 more)
+### Community 82 - "test_cleanup_data_dir.py"
+Cohesion: 0.11
+Nodes (17): data_dir(), _patched_cleanup(), fixture, Path, P0-15: cleanup_data_dir must not delete permanent calibration files., An ephemeral file modified within 2 days must not be deleted., Redirect main.DATA_DIR (via __file__ resolution) to a temp directory., _PERMANENT_DATA_FILES must include the key calibration files. (+9 more)
 
 ### Community 83 - "test_city_registry_manifest.py"
 Cohesion: 0.10
@@ -1391,8 +1417,8 @@ Cohesion: 0.09
 Nodes (14): Targets the exact SQL operator-precedence risk directly: SQL's AND binds…, Regression test: _fit_T's callers used to log a generic "T fit no better than…, 24 rows all predicting 0.4 while the actual settle rate is 0.75 -- unfixable by…, While EMOS is live, global/above/below/between must not be refit -- overwriting…, Same directional-bias shape as above, seeded into the sameday and hourly pools…, train_all_temperature_scaling's sameday T fit must not train on…, backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 handoff item (ml_bias.py…, backlog.txt Snow Step 2: the identical leak-prevention check, mirrored for… (+6 more)
 
 ### Community 86 - "test_kalshi_ws.py"
-Cohesion: 0.10
-Nodes (16): flash_crash_cb (FlashCrashCB instance), Update in-memory and on-disk cache for a ticker., Read the current order book cache from disk., read_orderbook_cache(), update_orderbook_cache(), Tests for Kalshi WebSocket client., 2026-07-12: a 'ticker'-type message must feed flash_crash_cb.check() on every…, An orderbook_delta carries no real mid_price -- it must not reach… (+8 more)
+Cohesion: 0.12
+Nodes (14): flash_crash_cb (FlashCrashCB instance), Update in-memory and on-disk cache for a ticker., Read the current order book cache from disk., read_orderbook_cache(), update_orderbook_cache(), Tests for Kalshi WebSocket client., 2026-07-12: a 'ticker'-type message must feed flash_crash_cb.check() on every…, An orderbook_delta carries no real mid_price -- it must not reach… (+6 more)
 
 ### Community 87 - "Task 18 (P5.2) — Shadow mode"
 Cohesion: 0.07
@@ -1407,8 +1433,8 @@ Cohesion: 0.07
 Nodes (10): A concurrent writer's fresher, higher peak must survive a stale/lower write…, A position closed by another process between the caller's price snapshot and…, An early exit closes the position (settled_at set, excluded from…, A partial IOC exit fill must shrink the tracked open quantity by exactly the…, The UPDATE must compute fill_quantity - filled_count IN SQL, not have the…, Regression: a filled exit (SELL) order's own row is live=1, status='filled',…, Regression: `\"yes\" if row[\"outcome_yes\"] else \"no\"` silently wrote \"no\"…, AUD-0057 + opus review follow-up: an unmatched live sell settles with a… (+2 more)
 
 ### Community 90 - "test_ml_bias.py"
-Cohesion: 0.07
-Nodes (29): fit_emos(), Fit EMOS parameters (a, b, c, d) minimising mean CRPS. Model: T ~ N(mu,…, ndarray, numpy, _metar_rows(), Tests for ML-based bias correction., P2-I: apply_platt_per_city must preserve monotonic ordering. If raw_p1 < raw_p2…, Synthesize {our_prob, settled_yes} rows shaped like real METAR lock-in data:… (+21 more)
+Cohesion: 0.08
+Nodes (26): numpy, _metar_rows(), Tests for ML-based bias correction., P2-I: apply_platt_per_city must preserve monotonic ordering. If raw_p1 < raw_p2…, Synthesize {our_prob, settled_yes} rows shaped like real METAR lock-in data:…, Floor is on the MINORITY class count (EPV -- events per predictor variable),…, The mirror case: minority class exactly at/above the floor must succeed --…, A corrupted settled_yes value (anything other than exactly 0 or 1) must refuse… (+18 more)
 
 ### Community 91 - "_import_main"
 Cohesion: 0.11
@@ -1435,8 +1461,8 @@ Cohesion: 0.09
 Nodes (27): handleSSEEvent, startSSE, useData (hook), AnalyticsTab, EmosStatusCard, MultiDayCalibCard, SamedayCalibCard, OverviewTab (+19 more)
 
 ### Community 97 - "test_early_exits.py"
-Cohesion: 0.10
-Nodes (18): order_executor.MODEL_EXIT_SHIFT_PP, paper.check_breakeven_stops, paper._passes_exit_gates, _make_trade(), Tests for early exit threshold and hold-time guards., P1-20: get_weather_markets must be called once regardless of N open trades., P1-20: no API call at all when there are no open trades., _check_early_exits must not exit a trade entered less than 12 hours ago. (+10 more)
+Cohesion: 0.06
+Nodes (28): order_executor.MODEL_EXIT_SHIFT_PP, paper.check_breakeven_stops, paper._passes_exit_gates, _make_trade(), Tests for early exit threshold and hold-time guards., P1-20: get_weather_markets must be called once regardless of N open trades., P1-20: no API call at all when there are no open trades., _check_early_exits must not exit a trade entered less than 12 hours ago. (+20 more)
 
 ### Community 98 - "_strong_market_analysis"
 Cohesion: 0.11
@@ -1447,24 +1473,24 @@ Cohesion: 0.11
 Nodes (14): KXRAIN-ATLANTA ticker: 'ATLANTA' contains 'LA' — must be Atlanta, not LA., backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 1: KXRAIN*M monthly rain-…, Real ticker shape pulled live 2026-07-20. Would return None without the…, Would return None without the explicit fix -- "KXRAINLAXM" has no…, Would return None without the explicit fix -- "KXRAINHOUM" doesn't contain…, Would return None without the explicit fix -- "KXRAINSFOM" doesn't contain…, Would return None without the explicit fix -- "KXRAINDALM" doesn't contain…, Passes the existing substring chain by luck ("MIA") -- tested so a future edit… (+6 more)
 
 ### Community 100 - "walk_forward_backtest"
-Cohesion: 0.10
-Nodes (19): _brier_score_from_trades(), _find_optimal_min_edge(), Path, D4: Find the edge threshold that maximises win rate for trades above it.…, D4: Persist walk-forward results so config.py can use optimal_min_edge as a…, Compute Brier score from a list of trade dicts., Run a walk-forward (rolling out-of-sample) backtest on historical trade data.…, save_walk_forward_params() (+11 more)
+Cohesion: 0.07
+Nodes (32): _brier_score_from_trades(), _find_optimal_min_edge(), D4: Find the edge threshold that maximises win rate for trades above it.…, Split trades into walk-forward train/test folds. Each fold trains on [start,…, Compute Brier score from a list of trade dicts., Run a walk-forward (rolling out-of-sample) backtest on historical trade data.…, walk_forward_backtest(), walk_forward_split() (+24 more)
 
-### Community 101 - "test_calibration.py"
-Cohesion: 0.13
-Nodes (13): load_city_weights(), load_condition_weights(), load_seasonal_weights(), Load seasonal weights from JSON. Returns {} if file missing., Load per-city weights from JSON. Returns {} if file missing., Load per-condition-type weights from JSON. Returns {} if file missing., Path, Tests for calibration.py — seasonal and per-city blend weight calibration. (+5 more)
+### Community 101 - "check_stop_losses"
+Cohesion: 0.11
+Nodes (16): check_stop_losses(), Shared Position Read-Model Module, Return positions whose unrealized loss has breached the stop-loss threshold.…, _flat_prices(), Convert {ticker: yes_price} to the {ticker: {"bid":..., "ask":...}} shape…, Deep-review followup: parse_market_price() coalesces a missing side to 0.0…, End-to-end: a YES position with a one-sided (bid=0) book must not be treated as…, YES trade: price halved → loss = 50% of cost → stop fires (MULT=2). (+8 more)
 
-### Community 102 - "was_traded_today"
-Cohesion: 0.10
-Nodes (25): Return True if this ticker+side was successfully ordered today (UTC). Excludes…, was_traded_today(), Tests for P1.5 — was_traded_today() daily dedup guard in execution_log., A canceled (no-fill) order today must not block re-entry -- same reasoning as…, British "cancelled" spelling (written by older GTC-timer paths) must also be…, _auto_place_trades must skip an opp if was_traded_today returns True., A ticker never traded today must return False., P2-A: dedup guard must fire in live=True mode, not just paper mode. When a… (+17 more)
+### Community 102 - "test_dedup.py"
+Cohesion: 0.08
+Nodes (23): Tests for P1.5 — was_traded_today() daily dedup guard in execution_log., A canceled (no-fill) order today must not block re-entry -- same reasoning as…, British "cancelled" spelling (written by older GTC-timer paths) must also be…, _auto_place_trades must skip an opp if was_traded_today returns True., A ticker never traded today must return False., P2-A: dedup guard must fire in live=True mode, not just paper mode. When a…, A ticker logged via log_order today must return True for the same side., Traded yes must not block a separate no trade on the same ticker. (+15 more)
 
-### Community 103 - "is_all_null"
-Cohesion: 0.14
-Nodes (10): kalshi_client.KalshiClient / _check_error_body, is_all_null(), True if values is a non-empty list where every element is None. This is the…, Phase 2 Batch L regression tests: P2-17/P2-19/P2-34/P2-43 — API/client/safety., cron._cmd_cron_body must unpack (msgs, should_halt) from run_anomaly_check., Soft anomaly (should_halt=False) must NOT stop the cron cycle., Detects the 'dead model' signature: Open-Meteo returns HTTP 200 with a well-…, An empty list means 'no data for this range yet' — a normal condition distinct… (+2 more)
+### Community 103 - "test_phase2_batch_l.py"
+Cohesion: 0.12
+Nodes (12): kalshi_client.KalshiClient / _check_error_body, is_all_null(), True if values is a non-empty list where every element is None. This is the…, Phase 2 Batch L regression tests: P2-17/P2-19/P2-34/P2-43 — API/client/safety., cron._cmd_cron_body must unpack (msgs, should_halt) from run_anomaly_check., Soft anomaly (should_halt=False) must NOT stop the cron cycle., Regression guard for the exact bug class that caused…, Detects the 'dead model' signature: Open-Meteo returns HTTP 200 with a well-… (+4 more)
 
 ### Community 104 - "test_execution_proof.py"
-Cohesion: 0.13
-Nodes (23): _FakeClient, _make_opp(), Tests for P0.1 — Trade execution proof. _auto_place_trades must return the…, If place_paper_order raises a non-ValueError, it must be logged., Minimal flat opportunity dict accepted by _auto_place_trades., If log_analysis_attempt fails after a successful trade, it must be logged., L1-D: place_paper_order failure must print a visible error — not just log. A…, Minimal KalshiClient stand-in for price-refresh tests. (+15 more)
+Cohesion: 0.17
+Nodes (19): _make_opp(), Tests for P0.1 — Trade execution proof. _auto_place_trades must return the…, If place_paper_order raises a non-ValueError, it must be logged., Minimal flat opportunity dict accepted by _auto_place_trades., If log_analysis_attempt fails after a successful trade, it must be logged., L1-D: place_paper_order failure must print a visible error — not just log. A…, L1-B: if the fresh market price eliminates our edge, trade must be skipped.…, L1-B: without a client (paper-only mode), stale analysis price is used. This… (+11 more)
 
 ### Community 105 - "TestAnalyzeTradeHourlyModel"
 Cohesion: 0.19
@@ -1475,24 +1501,24 @@ Cohesion: 0.09
 Nodes (26): flask, React App Root (index.html), AnalyticsTab.jsx Component, App.jsx Component, src/main.jsx Entry Point, useData.js Data Fetching Hook, web_app.py Module, D4: Per-City Reliability Diagram (+18 more)
 
 ### Community 107 - "_cb"
-Cohesion: 0.12
-Nodes (11): kalshi_client._kalshi_cb_read / _kalshi_cb_write / _request_with_retry, _cb(), Phase 3 Batch B regression tests: P3-4, P3-5, P3-6., Create a non-persisting CircuitBreaker for tests., P3-6: HALF-OPEN must allow exactly one probe and reopen on probe failure., Second is_open() call while probe is in flight must be blocked., execute() probe succeeds → circuit closes., execute() probe raises → circuit reopens. (+3 more)
+Cohesion: 0.13
+Nodes (9): _cb(), Create a non-persisting CircuitBreaker for tests., P3-6: HALF-OPEN must allow exactly one probe and reopen on probe failure., Second is_open() call while probe is in flight must be blocked., execute() probe succeeds → circuit closes., execute() probe raises → circuit reopens., P3-4: execute() provides automatic check → call → record protection., TestCircuitBreakerExecute (+1 more)
 
 ### Community 108 - "_make_enriched"
 Cohesion: 0.11
 Nodes (17): _make_enriched(), date, patch, analyze_trade returns a non-None dict with forecast_prob and edge keys., analyze_trade returns None when _forecast is missing (no forecast data)., analyze_trade succeeds even when NWS and climatology return None., analyze_trade returns None when _city is missing., analyze_trade returns None when _date is missing. (+9 more)
 
 ### Community 109 - "TestFetchAfdDiscussion"
-Cohesion: 0.11
-Nodes (10): Tests for nws_afd.py -- backlog.txt "NWS AFD (AREA FORECAST DISCUSSION)…, Regression guard for the real HIGH bug: a bracketed qualifier on the…, Regression guard for the real HIGH gap: offices with no .DISCUSSION section at…, Synthetic (not a real captured bulletin, since a live check 2026-07-30 found…, Regression guard for the real MEDIUM bug: a present-but-empty section (header…, A .DISCUSSION section that's the last thing in the bulletin (no trailing "&&"…, Documented, not "fixed": if a "&&" ever appears BETWEEN nested ".KEY MESSAGE…, Regression guard for a bug caught during the ForecastCache swap (self-caught,… (+2 more)
+Cohesion: 0.12
+Nodes (9): Regression guard for the real HIGH bug: a bracketed qualifier on the…, Regression guard for the real HIGH gap: offices with no .DISCUSSION section at…, Synthetic (not a real captured bulletin, since a live check 2026-07-30 found…, Regression guard for the real MEDIUM bug: a present-but-empty section (header…, A .DISCUSSION section that's the last thing in the bulletin (no trailing "&&"…, Documented, not "fixed": if a "&&" ever appears BETWEEN nested ".KEY MESSAGE…, Regression guard for a bug caught during the ForecastCache swap (self-caught,…, TestFetchAfdDiscussion (+1 more)
 
 ### Community 110 - "TestMaxDrawdown"
 Cohesion: 0.08
 Nodes (12): Balance below 50% of $1000 → drawdown active., kelly_bet_dollars should return 0.0 when in drawdown., kelly_bet_dollars works normally when balance >= $500 (capped at $50)., Balance exactly at $800 (= 80% of $1000, 20% halt) is NOT paused (strict less-…, get_effective_balance() adds back open same-day trade costs., get_effective_balance() does NOT add back multi-day trade costs., is_paused_drawdown() stays False when balance dips below halt only due to open…, reset_peak_balance() resets peak to current balance, preserving trades. (+4 more)
 
 ### Community 111 - "test_forecasting.py"
-Cohesion: 0.10
-Nodes (11): test_data_freshness.py (referenced, not in this chunk), fetch_forecast=False must skip get_weather_forecast() entirely (used by…, Regression: default behavior (every other existing caller) is unchanged., When _detect_bimodal_ensemble returns True, multiplier must be 0.10., When _detect_bimodal_ensemble returns False, multiplier must be 1.0., When bimodal detected, ci_adjusted_kelly in analyze_trade result is reduced., TestBimodalEnsemble, TestEnrichWithForecastSkipsFetch (+3 more)
+Cohesion: 0.08
+Nodes (15): test_data_freshness.py (referenced, not in this chunk), P1-1: data_fetched_at must reflect the cache entry's original fetch time, not…, When the forecast is already cached, data_fetched_at must equal the original…, On a cache miss, data_fetched_at must be the current wall-clock time., fetch_forecast=False must skip get_weather_forecast() entirely (used by…, Regression: default behavior (every other existing caller) is unchanged., When _detect_bimodal_ensemble returns True, multiplier must be 0.10., When _detect_bimodal_ensemble returns False, multiplier must be 1.0. (+7 more)
 
 ### Community 112 - "TestPortfolioKelly"
 Cohesion: 0.08
@@ -1506,17 +1532,17 @@ Nodes (24): Bugs to fix (from 2026-05-01 Cursor audit), Feature Roadmap Implemen
 Cohesion: 0.13
 Nodes (17): AnalyticsTab(), BalanceSparkline(), CITY_NAMES, DataContext, fmtEdge(), ForecastTab(), Nav(), normCity() (+9 more)
 
-### Community 115 - "calibration.py"
-Cohesion: 0.13
-Nodes (23): _best_weights(), calibrate_and_save(), calibrate_city_weights(), calibrate_seasonal_weights(), _compute_recency_weight(), _load_rows(), Path, Row (+15 more)
+### Community 115 - "acis_snow.py"
+Cohesion: 0.14
+Nodes (20): bootstrap_ci_month_total(), historical_remaining_and_full_month_sums(), For each historical year present in `history`, sum the [remaining_start_day,…, Mirrors weather_markets._bootstrap_ci_precip's exact resampling shape: n…, Derive an ACIS StnData `sid` from metar.MARKET_STATION_MAP[city] by stripping…, _station_sid_for_city(), _cache_is_stale(), _cache_path() (+12 more)
 
 ### Community 116 - "TestApplyTemperatureScaling"
 Cohesion: 0.11
 Nodes (13): Tests for apply_temperature_scaling — the per-condition calibration step. Each…, Write content to a temp file and wire ml_bias to read it., Returns prob unchanged when temperature_scale.json does not exist., With a global T > 1, output is compressed toward 0.5 from both sides., condition_type='between' uses the between T, not the global T., Falls back to global T when condition_type is not in the table., days_out=0 uses 'sameday' T, not the global T., days_out=0 returns prob unchanged when 'sameday' key absent — no global… (+5 more)
 
-### Community 117 - "ml_bias.py"
-Cohesion: 0.07
-Nodes (33): Repro: get_emos_status() mislabels a file-vanished race as file corruption.…, Pass 14 (Performance) repro: measure the real per-call cost of the two…, Grade Audit Module Doc: ml_bias.py, hashlib, hmac, apply_metar_calibration(), apply_platt_per_city(), apply_temperature_scaling() (+25 more)
+### Community 117 - "_compute_hmac"
+Cohesion: 0.33
+Nodes (6): _compute_hmac(), _hmac_secret(), Return the HMAC secret from env. Empty string disables verification (dev only)., Compute HMAC-SHA256 of data using MODEL_HMAC_SECRET., Write HMAC sidecar for a freshly serialised pickle., _write_hmac()
 
 ### Community 118 - "_mock_nbs_response"
 Cohesion: 0.14
@@ -1539,32 +1565,32 @@ Cohesion: 0.13
 Nodes (13): Violation, cmd_watch's auto-trading display must source from run_trade_cycle()'s own…, When run_trade_cycle() returns a real (non-None) cycle_result, cmd_watch must…, Not just that the scan is skipped -- the table actually renders the real…, _is_hedge isn't computed by run_trade_cycle() itself (it has no use for it) --…, cycle_result.markets is the RAW pre-dedup fetch result;…, run_trade_cycle()'s real applied threshold is max(min_edge,…, _analyze_once's own scan loop fires alert_strong_signal() for a new STRONG… (+5 more)
 
 ### Community 123 - "cloud_backup"
-Cohesion: 0.11
-Nodes (17): cloud_backup(), Path, #105: Upload backup to S3 if KALSHI_S3_BUCKET is set. Returns None if skipped., backup_to_s3 with no bucket returns None., backup_to_s3 calls boto3.client('s3').upload_file with correct args., backup_to_s3 logs a warning and does not raise when boto3 is not installed., test_backup_to_s3_calls_upload(), test_backup_to_s3_skips_when_boto3_missing() (+9 more)
+Cohesion: 0.18
+Nodes (13): cloud_backup(), #105: Upload backup to S3 if KALSHI_S3_BUCKET is set. Returns None if skipped., backup_to_s3 with no bucket returns None., backup_to_s3 calls boto3.client('s3').upload_file with correct args., backup_to_s3 logs a warning and does not raise when boto3 is not installed., test_backup_to_s3_calls_upload(), test_backup_to_s3_skips_when_boto3_missing(), test_backup_to_s3_skips_without_env() (+5 more)
 
 ### Community 124 - "ABTest"
 Cohesion: 0.06
 Nodes (31): ABTest, ab_test.ABTest, get_active_variant(), _load_test_state(), Any, Pick an active variant (round-robin among non-disabled, non-exhausted variants)., Record a trade outcome for the given variant., Return summary statistics for all variants. (+23 more)
 
-### Community 125 - "Category A: Prediction Pipeline Plan"
-Cohesion: 0.14
-Nodes (18): A1: EMOS Training &amp; Deployment, A2: NBM Quantile Integration, A3: Bimodal Ensemble Detection, A4: HRRR Model for Same-Day Markets, A6: Dew Point Coastal Correction, A8: Circuit Breaker Blend Rebalancing, Category A: Prediction Pipeline Plan, Feature Roadmap Plan (2026-05-01) (+10 more)
+### Community 125 - "weather_markets.py module"
+Cohesion: 0.13
+Nodes (22): Fix Market Scan Coverage (Remove Strategy 1), A1: EMOS Training &amp; Deployment, A2: NBM Quantile Integration, A4: HRRR Model for Same-Day Markets, A5: Dynamic Model Weights from ensemble_member_scores, A6: Dew Point Coastal Correction, A8: Circuit Breaker Blend Rebalancing, Category A: Prediction Pipeline Plan (+14 more)
 
 ### Community 126 - "FlashCrashCB"
-Cohesion: 0.08
-Nodes (14): flash_crash_cb (singleton), FlashCrashCB, Per-market flash crash detection. Trips when price moves > threshold_pct within…, Load persisted cooldowns from disk, discarding any that have already expired., Persist current (non-expired) cooldowns to disk atomically., Load persisted price history from disk, discarding any observations already…, Persist current (non-expired) price history to disk atomically., Record price and return True if this observation triggered a crash. Called from… (+6 more)
+Cohesion: 0.10
+Nodes (11): flash_crash_cb (singleton), FlashCrashCB, Per-market flash crash detection. Trips when price moves > threshold_pct within…, Load persisted cooldowns from disk, discarding any that have already expired., Load persisted price history from disk, discarding any observations already…, Tests for per-market flash crash circuit breaker., Proves the actual point of persisting _history to disk: two SEPARATE…, 2026-07-12: check() now fires on every live WS tick (kalshi_ws.py's… (+3 more)
 
-### Community 127 - "test_mos_nbp.py"
-Cohesion: 0.11
-Nodes (10): Tests for mos.py's NBP (NBM probabilistic quantiles) parsing -- the core logic…, IEM's error page for an unmatched PIL has no <pre class="afos-pre"> block --…, Every station this bot uses is K + 3 letters; a station that doesn't fit must…, KMDW -> pil=NBPMDW, matching NBS's own K-prefix-stripped station-suffix…, Mutation-proof: requesting var='min' on a date that only has a max entry must…, End-to-end: the fetcher's output shape must be directly consumable by…, TestFetchNbmQuantiles, TestFetchNbpPercentiles (+2 more)
+### Community 127 - "TestFetchNbpPercentiles"
+Cohesion: 0.14
+Nodes (7): IEM's error page for an unmatched PIL has no <pre class="afos-pre"> block --…, Every station this bot uses is K + 3 letters; a station that doesn't fit must…, KMDW -> pil=NBPMDW, matching NBS's own K-prefix-stripped station-suffix…, Mutation-proof: requesting var='min' on a date that only has a max entry must…, TestFetchNbmQuantiles, TestFetchNbpPercentiles, _wrap_html()
 
-### Community 128 - "settlement_monitor.py"
-Cohesion: 0.03
-Nodes (69): Pass 4 (Feature Correctness) reproduction. Demonstrates that…, Pass 7 (Weather Semantics) reproduction. Demonstrates that…, Grade Audit Module Doc: metar.py, Systemic DEBUG-vs-WARNING Gap on I/O Failures (_load_obs/_save_obs), metar.py Grade Audit, get_station_bias() Unconditional NotImplementedError Stub (7/10), metar.py File Grade: median 8/10 T1, systemic DEBUG gap in T2, check_metar_lockout() Silent ZoneInfo Fallback (8/10) (+61 more)
+### Community 128 - "_check_between_settlement"
+Cohesion: 0.09
+Nodes (16): Pass 4 (Feature Correctness) reproduction. Demonstrates that…, _check_between_settlement(), Determine settlement outcome for a between-bucket market. Returns a dict with…, Unit tests for _check_between_settlement (between-bucket lockout logic).…, max_temp_f at the lower edge → max clearance to the at-risk upper edge (full…, max_temp_f exactly at the half-band-width margin → locks (>=, not >)., max_temp_f just inside the at-risk edge of the margin → not locked., AC3 regression guard: an in-band INSTANTANEOUS reading alone must never lock… (+8 more)
 
-### Community 129 - "kelly_fraction"
-Cohesion: 0.11
-Nodes (15): P2-8: kelly_fraction default fee_rate must equal KALSHI_FEE_RATE, not 0., Fee-adjusted Kelly must be strictly smaller than fee-free Kelly., Callers can still pass fee_rate=0.0 explicitly for comparisons., TestKellyFractionFeeDefault, When our probability matches market price, Kelly = 0., Strong positive edge should give a positive Kelly fraction., We should never bet when edge is negative., Result should be quarter of full Kelly (fee-free formula verification). (+7 more)
+### Community 129 - "TestKellyFraction"
+Cohesion: 0.15
+Nodes (7): When our probability matches market price, Kelly = 0., Strong positive edge should give a positive Kelly fraction., We should never bet when edge is negative., Result should be quarter of full Kelly (fee-free formula verification)., Kelly with fee should be strictly less than fee-free Kelly., A tiny edge that is negative after fees should return 0., TestKellyFraction
 
 ### Community 130 - "_make_analysis"
 Cohesion: 0.14
@@ -1579,16 +1605,16 @@ Cohesion: 0.12
 Nodes (6): get_brier_by_tier() splits Brier score by abs(edge) tier., Point tracker at a fresh temp DB for isolation., 2026-07-23 (TRACK ECMWF FORECAST ACCURACY adjacency fix): when every tracked…, 2026-07-23 (TRACK ECMWF FORECAST ACCURACY adjacency fix): a model below the…, TestGetBrierByTier, TestGetModelWeights
 
 ### Community 133 - "test_p1_remaining.py"
-Cohesion: 0.09
-Nodes (13): Tests for P1-3, P1-4, P1-7, P1-8, P1-10, P1-18 fixes., main.cmd_backfill_price_history -- the `backfill-price-history` CLI command,…, main.cmd_backfill_daily_temp_settlement -- the `backfill-daily-temp-settlement`…, A zero-volume market closing within 60 minutes must never reach…, The same ticker appearing twice in one scan (old/new Kalshi series format…, (backlog.txt "THE ONLY LIVE-ORDER PATH..."): cron.py trades days_out==0 markets…, A days_out == 0 market with a real qualifying edge must reach _liquid_opps_out…, TestAnalyzeOnceDedupAndStaleParity (+5 more)
+Cohesion: 0.04
+Nodes (27): paper._DATA_LOCK, subprocess, Tests for P1-3, P1-4, P1-7, P1-8, P1-10, P1-18 fixes., backlog.txt "SIGNAL GRADUATION IS A CONVENTION" part (b): the `py main.py…, main.cmd_backfill_price_history -- the `backfill-price-history` CLI command,…, main.cmd_backfill_daily_temp_settlement -- the `backfill-daily-temp-settlement`…, settle_paper_trade uses entry_price (what was deducted at entry) for P&L., P&L on a won YES trade reflects only the cost paid at entry_price. (+19 more)
 
 ### Community 134 - "TestSignalGraduationCounters"
 Cohesion: 0.08
 Nodes (6): New generic counters backing backlog.txt's "SIGNAL GRADUATION IS A CONVENTION"…, Opus-review-caught bug (2026-07-28): the default require_settled_temp=True…, backlog.txt "RAIN'S MARKET-IMPLIED DISTRIBUTION ... HAS NO GRADUATION/SAMPLE-…, Opus-review-caught (2026-08-01): resolve_market_implied_for_analysis() hands…, Opus-review-caught gap (matches count_settled_snow_predictions()'s own…, TestSignalGraduationCounters
 
-### Community 135 - "nws_prob_from_quantiles"
-Cohesion: 0.11
-Nodes (19): nws_prob_from_quantiles(), Compute probability from NBM native quantiles using linear ECDF interpolation.…, nws_prob_from_quantiles uses ECDF interpolation for above condition., P(T > median) should be ~0.50 by definition., P(T < threshold) + P(T > threshold) should approximately equal 1., Empty quantile dict should return 0.5 as a safe fallback., TestNBMQuantiles, _analyze_trade_base_mocks() (+11 more)
+### Community 135 - "_analyze_trade_base_mocks"
+Cohesion: 0.21
+Nodes (12): _analyze_trade_base_mocks(), _analyze_trade_enriched_fixture(), Shared mocks for the nbm_quantile_prob tests below -- same baseline as the…, Shared enriched-market fixture for the nbm_quantile_prob tests below (paired…, backlog.txt "NBM PROBABILISTIC QUANTILES": when mos.fetch_nbm_quantiles returns…, No NBP coverage for this station/date (mos.fetch_nbm_quantiles returns None)…, A live-network exception inside the NBM-quantile fetch must not take down the…, Regression guard for backlog.txt "SEVERAL test_weather_markets.py analyze_trade… (+4 more)
 
 ### Community 136 - "TestPollPendingOrdersExtended"
 Cohesion: 0.09
@@ -1598,9 +1624,9 @@ Nodes (11): Orders older than gtc_cancel_hours are cancelled via the API., F9 fo
 Cohesion: 0.14
 Nodes (15): _make_enriched(), P0-11: retired strategy gate in analyze_trade. Verifies that analyze_trade…, analyze_trade must return None when the method is in retired_strategies., analyze_trade must not be blocked when the method is not retired., Minimal enriched market dict that passes all pre-Kelly gates., If get_retired_strategies raises, analyze_trade must not crash., Retiring 'ensemble' must prevent Kelly sizing from running., bypass_retirement_check=True is check_retirement_probation()'s only caller — it… (+7 more)
 
-### Community 138 - "sqlite3"
-Cohesion: 0.17
-Nodes (12): brentq(), _cdf(), _forecast_prob(), _implied_sigma(), Sigma calibration audit — diagnostic script, no behavior changes. Reads settled…, Replicate _forecast_probability() using stored threshold columns., Find sigma such that _forecast_prob(..., sigma) == target_prob., run_audit() (+4 more)
+### Community 138 - "sigma_audit.py"
+Cohesion: 0.33
+Nodes (8): brentq(), _cdf(), _forecast_prob(), _implied_sigma(), Sigma calibration audit — diagnostic script, no behavior changes. Reads settled…, Replicate _forecast_probability() using stored threshold columns., Find sigma such that _forecast_prob(..., sigma) == target_prob., run_audit()
 
 ### Community 139 - "frontend/src/useData.js"
 Cohesion: 0.17
@@ -1614,9 +1640,9 @@ Nodes (11): Helper: log prediction + outcome., Tests for get_multiday_calibratio
 Cohesion: 0.13
 Nodes (16): handleKeyDown(), CommandPalette(), Nav(), TABS, THEMES, VALID_TABS, kalshiMarketUrl(), normCity() (+8 more)
 
-### Community 142 - "test_cron_integration.py"
-Cohesion: 0.05
-Nodes (51): cron_env(), fixture, integration, Integration tests for cmd_cron() orchestration layer. All external calls…, A market with zero volume/open-interest closing within 60 minutes must never…, cmd_cron must call paper.check_paper_position_exits() and actually close a…, When drawdown guard is active, _auto_place_trades returns 0 and places nothing., When Brier drift is detected, cmd_cron logs the tightened STRONG_EDGE threshold. (+43 more)
+### Community 142 - "integration"
+Cohesion: 0.11
+Nodes (19): integration, When drawdown guard is active, _auto_place_trades returns 0 and places nothing., When Brier drift is detected, cmd_cron logs the tightened STRONG_EDGE threshold., A market whose net_edge clears STRONG_EDGE but adjusted_edge does not must NOT…, Lock must be cleaned up even if cron is interrupted mid-run., P1-15: when run_anomaly_check returns anomalies, cron must halt before…, An accuracy halt must not skip settlement — the halt is computed from settled…, An anomaly halt (declined in non-interactive/loop mode) must still settle. (+11 more)
 
 ### Community 143 - "System Hardening Implementation Plan (P0–P3)"
 Cohesion: 0.09
@@ -1638,25 +1664,25 @@ Nodes (21): _market(), _mock_client(), fixture, Tests for check_retirement_proba
 Cohesion: 0.13
 Nodes (10): BalanceSparkline(), BrierTrendChart(), CITY_NAMES, fmtEdge(), outcomeBadge(), StatCard(), SystemEventsCard(), OverviewTab() (+2 more)
 
-### Community 148 - "test_walk_forward.py"
+### Community 148 - "nws_prob_from_quantiles"
 Cohesion: 0.13
-Nodes (16): Split trades into walk-forward train/test folds. Each fold trains on [start,…, walk_forward_split(), _make_trade(), Tests for walk-forward backtesting engine., Make a minimal trade record for backtesting., run_walk_forward reads settled predictions from the tracker DB directly; it…, _fetch_settled_markets must query by series_ticker, not dump all global…, When no windows have data, cmd_walkforward should print a clear no-data message. (+8 more)
+Nodes (13): fetch_nbm_quantiles(), Fetch NBM's native probabilistic quantiles ({10,25,50,75,90}: temp_f) for a…, nws_prob_from_quantiles(), nws.nws_prob_from_quantiles, Compute probability from NBM native quantiles using linear ECDF interpolation.…, Tests for mos.py's NBP (NBM probabilistic quantiles) parsing -- the core logic…, End-to-end: the fetcher's output shape must be directly consumable by…, TestNbpFeedsNwsProbFromQuantiles (+5 more)
 
 ### Community 149 - "persistence_prob"
-Cohesion: 0.13
-Nodes (10): persistence_prob(), #26: Persistence baseline — models tomorrow's temperature as N(current_value,…, P(N(70, 5) > 72) â‰ˆ 0.345., analyze_trade includes persistence at 15% weight when days_out <= 2., TestPersistenceProb, Current value well above threshold → probability > 0.5., Current value well below threshold → probability < 0.5., Current value well below threshold → probability > 0.5. (+2 more)
-
-### Community 150 - "test_execution_log.py"
 Cohesion: 0.11
-Nodes (12): execution_log._MIGRATIONS / _SCHEMA_VERSION, Reconcile an open live position's tracked size after an IOC exit order only…, record_live_partial_exit(), Tests for execution_log schema migration and cycle-aware deduplication., F8: was_ordered_recently() must exclude API-canceled orders.…, Deep-review followup: rows written before the F8 spelling fix deployed (with…, utils.sql_normalize_iso_column() -- the shared helper both call sites above…, The actual bug this exists to prevent: an unnormalized ISO-T value sorts higher… (+4 more)
+Nodes (12): Pass 7 (Weather Semantics) reproduction. Demonstrates that…, Pass 8 (Mathematics) reproduction: persistence_prob() applied to a running…, persistence_prob(), #26: Persistence baseline — models tomorrow's temperature as N(current_value,…, P(N(70, 5) > 72) â‰ˆ 0.345., analyze_trade includes persistence at 15% weight when days_out <= 2., TestPersistenceProb, Current value well above threshold → probability > 0.5. (+4 more)
+
+### Community 150 - "TestWasOrderedRecentlyCanceledSpelling"
+Cohesion: 0.25
+Nodes (3): F8: was_ordered_recently() must exclude API-canceled orders.…, Deep-review followup: rows written before the F8 spelling fix deployed (with…, TestWasOrderedRecentlyCanceledSpelling
 
 ### Community 151 - "package.json"
 Cohesion: 0.10
 Nodes (20): dependencies, react, react-dom, devDependencies, vite, @vitejs/plugin-react, vitest, name (+12 more)
 
-### Community 152 - "_check_live_position_exits"
-Cohesion: 0.17
-Nodes (8): _check_live_position_exits(), Protect open live positions with stop-loss and breakeven-stop checks, reusing…, Regression: _get_current_book's REST fallback returns the raw…, A ticker that stop-loss-exits must not also be evaluated for a breakeven exit…, Regression: two separate open live positions sharing a ticker (two distinct…, The fan-out safety property this ticket-level by_ticker grouping exists for:…, TestCheckLiveModelExits, TestCheckLivePositionExits
+### Community 152 - "ensemble_stats"
+Cohesion: 0.15
+Nodes (10): ensemble_stats([]) must return {} not raise., Single-element ensemble: std=0, min=max=mean=the value., Result must contain n, mean, std, min, max, p10, p90., Verify mean and std match statistics module on known data., min and max match the actual extremes., p10 <= mean <= p90 for a non-degenerate ensemble., TestEnsembleStats, TestEnsembleStats (+2 more)
 
 ### Community 153 - "TestHmacVerification"
 Cohesion: 0.14
@@ -1678,17 +1704,17 @@ Nodes (21): Financial Safety Audit Scope (Kelly, drawdown, fees), System Audit P
 Cohesion: 0.12
 Nodes (11): _make_trade(), P2-1: Cholesky decomposition produces correct L @ L.T == mat., simulate_portfolio must always return correlation_applied in the result., P2-1: correlation_applied must reflect whether Cholesky actually succeeded., When Cholesky succeeds and trades have cities, correlation_applied must be True., When Cholesky returns None (not positive-definite), correlation_applied must be…, Trades with no city: correlation_applied must be False even if Cholesky would…, Empty trade list must return correlation_applied=False (or absent). (+3 more)
 
-### Community 159 - "test_phase2_batch_p.py"
-Cohesion: 0.11
-Nodes (20): _make_db(), Path, Tests for below-market condition weight fix. Covers: - calibrate_and_save…, When N >= min_samples, calibrate_condition_weights runs and its result is kept., Preservation only activates for uncalibrated entries; between (calibrated)…, _blend_weights for below should use condition_weights, not hardcoded schedule., _blend_weights for above must use explicit condition weights (ens-heavy), not…, When above has _uncalibrated:true and seasonal is also uncalibrated, use… (+12 more)
+### Community 159 - "pathlib"
+Cohesion: 0.02
+Nodes (118): Reproduction for Pass 12 (Concurrency) finding: cron._acquire_cron_lock() uses…, Repro: does an exit order's own row (closes_position_id set) get misread as a…, Repro: get_emos_status() mislabels a file-vanished race as file corruption.…, Repro: a live pending order can be silently evicted from…, FakeClient, Pass 14 (Performance) reproduction. Demonstrates that…, Independent re-verification of Pass 20 finding: cloud_backup.backup_data()…, Pass 19 (Regression) reproduction. Demonstrates that… (+110 more)
 
 ### Community 160 - "RF1: Silent Exception Swallow"
 Cohesion: 0.09
 Nodes (24): I3: Atomic Write (os.replace), RF1: Silent Exception Swallow, _paper_min_edge_default() RF1 Promotion (4/10), add_live_loss() RF1: warnings.warn Not Logged (5/10), get_order_by_id() RF1: DEBUG Instead of WARNING (6/10), _find_order_by_client_id() RF1 Bare Except (7/10), read_orderbook_cache() RF1: Zero Log on Exception (5/10), update_orderbook_cache() RF1: DEBUG on Disk Write Failure (5/10) (+16 more)
 
-### Community 161 - "._rain_market"
-Cohesion: 0.15
-Nodes (8): Opus-review-caught test gap (round 2): the "already past month-end" branch…, backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 handoff item 1: the real…, Resolved-decision #3 (backlog.txt Step 2 plan): get_quintile_bias must be…, Review-caught gap: every other end-to-end test mocks…, Opus-review-caught HIGH finding (Snow Step 2 review, identical gap in this…, Control for the guard above: zero missing days must NOT be refused -- confirms…, Review-caught gap: fetch_month_to_date_actual() returns (None, 0) both when…, TestAnalyzeMonthlyRainTradeEndToEnd
+### Community 161 - "TestAnalyzeMonthlyRainTradeEndToEnd"
+Cohesion: 0.14
+Nodes (7): Opus-review-caught test gap (round 2): the "already past month-end" branch…, backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 handoff item 1: the real…, Resolved-decision #3 (backlog.txt Step 2 plan): get_quintile_bias must be…, Opus-review-caught HIGH finding (Snow Step 2 review, identical gap in this…, Control for the guard above: zero missing days must NOT be refused -- confirms…, Review-caught gap: fetch_month_to_date_actual() returns (None, 0) both when…, TestAnalyzeMonthlyRainTradeEndToEnd
 
 ### Community 162 - "TestMetarSettlementCalibration"
 Cohesion: 0.13
@@ -1735,8 +1761,8 @@ Cohesion: 0.14
 Nodes (11): Regression tests for L6-C: 'between' condition markets must receive a Gaussian…, Ticker ending -B70.5 → between 70.0 and 71.0., Regression for L6-C: p_win_gaussian must not be None for 'between' condition…, Regression for L6-C: blend_sources must contain 'gaussian' for 'between'…, Drive analyze_trade with a mocked YES METAR lock so the downstream…, Positive control for the between_edge gate fix: the OLD 1.5°F threshold was…, Negative control paired with the test above: a reading close to the band edge…, Mutation-test the exact derived threshold ((hi-lo)/8 = 0.25°F for this 2°F… (+3 more)
 
 ### Community 173 - "test_kalshi_client.py"
-Cohesion: 0.19
-Nodes (9): KalshiClient.amend_order(), KalshiClient.get_markets()/get_candlesticks()/get_trades() pagination, Map this codebase's (side: yes/no, action: buy/sell, price) model to Kalshi's…, _to_v2_side_price(), Tests for kalshi_client.py., Buying NO at $0.35 is economically equivalent to selling YES at $0.65 (1 -…, L1-A's original invariant, restated for the V2 mapping: a NO buy and a YES sell…, V2 order-endpoint migration: Kalshi's legacy POST /portfolio/orders (side:… (+1 more)
+Cohesion: 0.18
+Nodes (10): KalshiClient.amend_order(), KalshiClient.get_markets()/get_candlesticks()/get_trades() pagination, KalshiClient.place_order()/_find_order_by_client_id(), Map this codebase's (side: yes/no, action: buy/sell, price) model to Kalshi's…, _to_v2_side_price(), Tests for kalshi_client.py., Buying NO at $0.35 is economically equivalent to selling YES at $0.65 (1 -…, L1-A's original invariant, restated for the V2 mapping: a NO buy and a YES sell… (+2 more)
 
 ### Community 174 - "_next_event_fixture_storms"
 Cohesion: 0.14
@@ -1747,8 +1773,8 @@ Cohesion: 0.12
 Nodes (20): config.py Module (BotConfig), paper.py Module, PositionsTab.jsx Component, shared.jsx Helpers, D9: Kalshi Market URL Links, 1b: Wire MAX_DRAWDOWN_FRACTION through BotConfig, 1d: Split paper.py (2,193 lines), G4: Split paper.py (+12 more)
 
 ### Community 176 - "TestSprtModelHealth"
-Cohesion: 0.10
-Nodes (11): P1-17: 15 trades returns insufficient_data with default min_trades=20., Tests for tracker.sprt_model_health()., Returns insufficient_data when fewer than SPRT_MIN_TRADES records exist., Returns 'ok' when win rate is healthy (35/50 = 70%)., Returns 'degraded' when win rate is very low (10/50 = 20%)., Result always contains llr and n keys., P1-17: p1=0.45 fires on moderate degradation that p1=0.35 would miss. 18/50 =…, P1-17: 29/50 wins pushes LLR below lower boundary → cleared=True. (+3 more)
+Cohesion: 0.07
+Nodes (17): Tests for SPRT model degradation detection in tracker.py and paper.py., P1-17: 15 trades returns insufficient_data with default min_trades=20., Tests for tracker.sprt_model_health()., Tests for SPRT wired into paper.is_accuracy_halted()., is_accuracy_halted returns True when sprt_model_health returns 'degraded'., is_accuracy_halted returns False when SPRT is ok and rolling rate passes., Returns insufficient_data when fewer than SPRT_MIN_TRADES records exist., 2026-07-09: fail closed, not open -- sprt_model_health raising (a Windows… (+9 more)
 
 ### Community 177 - "_passes_exit_gates"
 Cohesion: 0.16
@@ -1766,17 +1792,17 @@ Nodes (10): LA in DJF with PDO=+1 -> approximately +0.8 degrees F correction., C
 Cohesion: 0.11
 Nodes (8): backlog.txt "SIGNAL GRADUATION IS A CONVENTION" part (b):…, Guards the silent-typo failure mode an opus review caught: an unknown model…, richer_ml_features' real shape: a count_fn exists (informational) but…, cross_city_pooling's real shape: no persisted per-row column to count at all --…, A DB error in one signal's count_fn must not blow up the report for every OTHER…, End-to-end smoke test of the actual 11-entry registry (not a mocked stand-in)…, Regression test for an opus-review-caught bug: the entry originally counted raw…, TestSignalGraduationRegistry
 
-### Community 181 - "_get_enso_phase"
-Cohesion: 0.12
-Nodes (9): _forecast_model_weights gives ECMWF +0.5 extra during El NiÃ±o winter., TestEnsoPhase, La Niña winter should give ECMWF higher weight than neutral., ENSO should not affect summer weights (not winter)., _get_enso_phase always returns one of three valid values., El Niño winter should give ECMWF higher weight than neutral., TestEnsoPhase, _get_enso_phase() (+1 more)
+### Community 181 - "position_correlation_matrix"
+Cohesion: 0.18
+Nodes (6): corr_kelly_scale(), position_correlation_matrix(), Build NxN correlation matrix for a list of trades. Correlation rules: Same city…, Scale Kelly fraction down based on max pairwise correlation with existing…, TestCorrKellyScale, TestPositionCorrelationMatrix
 
 ### Community 182 - "TestGetLivePrecipObs"
 Cohesion: 0.11
 Nodes (11): Reset nws circuit breaker and precip cache to clean state., P2-15: get_live_precip_obs must have caching, thread safety, and circuit…, Second call within OBS_TTL must not fetch from network., After OBS_TTL the function must re-fetch., When circuit is open, must return None without fetching., A fetch exception must call record_failure on the circuit breaker., Concurrent calls for different cities must not raise., precipitationLast6Hours must divide by 6 and convert mm→inches. (+3 more)
 
 ### Community 183 - "test_snow_markets.py"
-Cohesion: 0.12
-Nodes (11): _mock_client(), Tests for backlog.txt "RAIN / SNOW / HURRICANE MARKETS": Snow Step 1 (schema +…, Opus-review-caught gap (round 2, identical to acis_precip.py's cloned bug):…, All 32 KNOWN_UNTRACKED_SNOW_SERIES entries must be suppressed, not just the…, Regression control mirroring the pre-existing KXHIGH/KXLOW missing-ticker test:…, backlog.txt Snow Step 2: main.py's cmd_order kept its own explicit refuse-…, Mutation-test proof the conditional is real -- once _snow_gates_active() is…, TestCheckSeriesDriftSnow (+3 more)
+Cohesion: 0.18
+Nodes (8): _mock_client(), Tests for backlog.txt "RAIN / SNOW / HURRICANE MARKETS": Snow Step 1 (schema +…, Opus-review-caught gap (round 2, identical to acis_precip.py's cloned bug):…, All 32 KNOWN_UNTRACKED_SNOW_SERIES entries must be suppressed, not just the…, Regression control mirroring the pre-existing KXHIGH/KXLOW missing-ticker test:…, TestCheckSeriesDriftSnow, TestFetchHistoricalDailySnowEmptyResponse, TestGroupMarketsExcludesMonthlySnow
 
 ### Community 184 - "TestBackfillEnsembleMemberScoresVar"
 Cohesion: 0.20
@@ -1791,24 +1817,20 @@ Cohesion: 0.11
 Nodes (6): AnalyticsTab(), CalendarPnLChart(), CityPnLChart(), EDGE_BUCKETS, ForecastHeatmapChart(), SameDayPerfCard()
 
 ### Community 187 - "BotConfig"
-Cohesion: 0.17
-Nodes (15): BotConfig, get_config(), load_and_validate(), Create a BotConfig reading all env vars fresh. Clears the mtime-gated…, Raise ValueError for any invalid configuration combination., Create a BotConfig, validate it, and return it. Call at startup., Return the global BotConfig singleton, loading from env on first call. Must be…, The rate this bot's own trades actually pay (maker fills are $0 on this bot's… (+7 more)
+Cohesion: 0.12
+Nodes (18): BotConfig, get_config(), Create a BotConfig reading all env vars fresh. Clears the mtime-gated…, Raise ValueError for any invalid configuration combination., Return the global BotConfig singleton, loading from env on first call. Must be…, Reset the singleton and env-var cache — used in tests between runs., reset_config(), The rate this bot's own trades actually pay (maker fills are $0 on this bot's… (+10 more)
 
 ### Community 188 - "_validate_checksum"
 Cohesion: 0.14
 Nodes (18): CorruptionError, Raised when a file's CRC32 checksum does not match its content., Validate CRC32 checksum embedded in data dict. No-op if field absent., Validate SHA-256 checksum in data dict. Raises CorruptionError on mismatch.…, _validate_checksum(), _validate_crc(), P1-5: empty checksum string must raise CorruptionError (was silently passing)., P1-5: 1-char checksum must raise CorruptionError (was passing 1/16 of… (+10 more)
-
-### Community 189 - "AtomicWriteError"
-Cohesion: 0.11
-Nodes (18): AtomicWriteError, Exception, atomic_write_text must go through the same _atomic_write_payload core as…, Mirrors test_atomic_write_emergency_copy_written_on_failure below for…, backlog.txt "climate_indices.py's PDO/PNA CACHE AND backtest.py's OWN CACHE…, P1-6: AtomicWriteError must be raised when the primary path is unwritable., P1-6: emergency copy is written to fallback_dir before raising., backlog.txt "climate_indices.py's PDO/PNA CACHE AND backtest.py's OWN CACHE… (+10 more)
 
 ### Community 190 - "test_kelly_property.py"
 Cohesion: 0.18
 Nodes (18): given, settings, Property-based tests for Kelly sizing using Hypothesis., P3-3: kelly_bet_dollars * drawdown_scaling_factor must never exceed current…, kelly_fraction always returns a non-negative value., kelly_fraction never exceeds the hard cap (KELLY_CAP = 0.25)., kelly_quantity cost (qty * price) never exceeds current balance., When our_prob significantly beats price (positive edge), Kelly > 0. (+10 more)
 
 ### Community 191 - "_log_live_position"
-Cohesion: 0.14
-Nodes (11): _log_live_position(), AUD-0001/backlog.txt: paper's exposure-cap functions must see live positions,…, get_open_trades() must NOT change meaning -- it has over a dozen other callers…, AUD-0001 mutation target: get_ticker_exposure must be > 0 for a ticker that…, End-to-end AUD-0001 repro: a manual order that would push a ticker over its…, Log a filled, unsettled live entry order -- an open live position., AUD-0002: MAX_CONCURRENT_POSITIONS and friends must see prior-cycle live…, Opus-review-caught (M8): the prior version of this test used an opp dict… (+3 more)
+Cohesion: 0.18
+Nodes (9): _log_live_position(), AUD-0001/backlog.txt: paper's exposure-cap functions must see live positions,…, get_open_trades() must NOT change meaning -- it has over a dozen other callers…, AUD-0001 mutation target: get_ticker_exposure must be > 0 for a ticker that…, End-to-end AUD-0001 repro: a manual order that would push a ticker over its…, AUD-0001 adjacency (opus-review-caught, M2): get_factor_exposure() (main.py's…, Log a filled, unsettled live entry order -- an open live position., TestGetAllOpenPositions (+1 more)
 
 ### Community 192 - "test_disputed_row_guard.py"
 Cohesion: 0.14
@@ -1823,8 +1845,8 @@ Cohesion: 0.14
 Nodes (11): Returns get_model_weights result when non-empty., Returns None immediately when city is None (no tracker call needed)., _forecast_model_weights uses _dynamic_model_weights as first priority, falling…, Returns None when get_model_weights returns empty dict (no rows)., TestDynamicModelWeights, get_model_weights result is passed through: higher-weight model wins., Empty dict from get_model_weights (no rows) → returns None., City is None → returns None without calling tracker. (+3 more)
 
 ### Community 195 - "TestGetWeatherForecastMocked"
-Cohesion: 0.16
-Nodes (10): _open_meteo_payload(), activate, If every model call fails, return None., A dead model returns HTTP 200 with every value null — this must be treated…, Unknown city should return None without making any HTTP calls., Minimal Open-Meteo daily response., All three models respond — forecast should average their values., If the API doesn't include our target date, return None. (+2 more)
+Cohesion: 0.14
+Nodes (11): _open_meteo_payload(), activate, HTTP integration tests using `responses` to mock Open-Meteo API calls. These…, If every model call fails, return None., A dead model returns HTTP 200 with every value null — this must be treated…, Unknown city should return None without making any HTTP calls., Minimal Open-Meteo daily response., All three models respond — forecast should average their values. (+3 more)
 
 ### Community 196 - "TestEmosActivationGate"
 Cohesion: 0.11
@@ -1843,12 +1865,12 @@ Cohesion: 0.14
 Nodes (18): Security Audit Scope, data/bias_models.pkl, scikit-learn, cli.py Module (extracted CLI dispatch), main.py Module, ml_bias.py Module, 4a: Unit Tests for main.py Functions, E1: Log Rotation (+10 more)
 
 ### Community 200 - "TestAutoPlaceTradeGuards"
-Cohesion: 0.11
-Nodes (17): analyze command, watch command, isolate_execution_log(), Redirect execution_log.DB_PATH to a per-test temp file. execution_log.db is a…, _make_opp(), _patch_paper_guards(), Guards in _auto_place_trades must block execution and return 0., A single trade whose cost would breach MAX_DAILY_SPEND must be skipped. (+9 more)
+Cohesion: 0.16
+Nodes (13): analyze command, watch command, isolate_execution_log(), Redirect execution_log.DB_PATH to a per-test temp file. execution_log.db is a…, _make_opp(), _patch_paper_guards(), Guards in _auto_place_trades must block execution and return 0., A single trade whose cost would breach MAX_DAILY_SPEND must be skipped. (+5 more)
 
-### Community 201 - "parse_market_price"
-Cohesion: 0.02
-Nodes (102): find_violations(), _group_markets(), _parse_threshold(), Cross-market consistency checker. For a given city + date, temperature…, Group markets by (series_ticker, date_str). Returns dict: key -> list of…, Scan a list of markets and return all monotonicity violations. Only checks…, Extract (condition_type, threshold) from a market ticker. Returns ("above",…, CronContext (+94 more)
+### Community 201 - "TestConsistency"
+Cohesion: 0.07
+Nodes (22): _market(), _rain_market(), A single market in a series can't violate monotonicity., Markets from different series should never be compared., backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 1: KXTEMPxxxH…, backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE CHECK STILL BLANKET-…, Rain markets take a dedicated early branch in _group_markets (see the KXRAIN*M…, Inverted rain ladder (floor_strike=7 priced HIGHER than floor_strike=1) is a… (+14 more)
 
 ### Community 202 - "_settled_trade"
 Cohesion: 0.15
@@ -1858,17 +1880,17 @@ Nodes (10): After re-sort, history ts values must be non-decreasing., Old record
 Cohesion: 0.15
 Nodes (17): io, _code_only_lines(), _iter_date_today_sites(), Path, r"""Automated guard against new date.today() usage in production code…, Return (file, line_number, enclosing_function_name) for every date.today() call…, Fails if a function calls date.today() without a documented reason in…, Inverse check: every allowlisted function must still actually call date.today()… (+9 more)
 
-### Community 204 - "test_suggested_bets.py"
-Cohesion: 0.16
-Nodes (14): _force_demo_env(), _make_analysis(), _make_market(), _no_dashboard_password(), fixture, patch, Tests for the /api/suggested_bets endpoint., Returns empty bets list when analyze_trade returns None for all markets. (+6 more)
+### Community 204 - ".test_returns_top_n_sorted_by_ev"
+Cohesion: 0.15
+Nodes (13): _force_demo_env(), _make_analysis(), _make_market(), _no_dashboard_password(), fixture, patch, Returns empty bets list when analyze_trade returns None for all markets., Ensure KALSHI_ENV=demo so _build_app doesn't require DASHBOARD_PASSWORD. (+5 more)
 
-### Community 205 - "_metar_locked_enriched"
+### Community 205 - "test_edge_threshold.py"
 Cohesion: 0.11
-Nodes (17): _metar_locked_enriched(), Minimal enriched dict that reaches analyze_trade's metar_locked branch -- same…, A calibration model on disk must actually correct a METAR-locked above-market…, Between markets share the same METAR lock-in formula but weren't part of the…, No calibration file yet (fresh install, or below the 30-row floor) must leave…, A correction whose shift exceeds _ML_CORRECTION_LIMIT (0.30) must be skipped…, Regression test for a HIGH finding from two independent opus reviews…, Regression test for a HIGH finding from both opus reviews (2026-08-16): the… (+9 more)
+Nodes (17): Tests for P1.3 — PAPER_MIN_EDGE (via get_paper_min_edge()) and cmd_cron filter., Paper threshold must be lower than the display/live threshold., get_paper_min_edge() must be > 0 — zero threshold would trade everything., A 5.5% edge (above PAPER_MIN_EDGE, below old MIN_EDGE) must not be filtered., Confirm 5.5% edge is below the old MIN_EDGE (7%) so the distinction matters., Miami requires 20pp probability-edge conviction (vs 8pp default), per the…, get_paper_min_edge() must be <= 5% per system requirements., Mirrors cron.py's `_city_min = CITY_MIN_PROB_EDGE.get(_city_key,… (+9 more)
 
 ### Community 206 - "test_infrastructure.py"
 Cohesion: 0.04
-Nodes (55): CircuitBreaker class, _save()/_load() SHA-256 checksum, Path, Verify get_weather_markets doesn't crash and runs in reasonable time., A timeout mid-fetch must return whatever partial results were already collected…, get_live_observation returns None immediately when its CB is open., climatological_prob returns None immediately when its CB is open., A network error inside get_live_observation increments the CB failure count. (+47 more)
+Nodes (51): CircuitBreaker class, _save()/_load() SHA-256 checksum, Path, Verify get_weather_markets doesn't crash and runs in reasonable time., A timeout mid-fetch must return whatever partial results were already collected…, get_live_observation returns None immediately when its CB is open., climatological_prob returns None immediately when its CB is open., A network error inside get_live_observation increments the CB failure count. (+43 more)
 
 ### Community 207 - "censoring_correction"
 Cohesion: 0.15
@@ -1878,9 +1900,9 @@ Nodes (11): Empty prob list returns 0.5 (maximally uncertain)., Verify the Tobit
 Cohesion: 0.22
 Nodes (11): _log_near_settlement_trades(), Path, Write near-settlement snapshot rows for future calibration analysis. `near` is…, _near(), Regression tests for cron._log_near_settlement_trades. Backstory (backlog.txt…, Older trade records (pre-days_out field) must still satisfy the NOT NULL…, Shape of a stored paper-trade record, per paper.place_paper_order., Shape of one check_expiring_trades() entry. (+3 more)
 
-### Community 209 - "_make_trade"
-Cohesion: 0.14
-Nodes (10): _make_trade(), A trade record with days_out=None (key present, not absent) must not TypeError…, A Brier-check exception (e.g. a locked tracker.db) must be treated as…, P1-14: 8 winning NO-side trades must not trigger win-rate collapse., P1-14: 8 losing NO-side trades (outcome='yes') must trigger collapse., P1-14: 5 yes-wins + 5 no-wins = 100% win rate, no alert., P1-14: 6 consecutive NO-side wins must not trigger consecutive-loss alert., P1-14: 6 consecutive NO-side losses (outcome='yes') must trigger alert. (+2 more)
+### Community 209 - "check_anomalies"
+Cohesion: 0.13
+Nodes (16): ALERT_HALT_THRESHOLDS, check_anomalies(), Detect anomalous patterns in recent trade history. Returns a list of alert…, System Priority Checklist, _make_trade(), Tests for P1-14 — alerts win/loss side confusion fix., P1-14: 12 consecutive NO-side wins must not trigger black swan., P1-14: 12 consecutive NO-side losses (outcome='yes') trigger black swan. (+8 more)
 
 ### Community 210 - "test_dead_code_scan.py"
 Cohesion: 0.18
@@ -1903,16 +1925,16 @@ Cohesion: 0.12
 Nodes (9): NYC has a -1°F bias correction (subtract from model)., Miami has a -3°F bias correction., Denver has a -2°F bias correction., Unknown cities have no bias table entry -- callers fall back to 0.0., LA has no known systematic bias., _STATION_BIAS (legacy alias for _STATION_BIAS_HIGH) is importable., Las Vegas has no settled-observation history yet — uses Phoenix's desert-…, New Orleans has no settled-observation history yet — uses Houston's Gulf humid-… (+1 more)
 
 ### Community 215 - "TestBrierScoreConditionTypeFilter"
-Cohesion: 0.12
-Nodes (8): Tests for brier_score()'s condition_type exclusion (AUD-0004, 2026-08-18 max-…, A condition_type='between' prediction must not move the Brier score -- positive…, Every condition_type in the exclusion list is dropped, all at once., below' (a real temperature condition type) and a NULL condition_type (legacy…, last_n=1 must select the 1 most recent TEMPERATURE prediction, not the 1 most…, min_days_out=0 selects FROM predictions (not multiday_predictions) -- a…, Opus-review-flagged (MEDIUM): this fix makes the paper_trades.db fallback MORE…, TestBrierScoreConditionTypeFilter
+Cohesion: 0.08
+Nodes (12): Tests for brier_score()'s condition_type exclusion (AUD-0004, 2026-08-18 max-…, A condition_type='between' prediction must not move the Brier score -- positive…, Every condition_type in the exclusion list is dropped, all at once., below' (a real temperature condition type) and a NULL condition_type (legacy…, last_n=1 must select the 1 most recent TEMPERATURE prediction, not the 1 most…, min_days_out=0 selects FROM predictions (not multiday_predictions) -- a…, UPDATE 2026-08-20 (backlog.txt "BRIER_SCORE()'S PAPER_TRADES.DB FALLBACK HAS NO…, The paper-trade fallback now derives condition_type from the ticker string… (+4 more)
 
 ### Community 216 - "_med_market_analysis"
 Cohesion: 0.12
 Nodes (11): _banner_line(), _med_market_analysis(), The literal path the backlog entry exists to harden -- live=True with a…, cmd_watch-level: confirm live_config actually comes from _load_live_config()…, adjusted_edge between MED_EDGE (0.15) and STRONG_EDGE (0.30)., The med-tier $20 flat cap -- the other half of 'strong/med tier + dynamic-…, Return the single console line containing `marker` (e.g. "STRONG SIGNAL" or…, backlog.txt "STRONG/MED SIGNAL BANNER OVERCLAIMS 'PLACING PAPER TRADES' WHEN 0… (+3 more)
 
-### Community 217 - "time_decay_edge"
-Cohesion: 0.16
-Nodes (10): Well before close (>= reference_hours), edge should be unchanged., At or past close_time, edge should be 0., At exactly half of reference_hours remaining, edge should be halved., Edge at 6h remaining < edge at 3h remaining (within 8h reference window)., At 10h before close with 8h reference: full edge returned., At 4h before close with 8h reference: ~50% of edge returned., At 2h before close with 8h reference: >5% edge retained (was 4% with 48h)., TestTimeDecayEdge (+2 more)
+### Community 217 - "TestTimeDecayEdge"
+Cohesion: 0.13
+Nodes (8): Well before close (>= reference_hours), edge should be unchanged., At or past close_time, edge should be 0., At exactly half of reference_hours remaining, edge should be halved., Edge at 6h remaining < edge at 3h remaining (within 8h reference window)., At 10h before close with 8h reference: full edge returned., At 4h before close with 8h reference: ~50% of edge returned., At 2h before close with 8h reference: >5% edge retained (was 4% with 48h)., TestTimeDecayEdge
 
 ### Community 218 - "datetime"
 Cohesion: 0.17
@@ -1959,8 +1981,8 @@ Cohesion: 0.14
 Nodes (7): parametrize, Both series contain "HUR" as a substring -- confirms the blanket guard's bypass…, Confirms the blanket guard's bypass extension in analyze_trade() is actually…, The exact bug class this must avoid: KXHURCTOT is a strict string-prefix of…, TestIsHurricaneCountTicker, TestIsHurricaneNextEventTicker, TestIsStormOrderTicker
 
 ### Community 229 - "TestLoadSweptMinEdge"
-Cohesion: 0.26
-Nodes (4): Path, Tests for param_sweep.load_swept_min_edge() — A5 implementation., TestLoadSweptMinEdge, _write_sweep()
+Cohesion: 0.22
+Nodes (6): load_swept_min_edge(), Read data/param_sweep_results.json and return the PAPER_MIN_EDGE value with the…, Path, Tests for param_sweep.load_swept_min_edge() — A5 implementation., TestLoadSweptMinEdge, _write_sweep()
 
 ### Community 230 - "TestPreLogPattern"
 Cohesion: 0.17
@@ -1990,9 +2012,9 @@ Nodes (15): 10. AUD-0075 [INFO | VERY HIGH | E1 | CONFIRMED]: web_app.py: two @_
 Cohesion: 0.13
 Nodes (14): Group C — Model & Forecasting Improvements Implementation Plan, Pre-implementation notes, Task 10: Seasonal learned weights (#118) and per-city weights (#122), Task 11: Dynamic forecast cache TTL (#126), Task 12: Full test suite regression check, Task 1: Dynamic ensemble weights from tracker MAE (#25), Task 2: Persistence/baseline model (#26), Task 3: ENSO phase in model weights (#28) (+6 more)
 
-### Community 237 - "CrossProcessLock"
-Cohesion: 0.17
-Nodes (8): CrossProcessLock, OS-level mutual exclusion across separate processes, guarding a critical…, Block (up to `timeout` seconds) until the OS mutex is held. Returns True once…, skipif, AUD-0051: settlement_monitor.py had no application-level guard against two…, Positive control for the skip-test below: proves the loop DOES run in the…, Mutation-tested: without the lock wrap in run_settlement_monitor, this test's…, TestSettlementMonitorLock
+### Community 237 - "normal_cdf"
+Cohesion: 0.14
+Nodes (11): nws_prob's days_out (and thus sigma) must be computed against the city's own…, TestNwsProbDaysOutTimezone, CDF at the mean of a standard normal is 0.5., CDF at +1 sigma ≈ 0.8413., CDF(-x, 0, 1) == 1 - CDF(x, 0, 1) for all x., CDF at mu with non-zero mu returns 0.5., CDF at +2 sigma ≈ 0.9772., Degenerate sigma=0: returns 1.0 when x >= mu, 0.0 otherwise. (+3 more)
 
 ### Community 238 - "static/dashboard.js"
 Cohesion: 0.20
@@ -2006,17 +2028,13 @@ Nodes (11): _build_mock_forecast(), _open_meteo_response(), activate, parametriz
 Cohesion: 0.13
 Nodes (8): 2026-07-17: fetch_temperature_nbm must try the real-NBM IEM path first and use…, A city with no ASOS station mapping must skip straight to Open-Meteo rather…, 2026-07-17 (opus review finding): NBS has per-var coverage gaps at its ~3-day…, ENSEMBLE_MODELS_EXTENDED includes NBM., fetch_temperature_nbm falls back to Open-Meteo best_match when the real-NBM IEM…, A failed fetch (both IEM and Open-Meteo unavailable) must be negative-cached --…, Returns None gracefully when both the IEM and Open-Meteo paths fail., TestNBMFetch
 
-### Community 241 - "test_paper_metrics.py"
-Cohesion: 0.13
-Nodes (11): Tests for profit factor, break-even stop, and spread Kelly multiplier., A trade with var="min" stored on it must log under var="min", even though its…, A trade placed before the var field existed (no 'var' key at all) must fall…, Omitting model_forecast_means entirely (e.g. a manual dashboard order, see…, Every model present in trade['model_forecast_means'] must produce its own row,…, A legacy trade with an empty/missing model_forecast_means must produce no per-…, test_place_paper_order_defaults_model_forecast_means_to_empty_dict(), test_score_ensemble_members_falls_back_for_legacy_trade_without_var() (+3 more)
+### Community 241 - "edge_confidence"
+Cohesion: 0.16
+Nodes (9): Same horizon, snow produces lower confidence than temperature., days_out=10, precip_snow: horizon≈0.7143, × 0.80 ≈ 0.5714., Unknown condition_type uses multiplier 1.0 — no change from no condition., TestEdgeConfidenceConditionType, Tests for edge_confidence(days_out) horizon discount factor., days_out=7 is at the boundary of segment 2; should be 0.80., TestEdgeConfidence, edge_confidence() (+1 more)
 
 ### Community 242 - "TestMetarFetchNoFabricatedTimestamp"
 Cohesion: 0.19
 Nodes (8): A valid recent obsTime must produce a proper result dict., obs_time in the result must be timezone-aware., fetch_metar must not fabricate a timestamp — None obsTime → return None., fetch_metar must return None when obsTime is absent or unparseable., When obsTime key is absent, fetch_metar must return None., When obsTime is empty string, fetch_metar must return None., When obsTime is not ISO-parseable, fetch_metar must return None., TestMetarFetchNoFabricatedTimestamp
-
-### Community 243 - "test_rain_markets.py"
-Cohesion: 0.13
-Nodes (8): _rain_market(), Tests for backlog.txt "RAIN / SNOW / HURRICANE MARKETS": Step 1 (schema + safe…, backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: the Step 1 unconditional…, Mutation-test proof: flipping _rain_gates_active() to True makes the block…, Opus-review-caught gap (Snow Step 2 round-2 review): the new hurricane/snow…, `now`, if given, anchors close_time instead of real wall-clock time -- required…, TestCheckPositionLimitsRainConditional, TestQuickPaperBuyAndCmdPaperRainGuards
 
 ### Community 244 - "Kalshi Weather Dashboard - Overview Tab (Light Theme)"
 Cohesion: 0.12
@@ -2026,21 +2044,21 @@ Nodes (17): Kalshi Weather Dashboard - Overview Tab (Dark Theme), Brier Graduati
 Cohesion: 0.15
 Nodes (16): Data Integrity Audit Scope (safe_io, checksums), ML / Forecast Audit Scope, city_weights.json (empty, learned city blend weights), data/learned_correlations.json, data/learned_weights.json (known corruption bd6c0ef), data/predictions.db (Outcomes DB), seasonal_weights.json (winter/spring/summer/fall blend weights), boto3 (+8 more)
 
-### Community 246 - "weather_markets.py module"
-Cohesion: 0.15
-Nodes (18): Fix Market Scan Coverage (Remove Strategy 1), Brier Alert Actionable Guidance, A5: Dynamic Model Weights from ensemble_member_scores, METAR Same-Day Lock-In (metar.py), NOAA MOS via IEM API (mos.py), Phase A: Data Foundation Plan, Per-City Static Bias Correction, weather_markets.py module (+10 more)
+### Community 246 - "tracker.py module"
+Cohesion: 0.28
+Nodes (9): Brier Alert Actionable Guidance, Per-City Static Bias Correction, Per-City Per-Season Brier Segmentation, tracker.py module, Cross-Platform Arbitrage Scanner (stretch goal), ML-Based Bias Correction (ml_bias.py), Phase G: Long-Term Features Plan, Strategy P&amp;L Attribution (+1 more)
 
 ### Community 247 - "Category B: Risk Management Plan"
 Cohesion: 0.18
 Nodes (16): B2: Dynamic Correlation Matrix in Monte Carlo, B4: Marginal Kelly (deferred), B6: Tail-Risk Stress Testing, B7: Overnight GFS Gap Protection, order_executor.py module, Category B: Risk Management Plan, C1: Partial Exit (50% Close), C2: Take-Profit Ladder (+8 more)
 
-### Community 248 - "TestKellyScalesWithBalance"
-Cohesion: 0.25
-Nodes (7): paper subcommand group, isolate_paper_data(), Redirect paper.DATA_PATH to a per-test temp file. Prevents open trades,…, Write a minimal valid paper_trades.json to *path* with the given balance., kelly_bet_dollars output should scale proportionally with paper balance., TestKellyScalesWithBalance, _write_paper_json()
+### Community 248 - "test_risk_control.py"
+Cohesion: 0.22
+Nodes (8): paper subcommand group, isolate_paper_data(), Redirect paper.DATA_PATH to a per-test temp file. Prevents open trades,…, P2 Risk Control verification tests. No production code is modified — all tests…, Write a minimal valid paper_trades.json to *path* with the given balance., kelly_bet_dollars output should scale proportionally with paper balance., TestKellyScalesWithBalance, _write_paper_json()
 
 ### Community 249 - "test_graduation_gate.py"
-Cohesion: 0.13
-Nodes (15): _drawdown_snapshot() Effective Balance Gate, Graduation Brier Threshold (≤0.23), Grade Audit Module Doc: main.py, Grade Audit Module Doc: paper.py, Tests for the graduation gate in main.py (_check_graduation_gate)., RuntimeError raised when ENABLE_MICRO_LIVE=true and count < MIN_BRIER_SAMPLES., No exception when ENABLE_MICRO_LIVE=true and count >= MIN_BRIER_SAMPLES., No exception when ENABLE_MICRO_LIVE is not 'true' (gate is skipped entirely). (+7 more)
+Cohesion: 0.17
+Nodes (11): Tests for the graduation gate in main.py (_check_graduation_gate)., RuntimeError raised when ENABLE_MICRO_LIVE=true and count < MIN_BRIER_SAMPLES., No exception when ENABLE_MICRO_LIVE=true and count >= MIN_BRIER_SAMPLES., No exception when ENABLE_MICRO_LIVE is not 'true' (gate is skipped entirely)., No exception when ENABLE_MICRO_LIVE='false'., P2-D: Gate must fail-closed when the tracker DB is unavailable. If…, test_gate_fails_closed_when_db_unavailable(), test_gate_passes_when_micro_live_and_sufficient_samples() (+3 more)
 
 ### Community 250 - "TestAuditSettlementMonthlySnow"
 Cohesion: 0.13
@@ -2070,17 +2088,13 @@ Nodes (14): _env_float(), _live_breakeven_trigger_pct(), _live_kelly_cap(), _liv
 Cohesion: 0.14
 Nodes (14): Phase 4: Dedicated Security Audit, SEC-10: `/api/config` Leaks Strategy Parameters (LOW), SEC-11: TOCTOU Race in Cron Log File (LOW), SEC-12: Failed Auth Attempts Not Logged (LOW), SEC-1: Weak AES Key Derivation — Null-Byte Padding (HIGH), SEC-2: Timing-Vulnerable Password Comparison (HIGH), SEC-3: Dashboard Unauthenticated in Demo Mode (HIGH), SEC-4: Stored XSS via Unescaped Kalshi API Data (HIGH) (+6 more)
 
-### Community 257 - "test_idempotency.py"
-Cohesion: 0.16
-Nodes (11): _build_session(), KalshiClient.place_order()/_find_order_by_client_id(), Session, Build a requests Session with automatic retry on transient errors., P0-4: place_order idempotency key and POST retry exclusion., GET must remain in allowed_methods., _build_session must not include POST in allowed_methods., TestPostRetryExcluded (+3 more)
+### Community 257 - "_build_session"
+Cohesion: 0.20
+Nodes (9): _build_session(), Session, Build a requests Session with automatic retry on transient errors., GET must remain in allowed_methods., _build_session must not include POST in allowed_methods., TestPostRetryExcluded, Verify HTTPAdapter Retry has exactly total=3, backoff_factor=1, correct…, test_session_has_retry_adapter() (+1 more)
 
 ### Community 258 - "liquidity_kelly_scale"
 Cohesion: 0.24
 Nodes (4): liquidity_kelly_scale(), Return a 0.50-1.00 multiplier to reduce Kelly sizing based on market liquidity…, backlog.txt "LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD" -- revives the…, TestLiquidityKellyScale
-
-### Community 259 - "test_batch01_live_position_visibility.py"
-Cohesion: 0.14
-Nodes (8): _isolated_paper_data(), fixture, Tests for the 2026-08-18 max-depth audit's batch-01 fix: live-position…, AUD-0001 adjacency (opus-review-caught, M2): get_factor_exposure() (main.py's…, Direct DATA_PATH patch, no reload -- see module docstring., AUD-0005 drawdown half., TestGetFactorExposure, TestLiveRealizedLossSince
 
 ### Community 260 - "TestCountOpenLiveOrders"
 Cohesion: 0.14
@@ -2099,8 +2113,8 @@ Cohesion: 0.16
 Nodes (9): _apply_cron_isolation(), Tests for cron trade update fixes., cron.py must track placement count and include it in the run summary., cmd_cron must call auto_settle_paper_trades so paper trades get marked won/lost., auto_settle_paper_trades must be called in the same cron cycle as sync_outcomes., Stub out all guards that can cause cmd_cron to exit early. Without these stubs,…, cmd_cron must emit output describing scan results and any placement activity., TestCronPrintPlacedTrades (+1 more)
 
 ### Community 264 - "TestECMWFAIFS"
-Cohesion: 0.14
-Nodes (7): ENSEMBLE_MODELS_EXTENDED includes an ecmwf entry., ensemble_spread computed when ECMWF included raises no error., _compute_ensemble_spread returns 0.0 when only one member is valid., fetch_temperature_ecmwf returns a float or None., A dead model returns HTTP 200 with every hourly value null — this must be…, A failed fetch must be negative-cached -- a second call within the TTL must not…, TestECMWFAIFS
+Cohesion: 0.13
+Nodes (9): ENSEMBLE_MODELS_EXTENDED includes an ecmwf entry., ensemble_spread computed when ECMWF included raises no error., _compute_ensemble_spread returns 0.0 when only one member is valid., fetch_temperature_ecmwf returns a float or None., A dead model returns HTTP 200 with every hourly value null — this must be…, A failed fetch must be negative-cached -- a second call within the TTL must not…, TestECMWFAIFS, _compute_ensemble_spread() (+1 more)
 
 ### Community 265 - "TestSchemaVersionMatchesMigrations"
 Cohesion: 0.14
@@ -2135,8 +2149,8 @@ Cohesion: 0.14
 Nodes (8): GBM and Platt must not both be applied to the same city's probability., ml_bias must export has_ml_model(city)., has_ml_model returns False when bias_models is absent/empty., has_ml_model returns True when a model exists for the city., analyze_trade source must use has_ml_model to guard Platt application., When GBM model exists, apply_platt_per_city must NOT be called., Verify source: Platt block is inside '_city_correction_applied' guard., TestOnlyOneMlCorrectionApplied
 
 ### Community 273 - "test_phase2_batch_m.py"
-Cohesion: 0.14
-Nodes (7): Phase 2 Batch M regression tests: P2-35/37/38/42/44/46., zip() truncates to shortest — result must not raise IndexError., train_bias_model source must contain 80/20 holdout logic., GradientBoostingRegressor must use n_estimators=50, max_depth=2., City model must not be added when holdout MSE >= baseline., TestClimatologyZipTruncation, TestGbmHoldoutValidation
+Cohesion: 0.08
+Nodes (12): Phase 2 Batch M regression tests: P2-35/37/38/42/44/46., run_sweep source must contain 70/30 split logic., If holdout win rate < baseline, results must NOT be saved., sweep_parameter itself must still work on arbitrary lists., zip() truncates to shortest — result must not raise IndexError., train_bias_model source must contain 80/20 holdout logic., GradientBoostingRegressor must use n_estimators=50, max_depth=2., City model must not be added when holdout MSE >= baseline. (+4 more)
 
 ### Community 274 - "TestBTickerParsing"
 Cohesion: 0.14
@@ -2182,9 +2196,9 @@ Nodes (12): 1. AUD-0011 [HIGH | VERY HIGH | E1 | CONFIRMED]: LIVE_TRADING_RUNBOO
 Cohesion: 0.15
 Nodes (12): 1. AUD-0061 [LOW | HIGH | E1 | CONFIRMED]: README.md's environment-variable table omits the 6 shadow-only *_TRADING_ENABLED feature flags, 3 added within this audit's commit window, 2. AUD-0062 [LOW | HIGH | E1 | CONFIRMED]: README.md's 'bot only trades temperature and precipitation' claim is stale given hurricane market support added this window, 3. AUD-0063 [LOW | HIGH | E1 | CONFIRMED]: README.md's EMOS activation row count ('~25 rows') contradicts the actual 40-row floor added this window and contradicts COMMANDS.md, 4. AUD-0064 [LOW | VERY HIGH | E1 | CONFIRMED]: cmd_schedule()'s docstring claims 'auto-scan every hour' but registers a 3-hourly task, 5. AUD-0065 [LOW | HIGH | E1 | CONFIRMED]: README.md's NOTIFY_CHANNELS default ('desktop,discord') doesn't match the actual code default, 6. AUD-0081 [INFO | HIGH | E1 | CONFIRMED]: metar.fetch_metar_daily_extreme docstring's caller list is stale after b0f4cad2 added a third caller, 7. AUD-0083 [INFO | HIGH | E1 | CONFIRMED]: CI workflow runs the full pytest suite twice per run (coverage report + coverage gate as separate full runs), 8. AUD-0084 [INFO | MEDIUM | E1 | CONFIRMED]: pyproject.toml's `integration` marker relies entirely on tests self-skipping, not on pytest configuration excluding the marker (+4 more)
 
-### Community 285 - "calibrate_condition_weights"
-Cohesion: 0.23
-Nodes (8): calibrate_condition_weights(), Grid-search optimal blend weights per condition type (above/below/between).…, calibrate_condition_weights returns dict keyed by condition type., test_calibrate_condition_weights_returns_per_type_dict(), Path, P3-16: calibrate_condition_weights accepts cutoff_date; no look-ahead bias., Rows with NULL market_date fall back to empty-string cutoff comparison., TestTemporalIsolationCondition
+### Community 285 - "metar.py"
+Cohesion: 0.15
+Nodes (15): Pass 7 (Weather Semantics) reproduction. Demonstrates that…, Grade Audit Module Doc: metar.py, Systemic DEBUG-vs-WARNING Gap on I/O Failures (_load_obs/_save_obs), metar.py Grade Audit, get_station_bias() Unconditional NotImplementedError Stub (7/10), metar.py File Grade: median 8/10 T1, systemic DEBUG gap in T2, check_metar_lockout() Silent ZoneInfo Fallback (8/10), check_metar_lockout() (+7 more)
 
 ### Community 286 - "CRITICAL Issues — 12 Total"
 Cohesion: 0.15
@@ -2195,8 +2209,8 @@ Cohesion: 0.15
 Nodes (9): File Map, Profit Optimization Implementation Plan, Quick Reference: What Each Change Does to Trade Frequency and P&L, Task 1: Add MED_EDGE and MAX_DAILY_SPEND to utils.py, Task 2: Overhaul kelly_bet_dollars() — cap param, dynamic Brier cap, method scaling, Task 3: Add close_paper_early() and entry_hour tracking to paper.py, Task 7: Early exit loop in cmd_cron, Task 8: Add cmd_schedule_cycles() for NWP-aligned scanning (+1 more)
 
 ### Community 288 - "TestExecutionLogMigration"
-Cohesion: 0.15
-Nodes (6): Connection, Apply any pending schema migrations and advance PRAGMA user_version. Mirrors…, _run_migrations(), Point execution_log at a fresh temp DB for each test., Cancelled orders still block the cycle (same as was_recently_ordered behaviour)., TestExecutionLogMigration
+Cohesion: 0.20
+Nodes (3): Point execution_log at a fresh temp DB for each test., Cancelled orders still block the cycle (same as was_recently_ordered behaviour)., TestExecutionLogMigration
 
 ### Community 289 - "TestDailyLiveLoss"
 Cohesion: 0.15
@@ -2222,13 +2236,13 @@ Nodes (7): compute_hourly_temperature_proxy / determine_hourly_target_hours -- e
 Cohesion: 0.15
 Nodes (5): AMEND ORDER (V2): kalshi_client.amend_order() -- POST…, Same V2 side/price mapping as place_order -- a NO buy amend must be expressed…, Same (order_id, side, count, price, cycle) -> same updated_client_order_id, so…, No get_order() follow-up (unlike place_order) -- the amend response already…, TestAmendOrder
 
-### Community 295 - "TestPlaceLiveOrder"
-Cohesion: 0.15
-Nodes (6): F10: config['daily_loss_limit'] was bare-indexed in the print on the same…, Kelly wants 10 contracts at $0.55 = $5.50/contract → $55 total, capped to $50., AUD-0007: when place_order() raises OrderStatusUnknownError (POST failed AND…, Daily loss limit blocks order when DB-backed loss is at or above limit., Deep-review followup: F7 removed placement-time add_live_loss(cost) (correctly,…, TestPlaceLiveOrder
+### Community 295 - "OrderStatusUnknownError"
+Cohesion: 0.11
+Nodes (10): OrderStatusUnknownError, Exception, Raised by place_order() when the create-order POST failed AND at least one of…, Opus review follow-up: Exception's default __reduce__ would reconstruct via…, F10: config['daily_loss_limit'] was bare-indexed in the print on the same…, Kelly wants 10 contracts at $0.55 = $5.50/contract → $55 total, capped to $50., AUD-0007: when place_order() raises OrderStatusUnknownError (POST failed AND…, Daily loss limit blocks order when DB-backed loss is at or above limit. (+2 more)
 
-### Community 296 - "test_main_cron_smoke.py"
-Cohesion: 0.19
-Nodes (12): emos_training_rows(), emos_training_rows_thin(), isolated_emos_paths(), minimal_mocks(), fixture, Smoke tests for cmd_cron — the main production execution path. Tests the guards…, Patch every external call cmd_cron makes so it can run without network., format_brier_alert() output should include actionable next steps. (+4 more)
+### Community 296 - "fixture"
+Cohesion: 0.22
+Nodes (9): emos_training_rows(), emos_training_rows_thin(), isolated_emos_paths(), minimal_mocks(), fixture, Patch every external call cmd_cron makes so it can run without network., Redirect ml_bias's emos_params.json, temperature_scale.json, and…, 40 rows with real ens_var -- clears the >=40 activation floor (main.py's… (+1 more)
 
 ### Community 297 - "test_p0_10_paper_prelog.py"
 Cohesion: 0.23
@@ -2259,8 +2273,8 @@ Cohesion: 0.15
 Nodes (4): Unit tests for acis_snow.py's own sentinel-parsing and cache-key isolation from…, Real regression: both modules cache on the same (lat, lon, tz, year, month) key…, Confirms the user-confirmed design decision actually landed: acis_snow reuses…, TestAcisSnowModule
 
 ### Community 304 - "TestStartingBalanceEnvVar"
-Cohesion: 0.15
-Nodes (7): P0-7: STARTING_BALANCE must be configurable via environment variable., STARTING_BALANCE env var must be respected., STARTING_BALANCE must parse non-integer values correctly., utils.py must also expose STARTING_BALANCE from env var., reset_paper_account must initialise balance from STARTING_BALANCE., Without env var, STARTING_BALANCE defaults to 1000.0., TestStartingBalanceEnvVar
+Cohesion: 0.14
+Nodes (8): STARTING_BALANCE, P0-7: STARTING_BALANCE must be configurable via environment variable., STARTING_BALANCE env var must be respected., STARTING_BALANCE must parse non-integer values correctly., utils.py must also expose STARTING_BALANCE from env var., reset_paper_account must initialise balance from STARTING_BALANCE., Without env var, STARTING_BALANCE defaults to 1000.0., TestStartingBalanceEnvVar
 
 ### Community 305 - "TestEdgeDecayCurveConditionTypeGrpB"
 Cohesion: 0.19
@@ -2271,8 +2285,8 @@ Cohesion: 0.19
 Nodes (9): handleBulkClose, handleClose, handleCloseConfirm, PositionsTab(), handleBulkClose(), handleClose(), handleCloseConfirm(), handleKeyDown() (+1 more)
 
 ### Community 307 - "test_acis_precip.py"
-Cohesion: 0.15
-Nodes (8): acis_precip.py seasonal/bootstrap functions, _clear_seasonal_cache(), fixture, Tests for acis_precip.py (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step…, fetch_seasonal_precip_mean_mm now caches both successful AND None results…, Opus-review-caught gap (round 2): ACIS can return HTTP 200 with an empty "data"…, TestBootstrapCiMonthTotal, TestFetchHistoricalDailyEmptyResponse
+Cohesion: 0.05
+Nodes (12): acis_precip.py seasonal/bootstrap functions, _clear_seasonal_cache(), fixture, Tests for acis_precip.py (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step…, fetch_seasonal_precip_mean_mm now caches both successful AND None results…, Opus-review-caught gap (round 2): ACIS can return HTTP 200 with an empty "data"…, TestApplySeasonalTilt, TestBootstrapCiMonthTotal (+4 more)
 
 ### Community 308 - "TestIsProbationColumn"
 Cohesion: 0.18
@@ -2350,9 +2364,9 @@ Nodes (4): _parse_temp(), Parse MOS temperature field, handling ASOS special cod
 Cohesion: 0.30
 Nodes (4): _cancel_and_verify_safe_to_replace(), Cancel a resting order and return True only if verified both genuinely unfilled…, A cancel that hasn't propagated yet (Kalshi still reports "resting", zero fills…, TestCancelAndVerifySafeToReplace
 
-### Community 327 - "project_root"
-Cohesion: 0.23
-Nodes (12): paper._acquire_file_lock() / msvcrt retry loop, _atomic_write_payload(), atomic_write_text(), check_emergency_copies(), project_root(), Path, os.replace(src, dst), retrying briefly on PermissionError. Self-caught…, Return the main project root directory, resolving git worktrees correctly. When… (+4 more)
+### Community 327 - "TestParseMarketPrice"
+Cohesion: 0.12
+Nodes (9): String-format prices (e.g. '0.55') are parsed correctly., Missing price fields default to 0.0 without raising., When yes_ask is 0 the mid falls back to yes_bid., L2-D: integer value 1 (= 1¢) must be divided by 100, not returned as 1.0. The…, L2-D: a valid 0¢ bid must not be bypassed by the or-fallback. When yes_bid=0…, Result must be a dict containing the standard price keys., Integer values > 1 are treated as cents and divided by 100., implied_prob equals the mid-price of yes_bid and yes_ask. (+1 more)
 
 ### Community 328 - "TestLiveSettlementStreak"
 Cohesion: 0.24
@@ -2391,12 +2405,12 @@ Cohesion: 0.21
 Nodes (13): Brier Score Metric Card (0.151, target <=0.20), Kalshi Weather Dashboard - Dark Theme, Graduation Gate - Brier Progress Bar (0.151/0.2, partial), Graduation Progress Panel (Trades/P&L/Brier gates), Graduation Gate - P&L Progress Bar ($247.83/$50, complete), Graduation Gate - Trades Progress Bar (567/30, complete), Date/Greeting Header with Daily P&L Summary Sentence, Metric Card Row (Paper Balance, Open Positions, Win Rate, Brier Score) (+5 more)
 
 ### Community 337 - "main.py module"
-Cohesion: 0.29
-Nodes (7): Fix Browse Cities Plan, Brief Closeable Fix, Ctrl-C Cancel Analyze/Cron, Flush stdout Before Cron, Menu UX Fixes Plan, main.py module, Extract Cron Runner to cron.py
+Cohesion: 0.18
+Nodes (12): A3: Bimodal Ensemble Detection, Fix Browse Cities Plan, Brief Closeable Fix, Ctrl-C Cancel Analyze/Cron, Flush stdout Before Cron, Menu UX Fixes Plan, Confidence-Tiered Edge Thresholds, FlashCrashCB Circuit Breaker (+4 more)
 
-### Community 338 - "TestKalshiCircuitBreakerSplit"
-Cohesion: 0.17
-Nodes (6): GET requests go through the read circuit breaker., POST requests go through the write circuit breaker., DELETE requests go through the write circuit breaker., P3-5: Read failures must not block write operations., Tripping the read CB must leave the write CB closed., TestKalshiCircuitBreakerSplit
+### Community 338 - "_request_with_retry"
+Cohesion: 0.15
+Nodes (9): Response, Call _SESSION.request with automatic retry via HTTPAdapter (#67). Falls back to…, _request_with_retry(), GET requests go through the read circuit breaker., POST requests go through the write circuit breaker., DELETE requests go through the write circuit breaker., P3-5: Read failures must not block write operations., Tripping the read CB must leave the write CB closed. (+1 more)
 
 ### Community 339 - "TestAnalyzeTradeMonthlyRainGating"
 Cohesion: 0.17
@@ -2419,8 +2433,8 @@ Cohesion: 0.17
 Nodes (7): _Phase3Base, Shared setUp/tearDown for Phase 3 test classes., Tests for get_confusion_matrix() with configurable threshold (#12)., Return dict must include 'threshold' key., prob=0.7, settled YES: threshold=0.6 → TP; threshold=0.8 → FN., Empty DB still returns threshold in dict., TestConfusionMatrixThreshold
 
 ### Community 344 - "TestWebSocketSubscribeOrder"
-Cohesion: 0.12
-Nodes (10): kalshi_ws.KalshiWebSocket, Phase 2 Batch E regression tests: P2-5 (WebSocket dead-code fix)., The dead '# _ws.subscribe(active_tickers)' comment must be gone., P2-5: subscribe() must be called before start(), with real market tickers., subscribe() must precede start() — reversed order raises RuntimeError., subscribe() raises RuntimeError if called after start() — validates ordering…, The subscribe call in cron must pass tickers from the market list, not an empty…, If the market list is empty, subscribe is skipped but start still fires. (+2 more)
+Cohesion: 0.14
+Nodes (8): The dead '# _ws.subscribe(active_tickers)' comment must be gone., P2-5: subscribe() must be called before start(), with real market tickers., subscribe() must precede start() — reversed order raises RuntimeError., subscribe() raises RuntimeError if called after start() — validates ordering…, The subscribe call in cron must pass tickers from the market list, not an empty…, If the market list is empty, subscribe is skipped but start still fires., active_tickers was never defined in cron — the old commented line could not…, TestWebSocketSubscribeOrder
 
 ### Community 345 - "TestGetBias"
 Cohesion: 0.17
@@ -2430,9 +2444,9 @@ Nodes (6): Focused tests for tracker.get_bias() (#111)., get_bias() returns 0.0 
 Cohesion: 0.17
 Nodes (7): Tests for bayesian_confidence_interval() (#57)., Lower and upper bounds should be in [0, 1] with lower <= upper., Width should shrink as trials increase (same success rate)., All successes: upper bound close to 1, lower bound away from 0., Zero successes: lower bound near 0, upper bound close to 0., 5/10 successes: 90% CI should straddle 0.5., TestBayesianConfidenceInterval
 
-### Community 347 - "test_paper_cross_process_lock.py"
-Cohesion: 0.29
-Nodes (5): paper._DATA_LOCK, subprocess, paper._DATA_LOCK must serialise the ledger read-modify-write cycle across…, AUD-0030: under sustained contention, _acquire_file_lock() used to give up…, test_sustained_contention_falls_back_at_new_30s_deadline_not_old_10s()
+### Community 347 - "_clears_taker_fee"
+Cohesion: 0.18
+Nodes (7): _clears_taker_fee(), _live_min_edge(), Replicate _validate_trade_opportunity's live min-edge threshold (confidence-…, True if net_edge, recomputed with the REAL taker fee instead of the maker fee…, _clears_taker_fee recomputes net_edge with the real taker fee instead of the…, TestClearsTakerFee, TestLiveMinEdge
 
 ### Community 348 - "TestEdgeDecayCurveConditionType"
 Cohesion: 0.23
@@ -2486,33 +2500,33 @@ Nodes (10): 1. Pre-existing backlog item (`backlog.txt:8326`), 2. Pre-existing b
 Cohesion: 0.18
 Nodes (10): Group D: Trading Kelly & Execution Realism Implementation Plan, Task 1: Bayesian Kelly with Beta posterior (#39), Task 2: Load/save correlations from backtest (#49), Task 3: Slippage-adjusted price for large orders (#50), Task 4: Portfolio Kelly with correlation-adjusted covariance (#51), Task 5: Random fill slippage in place_paper_order (#73), Task 6: simulate_partial_fill helper (#74), Task 7: Partial fill simulation in check_exit_targets (#78) (+2 more)
 
-### Community 362 - "record_live_early_exit"
-Cohesion: 0.20
-Nodes (10): Record a live position's exit fill (full or partial) and compute its fee-…, Record a new peak unrealized-profit fraction for an open live position (mirrors…, Mark an open live position closed via an early protective exit (stop-…, record_live_early_exit(), record_live_exit_fill(), update_live_peak_profit(), Settle the POSITION a recovered 'unknown' EXIT order actually closed. Opus…, _settle_recovered_exit_order() (+2 more)
+### Community 362 - "test_cron_integration.py"
+Cohesion: 0.12
+Nodes (15): Integration tests for cmd_cron() orchestration layer. All external calls…, A market with zero volume/open-interest closing within 60 minutes must never…, If kill switch file exists, cmd_cron must return without calling…, report_anomalies prints ticker and drift for markets >12pp from model., check_market_anomalies returns only signals with drift > 0.12., Unlike the soft halts, the kill switch remains a full stop by design — it's the…, cmd_cron()'s settlement-lag-signal consumer (~cron.py:1396) must pass a…, test_check_market_anomalies_filters_by_threshold() (+7 more)
 
-### Community 363 - "portfolio_var"
-Cohesion: 0.31
-Nodes (3): portfolio_var(), Return the dollar loss at the given confidence level (VaR). confidence=0.05 →…, TestPortfolioVar
+### Community 363 - "test_signal_quality.py"
+Cohesion: 0.21
+Nodes (5): portfolio_var(), Return the dollar loss at the given confidence level (VaR). confidence=0.05 →…, Tests for Group 2 signal quality improvements., TestPortfolioVar, TestStrongEdgeThreshold
 
-### Community 364 - "_resolve_amend_status"
-Cohesion: 0.24
-Nodes (7): Translate an amend_order() response into this bot's internal status vocabulary…, _resolve_amend_status(), order_executor._resolve_amend_status -- translates an amend_order() response…, remaining_count/fill_count absent (both None) -- Kalshi's docs say these are…, Amend caused a partial fill (2 of 5) but 3 are still resting -- must stay…, Fail toward the safer assumption (still resting, will be re-verified by the…, TestResolveAmendStatus
+### Community 364 - "TestResolveAmendStatus"
+Cohesion: 0.22
+Nodes (5): order_executor._resolve_amend_status -- translates an amend_order() response…, remaining_count/fill_count absent (both None) -- Kalshi's docs say these are…, Amend caused a partial fill (2 of 5) but 3 are still resting -- must stay…, Fail toward the safer assumption (still resting, will be re-verified by the…, TestResolveAmendStatus
 
 ### Community 365 - "TestLoadAllSigmasBehavior"
 Cohesion: 0.18
 Nodes (3): The actual backlog payoff: cities absent from weather_markets' static…, backlog.txt "FORECAST_SIGMA.JSON ATOMIC WRITE CONTENTION": cron.py's…, TestLoadAllSigmasBehavior
 
-### Community 366 - "TestEarlyExitPricingConvention"
-Cohesion: 0.25
-Nodes (6): _check_early_exits must price a model-exit at the realizable bid/ask…, yes_bid=20c/yes_ask=40c: liquidation (realizable) = 0.20 (the bid). The old…, yes_bid=60c/yes_ask=80c, held side NO: liquidation (realizable) = 1 - yes_ask =…, A missing/invalid quote must skip this cycle (matching _check_live_model_exits'…, liquidation_price() returns 0.0 (NOT None) for a NO position when yes_ask=100c…, TestEarlyExitPricingConvention
+### Community 366 - "test_data_freshness.py"
+Cohesion: 0.15
+Nodes (15): _enriched(), _mock_externals(), Tests for P0.3 — FORECAST_MAX_AGE_SECS and stale data rejection in…, Enriched dict with correct keys; fetched_at controls freshness., analyze_trade must not reject data when data_fetched_at is recent., If data_fetched_at is absent, analyze_trade must not reject the data., enrich_with_forecast must add data_fetched_at to the returned dict., Context manager stack that patches all network calls inside analyze_trade. (+7 more)
 
-### Community 367 - "BACKLOG_OPEN.md (auto-generated unfinished-items index)"
-Cohesion: 0.29
-Nodes (8): L13447: check_model_exits/_check_live_model_exits/_check_early_exits still source positions as raw dicts, not Position read-model, L2024: EMOS calibration stays disabled until ens_var-populated training set clears 40 rows, L4: METAR settlement-lag calibration makes cron.py's >=0.80 force-close gate unreachable, L5956: Rain / Snow / Hurricane markets â€” untouched category surface, L9629: graduate GEM/UKMO (and future tracking-only models) from track-only into the live blend, Backlog L12939 — Position read-model divergence, Backlog L17703 — React dashboard 4th paper-close site, BACKLOG_OPEN.md (auto-generated unfinished-items index)
+### Community 367 - "test_hmac_bias.py"
+Cohesion: 0.12
+Nodes (17): L13447: check_model_exits/_check_live_model_exits/_check_early_exits still source positions as raw dicts, not Position read-model, L2024: EMOS calibration stays disabled until ens_var-populated training set clears 40 rows, L4: METAR settlement-lag calibration makes cron.py's >=0.80 force-close gate unreachable, L5956: Rain / Snow / Hurricane markets â€” untouched category surface, L9629: graduate GEM/UKMO (and future tracking-only models) from track-only into the live blend, Backlog L12939 — Position read-model divergence, Backlog L17703 — React dashboard 4th paper-close site, BACKLOG_OPEN.md (auto-generated unfinished-items index) (+9 more)
 
 ### Community 368 - "TestKillSwitchAPI"
-Cohesion: 0.09
-Nodes (14): kill command, resume command, isolate_tracker_db(), Redirect tracker.DB_PATH to a per-test temp DB and initialize the schema.…, is_accuracy_halted returns True when win rate is 30% over 20 trades., is_accuracy_halted returns False when win rate is 55% over 20 trades., is_accuracy_halted returns False when fewer than ACCURACY_MIN_SAMPLE trades…, 2026-07-09: fail closed, not open, on an internal check failure -- a DB read… (+6 more)
+Cohesion: 0.18
+Nodes (7): kill command, resume command, POST /api/halt writes the kill-switch file with reason and timestamp., P1-16: atomic write must not leave a .tmp file after successful halt., POST /api/resume removes the kill-switch file., GET /api/status includes kill_switch_active field (False when no file)., TestKillSwitchAPI
 
 ### Community 369 - "TestWriteCronRunningFlag"
 Cohesion: 0.18
@@ -2530,13 +2544,13 @@ Nodes (10): _demo_client(), integration, Live Kalshi API integration tests. Thes
 Cohesion: 0.18
 Nodes (6): P1-19: get_markets must follow cursor pagination until exhausted., No cursor in response → single call, all markets returned., Cursor on first page → second call made, both pages combined., The cursor value from page 1 is passed as a param on the page 2 call., Three pages with cursors → all 3 pages combined., TestGetMarketsPagination
 
-### Community 373 - "TestDewPointCorrection"
-Cohesion: 0.18
-Nodes (6): Miami humid day: dew=76, forecast=90 → depression=14°F < 20°F → negative…, Denver (not in sensitive set) must return 0.0 regardless of dew point., Even for a sensitive city, depression >= 20°F means no correction., At depression=0 (saturated), correction is exactly -3.0 (the formula max)., fetch_metar result dict must include dew_point_f key., TestDewPointCorrection
+### Community 373 - "_dew_point_temp_correction"
+Cohesion: 0.19
+Nodes (8): Miami humid day: dew=76, forecast=90 → depression=14°F < 20°F → negative…, Denver (not in sensitive set) must return 0.0 regardless of dew point., Even for a sensitive city, depression >= 20°F means no correction., At depression=0 (saturated), correction is exactly -3.0 (the formula max)., fetch_metar result dict must include dew_point_f key., TestDewPointCorrection, _dew_point_temp_correction(), Return a bias correction (°F, negative = cooler) based on dew point depression.…
 
-### Community 374 - "_make_app"
-Cohesion: 0.27
-Nodes (7): _auth_headers(), _make_app(), If _is_cron_running() returns True, endpoint must return 409., If _is_cron_running() returns False and no rate limit, cron spawns., 409 must be returned even when the per-IP rate limit is not yet exceeded., Concurrent guard must not bypass authentication., TestRunCronConcurrentGuard
+### Community 374 - "test_p0_16_cron_endpoint.py"
+Cohesion: 0.15
+Nodes (10): _auth_headers(), _make_app(), P0-16: api_run_cron concurrent-run guard. Verifies that /api/run_cron returns…, If _is_cron_running() returns True, endpoint must return 409., If _is_cron_running() returns False and no rate limit, cron spawns., 409 must be returned even when the per-IP rate limit is not yet exceeded., Concurrent guard must not bypass authentication., Unit tests for the _is_cron_running() helper in cron.py. (+2 more)
 
 ### Community 375 - "TestLiveFillSlippage"
 Cohesion: 0.18
@@ -2550,9 +2564,9 @@ Nodes (5): Two YES bets on same city/date sum correctly., NO bets don't count to
 Cohesion: 0.18
 Nodes (6): P2-12: get_indices must refresh after TTL expires, not cache forever., A second call within TTL must not hit the network., After TTL expires, the next call must re-fetch., Concurrent calls must not raise and must each return a dict., 2026-07-19 fix: get_indices() must key its cache by (year, month), not a single…, TestClimateIndicesTTL
 
-### Community 378 - "TestParamSweepTemporalSplit"
-Cohesion: 0.20
-Nodes (5): run_sweep source must contain 70/30 split logic., If holdout win rate < baseline, results must NOT be saved., sweep_parameter itself must still work on arbitrary lists., run_sweep must split data 70/30 and only save when holdout passes., TestParamSweepTemporalSplit
+### Community 378 - "TestComputeLiveOrdersPossible"
+Cohesion: 0.12
+Nodes (7): _compute_live_orders_possible() drives the KALSHI_ENV=prod startup banner's…, --live alone (no --auto) still unlocks cmd_watch's `if live:` block (main.py's…, Positive control: dropping --live (with or without --auto) must flip back to…, The interactive menu (`menu` cmd, or no args at all -- main.py's `if not args:`…, cron (and loop, which dispatches to cmd_cron) never open new live positions,…, Positive control: an adjacent read-only/paper-only command with no live-order…, TestComputeLiveOrdersPossible
 
 ### Community 379 - "TestAbTestMaxTradesMeta"
 Cohesion: 0.18
@@ -2582,13 +2596,13 @@ Nodes (6): Build an ISO close_time string., Market closing in 90 minutes → LOW
 Cohesion: 0.18
 Nodes (10): Architecture notes, Backend modules added since this prototype was designed, Data contracts, File map, Kalshi Weather Bot — Frontend Handoff, Known gaps the design did NOT address, Questions for the user before starting, Settings page — now more important (+2 more)
 
-### Community 387 - "fetch_historical_daily"
-Cohesion: 0.24
-Nodes (10): _cache_is_stale(), _cache_path(), fetch_historical_daily(), fetch_month_to_date_actual(), _load_stale_cache_or_none(), _parse_pcpn_value(), Path, POST to ACIS StnData for sdate=YYYY-MM-01 through through_day (always… (+2 more)
+### Community 387 - "acis_precip.py"
+Cohesion: 0.18
+Nodes (14): apply_seasonal_tilt(), _cache_is_stale(), _cache_path(), fetch_historical_daily(), fetch_month_to_date_actual(), _load_stale_cache_or_none(), _parse_pcpn_value(), Path (+6 more)
 
-### Community 388 - "test_alerts_side.py"
-Cohesion: 0.31
-Nodes (4): Return True if the trade was profitable (pnl > 0). Matches paper.py's…, _trade_won(), Tests for P1-14 — alerts win/loss side confusion fix., TestTradeWon
+### Community 388 - "_trade_won"
+Cohesion: 0.39
+Nodes (3): Return True if the trade was profitable (pnl > 0). Matches paper.py's…, _trade_won(), TestTradeWon
 
 ### Community 389 - "Pass 10 — Failure Modes (Section 22)"
 Cohesion: 0.20
@@ -2627,28 +2641,24 @@ Cohesion: 0.20
 Nodes (9): 1. Pre-existing backlog item (`backlog.txt:4`), 2. Pre-existing backlog item (`backlog.txt:3469`), 3. Pre-existing backlog item (`backlog.txt:4524`), 4. Pre-existing backlog item (`backlog.txt:6855`), 5. Pre-existing backlog item (`backlog.txt:7915`), Batch 15: Rain/snow/hurricane market category expansion, Context, Items in this batch (+1 more)
 
 ### Community 398 - "TestAcquireCronLockClosesRace"
-Cohesion: 0.22
-Nodes (7): _patched_exists(), skipif, AUD-0006 regression: _acquire_cron_lock's check-then-write sequence had no OS-…, Mutation-tested: reverting the mutex wrap in cron._acquire_cron_lock (removing…, If the guarding mutex itself can't be acquired (held elsewhere, contended past…, Opus review followup: _release_cron_lock() used to unlink the lock file without…, TestAcquireCronLockClosesRace
+Cohesion: 0.20
+Nodes (8): _patched_exists(), _worker(), skipif, AUD-0006 regression: _acquire_cron_lock's check-then-write sequence had no OS-…, Mutation-tested: reverting the mutex wrap in cron._acquire_cron_lock (removing…, If the guarding mutex itself can't be acquired (held elsewhere, contended past…, Opus review followup: _release_cron_lock() used to unlink the lock file without…, TestAcquireCronLockClosesRace
 
-### Community 399 - "Bug Fixes April 30 2026 Plan"
-Cohesion: 0.14
-Nodes (18): Bug Fixes April 30 2026 Plan, Monte Carlo Clamping Explanation, Fix Cron Lock File Leak, Fix False-Positive Placed Trade Prints, Fix Silent Briefing Failures, Fix Validate Blank Output, Fix Exit Signals Dead-End, B1: Per-Trade Drawdown Re-check (+10 more)
+### Community 399 - "paper.py module"
+Cohesion: 0.24
+Nodes (10): Fix Exit Signals Dead-End, B1: Per-Trade Drawdown Re-check, auto_settle_paper_trades Cron Call, Print Placed Trade Tickers, Fix Cron Trade Updates Plan, Drawdown-Tiered Kelly Step Reduction, paper.py module, Wire drawdown_scaling_factor to Configurable Thresholds (+2 more)
 
 ### Community 400 - "TestCrossProcessLock"
-Cohesion: 0.24
-Nodes (6): _worker(), skipif, AUD-0006/AUD-0051: shared OS-mutex primitive used to guard critical sections…, Opus review: a BaseException (e.g. KeyboardInterrupt) landing inside the retry…, Opus review: the original version of this test only asserted…, TestCrossProcessLock
+Cohesion: 0.28
+Nodes (5): skipif, AUD-0006/AUD-0051: shared OS-mutex primitive used to guard critical sections…, Opus review: a BaseException (e.g. KeyboardInterrupt) landing inside the retry…, Opus review: the original version of this test only asserted…, TestCrossProcessLock
 
 ### Community 401 - "Kalshi Weather Bot — Command Reference"
 Cohesion: 0.20
 Nodes (9): Admin (use with care), Analysis & Calibration, Daily Use, Kalshi Weather Bot — Command Reference, Reporting, Setup & Config, Subcommand Notes, System & Safety (+1 more)
 
-### Community 402 - "CircuitOpenError"
-Cohesion: 0.24
-Nodes (5): CircuitOpenError, Any, Exception, Call fn(*args, **kwargs) with automatic circuit protection. Raises…, Raised when a circuit breaker is open (source is down).
-
-### Community 403 - "test_config_validation.py"
-Cohesion: 0.24
-Nodes (5): Reset the singleton and env-var cache — used in tests between runs., reset_config(), breakeven_trigger_pct and max_days_out both read their env var fresh from the…, test_bot_config_defaults_are_sane(), test_bot_config_loads_from_env()
+### Community 403 - "date"
+Cohesion: 0.16
+Nodes (16): _fetch_actual_daily_temp(), _fetch_asos_daily_temp(), _fetch_asos_hour_temp(), _fetch_asos_observations(), _fetch_previous_run_daily(), _fetch_previous_run_leads(), get_forecast_run_trend(), date (+8 more)
 
 ### Community 404 - "Adversarial Code Audit — Kalshi Weather Trading Bot"
 Cohesion: 0.20
@@ -2671,12 +2681,16 @@ Cohesion: 0.20
 Nodes (9): Model Signal Calibration Implementation Plan, Self-Review, Task 1: `edge_confidence()` function, Task 2: Wire `edge_confidence` into `analyze_trade()`, Task 3: Schema migration v9 — per-source probability columns, Task 4: Pass per-source probs from `analyze_trade()` through to `log_prediction()`, Task 5: `calibration.py` — grid-search and loaders, Task 6: Wire calibration into `_blend_weights()` (+1 more)
 
 ### Community 409 - "._evict_oldest"
-Cohesion: 0.27
-Nodes (5): Remove the entry with the smallest (oldest) timestamp. Must hold _lock., Store with a per-entry TTL, overriding the class-level default. L5-A: used to…, Store with an explicit monotonic timestamp (e.g. when restoring from disk). ts…, Store with both an explicit monotonic timestamp AND a per-entry TTL. Use when…, T
+Cohesion: 0.14
+Nodes (8): Remove all expired entries. Returns the number of entries removed., Return the TTL for an entry: per-entry (3-tuple) or class default (2-tuple)., Remove the entry with the smallest (oldest) timestamp. Must hold _lock., Store with a per-entry TTL, overriding the class-level default. L5-A: used to…, Store with an explicit monotonic timestamp (e.g. when restoring from disk). ts…, Store with both an explicit monotonic timestamp AND a per-entry TTL. Use when…, Return (value, hit, wall_clock_fetch_ts). wall_clock_fetch_ts is derived from…, T
 
 ### Community 410 - "_CrossProcessDataLock"
 Cohesion: 0.29
 Nodes (3): _CrossProcessDataLock, Serialises read-modify-write cycles on paper_trades.json across BOTH threads…, Also usable directly (not just via `with`) — a couple of call sites span…
+
+### Community 411 - "check_city_settlement"
+Cohesion: 0.15
+Nodes (10): METAR Lock-In Module, build_settlement_signal(), check_city_settlement(), Build a settlement lag signal dict., Check METAR for a city and return any new settlement signals. Args: city: City…, build_settlement_signal returns dict with required keys., write_settlement_signals writes JSON to signals file., read_settlement_signals returns [] when file does not exist. (+2 more)
 
 ### Community 412 - "static/forecast.js"
 Cohesion: 0.36
@@ -2685,10 +2699,6 @@ Nodes (9): loadSourceReliability() (analytics.js), renderSourceReliability() (fo
 ### Community 413 - "TestFetchArchiveTempsCacheWrite"
 Cohesion: 0.29
 Nodes (5): A failed cache write (e.g. AtomicWriteError) must not crash the fetch or lose…, A cache file written by the real (non-mocked) safe_io.atomic_write_json must be…, backlog.txt "climate_indices.py's PDO/PNA CACHE AND backtest.py's OWN CACHE…, fetch_archive_temps must use safe_io.atomic_write_json, not a plain write_text…, TestFetchArchiveTempsCacheWrite
-
-### Community 414 - "test_bug_b_unparseable_date_logging.py"
-Cohesion: 0.22
-Nodes (5): Tests for Bug B's fix (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2):…, _opp_event_key is a nested closure inside _auto_place_trades(), not module-…, A high-enough-edge opportunity reaches BOTH the pre-pass (_opp_event_key, for…, TestOppEventKeyLogsOnUnparseableDate, TestUnpackOppLogsOnUnparseableDate
 
 ### Community 415 - "TestSensitivityTablesCoverage"
 Cohesion: 0.20
@@ -2706,6 +2716,10 @@ Nodes (6): Above TIER_4, full sizing (1.0) is returned., P2-2: Tiers must be abs
 Cohesion: 0.20
 Nodes (6): _place_live_order with side='no' must call client.place_order(side='no',…, L1-A: Verify side='no' action='buy' API semantics are correct via the full…, Return a KalshiClient with no auth (we only test body construction)., side='no' action='buy' must send V2 side='ask' at price=1-price., side='yes' action='buy' must send V2 side='bid' at the same price., TestPlaceOrderApiSemantics
 
+### Community 419 - "_auto_place_trades"
+Cohesion: 0.14
+Nodes (14): _auto_place_trades(), Auto-place paper or live trades for signals not already held. Called from…, The core routing guarantee: in one batch, an hourly opp (gate inactive) is…, A monthly-snow (KXDENSNOWM) opp must be shadow-logged, not placed, when…, Once _hurricane_count_gates_active() is True, a hurricane-count opp places…, Once _hurricane_next_event_gates_active() is True, a next-event opp places…, Shadow logging must never place an actual order — only observe., test_hurricane_count_ticker_places_normally_when_gate_active() (+6 more)
+
 ### Community 420 - "TestDynamicLockInConfidence"
 Cohesion: 0.20
 Nodes (6): Regression tests for L6-D: METAR lock-in confidence must scale with temperature…, Regression for L6-D: 3°F clearance at 2 PM must yield confidence < 0.90. Before…, Regression for L6-D: 15°F clearance at 10 PM must yield confidence >= 0.90.…, Confidence must be strictly higher for larger temperature clearance at the same…, Confidence must be strictly higher for a later observation time with the same…, TestDynamicLockInConfidence
@@ -2713,6 +2727,10 @@ Nodes (6): Regression tests for L6-D: METAR lock-in confidence must scale with t
 ### Community 421 - "TestConfigIntegrity"
 Cohesion: 0.20
 Nodes (5): First run: no previous hash → changed=False, writes hash file., Running twice with same config → changed=False., Writing a different hash file → changed=True., Same config should always produce the same hash., TestConfigIntegrity
+
+### Community 423 - "test_phase2_batch_c.py"
+Cohesion: 0.10
+Nodes (9): P2-7: Warn on missing or malformed weight file entries at startup., validate_weight_files(), Phase 2 Batch C regression tests: P2-7, P2-10, P2-12, P2-13., P2-10: Minneapolis city weights must not have 0.97 climatology., P2-7: seasonal, condition, and city weight files must be present., P2-7: validate_weight_files warns on missing/malformed entries., TestMinneapolisWeights, TestValidateWeightFiles (+1 more)
 
 ### Community 424 - "TestClimPriorUseClimatologicalProb"
 Cohesion: 0.20
@@ -2755,7 +2773,7 @@ Cohesion: 0.20
 Nodes (4): Opus-review-caught gap (round 2): _quick_paper_buy() and cmd_paper() got the…, Mutation-test proof: proceeds past THIS guard once the gate is active (may…, Mutation-test proof: proceeds past THIS guard once the gate is active., TestQuickPaperBuyAndCmdPaperSnowGuards
 
 ### Community 434 - "TestGetBrierOverTime"
-Cohesion: 0.20
+Cohesion: 0.18
 Nodes (5): Tests for tracker.get_brier_over_time()., No data → empty list., Seeded prediction: prob=0.5, outcome=NO → brier=(0.5-0)^2=0.25., Brier values must be in [0.0, 1.0]., TestGetBrierOverTime
 
 ### Community 436 - "TestDashboardStarsKeyOffTier"
@@ -2778,9 +2796,9 @@ Nodes (7): Finding 1 — Between-bucket settlement lock-in YES from instantaneou
 Cohesion: 0.22
 Nodes (8): 1. Kill-switch override rename race (main.py cmd_cron), 2. portfolio_var() blind to live positions from prior cycles, 3. cmd_watch / cron shared gate chain (no divergence), 4. Bare os.replace() migration complete, 5. web_app.py CSRF check is global via before_request, 6. Admin accuracy-override is CLI-only, Pass 5 — Scope B independent re-verification (round 3), Summary
 
-### Community 441 - "_fetch_settled_markets Pagination Helper"
-Cohesion: 0.25
-Nodes (9): Fix Simulate Pagination, Fix Backtest Empty Results Diagnostics, cmd_backtest/cmd_walkforward Error Handling, _fetch_settled_markets Pagination Helper, Fix Backtest/Simulate/Validate Plan, Fix cmd_simulate Status Param, backtest.py module, Phase E: Walk-Forward Backtesting Plan (+1 more)
+### Community 441 - "Bug Fixes April 30 2026 Plan"
+Cohesion: 0.13
+Nodes (18): Bug Fixes April 30 2026 Plan, Monte Carlo Clamping Explanation, Fix Cron Lock File Leak, Fix False-Positive Placed Trade Prints, Fix Silent Briefing Failures, Fix Validate Blank Output, Fix Simulate Pagination, Fix Backtest Empty Results Diagnostics (+10 more)
 
 ### Community 442 - "Pass 6 — Kalshi Semantics — Independent Verification"
 Cohesion: 0.22
@@ -2810,13 +2828,13 @@ Nodes (8): 1. AUD-0016 [MEDIUM | VERY HIGH | E2 | CONFIRMED]: Between-bucket set
 Cohesion: 0.22
 Nodes (8): 1. AUD-0015 [MEDIUM | VERY HIGH | E2 | CONFIRMED]: KalshiClient env comparison fails open to PROD_BASE for any non-exact 'demo' string, 2. AUD-0018 [MEDIUM | VERY HIGH | E3 | CONFIRMED]: .env.example's DASHBOARD_PASSWORD comment ('leave empty to disable auth') is stale — code now refuses to start the dashboard instead, 3. AUD-0040 [LOW | HIGH | E1 | CONFIRMED]: cmd_order accepts and forwards an out-of-range order price with no local validation before hitting the live exchange, 4. AUD-0076 [INFO | MEDIUM | E1 | CONFIRMED]: Kalshi API ticker values flow unvalidated into URL path segments, Batch 9: Security & config hardening, Context, Items in this batch, Process -- follow the 29-step implementation workflow from memory (`feedback-implementation-workflow`) exactly, in order
 
-### Community 449 - "_brier"
-Cohesion: 0.33
-Nodes (4): _brier(), Compute weighted Brier score. Rows are (e, c, n, s[, weight]). Skips None…, P3-17: _brier must skip rows with any None component., TestBrierNoneFiltering
+### Community 449 - "TestPaperTradeConditionTypeClassifier"
+Cohesion: 0.14
+Nodes (5): Tests for tracker._paper_trade_excluded_condition_type() (backlog.txt…, Covers every member of _HURRICANE_COUNT_SERIES, not an arbitrary one via…, Positive control: an ordinary T-suffix (above/below) ticker is NOT one of the 6…, Opus-review finding M2: a truthy non-str `ticker` (e.g. a paper trade record…, TestPaperTradeConditionTypeClassifier
 
 ### Community 450 - "restore_data"
-Cohesion: 0.28
-Nodes (9): backup_to_s3(), _find_google_drive(), _find_sync_folder(), Path, Copy files from <sync_folder>/KalshiBot/data/ back into local data/. Use this…, Find the Google Drive sync folder on Windows. Checks (in order): 1.…, Upload local_path to S3 at s3://{bucket}/{key}. Returns True/False/None., Return the best available cloud sync folder, in priority order: 1.… (+1 more)
+Cohesion: 0.24
+Nodes (11): backup_data(), backup_to_s3(), _find_google_drive(), _find_sync_folder(), Path, Copy important files from data/ into <sync_folder>/KalshiBot/data/. Returns…, Copy files from <sync_folder>/KalshiBot/data/ back into local data/. Use this…, Find the Google Drive sync folder on Windows. Checks (in order): 1.… (+3 more)
 
 ### Community 451 - "Part 4 — Strategies"
 Cohesion: 0.22
@@ -2826,9 +2844,9 @@ Nodes (9): Part 4 — Strategies, S1. METAR Lock-In (Same-Day Trades), S2. Per-C
 Cohesion: 0.31
 Nodes (5): fetch_nbm_forecast(), date, Return NBM high/low for a specific date via the NWS gridpoints API. NBM…, fetch_nbm_forecast() wraps get_nws_daily_forecast() into a flat dict., TestFetchNbmForecast
 
-### Community 453 - "_get_current_book"
-Cohesion: 0.33
-Nodes (4): _get_current_book(), Return a market-price-shaped dict ({"yes_bid": ..., "yes_ask": ...}) with the…, A one-sided WS book (no real ask) must not be treated as usable -- falls…, TestGetCurrentBook
+### Community 453 - "audit_settlement"
+Cohesion: 0.14
+Nodes (14): backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 (review-caught): the…, test_settlement_client_rebuilds_on_env_change(), audit_settlement(), backfill_daily_temp_settlement(), _get_settlement_kalshi_client(), mark_outcome_disputed(), mark_outcome_undisputed(), Mark an outcome row as disputed (archive/Kalshi settlement mismatch). Disputed… (+6 more)
 
 ### Community 454 - "TestHistoricalRemainingAndFullMonthSums"
 Cohesion: 0.22
@@ -2836,15 +2854,15 @@ Nodes (3): Review-caught coverage gap: the remaining_start_day=1 cases above mak
 
 ### Community 455 - "test_hurricane_markets.py"
 Cohesion: 0.07
-Nodes (13): Tests for weather_markets.py's hurricane-season-count model (backlog.txt…, Opus-review-caught: this key was originally missing from _CONDITION_CONFIDENCE…, Opus-review-caught gap: only cmd_order and check_position_limits had direct…, Same opus-review-caught concern the sibling next_event entry's own test…, Opus-review-caught: `_analyze_hurricane_next_event_trade` does a bare…, test_next_event_type_values_are_a_subset_of_climatology_thresholds(), TestCmdOrderHurricaneCountGuard, TestCmdOrderHurricaneNextEventGuard (+5 more)
+Nodes (12): Tests for weather_markets.py's hurricane-season-count model (backlog.txt…, Opus-review-caught: this key was originally missing from _CONDITION_CONFIDENCE…, Same opus-review-caught concern the sibling next_event entry's own test…, Mirrors TestQuickPaperBuyAndCmdPaperHurricaneNextEventGuards exactly., Opus-review-caught: `_analyze_hurricane_next_event_trade` does a bare…, test_next_event_type_values_are_a_subset_of_climatology_thresholds(), TestCmdOrderHurricaneCountGuard, TestCmdOrderHurricaneNextEventGuard (+4 more)
 
 ### Community 456 - "TestFetchSettledMarkets"
 Cohesion: 0.22
 Nodes (5): _fetch_settled_markets follows cursor pages within a single series., _fetch_settled_markets must pass min_close_time to every API call. Root cause:…, When min_close_time is None the param must not appear in the API call., _fetch_settled_markets silently skips a series that errors and continues., TestFetchSettledMarkets
 
-### Community 457 - "TestFetchPreviousRunEnsemble"
-Cohesion: 0.22
-Nodes (5): Previous Runs API call must return a list of floats., Unknown city must return empty list (no crash)., API errors must return empty list, never raise., run_backtest() must accept use_previous_runs keyword without raising TypeError., TestFetchPreviousRunEnsemble
+### Community 457 - "fetch_mos"
+Cohesion: 0.19
+Nodes (13): fetch_mos(), fetch_mos_best(), fetch_nbm_iem(), _fetch_nbs_daily_extremes(), is_mos_cached(), _local_or_utc_today(), date, CITY-LOCAL today for the given IANA tz, or UTC today if tz is None or… (+5 more)
 
 ### Community 458 - "TestGetLiveOpenPositionsCityDate"
 Cohesion: 0.22
@@ -2871,8 +2889,8 @@ Cohesion: 0.22
 Nodes (3): backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2 handoff item 5:…, Both conditions are required -- neither alone suffices., TestHourlyGatesActive
 
 ### Community 465 - "TestManualPlacementPathsHourlyGuard"
-Cohesion: 0.22
-Nodes (4): Same gap as above, at the explicit refuse-outright guards in main.py's…, Mutation-test proof the conditional is real -- once active, this guard no…, Mutation-test proof: proceeds past THIS guard once the gate is active., TestManualPlacementPathsHourlyGuard
+Cohesion: 0.05
+Nodes (21): Same gap as above, at the explicit refuse-outright guards in main.py's…, Mutation-test proof the conditional is real -- once active, this guard no…, Mutation-test proof: proceeds past THIS guard once the gate is active., TestManualPlacementPathsHourlyGuard, P2-3: is_streak_paused must sort trades by settled_at, not entered_at., P2-3: is_streak_paused must sort by settled_at when computing streak PnL.…, Trades without settled_at fall back to entered_at without crashing., TestStreakPausedSortOrder (+13 more)
 
 ### Community 466 - "test_paths_bypass_guard.py"
 Cohesion: 0.25
@@ -2894,9 +2912,9 @@ Nodes (4): get_accuracy_halt_reason returns non-empty string when rolling win ra
 Cohesion: 0.31
 Nodes (5): #73: place_paper_order simulates random Gaussian fill slippage., actual_fill_price must always be in [0.01, 0.99]., Over many fills, actual_fill_price should vary around entry_price., entry_price on the trade record must equal the requested price., TestGaussianFillSlippage
 
-### Community 473 - "TestSaveEmbedsSHA256"
-Cohesion: 0.22
-Nodes (5): P2-14: _save must embed a 64-char SHA-256 _checksum field in every write., Round-trip: _load after _save must succeed without CorruptionError., _save must not carry forward the legacy _crc32 field., Different data must produce a different checksum., TestSaveEmbedsSHA256
+### Community 473 - "._post"
+Cohesion: 0.20
+Nodes (5): Build signed auth headers for authenticated endpoints., Return the full URL path (e.g. /trade-api/v2/markets) used in signing., Raise ValueError if a 200 response contains an error field., Cancel a resting order via Kalshi's V2 endpoint -- the legacy DELETE…, Amend a resting order's price and/or size atomically via Kalshi's V2 amend…
 
 ### Community 474 - "TestDrawdownTier4Boundary"
 Cohesion: 0.33
@@ -2910,9 +2928,9 @@ Nodes (3): #2: city/date, directional, and correlated-group exposure caps were p
 Cohesion: 0.22
 Nodes (5): Every city in CITY_COORDS has a station mapping., All station IDs are 4-character ICAO codes starting with K., Chicago must map to Midway (KMDW) — confirmed from Kalshi series API…, CITY_COORDS Chicago must be near Midway (KMDW), not O'Hare (KORD). Kalshi…, TestMarketStationMap
 
-### Community 477 - "TestComputeMarketImpliedGroupsMonthlyRain"
-Cohesion: 0.28
-Nodes (5): backlog.txt "RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET- IMPLIED…, Rain siblings must not leak into the temperature event's own fit -- they're…, The actual regression this backlog entry fixes: a rain-only ladder must now be…, Regression guard for the routing order: rain tickers must be routed to…, TestComputeMarketImpliedGroupsMonthlyRain
+### Community 477 - "._rain_market"
+Cohesion: 0.24
+Nodes (6): backlog.txt "RAIN MARKETS -- LADDER/SIBLING GROUPING FOR MARKET- IMPLIED…, Rain siblings must not leak into the temperature event's own fit -- they're…, The actual regression this backlog entry fixes: a rain-only ladder must now be…, Regression guard for the routing order: rain tickers must be routed to…, Review-caught gap: every other end-to-end test mocks…, TestComputeMarketImpliedGroupsMonthlyRain
 
 ### Community 478 - "TestCheckPositionLimitsBlocksMonthlyRain"
 Cohesion: 0.22
@@ -2939,16 +2957,16 @@ Cohesion: 0.28
 Nodes (4): Verify get_calibration_trend groups by market_date, not predicted_at (#54)., Two predictions made in same analysis week but different market-date weeks must…, Each trend entry must have week, brier, and n keys., TestCalibrationTrendUsesMarketDate
 
 ### Community 484 - "detect_regime"
-Cohesion: 0.13
-Nodes (24): I5: Kelly Finite/Range Guard, I8: Drawdown Snapshot vs Raw Balance, RF6: No Test Coverage on Trade Path, BotConfig.validate() Missing Threshold Guards (5/10), nws_prob_from_quantiles() Upper-Tail Can Exceed 1.0 (7/10), _place_live_order() KeyError Risk: max_open_positions (7/10), drawdown_scaling_factor() Tiered Kelly Scaling (9/10), detect_regime() RF6: Zero Test Coverage on Live Kelly Path (5/10) (+16 more)
+Cohesion: 0.31
+Nodes (13): detect_regime(), Detect the current weather regime for a city based on ensemble statistics.…, Tests for regime.detect_regime() — RF6 gap closure., Confidence boost at days_out=15 should be lower than at days_out=1., _stats(), test_blocking_high_detected(), test_cold_snap_detected(), test_days_out_none_does_not_raise() (+5 more)
 
 ### Community 487 - "TestGateUnification"
 Cohesion: 0.22
 Nodes (4): The unified gate set must block placement identically for both…, Consistency-skip is a stricter halt than the others: no shadow logging either…, cron.py's anomaly-detection / black-swan-check-error halt reason, computed…, TestGateUnification
 
-### Community 488 - "TestObsProbBetweenSigma"
-Cohesion: 0.31
-Nodes (5): Regression: obs_prob for 'between' must use sigma=3.5, not sigma=0.25. The old…, Temp at centre of a 1°F band → ~11%, not ~95%., Old sigma=0.25 gave ~0.95; new sigma=3.5 must give much less., Temp 5°F above the bucket → probability should be tiny., TestObsProbBetweenSigma
+### Community 488 - "obs_prob"
+Cohesion: 0.16
+Nodes (11): obs_prob(), Convert a live observation to a probability. Uses sigma=3.5 — a midday…, Regression: obs_prob for 'between' must use sigma=3.5, not sigma=0.25. The old…, Temp at centre of a 1°F band → ~11%, not ~95%., Old sigma=0.25 gave ~0.95; new sigma=3.5 must give much less., Temp 5°F above the bucket → probability should be tiny., Regression: obs_prob for 'above'/'below' must use sigma=3.5, not sigma=1.0.…, Temp 2°F below 'above' threshold → must be meaningfully above 0. (+3 more)
 
 ### Community 489 - "Pass 16 — Test Quality: independent verification notes"
 Cohesion: 0.25
@@ -3050,6 +3068,10 @@ Nodes (3): loadAnalytics(), loadBrierHistory(), makeLayout()
 Cohesion: 0.25
 Nodes (6): _clear_trading_paused(), Strip TRADING_PAUSED from the real .env so a developer's local pause (e.g.…, Deep-review followup: /api/paper-order used to take city/target_date straight…, Omitting city/target_date from the request body must NOT bypass the exposure…, A client-supplied city/target_date that disagrees with the ticker's real city…, TestPaperOrderCityDateServerDerived
 
+### Community 514 - "test_regression.py"
+Cohesion: 0.17
+Nodes (11): _DEFAULT_CORRELATIONS Dict, Paper Trading Ledger Module, Regression test: Brier score must not degrade more than 1% after refactors., cmd_simulate must call backtest._fetch_settled_markets (series-based), not…, get_weather_markets must not call client.get_markets() without series_ticker.…, When MC clamps a probability, the UI should explain this is expected/defensive., test_brier_score_not_degraded(), test_get_weather_markets_does_not_call_global_get_markets() (+3 more)
+
 ### Community 515 - "TestFetchArchiveTempsEnsembleCenter"
 Cohesion: 0.32
 Nodes (5): Monkeypatch requests.get so fetch_archive_temps uses controlled data, then…, Ensemble mean must NOT be within 1°F of the actual temperature (exact_val).…, L6-A: synthetic ensemble must be centred on a forecast, not the actual outcome., Ensemble mean must be within 5°F of the surrounding-day average (proxy…, TestFetchArchiveTempsEnsembleCenter
@@ -3063,8 +3085,8 @@ Cohesion: 0.25
 Nodes (4): 2nd-round-opus-review-caught (M-A): AUD-0001's exposure-denominator fix made…, Direct test of the id()-reuse concern the docstring describes: two DIFFERENT…, Direct test of the getattr-vs-__dict__ bug caught while writing this fix:…, TestResolveLiveBalanceCaching
 
 ### Community 518 - "web_app.py module"
-Cohesion: 0.32
-Nodes (8): B3: Portfolio Expected Value Card, Fix Signals Page Plan, Fix Web Analytics Charts Plan, Reliability Diagram Dashboard, web_app.py module, Profit Goal Feature Plan, web_app.py XSS Escaping Fix, Top 5 Trades of the Day Plan
+Cohesion: 0.38
+Nodes (7): B3: Portfolio Expected Value Card, Fix Web Analytics Charts Plan, Reliability Diagram Dashboard, web_app.py module, Profit Goal Feature Plan, web_app.py XSS Escaping Fix, Top 5 Trades of the Day Plan
 
 ### Community 519 - "TestKillSwitchOverrideRenameRace"
 Cohesion: 0.25
@@ -3099,8 +3121,8 @@ Cohesion: 0.25
 Nodes (3): _poll_pending_orders must capture filled_at/market_mid_at_fill the moment a…, A later log_order_result() call on an already-instrumented row (e.g. from an…, TestFillInstrumentation
 
 ### Community 527 - "TestCmdCronQuarantineScanWiring"
-Cohesion: 0.25
-Nodes (3): cron.py's daily per-member quarantine scan (weather_markets.…, Mirrors every other cmd_cron sub-check (auto_retire_strategies,…, TestCmdCronQuarantineScanWiring
+Cohesion: 0.12
+Nodes (7): cron.py's daily per-member quarantine scan (weather_markets.…, Mirrors every other cmd_cron sub-check (auto_retire_strategies,…, A daily INFO status line reporting every candidate's ewma_z, not just…, A non-quarantined model whose ewma_z crosses half the trip threshold (1.0,…, A model that's ALREADY quarantined isn't 'approaching' anything -- it already…, Mirrors test_scan_failure_does_not_crash_cron -- a failure in the new status-…, TestCmdCronQuarantineScanWiring
 
 ### Community 528 - "TestStrategyVersioning"
 Cohesion: 0.25
@@ -3110,13 +3132,13 @@ Nodes (4): Callers that don't pass edge_calc_version store NULL (backward compat
 Cohesion: 0.25
 Nodes (4): Stable Brier over time should not trigger drift., Early Brier=0.12, recent Brier=0.22 → delta=0.10 > threshold=0.05 → drifting., If Brier improves (negative delta) it is not flagged as drift., TestDriftDetection
 
-### Community 530 - "TestPruneApiRequests"
-Cohesion: 0.25
-Nodes (4): Path, P2-13: prune_api_requests must delete old rows and leave recent ones., prune_api_requests must be importable from tracker., TestPruneApiRequests
+### Community 530 - "prune_api_requests"
+Cohesion: 0.20
+Nodes (6): Path, P2-13: prune_api_requests must delete old rows and leave recent ones., prune_api_requests must be importable from tracker., TestPruneApiRequests, prune_api_requests(), P2-13: Delete api_requests rows older than days_to_keep. Returns row count…
 
-### Community 531 - "TestFeatureImportancePruning"
-Cohesion: 0.25
-Nodes (3): P3-22: prune_feature_log must keep at most _MAX_LOG_LINES entries., cron.py must call prune_feature_log() in the Monday weekly sweep., TestFeatureImportancePruning
+### Community 531 - "system_health.py"
+Cohesion: 0.26
+Nodes (11): NamedTuple, _check_api_failure_rate(), _check_platt_sanity(), check_system_health(), HealthStatus, system_health.py — lightweight health checks before trade execution., Return unhealthy if recent Kalshi API calls are failing at a high rate., Return unhealthy if any loaded Platt model has A <= 0 (signal inversion). (+3 more)
 
 ### Community 532 - "_safe_price"
 Cohesion: 0.29
@@ -3126,9 +3148,9 @@ Nodes (5): order_executor.py live reprice loop, Normalize a price value to decim
 Cohesion: 0.25
 Nodes (3): backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 handoff item 7:…, Both conditions are required -- neither alone suffices., TestRainGatesActive
 
-### Community 534 - "TestIsAccuracyHaltedSprt"
-Cohesion: 0.25
-Nodes (5): Tests for SPRT wired into paper.is_accuracy_halted()., is_accuracy_halted returns True when sprt_model_health returns 'degraded'., is_accuracy_halted returns False when SPRT is ok and rolling rate passes., 2026-07-09: fail closed, not open -- sprt_model_health raising (a Windows…, TestIsAccuracyHaltedSprt
+### Community 534 - "_save"
+Cohesion: 0.17
+Nodes (11): _compute_checksum(), _existed_marker_path(), _mark_needs_manual_settle(), #10: sentinel touched on every successful save, checked when DATA_PATH is…, Persist one position's new peak. Writes one trade at a time (one _save() per…, Wipe all paper trades and reset balance., Set needs_manual_settle=True on a trade so the dashboard can flag it., Write atomically with retry via safe_io (#8). Embeds SHA-256 checksum (#102). (+3 more)
 
 ### Community 535 - "TestBrierSkillScore"
 Cohesion: 0.25
@@ -3186,9 +3208,9 @@ Nodes (3): fetch_temperature_weatherapi() requires WEATHERAPI_KEY to be set., A 
 Cohesion: 0.25
 Nodes (5): L2-B: kelly_fraction must always be called with an explicit fee_rate, never…, Fee-adjusted Kelly must be strictly less than fee-free Kelly for any positive…, Default kelly_fraction() must use KALSHI_FEE_RATE, not 0. P2-8 fix: the old…, L2-B: for all valid (prob, price) pairs, fee-adjusted Kelly ≤ fee-free Kelly.…, TestKellyFeeRate
 
-### Community 549 - "test_web_analytics.py"
-Cohesion: 0.32
-Nodes (7): analytics_client(), _force_demo_env(), _no_dashboard_password(), fixture, Tests for web analytics API shape contracts., Ensure KALSHI_ENV=demo so _build_app doesn't require DASHBOARD_PASSWORD., utils.DASHBOARD_PASSWORD is cached at import time (conftest.py imports main,…
+### Community 549 - "TestCronConsistencyCheck"
+Cohesion: 0.17
+Nodes (6): P3-14: the consistency check must run after market scan and log/halt on excess…, More than 5 violations must set consistency_skip=True., consistency_skip must guard the auto_place_trades calls., A set of coherent above-threshold markets must produce zero violations., P(>75°) > P(>65°) is an impossible inversion — must be flagged., TestCronConsistencyCheck
 
 ### Community 550 - "reference/analytics.js"
 Cohesion: 0.32
@@ -3246,9 +3268,9 @@ Nodes (6): 1. Pre-existing backlog item (`backlog.txt:2720`), 2. Pre-existing ba
 Cohesion: 0.29
 Nodes (7): Group A — live-position/loss visibility gap (shared root cause; audit recommends ONE coordinated fix, not five), Group B — order lifecycle / crash-recovery gaps, Group C — financial calculation errors, Group D — concurrency, Group E — documentation actively misleading an operator, Handoff prompts for the 13 HIGH findings from the 2026-08-18 max-depth audit, Suggested sequencing note (not authoritative — surface this as an AskUserQuestion if picking up multiple at once)
 
-### Community 565 - "validate_weight_files"
-Cohesion: 0.38
-Nodes (4): P2-7: Warn on missing or malformed weight file entries at startup., validate_weight_files(), P2-7: validate_weight_files warns on missing/malformed entries., TestValidateWeightFiles
+### Community 565 - "TestExcludedBrierConditionTypes"
+Cohesion: 0.17
+Nodes (7): When a family's gate flips active, its condition_type stops being excluded --…, between' has no gate of its own -- it must stay excluded even in the…, If a gate function's own state can't be determined (raises), its condition_type…, Opus-review finding M1: the original implementation had `import weather_markets…, Tests for tracker._excluded_brier_condition_types() (backlog.txt "BRIER-FAMILY…, Matches today's real production state (no *_TRADING_ENABLED flag set) -- same…, TestExcludedBrierConditionTypes
 
 ### Community 566 - "Per-File Detailed Findings"
 Cohesion: 0.29
@@ -3294,13 +3316,13 @@ Nodes (7): 62.1 Add `lead_time_climatology_weight(lead_days)` to `weather_market
 Cohesion: 0.29
 Nodes (7): 65.1 Add `ecmwf-opendata` to `requirements.txt`, 65.2 Add `get_ecmwf_ensemble(lat, lon, target_date)` to a new `ecmwf_data.py`, 65.3 Wire into `_blend_weights()` with lead-time-aware weighting, 65.4 Write tests, 65.5 Verify & Commit, Background, Task 65 (P12.E) — ECMWF Open Data Integration (Days 4–7 Edge)
 
-### Community 577 - "_set_dashboard_unprotected"
+### Community 577 - "_parse_market_condition"
 Cohesion: 0.33
-Nodes (6): dashboard command, web command, Set DASHBOARD_UNPROTECTED=true so web_app imports/builds don't require…, _set_dashboard_unprotected(), client fixture, _force_demo_env fixture
+Nodes (5): TestParseMarketCondition, _parse_hurricane_count_condition(), _parse_market_condition(), Returns {"type": "hurricane_count", "basin": "ATL"/"EPAC"/"CPAC", "count_type":…, Parse what outcome a market is asking about from its ticker and title. Returns…
 
-### Community 578 - "test_gaussian_prob.py"
-Cohesion: 0.03
-Nodes (43): Between-Market METAR Lock-in Daily-Extreme Bug, NWS Sigma Ladder (days_out-based), Grade Audit Module Doc: nws.py, Grade Audit Module Doc: weather_markets.py, Tests for Gaussian probability distribution method., Miami must return its calibrated sigma (was keyed 'MIA', city is 'Miami')., get_ensemble_members returns a list of ≥10 floats on success., get_ensemble_members returns None when the API errors. (+35 more)
+### Community 578 - "get_historical_sigma"
+Cohesion: 0.04
+Nodes (45): Miami must return its calibrated sigma (was keyed 'MIA', city is 'Miami')., Dallas must return its calibrated sigma (was keyed 'DAL', city is 'Dallas')., Denver must return its calibrated sigma (was keyed 'DEN', city is 'Denver')., Every calibrated sigma must be in the NWS Day-3 RMSE range (1.5–5°F)., gaussian_probability always returns a value in [0, 1]., P(T > threshold) = 50% when threshold equals the forecast mean., P(T > 65) ≈ 84% when mean=70, sigma=5 (1 sigma above)., P(T < threshold) is complement of above. (+37 more)
 
 ### Community 579 - "market_types.py"
 Cohesion: 0.43
@@ -3318,9 +3340,9 @@ Nodes (4): Deep-review followup: _cmd_cron_body/cmd_cron used to default min_edg
 Cohesion: 0.33
 Nodes (5): _acquire(), Helper: point LOCK_PATH at tmp_path and call _acquire_cron_lock., No existing lock → returns True and writes lock file., Written lock must be valid JSON with pid, started_at, heartbeat., TestAcquireCronLockFreshInstall
 
-### Community 583 - "TestBreakevenStops"
-Cohesion: 0.29
-Nodes (4): check_breakeven_stops must return the ticker when peak was met and price fell…, check_breakeven_stops must NOT fire when peak_profit_pct is below the trigger., update_peak_profits must record a new peak when unrealized profit exceeds…, TestBreakevenStops
+### Community 583 - ".place_order"
+Cohesion: 0.20
+Nodes (5): Fetch every order with the given status, following Kalshi's cursor pagination…, Place a limit order with a deterministic idempotency key. Uses Kalshi's V2…, Return (order matching client_order_id or None, reconciliation_uncertain).…, Fetch a single order by ID from the Kalshi portfolio API. Returns the inner…, Place a passive limit (maker) order at the specified price. Uses…
 
 ### Community 584 - "TestGaussianEnsembleBlend"
 Cohesion: 0.38
@@ -3339,8 +3361,8 @@ Cohesion: 0.29
 Nodes (4): An entry timestamped <15 min ago is returned normally., An entry timestamped >WS_CACHE_TTL_SECS ago returns None., An entry with no ts field is treated as stale., TestCacheStaleness
 
 ### Community 589 - "TestGetTodayLiveSpendExcludesAmended"
-Cohesion: 0.29
-Nodes (3): AMEND ORDER (V2): get_today_live_spend() must exclude 'amended' rows the same…, Direct proof the exclusion is load-bearing: temporarily querying with 'amended'…, TestGetTodayLiveSpendExcludesAmended
+Cohesion: 0.15
+Nodes (6): _place_live_order must return (False, 0.0) when the ticker was already ordered…, Positive control: order fires when dedup finds no prior order this cycle., AMEND ORDER (V2): get_today_live_spend() must exclude 'amended' rows the same…, Direct proof the exclusion is load-bearing: temporarily querying with 'amended'…, TestGetTodayLiveSpendExcludesAmended, TestPlaceLiveOrderDedup
 
 ### Community 590 - "TestGetTodayLiveSpendExcludesExitOrders"
 Cohesion: 0.29
@@ -3354,13 +3376,13 @@ Nodes (4): train_bias_model returns a dict with per-city models., apply_ml_prob_
 Cohesion: 0.29
 Nodes (4): backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 (review-caught gap):…, Directly inspects what train_bias_model() actually fits on -- decoupled from…, backlog.txt Snow Step 2: mirrors the rain test above exactly for…, TestTrainBiasModelRainExclusion
 
-### Community 594 - "TestSettlementCostBasis"
-Cohesion: 0.29
-Nodes (3): settle_paper_trade uses entry_price (what was deducted at entry) for P&L., P&L on a won YES trade reflects only the cost paid at entry_price., TestSettlementCostBasis
+### Community 593 - "TestAccuracyCircuitBreaker"
+Cohesion: 0.18
+Nodes (7): isolate_tracker_db(), Redirect tracker.DB_PATH to a per-test temp DB and initialize the schema.…, is_accuracy_halted returns True when win rate is 30% over 20 trades., is_accuracy_halted returns False when win rate is 55% over 20 trades., is_accuracy_halted returns False when fewer than ACCURACY_MIN_SAMPLE trades…, 2026-07-09: fail closed, not open, on an internal check failure -- a DB read…, TestAccuracyCircuitBreaker
 
-### Community 595 - "TestRegressionBaselineFail"
-Cohesion: 0.29
-Nodes (4): test_brier_score_not_degraded must pytest.fail when baseline value is None., test_brier_score_not_degraded must pytest.fail when baseline file is absent., test_roc_auc_not_degraded must pytest.fail when baseline value is None., TestRegressionBaselineFail
+### Community 595 - "._passing_gate_patches"
+Cohesion: 0.31
+Nodes (5): AUD-0010: _quick_paper_buy()'s maker-order branch places a REAL live order via…, Positive control: confirms the bookkeeping wiring actually differentiates…, AUD-0007 applied to AUD-0010's fix: an ambiguous placement outcome through this…, Opus review follow-up (HIGH): a DEMO_BASE client reaches this branch too (the…, TestQuickPaperBuyMakerRecording
 
 ### Community 596 - "TestConsistencyArbHaltGuards"
 Cohesion: 0.38
@@ -3378,13 +3400,17 @@ Nodes (4): DRIFT_TIGHTEN_EDGE is a positive float exported from utils., When dri
 Cohesion: 0.33
 Nodes (3): kalshi-dashboard package.json, ErrorBoundary, main.jsx entry point
 
+### Community 600 - "_forecast_probability"
+Cohesion: 0.25
+Nodes (6): If forecast equals threshold exactly, P(above) ~ 0.5., If forecast is much higher than threshold, P(below) ~ 0., A very wide range around the forecast should have high probability., TestForecastProbability, _forecast_probability(), Estimate probability of the market condition given a forecast temperature.
+
 ### Community 601 - "TestDynamicKellyCapMinSamples"
 Cohesion: 0.29
 Nodes (4): _dynamic_kelly_cap returns $50 (conservative) when < MIN_BRIER_SAMPLES settled., _dynamic_kelly_cap uses Brier scaling when >= MIN_BRIER_SAMPLES settled., _method_kelly_multiplier returns 1.0 when < MIN_BRIER_SAMPLES settled., TestDynamicKellyCapMinSamples
 
-### Community 603 - "TestStreakPausedSortOrder"
-Cohesion: 0.33
-Nodes (4): P2-3: is_streak_paused must sort trades by settled_at, not entered_at., P2-3: is_streak_paused must sort by settled_at when computing streak PnL.…, Trades without settled_at fall back to entered_at without crashing., TestStreakPausedSortOrder
+### Community 603 - "test_idempotency.py"
+Cohesion: 0.20
+Nodes (5): P0-4: place_order idempotency key and POST retry exclusion., Same inputs + same cycle → same client_order_id., client_order_id must appear in the POST body., Omitting cycle produces a random (non-deterministic) client_order_id., TestClientOrderId
 
 ### Community 604 - "TestCovarianceKellyScaleDenom"
 Cohesion: 0.33
@@ -3417,10 +3443,6 @@ Nodes (3): backlog.txt Snow Step 2: the Step 1 unconditional block became condit
 ### Community 613 - "TestGetOptimalThreshold"
 Cohesion: 0.29
 Nodes (4): Tests for get_optimal_threshold() (#60)., Returns dict with threshold_f1 and best_f1., Optimal threshold should be between 0.05 and 0.95., TestGetOptimalThreshold
-
-### Community 616 - "TestDynamicCorrelationMatrix"
-Cohesion: 0.29
-Nodes (4): When learned_correlations.json exists, get_city_correlation uses it., When _load_dynamic_correlations returns None, use _HARDCODED_CORR., Unknown city pairs should return 0.0., TestDynamicCorrelationMatrix
 
 ### Community 618 - "TestValidateForecastModelKeys"
 Cohesion: 0.29
@@ -3602,13 +3624,9 @@ Nodes (6): Completion Checklist, Tier 1 — Probability Calibration, Tier 2 — 
 Cohesion: 0.33
 Nodes (6): ExceptHookArgs, _excepthook(), BaseException, _thread_excepthook(), _write_crash_log(), TracebackType
 
-### Community 663 - "append_entry"
-Cohesion: 0.33
-Nodes (6): append_entry(), get_unsettled_exit_flags(), Path, Read back every row record_live_early_exit_with_retry could not settle even…, Append a single entry dict as a JSONL line to the entries log., _unsettled_exit_flag_path()
-
-### Community 664 - ".dump_to_disk"
-Cohesion: 0.40
-Nodes (4): Any, Path, Persist the entire cache to `path` as JSON, atomically (via…, Load a previously dumped cache from `path` into this instance, if the file…
+### Community 664 - "PersistentForecastCache"
+Cohesion: 0.09
+Nodes (26): PersistentForecastCache, Any, Path, ForecastCache with whole-dict persistence to a JSON file. For permanent…, Persist the entire cache to `path` as JSON, atomically (via…, Load a previously dumped cache from `path` into this instance, if the file…, PersistentForecastCache must still behave as a normal ForecastCache for get/set…, The exact property nws.py's station cache depends on: dump the current cache to… (+18 more)
 
 ### Community 665 - "auto_backup"
 Cohesion: 0.33
@@ -3622,17 +3640,21 @@ Nodes (5): TweaksPanel shell + controls, Variation B: Calm fintech dashboard, Va
 Cohesion: 0.33
 Nodes (6): _fake_strong_signal(), A full cmd_cron() run producing a real STRONG signal must write its JSONL entry…, Shared fake market/enriched/analysis triple for a STRONG-tier YES signal on a…, Full cron run with a mocked strong signal: _auto_place_trades called with…, test_cron_places_paper_trade_on_strong_signal(), test_cron_strong_signal_does_not_write_to_real_production_cron_log()
 
-### Community 669 - "TestEnrichWithForecastCacheTimestamp"
-Cohesion: 0.33
-Nodes (4): P1-1: data_fetched_at must reflect the cache entry's original fetch time, not…, When the forecast is already cached, data_fetched_at must equal the original…, On a cache miss, data_fetched_at must be the current wall-clock time., TestEnrichWithForecastCacheTimestamp
+### Community 669 - "test_weather.py"
+Cohesion: 0.24
+Nodes (5): Unit tests for weather_markets.py — probability math, condition parsing, fee-…, TestEnsembleCdfProbThresholdShift, TestProbThresholdHelper, ensemble_cdf_prob(), Compute P(outcome | condition) from raw ensemble members via empirical CDF.…
 
 ### Community 670 - "generate_weekly_report Function"
 Cohesion: 0.50
 Nodes (4): _collect_data Function, _generate_html Function, _generate_pdf Function, generate_weekly_report Function
 
-### Community 671 - "TestCheckPositionLimitsHourlyGuard"
-Cohesion: 0.33
-Nodes (3): Regression coverage for a gap found 2026-08-07: unlike rain/snow/ hurricane-…, Mutation-test proof: flipping _hourly_gates_active() to True makes the block…, TestCheckPositionLimitsHourlyGuard
+### Community 671 - "test_hourly_markets.py"
+Cohesion: 0.16
+Nodes (7): Tests for backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" (KXTEMPxxxH).…, compute_market_implied_distributions() groups by (city, target_date)…, Regression coverage for a gap found 2026-08-07: unlike rain/snow/ hurricane-…, Mutation-test proof: flipping _hourly_gates_active() to True makes the block…, TestCheckPositionLimitsHourlyGuard, TestComputeMarketImpliedExcludesHourly, test_snow_markets.py (referenced, not in this chunk)
+
+### Community 674 - "_daily_var_from_series"
+Cohesion: 0.27
+Nodes (6): backlog.txt "NO MARKET-TYPE SEAM" -- single source of truth for the…, Matches the original literal's exact fallback behavior — anything without "LOW"…, "LOWER" contains "LOW" -- confirms the substring check (not an exact-…, TestDailyVarFromSeries, _daily_var_from_series(), Single source of truth for analyze_trade()'s own two var-derivation call sites…
 
 ### Community 675 - "TestCheckPositionLimitsHurricaneCountConditional"
 Cohesion: 0.33
@@ -3645,6 +3667,10 @@ Nodes (3): A successful POST already confirms the order is live on the exchange 
 ### Community 677 - "TestPlaceMakerOrderIdempotency"
 Cohesion: 0.33
 Nodes (3): 2026-07-09: place_maker_order never forwarded a cycle to place_order, so every…, Documents the pre-existing (and still correct for a genuinely distinct manual…, TestPlaceMakerOrderIdempotency
+
+### Community 678 - "KalshiWebSocket"
+Cohesion: 0.22
+Nodes (5): KalshiWebSocket, Background WebSocket thread for real-time Kalshi order book data. Usage: ws =…, Add tickers to subscribe to. Must be called before start()., Start the WebSocket listener in a background thread., Stop the WebSocket listener. Cancels the running task (rather than just…
 
 ### Community 679 - "TestGetRollingSharpe"
 Cohesion: 0.33
@@ -3662,21 +3688,21 @@ Nodes (3): P2-30: append_entry must append to JSONL, not overwrite., Default tar
 Cohesion: 0.33
 Nodes (3): P2-41: migration comments must match index+1 version numbers., Last migration must be labeled v18→v19 matching _SCHEMA_VERSION=19., TestTrackerMigrationComments
 
-### Community 683 - "TestUtcToday"
-Cohesion: 0.33
-Nodes (3): utc_today() must return UTC date, not local-clock date., Callers can freeze time by patching utils.utc_today., TestUtcToday
+### Community 683 - "test_phase2_batch_h.py"
+Cohesion: 0.06
+Nodes (22): Phase 2 Batch H regression tests: P2-18 + P2-25 — UTC date consistency., Patching _utc_today in mos changes sigma lookup., P2-25: tracker.log_prediction must use UTC date for predicted_date., log_prediction stores UTC date as predicted_date., utc_today() must return UTC date, not local-clock date., P2-25: monte_carlo skips past-date trades using UTC date., A trade dated yesterday UTC must be skipped., A trade dated in the future must NOT be skipped. (+14 more)
 
-### Community 684 - "TestMonteCarloUtcDate"
-Cohesion: 0.33
-Nodes (4): P2-25: monte_carlo skips past-date trades using UTC date., A trade dated yesterday UTC must be skipped., A trade dated in the future must NOT be skipped., TestMonteCarloUtcDate
+### Community 684 - "_replace_live_order"
+Cohesion: 0.31
+Nodes (3): Place a replacement order for a just-canceled resting order (reprice or taker-…, _replace_live_order(), TestReplaceLiveOrder
 
 ### Community 685 - "DesignCanvas (pan/zoom review tool)"
 Cohesion: 0.67
 Nodes (3): DesignCanvas (pan/zoom review tool), FullProto (full-prototype.jsx dashboard), Proto (prototype.jsx dashboard)
 
-### Community 686 - "TestCronStartupOrdersUtc"
-Cohesion: 0.33
-Nodes (4): P2-18: _check_startup_orders must treat naive DB timestamps as UTC., A naive ISO timestamp from DB must be interpreted as UTC, not local., Weekly DB sweep must fire on UTC Monday, not local Monday., TestCronStartupOrdersUtc
+### Community 686 - "_make_db"
+Cohesion: 0.22
+Nodes (9): _make_db(), Path, When N >= min_samples, calibrate_condition_weights runs and its result is kept., Preservation only activates for uncalibrated entries; between (calibrated)…, Create a minimal predictions+outcomes DB with the given row counts., calibrate_and_save must keep existing non-neutral below weights when N <…, test_neutral_below_gets_overwritten_when_n_sufficient(), test_preserve_does_not_touch_between() (+1 more)
 
 ### Community 687 - "Stale Brier Threshold Display Bug"
 Cohesion: 1.00
@@ -3694,9 +3720,9 @@ Nodes (3): first_occurrence_day Function, next_event_outcomes Function, next_eve
 Cohesion: 0.67
 Nodes (3): amend_order Method, _find_order_by_client_id Method, place_order Method
 
-### Community 691 - "TestNwsUtcDate"
-Cohesion: 0.33
-Nodes (4): P2-18/P2-25: nws.nws_prob must use UTC date for days_out., Patching _utc_today in nws changes the days_out computation., nws module must have _utc_today symbol (imported from utils)., TestNwsUtcDate
+### Community 691 - "TestTtlUntilNextCycle"
+Cohesion: 0.22
+Nodes (5): At 05:00 UTC → TTL is roughly 3600s (until 08:00 UTC availability)., Minimum TTL is always at least 1800 seconds., TTL is returned as int., After 20 UTC, wraps to 02 UTC next day., TestTtlUntilNextCycle
 
 ### Community 692 - "TestQuickPaperBuyRespectsPositionLimits"
 Cohesion: 0.33
@@ -3714,6 +3740,10 @@ Nodes (3): dashboard.js (main dashboard page), trades.js (trades page), watchdog
 Cohesion: 0.33
 Nodes (3): log_prediction called without source probs must store NULLs (backward compat)., Calling log_prediction without source probs stores NULL (old callers safe)., TestSourceProbsPassthrough
 
+### Community 696 - "test_tracker.py"
+Cohesion: 0.03
+Nodes (43): fixture, Unit tests for tracker.py — SQLite prediction logging, bias, and Brier scoring.…, Redirect tracker DB to a temp file for pytest-style tests., backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 (review-caught): KXRAIN*M…, backlog.txt Snow Step 2 (review-caught, the identical gap rain's own Step 2…, Bug C fix (backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2):…, SQL "= NULL" never matches, even a NULL column -- settle_analysis_ attempt must…, backlog.txt "COUNT_SETTLED_PREDICTIONS() HAS NO CONDITION_TYPE FILTER"… (+35 more)
+
 ### Community 697 - "TestFetchPreviousRunDailyUsesUtcToday"
 Cohesion: 0.33
 Nodes (4): backlog.txt "utils.utc_today() SAYS 'USE EVERYWHERE INSTEAD OF date.today()' --…, Mock utc_today() to a date BEFORE target_date, so the fixed function's own…, Sanity check the guard's positive case still works: when utc_today() is well…, TestFetchPreviousRunDailyUsesUtcToday
@@ -3730,13 +3760,13 @@ Nodes (3): Every market that reaches a real analysis -- including ones later rej
 Cohesion: 0.33
 Nodes (4): _score_ensemble_members must run once at least 2 temp samples exist., The model-consensus-check guard (ens_prob + _get_consensus_probs block) must…, Confirming the >= 2 threshold is present in weather_markets.py., TestEnsembleMemberThreshold
 
-### Community 702 - "_cmd_watch_live_common_mocks"
-Cohesion: 0.33
-Nodes (6): _cmd_watch_live_common_mocks(), Shared plumbing for the AUD-0008/AUD-0013 cmd_watch --live tests below:…, AUD-0008: cmd_watch's `if live:` block previously had zero exception handling,…, AUD-0013: cmd_watch previously only ever reached _recover_pending_orders()…, test_cmd_watch_live_calls_standalone_recovery_every_cycle(), test_cmd_watch_live_exception_does_not_kill_the_process()
+### Community 702 - "TestBootstrapCIPrecip"
+Cohesion: 0.22
+Nodes (5): All members above 0.01in → precip_any CI should be near (1, 1)., Half members above 0.10in → CI should straddle 0.5., Fewer than 5 members → returns (0.0, 1.0) as uninformative CI., No members above threshold → CI near (0, 0)., TestBootstrapCIPrecip
 
-### Community 703 - "_l7b_common_patches"
-Cohesion: 0.33
-Nodes (6): _l7b_common_patches(), Apply the common monkeypatches needed for L7-B _auto_place_trades tests., Regression for L7-B: for YES trades, entry_price passed to place_paper_order…, Regression for L7-B: for NO trades, entry_price must equal no_ask = 1 - yes_bid…, test_auto_place_uses_no_ask_not_mid_for_no_trades(), test_auto_place_uses_yes_ask_not_mid_for_yes_trades()
+### Community 703 - "regime.py"
+Cohesion: 0.29
+Nodes (7): I8: Drawdown Snapshot vs Raw Balance, RF6: No Test Coverage on Trade Path, drawdown_scaling_factor() Tiered Kelly Scaling (9/10), detect_regime() RF6: Zero Test Coverage on Live Kelly Path (5/10), regime.py Grade Audit, regime.py File Grade: 5/10, RF6 promoted, Weather regime detection — identifies when a city is in a persistent anomalous…
 
 ### Community 704 - "TestEntryEdgeVsMidEdge"
 Cohesion: 0.33
@@ -3838,9 +3868,9 @@ Nodes (4): Context, Fix AUD-0012: _poll_pending_orders / _count_open_live_orders
 Cohesion: 0.40
 Nodes (4): Context, Fix AUD-0013: cmd_watch --auto --live has no standalone _recover_pending_orders() call, Process — follow the 29-step implementation workflow from memory (`feedback-implementation-workflow`) exactly, in order, The problem
 
-### Community 729 - "temperature_adjustment"
-Cohesion: 0.40
-Nodes (5): date, Northern Hemisphere season category used to key AO_SENS/NAO_SENS., Estimate temperature adjustment (°F) to apply to the climatological baseline…, _season_bucket(), temperature_adjustment()
+### Community 729 - "_parse_threshold"
+Cohesion: 0.32
+Nodes (5): _parse_threshold(), Extract (condition_type, threshold) from a market ticker. Returns ("above",…, _parse_threshold() with market.get("series_ticker") absent -- the real Kalshi…, Regression guard for the exact bug an independent review found: if a…, TestParseThresholdRealApiShape
 
 ### Community 730 - "Part 3 — Critical Settlement Mechanics"
 Cohesion: 0.40
@@ -3878,6 +3908,10 @@ Nodes (5): 76.1 Add `get_recent_temperature_anomaly(city, days_back=5)` to `nws.
 Cohesion: 0.40
 Nodes (5): 77.1 Add `get_polymarket_price(event_slug)` to a new `polymarket_client.py`, 77.2 Add cross-price alert in `cmd_cron`, 77.3 Write tests and commit, Background, Task 77 (P12.Q) — Polymarket Cross-Price Comparison
 
+### Community 739 - "get_rolling_win_rate"
+Cohesion: 0.25
+Nodes (8): bayesian_confidence_interval(), get_rolling_win_rate(), get_rolling_win_rate_ci(), _inv_normal_cdf(), Win rate over the last `window` settled predictions. Returns (win_rate, count).…, Rolling win rate (see get_rolling_win_rate) with a Bayesian credible interval,…, Bayesian credible interval for a proportion using Beta(1+s, 1+f) posterior…, Rational approximation of the inverse normal CDF (Abramowitz & Stegun 26.2.17).
+
 ### Community 740 - "TestCmdSimulateStatusParam"
 Cohesion: 0.40
 Nodes (3): cmd_simulate must use _fetch_settled_markets (series-based), not get_markets., The 'Model:' P&L must match what analyze_trade() itself assumes (maker fee, $0…, TestCmdSimulateStatusParam
@@ -3894,9 +3928,9 @@ Nodes (3): _WEATHER_SERIES must be weather_markets.KNOWN_WEATHER_SERIES itself, 
 Cohesion: 0.40
 Nodes (3): AUD-0012: dedicated unbounded query, not a LIMIT-N-then-filter fetch that can…, Direct AUD-0012 repro: log the target live-pending order FIRST, then log 205…, TestGetPendingLiveOrdersUnbounded
 
-### Community 745 - "LiveTradingGate"
-Cohesion: 0.15
-Nodes (12): _check_accuracy_halt(), Combine paper.is_accuracy_halted()/get_accuracy_halt_reason() into the single…, Live Trading Runbook, get_accuracy_halt_reason(), is_accuracy_halted(), Return True if rolling win rate over last ACCURACY_WINDOW_TRADES is below…, Return a human-readable reason string for the current accuracy halt, or '' if…, LiveTradingGate.check (+4 more)
+### Community 745 - "_parse_monthly_ticker_month"
+Cohesion: 0.25
+Nodes (8): count_settled_market_implied_rain_events(), count_settled_snow_predictions(), Count DISTINCT settled monthly-rain accrual events (ticker prefix, year, month)…, Count DISTINCT settled monthly-snow accrual events (ticker prefix, year,…, _count_market_implied_rain(), _parse_monthly_ticker_month(), Same late-bound-closure factory shape as _count_signal_column/ _count_model_obs…, Parse the accrual (year, month) out of a KXRAIN*M or KXDENSNOWM-style monthly-…
 
 ### Community 746 - "test_cmd_setup.py"
 Cohesion: 0.40
@@ -3918,6 +3952,10 @@ Nodes (3): Corrupt / unreadable lock → returns False, never True., I/O error w
 Cohesion: 0.40
 Nodes (3): Lock held by a live PID → returns False (fail closed)., Lock held by a dead PID → returns True and overwrites lock., TestAcquireCronLockLivePid
 
+### Community 768 - "fetch_metar_daily_extreme"
+Cohesion: 0.33
+Nodes (7): _extract_temp_f(), _fetch_daily_temps_f(), fetch_metar_daily_extreme(), date, Extract a plausible temp_f from a raw METAR obs dict (prefers tmpf °F, else…, Fetch every METAR temp_f reading for `station` that falls on the LOCAL calendar…, Compute the TRUE running daily extreme (max or min observed temp_f) since LOCAL…
+
 ### Community 770 - "TestKeyPermissions"
 Cohesion: 0.40
 Nodes (3): Loading a key file with group/other read bits set emits a warning (Unix only)., Loading a key file with 0600 permissions emits no warning (Unix only)., TestKeyPermissions
@@ -3934,13 +3972,25 @@ Nodes (3): When market fetch fails, brief prints a visible warning containing th
 Cohesion: 0.40
 Nodes (3): sys.stdout.flush() must be called before cmd_cron in the menu loop., Menu 'Cron' option must call cmd_cron (was broken when label != elif check)., TestCronOutputFlush
 
-### Community 780 - "TestMosUtcDate"
-Cohesion: 0.40
-Nodes (3): Patching _utc_today in mos changes sigma lookup., P2-18/P2-25: mos.fetch_mos must use UTC date for days_out., TestMosUtcDate
+### Community 777 - "verify_backup"
+Cohesion: 0.29
+Nodes (7): Path, Verify a backup file's CRC32 (legacy) and SHA-256 checksums. Returns True on…, verify_backup(), test_verify_backup_fails_on_corrupt_file(), test_verify_backup_fails_on_invalid_json(), test_verify_backup_logs_checksum_on_success(), test_verify_backup_passes_on_good_file()
 
-### Community 781 - "TestTrackerUtcDate"
-Cohesion: 0.40
-Nodes (3): P2-25: tracker.log_prediction must use UTC date for predicted_date., log_prediction stores UTC date as predicted_date., TestTrackerUtcDate
+### Community 778 - "TestAutoPlaceTradesLiveConcentrationCap"
+Cohesion: 0.29
+Nodes (4): AUD-0002: MAX_CONCURRENT_POSITIONS and friends must see prior-cycle live…, Opus-review-caught (M8): the prior version of this test used an opp dict…, Mutation test: with the AUD-0002 merge stubbed back out to paper-only, the same…, TestAutoPlaceTradesLiveConcentrationCap
+
+### Community 780 - "test_hurricane_gating.py"
+Cohesion: 0.29
+Nodes (4): _faustro_hurricane_market(), Tests for backlog.txt "HURRICANE MARKETS": an explicit is_hurricane_ticker()…, The real, live-confirmed ticker/title/strike shape that defeated the old…, Ground the whole test class: the parsers this guard replaces as the safety…
+
+### Community 781 - "TestKellyFractionFeeDefault"
+Cohesion: 0.29
+Nodes (4): P2-8: kelly_fraction default fee_rate must equal KALSHI_FEE_RATE, not 0., Fee-adjusted Kelly must be strictly smaller than fee-free Kelly., Callers can still pass fee_rate=0.0 explicitly for comparisons., TestKellyFractionFeeDefault
+
+### Community 783 - "TestRestoreDataConfirm"
+Cohesion: 0.29
+Nodes (3): P2-47: restore_data must require confirm=True to prevent silent overwrites., restore_data must snapshot current data/ before overwriting., TestRestoreDataConfirm
 
 ### Community 784 - "test_atomic_write_error_message_accurate_when_no_emergency_copy_possible"
 Cohesion: 0.40
@@ -3950,13 +4000,29 @@ Nodes (5): Path, When every candidate (primary write AND every emergency candida
 Cohesion: 0.40
 Nodes (3): purge_old_predictions removes settled predictions older than retention_days., purge_old_predictions keeps predictions within retention_days., TestRetentionPolicy
 
+### Community 787 - "TestPaperLiveSeparation"
+Cohesion: 0.29
+Nodes (4): _auto_place_trades(live=False) must never call _place_live_order., When KALSHI_ENV=demo the MARKET_BASE_URL must point to demo.kalshi.co., Sanity check: KALSHI_ENV=prod must give the production URL., TestPaperLiveSeparation
+
+### Community 788 - "get_price_history"
+Cohesion: 0.33
+Nodes (7): get_price_history(), get_trade_flow_settlement_correlation(), get_trade_history(), Row, Return all logged candlesticks for a ticker, oldest first., Return all logged public trades for a ticker, oldest first., Correlation-check for the PUBLIC TRADE-FLOW SIGNAL backlog entry's "did…
+
+### Community 789 - ".check"
+Cohesion: 0.33
+Nodes (3): Persist current (non-expired) cooldowns to disk atomically., Persist current (non-expired) price history to disk atomically., Record price and return True if this observation triggered a crash. Called from…
+
+### Community 790 - "Grade Audit Module Doc: nws.py"
+Cohesion: 0.33
+Nodes (5): NWS Sigma Ladder (days_out-based), Grade Audit Module Doc: nws.py, Tests for obs_weight_used and local_hour DB columns (Phase 6.0)., predictions table must have obs_weight_used and local_hour columns., test_predictions_table_has_obs_weight_and_local_hour_columns()
+
 ### Community 791 - "TestWebSocketStartOrdering"
 Cohesion: 0.40
 Nodes (3): The WebSocket must subscribe+start right after the market fetch (via…, cron.py-level: confirm the real cron.py wiring passes a working…, TestWebSocketStartOrdering
 
-### Community 792 - "TestPriceImprovementTracking"
-Cohesion: 0.40
-Nodes (3): log_price_improvement stores rows in the DB., get_price_improvement_stats returns None when < 5 entries exist., TestPriceImprovementTracking
+### Community 792 - "_FakeClient"
+Cohesion: 0.33
+Nodes (4): _FakeClient, Minimal KalshiClient stand-in for price-refresh tests., L1-B: when a client is supplied, entry_price must reflect the re-fetched market…, test_l1b_price_refresh_uses_fresh_market_prob()
 
 ### Community 794 - "TestGetConsensusProbsEcmwf"
 Cohesion: 0.40
@@ -3978,9 +4044,9 @@ Nodes (3): A LOW market (var='min') with no MOS minimum must skip the MOS blend 
 Cohesion: 0.50
 Nodes (3): Deep-review followup: /api/anomaly-status used to independently rebuild the…, An early_exit trade (outcome not in yes/no) within the last-10- settled window…, TestAnomalyStatusMatchesRealCheck
 
-### Community 799 - "check_config_integrity"
-Cohesion: 0.40
-Nodes (5): check_config_integrity(), get_config_fingerprint(), _hash_fingerprint(), P10.3: Return a snapshot of all env-configurable parameters. This is the single…, P10.3: Compare current config against the last-seen fingerprint. Writes the…
+### Community 799 - "client_and_kalshi_mock"
+Cohesion: 0.33
+Nodes (6): client(), client_and_kalshi_mock(), _force_demo_env(), fixture, Set DASHBOARD_UNPROTECTED=true so _build_app doesn't require…, Like `client`, but the Kalshi client _build_app is closed over is a MagicMock…
 
 ### Community 800 - "Pass 18 (Weather Semantics) — Verification Notes"
 Cohesion: 0.50
@@ -3998,9 +4064,9 @@ Nodes (3): Findings filed via StructuredOutput, Pass 21 — Documentation & Conf
 Cohesion: 0.67
 Nodes (3): apply_metar_calibration(), Independent re-derivation (Pass 8 verification) of the METAR settlement force-…, sigmoid()
 
-### Community 804 - "_env_int"
-Cohesion: 0.50
-Nodes (4): _env_int(), _live_max_days_out(), H-11: parse an int env var with a clear error message on bad input., MAX_DAYS_OUT is actually enforced from utils.py, not this dataclass…
+### Community 804 - "count_settled_signal_rows"
+Cohesion: 0.33
+Nodes (6): count_settled_signal_rows(), Count settled predictions with a non-NULL value for a logged signal. Generic…, _count_signal_column(), _count_signal_json_key(), Thin closure factory so each registry entry's count_fn is late-bound to…, Same late-bound-closure shape as _count_signal_column, for a registry entry…
 
 ### Community 805 - "Research Findings: External Systems & Improvement Ideas"
 Cohesion: 0.50
@@ -4010,21 +4076,45 @@ Nodes (3): Part 8 — Academic References, Research Findings: External Systems &
 Cohesion: 0.50
 Nodes (4): fetch_afd_discussion(), Return one section's body text, or None if the section (or a real closing…, Fetch and return the current AFD's narrative reasoning text for a city.…, _section_body()
 
-### Community 808 - "_all_source_files"
+### Community 807 - "auto_backtest"
+Cohesion: 0.40
+Nodes (4): check_overfitting(), Formal overfitting guard: compare in-sample vs out-of-sample Brier scores.…, auto_backtest(), Run a quick 7-day backtest silently in a background thread on startup. If…
+
+### Community 808 - "_check_key_permissions"
+Cohesion: 0.40
+Nodes (3): _check_key_permissions(), BaseException, Warn if the private key file is readable by group/others (Unix) or by accounts…
+
+### Community 814 - "TestOppEventKeyLogsOnUnparseableDate"
 Cohesion: 0.50
-Nodes (4): _all_source_files(), Path, No *.py file outside safe_io.py should call os.replace()/_os.replace() directly…, test_no_new_bare_os_replace_sites()
+Nodes (3): _opp_event_key is a nested closure inside _auto_place_trades(), not module-…, A high-enough-edge opportunity reaches BOTH the pre-pass (_opp_event_key, for…, TestOppEventKeyLogsOnUnparseableDate
 
 ### Community 913 - "TestCronWalCheckpoint"
 Cohesion: 0.50
 Nodes (3): P3-15: cmd_cron must execute PRAGMA wal_checkpoint(PASSIVE) at end of run., Verify the checkpoint execute call is reached in the finally block., TestCronWalCheckpoint
 
-### Community 925 - "test_schema_drift.py"
+### Community 925 - "Grade Audit Module Doc: tracker.py"
+Cohesion: 0.40
+Nodes (4): Grade Audit Module Doc: tracker.py, Schema drift detection: ensure mock market data used in conftest matches the…, Mock market in conftest must include every field production code reads., test_conftest_mock_market_has_all_required_fields()
+
+### Community 926 - "TestCheckPositionLimitsRainConditional"
+Cohesion: 0.40
+Nodes (3): backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2: the Step 1 unconditional…, Mutation-test proof: flipping _rain_gates_active() to True makes the block…, TestCheckPositionLimitsRainConditional
+
+### Community 927 - "TestCmdOrderSnowGuard"
+Cohesion: 0.40
+Nodes (3): backlog.txt Snow Step 2: main.py's cmd_order kept its own explicit refuse-…, Mutation-test proof the conditional is real -- once _snow_gates_active() is…, TestCmdOrderSnowGuard
+
+### Community 928 - "CircuitOpenError"
 Cohesion: 0.50
-Nodes (3): Schema drift detection: ensure mock market data used in conftest matches the…, Mock market in conftest must include every field production code reads., test_conftest_mock_market_has_all_required_fields()
+Nodes (3): CircuitOpenError, Exception, Raised when a circuit breaker is open (source is down).
 
 ### Community 929 - "TestRealThresholdDrivesTrading"
 Cohesion: 0.50
 Nodes (3): watch's old display-only MIN_EDGE tag must no longer drive trading decisions --…, A candidate with a large net_edge (would pass a naive MIN_EDGE- style check)…, TestRealThresholdDrivesTrading
+
+### Community 930 - "fit_emos"
+Cohesion: 0.50
+Nodes (3): fit_emos(), Fit EMOS parameters (a, b, c, d) minimising mean CRPS. Model: T ~ N(mu,…, ndarray
 
 ### Community 931 - "TestAdjustedEdgeInAnalyzeTrade"
 Cohesion: 0.50
@@ -4038,29 +4128,37 @@ Nodes (3): _get_consensus_probs cache key must include lower/upper for between-m
 Cohesion: 0.50
 Nodes (3): Verify kelly_fraction hard cap is KELLY_CAP=0.25 (P3-13: unified from 0.33)., Quarter-Kelly never exceeds KELLY_CAP=0.25 (full_kelly/4 tops out just under…, TestKellyCap
 
-### Community 937 - "compute_hourly_temperature_proxy"
+### Community 940 - "_get_strategy_pins"
 Cohesion: 0.50
-Nodes (4): compute_hourly_temperature_proxy(), determine_hourly_target_hours(), For a city's KXTEMPxxxH markets (already fetched, any status -- pass an…, Return {"max_hour": local_hour, "min_hour": local_hour} -- the local hour with…
+Nodes (4): _get_strategy_pins(), is_strategy_pinned(), Return {method: pinned_until_iso} for currently active (non-expired) pins.…, Return True if method has an active retirement-immunity pin.
 
 ### Community 943 - "_setup_logging"
 Cohesion: 0.67
 Nodes (3): Logger, #106/#107: Configure structured logging. Each module should use…, _setup_logging()
 
-### Community 944 - "_section_header_re"
+### Community 944 - "Kill Switch Mid-Placement Gap"
 Cohesion: 0.67
-Nodes (3): Build a header-matching regex for one AFD section name (matches just the header…, _section_header_re(), Pattern
+Nodes (3): Kill Switch Mid-Placement Gap, _cmd_cron_body() AC1 Kill-Switch Mid-Placement Gap (6/10), _auto_place_trades() Dedup Pipeline AC1-4 Pass (7/10)
+
+### Community 946 - "_unpack_opp"
+Cohesion: 0.67
+Nodes (3): date, Extract (ticker, city, target_date, analysis_dict, market_dict) from an opp…, _unpack_opp()
+
+### Community 947 - "cron_env"
+Cohesion: 0.67
+Nodes (3): cron_env(), fixture, Isolate cmd_cron from real data, networks, and alerts.
 
 ### Community 955 - "test_city_wfo_office_matches_live_api"
 Cohesion: 0.67
 Nodes (3): integration, Live check (run with `-m integration`, matches test_integration_live.py's…, test_city_wfo_office_matches_live_api()
 
-### Community 959 - "tmp_db"
-Cohesion: 0.67
-Nodes (3): fixture, Redirect tracker DB to a temp file for pytest-style tests., tmp_db()
-
 ### Community 960 - "healthy_system"
 Cohesion: 0.67
 Nodes (3): healthy_system(), fixture, Prevent CPU/memory checks from interfering with trade-logic assertions.
+
+### Community 966 - "_place_everything_setup"
+Cohesion: 0.14
+Nodes (14): _place_everything_setup(), Mirrors test_real_placement_logs_is_shadow_false's full mock setup so a real…, Once _rain_gates_active() is True, a rain opp places exactly like any other…, The core routing guarantee: in one batch, a rain opp (gate inactive) is shadow-…, Once _snow_gates_active() is True, a snow opp places exactly like any other…, Regression test: each shadow-only gate must be evaluated ONCE per…, If the gate's underlying value changed mid-batch (settled count crossing the…, A time-to-next-event (KXNEXTHURDATE) opp must be shadow-logged, not placed,… (+6 more)
 
 ## Ambiguous Edges - Review These
 - `cloud_backup.py` → `Phase 7 Data Safety Plan`  [AMBIGUOUS]
@@ -4107,7 +4205,7 @@ Nodes (3): healthy_system(), fixture, Prevent CPU/memory checks from interfering
 ## Knowledge Gaps
 - **1693 isolated node(s):** `DummyClient`, `name`, `version`, `private`, `dev` (+1688 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **242 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **250 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
