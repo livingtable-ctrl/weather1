@@ -530,18 +530,42 @@ def _save_watch_state(tickers: set) -> None:
 KALSHI_ENV = os.getenv("KALSHI_ENV", "demo")
 
 
-def _target_date_due(target_date_str: str | None, today_date) -> bool:
-    """Return True if target_date_str is on or before today_date. Parses
-    both sides as real dates rather than comparing raw strings -- a non-
-    day-granular ISO value (Bug A, backlog.txt "RAIN / SNOW / HURRICANE
+def _target_date_due(target_date_str: str | None, city: str | None) -> bool:
+    """Return True if target_date_str is on or before city's local today.
+
+    Parses both sides as real dates rather than comparing raw strings -- a
+    non-day-granular ISO value (Bug A, backlog.txt "RAIN / SNOW / HURRICANE
     MARKETS" Step 2) would otherwise compare as a string prefix and could
     sort incorrectly against a full "YYYY-MM-DD" value. Falls back to the
-    string compare on any unparseable value, matching this codebase's
-    prior behavior at both call sites (cmd_watch_settle's _pending(), the
-    main-menu "due today" banner)."""
+    string compare on any unparseable value, matching this codebase's prior
+    behavior at both call sites (cmd_watch_settle's _pending(), the
+    main-menu "due today" banner).
+
+    target_date_str is CITY-LOCAL (weather_markets.py's analyze_trade
+    return dict stores target_date.isoformat() from parse_city_date()), so
+    "today" here must be too -- mirrors _feature_importance_days_out's own
+    local-today fix rather than utils.utc_today(), which was wrong for the
+    ~4-8h evening window where UTC's calendar date has already rolled over
+    but the city's has not. This was the one target_date comparison site
+    the 0100bffe/6364b38b fix sweep missed (AUD-0017).
+    """
     if not target_date_str:
         return False
     from datetime import date as _date_due
+
+    try:
+        from zoneinfo import ZoneInfo as _ZoneInfoDue
+
+        today_date = datetime.now(
+            _ZoneInfoDue(_CITY_TZ.get(city or "", "America/New_York"))
+        ).date()
+    except Exception:
+        _log.warning(
+            "_target_date_due: ZoneInfo unavailable for city=%s — "
+            "falling back to UTC date",
+            city,
+        )
+        today_date = datetime.now(UTC).date()
 
     try:
         return _date_due.fromisoformat(target_date_str) <= today_date
@@ -981,7 +1005,6 @@ def cmd_watch_settle(client: KalshiClient, args: list[str] | None = None) -> Non
     import time as _time
 
     from paper import auto_settle_paper_trades, get_open_trades
-    from utils import utc_today as _utc_today
 
     interval = 5
     if args:
@@ -990,16 +1013,11 @@ def cmd_watch_settle(client: KalshiClient, args: list[str] | None = None) -> Non
         except ValueError:
             pass
 
-    # utc_today(), not date.today(): target_date (compared below) is
-    # UTC-anchored (backlog.txt "utils.utc_today() SAYS 'USE EVERYWHERE
-    # INSTEAD OF date.today()' -- 17 SITES STILL DON'T").
-    today_date = _utc_today()
-
     def _pending() -> list:
         return [
             t
             for t in get_open_trades()
-            if _target_date_due(t.get("target_date"), today_date)
+            if _target_date_due(t.get("target_date"), t.get("city"))
         ]
 
     print(
@@ -1009,6 +1027,14 @@ def cmd_watch_settle(client: KalshiClient, args: list[str] | None = None) -> Non
     )
 
     while True:
+        # Opus-review-noted (AUD-0017, batch-07): this can now exit here on
+        # the very first check without ever calling sync_outcomes/
+        # auto_settle_paper_trades, whereas the old UTC-anchored _pending()
+        # always read evening-window trades as due and guaranteed at least
+        # one settle pass. This is intentional, not a regression: a
+        # city-local target_date genuinely cannot have settled before its
+        # own local day ends, so "nothing pending" here means there is
+        # nothing to settle yet, not that a pass was skipped.
         due = _pending()
         if not due:
             print(green("[watch-settle] All due trades settled. Done."))
@@ -4229,10 +4255,19 @@ def cmd_forecast(city: str):
             red(f"Unknown city '{city}'.  Available: {', '.join(CITY_COORDS.keys())}")
         )
         return
-    from utils import utc_today as _utc_today
+    try:
+        from zoneinfo import ZoneInfo as _ZoneInfoCf
+
+        today = datetime.now(_ZoneInfoCf(_CITY_TZ.get(city, "America/New_York"))).date()
+    except Exception:
+        _log.warning(
+            "cmd_forecast: ZoneInfo unavailable for city=%s — falling back to UTC date",
+            city,
+        )
+        today = datetime.now(UTC).date()
 
     print(bold(f"\n7-day forecast for {city}:\n"))
-    rows, today = [], _utc_today()
+    rows = []
     for i in range(7):
         d = today + timedelta(days=i)
         f = get_weather_forecast(city, d)
@@ -7648,8 +7683,6 @@ def cmd_menu(client: KalshiClient):
         try:
             import time as _t
 
-            from utils import utc_today as _utc_today_menu
-
             _last_run_path = CRON_LAST_RUN_PATH
             if not _last_run_path.exists():
                 print(
@@ -7669,11 +7702,10 @@ def cmd_menu(client: KalshiClient):
             # Unsettled due trades
             from paper import get_open_trades as _got
 
-            _today_date_menu = _utc_today_menu()
             _due = [
                 t
                 for t in _got()
-                if _target_date_due(t.get("target_date"), _today_date_menu)
+                if _target_date_due(t.get("target_date"), t.get("city"))
             ]
             if _due:
                 print(

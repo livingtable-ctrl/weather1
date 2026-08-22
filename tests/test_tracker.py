@@ -96,10 +96,23 @@ class TestTracker(unittest.TestCase):
         """When analysis has no "days_out" key (e.g. a shadow/lookup write
         built from a bare market dict), log_prediction must still fall back
         to the old market_date-vs-UTC-today computation rather than storing
-        NULL or crashing."""
+        NULL or crashing.
+
+        Opus-review-caught (round 2, batch-07): this test was flaky exactly
+        in the evening window the surrounding fix chain exists to handle --
+        `date.today()` is server-LOCAL, but log_prediction's own fallback
+        (tracker.py's own docstring, quoted above) is explicitly UTC-anchored
+        via utils.utc_today(). On a server running EDT (UTC-4) after ~20:00
+        local, `date.today() + 3` and `utils.utc_today() + 3` land on
+        different calendar dates, and the assertion below (which hardcodes
+        the offset as `days_out == 3`) failed for exactly that reason.
+        Building market_date from utc_today() instead matches what the
+        function under test actually anchors against."""
+        from utils import utc_today as _utc_today_test
+
         analysis = self._fake_analysis()
         assert "days_out" not in analysis
-        market_date = date.today() + timedelta(days=3)
+        market_date = _utc_today_test() + timedelta(days=3)
         tracker.log_prediction("TKFALLBACK", "NYC", market_date, analysis)
         history = tracker.get_history()
         self.assertEqual(len(history), 1)
@@ -7516,33 +7529,46 @@ class TestFetchPreviousRunLeads(unittest.TestCase):
         assert result == {}
 
 
-class TestFetchPreviousRunDailyUsesUtcToday(unittest.TestCase):
-    """backlog.txt "utils.utc_today() SAYS 'USE EVERYWHERE INSTEAD OF
-    date.today()' -- 17 SITES STILL DON'T": _fetch_previous_run_daily's
-    past_days computation used date.today() (server-local calendar) while
-    its sibling _fetch_previous_run_leads already used utc_today() with an
-    in-code comment explaining why -- a real, if narrow, mismatch risk on a
-    server running ahead of or behind UTC."""
+class TestFetchPreviousRunDailyUsesCityLocalToday(unittest.TestCase):
+    """AUD-0044 (2026-08-18 max-depth forensic audit): _fetch_previous_run_daily's
+    past_days computation used utils.utc_today() against a CITY-LOCAL
+    target_date (the same value analyze_trade's post-0100bffe days_out now
+    uses) -- a real mismatch risk during the evening window where a city's
+    local calendar date lags UTC's. Fixed to compute "today" via
+    ZoneInfo(tz) instead, with a UTC fallback on ZoneInfo failure."""
 
-    def test_past_days_computed_from_utc_today_not_local_date(self):
-        """Mock utc_today() to a date BEFORE target_date, so the fixed
-        function's own past_days<0 guard should fire and return None
-        WITHOUT calling the network. If this regressed back to
-        date.today(), the guard would use the real system date instead
-        (well after target_date in this test), and the function would
-        proceed past the guard and attempt a live HTTP call despite the
+    def test_past_days_computed_from_city_local_today_not_utc(self):
+        """Fix a UTC instant where UTC has already rolled to 2026-07-11 but
+        America/New_York (UTC-4, EDT) has not -- target_date is still
+        2026-07-11 in NY-local terms, so the past_days<0 guard should fire
+        and return None WITHOUT calling the network. If this regressed back
+        to utc_today(), UTC's already-rolled-over date would make past_days
+        >= 0 and the function would proceed to a live HTTP call despite the
         mock. Assert on requests.get's call_count directly rather than the
         return value -- the function's own broad `except Exception: return
         None` around the HTTP call means a bad mutation and a correct
         early-return are otherwise indistinguishable by return value alone
-        (both give None; one silently swallows a real network attempt)."""
-        from unittest.mock import patch
+        (both give None; one silently swallows a real network attempt).
 
-        target = date(2026, 7, 10)
-        mocked_utc_today = date(2026, 7, 5)  # before target -> past_days < 0
+        Opus-review-caught (round 2): also mock tracker._utc_today to a fixed
+        value so the mutation-kill is deterministic regardless of the real
+        system clock, matching TestFetchPreviousRunLeadsUsesCityLocalToday's
+        sibling test -- without it, a UTC-reverted mutation's actual result
+        depends on how far past 2026-07-11 the real date is when this runs."""
+        target = date(2026, 7, 11)
+        # 2026-07-11 02:00 UTC = 2026-07-10 22:00 EDT -- NY-local is still 07-10.
+        fixed_instant = datetime(2026, 7, 11, 2, 0, tzinfo=UTC)
+
+        class _FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return fixed_instant.replace(tzinfo=None)
+                return fixed_instant.astimezone(tz)
 
         with (
-            patch.object(tracker, "_utc_today", return_value=mocked_utc_today),
+            patch.object(tracker, "datetime", _FixedDatetime),
+            patch.object(tracker, "_utc_today", return_value=date(2026, 7, 11)),
             patch("requests.get") as mock_get,
         ):
             result = tracker._fetch_previous_run_daily(
@@ -7550,18 +7576,23 @@ class TestFetchPreviousRunDailyUsesUtcToday(unittest.TestCase):
             )
         assert result is None
         assert mock_get.call_count == 0, (
-            "guard should have early-returned via the utc_today()-based "
+            "guard should have early-returned via the city-local-today-based "
             "past_days check before making any HTTP call"
         )
 
     def test_past_days_ge_5_proceeds_past_the_guard(self):
         """Sanity check the guard's positive case still works: when
-        utc_today() is well after target_date, past_days is not negative
-        and the function proceeds to the network call."""
-        from unittest.mock import MagicMock, patch
-
+        city-local today is well after target_date, past_days is not
+        negative and the function proceeds to the network call."""
         target = date(2026, 7, 1)
-        mocked_utc_today = date(2026, 7, 20)  # 19 days after target
+        fixed_instant = datetime(2026, 7, 20, 12, 0, tzinfo=UTC)
+
+        class _FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return fixed_instant.replace(tzinfo=None)
+                return fixed_instant.astimezone(tz)
 
         resp = MagicMock()
         resp.status_code = 200
@@ -7573,13 +7604,98 @@ class TestFetchPreviousRunDailyUsesUtcToday(unittest.TestCase):
             }
         }
         with (
-            patch.object(tracker, "_utc_today", return_value=mocked_utc_today),
+            patch.object(tracker, "datetime", _FixedDatetime),
             patch("requests.get", return_value=resp) as mock_get,
         ):
             tracker._fetch_previous_run_daily(
                 40.7, -74.0, "America/New_York", target, "gfs_seamless", 3, "max"
             )
         assert mock_get.call_count == 1
+
+    def test_zoneinfo_failure_falls_back_to_utc_today(self):
+        """If ZoneInfo construction raises, the helper must fall back to
+        utils.utc_today() rather than propagate the exception or silently
+        use the wrong date."""
+        target = date(2026, 7, 5)
+        mocked_utc_today = date(2026, 7, 1)  # before target -> past_days < 0
+
+        with (
+            patch.object(tracker, "_utc_today", return_value=mocked_utc_today),
+            patch("zoneinfo.ZoneInfo", side_effect=RuntimeError("boom")),
+            patch("requests.get") as mock_get,
+        ):
+            result = tracker._fetch_previous_run_daily(
+                40.7, -74.0, "America/New_York", target, "gfs_seamless", 3, "max"
+            )
+        assert result is None
+        assert mock_get.call_count == 0
+
+
+class TestFetchPreviousRunLeadsUsesCityLocalToday(unittest.TestCase):
+    """AUD-0044 (2026-08-18 max-depth forensic audit): _fetch_previous_run_leads'
+    forecast_days computation used utils.utc_today() against a CITY-LOCAL
+    target_date -- fixed to compute "today" via ZoneInfo(tz) instead, with a
+    UTC fallback on ZoneInfo failure."""
+
+    def test_forecast_days_computed_from_city_local_today_not_utc(self):
+        """At 2026-07-11 02:00 UTC, UTC has rolled to 07-11 but NY-local
+        (UTC-4, EDT) is still 07-10. For a future target_date of 07-12:
+        UTC-anchored forecast_days would be (07-12 - 07-11).days + 1 = 2;
+        the fixed, NY-local-anchored value is (07-12 - 07-10).days + 1 = 3.
+        A regression back to utc_today() would under-request by one day and
+        could miss the boundary day this fix exists to cover.
+
+        Opus-review-caught: also mock tracker._utc_today to a value matching
+        the fixed instant's real UTC date (07-11) so a reverted-to-utc_today()
+        mutation deterministically computes 2, not whatever the real system
+        clock happens to clamp it to on the day this test is run (it had been
+        silently clamping to 1 via forecast_days' own max(1, ...) floor,
+        which only fails the assertion by coincidence of running after the
+        fixture's July dates, not because the fix is verified)."""
+        target = date(2026, 7, 12)
+        fixed_instant = datetime(2026, 7, 11, 2, 0, tzinfo=UTC)
+
+        class _FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return fixed_instant.replace(tzinfo=None)
+                return fixed_instant.astimezone(tz)
+
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"hourly": {"time": []}}
+        with (
+            patch.object(tracker, "datetime", _FixedDatetime),
+            patch.object(tracker, "_utc_today", return_value=date(2026, 7, 11)),
+            patch("requests.get", return_value=resp) as mock_get,
+        ):
+            tracker._fetch_previous_run_leads(
+                40.7, -74.0, "America/New_York", target, "gfs_seamless", [3], "max"
+            )
+        assert mock_get.call_args.kwargs["params"]["forecast_days"] == "3"
+
+    def test_zoneinfo_failure_falls_back_to_utc_today(self):
+        """If ZoneInfo construction raises, the helper must fall back to
+        utils.utc_today() rather than propagate the exception."""
+        target = date(2026, 7, 20)
+        mocked_utc_today = date(2026, 7, 10)  # 10 days before target
+
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"hourly": {"time": []}}
+        with (
+            patch.object(tracker, "_utc_today", return_value=mocked_utc_today),
+            patch("zoneinfo.ZoneInfo", side_effect=RuntimeError("boom")),
+            patch("requests.get", return_value=resp) as mock_get,
+        ):
+            tracker._fetch_previous_run_leads(
+                40.7, -74.0, "America/New_York", target, "gfs_seamless", [3], "max"
+            )
+        # (07-20 - 07-10).days + 1 == 11
+        assert mock_get.call_args.kwargs["params"]["forecast_days"] == "11"
 
 
 class TestGetForecastRunTrend(unittest.TestCase):

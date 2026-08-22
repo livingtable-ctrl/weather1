@@ -2118,20 +2118,49 @@ setInterval(() => {{
 
     @app.route("/api/today_forecasts")
     def api_today_forecasts():
-        from datetime import timedelta
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
 
         from utils import utc_today as _utc_today_tf
-        from weather_markets import CITY_COORDS, get_weather_forecast
+        from weather_markets import _CITY_TZ, CITY_COORDS, get_weather_forecast
 
-        today = _utc_today_tf()
-        tomorrow = today + timedelta(days=1)
         results: dict[str, dict] = {"today": {}, "tomorrow": {}}
+        _zoneinfo_warned = False  # opus-review-caught (round 2): log once per
+        # request, not once per city -- CITY_COORDS has ~20 entries and this
+        # endpoint is polled on an interval, so a genuine tzdata outage would
+        # otherwise spam ~20 warnings per poll.
         for city in sorted(CITY_COORDS):
+            # City-local today/tomorrow, not a single UTC date shared across
+            # all cities (AUD-0046) -- mirrors main.py's _feature_importance_days_out
+            # local-today pattern. Falls back to UTC on ZoneInfo failure.
+            try:
+                today = datetime.now(
+                    ZoneInfo(_CITY_TZ.get(city, "America/New_York"))
+                ).date()
+            except Exception:
+                if not _zoneinfo_warned:
+                    _log.warning(
+                        "api/today_forecasts: ZoneInfo unavailable (city=%s, "
+                        "and possibly others this request) — falling back to "
+                        "UTC date",
+                        city,
+                    )
+                    _zoneinfo_warned = True
+                today = _utc_today_tf()
+            tomorrow = today + timedelta(days=1)
             for label, dt in (("today", today), ("tomorrow", tomorrow)):
                 try:
                     f = get_weather_forecast(city, dt)
                     if f:
                         results[label][city] = {
+                            # Opus-review-caught (round 2): this endpoint
+                            # never carried a per-city date -- harmless while
+                            # every city shared one implicit UTC date, but
+                            # once "today"/"tomorrow" became genuinely
+                            # per-city (AUD-0046) a client had no way to tell
+                            # WHICH calendar date a given city's "today"
+                            # meant. Matches /api/forecast's identical fix.
+                            "date": dt.isoformat(),
                             "high_f": round(f["high_f"], 1),
                             # WA-falsy-zero: `if f.get("low_f")` maps a legitimate
                             # 0.0F low (routine for Chicago/Denver/Minneapolis winter
@@ -2913,13 +2942,34 @@ setInterval(() => {{
         # A client that DID send it could also lie (days_out=0 on a multi-day
         # trade) to dodge multi-day-slot accounting entirely. Derive it server-side
         # from target_date instead, matching tracker.py's own convention.
+        #
+        # Opus-review-caught (AUD-0044/45/46 adjacency, batch-07): _tdate_dash
+        # is CITY-LOCAL (the same value analyze_trade's post-0100bffe days_out
+        # uses), so "today" here must be too, not utils.utc_today() — an
+        # evening-window order (UTC already rolled over, the market's own
+        # city not yet) would otherwise under-count days_out by 1 and let a
+        # multi-day trade masquerade as same-day, dodging the multi-day slot
+        # cap this whole derivation exists to enforce.
         from utils import utc_today as _utc_today_dash
 
-        _days_out = (
-            max(0, (_tdate_dash - _utc_today_dash()).days)
-            if _tdate_dash is not None
-            else None
-        )
+        _days_out: int | None = None
+        if _tdate_dash is not None:
+            try:
+                from zoneinfo import ZoneInfo as _ZoneInfoDash
+
+                from weather_markets import _CITY_TZ as _city_tz_dash
+
+                _today_dash = datetime.now(
+                    _ZoneInfoDash(_city_tz_dash.get(city or "", "America/New_York"))
+                ).date()
+            except Exception:
+                _log.warning(
+                    "api/paper-order: ZoneInfo unavailable for city=%s — "
+                    "falling back to UTC date",
+                    city,
+                )
+                _today_dash = _utc_today_dash()
+            _days_out = max(0, (_tdate_dash - _today_dash).days)
         # close_time so the 24h settlement gate works on manually placed
         # trades the same way it does on bot-placed trades — reuses the
         # market dict already fetched above for city/date derivation.
@@ -2976,6 +3026,14 @@ setInterval(() => {{
                         "edge": float(net_edge) if net_edge is not None else 0.0,
                         "recommended_side": side,
                         "condition": {},
+                        # Opus-review-caught (round 2): without this,
+                        # log_prediction recomputes days_out itself via
+                        # market_date - utc_today() -- the exact UTC-vs-
+                        # city-local split this batch's other fixes remove --
+                        # creating a NEW split-brain against _days_out (the
+                        # paper-ledger value computed via ZoneInfo above) for
+                        # the same trade during the evening window.
+                        "days_out": _days_out,
                     },
                     signal_source="dashboard",
                 )
@@ -3207,12 +3265,13 @@ setInterval(() => {{
     @app.route("/api/forecast")
     def api_forecast():
         """Per-city ensemble forecast for day=0 (today) or day=1 (tomorrow)."""
-        from datetime import timedelta
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
 
         from flask import request as _freq
 
         from utils import utc_today as _utc_today_fc
-        from weather_markets import CITY_COORDS, get_weather_forecast
+        from weather_markets import _CITY_TZ, CITY_COORDS, get_weather_forecast
 
         try:
             day = int(_freq.args.get("day", 0))
@@ -3222,19 +3281,42 @@ setInterval(() => {{
         if day not in (0, 1):
             return jsonify({"error": "day must be 0 or 1"}), 400
 
-        # WA-timezone: was date.today() (server-local calendar), while the
-        # tracker/analytics side of this codebase standardizes on
-        # utils.utc_today() — around local midnight this dashboard's day=0
-        # forecast could label a different date than what the trading logic
-        # considers "today".
-        target = _utc_today_fc() + timedelta(days=day)
         cities: dict[str, dict] = {}
+        _zoneinfo_warned = False  # opus-review-caught (round 2): log once per
+        # request, not once per city -- see /api/today_forecasts' identical fix.
 
         for city in sorted(CITY_COORDS):
+            # City-local today, not a single UTC date shared across all
+            # cities (AUD-0046) -- the WA-timezone comment this replaces cited
+            # a "tracker/analytics side standardizes on utc_today()" rationale
+            # that 0100bffe (2026-08-11) made stale by moving the trading-logic
+            # side to city-local comparisons for this exact mislabeling reason.
+            try:
+                target = datetime.now(
+                    ZoneInfo(_CITY_TZ.get(city, "America/New_York"))
+                ).date() + timedelta(days=day)
+            except Exception:
+                if not _zoneinfo_warned:
+                    _log.warning(
+                        "api/forecast: ZoneInfo unavailable (city=%s, and "
+                        "possibly others this request) — falling back to "
+                        "UTC date",
+                        city,
+                    )
+                    _zoneinfo_warned = True
+                target = _utc_today_fc() + timedelta(days=day)
             try:
                 f = get_weather_forecast(city, target)
                 if f:
                     cities[city] = {
+                        # Opus-review-caught: "date" used to live only at the
+                        # response's top level, computed from whichever city's
+                        # `target` the per-city loop happened to leave behind
+                        # (sorted(CITY_COORDS)[-1], alphabetically last) --
+                        # once `target` became per-city (AUD-0046), that top-
+                        # level value silently mislabeled every other city's
+                        # forecast. Each city now carries its own real date.
+                        "date": target.isoformat(),
                         "high_f": round(f["high_f"], 1),
                         # WA-falsy-zero: see /api/today_forecasts' identical fix —
                         # a legitimate 0.0F low must not be treated as missing.
@@ -3257,7 +3339,28 @@ setInterval(() => {{
                     _fc_exc,
                 )
 
-        return jsonify({"day": day, "date": target.isoformat(), "cities": cities})
+        # No single date describes every city once "today" became per-city
+        # (AUD-0046) -- this top-level field is an approximation for callers
+        # that just want a rough label; each city's own "date" inside
+        # cities[city] above is the authoritative one. Opus-review-caught
+        # (round 2): a UTC-anchored approximation matches ZERO US cities
+        # during the evening rollover window this whole fix chain targets
+        # (every city here lags UTC). Anchored on America/New_York instead --
+        # the same fallback default used everywhere else in this fix chain --
+        # so it matches at least one real city rather than none.
+        try:
+            _top_level_date = datetime.now(
+                ZoneInfo("America/New_York")
+            ).date() + timedelta(days=day)
+        except Exception:
+            _top_level_date = _utc_today_fc() + timedelta(days=day)
+        return jsonify(
+            {
+                "day": day,
+                "date": _top_level_date.isoformat(),
+                "cities": cities,
+            }
+        )
 
     # ------------------------------------------------------------------ #
 

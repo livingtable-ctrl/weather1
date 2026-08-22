@@ -21256,7 +21256,7 @@ Problem:
   Recommendation: Gate the in-band/YES check on max_temp_f itself, not max(current_temp_f, max_temp_f); use current_temp_f only for the already-correctly-reasoned NO branch. Add a regression test with max_temp_f present-but-lower-than-current_temp_f.
   Full record: audit/AUDIT_REPORT.json (id AUD-0016), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _target_date_due() still compares city-local target_date against UTC-today, missed by the 0100bffe/6364b38b fix sweep
+[RESOLVED 2026-08-21 -- batch-07] _target_date_due() still compares city-local target_date against UTC-today, missed by the 0100bffe/6364b38b fix sweep
 Priority: MEDIUM (audit id AUD-0017, status CONFIRMED, confidence VERY HIGH, evidence E2)
 Files: main.py
 
@@ -21267,6 +21267,12 @@ Problem:
   Financial risk: Low/indirect -- neither call site gates an order or a real settlement action; cmd_watch_settle's loop just runs longer than necessary and the banner only misinforms the operator.
   Recommendation: Compute today_date via ZoneInfo keyed off each trade's own city, mirroring the local-today pattern already used elsewhere in this fix chain, with a UTC fallback on ZoneInfo failure.
   Full record: audit/AUDIT_REPORT.json (id AUD-0017), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-21, batch-07):
+  Changed _target_date_due's signature from (target_date_str, today_date) to (target_date_str, city): the function now self-computes city-local "today" internally via ZoneInfo(_CITY_TZ.get(city or "", "America/New_York")), with a UTC fallback + warning log on ZoneInfo failure -- mirrors _feature_importance_days_out's already-established pattern exactly. Both call sites (cmd_watch_settle's _pending(), the main-menu due-today banner) now pass t.get("city") per-trade instead of a single today_date snapshot computed once via utils.utc_today() -- this also fixes a secondary staleness issue where cmd_watch_settle's snapshot could go stale across a multi-hour polling session.
+  Tests: tests/test_target_date_due.py fully rewritten for the new signature (10 tests, mirroring test_feature_importance_days_out.py's structure) -- none/empty, due/not-due boundaries, unparseable-string fallback, unknown-city-falls-back-to-NY, ZoneInfo-failure-falls-back-to-UTC, and two regression tests for the actual bug: an evening-window instant (UTC already rolled to 07-10, LA/PDT still 07-09) proving a per-trade city-local lookup and cross-checked against weather_markets._CITY_TZ's own local-today computation for consistency with analyze_trade's gate.
+  Mutation-tested: reverted the fix to `today_date = datetime.now(UTC).date()` via Edit -- test_utc_rollover_window_uses_city_local_today failed as expected (assert True is False), confirming the regression test actually catches the UTC-anchored bug this fix removes. Restored via Edit afterward.
+  Lint/mypy: ruff check + format clean, mypy clean (main.py).
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] .env.example's DASHBOARD_PASSWORD comment ('leave empty to disable auth') is stale — code now refuses to start the dashboard instead
 Priority: MEDIUM (audit id AUD-0018, status CONFIRMED, confidence VERY HIGH, evidence E3)
@@ -21700,7 +21706,7 @@ Problem:
   Recommendation: If/when this signal is revisited for graduation, also log the tail-year sample count (len(tail_sums_tilted)) alongside n_members so effective-sample-size can be assessed correctly. Not urgent: this signal is shadow/log-only today and does not affect blended_prob/rec_side/sizing.
   Full record: audit/AUDIT_REPORT.json (id AUD-0043), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] tracker.py Previous-Runs-API helpers still use UTC-anchored day arithmetic against a city-local target_date, with stale comments asserting the opposite
+[RESOLVED 2026-08-21 -- batch-07] tracker.py Previous-Runs-API helpers still use UTC-anchored day arithmetic against a city-local target_date, with stale comments asserting the opposite
 Priority: LOW (audit id AUD-0044, status CONFIRMED, confidence HIGH, evidence E1)
 Files: tracker.py
 
@@ -21712,7 +21718,13 @@ Problem:
   Recommendation: Apply the same ZoneInfo-based local-today pattern used elsewhere in this fix chain, or document why these callers are exempt.
   Full record: audit/AUDIT_REPORT.json (id AUD-0044), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_forecast CLI display starts its 7-day range from UTC-today instead of city-local today
+Resolution (2026-08-21, batch-07):
+  Both _fetch_previous_run_daily and _fetch_previous_run_leads now compute "today" via datetime.now(ZoneInfo(tz)).date() instead of utils.utc_today() -- tz is the coords tuple's IANA zone string already passed into both functions, so no new city-lookup was needed. Falls back to _utc_today() on ZoneInfo failure. Stale in-code comments citing the pre-0100bffe "target_date is UTC-anchored" rationale replaced with comments citing the actual current rationale (AUD-0044) and cross-referencing each other.
+  Tests: replaced TestFetchPreviousRunDailyUsesUtcToday (which mocked tracker._utc_today directly -- no longer effective once the primary path uses ZoneInfo) with TestFetchPreviousRunDailyUsesCityLocalToday and added TestFetchPreviousRunLeadsUsesCityLocalToday, 5 tests total across the two new classes (3 + 2 -- corrected 2026-08-21 after an opus review caught this narrative overstating it as 10, conflating with the pre-existing TestFetchPreviousRunLeads class's own 5 unrelated tests): both functions' past_days/forecast_days guard behavior verified at an evening-window instant (UTC rolled over, NY-local not yet) where UTC-anchored and NY-local-anchored arithmetic diverge, plus a ZoneInfo-failure-falls-back-to-utc_today test for each.
+  Mutation-tested: reverted each function's ZoneInfo computation to a bare `_utc_today()` call via Edit -- both city-local regression tests failed as expected (daily: unexpected live network call after the guard should have early-returned; leads: forecast_days computed as 1 instead of the expected 3). Restored via Edit afterward.
+  Lint/mypy: ruff check + format clean, mypy clean (tracker.py). Full tests/test_tracker.py suite (453 tests) re-run clean after the fix was restored.
+
+[RESOLVED 2026-08-21 -- batch-07] cmd_forecast CLI display starts its 7-day range from UTC-today instead of city-local today
 Priority: LOW (audit id AUD-0045, status CONFIRMED, confidence HIGH, evidence E1)
 Files: main.py
 
@@ -21724,7 +21736,13 @@ Problem:
   Recommendation: Compute today via ZoneInfo(_CITY_TZ.get(city,...)) for consistency with the rest of the codebase.
   Full record: audit/AUDIT_REPORT.json (id AUD-0045), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py dashboard forecast endpoints label per-city forecasts using UTC-today, and their own justifying comment is now stale
+Resolution (2026-08-21, batch-07):
+  cmd_forecast now computes today via ZoneInfo(_CITY_TZ.get(city, "America/New_York")) instead of utils.utc_today(), with a UTC fallback + warning log on ZoneInfo failure -- mirrors _feature_importance_days_out's established pattern.
+  Tests: new tests/test_cmd_forecast.py (3 tests) -- unknown-city never calls get_weather_forecast, an evening-window regression (UTC rolled to 07-10, LA/PDT still 07-09: first requested date must be LA's real local today, 07-09, and all 7 requested dates checked), and ZoneInfo-failure-falls-back-to-UTC.
+  Mutation-tested: reverted to `today = datetime.now(UTC).date()` via Edit -- the rollover regression test failed as expected (requested 07-10 instead of 07-09). Restored via Edit afterward.
+  Lint/mypy: ruff check + format clean, mypy clean (main.py).
+
+[RESOLVED 2026-08-21 -- batch-07] web_app.py dashboard forecast endpoints label per-city forecasts using UTC-today, and their own justifying comment is now stale
 Priority: LOW (audit id AUD-0046, status CONFIRMED, confidence HIGH, evidence E1)
 Files: web_app.py
 
@@ -21735,6 +21753,30 @@ Problem:
   Financial risk: None -- dashboard display only.
   Recommendation: Low priority given this predates the audited window and is display-only; worth a follow-up to fix per-city or at least correct the stale comment.
   Full record: audit/AUDIT_REPORT.json (id AUD-0046), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-21, batch-07):
+  Took the full per-city fix (not just the comment-only option) after user confirmation: both /api/forecast and /api/today_forecasts now compute each city's own local today/tomorrow inside their per-city loop via ZoneInfo(_CITY_TZ.get(city, "America/New_York")), imported from weather_markets (matching main.py's existing import), with a UTC fallback on ZoneInfo failure. The stale WA-timezone comment (which cited a pre-0100bffe "tracker/analytics side standardizes on utc_today()" rationale) was replaced with a comment citing the actual current rationale and AUD-0046.
+  Two-round opus review caught 3 further issues in this endpoint pair specifically, all fixed in the same change: (1) /api/forecast's top-level "date" field was leaking whichever city's `target` the per-city loop last left behind (alphabetically last), silently mislabeling every OTHER city's forecast -- moved "date" into each city's own dict, and made the top-level field an explicit approximation anchored on America/New_York (not UTC, which would match zero US cities during the evening rollover window) rather than a stray loop variable. (2) /api/today_forecasts never carried a per-city date at all (harmless while every city shared one implicit date; a latent trap once "today" became genuinely per-city) -- added "date" to each city's dict there too, for symmetry. (3) both endpoints' ZoneInfo-failure fallback branches were silent -- added _log.warning, deduplicated to once per request (not once per city) since CITY_COORDS has ~20 entries and these endpoints are polled on an interval. Same review pass also caught an AUD-0044 test-count overstatement (corrected in that entry) and an undocumented adjacency fix to /api/paper-order's days_out derivation (new entry immediately below, before AUD-0047).
+  Tests: 4 new tests in tests/test_web_app.py -- test_today_forecasts_uses_city_local_today, test_today_forecasts_each_city_carries_its_own_date, test_forecast_endpoint_uses_city_local_today, test_forecast_endpoint_each_city_carries_its_own_date. All use an evening-window instant (UTC rolled to 07-10, LA/PDT still 07-09); the "_uses_city_local_today" pair asserts NYC's and LA's first-requested dates differ (07-10 vs 07-09) to prove a genuine per-city lookup, the "_each_city_carries_its_own_date" pair asserts the per-city response payload itself carries the correct distinct date per city (the round-2-caught leak this pair specifically regression-tests).
+  Mutation-tested: reverted each endpoint's per-city ZoneInfo block to a single `_utc_today_fc()`/`_utc_today_tf()` call via Edit -- all 4 tests failed as expected. Also reverted the per-city "date" field drop (round-2 fix) and the days_out/log_prediction split-brain (see AUD-0044 below) -- all failed as expected. Restored via Edit afterward in every case.
+  Lint/mypy: ruff check + format clean (import order auto-fixed), mypy clean (web_app.py). Full tests/test_web_app.py suite (47 tests) re-run clean after all fixes were restored.
+
+[RESOLVED 2026-08-21 -- batch-07, opus-review-caught adjacency] web_app.py's /api/paper-order derives days_out from utils.utc_today() against a city-local target_date -- the same bug class as AUD-0017/0044/0045/0046, but NOT display-only
+
+Priority: MEDIUM (no audit id -- found by an opus review of batch-07's other 4 fixes, not by the 2026-08-18 max-depth forensic audit itself)
+Files: web_app.py, tracker.py
+
+Problem:
+  /api/paper-order's server-derived `_days_out = max(0, (_tdate_dash - utils.utc_today()).days)` used the same UTC-anchored arithmetic against a CITY-LOCAL `_tdate_dash` (weather_markets.enrich_with_forecast's own value) that AUD-0017/0044/0045/0046 fix everywhere else in this batch -- but unlike those 4, `_days_out` is not display-only: it's passed to `place_paper_order(days_out=...)`, and order_executor.py's multi-day concentration-cap logic keys off `days_out != 0`. During the evening window (UTC already rolled over, the market's own city not yet), a genuinely multi-day dashboard order would under-count days_out by 1 and could masquerade as same-day, dodging the multi-day slot cap.
+  A second-round review of the fix for this then caught a further split-brain: the same request's tracker.log_prediction call (~15 lines below) built its analysis dict without a "days_out" key, so log_prediction fell back to ITS OWN recomputation via `market_date - utils.utc_today()` -- disagreeing with the (now-fixed) city-local `_days_out` already computed for place_paper_order, for the exact same trade, in the exact same evening window.
+  Root cause: this endpoint predates the 0100bffe/6364b38b fix chain and was never covered by AUD-0017/0044/0045/0046's audit pass since it isn't one of the 4 originally-cited timezone-display findings; found only by an opus reviewer reading the surrounding code while verifying those 4 fixes.
+
+Resolution (2026-08-21, batch-07):
+  _days_out now computed via ZoneInfo(_CITY_TZ.get(city or "", "America/New_York")) instead of utils.utc_today(), matching this batch's other 4 fixes exactly, with a UTC fallback + _log.warning on ZoneInfo failure. The log_prediction analysis dict now includes "days_out": _days_out, closing the split-brain against tracker.py's own independent recomputation.
+  A related pre-existing test bug was also caught and fixed in the same pass: tests/test_tracker.py's test_log_prediction_falls_back_to_recomputed_days_out_when_absent built its market_date via `date.today() + timedelta(days=3)` (server-LOCAL) while asserting against log_prediction's own UTC-anchored fallback -- flaky during the evening EDT-vs-UTC window (observed failing live on 2026-08-21 ~22:26 EDT / 2026-08-22 UTC: `2 != 3`). Fixed to build market_date from utils.utc_today() instead, matching what the function under test actually anchors against.
+  Tests: TestPaperOrderDaysOutUsesCityLocalToday in tests/test_web_app.py (1 test) -- evening-window instant (UTC rolled to 07-10, LA/PDT still 07-09), asserts place_paper_order's days_out AND log_prediction's analysis["days_out"] both equal the correct LA-local value (2), not the UTC-anchored wrong one (1) or the real-clock-clamped one (0). utils.utc_today is explicitly mocked too so the mutation-kill value is deterministic regardless of what day this test runs.
+  Mutation-tested: reverted the ZoneInfo computation to a bare utils.utc_today() call via Edit -- the test failed as expected (0 != 2). Separately reverted the "days_out" key drop from the log_prediction analysis dict -- the test's log_prediction assertion failed as expected (KeyError: 'days_out'). Restored via Edit in both cases.
+  Lint/mypy: ruff check + format clean, mypy clean (web_app.py, tracker.py).
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] settlement_monitor.py logs per-city polling failures at DEBUG only, invisible on console for an unattended daily task
 Priority: LOW (audit id AUD-0047, status CONFIRMED, confidence HIGH, evidence E1)

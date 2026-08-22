@@ -580,6 +580,179 @@ def test_api_signals_returns_correct_shape(client):
             assert isinstance(d["alerts"], list)
 
 
+def test_today_forecasts_uses_city_local_today(client):
+    """AUD-0046 (2026-08-18 max-depth forensic audit): /api/today_forecasts
+    used to label every city's forecast with a single shared utils.utc_today()
+    date. Fixed to compute each city's own local today via ZoneInfo.
+
+    At 2026-07-10 05:00 UTC: NYC (EDT, UTC-4) has already rolled to its local
+    07-10, but LA (PDT, UTC-7) is still 07-09. If both cities were still
+    getting the same shared date, this fix would be a no-op -- asserting the
+    two cities' first-requested dates DIFFER, and each matches its own real
+    local calendar date, proves a genuine per-city ZoneInfo lookup."""
+    from datetime import UTC, datetime
+
+    fixed_instant = datetime(2026, 7, 10, 5, 0, tzinfo=UTC)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_instant.replace(tzinfo=None)
+            return fixed_instant.astimezone(tz)
+
+    requested = {}
+
+    def _fake_gwf(city, d):
+        requested.setdefault(city, []).append(d.isoformat())
+        return None
+
+    # Opus-review-noted: patches the stdlib datetime.datetime class itself,
+    # not "web_app.datetime" -- web_app's endpoints do `from datetime import
+    # datetime` as a LOCAL import inside the function body, executed fresh at
+    # request time, so patching a module-level "web_app.datetime" attribute
+    # (this file's other tests' usual pattern, e.g. test_cmd_forecast.py's
+    # patch.object(main, "datetime", ...)) would never be seen by that local
+    # import. This is the broadest-blast-radius option in this test suite
+    # (any code anywhere doing datetime.datetime.now() during this request
+    # gets the fixed instant) but is the only one that actually reaches a
+    # function-local import; see tests/test_paper.py's identical pattern.
+    #
+    # GOTCHA (opus-review round 2): this does NOT reach utils.utc_today() --
+    # utils.py binds its own `datetime` name via `from datetime import
+    # datetime` at utils' own import time (long before this patch runs), so
+    # utils.utc_today()'s datetime.now(UTC) call still sees the real clock.
+    # Harmless here since neither test below exercises a ZoneInfo-failure
+    # fallback branch or asserts on a value computed via utils.utc_today(),
+    # but a future test that does either of those needs its own explicit
+    # patch("utils.utc_today", return_value=...) too (see
+    # TestPaperOrderDaysOutUsesCityLocalToday's test in this file for that
+    # pattern) -- this patch alone will not control it.
+    with (
+        patch("datetime.datetime", _FixedDatetime),
+        patch("weather_markets.get_weather_forecast", side_effect=_fake_gwf),
+    ):
+        r = client.get("/api/today_forecasts")
+    assert r.status_code == 200
+    assert requested["NYC"][0] == "2026-07-10"
+    assert requested["LA"][0] == "2026-07-09"
+    assert requested["NYC"][0] != requested["LA"][0]
+
+
+def test_today_forecasts_each_city_carries_its_own_date(client):
+    """Opus-review-caught (round 2, batch-07): /api/today_forecasts never
+    carried a per-city date -- harmless while every city shared one implicit
+    UTC date, but once "today"/"tomorrow" became genuinely per-city
+    (AUD-0046) a client had no way to tell WHICH calendar date a given
+    city's "today" meant. Fixed by adding "date" inside each city's dict,
+    matching /api/forecast's identical fix."""
+    from datetime import UTC, datetime
+
+    fixed_instant = datetime(2026, 7, 10, 5, 0, tzinfo=UTC)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_instant.replace(tzinfo=None)
+            return fixed_instant.astimezone(tz)
+
+    def _fake_gwf(city, d):
+        return {
+            "date": d.isoformat(),
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.0,
+            "models_used": 1,
+        }
+
+    with (
+        patch("datetime.datetime", _FixedDatetime),
+        patch("weather_markets.get_weather_forecast", side_effect=_fake_gwf),
+    ):
+        r = client.get("/api/today_forecasts")
+    data = r.get_json()
+    assert data["today"]["NYC"]["date"] == "2026-07-10"
+    assert data["today"]["LA"]["date"] == "2026-07-09"
+    assert data["tomorrow"]["NYC"]["date"] == "2026-07-11"
+    assert data["tomorrow"]["LA"]["date"] == "2026-07-10"
+
+
+def test_forecast_endpoint_uses_city_local_today(client):
+    """AUD-0046: /api/forecast?day=0 used to anchor every city's date on a
+    single shared utils.utc_today() value -- same fix and regression case as
+    /api/today_forecasts above, for this sibling endpoint."""
+    from datetime import UTC, datetime
+
+    fixed_instant = datetime(2026, 7, 10, 5, 0, tzinfo=UTC)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_instant.replace(tzinfo=None)
+            return fixed_instant.astimezone(tz)
+
+    requested = {}
+
+    def _fake_gwf(city, d):
+        requested.setdefault(city, []).append(d.isoformat())
+        return None
+
+    # Patches stdlib datetime.datetime, not "web_app.datetime" -- see
+    # test_today_forecasts_uses_city_local_today's comment above for why.
+    with (
+        patch("datetime.datetime", _FixedDatetime),
+        patch("weather_markets.get_weather_forecast", side_effect=_fake_gwf),
+    ):
+        r = client.get("/api/forecast?day=0")
+    assert r.status_code == 200
+    assert requested["NYC"][0] == "2026-07-10"
+    assert requested["LA"][0] == "2026-07-09"
+
+
+def test_forecast_endpoint_each_city_carries_its_own_date(client):
+    """Opus-review-caught (batch-07): once `target` was hoisted into the
+    per-city loop for AUD-0046, the top-level `jsonify({"date": target...})`
+    kept reading whatever `target` the loop last left behind -- alphabetically
+    the last city in sorted(CITY_COORDS) -- silently mislabeling every OTHER
+    city's forecast with that city's date instead of its own. Fixed by
+    putting "date" inside each city's own dict. This test would have failed
+    against the pre-fix code: LA's response would have carried whichever
+    city sorts last alphabetically's date, not LA's real 07-09."""
+    from datetime import UTC, datetime
+
+    fixed_instant = datetime(2026, 7, 10, 5, 0, tzinfo=UTC)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_instant.replace(tzinfo=None)
+            return fixed_instant.astimezone(tz)
+
+    def _fake_gwf(city, d):
+        return {
+            "date": d.isoformat(),
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.0,
+            "models_used": 1,
+        }
+
+    # Patches stdlib datetime.datetime, not "web_app.datetime" -- see
+    # test_today_forecasts_uses_city_local_today's comment above for why.
+    with (
+        patch("datetime.datetime", _FixedDatetime),
+        patch("weather_markets.get_weather_forecast", side_effect=_fake_gwf),
+    ):
+        r = client.get("/api/forecast?day=0")
+    data = r.get_json()
+    assert data["cities"]["NYC"]["date"] == "2026-07-10"
+    assert data["cities"]["LA"]["date"] == "2026-07-09"
+    assert data["cities"]["NYC"]["date"] != data["cities"]["LA"]["date"]
+
+
 def test_forecast_route_returns_200_with_title(client):
     """Forecast page returns 200 and contains 'Forecast'."""
     r = client.get("/forecast")
@@ -941,6 +1114,87 @@ class TestPaperOrderCityDateServerDerived:
         assert cpl_kwargs["city"] == "Chicago"
         _, place_kwargs = mock_place.call_args
         assert place_kwargs["city"] == "Chicago"
+
+
+class TestPaperOrderDaysOutUsesCityLocalToday:
+    """Opus-review-caught adjacency finding (AUD-0044/45/46, batch-07):
+    /api/paper-order's server-derived days_out used utils.utc_today() against
+    _tdate_dash -- the same CITY-LOCAL date weather_markets.enrich_with_forecast
+    returns (analyze_trade's own value post-0100bffe) -- the identical
+    UTC-vs-city-local mismatch this batch's other 4 fixes address, just not
+    display-only: days_out feeds order_executor's multi-day slot cap directly.
+    Fixed to compute city-local today via ZoneInfo, matching the rest of this
+    fix chain."""
+
+    def test_days_out_computed_from_city_local_today_not_utc(self, client):
+        """At 2026-07-10 05:00 UTC, NYC (EDT) has already rolled to 07-10 but
+        LA (PDT) is still 07-09. For an LA market with target_date 07-11:
+        UTC-anchored days_out would be (07-11 - UTC-today 07-10).days = 1;
+        the fixed, LA-local-anchored value is (07-11 - LA-local-today
+        07-09).days = 2. A regression back to utc_today() would under-count
+        days_out by 1 and let a multi-day LA trade masquerade as a 1-day-out
+        trade in the multi-day slot cap's own bucketing.
+
+        Opus-review-caught (round 2): utils.utc_today is also mocked here so
+        the mutation-kill value is deterministic (1) regardless of the real
+        system clock -- without it, the "UTC-anchored" mutation's actual
+        wrong answer is whatever max(0, (07-11 - REAL_TODAY).days) clamps to,
+        which is 0 on most days this test could run, not 1 as originally
+        (incorrectly) documented here."""
+        from datetime import UTC, date, datetime
+
+        fixed_instant = datetime(2026, 7, 10, 5, 0, tzinfo=UTC)
+
+        class _FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return fixed_instant.replace(tzinfo=None)
+                return fixed_instant.astimezone(tz)
+
+        with (
+            patch("cron.KILL_SWITCH_PATH") as mock_ksp,
+            patch("utils.is_trading_paused", return_value=False),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch(
+                "weather_markets.enrich_with_forecast",
+                return_value={"_city": "LA", "_date": date(2026, 7, 11)},
+            ),
+            patch("paper.check_position_limits", return_value={"ok": True}),
+            patch("paper.place_paper_order") as mock_place,
+            patch("tracker.log_prediction") as mock_log_pred,
+            patch("web_app.datetime", _FixedDatetime),
+            patch("utils.utc_today", return_value=date(2026, 7, 10)),
+        ):
+            mock_ksp.exists.return_value = False
+            mock_kc_cls.return_value.get_market.return_value = {
+                "close_time": "2099-01-01T00:00:00Z"
+            }
+            mock_place.return_value = {"id": 1}
+
+            resp = client.post(
+                "/api/paper-order",
+                json={
+                    "ticker": "KXHIGH-25JUL11-T70",
+                    "side": "yes",
+                    "quantity": 10,
+                    "entry_price": 0.50,
+                },
+            )
+
+        assert resp.status_code == 201
+        _, place_kwargs = mock_place.call_args
+        assert place_kwargs["days_out"] == 2
+
+        # Opus-review-caught (round 2): log_prediction's analysis dict used
+        # to omit "days_out" entirely, so tracker.log_prediction recomputed
+        # its own value via market_date - utc_today() -- a fresh split-brain
+        # against place_paper_order's city-local-anchored value above, for
+        # the identical trade, in the identical evening window this batch's
+        # other fixes exist to remove. Both must agree.
+        log_pred_args, _ = mock_log_pred.call_args
+        analysis_dict = log_pred_args[3]
+        assert analysis_dict["days_out"] == place_kwargs["days_out"] == 2
 
 
 class TestAnomalyStatusMatchesRealCheck:

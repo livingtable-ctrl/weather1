@@ -4627,12 +4627,29 @@ def _fetch_previous_run_daily(
     """
     import requests as _req
 
-    # utc_today(), not date.today(): target_date is UTC-anchored (see
-    # _fetch_previous_run_leads's identical fix, tracker.py above) -- a
-    # server running ahead of UTC would otherwise miscount past_days near
-    # the day boundary (backlog.txt "utils.utc_today() SAYS 'USE EVERYWHERE
-    # INSTEAD OF date.today()' -- 17 SITES STILL DON'T").
-    past_days = (_utc_today() - target_date).days
+    # ZoneInfo(tz), not utc_today(): target_date is CITY-LOCAL (the same
+    # value analyze_trade's days_out computation uses post-0100bffe), so
+    # "today" for this arithmetic must be too, mirroring
+    # _fetch_previous_run_leads's identical fix below (AUD-0044). Falls
+    # back to UTC on ZoneInfo failure.
+    #
+    # Opus-review-noted: mos.py's _local_or_utc_today(tz) already implements
+    # this identical local-today/UTC-fallback pattern -- deliberately not
+    # extracted into a shared helper here since mos.py is outside this
+    # batch's file scope (main.py/tracker.py/web_app.py); worth consolidating
+    # in a future pass across all five sites that now duplicate it.
+    try:
+        from zoneinfo import ZoneInfo as _ZoneInfoPrd
+
+        _today_prd = datetime.now(_ZoneInfoPrd(tz)).date()
+    except Exception:
+        _log.warning(
+            "_fetch_previous_run_daily: ZoneInfo unavailable for tz=%s — "
+            "falling back to UTC date",
+            tz,
+        )
+        _today_prd = _utc_today()
+    past_days = (_today_prd - target_date).days
     if past_days < 0:
         return None
     lead = max(1, min(days_out, 7))
@@ -4709,13 +4726,24 @@ def _fetch_previous_run_leads(
     import requests as _req
 
     date_str = target_date.isoformat()
-    # utc_today(), not date.today(): target_date is UTC-anchored (see
-    # analyze_trade's own days_out computation against datetime.now(UTC)) --
-    # a server running ahead of UTC (e.g. Belgium, UTC+2) would otherwise
-    # under-count forecast_days by 1 and could miss the boundary day. Same
-    # bug class documented in utc_today()'s own docstring and already hit
-    # once in this project's test suite (2026-07-13, TestMonteCarloCholesky).
-    forecast_days = max(1, (target_date - _utc_today()).days + 1)
+    # ZoneInfo(tz), not utc_today(): target_date is CITY-LOCAL (see
+    # analyze_trade's own days_out computation, which post-0100bffe compares
+    # against a ZoneInfo-derived local today, not datetime.now(UTC)) -- a
+    # server running ahead of the city's own offset would otherwise
+    # under-count forecast_days by 1 and could miss the boundary day
+    # (AUD-0044). Falls back to UTC on ZoneInfo failure.
+    try:
+        from zoneinfo import ZoneInfo as _ZoneInfoPrl
+
+        _today_prl = datetime.now(_ZoneInfoPrl(tz)).date()
+    except Exception:
+        _log.warning(
+            "_fetch_previous_run_leads: ZoneInfo unavailable for tz=%s — "
+            "falling back to UTC date",
+            tz,
+        )
+        _today_prl = _utc_today()
+    forecast_days = max(1, (target_date - _today_prl).days + 1)
     hourly_vars = [f"temperature_2m_previous_day{lead}" for lead in leads]
 
     try:
