@@ -1940,6 +1940,48 @@ class TestFitAndSaveMetarCalibration:
         # cache must be invalidated so a running loop/watch process reloads
         assert wm._METAR_CAL is None
 
+    def test_autouse_fixture_isolates_write_from_production_path(
+        self, tmp_path, monkeypatch
+    ):
+        """AUD-0058: proves tests/conftest.py's autouse
+        isolate_metar_calibration_path fixture actually redirects
+        ml_bias._METAR_CALIBRATION_PATH away from the real production file
+        BY ITSELF -- deliberately does NOT monkeypatch
+        ml_bias._METAR_CALIBRATION_PATH in this test (every other test in
+        this class does, which would mask a broken/removed fixture). This
+        is the mutation-test proof for that fixture: disabling it must make
+        this test fail, not just rely on every test author remembering
+        their own direct patch.
+
+        Opus review (2026-08-22): the redirection is asserted BEFORE calling
+        fit_and_save_metar_calibration(), not after -- if the autouse fixture
+        is ever broken/removed, this guard must fail closed (test error, no
+        write attempted) rather than proceed to actually write synthetic
+        coefficients into the real production
+        data/metar_lockout_calibration.json file, which is exactly the
+        5d9b6c56 incident AUD-0058 exists to prevent. Asserting only after
+        the write (the original version of this test) would have reproduced
+        that incident instead of guarding against it, the moment the fixture
+        ever regressed."""
+        import ml_bias
+        import paths
+        import tracker
+        import weather_markets as wm
+
+        assert ml_bias._METAR_CALIBRATION_PATH != paths.METAR_CALIBRATION_PATH
+        assert ml_bias._METAR_CALIBRATION_PATH.parent == tmp_path
+
+        monkeypatch.setattr(tracker, "DB_PATH", tmp_path / "predictions.db")
+        monkeypatch.setattr(tracker, "_db_initialized", False)
+        monkeypatch.setattr(wm, "_METAR_CAL", None)
+        tracker.init_db()
+        self._seed_rows(tracker, n=35)
+
+        result = ml_bias.fit_and_save_metar_calibration()
+
+        assert result is not None
+        assert ml_bias._METAR_CALIBRATION_PATH.exists()
+
     def test_returns_none_and_writes_nothing_below_floor(self, tmp_path, monkeypatch):
         import ml_bias
         import tracker

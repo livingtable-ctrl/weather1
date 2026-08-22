@@ -24,6 +24,15 @@ def _basic_auth(password: str) -> dict:
     return {"Authorization": f"Basic {encoded}", "X-Requested-With": "XMLHttpRequest"}
 
 
+def _basic_auth_no_csrf(password: str) -> dict:
+    """Same as _basic_auth but WITHOUT the X-Requested-With header -- isolates
+    the CSRF half of _check_auth's AND condition (correct password, no CSRF
+    header) from the password half every other 'without_auth'/'wrong_password'
+    test in this file exercises."""
+    encoded = base64.b64encode(f"user:{password}".encode()).decode()
+    return {"Authorization": f"Basic {encoded}"}
+
+
 class TestMutationEndpointsRequireAuth:
     def test_halt_without_auth_returns_401(self):
         app = _make_app()
@@ -74,6 +83,36 @@ class TestMutationEndpointsRequireAuth:
                     json={"reason": "test"},
                     headers=_basic_auth("wrongpassword"),
                 )
+        assert resp.status_code == 401
+
+    def test_halt_with_correct_password_but_no_csrf_header_returns_401(self):
+        """AUD-UNMATCHED-56: _check_auth ANDs a correct password with the
+        X-Requested-With CSRF header -- every existing 'succeeds' test
+        bundles both, so a regression that silently drops this half of the
+        check (the actual CSRF protection) would pass the whole suite
+        undetected. Isolate it: correct password, header omitted."""
+        app = _make_app()
+        with app.test_client() as c:
+            with patch("utils.DASHBOARD_PASSWORD", "secret"):
+                resp = c.post(
+                    "/api/halt",
+                    json={"reason": "test"},
+                    headers=_basic_auth_no_csrf("secret"),
+                )
+        assert resp.status_code == 401
+
+    def test_resume_with_correct_password_but_no_csrf_header_returns_401(self):
+        app = _make_app()
+        with app.test_client() as c:
+            with patch("utils.DASHBOARD_PASSWORD", "secret"):
+                resp = c.post("/api/resume", headers=_basic_auth_no_csrf("secret"))
+        assert resp.status_code == 401
+
+    def test_run_cron_with_correct_password_but_no_csrf_header_returns_401(self):
+        app = _make_app()
+        with app.test_client() as c:
+            with patch("utils.DASHBOARD_PASSWORD", "secret"):
+                resp = c.post("/api/run_cron", headers=_basic_auth_no_csrf("secret"))
         assert resp.status_code == 401
 
     def test_run_cron_rate_limited_after_first_spawn(self):

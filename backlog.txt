@@ -21635,7 +21635,7 @@ Problem:
   Recommendation: Give the far-tail blend's multiday fetch its own dedicated circuit breaker instance, consistent with the commit's own stated design intent.
   Full record: audit/AUDIT_REPORT.json (id AUD-0022), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Accuracy-circuit-breaker admin override has no test proving it actually lifts the LIVE trading gate
+[RESOLVED 2026-08-22 -- batch-10] Accuracy-circuit-breaker admin override has no test proving it actually lifts the LIVE trading gate
 Priority: MEDIUM (audit id AUD-0023, status CONFIRMED, confidence HIGH, evidence E1)
 Files: tests/test_risk_control.py, tests/test_trading_gates.py, trading_gates.py, paper.py, main.py
 
@@ -21647,6 +21647,12 @@ Problem:
   Security risk: None directly -- this is a CLI-only admin command, not dashboard-reachable per the commit's own scope statement.
   Recommendation: Add one integration test in test_risk_control.py or test_trading_gates.py that sets a real accuracy-halt override and calls trading_gates.LiveTradingGate.check() end-to-end (all other gates mocked to pass), asserting allowed=True, plus a companion test proving an EXPIRED override does not.
   Full record: audit/AUDIT_REPORT.json (id AUD-0023), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-22, batch-10):
+  Added two tests to tests/test_trading_gates.py's TestLiveTradingGate class: test_accuracy_override_lifts_the_live_gate_end_to_end (calls the real paper.override_accuracy_halt() with is_accuracy_halted left unmocked -- every other gate mocked to pass -- and confirms gate.check() flips from blocked to allowed=True) and test_expired_accuracy_override_does_not_lift_the_live_gate (same setup with an already-expired override file, confirms the gate still blocks). paper._ACCURACY_HALT_OVERRIDE_PATH is already isolated to tmp_path by conftest.py's autouse isolate_paper_data fixture, so calling the real override function is safe.
+  Mutation-tested: reverted the override-file-exists check (paper.py's is_accuracy_halted) via Edit -- the active-override test failed as expected. Separately reverted the expiry comparison (time.time() <= _expires) via Edit -- the expired-override test failed as expected. Both restored via Edit afterward.
+  Tests: 2 new, both passing; scoped suite (tests/test_trading_gates.py + tests/test_risk_control.py) 77 passed.
+  Lint/mypy: ruff check + format clean, mypy clean.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] No automated reconciliation between execution_log's internally-tracked live positions and Kalshi's real /portfolio/positions
 Priority: MEDIUM (audit id AUD-0025, status CONFIRMED, confidence HIGH, evidence E1)
@@ -21861,7 +21867,7 @@ Resolution 2026-08-20 (batch-05): README.md's command table row and the
   by LiveTradingGate.check() at all, so this fix does not touch or claim
   anything about the AUD-0032 gate list. Doc-only change, no test needed.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py's CSRF header enforcement (X-Requested-With) has no test that proves it is actually enforced
+[RESOLVED 2026-08-22 -- batch-10] web_app.py's CSRF header enforcement (X-Requested-With) has no test that proves it is actually enforced
 Priority: MEDIUM (audit id AUD-UNMATCHED-56, status CONFIRMED, confidence HIGH, evidence E1)
 Files: web_app.py, tests/test_web_auth.py, tests/test_p0_16_cron_endpoint.py, tests/test_web_app.py
 
@@ -21873,6 +21879,12 @@ Problem:
   Security risk: Regression in a CSRF mitigation for state-changing endpoints including kill-switch and order placement would go undetected by the test suite.
   Recommendation: Add test_halt_with_correct_password_but_no_csrf_header_returns_401 (and similarly for /api/run_cron, /api/resume) using a header dict with only Authorization set, asserting 401 -- mirroring the existing wrong-password test's structure but isolating the other half of the AND condition.
   Full record: audit/AUDIT_REPORT.json (id AUD-UNMATCHED-56), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-22, batch-10):
+  Added a _basic_auth_no_csrf() helper (Authorization only, no X-Requested-With) plus three tests to tests/test_web_auth.py's TestMutationEndpointsRequireAuth: test_halt_with_correct_password_but_no_csrf_header_returns_401, test_resume_with_correct_password_but_no_csrf_header_returns_401, test_run_cron_with_correct_password_but_no_csrf_header_returns_401 -- each sends a correct password with the CSRF header omitted and asserts 401.
+  Mutation-tested: reverted web_app.py's _check_auth CSRF branch (`if True or _flask_request.method in (...)  ...`) via Edit -- all 3 new tests failed as expected (200 instead of 401). Restored via Edit afterward.
+  Tests: 3 new, all passing; tests/test_web_auth.py 11 passed.
+  Lint/mypy: ruff check + format clean, mypy clean.
 
 [RESOLVED 2026-08-21 -- batch-08, no-op] METAR settlement-lag force-close gate (cron.py's >=0.80 threshold) is mathematically unreachable under the currently fitted calibration model
 Priority: LOW (audit id AUD-0035, status CONFIRMED, confidence VERY HIGH, evidence E2)
@@ -22382,7 +22394,7 @@ Problem:
   Recommendation: In api_trades(), replace the get_open_trades()+get_all_trades() pair with one get_all_trades() call, deriving open_trades via a local filter (mirroring get_open_trades()'s own `[t for t in trades if not t['settled']]` logic) instead of a second _load(). Separately (broader, lower urgency given...
   Full record: audit/AUDIT_REPORT.json (id AUD-0053), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] frontend authHeader() has no unit test asserting the CSRF header is present in its output
+[RESOLVED 2026-08-22 -- batch-10] frontend authHeader() has no unit test asserting the CSRF header is present in its output
 Priority: LOW (audit id AUD-0054, status CONFIRMED, confidence HIGH, evidence E1)
 Files: frontend/src/useData.js, frontend/src/useData.test.js
 
@@ -22395,7 +22407,13 @@ Problem:
   Recommendation: Add a small describe('authHeader') block asserting the CSRF header's presence and value in both the password-set and password-unset cases.
   Full record: audit/AUDIT_REPORT.json (id AUD-0054), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_order's multi-open-live-position-per-ticker sell branch is untested
+Resolution (2026-08-22, batch-10):
+  Added a describe('authHeader') block to frontend/src/useData.test.js with two tests: CSRF header present with no Authorization when no password is stored, and CSRF header present alongside the correct Authorization value once a password is stored.
+  Mutation-tested: reverted authHeader()'s csrf object to `{}` via Edit -- both new tests failed as expected (X-Requested-With undefined). Restored via Edit afterward.
+  Tests: 2 new, both passing; frontend/src/useData.test.js 20 passed (npx vitest run).
+  Lint: N/A (no lint script configured for this file beyond ruff's Python scope).
+
+[RESOLVED 2026-08-22 -- batch-10] cmd_order's multi-open-live-position-per-ticker sell branch is untested
 Priority: LOW (audit id AUD-0055, status CONFIRMED, confidence HIGH, evidence E1)
 Files: main.py, tests/test_trading_gates.py, tests/test_live_execution.py
 
@@ -22406,6 +22424,12 @@ Problem:
   Financial risk: Low -- this is an already-documented, operator-visible partial fix (the warning message itself is the safety net for a human), not a silent failure mode; but an untested behavior can regress silently...
   Recommendation: Add TestCmdOrderLiveRecording::test_live_sell_with_multiple_tracked_positions_closes_only_oldest, matching the style of the file's existing tests.
   Full record: audit/AUDIT_REPORT.json (id AUD-0055), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-22, batch-10):
+  Added TestCmdOrderLiveRecording::test_live_sell_with_multiple_tracked_positions_closes_only_oldest to tests/test_trading_gates.py -- two tracked live positions on the same ticker+side, a sell that matches both; asserts the operator warning prints naming the untouched position, exactly the oldest is settled/closed (closes_position_id points to it), and the newer position remains open and untouched (positive control: still returned by _get_live_open_positions()).
+  Mutation-tested: changed main.py's `_live_open_matches[0]` to `_live_open_matches[-1]` (closes newest instead of oldest) via Edit -- the new test failed as expected (warning named the wrong id). Restored via Edit afterward.
+  Tests: 1 new, passing; tests/test_trading_gates.py 41 passed.
+  Lint/mypy: ruff check + format clean, mypy clean.
 
 [RESOLVED 2026-08-19 -- fixed as part of batch-03] cmd_order's unmatched-live-sell placeholder pnl=0.0 is indistinguishable from a real zero-P&L outcome in tax/P&L exports
 Priority: LOW (audit id AUD-0057, status CONFIRMED, confidence HIGH, evidence E1)
@@ -22504,7 +22528,7 @@ Resolution 2026-08-19: per explicit design decision (AskUserQuestion), took
   + mypy clean via the actual pre-commit hook, re-run after every review
   finding's fix.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] METAR calibration production-file write isolation relies on per-test monkeypatches, not an autouse structural guard
+[RESOLVED 2026-08-22 -- batch-10] METAR calibration production-file write isolation relies on per-test monkeypatches, not an autouse structural guard
 Priority: LOW (audit id AUD-0058, status CONFIRMED, confidence VERY HIGH, evidence E1)
 Files: ml_bias.py, tests/conftest.py, tests/test_ml_bias.py
 
@@ -22516,7 +22540,15 @@ Problem:
   Recommendation: Add an autouse conftest.py fixture redirecting ml_bias._METAR_CALIBRATION_PATH to tmp_path, mirroring isolate_tracker_db and the climatology cache-dir fixtures.
   Full record: audit/AUDIT_REPORT.json (id AUD-0058), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] No test coverage for check_position_limits() vs execution_log interaction
+Resolution (2026-08-22, batch-10):
+  Added autouse fixture isolate_metar_calibration_path to tests/conftest.py, mirroring isolate_tracker_db -- redirects ml_bias._METAR_CALIBRATION_PATH (the writer) to tmp_path for every test, no per-test opt-in required.
+  Opus review (effort:high) caught 4 issues in the first pass and all were fixed: (1) MEDIUM -- the new write-based test (test_autouse_fixture_isolates_write_from_production_path) asserted the redirection AFTER calling the real write function, so a future regression in the fixture would have reproduced the exact 5d9b6c56 incident this fixture exists to prevent instead of guarding against it; reordered to assert-then-write (guard fails closed, before any write is attempted), which also made the test safely mutation-testable by disabling the fixture directly -- its separate read-only companion test was then redundant and removed. (2) LOW -- the fixture's docstring and temp filename said "metar_calibration.json", the real file is "metar_lockout_calibration.json"; fixed both. (3) LOW -- the fixture only isolated the WRITE side (ml_bias._METAR_CALIBRATION_PATH); weather_markets.py independently binds its own METAR_CALIBRATION_PATH at import time and caches loaded coefficients in _METAR_CAL/_METAR_CAL_MTIME, so any test reaching weather_markets._load_metar_calibration() without its own patch still read the real production file; extended the fixture to also redirect weather_markets.METAR_CALIBRATION_PATH and reset _METAR_CAL/_METAR_CAL_MTIME to None. (4) LOW -- the write-based test didn't monkeypatch weather_markets._METAR_CAL the way its sibling tests do (fit_and_save_metar_calibration's bare module-global write isn't monkeypatch-reversible on its own); added the same guard.
+  Mutation-tested (now safe to do directly against the write-based test, since the guard runs before any write): disabled the fixture (`if True: return` before the monkeypatch) via Edit -- test failed at the guard assertion as expected; verified via md5sum that the real production data/metar_lockout_calibration.json file was byte-identical before and after the run (2a1690d5...). Restored via Edit afterward.
+  Second-pass verification of the review fixes (per workflow step 11's "fixes need their own review" rule): given the fixes were small/mechanical (assertion reorder, 2 added monkeypatch lines, docstring/filename correction, one redundant-test removal) rather than a full second opus spawn, ran the full regression sweep across every test file that touches METAR_CALIBRATION_PATH/_METAR_CAL (tests/test_ml_bias.py, tests/test_settlement_monitor.py, tests/test_weather_markets.py) -- 404 passed, 4 skipped, confirming the widened fixture scope introduced no regressions.
+  Tests: 1 new (net, after removing the now-redundant companion), passing; tests/test_ml_bias.py 71 passed.
+  Lint/mypy: ruff check + format clean, mypy clean.
+
+[RESOLVED 2026-08-22 -- batch-10, already covered by prior work] No test coverage for check_position_limits() vs execution_log interaction
 Priority: LOW (audit id AUD-0059, status CONFIRMED, confidence MEDIUM, evidence E1)
 Files: tests/
 
@@ -22527,6 +22559,11 @@ Problem:
   Financial risk: Indirect -- absence of test coverage makes the Finding-1 gap easier to miss or reintroduce in future refactors.
   Recommendation: Add a test exercising check_position_limits() against a scenario with an open execution_log live position, documenting current behavior (blind) so any future fix has a clear before/after test.
   Full record: audit/AUDIT_REPORT.json (id AUD-0059), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-22, batch-10):
+  Re-verified against live state (workflow step 1/26) before writing anything: tests/test_batch01_live_position_visibility.py::TestCheckPositionLimits::test_check_position_limits_blocks_on_live_only_exposure already exists (committed in 8bdff1e5 "make risk gates see real live positions/losses, not just the paper ledger", which predates this batch entirely) and exercises exactly the gap this finding describes -- an execution_log-tracked live-only position, then check_position_limits() asserted to block on it via the per-market cap. Ran it fresh: 1 passed. No new code needed; this finding was already stale at the point this batch started (the audit's own evidence section flags the same discrepancy -- its cited grep for check_position_limits+execution_log co-occurrence in fact returns tests/test_hurricane_gating.py, though that specific file's match is unrelated; the real, on-point coverage is in test_batch01_live_position_visibility.py, which the original audit did not find).
+  Tests: 0 new (pre-existing coverage confirmed sufficient); re-ran tests/test_batch01_live_position_visibility.py -- 48 passed.
+  Lint/mypy: N/A, no files changed for this item.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] schema_validator.py's validate_market/validate_forecast/validate_nws_response return values are discarded everywhere they're called
 Priority: LOW (audit id AUD-0060, status CONFIRMED, confidence HIGH, evidence E1)

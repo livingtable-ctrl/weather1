@@ -232,6 +232,41 @@ def isolate_tracker_db(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolate_metar_calibration_path(tmp_path, monkeypatch):
+    """Redirect both ml_bias._METAR_CALIBRATION_PATH (the writer) and
+    weather_markets.METAR_CALIBRATION_PATH + its _METAR_CAL/_METAR_CAL_MTIME
+    read cache (the reader) to a per-test temp file.
+
+    AUD-0058: both ml_bias.py and weather_markets.py bind
+    METAR_CALIBRATION_PATH from paths.py at import time (same
+    import-time-binding hazard as [[feedback_monkeypatch_env_vs_attr]]) --
+    monkeypatching paths.METAR_CALIBRATION_PATH itself does NOT reach either.
+    5d9b6c56's commit message documents a real incident where exactly this
+    gap let a test silently write synthetic coefficients to the real
+    production data/metar_lockout_calibration.json. Mirrors isolate_tracker_db
+    above: a structural (autouse) guard rather than relying on every test
+    author to remember ml_bias._METAR_CALIBRATION_PATH's own direct-patch
+    convention (tests/test_ml_bias.py still does this explicitly in several
+    places -- harmless, since setting the same attribute twice to two
+    different tmp_path values is idempotent from each test's own
+    perspective). weather_markets._METAR_CAL is also reset to None (with
+    _METAR_CAL_MTIME) so a prior test's cached coefficients -- possibly
+    loaded from the real production path before this fixture existed for
+    that test run -- can never leak into a later test that reads through
+    weather_markets._load_metar_calibration() (opus review, 2026-08-22:
+    the original version of this fixture only isolated the WRITE side).
+    """
+    import ml_bias
+    import weather_markets
+
+    cal_path = tmp_path / "metar_lockout_calibration.json"
+    monkeypatch.setattr(ml_bias, "_METAR_CALIBRATION_PATH", cal_path)
+    monkeypatch.setattr(weather_markets, "METAR_CALIBRATION_PATH", cal_path)
+    monkeypatch.setattr(weather_markets, "_METAR_CAL", None)
+    monkeypatch.setattr(weather_markets, "_METAR_CAL_MTIME", None)
+
+
+@pytest.fixture(autouse=True)
 def reset_open_meteo_circuit_breaker():
     """Reset all weather_markets, acis_precip, acis_snow, climatology,
     kalshi_client, AND nws circuit breakers before every test.

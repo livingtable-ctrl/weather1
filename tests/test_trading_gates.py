@@ -178,6 +178,76 @@ class TestLiveTradingGate:
         assert not allowed
         assert "Accuracy" in reason
 
+    def test_accuracy_override_lifts_the_live_gate_end_to_end(self, monkeypatch):
+        """AUD-0023: override_accuracy_halt()'s own docstring claims it
+        "ALSO lifts trading_gates.LiveTradingGate's accuracy check" -- every
+        other test in this class mocks paper.is_accuracy_halted directly, so
+        that specific integration point (a real ACCURACY_HALT_OVERRIDE_PATH
+        file reaching this gate through the real is_accuracy_halted()) was
+        never exercised end-to-end. paper._ACCURACY_HALT_OVERRIDE_PATH is
+        isolated to tmp_path by conftest.py's autouse isolate_paper_data
+        fixture, so calling the real override function here is safe.
+        is_accuracy_halted itself is intentionally left unmocked; every
+        other gate is mocked to pass so this test proves only the override's
+        wiring, not the underlying win-rate/SPRT logic (already covered by
+        TestAccuracyHaltOverride in test_risk_control.py)."""
+        import paper
+
+        gate = self._gate()
+        monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.20, 20))
+        with (
+            patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, _PROD_ENV),
+            patch("paper.graduation_check", return_value={"settled": 35}),
+            patch("paper.is_paused_drawdown", return_value=False),
+            patch("paper.is_daily_loss_halted", return_value=False),
+            patch("paper.is_streak_paused", return_value=False),
+        ):
+            # Sanity: without an override, the real (unmocked) is_accuracy_halted
+            # halts on the rigged win rate above, so the gate blocks too.
+            allowed, reason = gate.check()
+            assert not allowed
+            assert "Accuracy" in reason
+
+            paper.override_accuracy_halt(reason="test", minutes=30)
+            allowed, reason = gate.check()
+        assert allowed
+        assert reason == "ok"
+
+    def test_expired_accuracy_override_does_not_lift_the_live_gate(self, monkeypatch):
+        """Companion to the override test above: an EXPIRED override must
+        NOT lift the live gate -- the time-boxing is the override's whole
+        safety property (see override_accuracy_halt's docstring), and this
+        end-to-end path is exactly as untested pre-fix as the active-override
+        case."""
+        import json
+        import time
+
+        import paper
+
+        gate = self._gate()
+        monkeypatch.setattr("tracker.get_rolling_win_rate", lambda window: (0.20, 20))
+        paper._ACCURACY_HALT_OVERRIDE_PATH.write_text(
+            json.dumps(
+                {
+                    "expires_at": time.time() - 60,
+                    "reason": "already expired",
+                    "minutes": 1,
+                }
+            )
+        )
+        with (
+            patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, _PROD_ENV),
+            patch("paper.graduation_check", return_value={"settled": 35}),
+            patch("paper.is_paused_drawdown", return_value=False),
+            patch("paper.is_daily_loss_halted", return_value=False),
+            patch("paper.is_streak_paused", return_value=False),
+        ):
+            allowed, reason = gate.check()
+        assert not allowed
+        assert "Accuracy" in reason
+
     def test_blocks_when_streak_paused(self):
         gate = self._gate()
         with (
@@ -775,6 +845,96 @@ class TestCmdOrderLiveRecording:
         assert exit_row["closes_position_id"] == position_id
         # Must not also open a phantom NEW paper position at the sell price
         # -- the exact bug class this fix resolves.
+        assert paper.get_all_trades() == []
+
+    def test_live_sell_with_multiple_tracked_positions_closes_only_oldest(
+        self, monkeypatch, capsys
+    ):
+        """AUD-0055: e5331a8d's cmd_order live-sell matching explicitly
+        handles (and warns about) more than one tracked open live position
+        sharing the same ticker+side -- a deliberately-scoped partial fix
+        (closes_position_id can only reference one row) that was never
+        exercised by any test. Two tracked positions here, oldest placed
+        first: the sell must close ONLY the oldest (by placed_at ascending,
+        matching get_filled_unsettled_live_orders()'s ORDER BY), warn the
+        operator about the untouched one, and leave the newer position open
+        and unmodified."""
+        import execution_log
+        import main
+        import paper
+        from kalshi_client import PROD_BASE
+        from order_executor import _get_live_open_positions
+
+        older_id = execution_log.log_order(
+            ticker="KXHIGH-NYC-26APR17-T70",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        execution_log.log_order_result(older_id, status="filled", fill_quantity=10)
+        newer_id = execution_log.log_order(
+            ticker="KXHIGH-NYC-26APR17-T70",
+            side="yes",
+            quantity=5,
+            price=0.45,
+            status="filled",
+            live=True,
+        )
+        execution_log.log_order_result(newer_id, status="filled", fill_quantity=5)
+        assert older_id != newer_id
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = None
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "status": "executed",
+            "fill_count_fp": "10.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "sell", ["KXHIGH-NYC-26APR17-T70", "yes", "10", "0.60"]
+            )
+
+        captured = capsys.readouterr()
+        # (a) the operator warning prints, naming the untouched position.
+        assert "only closes the oldest" in captured.out
+        assert f"#{older_id}" in captured.out
+
+        with execution_log._conn() as con:
+            older_row = con.execute(
+                "SELECT settled_at FROM orders WHERE id = ?", (older_id,)
+            ).fetchone()
+            newer_row = con.execute(
+                "SELECT settled_at, closes_position_id FROM orders WHERE id = ?",
+                (newer_id,),
+            ).fetchone()
+            exit_row = con.execute(
+                "SELECT closes_position_id FROM orders WHERE id NOT IN (?, ?) "
+                "ORDER BY id DESC LIMIT 1",
+                (older_id, newer_id),
+            ).fetchone()
+        # (b) exactly the oldest is closed.
+        assert older_row["settled_at"] is not None
+        assert exit_row["closes_position_id"] == older_id
+        # (c) the newer position remains open and untouched.
+        assert newer_row["settled_at"] is None
+        assert newer_row["closes_position_id"] is None
+        # Positive control: the newer position must still be a real,
+        # queryable open position afterward -- not just "not closed" by
+        # accident of a field this test forgot to check.
+        remaining = _get_live_open_positions()
+        assert len(remaining) == 1
+        assert remaining[0]["id"] == newer_id
         assert paper.get_all_trades() == []
 
     def test_live_sell_partial_fill_settles_own_exit_row_pnl(self, monkeypatch):

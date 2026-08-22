@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { computeMark, fetchAllSafe } from './useData.js';
+import { computeMark, fetchAllSafe, authHeader } from './useData.js';
 
 // Hand-computed fixtures mirroring positions.liquidation_price()'s convention:
 // YES realizes at yes_bid, NO realizes at 1 - yes_ask. See backlog.txt for the
@@ -107,6 +107,37 @@ describe('computeMark', () => {
     const { mark, markIsLive } = computeMark(t);
     expect(markIsLive).toBe(false);
     expect(mark).toBe(0.40);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// authHeader — AUD-0054: the CSRF header (X-Requested-With) is the actual
+// security-relevant property web_app.py's _check_auth enforces (see
+// tests/test_web_auth.py's server-side coverage of the same header). This
+// helper had coverage only implicitly, through fetchAllSafe's mocked-fetch
+// assertions on the Authorization value -- never a direct assertion on the
+// CSRF header's presence/value, in either the password-set or
+// password-unset case.
+// ---------------------------------------------------------------------------
+describe('authHeader', () => {
+  beforeEach(() => {
+    vi.stubGlobal('sessionStorage', createMemoryStorage());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('includes the CSRF header when no password is stored', () => {
+    const headers = authHeader();
+    expect(headers['X-Requested-With']).toBe('XMLHttpRequest');
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  it('includes the CSRF header alongside Authorization once a password is stored', () => {
+    sessionStorage.setItem('kalshi-pwd', 'secret');
+    const headers = authHeader();
+    expect(headers['X-Requested-With']).toBe('XMLHttpRequest');
+    expect(headers.Authorization).toBe('Basic ' + btoa(':secret'));
   });
 });
 
