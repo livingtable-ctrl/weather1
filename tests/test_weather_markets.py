@@ -6093,6 +6093,134 @@ class TestMetarLockInLowMarketAsymmetry:
         assert details.get("outcome") == "yes"
 
 
+# ── TestMetarLockInCombinesCurrentWithDailyExtreme ───────────────────────────
+# Backlog.txt "weather_markets._metar_lock_in never combines current_temp_f
+# with the daily-extreme cache" (filed 2026-08-21, round-3 review of AUD-0016):
+# fetch_metar and fetch_metar_daily_extreme are independently ~15-min-TTL
+# cached and can disagree. _metar_lock_in must combine them via max()/min()
+# (direction matching HIGH-vs-LOW market type) the same way
+# settlement_monitor._check_between_settlement's AUD-0016 fix does, rather
+# than using the stale daily extreme alone and silently ignoring a fresher,
+# more-extreme current_temp_f reading.
+#
+# Unlike the between-bucket branch (see TestBetweenLockInDynamicConfidence in
+# tests/test_phase2_batch_d.py), this above/below branch does NOT need a
+# separate "gate on the raw extreme, measure clearance on the combined
+# value" split. Not because every branch check_metar_lockout can reach is
+# monotone-safe (a HIGH market's "below"-direction YES is not, and remains a
+# separate, pre-existing, out-of-scope gap) -- rather, combining always
+# moves _comp_temp in the single direction that tightens whichever
+# comparison a given branch performs: it can only make a monotone-safe
+# branch fire at least as readily (a correct tighter bound) and can only
+# make a non-monotone branch fire less readily (more conservative). There is
+# no interior band here for a fresher reading to be prematurely counted as
+# having "entered", so a plain uniform combine is correct and sufficient.
+
+
+class TestMetarLockInCombinesCurrentWithDailyExtreme:
+    """Above/below branch (weather_markets.py ~L10909-10935)."""
+
+    def _call(self, current_temp_f, daily_extreme, threshold, cond_type, ticker):
+        from datetime import datetime
+        from unittest.mock import MagicMock, patch
+        from zoneinfo import ZoneInfo
+
+        import metar as _metar
+        import weather_markets as wm
+
+        today = datetime.now(ZoneInfo("America/New_York")).date()
+        fake_obs_time = MagicMock()
+        fake_obs_local = MagicMock(hour=16)
+        fake_obs_local.date.return_value = today
+        fake_obs_time.astimezone.return_value = fake_obs_local
+
+        with patch.object(wm, "_metar_station_for_city", return_value="KJFK"):
+            with (
+                patch.object(
+                    _metar,
+                    "fetch_metar",
+                    return_value={
+                        "current_temp_f": current_temp_f,
+                        "obs_time": fake_obs_time,
+                    },
+                ),
+                patch.object(
+                    _metar, "fetch_metar_daily_extreme", return_value=daily_extreme
+                ),
+            ):
+                return wm._metar_lock_in(
+                    city="NYC",
+                    target_date=today,
+                    condition={"type": cond_type, "threshold": threshold},
+                    ticker=ticker,
+                )
+
+    def test_high_market_stale_low_daily_extreme_does_not_falsely_lock_yes(self):
+        """HIGH market ('below 85' -- bet the day's high stays below 85), a
+        stale cached daily-high-so-far of 80 (<= 85-3 margin) would, on its
+        own, lock a confident YES ('high stayed below 85'). But a fresher
+        current_temp_f of 90 shows the day has ALREADY spiked past 85 --
+        the YES lock would be dangerously wrong. Must combine via max() and
+        lock NO instead (the day's high has already breached the threshold),
+        not silently lock the stale, wrong YES."""
+        locked, _prob, details = self._call(
+            current_temp_f=90.0,
+            daily_extreme=80.0,
+            threshold=85.0,
+            cond_type="below",
+            ticker="KXHIGHNY-26AUG10-B85.0",
+        )
+        assert locked is True
+        assert details.get("outcome") == "no", (
+            f"expected a NO lock reflecting the fresher, higher current "
+            f"reading (90 >= 85+3), not a stale YES off the cached daily "
+            f"extreme (80) alone: {details}"
+        )
+        assert details.get("comp_temp_f") == 90.0
+
+    def test_high_market_fresher_current_extends_daily_extreme_to_lock(self):
+        """HIGH market ('above 85'), a stale cached daily-high-so-far of 83
+        (inside the no-lock zone, [82, 88]) would not lock on its own. A
+        fresher current_temp_f of 90 (>= 85+3) shows the day has already
+        cleared the threshold -- must combine via max() and lock YES."""
+        locked, _prob, details = self._call(
+            current_temp_f=90.0,
+            daily_extreme=83.0,
+            threshold=85.0,
+            cond_type="above",
+            ticker="KXHIGHNY-26AUG10-B85.0",
+        )
+        assert locked is True
+        assert details.get("outcome") == "yes", (
+            f"expected a YES lock off the fresher current reading (90 >= "
+            f"85+3), not withheld because the stale daily extreme (83) "
+            f"alone doesn't clear the margin: {details}"
+        )
+        assert details.get("comp_temp_f") == 90.0
+
+    def test_low_market_combines_fresher_lower_current_into_safe_no_lock(self):
+        """LOW market ('above 40' -- bet the day's low stays above 40), a
+        stale cached daily-low-so-far of 42 (inside the no-lock zone, [37,
+        43]) would not lock on its own. A fresher current_temp_f of 30
+        (<= 40-3, the monotone-safe NO direction -- the low already fell
+        below the margin and can only stay there or go lower) must not be
+        ignored in favor of the stale, still-in-range daily extreme."""
+        locked, _prob, details = self._call(
+            current_temp_f=30.0,
+            daily_extreme=42.0,
+            threshold=40.0,
+            cond_type="above",
+            ticker="KXLOWNY-26AUG10-B40.0",
+        )
+        assert locked is True
+        assert details.get("outcome") == "no", (
+            f"expected a NO lock off the fresher, lower current reading "
+            f"(30 <= 40-3), not withheld because the stale daily extreme "
+            f"(42) alone doesn't clear the margin: {details}"
+        )
+        assert details.get("comp_temp_f") == 30.0
+
+
 # ── TestMosBlendNoCrossVariableFallback ──────────────────────────────────────
 
 

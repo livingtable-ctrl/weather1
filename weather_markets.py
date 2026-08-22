@@ -10909,8 +10909,42 @@ def _metar_lock_in(
             _daily_ext = _metar.fetch_metar_daily_extreme(
                 _metar_sta, _city_tz_str, _local_today, "min" if _is_low_mkt else "max"
             )
+            # Combine with the fresher current_temp_f reading (mirrors
+            # settlement_monitor._check_between_settlement's AUD-0016 fix —
+            # fetch_metar and fetch_metar_daily_extreme are independently
+            # TTL-cached and can disagree). current_temp_f is always one of
+            # the individual observations the true running extreme is taken
+            # over, so min()/max() with it can only tighten _comp_temp toward
+            # the true value, never overshoot past it. Unlike the between
+            # branch below, there is no separate "gate on the raw extreme,
+            # measure clearance on the combined value" split needed here.
+            # NOT because every branch check_metar_lockout can reach is
+            # monotone-safe (it isn't -- e.g. a HIGH market's "below"-
+            # direction YES, M <= T-margin, is exactly as exposed to further
+            # rise as the between branch's at-risk edge, and is only made
+            # safe here by the separate _is_low_mkt-style reasoning below /
+            # the pre-existing, out-of-scope gap for HIGH markets noted
+            # there). Rather: combining always moves _comp_temp in the
+            # single direction that tightens (never loosens) whichever
+            # comparison a given branch actually performs -- max()/min()
+            # with current_temp_f can only make a monotone-safe branch fire
+            # AT LEAST as readily (correct, since it's a valid tighter bound
+            # on the true extreme) and can only make a non-monotone branch
+            # fire LESS readily (more conservative, never newly unsafe).
+            # There is no case, unlike the between branch's in-band check,
+            # where combining could turn a correct "not yet locked" into an
+            # incorrect "locked" by papering over a real daily extreme that
+            # hasn't actually reached the decision-relevant zone yet --
+            # because there is no interior band here for a fresher reading
+            # to be prematurely counted as having entered.
             _comp_temp = (
-                _daily_ext if _daily_ext is not None else _metar_obs["current_temp_f"]
+                (
+                    min(_metar_obs["current_temp_f"], _daily_ext)
+                    if _is_low_mkt
+                    else max(_metar_obs["current_temp_f"], _daily_ext)
+                )
+                if _daily_ext is not None
+                else _metar_obs["current_temp_f"]
             )
             _lockout = _metar.check_metar_lockout(
                 current_temp_f=_comp_temp,
@@ -10974,8 +11008,25 @@ def _metar_lock_in(
             _daily_ext = _metar.fetch_metar_daily_extreme(
                 _metar_sta, _city_tz_str, _local_today, "min" if _is_low_mkt else "max"
             )
+            # Combine with the fresher current_temp_f reading for the NO
+            # branches below (mirrors settlement_monitor._check_between_
+            # settlement's AUD-0016 fix, final/round-3 form, 2026-08-21):
+            # fetch_metar and fetch_metar_daily_extreme are independently
+            # TTL-cached and can disagree. current_temp_f is always one of
+            # the observations the true running extreme is taken over, so
+            # min()/max() with it can only tighten _comp_temp toward the
+            # true value, never overshoot past it. The YES/in-band block
+            # below deliberately does NOT gate membership on this combined
+            # value -- see its own comment for why (that was round 1's
+            # naive attempt at this exact fix, found insufficient).
             _comp_temp = (
-                _daily_ext if _daily_ext is not None else _metar_obs["current_temp_f"]
+                (
+                    min(_metar_obs["current_temp_f"], _daily_ext)
+                    if _is_low_mkt
+                    else max(_metar_obs["current_temp_f"], _daily_ext)
+                )
+                if _daily_ext is not None
+                else _metar_obs["current_temp_f"]
             )
             _margin = 3.0  # matches check_metar_lockout's own default
             # Log/reason wording: distinguish a real daily extreme from the
@@ -11104,18 +11155,43 @@ def _metar_lock_in(
                         "reading alone"
                     ),
                 }
-            elif _lo <= _comp_temp <= _hi:
-                # Inside the band right now — NOT yet safe by itself, since the
-                # running extreme can still move toward the one edge it hasn't
-                # ruled out (upper for HIGH markets, lower for LOW markets; the
-                # other edge is already foreclosed by the monotonic direction,
-                # same reasoning as the two NO branches above). Lock YES only
-                # once there's real clearance to that at-risk edge, using
-                # _dynamic_lock_in_confidence's own hour/clearance scaling (not
-                # a bespoke cutoff) to price in how likely further drift still
-                # is — a marginal early lock gets a low confidence and
-                # therefore a small Kelly stake downstream rather than being
-                # blocked outright.
+            elif _lo <= _daily_ext <= _hi:
+                # Membership gated on the RAW daily extreme (_daily_ext), NOT
+                # _comp_temp -- mirrors settlement_monitor._check_between_
+                # settlement's AUD-0016 fix, final/round-3 form (2026-08-21).
+                # An earlier draft of this fix gated membership on _comp_temp
+                # itself (round 1's naive combine): that let a fresher,
+                # higher current_temp_f pull a daily extreme that HASN'T
+                # actually entered the band yet into this branch, deciding
+                # the lock off a still-rising instantaneous reading the
+                # in-band requirement exists to exclude -- the running
+                # extreme can still move toward the one edge it hasn't ruled
+                # out (upper for HIGH markets, lower for LOW markets; the
+                # other edge is already foreclosed by the monotonic
+                # direction, same reasoning as the two NO branches above),
+                # and an in-band CURRENT reading alone proves nothing about
+                # whether the true extreme already passed through it.
+                #
+                # Clearance to that at-risk edge, however, IS measured
+                # against _comp_temp (not _daily_ext) -- this is what
+                # correctly refuses a stale-cache YES: since _comp_temp is
+                # always at least as extreme as _daily_ext, using it can
+                # only SHRINK the measured clearance relative to using
+                # _daily_ext alone, so it can't reintroduce the still-rising
+                # hazard above (that requires _daily_ext itself to be
+                # in-band, independent of _comp_temp) while it correctly
+                # refuses the lock the moment a fresher current_temp_f eats
+                # into the margin -- all the way to current_temp_f clearing
+                # the at-risk edge entirely, which drives clearance negative
+                # and fails the margin check below with no separate veto
+                # needed.
+                #
+                # Lock YES only once there's real clearance to the at-risk
+                # edge, using _dynamic_lock_in_confidence's own hour/
+                # clearance scaling (not a bespoke cutoff) to price in how
+                # likely further drift still is — a marginal early lock gets
+                # a low confidence and therefore a small Kelly stake
+                # downstream rather than being blocked outright.
                 #
                 # The gating margin here is NOT the same `_margin` (3.0°F)
                 # used by the two NO branches above: those measure clearance
@@ -11148,9 +11224,10 @@ def _metar_lock_in(
                             _risk_clearance, _lh, _yes_inband_margin
                         ),
                         "reason": (
-                            f"{_ext_kind} {_comp_temp:.1f}°F inside "
-                            f"[{_lo}, {_hi}] with {_risk_clearance:.1f}°F "
-                            "clearance to the at-risk edge"
+                            f"{_ext_kind} {_daily_ext:.1f}°F inside "
+                            f"[{_lo}, {_hi}] — clearance {_risk_clearance:.1f}°F "
+                            f"to the at-risk edge measured from comp_temp "
+                            f"{_comp_temp:.1f}°F"
                         ),
                     }
                 else:
@@ -11159,9 +11236,10 @@ def _metar_lock_in(
                         "outcome": None,
                         "confidence": 0.0,
                         "reason": (
-                            f"inside band but only {_risk_clearance:.1f}°F "
-                            f"clearance to at-risk edge (< {_yes_inband_margin}°F "
-                            "margin)"
+                            f"{_ext_kind} {_daily_ext:.1f}°F inside the band "
+                            f"but only {_risk_clearance:.1f}°F clearance to "
+                            f"at-risk edge (< {_yes_inband_margin}°F margin) "
+                            f"measured from comp_temp {_comp_temp:.1f}°F"
                         ),
                     }
             else:

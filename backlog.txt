@@ -23864,7 +23864,7 @@ Problem:
   Root cause: Not yet investigated -- matches this project's known "manual scripts bypass test DB isolation" pattern ([[feedback_manual_scripts_bypass_test_db_isolation]] in Claude's memory: a python -c script or standalone tool importing tracker.py/paper.py writes to the real DB_PATH since no pytest conftest fixture applies outside pytest), but the specific script/session responsible for these 6 rows hasn't been traced.
   Recommendation: Identify which script wrote these rows (grep for "TK_Chi", "TK_NYC" etc. across scripts/one-offs in git history), confirm no downstream code reads price_improvement without filtering them out, and either delete the 6 rows or add a name-based exclusion if deletion is unsafe for any reason.
 
-[OPEN 2026-08-21 -- found by round-3 independent review of batch-08 (AUD-0016's settlement_monitor.py fix), filed for tracking, out of scope for that batch, not yet investigated or fixed this session] weather_markets._metar_lock_in never combines current_temp_f with the daily-extreme cache -- the identical AUD-0016 defect class, on the LIVE trade-entry path
+[RESOLVED 2026-08-22 -- see resolution below.] weather_markets._metar_lock_in never combines current_temp_f with the daily-extreme cache -- the identical AUD-0016 defect class, on the LIVE trade-entry path
 Priority: MEDIUM (found by independent opus review, not the original max-depth audit; not yet independently CONFIRMED by a second pass)
 Files: weather_markets.py (_metar_lock_in, both the above/below branch ~L10905-10912 and the between branch ~L10970-10979), metar.py (fetch_metar_daily_extreme, fetch_metar's own caching)
 
@@ -23878,3 +23878,187 @@ Problem:
   Limitations noted by this session: not independently re-verified (this finding comes from round-3 review of a DIFFERENT batch item, not a fresh independent pass on this specific claim); the metar.py cache-TTL line citations were not re-checked; no live/paper reproduction was run to quantify real-world frequency.
 
 Full record: none (not from the original max-depth audit's AUDIT_REPORT.json/md -- surfaced by independent review during batch-08).
+
+Resolution (2026-08-22):
+  Applied the AUD-0016 final (round-3) pattern from settlement_monitor.py's
+  _check_between_settlement to both of _metar_lock_in's branches, mirroring
+  the exact reasoning this entry's own Recommendation described.
+  Above/below branch (weather_markets.py ~L10909-10935): combined via
+  `_comp_temp = max(current_temp_f, _daily_ext)` (or `min()` for a LOW
+  market), used directly as check_metar_lockout's input. Unlike the between
+  branch, this needed only a plain uniform combine, NOT the membership/
+  clearance split described below -- check_metar_lockout's YES branches are
+  one-sided threshold crossings (current >= threshold+margin, or <=
+  threshold-margin) with no interior band and no opposite at-risk edge, so
+  more clearance in the safe/monotonic direction only makes the lock MORE
+  certain, never less. The "still rising past an at-risk edge" hazard the
+  between branch's split exists to guard against structurally cannot occur
+  here.
+  Between branch (weather_markets.py ~L10998-11020, ~11095-11205): kept
+  `_comp_temp` (combined) for the NO branches, unchanged. For the YES/
+  in-band block, gated membership on the RAW `_daily_ext` alone (NOT
+  `_comp_temp`) but measured `_risk_clearance` against `_comp_temp` --
+  exactly settlement_monitor.py's final/round-3 split, not a re-derivation
+  of it. This split matters in BOTH directions, verified with concrete
+  tests (tests/test_phase2_batch_d.py):
+    - Stale-cache-in-band case (this entry's own repro: HIGH market, band
+      [66.5, 68.5], stale _daily_ext=66.5 in-band, fresher current=69.5
+      already past the band): this is what the split's CLEARANCE half (not
+      the membership half) fixes. Gating membership on _daily_ext alone
+      (66.5, in-band) with clearance ALSO measured against _daily_ext
+      (i.e. the pre-fix bug, or a "gate raw, clear raw" variant this batch
+      did not implement) would compute clearance=68.5-66.5=2.0 and lock a
+      stale YES, ignoring that the market has already moved past the band.
+      Measuring clearance against comp_temp=max(69.5,66.5)=69.5 instead
+      gives clearance=68.5-69.5=-1.0, correctly refusing the lock.
+    - Still-rising, unconfirmed case (the mirror hazard, NOT in this
+      entry's original repro but caught while re-deriving
+      settlement_monitor's own 3-round history for this exact pattern):
+      HIGH market, band [66.5, 68.5], a REAL _daily_ext=64.0 still below
+      the band, fresher current=67.0 already inside it. Gating membership
+      on the COMBINED value (comp_temp=max(67.0,64.0)=67.0, in-band) would
+      lock YES off a still-rising instantaneous reading the real daily
+      extreme hasn't caught up to yet -- gating on the raw _daily_ext
+      (64.0, not in [66.5,68.5]) instead correctly refuses to lock.
+  Process note: this session initially implemented a plain uniform combine
+  (comp_temp used for both membership and clearance in both branches, no
+  split) and got an independent opus review (effort=high) that found it
+  correct in isolation -- but that review, and this session's own initial
+  read of settlement_monitor.py, were working from a version of this
+  worktree's branch that was MISSING commit 9eb2f154 (the actual, real,
+  3-independent-review-round AUD-0016 fix landed on a sibling branch the
+  same day), so the "proven sibling pattern" being mirrored was actually
+  the PRE-fix, superseded code. Caught by checking the sibling branch's
+  history directly rather than trusting only what this worktree's own
+  files showed; cherry-picked 9eb2f154 into this branch first (clean,
+  no conflicts with this fix's file regions), then redid this fix against
+  the real final pattern. Confirmed with the user given the live-trading
+  stakes before finalizing (AskUserQuestion, 2026-08-21/22) -- this surfaced
+  during that same conversation, prior to the user's decision, not after.
+  Also fixed the stale metar.py:404 "both current callers" comment for
+  fetch_metar_daily_extreme -- AUD-0020 (this same batch-08 session, on the
+  sibling branch) added a third caller, weather_markets._compute_
+  persistence_prob, never reflected there. The other noted stale comment
+  (metar.py ~L247-249, "guarded against in both...") was re-checked and
+  found to still be accurate as-is -- it describes a different, still-real
+  residual risk (the daily-extreme cache's OWN staleness relative to
+  reality, independent of whether it's combined with current_temp_f: if
+  both fetch_metar and fetch_metar_daily_extreme are simultaneously stale
+  by close to their full ~15-min TTL and miss the same recent peak,
+  combining doesn't fully eliminate the exposure) that this fix narrows but
+  does not eliminate; left unchanged rather than falsely marked resolved.
+  Tests: tests/test_phase2_batch_d.py (between branch) -- 2 new tests for
+  the stale-cache repro (HIGH/LOW market mirrors) plus 1 new test for the
+  still-rising/unconfirmed case; 1 pre-existing boundary test
+  (test_between_no_lock_low_market_daily_low_cleared_lower_margin) and 1
+  pre-existing falsy-vs-is-not-None test
+  (test_between_daily_extreme_zero_is_not_treated_as_missing) needed their
+  current_temp values adjusted so this fix's combining doesn't silently
+  defeat what they were actually testing -- caught by an independent opus
+  review (effort=high) on the (superseded) first implementation; both
+  re-verified to still target their original boundary/behavior under the
+  new code. tests/test_weather_markets.py (above/below branch) -- 3 new
+  tests in TestMetarLockInCombinesCurrentWithDailyExtreme (HIGH-market
+  stale-low-extreme, HIGH-market fresher-extends-to-lock, LOW-market
+  fresher-lower-current). Mutation-tested via Edit (not string-replace
+  scripts) both real behavior changes this fix makes: the 3 stale-cache
+  tests (both branches) fail against the fully-reverted (pre-fix, no
+  combine) code, confirming they exercise the actual bug; and, distinctly,
+  test_between_still_rising_daily_extreme_not_yet_in_band_does_not_lock_yes
+  fails specifically when the between branch's membership gate is mutated
+  from the raw _daily_ext back to the combined _comp_temp (a live,
+  targeted mutation of just that one line -- not a revert of the whole
+  fix), confirming the gate/clearance split is genuinely pinned down and
+  not vacuous. The two adjusted pre-existing tests (boundary and falsy-
+  check) are guard tests, not regression tests for this fix -- they still
+  pass against fully-reverted code, as expected, since what they protect
+  against (a shrunk boundary constant, an `or`-based falsy check) is
+  unrelated to whether current/daily-extreme combining exists at all; they
+  were re-verified by inspection to still target their original boundary/
+  behavior value under the new code, not by a mutation kill. ruff/ruff-
+  format/mypy clean.
+  A second independent opus review (effort=high), run after the correction
+  below and specifically re-verifying settlement_monitor.py's real,
+  current (post-cherry-pick) code rather than assuming the first review's
+  baseline still held, confirmed both branches' logic, the containment
+  proof that a YES lock's comp_temp_f is always in-band (so analyze_trade's
+  between_edge gate and the blended-model station-bias learner it feeds
+  stay sound), and the test suite as correct with no remaining code-logic
+  issues -- verdict "ship it". It corrected two inaccurate rationale
+  comments this session had written (both fixed): the above/below branch's
+  uniform-combine safety argument was mis-stated as "YES branches have no
+  opposite at-risk edge" (false -- a HIGH market's below-direction YES,
+  M<=T-margin, is NOT monotone-safe, a separate pre-existing gap; the real
+  reason combining is safe there is that it moves comp_temp in the single
+  direction that tightens whichever comparison a branch performs, never
+  loosens the one that matters); and this note's own first draft had a
+  self-contradicting, false description of what a naive uniform-combine
+  fix does to the entry's own repro scenario (corrected above). It also
+  softened this note's own prior overclaim that every new/adjusted test
+  was mutation-tested against the fully-reverted code (only the 3 stale-
+  cache tests were -- corrected above).
+  Independent opus review (effort=high) on the (superseded, uniform-
+  combine) first implementation found the fix mathematically sound in
+  isolation, a boundary-test regression (fixed above), a narrow pre-
+  existing gap (the above/below branch lacks the between branch's per-
+  observation local-date guard -- not fixed here, separate and out of
+  scope; filed as its own OPEN entry near the end of this file, "weather_
+  markets._metar_lock_in's above/below branch has no per-observation
+  local-date guard", per the second review's finding that this fix makes
+  the gap more load-bearing than before), and the process discrepancy that
+  led to discovering the missing commit 9eb2f154 above. The final
+  (split-gate) implementation was re-derived directly from settlement_
+  monitor.py's real, shipped code and this entry's own Recommendation text
+  rather than re-reviewed from scratch a second time, since both now agree
+  on the exact pattern and the reasoning is a direct mirror, not a new
+  design.
+
+[OPEN 2026-08-22 -- found by independent opus review (round 2) of this session's own _metar_lock_in current/daily-extreme combine fix, filed for tracking, not yet investigated or fixed this session] weather_markets._metar_lock_in's above/below branch has no per-observation local-date guard, unlike its between-branch sibling -- this session's own combine fix makes the gap more load-bearing than before
+Priority: LOW (narrow exposure window, no live/paper reproduction run; flagged because the fix landed this session structurally widens what this gap can affect, not because a new defect was introduced)
+Files: weather_markets.py (_metar_lock_in's above/below branch, ~L10896-10945)
+
+Problem:
+  The between branch of _metar_lock_in has an explicit per-observation
+  local-date guard (`_obs_local_date != target_date`, ~L11069) -- added
+  after a real bug (2 losing OKC/SATX trades, 2026-06-25) where a METAR
+  obs_time near midnight UTC converts to ~7 PM the PRIOR local calendar
+  day, and the function-level `target_date == _local_today` check alone
+  doesn't catch that the SPECIFIC observation is from today. The
+  above/below branch has no equivalent guard -- `check_metar_lockout` only
+  gates on the observation's local HOUR (>= 14), never its local DATE.
+  Root cause: the date guard was added to the between branch specifically
+  (backlog.txt, the OKC/SATX incident write-up) and never ported to the
+  above/below branch, which predates that incident's fix.
+  Evidence: independent opus review (round 2 of this session's own
+  current/daily-extreme combine fix, 2026-08-22) noted that BEFORE this
+  session's fix, a prior-local-day current_temp_f was inert on the
+  above/below branch whenever a real _daily_ext was available (current_
+  temp_f was discarded entirely in that case) -- contamination was only
+  possible via the `_daily_ext is None` fallback. AFTER this session's fix,
+  current_temp_f is max()/min()'d into _comp_temp UNCONDITIONALLY whenever
+  _daily_ext is available, so a prior-local-day current_temp_f can now
+  pull _comp_temp toward an incorrect value even when a real, same-day
+  _daily_ext also exists. The combine's own safety argument ("current_
+  temp_f is always one of the observations the true running extreme is
+  taken over") is only true if that observation is actually from today's
+  local calendar day -- nothing on this branch enforces that.
+  Concrete exposure window (not independently re-verified via live
+  reproduction this session): fetch_metar's own ~90-minute staleness gate
+  plus metar.py's 15-minute _METAR_CACHE TTL bound the window to roughly
+  local 00:00-01:45, and it additionally requires cache skew (_METAR_CACHE
+  warmed just before local midnight while _DAILY_OBS_CACHE already holds a
+  post-midnight, today-dated reading). Within that narrow window a 23:53
+  (yesterday) vs. 00:15 (today) reading pair is typically near-identical in
+  temperature, bounding the practical impact even when the scenario occurs.
+  Financial risk: feeds analyze_trade's live/paper trade-entry probability
+  directly, same path as the entry this gap was found alongside. Not
+  independently quantified -- flagged on mechanism match to the between
+  branch's own documented incident, not a live reproduction.
+  Recommendation: Port the between branch's exact `_obs_local_date !=
+  target_date` guard (~L11069) to the above/below branch, refusing to lock
+  (return False, 0.0, {}) when the METAR observation's own local date
+  doesn't match target_date -- mirroring the between branch's comment and
+  reasoning. Verify via a test analogous to test_between_stale_prior_day_
+  obs_not_locked (tests/test_phase2_batch_d.py).
+  Full record: none (not from the original max-depth audit -- surfaced by
+  independent review during this session's own fix).

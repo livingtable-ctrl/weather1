@@ -296,9 +296,13 @@ class TestBetweenLockInDynamicConfidence:
     def test_between_no_lock_low_market_daily_low_cleared_lower_margin(self):
         """LOW-var between market: daily-low-so-far <= lower-3°F is a safe,
         monotonic NO lock (running min cannot increase). Ticker must contain
-        "LOW" to route to min_temp_f instead of max_temp_f."""
+        "LOW" to route to min_temp_f instead of max_temp_f. current_temp
+        matches min_temp_f exactly -- this batch's max()/min() combining
+        would otherwise pull comp_temp below the intended boundary value
+        (min(60.0, 60.5) == 60.0, not 60.5), silently no longer testing the
+        boundary it's named for."""
         locked, _prob, details = self._call_metar_lock_in(
-            current_temp=60.0,
+            current_temp=60.5,
             lo=63.5,
             hi=65.5,
             local_hour=16,
@@ -585,10 +589,15 @@ class TestBetweenLockInDynamicConfidence:
         reading) must be used as-is, not treated as falsy/missing and
         replaced by current_temp_f -- mutation-tests the `is not None` check
         against an `or`-based falsy check, which would use current_temp_f
-        (20.0, deep in NO territory) instead of the real 0.0°F extreme
-        (nowhere near the band, so genuinely undetermined -- not locked)."""
+        (-20.0) instead of the real 0.0°F extreme. current_temp_f is set
+        BELOW the daily extreme so that the current/daily-extreme max()
+        combining this batch added (see
+        test_between_combines_fresher_current_with_stale_daily_extreme_*
+        below) also resolves to 0.0 -- isolating the falsy-vs-is-not-None
+        distinction this test targets from that separate combining
+        behavior."""
         locked, _prob, details = self._call_metar_lock_in(
-            current_temp=20.0,  # would lock NO if wrongly used instead of 0.0
+            current_temp=-20.0,  # below 0.0 -- combining must still yield 0.0
             lo=5.5,
             hi=7.5,
             local_hour=16,
@@ -597,7 +606,96 @@ class TestBetweenLockInDynamicConfidence:
         )
         assert not locked, (
             f"0.0°F daily extreme appears to have been treated as missing "
-            f"(fell back to current_temp_f=20.0 instead): {details}"
+            f"(fell back to current_temp_f=-20.0 instead): {details}"
+        )
+        assert details["comp_temp_f"] == 0.0, (
+            f"expected comp_temp_f to be the real 0.0°F daily extreme, got "
+            f"{details['comp_temp_f']} -- 0.0 may have been treated as "
+            "falsy/missing and replaced by current_temp_f"
+        )
+
+    def test_between_combines_fresher_current_with_stale_daily_extreme_high_market(
+        self,
+    ):
+        """Backlog.txt "weather_markets._metar_lock_in never combines
+        current_temp_f with the daily-extreme cache" (2026-08-21) repro:
+        HIGH market, band [66.5, 68.5], a stale cached daily-high-so-far of
+        66.5 sitting in-band would (pre-fix) lock a confident YES (2.0°F
+        clearance to the upper edge >= the 1.0°F in-band margin). A fresher
+        current_temp_f of 69.5 shows the day has ALREADY cleared the band --
+        must combine via max() for the CLEARANCE check so the result is
+        withheld (negative clearance), not silently locked YES off the stale
+        extreme alone. Membership itself still gates on the raw daily
+        extreme (66.5, in-band) -- see test_between_still_rising_daily_
+        extreme_not_yet_in_band_does_not_lock_yes below for the case where
+        that gate is what correctly refuses the lock instead."""
+        locked, _prob, details = self._call_metar_lock_in(
+            current_temp=69.5,
+            lo=66.5,
+            hi=68.5,
+            local_hour=14,
+            ticker=self.HIGH_TICKER,
+            max_temp_f=66.5,  # stale -- in-band, would lock YES alone
+        )
+        assert not locked, (
+            f"expected the stale in-band daily extreme (66.5) to be "
+            f"overridden by the fresher, higher current reading (69.5) for "
+            f"clearance purposes, withholding the lock -- got a stale YES "
+            f"instead: {details}"
+        )
+        assert details["comp_temp_f"] == 69.5
+
+    def test_between_combines_fresher_current_with_stale_daily_extreme_low_market(
+        self,
+    ):
+        """LOW-market mirror of the test above: band [63.5, 65.5], a stale
+        cached daily-low-so-far of 65.0 sitting in-band would (pre-fix) lock
+        a confident YES. A fresher current_temp_f of 62.0 shows the day's
+        low has already fallen below the band -- must combine via min()
+        for clearance instead of locking a stale YES."""
+        locked, _prob, details = self._call_metar_lock_in(
+            current_temp=62.0,
+            lo=63.5,
+            hi=65.5,
+            local_hour=14,
+            ticker=self.LOW_TICKER,
+            min_temp_f=65.0,  # stale -- in-band, would lock YES alone
+        )
+        assert not locked, (
+            f"expected the stale in-band daily extreme (65.0) to be "
+            f"overridden by the fresher, lower current reading (62.0) for "
+            f"clearance purposes, withholding the lock -- got a stale YES "
+            f"instead: {details}"
+        )
+        assert details["comp_temp_f"] == 62.0
+
+    def test_between_still_rising_daily_extreme_not_yet_in_band_does_not_lock_yes(
+        self,
+    ):
+        """The other half of this fix (the part pure uniform-combine would
+        get WRONG, per settlement_monitor.py's own AUD-0016 round-1 finding):
+        HIGH market, band [66.5, 68.5], a REAL daily-high-so-far of 64.0 --
+        still below the band, i.e. the day's peak has not been confirmed to
+        have reached it yet -- with a fresher current_temp_f of 67.0 already
+        inside the band. Gating membership on the combined value (comp_temp
+        = max(67.0, 64.0) = 67.0, in-band) would lock YES off a still-rising
+        instantaneous reading the daily extreme hasn't caught up to -- the
+        exact hazard AUD-0016 was filed against. Membership must gate on the
+        RAW daily extreme (64.0, NOT in [66.5, 68.5]) instead, refusing to
+        lock at all."""
+        locked, _prob, details = self._call_metar_lock_in(
+            current_temp=67.0,  # in-band on its own -- must not drive the lock
+            lo=66.5,
+            hi=68.5,
+            local_hour=14,
+            ticker=self.HIGH_TICKER,
+            max_temp_f=64.0,  # real, but still below the band
+        )
+        assert not locked, (
+            f"expected membership to be refused because the real daily "
+            f"extreme (64.0) hasn't reached the band yet, even though the "
+            f"fresher current reading (67.0) has -- got a lock instead: "
+            f"{details}"
         )
 
     def test_between_low_market_ticker_prefix_selects_min_not_max(self):

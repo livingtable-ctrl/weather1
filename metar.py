@@ -399,9 +399,10 @@ def fetch_metar_daily_extreme(
     to spare — but for any OTHER target_date that window will generally
     miss part of that date's readings (e.g. a `target_date` of yesterday,
     called this afternoon, would only see yesterday's evening hours, not
-    its morning). Both current callers (settlement_monitor.py,
-    weather_markets.py's _metar_lock_in) only ever pass today's date; this
-    function does not enforce that itself.
+    its morning). All current callers (settlement_monitor.py,
+    weather_markets.py's _metar_lock_in, weather_markets.py's
+    _compute_persistence_prob) only ever pass today's date; this function
+    does not enforce that itself.
 
     Args:
         station: ICAO station code
