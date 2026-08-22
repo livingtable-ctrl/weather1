@@ -4685,7 +4685,13 @@ def cmd_order(client: KalshiClient, action: str, args: list):
     if len(args) < 4:
         print(f"Usage: py main.py {action} <ticker> <yes/no> <count> <price>")
         return
-    ticker, side, count_str, price_str = args[0], args[1], args[2], args[3]
+    # Opus review (batch-09 round 2, F11): mirror the "market" dispatch's
+    # own args[1].upper() -- the buy/sell CLI dispatch never uppercased its
+    # ticker, so a lowercase input reached kalshi_client's new AUD-0076
+    # format check (which requires uppercase) and produced a confusing
+    # "Could not reach Kalshi API" message instead of just working, unlike
+    # every other ticker entry point in this file.
+    ticker, side, count_str, price_str = args[0].upper(), args[1], args[2], args[3]
     if side not in ("yes", "no"):
         print(red("side must be 'yes' or 'no'"))
         return
@@ -4694,8 +4700,23 @@ def cmd_order(client: KalshiClient, action: str, args: list):
     except ValueError:
         print(red("count and price must be numbers"))
         return
+    # Opus review (batch-09 round 2, F9): count=nan/inf parsed fine above
+    # (float() accepts them) but then crashed unhandled on int(count) below
+    # -- int(nan) raises ValueError, int(inf) raises OverflowError, neither
+    # caught by the ValueError guard above since it's already out of scope
+    # by this line. Reject non-finite values explicitly before int().
+    if count != count or count in (float("inf"), float("-inf")):
+        print(red(f"count must be a whole number ≥ 1 (got {count_str})"))
+        return
     if count != int(count) or int(count) < 1:
         print(red(f"count must be a whole number ≥ 1 (got {count_str})"))
+        return
+    # AUD-0040: cmd_order had no local price-range check, unlike web_app.py's
+    # /api/close-position (`0.0 < exit_price <= 1.0`) -- mirror that same
+    # dollar-fraction convention here rather than relying solely on Kalshi's
+    # own API-side validation as the backstop.
+    if not (0.0 < price <= 1.0):
+        print(red(f"price must be between 0 and 1 (got {price_str})"))
         return
 
     # backlog.txt "HURRICANE MARKETS": no supported model exists for
@@ -5505,9 +5526,24 @@ def cmd_setup():
         or "./kalshi_private_key.pem"
     )
     env_mode = (
-        input(f"  Environment  [demo/prod, default={existing_env}]: ").strip()
+        input(f"  Environment  [demo/prod, default={existing_env}]: ").strip().lower()
         or existing_env
     )
+    # AUD-0015 follow-up (opus review, batch-09): a typo'd env_mode used to
+    # be persisted to .env with no feedback -- safe today (KalshiClient's
+    # inverted whitelist now defaults any non-"prod" value to demo), but
+    # normalize case first (round-2 review, F10) so "PROD"/"Prod" don't get
+    # needlessly warned-and-defaulted like a genuine typo would be.
+    # silently. Catch it here instead of letting the wizard finish thinking
+    # it configured prod/demo when it configured demo either way.
+    if env_mode not in ("demo", "prod"):
+        print(
+            yellow(
+                f"\n  '{env_mode}' isn't 'demo' or 'prod' — defaulting to 'demo' "
+                "(a typo here would otherwise silently point at the wrong URL)."
+            )
+        )
+        env_mode = "demo"
 
     if not key_id:
         print(yellow("\n  No Key ID entered — skipping credential setup."))

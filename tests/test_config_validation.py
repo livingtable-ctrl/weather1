@@ -64,6 +64,40 @@ def test_bot_config_loads_from_env(monkeypatch):
     assert cfg.kalshi_env == "demo"
 
 
+def test_validate_env_rejects_invalid_kalshi_env(monkeypatch, tmp_path):
+    """AUD-0015's "add startup validation rejecting any kalshi_env value
+    other than exactly 'demo' or 'prod'" recommendation turned out to
+    already be satisfied by main.validate_env() (main.py:654) -- confirming
+    that here rather than adding a duplicate check in config.py, which an
+    opus review caught making `_load_config()` (a module-level call at
+    main.py:161, run unconditionally on every `py main.py <anything>`
+    invocation) raise an unhandled ValueError before validate_env()'s own
+    friendly message ever got a chance to run -- breaking even the `setup`/
+    `calibrate`/`emos-status` subcommands main.py deliberately exempts from
+    this exact check specifically so a broken .env can still be fixed."""
+    import main
+
+    key_path = tmp_path / "key.pem"
+    key_path.write_text("fake")
+    monkeypatch.setenv("KALSHI_KEY_ID", "test-key")
+    monkeypatch.setenv("KALSHI_PRIVATE_KEY_PATH", str(key_path))
+    monkeypatch.setenv("KALSHI_ENV", "Demo")
+    assert main.validate_env() is False
+
+
+def test_validate_env_accepts_exact_demo_and_prod(monkeypatch, tmp_path):
+    """Positive control: the exact whitelisted values must pass."""
+    import main
+
+    key_path = tmp_path / "key.pem"
+    key_path.write_text("fake")
+    monkeypatch.setenv("KALSHI_KEY_ID", "test-key")
+    monkeypatch.setenv("KALSHI_PRIVATE_KEY_PATH", str(key_path))
+    for value in ("demo", "prod"):
+        monkeypatch.setenv("KALSHI_ENV", value)
+        assert main.validate_env() is True
+
+
 def test_bot_config_defaults_are_sane(monkeypatch):
     """breakeven_trigger_pct and max_days_out both read their env var fresh
     from the environment by design (see config._live_breakeven_trigger_pct

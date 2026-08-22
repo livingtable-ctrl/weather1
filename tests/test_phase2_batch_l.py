@@ -572,3 +572,165 @@ class TestIsAllNull:
         from schema_validator import is_all_null
 
         assert is_all_null(None) is False
+
+
+# ── AUD-0015: KalshiClient.base_url whitelists 'prod', defaults elsewhere to demo ──
+
+
+class TestKalshiClientBaseUrlWhitelist:
+    """__init__'s old `DEMO_BASE if env == 'demo' else PROD_BASE` treated any
+    non-exact-'demo' string (a typo, case variant, stray whitespace) as PROD
+    -- fail-open on the dangerous value. Must now whitelist 'prod' explicitly
+    and default everything else to DEMO_BASE (fail-closed to the safe value)."""
+
+    def _base_url(self, env):
+        from kalshi_client import KalshiClient
+
+        return KalshiClient(env=env).base_url
+
+    def test_exact_prod_selects_prod_base(self):
+        from kalshi_client import PROD_BASE
+
+        assert self._base_url("prod") == PROD_BASE
+
+    def test_exact_demo_selects_demo_base(self):
+        from kalshi_client import DEMO_BASE
+
+        assert self._base_url("demo") == DEMO_BASE
+
+    def test_case_variant_defaults_to_demo_not_prod(self):
+        """'Demo'/'DEMO' used to silently resolve to PROD_BASE -- the exact
+        AUD-0015 reproduction. Must now resolve to DEMO_BASE instead."""
+        from kalshi_client import DEMO_BASE
+
+        for variant in ("Demo", "DEMO", " demo", "demo "):
+            assert self._base_url(variant) == DEMO_BASE, variant
+
+    def test_unrecognized_string_defaults_to_demo_not_prod(self):
+        """Any unrecognized env string (sandbox/test/typo) must default to
+        the safe value, not the dangerous one."""
+        from kalshi_client import DEMO_BASE
+
+        for variant in ("sandbox", "test", "Prod", "PROD", " prod", ""):
+            assert self._base_url(variant) == DEMO_BASE, variant
+
+    def test_none_env_defaults_to_demo_not_prod(self):
+        """A non-string env (e.g. a caller passing None) must also default
+        to the safe value -- `None == "prod"` is False, so this already
+        works, but was previously uncovered."""
+        from kalshi_client import DEMO_BASE
+
+        assert self._base_url(None) == DEMO_BASE
+
+
+# ── AUD-0076: ticker/series_ticker format validation before path interpolation ──
+
+
+class TestTickerFormatValidation:
+    """get_market/get_orderbook/get_candlesticks interpolate ticker strings
+    straight into REST path segments -- reject anything outside Kalshi's own
+    real ticker charset (uppercase letters, digits, dashes) as defense-in-depth
+    against path-segment manipulation, before the request is even built."""
+
+    def _make_client(self):
+        from kalshi_client import DEMO_BASE, KalshiClient
+
+        client = KalshiClient.__new__(KalshiClient)
+        client.base_url = DEMO_BASE
+        client._sign_headers = lambda *a, **kw: {}
+        client._full_path = lambda path: path
+        return client
+
+    def test_get_market_rejects_path_traversal_ticker(self):
+        """Also patches _request_with_retry and asserts it's never called --
+        without this, a weakened (not fully removed) validation could let a
+        real HTTP call through silently instead of failing the assertion."""
+        import pytest
+
+        client = self._make_client()
+        with patch("kalshi_client._request_with_retry") as m:
+            with pytest.raises(ValueError, match="invalid format"):
+                client.get_market("../portfolio/orders")
+        m.assert_not_called()
+
+    def test_get_market_accepts_between_bucket_decimal_ticker(self):
+        """Regression control: a real between-bucket/hourly-directional
+        ticker with a decimal threshold segment (e.g. "KXHIGHAUS-26JUN06-
+        B88.5") must be ACCEPTED, not rejected. An earlier version of the
+        regex (uppercase/digit/dash only, no ".") rejected 119 of 364
+        distinct tickers actually present in data/predictions.db -- caught
+        by opus review before push. This is the exact case whose absence
+        let that regression through."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {"market": {"ticker": "KXHIGHAUS-26JUN06-B88.5"}}
+
+        client = self._make_client()
+        with patch("kalshi_client._request_with_retry", return_value=mock_resp) as m:
+            client.get_market("KXHIGHAUS-26JUN06-B88.5")
+        assert m.called
+
+    def test_get_market_accepts_real_ticker_without_hitting_network(self):
+        """Positive control: a well-formed ticker must pass validation and
+        reach the actual HTTP call (proving the guard doesn't over-match) --
+        mock _request_with_retry so this doesn't hit the network."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {"market": {"ticker": "KXHIGHNY-26APR09-T72"}}
+
+        client = self._make_client()
+        with patch("kalshi_client._request_with_retry", return_value=mock_resp) as m:
+            client.get_market("KXHIGHNY-26APR09-T72")
+        assert m.called
+
+    def test_get_orderbook_rejects_invalid_ticker(self):
+        import pytest
+
+        client = self._make_client()
+        with patch("kalshi_client._request_with_retry") as m:
+            with pytest.raises(ValueError, match="invalid format"):
+                client.get_orderbook("bad ticker with spaces")
+        m.assert_not_called()
+
+    def test_get_candlesticks_rejects_invalid_series_ticker(self):
+        import pytest
+
+        client = self._make_client()
+        with patch("kalshi_client._request_with_retry") as m:
+            with pytest.raises(ValueError, match="invalid format"):
+                client.get_candlesticks("../series", "KXHIGHNY-26APR09-T72", 1000, 2000)
+        m.assert_not_called()
+
+    def test_get_candlesticks_rejects_invalid_ticker(self):
+        import pytest
+
+        client = self._make_client()
+        with patch("kalshi_client._request_with_retry") as m:
+            with pytest.raises(ValueError, match="invalid format"):
+                client.get_candlesticks("KXHIGHNY", "not/a/ticker", 1000, 2000)
+        m.assert_not_called()
+
+    def test_get_market_rejects_non_string_ticker(self):
+        """Round-2 opus review (F2): the isinstance(value, str) guard added
+        alongside the regex fix (so None doesn't raise TypeError instead of
+        ValueError) had no test -- close that gap."""
+        import pytest
+
+        client = self._make_client()
+        with patch("kalshi_client._request_with_retry") as m:
+            with pytest.raises(ValueError, match="invalid format"):
+                client.get_market(None)
+        m.assert_not_called()
+
+    def test_get_market_rejects_overlong_ticker(self):
+        """Round-2 opus review (F3): the first-pass regex had a {1,64}
+        length cap; the segment-based fix (`[A-Z0-9]+(?:[.-][A-Z0-9]+)*\\Z`)
+        dropped it -- restored as a separate explicit length check."""
+        import pytest
+
+        client = self._make_client()
+        overlong = "A" * 5000
+        with patch("kalshi_client._request_with_retry") as m:
+            with pytest.raises(ValueError, match="invalid format"):
+                client.get_market(overlong)
+        m.assert_not_called()

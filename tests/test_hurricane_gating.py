@@ -489,3 +489,157 @@ class TestCmdOrderRefusesHurricane:
 
         mock_client.place_order.assert_not_called()
         assert "gate blocked" in capsys.readouterr().out.lower()
+
+
+class TestCmdOrderPriceValidation:
+    """AUD-0040: cmd_order parsed price with no local range check before
+    forwarding to the live exchange, unlike web_app.py's /api/close-position
+    (`0.0 < exit_price <= 1.0`). Must refuse out-of-range prices before any
+    network call, mirroring that same convention."""
+
+    def test_refuses_price_above_one(self, monkeypatch, capsys):
+        import main
+
+        mock_client = MagicMock()
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+
+        main.cmd_order(mock_client, "buy", ["KXTEST-25JUN01-T70", "yes", "5", "1.50"])
+
+        mock_client.get_market.assert_not_called()
+        mock_client.place_order.assert_not_called()
+        assert "must be between 0 and 1" in capsys.readouterr().out.lower()
+
+    def test_refuses_zero_price(self, monkeypatch, capsys):
+        import main
+
+        mock_client = MagicMock()
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+
+        main.cmd_order(mock_client, "buy", ["KXTEST-25JUN01-T70", "yes", "5", "0"])
+
+        mock_client.get_market.assert_not_called()
+        mock_client.place_order.assert_not_called()
+        assert "must be between 0 and 1" in capsys.readouterr().out.lower()
+
+    def test_refuses_negative_price(self, monkeypatch, capsys):
+        import main
+
+        mock_client = MagicMock()
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+
+        main.cmd_order(mock_client, "buy", ["KXTEST-25JUN01-T70", "yes", "5", "-0.5"])
+
+        mock_client.get_market.assert_not_called()
+        mock_client.place_order.assert_not_called()
+        assert "must be between 0 and 1" in capsys.readouterr().out.lower()
+
+    def test_valid_price_reaches_gate_check(self, monkeypatch, capsys):
+        """Positive control: an in-range price must still reach past this
+        guard (proceeding to get_market and the live-trading-gate check
+        further down, which blocks it for an unrelated reason) -- confirms
+        the new check doesn't over-match ordinary valid prices."""
+        import main
+        from kalshi_client import PROD_BASE
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = None
+        mock_client.base_url = PROD_BASE
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with (
+            patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, {"LIVE_TRADING_ENABLED": "false"}),
+        ):
+            main.cmd_order(
+                mock_client, "buy", ["KXTEST-25JUN01-T70", "yes", "5", "0.50"]
+            )
+
+        mock_client.get_market.assert_called_once()
+        mock_client.place_order.assert_not_called()
+        assert "gate blocked" in capsys.readouterr().out.lower()
+
+
+class TestCmdOrderNonFiniteCount:
+    """Round-2 opus review (F9, batch-09): count="nan"/"inf" parses fine via
+    float() (caught nowhere by the ValueError guard) but then crashed
+    unhandled on int(count) two lines later -- int(nan) raises ValueError,
+    int(inf) raises OverflowError, both outside that try/except's scope by
+    then. Must refuse cleanly instead of crashing."""
+
+    def test_refuses_nan_count_without_crashing(self, monkeypatch, capsys):
+        import main
+
+        mock_client = MagicMock()
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+
+        main.cmd_order(mock_client, "buy", ["KXTEST-25JUN01-T70", "yes", "nan", "0.5"])
+
+        mock_client.get_market.assert_not_called()
+        mock_client.place_order.assert_not_called()
+        assert "must be a whole number" in capsys.readouterr().out.lower()
+
+    def test_refuses_inf_count_without_crashing(self, monkeypatch, capsys):
+        import main
+
+        mock_client = MagicMock()
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+
+        main.cmd_order(mock_client, "buy", ["KXTEST-25JUN01-T70", "yes", "inf", "0.5"])
+
+        mock_client.get_market.assert_not_called()
+        mock_client.place_order.assert_not_called()
+        assert "must be a whole number" in capsys.readouterr().out.lower()
+
+    def test_refuses_negative_inf_count_without_crashing(self, monkeypatch, capsys):
+        import main
+
+        mock_client = MagicMock()
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+
+        main.cmd_order(mock_client, "buy", ["KXTEST-25JUN01-T70", "yes", "-inf", "0.5"])
+
+        mock_client.get_market.assert_not_called()
+        mock_client.place_order.assert_not_called()
+        assert "must be a whole number" in capsys.readouterr().out.lower()
+
+
+class TestCmdOrderTickerNormalization:
+    """Round-2 opus review (F11, batch-09): the buy/sell CLI dispatch
+    (main.py's `elif cmd in ("buy", "sell"): cmd_order(client, cmd,
+    args[1:])`) never uppercased its ticker, unlike the "market" dispatch's
+    own `args[1].upper()` -- a lowercase ticker reached kalshi_client's new
+    AUD-0076 format check (uppercase-only) and produced a confusing
+    "analysis failed" message instead of just working like every other
+    ticker entry point in this file."""
+
+    def test_lowercase_ticker_is_uppercased_before_use(self, monkeypatch, capsys):
+        import main
+        from kalshi_client import PROD_BASE
+
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = None
+        mock_client.base_url = PROD_BASE
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        with (
+            patch("main.KALSHI_ENV", "prod"),
+            patch.dict(os.environ, {"LIVE_TRADING_ENABLED": "false"}),
+        ):
+            main.cmd_order(
+                mock_client, "buy", ["kxtest-25jun01-t70", "yes", "5", "0.50"]
+            )
+
+        # get_market must have been called with the UPPERCASED ticker, not
+        # the raw lowercase input -- proves normalization happened before
+        # any downstream use, not just in the printed confirmation line.
+        mock_client.get_market.assert_called_once_with("KXTEST-25JUN01-T70")

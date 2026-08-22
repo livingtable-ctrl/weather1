@@ -4,6 +4,7 @@ Kalshi API client with RSA-PSS authentication.
 
 import base64
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -186,6 +187,43 @@ def _request_with_retry(
 PROD_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 DEMO_BASE = "https://demo-api.kalshi.co/trade-api/v2"
 
+# AUD-0076: ticker/series_ticker strings get interpolated straight into REST
+# path segments (get_market, get_orderbook, get_candlesticks). No SSRF risk
+# (PROD_BASE/DEMO_BASE are fixed, never derived from ticker content) and no
+# privilege escalation (same authenticated client either way), but reject
+# anything outside Kalshi's own real ticker charset as cheap defense-in-depth
+# against path-segment manipulation (e.g. a "../" in a client-supplied ticker
+# reaching a different route on the same host) rather than relying solely on
+# the HTTP layer to neutralize it. Real tickers look like "KXHIGHNY",
+# "KXHIGHNY-26APR09-T72" -- but also, for between-bucket/hourly-directional
+# markets, a decimal threshold segment like "KXHIGHAUS-26JUN06-B88.5" or
+# "KXTEMPNYCH-26AUG1414-T83.99" (confirmed live in data/predictions.db: 119
+# of 364 distinct tickers there use a "."). An earlier version of this regex
+# (uppercase/digit/dash only, no ".") rejected every one of those -- caught
+# by opus review before push, verified against every ticker string in
+# data/*.db (only the synthetic TK_* test rows correctly still reject).
+# Segment-based (each dash/dot-delimited chunk is alnum, `\Z` not `$` so a
+# trailing newline can't sneak past the anchor). Longest real ticker seen
+# is ~28 chars; the 64 cap (round-2 review, F3: the first-pass regex had
+# one, the fix dropped it) is generous headroom, not a tight fit.
+_TICKER_RE = re.compile(r"[A-Z0-9]+(?:[.-][A-Z0-9]+)*\Z")
+_TICKER_MAX_LEN = 64
+
+
+def _validate_ticker_format(name: str, value: str) -> None:
+    if (
+        not isinstance(value, str)
+        or len(value) > _TICKER_MAX_LEN
+        or not _TICKER_RE.match(value)
+    ):
+        # Round-2 review, F1: every call site wraps this in except-Exception,
+        # so a rejection is otherwise silent everywhere -- if a future real
+        # Kalshi ticker ever uses a character outside this charset, this log
+        # line is the only trace that settlement auditing/outcome sync/exit
+        # checks silently stopped working for it.
+        _log.warning("%s rejected as malformed ticker: %r", name, value)
+        raise ValueError(f"{name} has an invalid format: {value!r}")
+
 
 class OrderStatusUnknownError(Exception):
     """Raised by place_order() when the create-order POST failed AND at
@@ -245,7 +283,11 @@ class KalshiClient:
         private_key_path: str | None = None,
         env: str = "demo",
     ):
-        self.base_url = DEMO_BASE if env == "demo" else PROD_BASE
+        # Whitelist the DANGEROUS value ('prod') and default everything else
+        # (typos, case variants, whitespace, unrecognized strings) to DEMO --
+        # AUD-0015: the old `DEMO_BASE if env == "demo" else PROD_BASE` did
+        # the opposite, silently pointing any non-exact-'demo' string at PROD.
+        self.base_url = PROD_BASE if env == "prod" else DEMO_BASE
         self.key_id = key_id
         self._private_key = None
 
@@ -368,6 +410,7 @@ class KalshiClient:
         return all_markets
 
     def get_market(self, ticker: str) -> dict:
+        _validate_ticker_format("ticker", ticker)
         data = self._get(f"/markets/{ticker}", auth=True)
         self._validate(data, "market", f"/markets/{ticker}")
         market = data.get("market", {})
@@ -375,6 +418,7 @@ class KalshiClient:
         return market
 
     def get_orderbook(self, ticker: str) -> dict:
+        _validate_ticker_format("ticker", ticker)
         data = self._get(f"/markets/{ticker}/orderbook", auth=True)
         if "orderbook_fp" not in data and "orderbook" not in data:
             self._validate(data, "orderbook", f"/markets/{ticker}/orderbook")
@@ -391,6 +435,8 @@ class KalshiClient:
         """GET /series/{series_ticker}/markets/{ticker}/candlesticks -- OHLC price
         history. period_interval is in minutes; Kalshi only accepts 1, 60, or 1440.
         start_ts/end_ts are Unix timestamps (seconds)."""
+        _validate_ticker_format("series_ticker", series_ticker)
+        _validate_ticker_format("ticker", ticker)
         path = f"/series/{series_ticker}/markets/{ticker}/candlesticks"
         data = self._get(
             path,

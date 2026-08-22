@@ -21231,7 +21231,8 @@ Resolution 2026-08-20 (batch-05): Implemented per this entry's correction
   _compute_live_orders_possible() helper resolves all three of that entry,
   this one, and AUD-0031's banner half).
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] KalshiClient env comparison fails open to PROD_BASE for any non-exact 'demo' string
+[RESOLVED 2026-08-21 -- fixed as batch-09 item 1 (audit/handoff_prompts/
+  batches/batch-09.md); see Resolution below] KalshiClient env comparison fails open to PROD_BASE for any non-exact 'demo' string
 Priority: MEDIUM (audit id AUD-0015, status CONFIRMED, confidence VERY HIGH, evidence E2)
 Files: kalshi_client.py:217, main.py:486-488,1037,4528, trading_gates.py:51-64, config.py:272
 
@@ -21243,6 +21244,151 @@ Problem:
   Security risk: Fail-open default on a local operator-config input, not externally exploitable, but a real misconfiguration-amplification weakness.
   Recommendation: Invert the comparison to whitelist 'prod' explicitly, and/or add startup validation rejecting any kalshi_env value other than exactly 'demo' or 'prod'.
   Full record: audit/AUDIT_REPORT.json (id AUD-0015), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-21 (batch-09, all 4 items done together since they share
+  kalshi_client.py/.env.example/main.py -- see AUD-0018/AUD-0040/AUD-0076
+  entries below for items 2-4): re-verified all 4 findings against live
+  code before starting (line numbers had drifted from the 2026-08-18 audit
+  snapshot due to intervening batches, but every claim still held).
+
+  Item 1 (AUD-0015): inverted kalshi_client.py's base_url selection to
+  `PROD_BASE if env == "prod" else DEMO_BASE` -- whitelists the DANGEROUS
+  value now, defaulting every typo/case/whitespace variant to DEMO_BASE.
+
+  Initially also added a duplicate startup-time check in config.py's
+  BotConfig.validate() -- independent opus review (effort=high) caught
+  that this was both redundant AND regressive: main.py already has
+  validate_env() (main.py:654) doing the exact same check with a friendly
+  printed message, called from main() at line 9957 for every command
+  except `setup`/`calibrate`/`schedule-cycles`/`emos-status`/
+  `emos-deactivate` (deliberately exempted so a broken .env can still be
+  fixed). Because config.load_and_validate() runs at MODULE IMPORT TIME
+  (main.py:161, before validate_env() ever gets a chance to run, and
+  before sys.excepthook is installed at line 189), the new check would
+  have made every one of those exempted subcommands -- including `setup`,
+  the wizard whose whole purpose is to fix a broken .env -- crash with a
+  raw unhandled ValueError traceback instead of the intended friendly
+  message. Confirmed the regression empirically (`KALSHI_ENV=production
+  python -c "import main"` raw-tracebacked with the check in place) and
+  removed it; confirmed clean without it. AUD-0015's "add startup
+  validation" recommendation was already satisfied by the pre-existing
+  validate_env() -- this batch's real job was just the inversion fix.
+
+  Also fixed an adjacent, related gap the review found in the SAME
+  input-validation family: main.cmd_setup's "Environment [demo/prod]"
+  wizard prompt used to persist a typo'd answer (e.g. "production")
+  straight to .env with zero feedback -- safe post-inversion-fix (any
+  non-"prod" value now defaults to demo) but silent about it. Added a
+  same-shape whitelist check right after the prompt: an invalid answer
+  now prints a warning and defaults to "demo" instead of writing the typo
+  unremarked.
+
+  New tests: tests/test_phase2_batch_l.py::TestKalshiClientBaseUrlWhitelist
+  (5 tests -- exact 'prod'/'demo', case-variant, unrecognized-string, and
+  None-env reproductions, mutation-tested by reverting the fix and
+  confirming 3 of the 5 fail); tests/test_config_validation.py::
+  test_validate_env_rejects_invalid_kalshi_env and
+  ::test_validate_env_accepts_exact_demo_and_prod (covering the pre-
+  existing validate_env(), mutation-tested); tests/test_cmd_setup.py::
+  TestCmdSetupEnvModeValidation (2 tests, mutation-tested) for the wizard
+  fix.
+
+  Filed a new backlog follow-up (see the kalshi_ws.py entry near the end
+  of this file) for a related but genuinely separate gap the review found
+  while checking the audit's "sole inverted-logic outlier" claim: that
+  claim itself holds for base_url selection, but kalshi_ws.py's WebSocket
+  URL is hardcoded to prod with no KALSHI_ENV read at all (absent logic,
+  not inverted logic -- a different bug class, in a different file,
+  needing its own scoped fix). Also confirmed config.get_config() (an
+  unused alternate BotConfig constructor, config.py, zero production
+  callers) never calls validate() either -- pre-existing, untouched by
+  this diff, explicit no-op: not fixing it here since nothing in this
+  batch's diff routes through it.
+
+  354 tests collected across the touched-file scope (test_phase2_batch_l,
+  test_config_validation, test_hurricane_gating, test_kalshi_client,
+  test_config, test_web_app, test_trading_gates, test_live_execution,
+  test_cmd_setup) -- 352 passed + 2 pre-existing skips, 0 failures.
+  ruff/mypy clean via the actual pre-commit hooks (not just the repo
+  .venv mypy); ruff-format auto-reformatted tests/test_phase2_batch_l.py
+  early in the process (whitespace only, re-ran
+  its 64 tests after to confirm no behavior change).
+
+Round-2 addendum 2026-08-21: a second independent opus review (effort=high,
+  this project's standing "a fix for review findings needs its own review
+  too" rule) of the round-1 fixes above found no new blocking issues but
+  surfaced several real LOW/INFO items, all addressed:
+  - F1 (silent-failure tripwire): every get_market/get_orderbook/
+    get_candlesticks call site wraps AUD-0076's ticker check in except-
+    Exception, so a rejection was invisible everywhere. Added
+    `_log.warning(...)` in _validate_ticker_format before the raise.
+  - F2/F3 (test gaps + a dropped bound): the isinstance(value, str) guard
+    (added round-1 so None raises ValueError not TypeError) and a length
+    cap (the first-pass regex had {1,64}; the segment-based fix dropped
+    it) had no tests. Restored the length cap (_TICKER_MAX_LEN = 64) and
+    added tests/test_phase2_batch_l.py::TestTickerFormatValidation::
+    test_get_market_rejects_non_string_ticker and
+    ::test_get_market_rejects_overlong_ticker, both mutation-tested (the
+    non-string case genuinely regresses to an unhandled TypeError when the
+    isinstance check is removed, confirmed directly).
+    TestTickerFormatValidation is now 8 tests total (this note previously
+    said 7 mid-review, itself a stale count -- re-derived fresh here).
+  - F9 (new correctness bug, same block AUD-0040 touched): main.cmd_order's
+    count="nan"/"inf" parsed fine via float() but crashed unhandled two
+    lines later on int(count) (ValueError/OverflowError, outside the
+    original try/except's scope). Fixed with an explicit non-finite check
+    before int(); new tests/test_hurricane_gating.py::
+    TestCmdOrderNonFiniteCount (3 tests, mutation-tested -- reverting
+    reproduces the exact crash).
+  - F11 (new correctness bug): the buy/sell CLI dispatch never uppercased
+    its ticker (main.py's "market" dispatch already does via
+    args[1].upper()), so a lowercase ticker now hit AUD-0076's
+    uppercase-only check and printed a misleading "could not reach Kalshi
+    API" message instead of just working. Fixed by uppercasing at
+    cmd_order's ticker extraction; new tests/test_hurricane_gating.py::
+    TestCmdOrderTickerNormalization (1 test, mutation-tested).
+  - F10 (cmd_setup UX): the wizard's env_mode check ran before case
+    normalization, so "PROD"/"Prod" was warned-and-defaulted-to-demo like
+    a genuine typo instead of silently accepted. Added .lower() before the
+    whitelist check; new tests/test_cmd_setup.py::
+    test_uppercase_env_mode_is_normalized_not_warned, mutation-tested. Its
+    other cosmetic half (the check runs before the `if not key_id:`
+    branch, so a no-Key-ID run still prints the env warning even though
+    nothing gets persisted) is an explicit no-op: cosmetic only, not
+    worth the added branching.
+  - F4/F5 (stale counts in this very note, from mid-review edits):
+    corrected "2 of the 5 fail" -> "3 of the 5 fail" above (a test was
+    added between when that sentence was first written and when the
+    mutation was actually re-run), and the TestTickerFormatValidation
+    count above.
+  - F6 (misattribution, AUD-0076's Resolution below): "cmd_order would
+    have silently skipped its exposure-cap check" wrongly named cmd_order
+    -- the except-Exception-pass best-effort branch is actually in
+    _quick_paper_buy (main.py, paper-order path), not cmd_order (which
+    hits the Brier/P&L-tracking except-Exception branch instead and still
+    places the order either way). Corrected in that section below.
+  - F7/F8 (understated follow-up entries near the end of this file):
+    the TK_* entry's "no functional impact" was too strong -- corrected to
+    note it skews tracker.get_price_improvement_stats()'s aggregate (no
+    ticker filter on that query) even though it never reaches get_market.
+    The order_id entry's "typically exchange-sourced ... rather than raw
+    client input" is true for automated paths but omits `py main.py cancel
+    <order_id>` (main.py's cmd_cancel), which passes argv straight through
+    unnormalized -- named explicitly now.
+  - F12 (line-reference drift): this note originally cited validate_env()
+    as "called from main() at line 9957" and .env.example's block as
+    "45-48" -- both had already drifted from further edits made in the
+    same session (validate_env() call site is now main.py:9986; the
+    .env.example block, including the DASHBOARD_UNPROTECTED example line
+    added for AUD-0018, is now 45-50). Not re-pinning either to an exact
+    line number going forward -- both keep drifting as this file changes;
+    referring to them by name is more durable than a line number that
+    will be stale again within the same session.
+
+  361 tests collected across the touched-file scope (same 9 files as
+  above, re-counted fresh after the round-2 fixes) -- 359 passed + 2
+  pre-existing skips, 0 failures. ruff/ruff-format/mypy clean via the
+  actual pre-commit hooks.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Between-bucket settlement lock-in can lock YES off the instantaneous METAR reading despite a lower authoritative daily-high, contradicting its own documented invariant
 Priority: MEDIUM (audit id AUD-0016, status CONFIRMED, confidence VERY HIGH, evidence E2)
@@ -21274,12 +21420,29 @@ Resolution (2026-08-21, batch-07):
   Mutation-tested: reverted the fix to `today_date = datetime.now(UTC).date()` via Edit -- test_utc_rollover_window_uses_city_local_today failed as expected (assert True is False), confirming the regression test actually catches the UTC-anchored bug this fix removes. Restored via Edit afterward.
   Lint/mypy: ruff check + format clean, mypy clean (main.py).
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] .env.example's DASHBOARD_PASSWORD comment ('leave empty to disable auth') is stale — code now refuses to start the dashboard instead
+[RESOLVED 2026-08-21 -- fixed as batch-09 item 2 (audit/handoff_prompts/
+  batches/batch-09.md); see AUD-0015's Resolution above] .env.example's DASHBOARD_PASSWORD comment ('leave empty to disable auth') is stale — code now refuses to start the dashboard instead
 Priority: MEDIUM (audit id AUD-0018, status CONFIRMED, confidence VERY HIGH, evidence E3)
 
 Problem:
   Read .env.example:45-47 — comment reads exactly 'Optional: protect the web dashboard with HTTP Basic Auth / Leave empty to disable auth (default for local use)' with DASHBOARD_PASSWORD= (empty). Read web_app.py:150-164 — confirmed the guard logic exactly as cited. Independently reproduced this session (not just trusting the original pass's claimed repro): ran `python -c` importing web_app and calling `web_app._build_app(None)` with DASHBOARD_PASSWORD and DASHBOARD_UNPROTECTED both unset, and observed the exact RuntimeError: 'DASHBOARD_PASSWORD must be set. The dashboard exposes kill switch...
   Full record: audit/AUDIT_REPORT.json (id AUD-0018), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-21 (batch-09 item 2): rewrote .env.example:45-49's
+  comment to state the real current behavior (password required; dashboard
+  refuses to start without it unless DASHBOARD_UNPROTECTED=true) instead of
+  the stale 'leave empty to disable auth' claim, and added a commented-out
+  `# DASHBOARD_UNPROTECTED=true` example line so a user copying
+  .env.example -> .env sees the escape hatch, not just a reference to it.
+  Independent opus review caught an initial drafting error: this note first
+  claimed "existing coverage of the startup guard itself already lives in
+  tests/test_web_app.py" -- false. Every existing test in that file uses an
+  autouse fixture that sets DASHBOARD_UNPROTECTED=true specifically to
+  BYPASS the guard; none exercised the RuntimeError branch itself. Added
+  tests/test_web_app.py::TestDashboardPasswordStartupGuard (2 tests --
+  raises when unset+unprotected-not-set, positive control for the
+  UNPROTECTED escape hatch), mutation-tested by removing the raise and
+  confirming the negative test fails.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] _compute_persistence_prob's same-day daily-extreme fix (b0f4cad2) covers only var="max" (HIGH markets); var="min" (LOW markets) still uses the instantaneous METAR reading instead of the true running daily low
 Priority: MEDIUM (audit id AUD-0020, status CONFIRMED, confidence HIGH, evidence E1)
@@ -21661,7 +21824,8 @@ Resolution 2026-08-20: Implemented both halves of the recommendation. (1)
   ruff+ruff-format+mypy clean via the actual pre-commit hooks (including
   the bare-os.replace guard, now passing).
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] cmd_order accepts and forwards an out-of-range order price with no local validation before hitting the live exchange
+[RESOLVED 2026-08-21 -- fixed as batch-09 item 3 (audit/handoff_prompts/
+  batches/batch-09.md); see AUD-0015's Resolution above] cmd_order accepts and forwards an out-of-range order price with no local validation before hitting the live exchange
 Priority: LOW (audit id AUD-0040, status CONFIRMED, confidence HIGH, evidence E1)
 Files: main.py, web_app.py
 
@@ -21672,6 +21836,27 @@ Problem:
   Financial risk: Minimal -- Kalshi's own API validation is the real backstop; risk is a worse operator experience, not an actual trading-safety gap.
   Recommendation: Add a local 0 < price < 1 (or <=1) check alongside the existing count validation in cmd_order, before the confirmation prompt.
   Full record: audit/AUDIT_REPORT.json (id AUD-0040), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-21 (batch-09 item 3): added `if not (0.0 < price <= 1.0)`
+  in main.cmd_order right after the existing count check (before any
+  hurricane/snow ticker guard or network call), mirroring web_app.py's
+  /api/close-position convention exactly -- independent opus review
+  confirmed this matches the codebase's real convention everywhere else a
+  trade-order price (not a market quote) is validated (paper.py's
+  place_paper_order, web_app.py's close-position), and that
+  schema_validator.py's separate `0.0 <= bid/ask <= 1.0` inclusive-at-both-
+  ends check is deliberately different (it validates market QUOTES, where
+  $0.00/$1.00 are legitimate no-resting-order values, not order prices).
+  New tests in tests/test_hurricane_gating.py::TestCmdOrderPriceValidation
+  (above-1.0, zero, and negative price all refused before get_market/
+  place_order are called; a valid 0.50 price still reaches the
+  live-trading-gate check further down as a positive control) --
+  mutation-tested by removing the check and confirming the 3 negative
+  tests fail while the positive control still passes. Review also caught
+  the 3 negative assertions were too loose (`"price" in output` would also
+  match the usage-string/parse-error paths, so a regression that returned
+  early for an unrelated reason would still pass) -- tightened to assert
+  the specific "must be between 0 and 1" message text instead.
 
 [RESOLVED 2026-08-19 -- fixed as a side effect of AUD-0003's batch-03 fix] cmd_order writes 'buy'/'sell' into execution_log's order_type column, which every other write site (and the schema's own comment) uses for 'market'/'limit'
 Priority: LOW (audit id AUD-0041, status CONFIRMED, confidence VERY HIGH, evidence E1)
@@ -22264,7 +22449,8 @@ Problem:
   Recommendation: Remove the two leftover decorators or update the before_request comment.
   Full record: audit/AUDIT_REPORT.json (id AUD-0075), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Kalshi API ticker values flow unvalidated into URL path segments
+[RESOLVED 2026-08-21 -- fixed as batch-09 item 4 (audit/handoff_prompts/
+  batches/batch-09.md); see AUD-0015's Resolution above] Kalshi API ticker values flow unvalidated into URL path segments
 Priority: INFO (audit id AUD-0076, status CONFIRMED, confidence MEDIUM, evidence E1)
 Files: kalshi_client.py:340,347,363
 
@@ -22276,6 +22462,63 @@ Problem:
   Security risk: Theoretical path-segment manipulation only; no SSRF (host fixed), no privilege escalation.
   Recommendation: Optional hardening: validate ticker format before use, as defense-in-depth only.
   Full record: audit/AUDIT_REPORT.json (id AUD-0076), audit/AUDIT_REPORT.md.
+
+Resolution 2026-08-21 (batch-09 item 4): user confirmed (via AskUserQuestion)
+  to implement the optional hardening rather than document a no-op. Added
+  kalshi_client._validate_ticker_format(), called at the top of get_market,
+  get_orderbook, and get_candlesticks (both series_ticker and ticker),
+  raising ValueError before the path is built. Confirmed place_order isn't
+  affected -- its ticker travels in the POST body, not the URL path, so the
+  audit's scoping to just the 3 read-only GET methods was already correct
+  and complete.
+
+  First-pass regex (`^[A-Z0-9-]{1,64}$`, uppercase/digit/dash only) was
+  WRONG -- independent opus review caught that it rejected 119 of 364
+  distinct tickers actually present in data/predictions.db (all
+  status='active'), because real between-bucket/hourly-directional tickers
+  contain a decimal threshold segment (e.g. "KXHIGHAUS-26JUN06-B88.5",
+  "KXTEMPNYCH-26AUG1414-T83.99") that includes a literal ".". The claim in
+  an earlier draft of this note ("traced all call sites... the new check
+  cannot reject legitimate traffic") was false -- correcting it here rather
+  than leaving it to mislead a future reader. Every call site DOES wrap in
+  except Exception (traced all ~25, confirmed no unhandled crash anywhere),
+  so nothing actually crashed in production -- but settlement auditing,
+  outcome sync, and paper-position exit checks would have silently stopped
+  working for every B-bucket/decimal-threshold market, and _quick_paper_buy
+  (main.py's paper-order path, NOT cmd_order -- corrected here per round-2
+  review's F6: an earlier draft of this note misattributed this to
+  cmd_order) would have silently skipped its exposure-cap check on such
+  tickers (falls into a best-effort except-Exception-pass branch there).
+  cmd_order itself hits a different except-Exception branch on such a
+  ticker (its analyze_trade()/Brier-tracking call) and would have placed
+  the order regardless either way -- that part of the original claim was
+  accurate, just attributed to the wrong function's OTHER except-Exception
+  branch.
+
+  Fixed regex: `[A-Z0-9]+(?:[.-][A-Z0-9]+)*\Z` (segment-based: alnum chunks
+  separated by "." or "-", `\Z` not `$` so a trailing newline can't sneak
+  past the anchor -- another review-caught gap in the first draft).
+  Independently re-verified (not just trusting the reviewer's numbers)
+  against all 1169 distinct ticker-like values across every table/column
+  named *ticker* in every data/*.db file: only 6 rejected, all synthetic
+  "TK_*" test-fixture rows (filed as its own follow-up entry below, unrelated
+  to this fix). web_app.py's /api/paper-order (the one web-reachable path
+  with a raw client-supplied ticker) already wraps its get_market() call in
+  try/except Exception with an existing fail-closed branch, so the
+  ValueError is handled gracefully there, not a new unhandled crash.
+
+  New tests: tests/test_phase2_batch_l.py::TestTickerFormatValidation (6
+  tests as of this fix -- see the round-2 addendum above for 2 more added
+  afterward -- path-traversal and space-containing tickers rejected for
+  all 3 methods, a well-formed ticker AND a real between-bucket decimal
+  ticker both pass as positive controls) -- mutation-tested twice: (1) removing
+  each validation call -- first pass found the negative tests hit the REAL
+  network (a live HTTP call to demo.kalshi.co) once the guard was removed
+  instead of failing deterministically, so all 4 negative tests were fixed
+  to also patch kalshi_client._request_with_retry and assert it was never
+  called; (2) reverting to the first-pass (wrong) regex -- confirmed the
+  new between-bucket-decimal-ticker test fails, proving it would have
+  caught the original bug had it existed from the start.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Verified: web_app.py's dev server does NOT block concurrent requests behind an open SSE stream, despite Werkzeug's own run_simple() defaulting threaded=False
 Priority: INFO (audit id AUD-0077, status CONFIRMED, confidence VERY HIGH, evidence E3)
@@ -23334,3 +23577,30 @@ Resolution (2026-08-21):
   standing workflow ("a fix needs its own review too") and found the
   HIGH/MEDIUM issues detailed above -- all fixed prior to push, not
   deferred.
+
+[OPEN 2026-08-21 -- found by independent opus review of batch-09 (AUD-0076's ticker-format fix), genuinely separate: different call sites (cancel_order/amend_order/get_order, not get_market/get_orderbook/get_candlesticks), needing its own charset design since order_id is a lowercase-hex UUID, not an uppercase Kalshi ticker] order_id also flows unvalidated into REST path segments in cancel_order/amend_order/get_order, same path-interpolation pattern AUD-0076 fixed for ticker/series_ticker
+Priority: INFO -- same risk class as AUD-0076 (path-segment manipulation, no SSRF since PROD_BASE/DEMO_BASE are fixed, no privilege escalation). order_id is exchange-sourced for automated paths (kalshi_client.py:660 reads it straight from Kalshi's own place_order response), narrowing exposure there -- but round-2 review (F8) found `py main.py cancel <order_id>` (main.py's cmd_cancel) passes CLI argv straight through with zero normalization, a genuine raw-client-input path this entry's first draft omitted.
+Files: kalshi_client.py:777 (get_order), kalshi_client.py:787 (cancel_order), kalshi_client.py:858 (amend_order), main.py's cmd_cancel (CLI entry point that reaches cancel_order with an unnormalized order_id)
+
+Problem:
+  `f"/portfolio/orders/{order_id}"` (get_order), `self._delete(f"/portfolio/events/orders/{order_id}")` (cancel_order), and `self._post(f"/portfolio/events/orders/{order_id}/amend", ...)` (amend_order) all interpolate order_id into the URL path with no format validation, mirroring the AUD-0076 pattern just fixed for ticker/series_ticker in get_market/get_orderbook/get_candlesticks. `py main.py cancel <order_id>` reaches cancel_order via this exact path with a raw CLI argument.
+  Root cause: AUD-0076's fix (batch-09) deliberately scoped to the 3 ticker-taking read-only GET methods the audit cited; order_id-taking methods were out of scope for that fix and were not separately audited.
+  Recommendation: Add an order_id format check (a UUID-shaped regex, e.g. `^[0-9a-f-]{1,64}$` case-insensitive, or a real UUID parse) mirroring `_validate_ticker_format`'s approach but with the correct charset for Kalshi's actual order_id format -- verify the real format (grep live execution_log.db / order responses) before picking the regex, rather than assuming uppercase like tickers.
+
+[OPEN 2026-08-21 -- found by independent opus review of batch-09 (AUD-0015's base_url-inversion fix), pre-existing and out of scope for that fix (different file/subsystem: the WebSocket price feed, not the REST client's base_url selection); flagged because it contradicts the audit's own "KalshiClient.__init__ is the sole inverted-logic outlier" evidence claim] kalshi_ws.py's WebSocket URL is hardcoded to the PROD host with no KALSHI_ENV read at all -- in demo mode, order_executor's reprice/chase and flash-crash circuit breaker still consume real production market prices
+Priority: LOW -- read-only price consumption, not an order-placement path; a demo-mode operator gets production-accurate (not demo-market) prices feeding reprice/chase logic, which could make demo-mode backtesting/dry-run behavior misleading rather than unsafe
+Files: kalshi_ws.py:28, order_executor.py:146,2586
+
+Problem:
+  `_WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2"` (kalshi_ws.py:28) is a hardcoded module constant with no demo variant and no `KALSHI_ENV` read anywhere in the file -- confirmed via grep, zero hits for `KALSHI_ENV` in kalshi_ws.py. order_executor.py consumes this feed via `get_cached_book` (line 146, feeds reprice/chase) and `get_cached_mid_price` (line 2586) regardless of which KALSHI_ENV the REST client is running under.
+  Root cause: kalshi_ws.py was written assuming a single (prod) WS endpoint, with no equivalent of kalshi_client.py's DEMO_BASE/PROD_BASE split ever added.
+  Recommendation: Add a demo WS URL constant and select between them the same way kalshi_client.py now does (post-AUD-0015 fix: whitelist "prod" explicitly, default elsewhere to demo), reading KALSHI_ENV the same way. Verify Kalshi's actual demo WS endpoint URL before implementing (not assumed here).
+
+[OPEN 2026-08-21 -- found by independent opus review of batch-09 (AUD-0076's ticker-format fix) while cross-checking the new ticker regex against every real ticker value in data/*.db, unrelated to any code in this batch's diff] 6 synthetic "TK_*" test-fixture tickers (TK_CHI, TK_Chicago, TK_LA, TK_Miami, TK_Dallas, TK_NYC) are present in the production predictions.db's price_improvement table
+Priority: INFO -- data hygiene, not a code bug; confirmed these values are never passed to kalshi_client.get_market/get_orderbook/get_candlesticks (they'd fail the new ticker-format validation if they were). Round-2 review (F7) found the "no functional impact" framing was too strong, though: tracker.get_price_improvement_stats() (tracker.py:6600) runs `SELECT improvement FROM price_improvement` with no ticker filter at all, so these 6 rows DO skew the mean/median/count/positive_pct it surfaces to the dashboard -- confirmed by reading that function directly.
+Files: data/predictions.db (price_improvement.ticker column) -- producing code not yet identified
+
+Problem:
+  A one-off query while re-verifying the AUD-0076 fix's ticker regex against `data/*.db` surfaced 6 distinct ticker-like values in predictions.db's price_improvement table that are placeholder/test-fixture names (e.g. "TK_Chicago"), not real Kalshi tickers, sitting in what should be production-only data.
+  Root cause: Not yet investigated -- matches this project's known "manual scripts bypass test DB isolation" pattern ([[feedback_manual_scripts_bypass_test_db_isolation]] in Claude's memory: a python -c script or standalone tool importing tracker.py/paper.py writes to the real DB_PATH since no pytest conftest fixture applies outside pytest), but the specific script/session responsible for these 6 rows hasn't been traced.
+  Recommendation: Identify which script wrote these rows (grep for "TK_Chi", "TK_NYC" etc. across scripts/one-offs in git history), confirm no downstream code reads price_improvement without filtering them out, and either delete the 6 rows or add a name-based exclusion if deletion is unsafe for any reason.

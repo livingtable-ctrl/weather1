@@ -57,6 +57,32 @@ def client_and_kalshi_mock(monkeypatch):
         yield c, mock_kalshi
 
 
+class TestDashboardPasswordStartupGuard:
+    """AUD-0018: .env.example's DASHBOARD_PASSWORD comment used to claim
+    'leave empty to disable auth' -- the real behavior (this guard) refuses
+    to start instead unless DASHBOARD_UNPROTECTED=true is also set. No
+    existing test actually exercised the RuntimeError branch itself (every
+    other test in this file uses the autouse _force_demo_env fixture to
+    bypass it) -- these two do, overriding that fixture's env within the
+    test body."""
+
+    def test_raises_when_password_unset_and_unprotected_not_set(self, monkeypatch):
+        monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+        monkeypatch.delenv("DASHBOARD_UNPROTECTED", raising=False)
+        from web_app import _build_app
+
+        with pytest.raises(RuntimeError, match="DASHBOARD_PASSWORD must be set"):
+            _build_app(object())
+
+    def test_starts_when_unprotected_explicitly_set(self, monkeypatch):
+        """Positive control: the documented escape hatch must still work."""
+        monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+        monkeypatch.setenv("DASHBOARD_UNPROTECTED", "true")
+        from web_app import _build_app
+
+        _build_app(object())  # must not raise
+
+
 def test_balance_history_default_50(client):
     """Default returns at most 50 points."""
     history = [
