@@ -98,6 +98,78 @@ KALSHI_FEE_RATE = float(os.getenv("KALSHI_FEE_RATE", "0.07"))
 # rate, not KALSHI_FEE_RATE. Override via KALSHI_MAKER_FEE_RATE in .env.
 KALSHI_MAKER_FEE_RATE = float(os.getenv("KALSHI_MAKER_FEE_RATE", "0.0"))
 
+
+def _kalshi_fee(rate: float, contracts: float, price: float) -> float:
+    """Shared curved per-contract fee formula: ceil(rate * C * P * (1-P)),
+    rounded UP to the whole cent. `rate` is KALSHI_FEE_RATE for a taker fill
+    or KALSHI_MAKER_FEE_RATE for a maker fill -- see kalshi_taker_fee/
+    kalshi_maker_fee below, the only two callers.
+
+    price must be in [0, 1] (dollars per contract, Kalshi's own convention).
+    Returns dollars (e.g. 1.70, not 170 cents).
+    """
+    # 1e-9 epsilon before ceil: floating-point multiplication can land a
+    # cent-count that's mathematically exact (e.g. 100 contracts @ $0.50 ->
+    # exactly 175 cents) a hair above the true integer (175.00000000000003),
+    # which ceil() would otherwise round up to 176 -- a real, if tiny,
+    # overcharge on every exact-cent fill. Standard financial-rounding
+    # safeguard; too small to ever mask a genuine fractional-cent case that
+    # should round up.
+    raw_cents = rate * contracts * price * (1 - price) * 100
+    cents = math.ceil(raw_cents - 1e-9)
+    return cents / 100
+
+
+def kalshi_taker_fee(contracts: float, price: float) -> float:
+    """Kalshi's real per-contract taker fee: ceil(0.07 * C * P * (1-P)),
+    rounded UP to the whole cent -- the curved formula this module's own
+    KALSHI_FEE_RATE constant already documents above, not a flat percentage
+    of the winning payout.
+
+    Batch-22 items 3+6: execution_log.record_live_exit_fill and
+    order_executor._poll_pending_orders' settlement branch both used to
+    apply KALSHI_FEE_RATE as a flat fraction of gross P&L, and only on a
+    WIN (a losing fill got `else gross_pnl`, zero fee subtracted) -- the
+    real fee is charged on the taker FILL itself (entry or exit, whichever
+    leg crossed the book), independent of how the position later resolves.
+    Reproduced (batch-22 E1): qty=50, price=0.30 exit=0.35 -- the old
+    formula computed a fee-adjusted P&L of +2.325 on the win; the real
+    per-fill FEE is $0.80 (giving a real fee-adjusted P&L of +1.70, a 27%
+    error vs the old formula's +2.325), and the old formula charged a $0 fee
+    on a losing fill at the same prices. Callers must invoke this once per
+    taker fill (the price that fill actually executed at, e.g. exit_price
+    for an exit or the entry row's own price for a natural-settlement entry)
+    and subtract it from gross P&L unconditionally, not just when gross
+    P&L > 0.
+
+    price must be in [0, 1] (dollars per contract, Kalshi's own convention).
+    contracts may be a float ONLY for a caller intentionally modeling
+    fractional/proportional units (e.g. a backtest tracking P&L as a
+    fraction of bankroll rather than real dollars) -- for a real live/paper
+    fill this is always a whole contract count. Returns dollars (e.g. 0.80,
+    not 80 cents).
+    """
+    return _kalshi_fee(KALSHI_FEE_RATE, contracts, price)
+
+
+def kalshi_maker_fee(contracts: float, price: float) -> float:
+    """Kalshi's real per-contract maker fee: ceil(KALSHI_MAKER_FEE_RATE * C *
+    P * (1-P)), rounded UP to the whole cent -- mirrors kalshi_taker_fee's
+    formula exactly (same curved shape, see this module's own
+    KALSHI_MAKER_FEE_RATE documentation above: `M * 0.0175 * C * P * (1-P)`,
+    where KALSHI_MAKER_FEE_RATE already IS the effective M*0.0175
+    coefficient). Genuinely $0 for every real call site in this codebase
+    today (M=0 for this bot's weather-market series), but still respects an
+    operator's KALSHI_MAKER_FEE_RATE override rather than hardcoding 0.0 --
+    opus review (batch-22 follow-up): a hardcoded 0.0 in
+    order_executor._poll_pending_orders' settlement branch silently dropped
+    that override for the one consumer (the live daily-loss ledger) where
+    getting it right matters most, while every other consumer
+    (main.py/monte_carlo.py/paper.py/backtest.py) still honored it.
+    """
+    return _kalshi_fee(KALSHI_MAKER_FEE_RATE, contracts, price)
+
+
 # Hard cap on Kelly fraction — applied in both weather_markets.py and paper.py.
 # Operative production cap is 0.25 (quarter-Kelly ceiling). Override via
 # KELLY_CAP env var — config.py's BotConfig.kelly_cap reads the same env var

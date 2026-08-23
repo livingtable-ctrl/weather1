@@ -838,9 +838,10 @@ class TestCmdOrderLiveRecording:
                 (position_id,),
             ).fetchone()
         assert position_row["settled_at"] is not None
-        # gross_pnl = 10 * (0.60 - 0.40) = 2.00; gain -> fee applies:
-        # 2.00 * (1 - 0.07) = 1.86
-        assert position_row["pnl"] == pytest.approx(1.86)
+        # Batch-22 items 3+6: gross_pnl = 10 * (0.60 - 0.40) = 2.00; real
+        # curved fee (utils.kalshi_taker_fee): ceil(0.07*10*0.60*0.40*100)/100
+        # = 0.17. pnl = 2.00 - 0.17 = 1.83.
+        assert position_row["pnl"] == pytest.approx(1.83)
         assert exit_row["live"] == 1
         assert exit_row["closes_position_id"] == position_id
         # Must not also open a phantom NEW paper position at the sell price
@@ -1003,12 +1004,13 @@ class TestCmdOrderLiveRecording:
         assert exit_row["settled_at"] is not None
         assert exit_row["exit_reason"] == "manual_close"
         assert exit_row["closes_position_id"] == position_id
-        # gross_pnl = 6 * (0.60 - 0.40) = 1.20; gain -> fee: 1.20*(1-0.07) = 1.116
-        assert exit_row["pnl"] == pytest.approx(1.116, rel=1e-3)
+        # gross_pnl = 6 * (0.60 - 0.40) = 1.20; fee = ceil(0.07*6*0.60*
+        # 0.40*100)/100 = 0.11. pnl = 1.20 - 0.11 = 1.09.
+        assert exit_row["pnl"] == pytest.approx(1.09)
         # Positive control: this settled row must be real enough to actually
         # surface in the aggregate P&L summary, not just present in the DB.
         summary = execution_log.get_live_pnl_summary()
-        assert summary["total_pnl"] == pytest.approx(1.116, rel=1e-3)
+        assert summary["total_pnl"] == pytest.approx(1.09)
 
     def test_live_sell_with_no_matching_position_logs_live_no_paper_mirror(
         self, monkeypatch
@@ -1286,6 +1288,69 @@ class TestCmdOrderLiveRecording:
         assert row["entry_prob"] == pytest.approx(fake_analysis["forecast_prob"])
         assert row["forecast_cycle"] is not None
 
+    def test_live_buy_prelogged_client_order_id_matches_what_place_order_posts(
+        self, monkeypatch
+    ):
+        """Opus review follow-up (batch-22 item 2, F7): the pre-logged
+        client_order_id is only useful for crash-recovery if it's actually
+        the SAME id Kalshi received -- a call-site arg drift (e.g. count vs
+        int(count), or a re-derived cycle) would silently defeat the whole
+        fix while every other test here (which only checks the id is SOME
+        valid hash) still passes. Spies on log_order's own response= kwarg
+        at pre-log time (before log_order_result's later write overwrites
+        the row), and independently re-derives the expected id from the
+        args place_order() itself actually received, rather than trusting
+        main.py's own internal computation for either side of the
+        comparison."""
+        import main
+        from kalshi_client import PROD_BASE, compute_client_order_id
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = None
+        mock_client.place_order.return_value = {
+            "order_id": "ord_cid_check",
+            "status": "executed",
+            "fill_count_fp": "5.00",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        import execution_log as _el_module
+
+        real_log_order = _el_module.log_order
+        prelog_calls = []
+
+        def _spy_log_order(*args, **kwargs):
+            prelog_calls.append(kwargs)
+            return real_log_order(*args, **kwargs)
+
+        with (
+            # cmd_order does `from execution_log import log_order, ...`
+            # LOCALLY at call time -- patching execution_log's own module
+            # attribute (not a nonexistent main.log_order) is what that
+            # fresh import actually binds to.
+            patch.object(_el_module, "log_order", side_effect=_spy_log_order),
+            self._passing_gate_patches(),
+        ):
+            main.cmd_order(
+                mock_client, "buy", ["KXTEST-25JUN01-T70", "yes", "5", "0.40"]
+            )
+
+        mock_client.place_order.assert_called_once()
+        _args, _kwargs = mock_client.place_order.call_args
+        posted_cycle = _kwargs["cycle"]
+        expected_cid = compute_client_order_id(
+            "KXTEST-25JUN01-T70", "yes", "buy", 5, 0.40, posted_cycle
+        )
+
+        assert len(prelog_calls) == 1
+        assert prelog_calls[0]["response"]["client_order_id"] == expected_cid
+
 
 class TestQuickPaperBuyMakerRecording:
     """AUD-0010: _quick_paper_buy()'s maker-order branch places a REAL live
@@ -1366,6 +1431,56 @@ class TestQuickPaperBuyMakerRecording:
         assert row["status"] == "pending"
         assert row["quantity"] == 5
         assert row["price"] == pytest.approx(0.45)
+
+    def test_maker_prelogged_client_order_id_matches_what_place_maker_order_posts(
+        self, monkeypatch
+    ):
+        """Opus review follow-up (batch-22 item 2, F7): mirrors
+        TestCmdOrderLiveRecording's matching test for this second manual
+        live-order path."""
+        import main
+        from kalshi_client import PROD_BASE, compute_client_order_id
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = {}
+        mock_client.place_maker_order.return_value = {
+            "order_id": "ord_maker_cid_check",
+            "status": "resting",
+        }
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
+        monkeypatch.setattr(
+            "paper.check_position_limits", lambda *a, **kw: {"ok": True}
+        )
+        _inputs = self._standard_inputs()
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+
+        import execution_log as _el_module
+
+        real_log_order = _el_module.log_order
+        prelog_calls = []
+
+        def _spy_log_order(*args, **kwargs):
+            prelog_calls.append(kwargs)
+            return real_log_order(*args, **kwargs)
+
+        with (
+            patch.object(_el_module, "log_order", side_effect=_spy_log_order),
+            self._passing_gate_patches(),
+        ):
+            main._quick_paper_buy(mock_client)
+
+        mock_client.place_maker_order.assert_called_once()
+        _args, _kwargs = mock_client.place_maker_order.call_args
+        posted_cycle = _kwargs["cycle"]
+        expected_cid = compute_client_order_id(
+            "KXTEST-25JUN01-T70", "yes", "buy", 5, 0.45, posted_cycle
+        )
+
+        assert len(prelog_calls) == 1
+        assert prelog_calls[0]["response"]["client_order_id"] == expected_cid
 
     def test_maker_order_failure_logs_failed_row(self, monkeypatch):
         """Positive control: confirms the bookkeeping wiring actually
@@ -1480,3 +1595,379 @@ class TestQuickPaperBuyMakerRecording:
                 "SELECT live FROM orders ORDER BY id DESC LIMIT 1"
             ).fetchone()
         assert row["live"] == 0
+
+
+class TestCmdOrderLiveRiskGates:
+    """Batch-22 item 1: _place_live_order (the automated live path) gates
+    every entry on 3 execution_log-backed hard stops (daily live loss,
+    daily live spend, max open live positions) in addition to the shared
+    LiveTradingGate -- cmd_order (the manual live-order CLI path) had none
+    of the three. Mirrors TestCmdOrderLiveRecording's gate-passing recipe;
+    these tests are specifically about the 3 NEW checks, not the
+    pre-existing LiveTradingGate (TestLiveTradingGate above) or
+    check_position_limits (untouched by this fix)."""
+
+    @contextmanager
+    def _passing_gate_patches(self):
+        with (
+            patch.dict(os.environ, _PROD_ENV),
+            patch("paper.graduation_check", return_value={"settled": 35}),
+            patch("paper.is_paused_drawdown", return_value=False),
+            patch("paper.is_daily_loss_halted", return_value=False),
+            patch("paper.is_accuracy_halted", return_value=False),
+            patch("paper.is_streak_paused", return_value=False),
+        ):
+            yield
+
+    def _mock_client(self):
+        from kalshi_client import PROD_BASE
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = None  # skip analysis branch
+        return mock_client
+
+    def _standard_setup(self, monkeypatch):
+        import main
+
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(
+            "execution_log.was_recently_ordered", lambda ticker, side: False
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+    def test_daily_loss_limit_blocks_live_buy(self, monkeypatch, capsys):
+        import main
+
+        mock_client = self._mock_client()
+        self._standard_setup(monkeypatch)
+        monkeypatch.setattr(
+            main, "_load_live_config", lambda: {"daily_loss_limit": 100.0}
+        )
+        monkeypatch.setattr("execution_log.get_today_live_loss", lambda: 150.0)
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "buy", ["KXTEST-25JUN01-T70", "yes", "5", "0.50"]
+            )
+
+        mock_client.place_order.assert_not_called()
+        out = capsys.readouterr().out.lower()
+        assert "daily live loss limit" in out
+        assert "refusing" in out
+
+    def test_daily_spend_cap_blocks_live_buy(self, monkeypatch, capsys):
+        import main
+
+        mock_client = self._mock_client()
+        self._standard_setup(monkeypatch)
+        monkeypatch.setattr(main, "_load_live_config", lambda: {})
+        monkeypatch.setattr("execution_log.get_today_live_loss", lambda: 0.0)
+        monkeypatch.setattr("execution_log.get_today_live_spend", lambda: 600.0)
+        # Opus review follow-up (F9): pin the cap explicitly rather than
+        # relying on utils.MAX_DAILY_SPEND's ambient env-derived default --
+        # main.py imports the name fresh from utils at call time, so
+        # patching it there (not on order_executor, which has its own
+        # separate binding) is what actually takes effect here.
+        monkeypatch.setattr("utils.MAX_DAILY_SPEND", 500.0)
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "buy", ["KXTEST-25JUN01-T70", "yes", "5", "0.50"]
+            )
+
+        mock_client.place_order.assert_not_called()
+        out = capsys.readouterr().out.lower()
+        assert "daily live spend cap" in out
+        assert "refusing" in out
+
+    def test_max_open_positions_blocks_live_buy(self, monkeypatch, capsys):
+        import main
+        import order_executor
+
+        mock_client = self._mock_client()
+        self._standard_setup(monkeypatch)
+        monkeypatch.setattr(
+            main, "_load_live_config", lambda: {"max_open_positions": 3}
+        )
+        monkeypatch.setattr("execution_log.get_today_live_loss", lambda: 0.0)
+        monkeypatch.setattr("execution_log.get_today_live_spend", lambda: 0.0)
+        monkeypatch.setattr(order_executor, "_count_open_live_orders", lambda: 3)
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "buy", ["KXTEST-25JUN01-T70", "yes", "5", "0.50"]
+            )
+
+        mock_client.place_order.assert_not_called()
+        out = capsys.readouterr().out.lower()
+        assert "max open live positions" in out
+        assert "refusing" in out
+
+    def test_gates_pass_when_under_every_limit(self, monkeypatch):
+        """Positive control (step 28): with every gate well under its
+        limit, cmd_order must actually reach place_order -- proves the 3
+        new checks aren't just always-refusing."""
+        import main
+        import order_executor
+
+        mock_client = self._mock_client()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_ok",
+            "status": "executed",
+            "fill_count_fp": "5.00",
+        }
+        self._standard_setup(monkeypatch)
+        monkeypatch.setattr(
+            main,
+            "_load_live_config",
+            lambda: {"daily_loss_limit": 100.0, "max_open_positions": 10},
+        )
+        monkeypatch.setattr("execution_log.get_today_live_loss", lambda: 0.0)
+        monkeypatch.setattr("execution_log.get_today_live_spend", lambda: 0.0)
+        monkeypatch.setattr(order_executor, "_count_open_live_orders", lambda: 0)
+        monkeypatch.setattr(
+            "paper.check_position_limits", lambda *a, **kw: {"ok": True}
+        )
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "buy", ["KXTEST-25JUN01-T70", "yes", "5", "0.50"]
+            )
+
+        mock_client.place_order.assert_called_once()
+
+    def test_gates_do_not_apply_to_sell(self, monkeypatch, capsys):
+        """The 3 new checks are ADDED-exposure caps (same reasoning as the
+        check_position_limits scoping just below them in cmd_order) -- a
+        live SELL must not be blocked by a daily-loss limit that's already
+        exceeded, since blocking an exit is exactly backwards when the
+        account most needs to reduce exposure."""
+        import main
+
+        mock_client = self._mock_client()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_sell",
+            "status": "executed",
+            "fill_count_fp": "5.00",
+        }
+        self._standard_setup(monkeypatch)
+        monkeypatch.setattr(
+            main, "_load_live_config", lambda: {"daily_loss_limit": 1.0}
+        )
+        # Deliberately blown past every limit -- must not matter for a sell.
+        monkeypatch.setattr("execution_log.get_today_live_loss", lambda: 999.0)
+        monkeypatch.setattr("execution_log.get_today_live_spend", lambda: 999.0)
+
+        with self._passing_gate_patches():
+            main.cmd_order(
+                mock_client, "sell", ["KXTEST-25JUN01-T70", "yes", "5", "0.50"]
+            )
+
+        mock_client.place_order.assert_called_once()
+        out = capsys.readouterr().out.lower()
+        assert "daily live loss limit" not in out
+        assert "daily live spend cap" not in out
+
+
+class TestQuickPaperBuyLiveRiskGates:
+    """Batch-22 item 1 adjacency (confirmed via AskUserQuestion): main.py's
+    _quick_paper_buy is a SECOND manual live-order path (its maker-order
+    branch places a real order via place_maker_order when the client isn't
+    demo) with the exact same 3-gate gap cmd_order had -- not cited by
+    batch-22.md's own text, found while implementing item 1 for cmd_order.
+    Mirrors TestCmdOrderLiveRiskGates' recipe for this call site."""
+
+    @contextmanager
+    def _passing_gate_patches(self):
+        with (
+            patch.dict(os.environ, _PROD_ENV),
+            patch("paper.graduation_check", return_value={"settled": 35}),
+            patch("paper.is_paused_drawdown", return_value=False),
+            patch("paper.is_daily_loss_halted", return_value=False),
+            patch("paper.is_accuracy_halted", return_value=False),
+            patch("paper.is_streak_paused", return_value=False),
+        ):
+            yield
+
+    def _standard_inputs(self):
+        return iter(
+            [
+                "KXTEST-25JUN01-T70",  # ticker
+                "yes",  # side
+                "2",  # order type: limit maker
+                "0.45",  # limit price
+                "5",  # qty
+                "",  # thesis
+            ]
+        )
+
+    def test_daily_loss_limit_blocks_live_maker_buy(self, monkeypatch, capsys):
+        import main
+        from kalshi_client import PROD_BASE
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = {}
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
+        monkeypatch.setattr("paper.is_daily_loss_halted", lambda *_a, **_k: False)
+        monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
+        _inputs = self._standard_inputs()
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+        monkeypatch.setattr(
+            main, "_load_live_config", lambda: {"daily_loss_limit": 100.0}
+        )
+        monkeypatch.setattr("execution_log.get_today_live_loss", lambda: 150.0)
+
+        with self._passing_gate_patches():
+            main._quick_paper_buy(mock_client)
+
+        mock_client.place_maker_order.assert_not_called()
+        out = capsys.readouterr().out.lower()
+        assert "daily live loss limit" in out
+
+    def test_daily_spend_cap_blocks_live_maker_buy(self, monkeypatch, capsys):
+        import main
+        from kalshi_client import PROD_BASE
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = {}
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
+        monkeypatch.setattr("paper.is_daily_loss_halted", lambda *_a, **_k: False)
+        monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
+        _inputs = self._standard_inputs()
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+        monkeypatch.setattr(main, "_load_live_config", lambda: {})
+        monkeypatch.setattr("execution_log.get_today_live_loss", lambda: 0.0)
+        monkeypatch.setattr("execution_log.get_today_live_spend", lambda: 600.0)
+        # Opus review follow-up (F9): see test_daily_spend_cap_blocks_live_buy's
+        # matching comment.
+        monkeypatch.setattr("utils.MAX_DAILY_SPEND", 500.0)
+
+        with self._passing_gate_patches():
+            main._quick_paper_buy(mock_client)
+
+        mock_client.place_maker_order.assert_not_called()
+        out = capsys.readouterr().out.lower()
+        assert "daily live spend cap" in out
+
+    def test_max_open_positions_blocks_live_maker_buy(self, monkeypatch, capsys):
+        import main
+        import order_executor
+        from kalshi_client import PROD_BASE
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = {}
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
+        monkeypatch.setattr("paper.is_daily_loss_halted", lambda *_a, **_k: False)
+        monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
+        _inputs = self._standard_inputs()
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+        monkeypatch.setattr(
+            main, "_load_live_config", lambda: {"max_open_positions": 2}
+        )
+        monkeypatch.setattr("execution_log.get_today_live_loss", lambda: 0.0)
+        monkeypatch.setattr("execution_log.get_today_live_spend", lambda: 0.0)
+        monkeypatch.setattr(order_executor, "_count_open_live_orders", lambda: 2)
+
+        with self._passing_gate_patches():
+            main._quick_paper_buy(mock_client)
+
+        mock_client.place_maker_order.assert_not_called()
+        out = capsys.readouterr().out.lower()
+        assert "max open live positions" in out
+
+    def test_gates_pass_when_under_every_limit(self, monkeypatch):
+        """Positive control (step 28): with every gate well under its
+        limit, the maker order must actually be placed."""
+        import main
+        import order_executor
+        from kalshi_client import PROD_BASE
+
+        mock_client = MagicMock()
+        mock_client.base_url = PROD_BASE
+        mock_client.get_market.return_value = {}
+        mock_client.place_maker_order.return_value = {
+            "order_id": "ord_ok",
+            "status": "resting",
+        }
+        monkeypatch.setattr(main, "is_trading_paused", lambda: False)
+        monkeypatch.setattr(main, "_resolve_price", lambda client, ticker, side: 0.45)
+        monkeypatch.setattr("paper.is_daily_loss_halted", lambda *_a, **_k: False)
+        monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
+        monkeypatch.setattr(
+            "paper.check_position_limits", lambda *a, **kw: {"ok": True}
+        )
+        _inputs = self._standard_inputs()
+        monkeypatch.setattr("builtins.input", lambda *_a: next(_inputs))
+        monkeypatch.setattr(
+            main,
+            "_load_live_config",
+            lambda: {"daily_loss_limit": 100.0, "max_open_positions": 10},
+        )
+        monkeypatch.setattr("execution_log.get_today_live_loss", lambda: 0.0)
+        monkeypatch.setattr("execution_log.get_today_live_spend", lambda: 0.0)
+        monkeypatch.setattr(order_executor, "_count_open_live_orders", lambda: 0)
+
+        with self._passing_gate_patches():
+            main._quick_paper_buy(mock_client)
+
+        mock_client.place_maker_order.assert_called_once()
+
+
+class TestCmdOrderRainGuard:
+    """Batch-22 item 5: every other shadow-only market family (hurricane-
+    count, hurricane-next-event, storm-order, unsupported-hurricane, snow,
+    hourly) has a direct refuse-outright guard in cmd_order -- rain had
+    none, relying solely on paper.check_position_limits() (fail-open on
+    exception, buy-only). Mirrors TestCmdOrderSnowGuard-style tests
+    (tests/test_snow_markets.py) for the new rain guard."""
+
+    def test_refuses_when_gate_inactive(self, monkeypatch, capsys):
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("RAIN_TRADING_ENABLED", raising=False)
+        main.cmd_order(None, "buy", ["KXRAINNYCM-26AUG-5.0", "yes", "1", "0.10"])
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "rain" in out.lower()
+        assert "RAIN_TRADING_ENABLED" in out
+
+    def test_does_not_refuse_when_gate_active(self, monkeypatch):
+        """Mutation-test proof the guard is real -- once _rain_gates_active()
+        is True, cmd_order must proceed past THIS guard specifically (it may
+        still stop later for unrelated reasons in this unit-test context,
+        e.g. no real market to fetch)."""
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("main._rain_gates_active", lambda: True)
+        printed = []
+        monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
+        try:
+            main.cmd_order(None, "buy", ["KXRAINNYCM-26AUG-5.0", "yes", "1", "0.10"])
+        except Exception:
+            pass  # downstream failure (no live market) is expected/irrelevant here
+        assert not any("RAIN_TRADING_ENABLED" in p and "refusing" in p for p in printed)
+
+    def test_refuses_when_gate_inactive_for_sell_too(self, monkeypatch, capsys):
+        """Opus review follow-up (LOW #13): item 5's own stated gap was
+        explicitly that 'a manual live SELL of a rain ticker was entirely
+        unguarded' -- the guard itself is action-agnostic (runs before any
+        buy/sell branching), but nothing pinned the sell half with its own
+        regression test."""
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.delenv("RAIN_TRADING_ENABLED", raising=False)
+        main.cmd_order(None, "sell", ["KXRAINNYCM-26AUG-5.0", "yes", "1", "0.10"])
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "rain" in out.lower()
+        assert "RAIN_TRADING_ENABLED" in out

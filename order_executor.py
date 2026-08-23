@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 import execution_log
 from ab_test import ABTest as _ABTest
 from colors import dim, green, red, yellow
-from kalshi_client import OrderStatusUnknownError
+from kalshi_client import OrderStatusUnknownError, compute_client_order_id
 from positions import Position
 from positions import check_breakeven_stops as check_breakeven_stops
 from positions import check_stop_losses as check_stop_losses
@@ -71,6 +71,11 @@ _MIN_EDGE_AB_TEST = _ABTest(
     variants={"low": 0.05, "medium": 0.07, "high": 0.09},
     max_trades_per_variant=50,
 )
+
+# Batch-22 item 2 (opus review follow-up, F1/F2): _recover_pending_orders'
+# 'sent'-row promotion must not touch a row still genuinely in flight -- see
+# that function's own comment at the promotion loop for the full reasoning.
+_SENT_PROMOTION_MIN_AGE_MINUTES = 5
 
 # ---------------------------------------------------------------------------
 # Forecast cycle
@@ -488,15 +493,22 @@ def _settle_recovered_exit_order(
 
 
 def _recover_pending_orders(client) -> None:
-    """Reconcile 'pending' AND 'unknown' execution_log rows against the
-    Kalshi API at startup (and every subsequent call site -- cron.py's own
-    cycle, run_trade_cycle(), and cmd_watch's standalone call, AUD-0013).
+    """Reconcile 'pending', 'sent', AND 'unknown' execution_log rows against
+    the Kalshi API at startup (and every subsequent call site -- cron.py's
+    own cycle, run_trade_cycle(), and cmd_watch's standalone call,
+    AUD-0013).
 
     A crash in the ~50ms window between pre-logging an order and the API call
     leaves a phantom 'pending' row that permanently blacklists the ticker via
     dedup guards. 'unknown' rows (AUD-0007) are a distinct case: the create
     call itself failed AND reconciliation couldn't confirm either way, so
-    there's no order_id to poll, only a client_order_id to re-check.
+    there's no order_id to poll, only a client_order_id to re-check. 'sent'
+    rows (batch-22 item 2) are a third case: log_order()'s own transient
+    pre-placement default, left behind by a crash before ANY log_order_result
+    call (main.cmd_order's own pre-log) or by this function's own pending-row
+    "no order_id" fallback below -- promoted to 'unknown' (when a
+    client_order_id was captured at pre-log time) so they fall into the same
+    reconciliation as genuine 'unknown' rows instead of being a dead end.
     """
     # AUD-0012: dedicated unbounded query instead of a LIMIT-200-of-everything
     # fetch filtered in Python -- the fixed window could silently evict a
@@ -527,13 +539,25 @@ def _recover_pending_orders(client) -> None:
                 # No order_id stored — crash may have happened before OR after the
                 # API call (we can't tell). Use 'sent' so dedup blocks re-placement
                 # for 7 days rather than risking a duplicate live order.
+                # Batch-22 item 2: response=response (not omitted) preserves
+                # whatever this row's pre-log already stored -- since every
+                # live pre-log call site now stashes client_order_id in
+                # response BEFORE calling place_order (see
+                # kalshi_client.compute_client_order_id), that id survives
+                # this transition instead of being wiped by
+                # log_order_result's unconditional response overwrite (it
+                # does not COALESCE). The 'sent'-row loop below picks this
+                # row up on this same pass (it runs after this loop
+                # completes) and re-checks it against Kalshi via that id,
+                # instead of this being a dead end.
                 execution_log.log_order_result(
                     row_id,
                     status="sent",
+                    response=response,
                     error="no order_id at recovery — treated as sent to prevent duplicate",
                 )
                 _log.warning(
-                    "[Recovery] %s row %d: no order_id — marked failed", ticker, row_id
+                    "[Recovery] %s row %d: no order_id — marked sent", ticker, row_id
                 )
                 continue
 
@@ -576,6 +600,83 @@ def _recover_pending_orders(client) -> None:
                 )
         except Exception as exc:
             _log.warning("[Recovery] %s row %d: lookup failed: %s", ticker, row_id, exc)
+
+    # Batch-22 item 2: promote 'sent' rows that carry a recoverable
+    # client_order_id (pre-computed and stored at pre-log time by every live
+    # placement call site, or preserved through the pending-loop's own
+    # downgrade above -- see kalshi_client.compute_client_order_id) into
+    # 'unknown', so the SAME reconciliation machinery just below (client_
+    # order_id lookup, retry) picks them up rather than leaving 'sent' a
+    # permanent dead end.
+    #
+    # Opus review follow-up (F1/F2): _SENT_PROMOTION_MIN_AGE_MINUTES excludes
+    # rows still genuinely in flight -- main.cmd_order/main._quick_paper_buy
+    # pre-log with status='sent' BEFORE calling place_order at all (it's
+    # log_order()'s own default, not just a crash artifact), so an
+    # unguarded promotion here could race the ORIGINAL placing process's own
+    # eventual log_order_result() call: promoting and resolving a row to
+    # 'failed' (unblocking dedup on an order that hasn't actually failed --
+    # a duplicate-order risk if the placer then completes and the operator
+    # retries) or double-applying a partial-exit settlement neither
+    # 'unknown' reconciliation's claim below nor record_live_partial_exit's
+    # own guard protects against for THIS specific race (both assume the
+    # row is already at rest, not actively being written by another
+    # process). Comfortably longer than any realistic in-flight window (a
+    # single HTTP request, DEFAULT_TIMEOUT=15s, POST is not auto-retried by
+    # _build_session -- see kalshi_client.py) while still far short of the
+    # 7-day dedup window a genuinely stuck row relies on.
+    #
+    # F3: claim_sent_order() only proceeds if the row is STILL 'sent' at
+    # write time (mirrors claim_unknown_order's atomic-claim pattern) --
+    # two concurrent recovery passes promoting the same row is then safe
+    # (the loser's claim simply fails and it moves on), and a row a
+    # concurrent process already resolved out from under this one can never
+    # be silently reverted back to a bare {"client_order_id": ...} response.
+    #
+    # F4: wrapped per-row like the pending/unknown loops above -- one bad
+    # row (a locked DB, a malformed response) must not abort the whole pass
+    # and skip the 'unknown' reconciliation loop that follows.
+    sent = execution_log.get_sent_live_orders(
+        older_than_minutes=_SENT_PROMOTION_MIN_AGE_MINUTES
+    )
+    for order in sent:
+        row_id = order["id"]
+        ticker = order.get("ticker", "?")
+        try:
+            response = order.get("response")
+            if isinstance(response, str):
+                try:
+                    response = json.loads(response)
+                except json.JSONDecodeError:
+                    response = None
+            client_order_id = (response or {}).get("client_order_id")
+            if not client_order_id:
+                # No recoverable id -- either a row written before this fix, or
+                # a case with genuinely nothing to re-check. Leave as 'sent',
+                # matching this codebase's prior fail-safe behavior exactly
+                # (dedup keeps blocking a re-placement).
+                continue
+            if not execution_log.claim_sent_order(row_id, client_order_id):
+                _log.info(
+                    "[Recovery] %s row %d: already claimed/resolved by a "
+                    "concurrent recovery pass — skipping",
+                    ticker,
+                    row_id,
+                )
+                continue
+            _log.info(
+                "[Recovery] %s row %d: promoted 'sent' -> 'unknown' for "
+                "re-check against Kalshi via stored client_order_id",
+                ticker,
+                row_id,
+            )
+        except Exception as exc:
+            _log.warning(
+                "[Recovery] %s row %d: 'sent' promotion failed: %s",
+                ticker,
+                row_id,
+                exc,
+            )
 
     # AUD-0007: also re-check 'unknown' rows -- written when place_order()'s
     # POST failed AND reconciliation itself couldn't confirm either way (see
@@ -923,7 +1024,7 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
     # Unrecognized/missing order_type conservatively defaults to the taker
     # rate rather than assuming free maker fills -- understating P&L is the
     # safe failure direction here, not overstating it (see AUD-0003).
-    from utils import KALSHI_FEE_RATE, KALSHI_MAKER_FEE_RATE
+    from utils import kalshi_maker_fee, kalshi_taker_fee
 
     gtc_cancel_hours = (config or {}).get("gtc_cancel_hours", 24)
     now_utc = datetime.now(UTC)
@@ -1056,24 +1157,37 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
             # NO price (= 1 - yes_bid) for NO orders.
             price = order["price"]
             qty = order.get("fill_quantity") or order["quantity"]
-            _fee = (
-                KALSHI_MAKER_FEE_RATE
+            # Batch-22 items 3+6: the fee this entry fill paid is charged at
+            # the FILL (independent of how the position later settles), so
+            # it must be subtracted from gross P&L unconditionally -- not
+            # just on a win, which the old `(1 - _fee)` multiplier (applied
+            # only inside the two win branches below) silently did. Maker
+            # fills (order_type == "limit") use utils.kalshi_maker_fee --
+            # genuinely $0 for every real order this bot places today
+            # (KALSHI_MAKER_FEE_RATE's own documentation: M=0 for this bot's
+            # weather-market series), but still respects an operator's
+            # KALSHI_MAKER_FEE_RATE override rather than a hardcoded 0.0
+            # (opus review follow-up: a hardcoded 0.0 silently dropped that
+            # override for exactly this consumer -- the live daily-loss
+            # ledger -- while every other consumer in the codebase still
+            # honored it). Taker fills use kalshi_taker_fee, not
+            # KALSHI_FEE_RATE's flat-percent-of-winnings approximation. See
+            # kalshi_taker_fee's own docstring for the reproduced numeric
+            # error this replaces.
+            _fee_dollars = (
+                kalshi_maker_fee(qty, price)
                 if order.get("order_type") == "limit"
-                else KALSHI_FEE_RATE
+                else kalshi_taker_fee(qty, price)
             )
             if outcome_yes and side == "yes":
-                pnl = (
-                    qty * (1 - price) * (1 - _fee)
-                )  # won YES: profit = (1-cost)*(1-fee)
+                gross_pnl = qty * (1 - price)  # won YES: profit = 1-cost
             elif not outcome_yes and side == "yes":
-                pnl = -qty * price  # lost YES: lose cost
+                gross_pnl = -qty * price  # lost YES: lose cost
             elif outcome_yes and side == "no":
-                pnl = -qty * price  # YES wins, NO loses: lose NO cost
+                gross_pnl = -qty * price  # YES wins, NO loses: lose NO cost
             else:  # not outcome_yes, side == "no" — NO wins
-                pnl = (
-                    qty * (1 - price) * (1 - _fee)
-                )  # won NO: profit = (1-cost)*(1-fee)
-            pnl = round(pnl, 4)
+                gross_pnl = qty * (1 - price)  # won NO: profit = 1-cost
+            pnl = round(gross_pnl - _fee_dollars, 4)
             execution_log.record_live_settlement(order["id"], outcome_yes, pnl)
             execution_log.add_live_loss(-pnl)  # negative pnl = loss adds to counter
         except Exception as exc:
@@ -1225,6 +1339,12 @@ def _replace_live_order(
         )
         return False
 
+    # Batch-22 item 2: pre-computed and stored BEFORE the API call, matching
+    # place_order()'s own internal derivation exactly -- if the process
+    # crashes before log_order_result records the real outcome, recovery can
+    # still re-check this specific client_order_id against Kalshi. See
+    # kalshi_client.compute_client_order_id's own docstring.
+    _cid = compute_client_order_id(ticker, side, "buy", quantity, price, cycle)
     log_id = execution_log.log_order(
         ticker=ticker,
         side=side,
@@ -1232,6 +1352,7 @@ def _replace_live_order(
         price=price,
         order_type="limit" if time_in_force == "good_till_canceled" else "market",
         status="pending",
+        response={"client_order_id": _cid},
         forecast_cycle=cycle,
         live=True,
         close_time=close_time,
@@ -1356,6 +1477,19 @@ def _amend_live_order(
         _log.warning("[Reprice] Gate blocked amend for %s: %s", ticker, _gate_err)
         return False
 
+    # Batch-22 item 2 deliberately does NOT capture a client_order_id here
+    # (unlike _replace_live_order/_exit_live_position/_place_live_order/
+    # micro-live): an amend uses client.amend_order's own
+    # updated_client_order_id scheme, not place_order's -- amend_order
+    # doesn't create a new order matching that id the way place_order does,
+    # so client._find_order_by_client_id's lookup wouldn't apply here even
+    # if we stored it. If this row's own log_order_result never lands (a
+    # crash before it), the exchange-side order_id is UNCHANGED by an amend
+    # (see this function's own docstring) -- the original order (this
+    # amend's replaces_order_id) keeps getting recovered normally through
+    # the main pending-order loop above using its own, already-known
+    # order_id; only "did this specific price-change land" stays ambiguous,
+    # a materially smaller gap than a whole position going untracked.
     log_id = execution_log.log_order(
         ticker=ticker,
         side=side,
@@ -1600,7 +1734,7 @@ def _reprice_or_cancel_pending_orders(
 # ---------------------------------------------------------------------------
 
 
-def _get_live_open_positions() -> list[dict]:
+def _get_live_open_positions(include_unfilled: bool = False) -> list[dict]:
     """Build a paper-trade-shaped dict from execution_log's filled-unsettled
     live orders. Kept as the raw-dict adapter (not Position-returning) --
     _check_live_model_exits now also converts each dict to a Position via
@@ -1613,6 +1747,35 @@ def _get_live_open_positions() -> list[dict]:
     check_stop_losses()/check_breakeven_stops()/update_peak_profits(), the
     same pattern paper.PaperPositionStore.get_open() uses over
     paper.get_open_trades().
+
+    Batch-22 item 4: include_unfilled=True additionally unions in still-
+    resting entry orders (status='pending') and ambiguous-outcome orders
+    (status='unknown'), mirroring _count_open_live_orders()'s own union
+    exactly (same closes_position_id IS NULL exclusion, so a pending/unknown
+    protective EXIT order's own row is never mistaken for a new entry).
+    Default stays False (filled-unsettled only) for every exit-scanning
+    caller (LivePositionStore.get_open(), _check_live_model_exits,
+    main.cmd_order's sell-match lookup) -- those can only ever act on a
+    position that has genuinely filled; a resting/ambiguous entry has no
+    real contracts on the exchange yet to check stop-losses against or sell.
+    paper.get_all_open_positions()/paper._exposure_denom() (every dollar-
+    exposure cap) pass True: AUD-0001's fix made dollar exposure combine
+    paper+live, but only ever saw the FILLED subset of live capital --
+    reopening the same "silently exceed every configured exposure cap"
+    failure mode _count_open_live_orders() already closed for the
+    position-COUNT cap, just for the two statuses that fix didn't cover.
+
+    Deliberately does NOT union in status='sent' rows (opus review follow-
+    up, LOW #11) -- unlike 'pending'/'unknown', a 'sent' row's own outcome
+    is ambiguous enough that _recover_pending_orders' promotion loop
+    requires it be past _SENT_PROMOTION_MIN_AGE_MINUTES before even
+    attempting to resolve it (see that function's own F1/F2 comment). Since
+    every 'sent' row self-promotes to 'unknown' (and becomes visible here)
+    the moment it clears that same age threshold, the real gap is bounded
+    to that window (currently 5 minutes) rather than open-ended -- accepted
+    as a deliberately small, self-healing blind spot rather than adding a
+    fourth query here for a status whose own defining property is "we don't
+    yet know if this represents anything real."
     """
     # AUD-0001/AUD-0002: city/target_date backfilled from the ticker alone
     # (weather_markets.parse_city_date needs only market["ticker"] -- title
@@ -1624,9 +1787,41 @@ def _get_live_open_positions() -> list[dict]:
     from weather_markets import _CITY_TZ, parse_city_date
 
     rows = execution_log.get_filled_unsettled_live_orders()
+    if include_unfilled:
+        # Same closes_position_id exclusion _count_open_live_orders() uses:
+        # a pending/unknown row that's itself a protective EXIT order (not a
+        # new entry) must not be double-counted as an open position on top
+        # of the position it's in the middle of closing.
+        rows = (
+            rows
+            + [
+                r
+                for r in execution_log.get_pending_live_orders()
+                if r.get("closes_position_id") is None
+            ]
+            + [
+                r
+                for r in execution_log.get_unknown_live_orders()
+                if r.get("closes_position_id") is None
+            ]
+        )
     positions = []
     for r in rows:
-        qty = r.get("fill_quantity") or r.get("quantity")
+        # Opus review follow-up (LOW #10): `fill_quantity or quantity` is
+        # correct for a FILLED row (fill_quantity there is the current
+        # tracked open size, already reduced by any partial exit) but wrong
+        # for a still-ACTIVE pending/unknown row -- a partial fill there
+        # (e.g. an amend/reprice that filled some contracts while the
+        # remainder keeps resting) means the position's real total exposure
+        # is still the full originally-requested `quantity`, not just the
+        # portion that's happened to fill SO FAR; the still-resting
+        # remainder is exactly the kind of "could become a real position at
+        # any moment" capital this include_unfilled union exists to catch.
+        qty = (
+            r.get("quantity")
+            if r.get("status") in ("pending", "unknown")
+            else r.get("fill_quantity") or r.get("quantity")
+        )
         entry_price = r.get("price")
         if not qty or entry_price is None:
             continue
@@ -1857,6 +2052,8 @@ def _exit_live_position(
         _log.warning("[LiveExit] Gate blocked exit for %s: %s", ticker, _gate_err)
         return False
 
+    # Batch-22 item 2: see _replace_live_order's matching comment.
+    _cid = compute_client_order_id(ticker, side, "sell", qty, exit_price, cycle)
     log_id = execution_log.log_order(
         ticker=ticker,
         side=side,
@@ -1864,6 +2061,7 @@ def _exit_live_position(
         price=exit_price,
         order_type="market",
         status="pending",
+        response={"client_order_id": _cid},
         forecast_cycle=cycle,
         live=True,
         close_time=position.get("close_time"),
@@ -2298,7 +2496,13 @@ def _place_live_order(
     # 5. Pre-log BEFORE touching the API — crash recovery depends on this record.
     #    If the process dies between here and step 6, the "pending" row is the
     #    only evidence the order was attempted; _recover_pending_orders() at next
-    #    startup will reconcile it against the Kalshi API.
+    #    startup will reconcile it against the Kalshi API. Batch-22 item 2:
+    #    response={"client_order_id": ...} stashed here too (matches
+    #    place_order()'s own internal derivation), so a crash before step 6's
+    #    result is recorded can still be reconciled against Kalshi instead of
+    #    marked 'sent' and never re-checked -- see
+    #    kalshi_client.compute_client_order_id's own docstring.
+    _cid = compute_client_order_id(ticker, side, "buy", quantity, price, cycle)
     log_id = execution_log.log_order(
         ticker=ticker,
         side=side,
@@ -2306,6 +2510,7 @@ def _place_live_order(
         price=price,
         order_type="limit",
         status="pending",
+        response={"client_order_id": _cid},
         forecast_cycle=cycle,
         live=True,
         close_time=market.get("close_time") or market.get("expiration_time"),
@@ -3145,7 +3350,18 @@ def _auto_place_trades(
     # cycle. _get_live_open_positions() is called fresh here, before any
     # live order this cycle is placed, so there's no overlap with F6's
     # later append of this cycle's own fills.
-    _open_trades_list = get_open_trades() + _get_live_open_positions()
+    #
+    # Opus review follow-up (batch-22 item 4, MEDIUM #3): include_unfilled=
+    # True -- this list feeds the dollar-denominated VaR gate
+    # (portfolio_var(...) vs MAX_VAR_DOLLARS below) in addition to the
+    # count/concentration caps, so it needed the same pending+unknown
+    # widening as paper.get_all_open_positions()/paper._live_effective_
+    # balance() for the identical reason: a resting live GTC entry or an
+    # ambiguous-outcome order is real committed capital that was invisible
+    # to this dollar gate until this fix.
+    _open_trades_list = get_open_trades() + _get_live_open_positions(
+        include_unfilled=True
+    )
     open_tickers = {t["ticker"] for t in _open_trades_list}
     # Opus-review-caught (L9, deliberately not changed further): if the same
     # ticker were somehow held on BOTH ledgers with opposite sides at once,
@@ -4094,6 +4310,10 @@ def _auto_place_trades(
                         _micro_cost = _micro_price * _micro_qty
                         if _micro_cost >= MICRO_LIVE_MIN_DOLLARS:
                             _micro_mkt = a.get("market", {})
+                            # Batch-22 item 2: see _place_live_order's matching comment.
+                            _micro_cid = compute_client_order_id(
+                                ticker, rec_side, "buy", _micro_qty, _micro_price, cycle
+                            )
                             _micro_log_id = execution_log.log_order(
                                 ticker=ticker,
                                 side=rec_side,
@@ -4101,6 +4321,7 @@ def _auto_place_trades(
                                 price=_micro_price,
                                 order_type="limit",
                                 status="pending",
+                                response={"client_order_id": _micro_cid},
                                 forecast_cycle=cycle,
                                 live=True,
                                 close_time=_micro_mkt.get("close_time")

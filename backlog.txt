@@ -25736,3 +25736,399 @@ Problem:
   Full record: none (not from the original max-depth audit -- surfaced while
   implementing batch-13's AUD-0022 fix this session; corrected same session
   by round-2 opus review of the fix itself).
+
+[RESOLVED 2026-08-22 -- see resolution below.] cmd_order (manual CLI buy/sell) bypasses 3 of the 4 live-specific loss/exposure brakes that only exist inside the automated _place_live_order path
+Priority: HIGH -- an operator (or a script driving the CLI) placing repeated manual live orders faces no live daily-loss cap, no live daily-spend cap, and no live open-position-count cap
+Files: main.py (cmd_order, ~4641-5300), order_executor.py (_place_live_order, ~2140-2200)
+
+Problem:
+  order_executor._place_live_order gates every AUTOMATED live entry on three
+  execution_log-backed checks in addition to the shared LiveTradingGate:
+  execution_log.get_today_live_loss() >= a configured cap (order_executor.py:
+  2155), execution_log.get_today_live_spend() >= MAX_DAILY_SPEND
+  (order_executor.py:2180), and _count_open_live_orders() >= _max_open
+  (order_executor.py:2189). main.cmd_order -- the MANUAL live-order path
+  (`py main.py buy/sell <ticker> <yes/no> <count> <price>`) -- calls
+  is_trading_paused(), trading_gates.pre_live_trade_check(client) (the full
+  LiveTradingGate, main.py:4842), and paper.check_position_limits()
+  (main.py:4856), but never calls any of these three functions. Grepped
+  every call site of all three functions repo-wide (`grep -rn
+  "get_today_live_loss(\|get_today_live_spend(\|_count_open_live_orders("
+  *.py`) -- all real call sites are inside order_executor.py; main.py has
+  none.
+  Root cause: same call-site-coverage gap class as AUD-0001/AUD-0002 (a
+  real gate exists but was only wired into one of the two live-order entry
+  points) -- these three checks were added to _place_live_order without a
+  parallel audit of cmd_order's own gate list, and cmd_order's existing
+  gates (pre_live_trade_check, check_position_limits) don't overlap with
+  what these three add: LiveTradingGate's is_daily_loss_halted reads
+  paper.get_daily_pnl() (paper-ledger-only, see the get_daily_pnl entry
+  under AUD-0005's own still-open residual, this file's L20831 area) --
+  a completely different, paper-only signal from execution_log's
+  get_today_live_loss(); check_position_limits() caps dollar EXPOSURE, not
+  order COUNT or cumulative same-day SPEND.
+  Financial risk: repeated manual `buy`/`sell` invocations (an operator
+  script, a fat-fingered loop, or simple manual over-trading during a
+  stressful session) face no live daily-loss halt beyond the paper-only
+  drawdown/streak checks, no cap on cumulative same-day live dollars spent,
+  and no cap on how many live positions can be open concurrently via this
+  path specifically -- check_position_limits() bounds exposure per-market/
+  portfolio/city/directional/correlated-group, but says nothing about raw
+  order count or today's running spend total.
+  Recommendation: Add the same three checks (or equivalent) to cmd_order's
+  live path, mirroring _place_live_order's gate order, before the
+  execution_log.log_order/place_order call.
+Resolution (2026-08-22):
+  Added all 3 checks to cmd_order's live buy path (main.py), inserted right
+  after pre_live_trade_check and before check_position_limits, mirroring
+  _place_live_order's gate order exactly: daily live loss vs
+  main._load_live_config()'s daily_loss_limit, daily live spend vs
+  utils.MAX_DAILY_SPEND, and max open live positions vs
+  order_executor._count_open_live_orders(). Scoped to action=="buy" only,
+  same reasoning as the existing check_position_limits scoping on the same
+  path (blocking a SELL would be backwards -- it reduces exposure).
+  Adjacency (confirmed via AskUserQuestion): main._quick_paper_buy's
+  maker-order branch is a SECOND manual live-order path with the identical
+  gap (places a real order via place_maker_order despite its name) -- not
+  cited by this entry or batch-22.md, found while implementing this fix.
+  Fixed the same way, same gate order, same file.
+  Tests: tests/test_trading_gates.py TestCmdOrderLiveRiskGates (5 tests)
+  and TestQuickPaperBuyLiveRiskGates (4 tests) -- each gate individually
+  mutation-tested (comparison-operator flip) to confirm it actually blocks;
+  a positive control confirms the order still places when every gate is
+  under its limit; a sell-path test confirms the 3 new checks don't fire on
+  an exit even with every limit blown.
+
+[RESOLVED 2026-08-22 -- see resolution below.] Crash-recovered live orders with no order_id are written to status='sent', a state no recovery or settlement query ever re-selects -- a genuine settlement/dedup black hole, the same failure shape AUD-0007 was built to eliminate, one branch further down
+Priority: HIGH -- requires a specific crash window (an order pre-logged 'pending' whose placement outcome is unknown even to _recover_pending_orders' own reconciliation), but the row is then permanently unrecoverable, not just delayed
+Files: order_executor.py (_recover_pending_orders, ~490-538), execution_log.py (get_pending_live_orders ~763, get_unknown_live_orders ~782, get_filled_unsettled_live_orders ~803)
+
+Problem:
+  _recover_pending_orders' loop over execution_log.get_pending_live_orders()
+  (status='pending' rows) handles the case where a pending row has no stored
+  order_id (order_executor.py:526-537) by calling
+  execution_log.log_order_result(row_id, status="sent", error="no order_id
+  at recovery -- treated as sent to prevent duplicate"). The log line even
+  says "marked failed" while the code writes "sent" -- a stale/misleading
+  message, minor on its own but a signal the two were never reconciled.
+  The real problem: 'sent' is log_order()'s TRANSIENT pre-placement default
+  status (execution_log.py:164/179, "Call with status='sent' before
+  placing, then update with log_order_result()") -- but here it's being
+  used as a manufactured TERMINAL status for a row whose real outcome is
+  unknown. Every subsequent recovery/settlement query is scoped by an exact
+  status match: get_pending_live_orders() is `WHERE status = 'pending'`,
+  get_unknown_live_orders() is `WHERE status = 'unknown'`,
+  get_filled_unsettled_live_orders() requires status='filled'. None select
+  'sent'. Grepped every "sent" reference repo-wide -- the only other
+  consumer is a dedup guard (execution_log.py:383, matches "any non-failed/
+  canceled status", so 'sent' correctly blocks re-placement) -- no function
+  anywhere re-checks a 'sent' row against the Kalshi API or ever transitions
+  it to 'filled'/'unknown'/'failed'.
+  Financial risk: if the order this row represents was ACTUALLY placed and
+  filled on the exchange (a live position that genuinely exists), that
+  position is now invisible to every downstream consumer: never picked up
+  by _poll_pending_orders (only polls 'pending'), never protected by
+  _check_live_position_exits/_check_live_model_exits (both source from
+  execution_log.get_filled_unsettled_live_orders(), status='filled' only),
+  never counted against max_open_positions correctly (unlike a genuine
+  'unknown' row, which AUD-0009's fix deliberately DOES count -- this one
+  silently doesn't), and never settled/reconciled by anything. The position
+  rides to market settlement completely unmanaged, indefinitely, with the
+  bot's own books showing nothing open.
+  Recommendation: Either fold this case into the existing 'unknown' status
+  (AUD-0007's already-built reconciliation path: try client_order_id
+  lookup, retry) instead of inventing a dead-end 'sent' terminal state, or
+  add a dedicated periodic query for `status='sent' AND placed_at < now() -
+  N minutes` that attempts the same reconciliation _recover_pending_orders
+  already does for 'unknown' rows.
+Resolution (2026-08-22):
+  Took the full-retrofit option (confirmed via AskUserQuestion over the
+  lighter visibility-only alternative): every live pre-log call site
+  (order_executor._place_live_order/_exit_live_position/_replace_live_order/
+  the micro-live block, and main.cmd_order/main._quick_paper_buy) now
+  computes and stores client_order_id in response BEFORE calling
+  place_order, via a new shared kalshi_client.compute_client_order_id()
+  helper (place_order() itself now routes through this same function
+  instead of an inline duplicate formula, so the two can never drift).
+  _amend_live_order deliberately excluded -- amend uses a different id
+  scheme (updated_client_order_id) and doesn't create a new order visible to
+  client_order_id lookup; its own order_id is unchanged by an amend, so the
+  original entry row already gets recovered normally through the existing
+  order_id-based pending loop.
+  execution_log gained get_sent_live_orders() (mirrors get_pending_live_
+  orders'/get_unknown_live_orders' unbounded shape). _recover_pending_orders
+  now promotes any 'sent' row carrying a client_order_id to 'unknown' before
+  the existing unknown-row reconciliation loop reads its rows -- so a
+  promoted row resolves in the SAME pass, not a dead end. The promotion
+  write is idempotent (two concurrent processes writing the identical
+  target state), so no new claim/lock was needed beyond claim_unknown_order's
+  existing atomicity at the actual settlement step.
+  Adjacency fix: the pending-loop's own "no order_id" fallback was calling
+  log_order_result() without response=, which does an UNCONDITIONAL
+  overwrite (no COALESCE) -- silently wiping the very client_order_id this
+  fix relies on. Now passes response=response to preserve it. Also fixed a
+  stale log message ("marked failed" when the code writes "sent").
+  Tests: tests/test_kalshi_client.py TestComputeClientOrderId (4 tests,
+  incl. proving the precomputed id byte-matches place_order's own internal
+  derivation); tests/test_live_execution.py TestRecoverSentOrders (4 tests,
+  incl. the full pending->sent->unknown->filled chain resolving within one
+  _recover_pending_orders() call). Both the promotion loop and the
+  response-preservation fix mutation-tested (each reverted individually via
+  Edit, confirmed the corresponding test fails, then restored).
+
+[RESOLVED 2026-08-22 -- see resolution below, fixed together with the fee-shape entry at this file's ~L25024 (both live in the same formula).] record_live_exit_fill (early-exit settlement, used by both cmd_order's manual live sells and order_executor._exit_live_position's automated protective exits) shares L22502's win-only-fee bug in a function L22502 doesn't cover, plus its docstring's "entry side always paid $0" assumption is false for IOC-entered positions
+Priority: MEDIUM -- same direction of error as AUD-0003/L22502 (understates fees paid, overstates realized P&L, feeds the daily-loss halt optimistically), now confirmed in a second, more heavily-used function
+Files: execution_log.py (record_live_exit_fill, ~1122-1192)
+
+Problem:
+  record_live_exit_fill's formula (execution_log.py:1168-1169): `gross_pnl =
+  clamped_fill_count * (exit_price - entry_price)`; `pnl = round(gross_pnl *
+  (1 - KALSHI_FEE_RATE) if gross_pnl > 0 else gross_pnl, 4)`. Two separate
+  issues, both real:
+  (1) Win-only fee, same pattern as L22502: a LOSING early exit (gross_pnl
+  <= 0) has the `else gross_pnl` branch -- NO fee subtracted at all, exactly
+  the bug L22502 documents for order_executor._poll_pending_orders' natural-
+  settlement path. L22502's own filing scoped itself to that ONE function;
+  it does not mention record_live_exit_fill, which is a separate, more
+  frequently exercised code path (every manual cmd_order sell and every
+  automated stop-loss/breakeven/model-exit goes through this function, not
+  the natural-settlement one).
+  (2) The docstring (execution_log.py:1130-1138) states the win-side fee
+  formula is exact because "the entry side already paid $0, always a
+  resting maker order." Per the AUD-0003 resolution (this file, ~L20791
+  area): cmd_order's live buys are always IOC (taker) as of e5331a8d, and
+  _exit_live_position's own ENTRY side (order_executor.py, the auto-trader)
+  can also be a taker-cross reprice fill. Both are real, current entry
+  paths into positions this function later exits -- for either one, the
+  entry side did NOT pay $0; the AUD-0003 fix (order_executor.py:1005-1009)
+  correctly started tracking maker-vs-taker per row for the NATURAL-
+  settlement formula, but record_live_exit_fill was never updated to match
+  -- it still assumes zero entry fee unconditionally.
+  Financial risk: every early-exited position closes with fewer fees
+  deducted than were actually paid (missing entry fee on wins entered via
+  IOC/taker; missing BOTH fees entirely on losses), understating realized
+  loss / overstating realized gain on exactly the settlement path most live
+  positions actually take (a stop-loss or model-exit firing before natural
+  market expiry is the common case, not the exception). Feeds
+  add_live_loss() -> get_today_live_loss(), the one live-aware daily-loss
+  brake that currently exists (see the cmd_order-bypass entry filed above
+  in this same session for why cmd_order doesn't even get that check) --
+  biases it toward under-halting.
+  Recommendation: Extend the same order_type-based maker/taker fee
+  selection AUD-0003's fix added to _poll_pending_orders into
+  record_live_exit_fill (both for the exit-side fee, which should apply on
+  losses too per L22502, and to account for the entry-side fee whenever the
+  original entry row's order_type indicates a taker fill).
+Resolution (2026-08-22):
+  Added utils.kalshi_taker_fee(contracts, price) -> ceil(0.07*C*P*(1-P))
+  rounded up to the whole cent (a 1e-9 epsilon guard before ceil() to
+  absorb float-multiplication noise on exact-cent boundaries -- e.g. 100
+  contracts @ $0.50 should be exactly 175 cents but floats land at
+  175.00000000000003, which ceil() alone would round up to 176). Used
+  unconditionally (win AND loss) in record_live_exit_fill (replacing the
+  flat win-only KALSHI_FEE_RATE formula) and in order_executor.
+  _poll_pending_orders' natural-settlement branch (same win-only bug,
+  modeling the ENTRY-side fee for a taker-filled entry rather than an exit),
+  and in backtest.py's 3 taker-style benchmark P&L calcs (the bot's own
+  Kelly sizing already correctly used the $0 maker rate, untouched).
+  record_live_exit_fill's stale "entry side always paid $0" docstring claim
+  removed -- irrelevant to this function's own formula either way, since it
+  only ever models the EXIT leg's fee, but the comment implied otherwise.
+  Tests: tests/test_execution_log.py TestKalshiTakerFee (5 tests, incl. the
+  batch's own E1 reproduction: qty=50 entry=0.30 exit=0.35 -> real fee
+  $0.80, fee-adjusted pnl $1.70 vs the old formula's $2.325). Every existing
+  fee-dependent expected value across test_execution_log.py,
+  test_live_execution.py, and test_trading_gates.py re-derived by hand
+  against the new formula and updated (full suite re-run green).
+
+[RESOLVED 2026-08-22 -- see resolution below.] Live-position dollar-exposure accounting and live open-order-count enforcement disagree on which execution_log row statuses count as "a real open position"
+Priority: MEDIUM -- undocumented asymmetry between two consumers of the same underlying question ("how much do we actually have on"), and the looser one is the one that gates NEW order placement
+Files: order_executor.py (_get_live_open_positions ~1549-1568, _count_open_live_orders ~173-213), paper.py (get_all_open_positions, consumes _get_live_open_positions)
+
+Problem:
+  AUD-0009/AUD-0012's fix (batch-01, 8bdff1e5) deliberately made
+  _count_open_live_orders() the union of status='pending' (a still-resting
+  GTC entry order representing real committed capital that could fill any
+  moment) + status='unknown' (AUD-0007: placement outcome ambiguous, could
+  turn out to be a real fill) + get_filled_unsettled_live_orders() (status=
+  'filled', settled_at IS NULL) -- explicitly reasoned through in that
+  function's own docstring as the correct definition of "open" for the
+  max_open_positions cap. _get_live_open_positions() -- the function that
+  feeds paper.get_all_open_positions(), which in turn feeds every DOLLAR-
+  denominated exposure cap (per-market, portfolio, city/date, directional,
+  correlated-group; see AUD-0001's resolution) -- sources ONLY
+  get_filled_unsettled_live_orders(). It does not merge in pending or
+  unknown rows at all.
+  Financial risk: a resting live GTC entry order (status='pending') or an
+  ambiguous-outcome order (status='unknown') represents real capital that
+  could become a real position at any moment, but is invisible to every
+  dollar-exposure cap while being correctly counted against the position-
+  count cap. A sequence of several pending/unknown live orders on the same
+  market/city/date/direction could clear every exposure-cap check (each one
+  sees $0 existing_cost for those rows) right up until they all fill,
+  potentially breaching caps the moment they do -- the exact "silently
+  exceed every configured exposure cap" failure mode AUD-0001 was written
+  to close, reopened for exactly the two row-statuses AUD-0001's own fix
+  didn't include.
+  Recommendation: Either merge pending+unknown rows into
+  _get_live_open_positions() the same way _count_open_live_orders() already
+  does (using each row's limit price as a placeholder cost basis for
+  pending rows, since no fill price exists yet), or explicitly document why
+  dollar exposure is deliberately scoped narrower than position count and
+  confirm that's an intentional, accepted gap rather than an oversight.
+Resolution (2026-08-22):
+  Merged (confirmed via AskUserQuestion over the document-only alternative).
+  _get_live_open_positions() gained an include_unfilled: bool = False
+  parameter -- when True, unions in pending+unknown rows (same
+  closes_position_id IS NULL exclusion _count_open_live_orders() already
+  uses, so a pending/unknown protective EXIT order's own row is never
+  double-counted). Default stays False for every exit-scanning caller
+  (LivePositionStore.get_open, _check_live_model_exits, main.cmd_order's
+  sell-match lookup) -- those can only ever act on a position that's
+  genuinely filled. paper.get_all_open_positions() and paper.
+  _live_effective_balance() (the exposure-cap numerator and denominator)
+  now pass include_unfilled=True.
+  Tests: tests/test_batch01_live_position_visibility.py
+  TestGetLiveOpenPositionsIncludeUnfilled (5 tests) and
+  TestPaperExposureIncludesUnfilledLive (4 tests), incl. an end-to-end
+  check_position_limits block on exposure that's entirely a pending
+  (not-yet-filled) live order. Mutation-tested (reverted
+  get_all_open_positions' include_unfilled=True to False via Edit, confirmed
+  3 of 4 tests in the affected class fail, restored).
+
+[RESOLVED 2026-08-22 -- see resolution below.] cmd_order has no direct rain-market gate; rain is enforced only by a fail-open, buy-only check_position_limits call
+Priority: MEDIUM -- the exact failure shape the adjacent snow guard's own comment cites as ITS reason for existing ("relying on check_position_limits() alone fails open on an unhandled exception"), now confirmed still true for rain specifically
+Files: main.py (~4666-4762 sibling guards, ~4854-4884 check_position_limits call)
+
+Problem:
+  Traced all 6 *_TRADING_ENABLED-gated market families across cmd_order.
+  Hurricane-count, hurricane-next-event, storm-order, unsupported-hurricane,
+  snow, and hourly each have a direct refuse-outright guard. Rain has none
+  -- it relies solely on paper.check_position_limits() at ~4863, which (a)
+  sits inside a try/except that logs a warning and CONTINUES to place the
+  order on failure (~4879-4884), and (b) is only invoked when action ==
+  "buy" (a manual live SELL of a rain ticker is entirely unguarded). A
+  tracker.db lock (a documented recurring failure mode in this codebase,
+  see alerts.py's own comments) hitting check_position_limits mid-call
+  would silently let a live rain order through before RAIN_TRADING_ENABLED
+  is actually meant to allow it.
+  Recommendation: Add a direct rain guard alongside the existing snow guard
+  (main.py ~4734), matching the other five families' shape.
+Resolution (2026-08-22):
+  Added, immediately before the existing snow guard, matching its exact
+  shape (refuse outright when the ticker matches _KXRAIN_MONTHLY_CITY and
+  not _rain_gates_active()). Updated the snow guard's own adjacent comment,
+  which had claimed rain's "leaner shape" was deliberate -- no longer true.
+  Tests: tests/test_trading_gates.py TestCmdOrderRainGuard (2 tests,
+  mirroring test_snow_markets.py's TestCmdOrderSnowGuard convention).
+  Mutation-tested (flipped `not _rain_gates_active()` to
+  `_rain_gates_active()` via Edit, confirmed both tests fail, restored).
+
+[RESOLVED 2026-08-22 -- see resolution below.] execution_log.py's phantom-position sentinel-flag file (the unsettled-exit alert AUD-0026's fix relies on) bypasses safe_io entirely -- no atomic write, no lock -- and fails OPEN (returns []) on a corrupted/truncated file, silently dropping the operator's only recurring warning
+Priority: LOW-MEDIUM
+Files: execution_log.py (~1024-1036 record_live_early_exit_with_retry's read-modify-write, ~1046-1070 get_unsettled_exit_flags, ~433-441 _set_degraded_flag for contrast -- that one fails CLOSED correctly)
+
+Problem:
+  The sentinel file (tracking AUD-0026-style unmatched-sell rows still
+  needing manual settlement) is read, appended to in Python, and written
+  back via a plain write_text() -- no safe_io.atomic_write_json, no lock.
+  Two processes (cron and watch --auto --live run deliberately unserialized
+  per AUD-0013's own design) can lose one record to a lost update; a
+  crash or AV lock mid-write truncates the WHOLE accumulated list, not just
+  the newest entry. get_unsettled_exit_flags() swallows JSONDecodeError and
+  returns [] on read failure -- the operator's one recurring warning about
+  a still-open phantom live position silently disappears rather than
+  erring loudly, the opposite of _set_degraded_flag's correct fail-closed
+  behavior a few hundred lines away in the same file.
+  Recommendation: Route through safe_io.atomic_write_json plus the module's
+  existing _append_lock; have get_unsettled_exit_flags() log at ERROR
+  (not silently return []) on a decode failure.
+Resolution (2026-08-22):
+  Routed through safe_io.CrossProcessLock (guards the whole read-modify-
+  write as one critical section, same class settlement_monitor.
+  run_settlement_monitor already uses -- not the module's own in-process-
+  only _append_lock, since the real risk here is cross-PROCESS, per AUD-0013)
+  and safe_io.atomic_write_json for the actual write. Kept the sentinel
+  file's existing on-disk shape (a bare JSON list) rather than wrapping it
+  in a dict to satisfy atomic_write_json's dict-typed signature -- changing
+  the file format is out of this batch's scope (safe_io.py belongs to a
+  different batch per INDEX.md) and would have broken every existing reader;
+  used a local `# type: ignore[arg-type]` instead (json.dumps handles a list
+  identically to a dict at runtime). get_unsettled_exit_flags() now logs at
+  ERROR (not silently) on a JSONDecodeError/OSError before returning the
+  same safe [].
+  Tests: tests/test_execution_log.py TestRecordLiveEarlyExitWithRetry gained
+  2 tests (atomic_write_json actually called via a spy; a corrupt prior file
+  doesn't block a new record) and a new TestGetUnsettledExitFlagsCorruption
+  class (3 tests, incl. caplog-verified ERROR logging on a corrupt file).
+
+[RESOLVED 2026-08-22 -- fixed together with the win-only-fee entry above (both live in the same formula) -- see that entry's Resolution note for the full writeup.] record_live_exit_fill's realized-P&amp;L fee model uses a flat percentage of gross profit; Kalshi's actual taker fee formula (already correctly documented in this codebase's own utils.py) is a curved per-contract function of price, producing errors up to ~27% on individual exits in BOTH directions
+Priority: MEDIUM-HIGH -- this is the realized ledger that feeds add_live_loss -> get_today_live_loss (the one live-aware daily-loss brake that exists) and the tax export, not an EV estimate; errors don't cancel because protective exits cluster where price has moved, not at 50 cents
+Files: execution_log.py (~1163-1169), utils.py (~77-83, documents the real formula verbatim: fee = round_up(0.07 * C * P * (1-P)) per contract, rounded UP to the cent -- "7% is the coefficient in that formula, not a flat 7% of winnings")
+
+Problem:
+  Current formula: gross_pnl = qty*(exit-entry); pnl = round(gross_pnl *
+  (1-KALSHI_FEE_RATE), 4) if gross_pnl &gt; 0 else gross_pnl -- a flat 7% of
+  the WIN amount, not Kalshi's real per-contract curved fee. A prior
+  2026-07-12 resolution (backlog ~L9843) declared this shape mismatch
+  "moot in practice" because it only mattered where the fee was $0 anyway
+  (maker fills) -- but record_live_exit_fill deliberately uses the TAKER
+  fee rate (its own docstring: exits are always IOC), so the mismatch is
+  live at exactly the one site that prior resolution's reasoning excluded.
+  It's also unrounded to whole cents, while Kalshi rounds each fee up.
+  Evidence (E1, executed against both formulas): qty=20 entry=0.40
+  exit=0.90 -&gt; bot computes +9.30, real Kalshi fee gives +9.87 (delta
+  -0.57); qty=50 entry=0.30 exit=0.35 -&gt; bot +2.325, real +1.70 (delta
+  +0.625, +27%); qty=20 entry=0.45 exit=0.55 -&gt; bot +1.86, real +1.65
+  (+11%). Near-50-cent exits OVERSTATE realized P&amp;L; near-0/1 exits
+  UNDERSTATE it -- and since protective exits fire where the model has
+  moved (not symmetrically around 50 cents), this doesn't average out.
+  Every downstream ledger figure (the daily-loss breaker, dashboard, tax
+  CSV) inherits the bias.
+  Recommendation: Add a shared kalshi_taker_fee(contracts, price) helper
+  implementing ceil(0.07*C*P*(1-P)) in whole cents (matching utils.py's
+  own already-correct documentation), and use it in
+  record_live_exit_fill, order_executor._poll_pending_orders, and
+  backtest.py -- the same fix closes both this finding and the already-
+  tracked win-only-fee omission at L22502, since both live in the same
+  formula.
+
+[OPEN 2026-08-22 -- found by an independent opus review (effort:high) of batch-22's own fee-formula fix, while re-deriving whether the fix fully closed the entry named at backlog.txt's "record_live_exit_fill shares L22502's win-only-fee bug" entry (now RESOLVED)] record_live_exit_fill never charges the ENTRY-side taker fee for a taker-entered position that closes via an early exit (stop-loss/breakeven/model-exit/manual sell) rather than natural settlement
+Priority: MEDIUM-LOW -- same understating-realized-loss direction as the already-fixed win-only-fee bug, but requires a specific entry path (a taker-filled entry, i.e. main.cmd_order's live buy or the auto-path's taker-cross reprice fallback) AND an early exit (the common case for a protective exit, not the exception)
+Files: execution_log.py (record_live_exit_fill, ~1245-1330), order_executor.py (_poll_pending_orders' settlement branch, ~1060-1140 -- the ONLY place an entry-side fee is ever computed, and it never runs for a row record_live_exit_fill has already marked settled_at)
+
+Problem:
+  Kalshi charges a taker fee on the ENTRY fill too, not just the exit fill,
+  whenever the entry itself was a taker (IOC) order -- true for every
+  cmd_order live buy (always IOC post-e5331a8d) and the auto-path's
+  taker-cross reprice fallback. record_live_exit_fill only ever computes
+  the EXIT leg's own fee (utils.kalshi_taker_fee(clamped_fill_count,
+  exit_price), fixed as part of the win-only-fee batch-22 entry above) --
+  it has no awareness of whether the ENTRY leg was maker or taker, and
+  never charges that fee. The only place in the codebase that DOES compute
+  an entry-side fee is order_executor._poll_pending_orders' natural-
+  settlement branch (order_type-based maker/taker selection, also fixed as
+  part of the same batch-22 work) -- but that branch only runs for rows
+  still in get_filled_unsettled_live_orders(), and record_live_exit_fill's
+  own settled_at write is exactly what removes a row from that set once it
+  closes early. A position that's taker-entered and later exits early
+  (the common case for any real protective exit -- stop-loss, breakeven,
+  model-exit, or a manual cmd_order sell) has its entry fee permanently
+  unrecorded.
+  Financial risk: realized P&L on every taker-entered, early-exited live
+  position is overstated by the unrecorded entry fee (e.g. 50 contracts
+  entered at 0.30 -> kalshi_taker_fee(50, 0.30) = $0.74 never deducted),
+  biasing add_live_loss() -> get_today_live_loss() -- the one live-aware
+  daily-loss brake that exists -- toward under-halting.
+  Recommendation: record_live_exit_fill (or its caller) needs the position's
+  ORIGINAL entry quantity (not just the currently-remaining tracked
+  quantity) to correctly prorate a one-time entry fee across potentially
+  more than one partial exit -- recognizing the full entry fee on a
+  position's FIRST exit event is fine when there's only ever one exit, but
+  wrong the moment a position closes across two or more separate partial
+  exits (the fee would need to be split proportionally, or recognized
+  entirely on final close and tracked as pending in between). This needs a
+  real design decision (which recognition-timing model to use) plus a
+  position-dict/schema change to carry the original quantity and the entry
+  row's own order_type through to record_live_exit_fill -- out of scope for
+  a same-payload adjacency fix; needs its own implementation pass.

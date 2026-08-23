@@ -893,7 +893,13 @@ class TestAutoPlaceTradesLiveConcentrationCap:
         message."""
         monkeypatch.setenv("MAX_CONCURRENT_POSITIONS", "1")
         monkeypatch.setattr(order_executor, "is_trading_paused", lambda: False)
-        monkeypatch.setattr(order_executor, "_get_live_open_positions", lambda: [])
+        # Batch-22 item 4 follow-up (MEDIUM #3): the real call site now
+        # passes include_unfilled=True, so the stub must accept it too.
+        monkeypatch.setattr(
+            order_executor,
+            "_get_live_open_positions",
+            lambda include_unfilled=False: [],
+        )
         _log_live_position(ticker="KXHIGHNY-25MAY15-T75", qty=5, price=0.40)
         opp = (
             {"ticker": "KXHIGHNY-25MAY16-T76", "yes_bid": 40, "yes_ask": 44},
@@ -908,3 +914,195 @@ class TestAutoPlaceTradesLiveConcentrationCap:
             "position that tripped the cap message above must no longer "
             "be visible to it"
         )
+
+
+class TestGetLiveOpenPositionsIncludeUnfilled:
+    """Batch-22 item 4: _get_live_open_positions(include_unfilled=True)
+    unions in still-pending entry orders and ambiguous 'unknown' orders,
+    mirroring _count_open_live_orders()'s own union (TestCountOpenLiveOrders
+    above) -- previously only filled-unsettled rows were visible here, so a
+    resting live GTC entry or an ambiguous-outcome order was invisible to
+    every dollar-exposure cap while correctly counted against the
+    position-count cap. Default (include_unfilled=False, the parameter's
+    default) must stay unchanged for every exit-scanning caller."""
+
+    def test_default_excludes_pending_and_unknown(self):
+        """Positive control: default behavior (used by LivePositionStore.
+        get_open/_check_live_model_exits/main.cmd_order's sell-match lookup)
+        is unaffected by this fix."""
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="pending",
+            live=True,
+        )
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY16-T76",
+            side="yes",
+            quantity=3,
+            price=0.60,
+            status="unknown",
+            live=True,
+            response={"client_order_id": "coid_x"},
+        )
+        assert order_executor._get_live_open_positions() == []
+        assert order_executor._get_live_open_positions(include_unfilled=False) == []
+
+    def test_include_unfilled_true_adds_pending_entry(self):
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="pending",
+            live=True,
+        )
+        positions = order_executor._get_live_open_positions(include_unfilled=True)
+        assert len(positions) == 1
+        assert positions[0]["ticker"] == "KXHIGH-25MAY15-T75"
+        # Limit price used as the placeholder cost basis (batch-22 item 4's
+        # own recommendation), matching the filled-row convention exactly.
+        assert positions[0]["entry_price"] == pytest.approx(0.55)
+        assert positions[0]["quantity"] == 2
+        assert positions[0]["cost"] == pytest.approx(1.10)
+
+    def test_include_unfilled_true_uses_full_quantity_for_a_partially_filled_pending_row(
+        self,
+    ):
+        """Opus review follow-up (LOW #10): a still-resting order that's
+        partially filled (e.g. an amend/reprice) must count its FULL
+        originally-requested quantity, not just the portion filled so far
+        -- the still-resting remainder is real capital that could become a
+        position at any moment, exactly what include_unfilled exists to
+        catch. `fill_quantity or quantity` (the FILLED-row convention,
+        where fill_quantity is the current tracked open size after any
+        partial exit) would silently under-count this row at just the
+        filled portion."""
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.55,
+            status="pending",
+            live=True,
+        )
+        execution_log.log_order_result(row_id, status="pending", fill_quantity=3)
+
+        positions = order_executor._get_live_open_positions(include_unfilled=True)
+        assert len(positions) == 1
+        assert positions[0]["quantity"] == 10, (
+            "must use the full requested quantity, not the 3-contract "
+            "partial fill so far"
+        )
+        assert positions[0]["cost"] == pytest.approx(5.50)
+
+    def test_include_unfilled_true_adds_unknown_entry(self):
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY16-T76",
+            side="yes",
+            quantity=3,
+            price=0.60,
+            status="unknown",
+            live=True,
+            response={"client_order_id": "coid_x"},
+        )
+        positions = order_executor._get_live_open_positions(include_unfilled=True)
+        assert len(positions) == 1
+        assert positions[0]["ticker"] == "KXHIGH-25MAY16-T76"
+
+    def test_include_unfilled_true_does_not_double_count_filled_and_pending(self):
+        """A row transitions monotonically through one status at a time --
+        the same execution_log row must never appear in both the
+        filled-unsettled set AND the pending/unknown sets simultaneously."""
+        position_id = _log_live_position(ticker="KXHIGH-25MAY15-T75", qty=5, price=0.40)
+        positions = order_executor._get_live_open_positions(include_unfilled=True)
+        assert [p["id"] for p in positions] == [position_id]
+
+    def test_include_unfilled_true_excludes_pending_exit_orders_own_row(self):
+        """Mirrors _count_open_live_orders' identical exclusion: a pending
+        protective EXIT order (closes_position_id set) must not be counted
+        as a second open position on top of the position it's closing."""
+        position_id = _log_live_position(ticker="KXHIGH-25MAY15-T75", qty=5, price=0.40)
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=5,
+            price=0.42,
+            order_type="market",
+            status="pending",
+            live=True,
+            closes_position_id=position_id,
+        )
+        positions = order_executor._get_live_open_positions(include_unfilled=True)
+        assert [p["id"] for p in positions] == [position_id]
+
+
+class TestPaperExposureIncludesUnfilledLive:
+    """Batch-22 item 4: paper.get_all_open_positions() and
+    paper._live_effective_balance() (the dollar-exposure-cap numerator and
+    denominator, respectively) must both see a resting/ambiguous live order,
+    not just filled-unsettled ones -- see TestGetLiveOpenPositionsIncludeUnfilled
+    above for the underlying _get_live_open_positions() fix this builds on."""
+
+    def test_get_all_open_positions_sees_a_pending_live_order(self):
+        execution_log.log_order(
+            ticker="KXHIGHNY-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.30,
+            status="pending",
+            live=True,
+        )
+        positions = paper.get_all_open_positions()
+        assert len(positions) == 1
+        assert positions[0]["ticker"] == "KXHIGHNY-25MAY15-T75"
+
+    def test_ticker_exposure_counts_a_pending_only_live_order(self):
+        """Mutation target: a ticker with ONLY a pending (unfilled) live
+        order must show nonzero exposure -- before this fix it read exactly
+        0.0, the same class of gap AUD-0001 fixed for filled positions."""
+        execution_log.log_order(
+            ticker="KXHIGHNY-25MAY15-T75",
+            side="yes",
+            quantity=100,
+            price=0.50,
+            status="pending",
+            live=True,
+        )
+        exposure = paper.get_ticker_exposure("KXHIGHNY-25MAY15-T75")
+        assert exposure > 0
+        assert exposure == pytest.approx(50.0 / 1000.0)
+
+    def test_check_position_limits_blocks_on_pending_only_exposure(self):
+        """End-to-end repro: a manual order that would push a ticker over
+        its per-market cap must be blocked even when the EXISTING exposure
+        at that ticker is entirely a resting, not-yet-filled live order."""
+        execution_log.log_order(
+            ticker="KXHIGHNY-25MAY15-T75",
+            side="yes",
+            quantity=400,
+            price=0.50,  # $200 pending
+            status="pending",
+            live=True,
+        )
+        result = paper.check_position_limits(
+            "KXHIGHNY-25MAY15-T75", qty=200, price=0.50, max_cost_per_market=250.0
+        )
+        assert result["ok"] is False
+        assert "per-market cap" in result["reason"]
+
+    def test_live_effective_balance_includes_pending_order_cost(self):
+        client = MagicMock()
+        client.get_balance.return_value = {"balance": 500000}  # $5000 cash
+        execution_log.log_order(
+            ticker="KXHIGHNY-25MAY15-T75",
+            side="yes",
+            quantity=600,
+            price=0.50,  # $300 pending
+            status="pending",
+            live=True,
+        )
+        # cash(5000) + pending open cost(300) = 5300.
+        assert paper._live_effective_balance(client) == pytest.approx(5300.0)

@@ -747,6 +747,63 @@ class TestLiveSettlement:
         assert summary["settled_count"] == 2
 
 
+class TestKalshiTakerFee:
+    """Batch-22 items 3+6: utils.kalshi_taker_fee(contracts, price) is
+    Kalshi's real per-contract taker fee (ceil(0.07*C*P*(1-P)), rounded UP
+    to the whole cent) -- replaces the win-only flat-KALSHI_FEE_RATE
+    approximation in record_live_exit_fill and
+    order_executor._poll_pending_orders' settlement branch (see those
+    classes' own tests for the end-to-end wiring)."""
+
+    def test_reproduces_batch22_e1_example(self):
+        """The batch's own reproduction: qty=50, entry=0.30, exit=0.35 --
+        gross_pnl = 50*(0.35-0.30) = 2.50. The old flat formula computed a
+        fee-adjusted P&L of 2.50*(1-0.07) = 2.325; the real per-fill fee
+        (at the exit/taker price, 0.35) is $0.80, giving a real
+        fee-adjusted P&L of 2.50 - 0.80 = 1.70 -- a 27% error in the old
+        formula's favor."""
+        from utils import kalshi_taker_fee
+
+        fee = kalshi_taker_fee(50, 0.35)
+        assert fee == pytest.approx(0.80)
+        gross_pnl = 50 * (0.35 - 0.30)
+        assert gross_pnl - fee == pytest.approx(1.70)
+        assert gross_pnl * (1 - 0.07) == pytest.approx(2.325)  # the old, wrong formula
+
+    def test_rounds_up_to_the_cent_not_down(self):
+        from utils import kalshi_taker_fee
+
+        # 0.07 * 10 * 0.60 * 0.40 = 0.168 -> 16.8 cents, must round UP to 17,
+        # not truncate/round-nearest to 16.
+        assert kalshi_taker_fee(10, 0.60) == pytest.approx(0.17)
+
+    def test_symmetric_around_50_cents(self):
+        """The curved formula (P*(1-P)) is symmetric -- price and its
+        complement (1-price) must yield the identical fee for the same
+        contract count."""
+        from utils import kalshi_taker_fee
+
+        assert kalshi_taker_fee(20, 0.30) == pytest.approx(kalshi_taker_fee(20, 0.70))
+
+    def test_zero_near_the_extremes(self):
+        """Fee shrinks toward $0 as price approaches 0 or 1 (P*(1-P) -> 0) --
+        the opposite of a flat-percentage-of-payout model, which stays
+        proportional to the payout even at the extremes."""
+        from utils import kalshi_taker_fee
+
+        assert kalshi_taker_fee(10, 0.01) < kalshi_taker_fee(10, 0.50)
+        assert kalshi_taker_fee(10, 0.99) < kalshi_taker_fee(10, 0.50)
+
+    def test_hand_computed_value_at_50_cents(self):
+        """Hand-computed boundary case: 0.07*100*0.50*0.50 = 1.75 -> 175
+        cents exactly (no rounding ambiguity), confirming the formula's
+        coefficient and rounding direction independently of the E1 example
+        above."""
+        from utils import kalshi_taker_fee
+
+        assert kalshi_taker_fee(100, 0.50) == pytest.approx(1.75)
+
+
 class TestRecordLiveExitFill:
     """record_live_exit_fill is the shared fee-adjusted-P&L/settlement
     helper extracted from order_executor._exit_live_position so
@@ -789,9 +846,11 @@ class TestRecordLiveExitFill:
         pnl, fully_closed = execution_log.record_live_exit_fill(
             position, 10, 0.60, reason="model_exit"
         )
-        # gross_pnl = 10 * (0.60 - 0.40) = 2.00; gain -> fee applies:
-        # 2.00 * (1 - 0.07) = 1.86
-        assert pnl == pytest.approx(1.86)
+        # Batch-22 items 3+6: gross_pnl = 10 * (0.60 - 0.40) = 2.00; fee is
+        # the real curved per-contract formula (utils.kalshi_taker_fee),
+        # not a flat 7% of gross: ceil(0.07*10*0.60*0.40*100)/100 = 0.17.
+        # pnl = 2.00 - 0.17 = 1.83.
+        assert pnl == pytest.approx(1.83)
         assert fully_closed is True
         with execution_log._conn() as con:
             row = con.execute(
@@ -802,30 +861,36 @@ class TestRecordLiveExitFill:
         assert row["settled_at"] is not None
         assert row["exit_price"] == pytest.approx(0.60)
         assert row["exit_reason"] == "model_exit"
-        assert row["pnl"] == pytest.approx(1.86)
-        assert execution_log.get_today_live_loss() == pytest.approx(-1.86)
+        assert row["pnl"] == pytest.approx(1.83)
+        assert execution_log.get_today_live_loss() == pytest.approx(-1.83)
         # Positive control: the closed position no longer surfaces as open.
         assert position["id"] not in [
             r["id"] for r in execution_log.get_filled_unsettled_live_orders()
         ]
 
-    def test_full_exit_loss_skips_fee_discount(self):
+    def test_full_exit_loss_also_charges_fee(self):
+        """Batch-22 items 3+6: the fee is charged on the taker fill itself,
+        independent of win/loss -- the prior 'loss skips fee discount'
+        behavior was the win-only-fee bug this fix closes (backlog L22502's
+        pattern, reproduced here for the exit-fill path specifically)."""
         position = self._open_position(quantity=10, entry_price=0.40)
         pnl, fully_closed = execution_log.record_live_exit_fill(
             position, 10, 0.20, reason="stop_loss"
         )
-        # gross_pnl = 10 * (0.20 - 0.40) = -2.00; loss -> no fee discount.
-        assert pnl == pytest.approx(-2.00)
+        # gross_pnl = 10 * (0.20 - 0.40) = -2.00; fee still applies:
+        # ceil(0.07*10*0.20*0.80*100)/100 = 0.12. pnl = -2.00 - 0.12 = -2.12.
+        assert pnl == pytest.approx(-2.12)
         assert fully_closed is True
-        assert execution_log.get_today_live_loss() == pytest.approx(2.00)
+        assert execution_log.get_today_live_loss() == pytest.approx(2.12)
 
     def test_partial_exit_leaves_position_open_and_reduces_quantity(self):
         position = self._open_position(quantity=10, entry_price=0.40)
         pnl, fully_closed = execution_log.record_live_exit_fill(
             position, 4, 0.20, reason="stop_loss"
         )
-        # gross_pnl = 4 * (0.20 - 0.40) = -0.80; loss -> no fee discount.
-        assert pnl == pytest.approx(-0.80)
+        # gross_pnl = 4 * (0.20 - 0.40) = -0.80; fee still applies:
+        # ceil(0.07*4*0.20*0.80*100)/100 = 0.05. pnl = -0.80 - 0.05 = -0.85.
+        assert pnl == pytest.approx(-0.85)
         assert fully_closed is False
         with execution_log._conn() as con:
             row = con.execute(
@@ -837,7 +902,7 @@ class TestRecordLiveExitFill:
         # contracts exited when only 4 actually did.
         assert row["settled_at"] is None
         assert row["fill_quantity"] == 6
-        assert execution_log.get_today_live_loss() == pytest.approx(0.80)
+        assert execution_log.get_today_live_loss() == pytest.approx(0.85)
         # Positive control: the reduced position still surfaces as open,
         # at the correct new size, for a future exit attempt.
         reopened = execution_log.get_filled_unsettled_live_orders()
@@ -881,12 +946,13 @@ class TestRecordLiveExitFill:
         position = self._open_position(quantity=10, entry_price=0.40)
         pnl, fully_closed = execution_log.record_live_exit_fill(position, 20, 0.60)
         # Must compute as if fill_count were 10 (clamped), NOT 20:
-        # gross_pnl = 10 * (0.60 - 0.40) = 2.00; gain -> fee applies:
-        # 2.00 * (1 - 0.07) = 1.86. An unclamped 20-contract calculation
-        # would double this to 3.72.
-        assert pnl == pytest.approx(1.86)
+        # gross_pnl = 10 * (0.60 - 0.40) = 2.00; fee = ceil(0.07*10*0.60*
+        # 0.40*100)/100 = 0.17. pnl = 1.83. An unclamped 20-contract
+        # calculation would instead give gross=4.00, fee=ceil(0.07*20*0.60*
+        # 0.40*100)/100=0.34, pnl=3.66.
+        assert pnl == pytest.approx(1.83)
         assert fully_closed is True
-        assert execution_log.get_today_live_loss() == pytest.approx(-1.86)
+        assert execution_log.get_today_live_loss() == pytest.approx(-1.83)
 
     def test_concurrent_settle_race_raises_and_does_not_double_count(self):
         """Opus review (2026-08-17), M5: main.cmd_order's manual sell can now
@@ -969,8 +1035,9 @@ class TestRecordLiveExitFill:
         assert row["pnl"] is None
         # Writer B's P&L must not have been double-counted on top of
         # Writer A's already-realized partial P&L.
-        # Writer A: gross = 3 * (0.50 - 0.40) = 0.30; gain -> fee: 0.30*0.93 = 0.279
-        assert execution_log.get_today_live_loss() == pytest.approx(-0.279, rel=1e-3)
+        # Writer A: gross = 3 * (0.50 - 0.40) = 0.30; fee = ceil(0.07*3*0.50*
+        # 0.50*100)/100 = 0.06. pnl = 0.30 - 0.06 = 0.24.
+        assert execution_log.get_today_live_loss() == pytest.approx(-0.24)
 
 
 class TestRecordLiveEarlyExitWithRetry:
@@ -981,11 +1048,16 @@ class TestRecordLiveEarlyExitWithRetry:
     get_filled_unsettled_live_orders() reads as a phantom open position,
     with only a warning log (no durable trace) if it happened."""
 
+    def _corrupt_flag_path(self):
+        flag_path = execution_log._unsettled_exit_flag_path()
+        return flag_path.with_name(flag_path.name + ".corrupt")
+
     def setup_method(self):
         self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         execution_log.DB_PATH = Path(self._tmp.name)
         execution_log._initialized = False
         execution_log._unsettled_exit_flag_path().unlink(missing_ok=True)
+        self._corrupt_flag_path().unlink(missing_ok=True)
 
     def teardown_method(self):
         import gc
@@ -993,6 +1065,7 @@ class TestRecordLiveEarlyExitWithRetry:
 
         execution_log._initialized = False
         execution_log._unsettled_exit_flag_path().unlink(missing_ok=True)
+        self._corrupt_flag_path().unlink(missing_ok=True)
         self._tmp.close()
         gc.collect()
         # Windows-only flakiness: a retried/failed write leaves an extra
@@ -1121,6 +1194,140 @@ class TestRecordLiveEarlyExitWithRetry:
             execution_log._unsettled_exit_flag_path().read_text(encoding="utf-8")
         )
         assert [f["order_id"] for f in flagged] == [row_id_1, row_id_2]
+
+    def test_write_goes_through_atomic_write_json_not_plain_write_text(
+        self, monkeypatch
+    ):
+        """Batch-22 item 7: the sentinel flag write must go through
+        safe_io.atomic_write_json (temp + fsync + rename), not a plain
+        write_text() -- a crash mid-write must never be able to truncate the
+        whole accumulated list, just this one append."""
+        import safe_io
+
+        def _always_fails(*args, **kwargs):
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(execution_log, "record_live_early_exit", _always_fails)
+        calls = []
+        real_atomic_write_json = safe_io.atomic_write_json
+
+        def _spy(data, path, *a, **kw):
+            calls.append(data)
+            return real_atomic_write_json(data, path, *a, **kw)
+
+        monkeypatch.setattr(safe_io, "atomic_write_json", _spy)
+        row_id = self._unmatched_sell_row()
+
+        execution_log.record_live_early_exit_with_retry(
+            row_id, 0.45, "unmatched_sell", 0.0, retries=1
+        )
+
+        assert len(calls) == 1, (
+            "atomic_write_json must be called exactly once for this write -- "
+            "mutating the fix back to a plain write_text() would leave this "
+            "spy uncalled"
+        )
+
+    def test_corrupt_flag_file_does_not_block_a_new_record(self, monkeypatch):
+        """A previously-corrupted sentinel file must not prevent a NEW
+        unsettled-exit record from being written -- starting fresh is the
+        safe degrade path."""
+
+        def _always_fails(*args, **kwargs):
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(execution_log, "record_live_early_exit", _always_fails)
+        flag_path = execution_log._unsettled_exit_flag_path()
+        flag_path.parent.mkdir(parents=True, exist_ok=True)
+        flag_path.write_text("{not valid json", encoding="utf-8")
+        row_id = self._unmatched_sell_row()
+
+        execution_log.record_live_early_exit_with_retry(
+            row_id, 0.45, "unmatched_sell", 0.0, retries=1
+        )
+
+        flagged = json.loads(flag_path.read_text(encoding="utf-8"))
+        assert len(flagged) == 1
+        assert flagged[0]["order_id"] == row_id
+
+    def test_corrupt_flag_file_is_preserved_as_corrupt_not_destroyed(self, monkeypatch):
+        """Opus review follow-up (LOW #9): the unreadable prior contents
+        must be preserved under a .corrupt suffix, not silently discarded --
+        a possibly-still-partially-recoverable record of earlier phantom
+        positions shouldn't vanish with nothing but a log line."""
+
+        def _always_fails(*args, **kwargs):
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(execution_log, "record_live_early_exit", _always_fails)
+        flag_path = execution_log._unsettled_exit_flag_path()
+        flag_path.parent.mkdir(parents=True, exist_ok=True)
+        corrupt_contents = "{not valid json, but recognizably the old data"
+        flag_path.write_text(corrupt_contents, encoding="utf-8")
+        row_id = self._unmatched_sell_row()
+
+        execution_log.record_live_early_exit_with_retry(
+            row_id, 0.45, "unmatched_sell", 0.0, retries=1
+        )
+
+        corrupt_path = flag_path.with_name(flag_path.name + ".corrupt")
+        assert corrupt_path.exists(), (
+            "the unreadable original must survive under a .corrupt suffix"
+        )
+        assert corrupt_path.read_text(encoding="utf-8") == corrupt_contents
+        # Positive control: the fresh file still has the new record too.
+        flagged = json.loads(flag_path.read_text(encoding="utf-8"))
+        assert len(flagged) == 1
+        assert flagged[0]["order_id"] == row_id
+
+
+class TestGetUnsettledExitFlagsCorruption:
+    """Batch-22 item 7: a decode failure used to silently return [] -- the
+    operator's one recurring warning about a still-open phantom live
+    position would disappear with no trace. Must now log at ERROR before
+    returning the same safe []."""
+
+    def setup_method(self):
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+        execution_log._unsettled_exit_flag_path().unlink(missing_ok=True)
+
+    def teardown_method(self):
+        import gc
+
+        execution_log._initialized = False
+        execution_log._unsettled_exit_flag_path().unlink(missing_ok=True)
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_missing_file_returns_empty_no_error_logged(self, caplog):
+        assert execution_log.get_unsettled_exit_flags() == []
+        assert "unreadable" not in caplog.text
+
+    def test_corrupt_file_logs_error_and_returns_empty(self, caplog):
+        import logging
+
+        flag_path = execution_log._unsettled_exit_flag_path()
+        flag_path.parent.mkdir(parents=True, exist_ok=True)
+        flag_path.write_text("{not valid json", encoding="utf-8")
+
+        with caplog.at_level(logging.ERROR, logger="execution_log"):
+            result = execution_log.get_unsettled_exit_flags()
+
+        assert result == []
+        assert "unreadable" in caplog.text
+
+    def test_valid_file_round_trips_correctly(self):
+        flag_path = execution_log._unsettled_exit_flag_path()
+        flag_path.parent.mkdir(parents=True, exist_ok=True)
+        flag_path.write_text(
+            json.dumps([{"order_id": 7, "exit_reason": "unmatched_sell"}]),
+            encoding="utf-8",
+        )
+        result = execution_log.get_unsettled_exit_flags()
+        assert result == [{"order_id": 7, "exit_reason": "unmatched_sell"}]
 
 
 class TestWasOrderedRecentlyCanceledSpelling:

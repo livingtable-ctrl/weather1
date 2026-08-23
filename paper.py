@@ -718,7 +718,16 @@ def _live_effective_balance(client) -> float:
     cash = _resolve_live_balance(client)
     if cash <= 0:
         return cash
-    open_cost = sum(p.get("cost", 0.0) or 0.0 for p in _get_live_open_positions())
+    # Batch-22 item 4: include_unfilled=True -- a resting GTC entry or an
+    # ambiguous-outcome order has already committed real capital (it could
+    # fill at any moment) but excluding it here would make this same
+    # "silently exceed every configured exposure cap" gap AUD-0001 already
+    # fixed reopen for exactly those two statuses, same as
+    # get_all_open_positions() below.
+    open_cost = sum(
+        p.get("cost", 0.0) or 0.0
+        for p in _get_live_open_positions(include_unfilled=True)
+    )
     return cash + open_cost
 
 
@@ -1865,10 +1874,25 @@ def get_all_open_positions() -> list[dict]:
     Lazy import of order_executor to avoid a module-load-time cycle
     (order_executor already imports paper the same way, locally, throughout
     its own functions -- this mirrors that established convention).
+
+    Batch-22 item 4: include_unfilled=True -- previously sourced only
+    filled-unsettled live rows, structurally blind to a resting GTC entry or
+    an ambiguous-outcome order the moment it's placed, even though
+    _count_open_live_orders() (the position-COUNT cap) already counted
+    exactly those two statuses as open. A live order representing real
+    committed capital was invisible to every DOLLAR-denominated cap fed by
+    THIS function (this file's 5 exposure getters below) -- reopening
+    AUD-0001's own "silently exceed every configured exposure cap" failure
+    mode for the two statuses that fix didn't cover. order_executor.
+    _auto_place_trades' own concentration/VaR gates read
+    _get_live_open_positions() directly (not through this function) and
+    needed the identical include_unfilled=True passed at that call site --
+    opus review (batch-22 follow-up) caught this function's fix alone left
+    that path still blind; see the comment at that call site.
     """
     from order_executor import _get_live_open_positions
 
-    return get_open_trades() + _get_live_open_positions()
+    return get_open_trades() + _get_live_open_positions(include_unfilled=True)
 
 
 def get_city_date_exposure(city: str, target_date_str: str, client=None) -> float:
