@@ -1315,7 +1315,8 @@ def get_trade_flow_settlement_correlation(
     "did informed flow precede settlement-direction moves" caution-flag
     hypothesis -- log-only research, not wired into trading. Reports a raw
     Pearson r with no significance test attached (n is typically small,
-    e.g. n=29 as of 2026-08-03) -- read it as directional, not conclusive.
+    e.g. n=42, r=-0.035 as of 2026-08-03; n=92, r=0.036 as of 2026-08-22) --
+    read it as directional, not conclusive.
 
     For each ticker with both trade_history and price_history rows, splits
     the trade series at its own time midpoint (half the trades happened
@@ -1457,6 +1458,198 @@ def get_trade_flow_settlement_correlation(
     d2 = math.sqrt(sum((b - my) ** 2 for b in drifts))
     if d1 > 0 and d2 > 0:
         result["r"] = round(num / (d1 * d2), 3)
+    return result
+
+
+def get_price_convergence_by_market_age(
+    min_candles_per_market: int = 8,
+    min_candles_per_half: int = 2,
+    min_markets: int = 15,
+) -> dict[str, int | float | None]:
+    """Precursor check for the MARKET_LIFECYCLE_V2 WS CHANNEL backlog entry's
+    own "cheap precursor available now with zero new infra" instruction: use
+    existing candle history to check whether early-captured prices sit
+    further from eventual settlement than later-captured prices.
+
+    IMPORTANT (added after independent review found the original framing
+    overclaimed): this statistic CANNOT distinguish real exploitable
+    mispricing from ordinary price-uncertainty resolution in a perfectly
+    efficient market. For ANY process whose price converges to a known
+    terminal value (efficient or not), E[|price_t - settlement|] is
+    monotonically decreasing as t approaches settlement, purely because
+    "late" is closer in time to the point being measured against -- a
+    zero-edge market produces the same qualitative shape this function
+    reports. A martingale simulation (driftless, no informational edge,
+    same 39-hourly-step/binary-settlement shape as the real data)
+    reproduces fraction_early_greater=0.904 almost exactly at moderate
+    information-arrival rates. So a positive result here is NOT evidence
+    that early entry captures real edge, and does NOT by itself support or
+    refute the market_lifecycle_v2 candidate -- it only confirms markets
+    resolve uncertainty over time, which was never in doubt. A real test of
+    "does exploitable edge decay with market age" needs to compare market
+    price against an independent fair-value estimate (e.g. this bot's own
+    `predictions.our_prob`) at varying market ages, not against the
+    market's own eventual settlement -- that comparison is NOT implemented
+    here and is the actual next step if this candidate is revisited.
+
+    Time zero is each market's own first CAPTURED candle, not open_time
+    (which is fetched live from the Kalshi API only at backfill time and
+    never persisted to price_history). In practice this is usually a close
+    proxy for true listing time, not a weak one: sync_outcomes's
+    candlestick backfill fetches the FULL [open_time, close_time] range at
+    settlement time regardless of when the capture code itself shipped, so
+    the first captured candle for a settled market is typically close to
+    real market open (confirmed empirically 2026-08-22: 239/326 tickers in
+    the live DB have a first candle before the capture code's own
+    2026-07-12 ship date, and 311/326 land at exactly 15:00 UTC, a listing-
+    time artifact). Retained as "captured window" language regardless,
+    since it's not a documented guarantee for every market.
+
+    For each ticker with price_history rows: finds settlement price as the
+    last candle with a real (non-NULL) price_close, walking backward past
+    any NULL tail (24% of rows have a NULL close -- same convention as
+    get_trade_flow_settlement_correlation above). This settlement candle is
+    itself a member of the "late" half below whenever the late half has any
+    real-priced candles, contributing a guaranteed |settlement-settlement|
+    = 0 -- an expected consequence of using each market's own last real
+    price as its own fair-value proxy, not a bug, but it mechanically
+    deflates mean_late_mispricing (and thus inflates mean_diff and
+    fraction_early_greater) versus a design that measured against an
+    external reference instead. Candles are filtered to the earliest
+    candle's own period_interval first, same interleave guard as that
+    function. Splits the (already end_period_ts-ordered) candle series at
+    its own median-position candle's timestamp into an early half and late
+    half, then computes mean |price_close - settlement_price| (distance
+    from each market's own eventual close) for each half using only
+    candles with a real close -- requires at least min_candles_per_half
+    real-priced candles on each side, defaulting to 2 so neither half's
+    average is normally reported from a single candle. The internal check
+    is separately floored at a minimum of 1 regardless of the caller-
+    supplied value (a floor of 0 would let the code below divide by zero,
+    not report a single-candle average) -- a caller who explicitly passes
+    0 or 1 DOES get a single-candle average, same as passing 1 directly.
+
+    Reports the per-market paired difference (early - late) across markets
+    -- not a two-variable correlation like the trade-flow function above,
+    since this measures the SAME quantity at two points in one market's
+    life, not two different variables.
+
+    markets_skipped_thin counts tickers below min_candles_per_market,
+    checked both before and after the period_interval filter -- the
+    pre-filter check is, like the settlement-price-None check below,
+    structurally redundant with its post-filter sibling (filtering can only
+    shrink the candle list, so anything failing the pre-filter check also
+    fails the post-filter one); kept for the same early-exit-clarity reason,
+    not because a test can independently isolate it. markets_skipped_no_price
+    counts
+    tickers that cleared that floor but have no usable price: either no
+    real close anywhere (settlement walk-back fails) or too few real-priced
+    candles in one half. The first of those two is, given
+    min_candles_per_half enforced >=1, always ALSO caught by the second --
+    a non-None settlement_price requires at least one real close among
+    `candles`, so if early_prices or late_prices clears the floor, a real
+    close necessarily exists and settlement_price cannot be None. It is
+    kept as an explicit, separately-checked branch for early-exit clarity
+    and to guard the arithmetic below against a None subtraction, not
+    because it fires independently of the half-floor check at any floor
+    >=1.
+
+    Returns {"n": int, "mean_early_mispricing": float | None,
+    "mean_late_mispricing": float | None, "mean_diff": float | None,
+    "fraction_early_greater": float | None, "markets_considered": int,
+    "markets_skipped_thin": int, "markets_skipped_no_price": int} -- the
+    float fields are None below min_markets. No significance test is
+    attached, and per the IMPORTANT note above, the sign/direction of this
+    result carries no information about real edge either way -- unlike the
+    sibling trade-flow function's r (a genuine, merely underpowered,
+    two-variable relationship), do NOT read a positive result here as even
+    weak directional support.
+    """
+    init_db()
+    with _conn() as con:
+        tickers = [
+            row[0]
+            for row in con.execute(
+                "SELECT DISTINCT ticker FROM price_history"
+            ).fetchall()
+        ]
+
+    early_vals: list[float] = []
+    late_vals: list[float] = []
+    skipped_thin = 0
+    skipped_no_price = 0
+    for ticker in tickers:
+        candles = get_price_history(ticker)
+        if len(candles) < min_candles_per_market:
+            skipped_thin += 1
+            continue
+
+        # Same interleave guard as get_trade_flow_settlement_correlation: no
+        # ticker has logged more than one resolution as of 2026-08-22, but
+        # mixing OHLC resolutions in one ordered series would silently
+        # corrupt the early/late split if that ever changes.
+        first_interval = candles[0]["period_interval"]
+        candles = [c for c in candles if c["period_interval"] == first_interval]
+        if len(candles) < min_candles_per_market:
+            skipped_thin += 1
+            continue
+
+        settlement_price = None
+        for c in reversed(candles):
+            if c["price_close"] is not None:
+                settlement_price = c["price_close"]
+                break
+        if settlement_price is None:
+            skipped_no_price += 1
+            continue
+
+        mid_epoch = candles[len(candles) // 2]["end_period_ts"]
+        early_prices = [
+            c["price_close"]
+            for c in candles
+            if c["end_period_ts"] < mid_epoch and c["price_close"] is not None
+        ]
+        late_prices = [
+            c["price_close"]
+            for c in candles
+            if c["end_period_ts"] >= mid_epoch and c["price_close"] is not None
+        ]
+        # Floored at 1 regardless of the caller-supplied min_candles_per_half
+        # -- a mean computed from zero candles would raise ZeroDivisionError
+        # below rather than falling through to a clean skip.
+        half_floor = max(min_candles_per_half, 1)
+        if len(early_prices) < half_floor or len(late_prices) < half_floor:
+            skipped_no_price += 1
+            continue
+
+        early_vals.append(
+            sum(abs(p - settlement_price) for p in early_prices) / len(early_prices)
+        )
+        late_vals.append(
+            sum(abs(p - settlement_price) for p in late_prices) / len(late_prices)
+        )
+
+    n = len(early_vals)
+    result: dict[str, int | float | None] = {
+        "n": n,
+        "mean_early_mispricing": None,
+        "mean_late_mispricing": None,
+        "mean_diff": None,
+        "fraction_early_greater": None,
+        "markets_considered": len(tickers),
+        "markets_skipped_thin": skipped_thin,
+        "markets_skipped_no_price": skipped_no_price,
+    }
+    # Floored at 1 for the same reason as half_floor above -- min_markets=0
+    # would otherwise let n=0 through to a division by n below.
+    if n < max(min_markets, 1):
+        return result
+
+    diffs = [e - late for e, late in zip(early_vals, late_vals)]
+    result["mean_early_mispricing"] = round(sum(early_vals) / n, 3)
+    result["mean_late_mispricing"] = round(sum(late_vals) / n, 3)
+    result["mean_diff"] = round(sum(diffs) / n, 3)
+    result["fraction_early_greater"] = round(sum(1 for d in diffs if d > 0) / n, 3)
     return result
 
 

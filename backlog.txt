@@ -11477,6 +11477,20 @@ UPDATE 2026-08-03 (no live-signal code shipped against this entry -- scope
   the VM-move-sequencing notes elsewhere in this file) would actually
   provide.
 
+UPDATE 2026-08-22 (batch-17, still gated -- no code shipped against this
+  entry): re-checked both trigger conditions live rather than trusting the
+  2026-08-03 note unchanged. kalshi_ws.py still subscribes to exactly
+  ["ticker", "orderbook_delta"] (kalshi_ws.py:359-361). cron.py's
+  _subscribe_and_start_ws/_active_ws lifecycle still tears down the WS
+  connection (`_active_ws.stop()` in a finally block, cron.py:2560) at the
+  end of every cron cycle, including under `main.py loop` -- WS coverage
+  between scans is still zero. Trigger genuinely has not fired. Picked up
+  alongside batch-17's other two items (audit/handoff_prompts/batches/
+  batch-17.md) -- see PUBLIC TRADES REST BACKFILL and MARKET_LIFECYCLE_V2
+  WS CHANNEL below for what actually shipped this session. "When to
+  revisit" unchanged: still gated on an always-on host providing genuinely
+  continuous (not periodic-cron-with-teardown) WS coverage.
+
 [RESOLVED 2026-07-30 (fetch/plumbing piece), CLOSED 2026-08-07 (LLM
   confidence/lean scoring half, declined by user -- not worth pursuing) --
   nothing left open in this entry. Infra-only pass shipped as a standalone
@@ -12875,7 +12889,27 @@ RESOLVED 2026-08-03 (one of the two deferred analysis passes -- "did
 When to revisit (adverse-selection half only -- flow-vs-settlement analysis
   above is closed):
   - Once execution_log.orders has real filled_at/market_mid_at_fill rows to
-    join against -- currently 0 of 198.
+    join against -- currently 0 of 243 (re-checked 2026-08-22, was 0/198).
+
+UPDATE 2026-08-22 (batch-17, re-run only -- no code changes; adverse-
+  selection half still structurally unanswerable): re-verified both halves
+  live per this entry's own instructions rather than trusting the
+  2026-08-03 numbers unchanged. (1) Re-ran
+  get_trade_flow_settlement_correlation() against the current DB, as this
+  entry's own resolution note asked ("re-run it as trade_history keeps
+  accumulating"): n=92 markets cleared the floor (95 considered, 3 skipped
+  thin, 0 skipped for missing price -- up from n=42/43 considered on
+  2026-08-03), r=0.036 (was -0.035). Sign flipped but magnitude is still
+  indistinguishable from zero at this scale -- confirms rather than
+  changes the 2026-08-03 finding: early signed taker flow still shows no
+  detectable relationship with subsequent price drift, now with more than
+  double the sample (70,362 trade rows/43 tickers -> 120,875/95 tickers).
+  (2) Re-checked execution_log.orders directly: 243 rows total (up from
+  198), still 0 with filled_at or market_mid_at_fill populated -- the
+  adverse-selection half remains structurally unanswerable, unchanged from
+  2026-08-03. Picked up as part of batch-17 (audit/handoff_prompts/
+  batches/batch-17.md) alongside the sibling PUBLIC TRADE-FLOW SIGNAL and
+  MARKET_LIFECYCLE_V2 WS CHANNEL entries.
 
 [RESOLVED 2026-07-24] NBM PROBABILISTIC QUANTILES -- ORPHANED CONVERTER, MISSING FETCHER
 Priority: was Low-Medium -- the consumer half already existed in-tree; only
@@ -13027,7 +13061,12 @@ When to revisit:
     coverage, size a bounded lean capped well below
     _get_combined_station_bias's magnitude.
 
-[MARKET_LIFECYCLE_V2 WS CHANNEL -- LISTING-TIME AWARENESS]
+[PARTIALLY RESOLVED 2026-08-22 -- the "cheap precursor available now with
+  zero new infra" check this entry's own "What it would look like" and
+  "Why not now" both call for is done, see below; live market_lifecycle_v2
+  wiring itself is still fully open, unchanged, blocked behind the
+  always-on host decision] MARKET_LIFECYCLE_V2 WS CHANNEL -- LISTING-TIME
+  AWARENESS
 Priority: Low -- real timing edge, but structurally blocked behind the
   always-on host decision.
 
@@ -13068,6 +13107,214 @@ When to revisit:
   - Once the always-on host decision executes. Note user_orders as a
     sibling channel to fold into the already-deferred fill-channel work
     when that resumes.
+
+RESOLVED 2026-08-22 (precursor check only -- live wiring above is still
+  fully open): picked up as part of batch-17 (audit/handoff_prompts/
+  batches/batch-17.md), alongside the sibling PUBLIC TRADE-FLOW SIGNAL and
+  PUBLIC TRADES REST BACKFILL entries. Did this entry's own instructed
+  precursor -- "use the existing candle history ... to measure whether
+  early-window prices were actually more mispriced vs settlement -- do
+  that before building anything live" -- rather than building any WS code.
+  True hours-since-listing isn't available: open_time is fetched live from
+  the Kalshi API only at candlestick-backfill time and never persisted to
+  price_history (checked live, not assumed). Surfaced this constraint to
+  the user via AskUserQuestion before designing anything: with no stored
+  listing time, the only viable statistic uses each market's own first
+  captured candle as time zero, and the choice was between (a) a per-market
+  paired early-half/late-half mispricing comparison (mirrors
+  get_trade_flow_settlement_correlation's own time-midpoint-split
+  precedent, one observation per market, no pseudo-replication) or (b) a
+  pooled hours-elapsed-vs-mispricing correlation across every candle from
+  every market (more literally matches "decays with market age" but pools
+  non-independent within-market points). User chose (a).
+  Shipped tracker.get_price_convergence_by_market_age(
+  min_candles_per_market=8, min_candles_per_half=2, min_markets=15) --
+  for each ticker with price_history rows, finds settlement price as the
+  last candle with a real (non-NULL) price_close, walking backward past any
+  NULL tail (same convention as get_trade_flow_settlement_correlation,
+  which found 24% of price_history rows have a NULL close), filters to the
+  earliest candle's own period_interval (same interleave guard as that
+  function), splits the series at its own median-position candle's
+  timestamp into an early half and late half, and computes mean
+  |price_close - settlement_price| (mispricing magnitude) for each half --
+  requiring at least min_candles_per_half real-priced candles per side,
+  defaulting to 2 so neither half's average is normally reported from a
+  single candle (a caller-supplied floor of 0 or 1 still gets exactly
+  that, same as passing 1 directly -- see CORRECTED note below). Reports
+  the per-market paired
+  difference (early - late) across markets: mean_early_mispricing,
+  mean_late_mispricing, mean_diff, and fraction_early_greater (the fraction
+  of markets where early mispricing exceeded late), plus the same
+  markets_considered/markets_skipped_thin/markets_skipped_no_price
+  breakdown as the sibling function. Deliberately does NOT report a
+  Pearson r like get_trade_flow_settlement_correlation -- this measures the
+  SAME quantity at two points in one market's life, not two different
+  variables across markets, so a paired-difference summary is the correct
+  statistic, not a forced two-variable correlation.
+  Real finding, run live against the actual DB: n=323 markets cleared the
+  floor (326 considered, 3 skipped thin, 0 skipped for missing price).
+  mean_early_mispricing=0.438, mean_late_mispricing=0.223, mean_diff=0.215,
+  fraction_early_greater=0.904 -- in 90.4% of markets, price was measurably
+  further from eventual settlement in the early half of its captured candle
+  history than the late half.
+  CORRECTED after independent Agent(opus, effort=high) review (before push,
+  per standing workflow) found the first draft's interpretation of this
+  finding overclaimed (HIGH severity) -- the original text called it
+  "directional support" for the live market_lifecycle_v2 candidate. That is
+  wrong: for ANY process whose price converges to a known terminal value,
+  E[|price_t - settlement|] is mechanically decreasing as t approaches
+  settlement, REGARDLESS of whether the market has any real exploitable
+  edge -- a perfectly efficient market with zero informational edge
+  produces this exact qualitative shape purely from ordinary uncertainty
+  resolution. The reviewer ran a driftless martingale simulation (39
+  hourly steps, binary settlement, matching the real data's shape) and
+  reproduced fraction_early_greater=0.904 almost exactly at moderate
+  information-arrival rates -- the observed value sits inside the zero-edge
+  null band, not outside it. The entry's own kill-criterion ("if edge
+  doesn't decay with market age, this whole candidate dies cheaply") can
+  never actually be triggered by this statistic, which also means it can
+  never be confirmed by it: the function measures distance from a market's
+  own eventual settlement, not edge (|model_p - market_p| at a point in
+  time, the quantity that actually determines whether an early maker quote
+  profits). CORRECT reading of the result: it confirms markets resolve
+  uncertainty over time, which was never in doubt, and is uninformative
+  about whether market_lifecycle_v2 is worth building -- it does NOT
+  support, and does not refute, that candidate. A real test of "does edge
+  decay with market age" would need to compare market price against an
+  independent fair-value estimate (e.g. this bot's own predictions.
+  our_prob) at varying market ages, not against the market's own
+  settlement -- that comparison is NOT implemented here and would be the
+  actual next step if this candidate is ever seriously revisited. This
+  correction is fully reflected in the function's own docstring (see
+  tracker.py), which future readers should treat as authoritative over
+  this note if the two ever diverge.
+  Caveat also corrected (MEDIUM finding): the first draft claimed the
+  first-captured-candle proxy for time zero "may already be well after
+  actual listing, since price_history capture only started 2026-07-12" --
+  factually wrong. sync_outcomes's candlestick backfill fetches the FULL
+  [open_time, close_time] range at settlement time regardless of when the
+  capture code itself shipped, so the first captured candle for a settled
+  market is typically close to real market open. Verified live: 239/326
+  tickers in the DB have a first candle before the capture code's own
+  2026-07-12 ship date (earliest candle overall: 2026-05-17), and 311/326
+  land at exactly 15:00 UTC, a listing-time artifact, not a capture-code
+  artifact. The entry being resolved says this itself ("candles cover the
+  full open->close window, so 'edge vs hours-since-open' is computable
+  today") -- the first draft's caveat contradicted the entry it was
+  resolving. True open_time is still not persisted to price_history, so
+  "captured window" language is kept as the technically accurate framing,
+  but the reasoning for why it's a reasonable (not weak) proxy is now
+  correct in the function's own docstring.
+  11 tests total in tests/test_tracker.py TestPriceConvergenceByMarketAge,
+  built up across two independent opus review rounds (the first draft's
+  own note claimed 9, then 8 -- both wrong at the time of writing, a
+  recurring MEDIUM-severity audit-trail miscount both reviewers caught;
+  this is the freshly re-collected count, not carried over from either
+  round). The original 8: no-data default, the 3-market paired-difference
+  computation itself (hand-computed early/late/diff/fraction values),
+  below-min-markets (n reported, stats None), NULL-close settlement
+  walk-back, a mixed-period_interval-candle filter case (mirrors the
+  sibling function's own test design: the intruder candle's price would
+  replace the market's settlement price entirely if it leaked in, not just
+  flip a boolean), a min_candles_per_half floor case, a thin-market skip,
+  and an all-NULL-close skip. 3 more added across the two review rounds: a
+  dedicated post-period_interval-filter thin-recheck case (the pre-filter
+  and post-filter thin checks are two distinct branches; the first draft
+  only exercised the pre-filter one), a min_candles_per_half=0 no-crash
+  case, and a min_markets=0 no-crash case (both floor-related
+  ZeroDivisionError fixes described below).
+  Mutation-testing claim corrected TWICE across the two review rounds --
+  first for the settlement-price-None guard, then again for a second,
+  structurally identical case the first correction's own reasoning should
+  have already caught but didn't (round 2 flagged the recurrence
+  directly): given min_candles_per_half is floored at >=1, the
+  settlement-price-None guard is redundant with the half-floor check below
+  it (a None settlement_price requires zero real closes anywhere in the
+  filtered candle list, which necessarily makes early_prices/late_prices
+  both empty too, so the half-floor check always also fires) --
+  deleting the guard entirely does NOT break any test. The PRE-FILTER
+  thin-candle-count check has the identical property with respect to its
+  own post-filter sibling (filtering can only shrink the candle list, so
+  anything failing the pre-filter check also fails the post-filter one) --
+  deleting just the pre-filter check also does NOT break any test, even
+  though the round-1 fix's note claimed it did (the post-filter check,
+  which genuinely is independently testable and now has its own dedicated
+  test above, was conflated with the pre-filter one). Both guards are kept
+  as defensive/early-exit checks, not because either fires independently;
+  the function's docstring (both the markets_skipped_thin paragraph and
+  the settlement-price paragraph) and the relevant tests' own docstrings
+  now say this explicitly instead of a false mutation claim. The remaining
+  claims hold, re-verified after all of the above: the settlement
+  backward-walk, the POST-filter period_interval check, the
+  min_candles_per_half floor (both the original floor-skip path and the
+  zero-floor no-crash path), and the min_markets gate (both the original
+  below-floor path and a new min_markets=0 no-crash path, added after
+  round 2 found the min_candles_per_half=0 fix had an unfixed identical
+  twin: min_markets=0 also reached a ZeroDivisionError computing
+  sum(early_vals)/n with n=0, since `n < min_markets` is `0 < 0` = False --
+  fixed the same way, `n < max(min_markets, 1)`) were each temporarily
+  reverted via the Edit tool (not a string-replace script) and confirmed
+  to break the specific test written to catch that exact regression, then
+  restored.
+  Round 2 also found one purely textual regression the round-1 fix
+  introduced: the docstring's closing line still said "read as
+  directional, not conclusive, same disclaimer as the sibling trade-flow
+  function" -- directly contradicting the round-1 IMPORTANT correction 60
+  lines above it (which says a positive result carries NO directional
+  information about edge, unlike the sibling's genuine-but-underpowered
+  Pearson r). Fixed to say so explicitly instead of reusing language that
+  implied weak support.
+  Added get_price_convergence_by_market_age to tests/test_dead_code_scan.py's
+  allowlist (updated post-review to record ship-time numbers and the
+  "partially resolved" status, matching the sibling entry's own
+  convention), and fixed two stale pre-fix figures the review found still
+  sitting in-tree for get_trade_flow_settlement_correlation itself (its
+  own docstring and its allowlist entry both still said "n=29, r=-0.042",
+  the pre-fix draft value from the 2026-08-03 session -- the authoritative
+  post-fix value is n=42, r=-0.035; both now also record the 2026-08-22
+  re-run's n=92, r=0.036).
+  ruff + ruff format + mypy clean on tracker.py, tests/test_tracker.py, and
+  tests/test_dead_code_scan.py after every round of fixes.
+  464 tests pass in tests/test_tracker.py (freshly re-collected at the
+  moment of writing this sentence, not carried over from an earlier count
+  in this same session); 6 pass in tests/test_dead_code_scan.py.
+  graphify-out/ refreshed via the documented manual-scoped-extract
+  workaround ([[feedback_graphify_manual_scoped_extract_workaround]] in
+  memory), not the plain `graphify update` CLI path: this worktree's
+  manifest.json cache keys are absolute paths from a different worktree
+  (`frosty-leakey-c41696`, the [[feedback_graphify_worktree_cache_keys]]
+  gotcha), which would have made every file look uncached and triggered a
+  full-repo rebuild instead of a scoped one. Called
+  graphify.extract.extract() directly on just the 3 changed files
+  (tracker.py, tests/test_tracker.py, tests/test_dead_code_scan.py: 1283
+  nodes/2176 edges), manually merged into the existing graph (14112
+  nodes/22705 edges total after merge, 0 pre-existing edges lost or
+  reversed -- verified by diffing the edge-tuple set before/after), then
+  re-clustered and wrote graph.json + GRAPH_REPORT.md directly, skipping
+  Obsidian/HTML regeneration per the workaround's own risk-scoping
+  ([[feedback_graphify_obsidian_prune_unscoped]]). The direct extract()
+  call also reproduced the workaround memory's own newly-documented
+  side effect: it silently created a new `v0.9.48/` AST cache dir and
+  deleted 367 files from the real `v0.9.48-s2/` one (matching that memory's
+  own precedent of ~366) -- reverted via `git checkout --
+  graphify-out/cache/ast/ && rm -rf graphify-out/cache/ast/v0.9.48/`,
+  confirmed clean afterward. get_price_convergence_by_market_age now
+  appears in graph.json (10 occurrences). graph.json's diff is large
+  (526K lines) despite the edge-level change being small and scoped --
+  expected and already documented as the low-risk cost of any refresh:
+  re-clustering renumbers community-id fields across the whole graph, it
+  does not touch edge data (confirmed 0 lost/reversed edges above).
+  Zero live-trading-behavior change: read-only query function over existing
+  price_history data, no existing code calls it (by design), no new table
+  or migration, TRADING_PAUSED/ENABLE_MICRO_LIVE untouched, no order was
+  placed or closed.
+  Still open: subscribing market_lifecycle_v2 itself and the live
+  new-listing maker-order flow -- both remain blocked behind the always-on
+  host decision per this entry's own "When to revisit" above, unchanged.
+  Also still open, now correctly scoped by the review: a genuine edge-decay
+  precursor (market price vs. this bot's own model probability, by market
+  age) has not been built -- what shipped here only rules out one flawed
+  approach to answering that question, it does not answer it.
 
 ======================================================
 ARCHITECTURE & DESIGN-DEBT CANDIDATES -- 2026-07-16 whole-program scouting

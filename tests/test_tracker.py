@@ -5028,6 +5028,275 @@ class TestTradeFlowSettlementCorrelation(unittest.TestCase):
         self.assertEqual(result["markets_considered"], 0)
 
 
+class TestPriceConvergenceByMarketAge(unittest.TestCase):
+    """get_price_convergence_by_market_age -- the MARKET_LIFECYCLE_V2 WS
+    CHANNEL entry's own 'cheap precursor available now with zero new infra'
+    check: is early-captured price further from settlement than late-
+    captured price (see the function's own docstring for why this can't by
+    itself distinguish real edge from ordinary uncertainty resolution).
+
+    Unlike TestTradeFlowSettlementCorrelation above, small toy timestamps
+    (1000/2000/3000...) are safe here: this function never compares one
+    series' epoch against another series' independently-parsed epoch (no
+    trade_history join), so there's no cross-series alignment for a small
+    integer to accidentally dodge."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_predictions.db"
+        tracker._db_initialized = False
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _candle(self, end_period_ts, price_close):
+        return {
+            "end_period_ts": end_period_ts,
+            "price": {"close_dollars": str(price_close)}
+            if price_close is not None
+            else None,
+            "volume_fp": "1.00",
+        }
+
+    def _seed_4candle_market(self, ticker, prices, period_interval=60):
+        """4 candles at end_period_ts=[1000,2000,3000,4000] with the given
+        close prices. len==4 -> candles[len//2]==candles[2] -> mid_epoch=3000
+        -> early=[ts1000,ts2000], late=[ts3000,ts4000] every time, so hand-
+        computed expectations don't have to re-derive the split point."""
+        candles = [
+            self._candle(1000, prices[0]),
+            self._candle(2000, prices[1]),
+            self._candle(3000, prices[2]),
+            self._candle(4000, prices[3]),
+        ]
+        tracker.log_price_candles(ticker, "KXTEST", period_interval, candles)
+
+    def test_no_data_returns_default(self):
+        result = tracker.get_price_convergence_by_market_age()
+        self.assertEqual(
+            result,
+            {
+                "n": 0,
+                "mean_early_mispricing": None,
+                "mean_late_mispricing": None,
+                "mean_diff": None,
+                "fraction_early_greater": None,
+                "markets_considered": 0,
+                "markets_skipped_thin": 0,
+                "markets_skipped_no_price": 0,
+            },
+        )
+
+    def test_early_more_mispriced_than_late_across_three_markets(self):
+        # TKA: early=[0.10,0.10] vs settlement=0.90 -> mispricing 0.80 each,
+        #      late=[0.90,0.90] -> 0.0 each -> diff=0.80
+        # TKB: early=[0.20,0.40] -> mispricing 0.70/0.50 (mean 0.60),
+        #      late=[0.70,0.90] -> 0.20/0.0 (mean 0.10) -> diff=0.50
+        # TKC: early=[0.85,0.85] -> mispricing 0.05 each,
+        #      late=[0.90,0.90] -> 0.0 each -> diff=0.05
+        # mean_early=(0.80+0.60+0.05)/3=0.483, mean_late=(0.0+0.10+0.0)/3=0.033,
+        # mean_diff=(0.80+0.50+0.05)/3=0.45, all 3 diffs>0 -> fraction=1.0
+        self._seed_4candle_market("TKA", [0.10, 0.10, 0.90, 0.90])
+        self._seed_4candle_market("TKB", [0.20, 0.40, 0.70, 0.90])
+        self._seed_4candle_market("TKC", [0.85, 0.85, 0.90, 0.90])
+
+        result = tracker.get_price_convergence_by_market_age(
+            min_candles_per_market=4, min_candles_per_half=2, min_markets=3
+        )
+        self.assertEqual(result["n"], 3)
+        self.assertEqual(result["markets_considered"], 3)
+        self.assertEqual(result["markets_skipped_thin"], 0)
+        self.assertEqual(result["markets_skipped_no_price"], 0)
+        self.assertAlmostEqual(result["mean_early_mispricing"], 0.483, places=3)
+        self.assertAlmostEqual(result["mean_late_mispricing"], 0.033, places=3)
+        self.assertAlmostEqual(result["mean_diff"], 0.45, places=3)
+        self.assertAlmostEqual(result["fraction_early_greater"], 1.0, places=3)
+
+    def test_below_min_markets_reports_n_but_stats_are_none(self):
+        self._seed_4candle_market("TKA", [0.10, 0.10, 0.90, 0.90])
+
+        result = tracker.get_price_convergence_by_market_age(
+            min_candles_per_market=4, min_candles_per_half=2, min_markets=3
+        )
+        self.assertEqual(result["n"], 1)
+        self.assertIsNone(result["mean_early_mispricing"])
+        self.assertIsNone(result["mean_late_mispricing"])
+        self.assertIsNone(result["mean_diff"])
+        self.assertIsNone(result["fraction_early_greater"])
+
+    def test_trailing_null_close_walks_back_to_prior_real_settlement(self):
+        """A trailing candle with no trades in its period reports
+        price_close=None (real: 24% of price_history rows). The settlement
+        walk must not trust the literal last candle -- it backs up to the
+        last real close instead of dropping an otherwise-usable market."""
+        candles = [
+            self._candle(1000, 0.10),
+            self._candle(2000, 0.10),
+            self._candle(3000, 0.90),
+            self._candle(4000, 0.90),  # last real close
+            self._candle(5000, None),  # trailing NULL
+        ]
+        tracker.log_price_candles("TKTRAILNULL", "KXTEST", 60, candles)
+
+        result = tracker.get_price_convergence_by_market_age(
+            min_candles_per_market=5, min_candles_per_half=2, min_markets=1
+        )
+        self.assertEqual(result["n"], 1)
+        self.assertEqual(result["markets_skipped_no_price"], 0)
+        # mid index = 5//2 = 2 -> mid_epoch=3000 -> early=[1000,2000]=[0.10,0.10],
+        # late=[3000,4000]=[0.90,0.90] (5000/None excluded) -> settlement=0.90
+        # (walked back from the NULL trailer) -> early_mis=0.80, late_mis=0.0
+        self.assertAlmostEqual(result["mean_diff"], 0.80, places=3)
+
+    def test_mixed_period_interval_candle_is_filtered_out(self):
+        """A ticker with an extra candle logged at a different
+        period_interval (never observed live, but not structurally
+        prevented by price_history) must not have that candle silently
+        included in the split or the settlement walk -- only the earliest
+        candle's own resolution is kept. Reuses the 3-market computation
+        above and adds an intruder timestamped after TKA's real last candle
+        with a price (0.50) that -- if it leaked in -- would replace TKA's
+        settlement price (0.90) with 0.50 and change every downstream
+        number, not just flip a boolean."""
+        self._seed_4candle_market("TKA", [0.10, 0.10, 0.90, 0.90])
+        self._seed_4candle_market("TKB", [0.20, 0.40, 0.70, 0.90])
+        self._seed_4candle_market("TKC", [0.85, 0.85, 0.90, 0.90])
+        tracker.log_price_candles(
+            "TKA",
+            "KXTEST",
+            1,
+            [self._candle(5000, 0.50)],  # different interval
+        )
+
+        result = tracker.get_price_convergence_by_market_age(
+            min_candles_per_market=4, min_candles_per_half=2, min_markets=3
+        )
+        self.assertEqual(result["n"], 3)
+        self.assertAlmostEqual(result["mean_early_mispricing"], 0.483, places=3)
+        self.assertAlmostEqual(result["mean_late_mispricing"], 0.033, places=3)
+        self.assertAlmostEqual(result["mean_diff"], 0.45, places=3)
+
+    def test_half_below_floor_is_skipped_and_counted(self):
+        """3 candles split as 1 early / 2 late -- the early half has only 1
+        real-priced candle, below min_candles_per_half=2, so a single candle
+        can't swing the average on its own. Must be skipped and counted
+        under markets_skipped_no_price, not silently averaged from n=1."""
+        candles = [
+            self._candle(1000, 0.10),
+            self._candle(2000, 0.90),
+            self._candle(3000, 0.90),
+        ]
+        tracker.log_price_candles("TKHALFTHIN", "KXTEST", 60, candles)
+
+        result = tracker.get_price_convergence_by_market_age(
+            min_candles_per_market=3, min_candles_per_half=2, min_markets=1
+        )
+        self.assertEqual(result["n"], 0)
+        self.assertEqual(result["markets_considered"], 1)
+        self.assertEqual(result["markets_skipped_no_price"], 1)
+        self.assertEqual(result["markets_skipped_thin"], 0)
+
+    def test_thin_market_too_few_candles_is_skipped_and_counted(self):
+        candles = [
+            self._candle(1000, 0.5),
+            self._candle(2000, 0.5),
+            self._candle(3000, 0.5),
+        ]
+        tracker.log_price_candles("TKTHIN", "KXTEST", 60, candles)
+
+        result = tracker.get_price_convergence_by_market_age(
+            min_candles_per_market=5, min_candles_per_half=2, min_markets=1
+        )
+        self.assertEqual(result["n"], 0)
+        self.assertEqual(result["markets_considered"], 1)
+        self.assertEqual(result["markets_skipped_thin"], 1)
+        self.assertEqual(result["markets_skipped_no_price"], 0)
+
+    def test_thin_after_period_interval_filter_is_skipped_and_counted(self):
+        """9 total candles clears min_candles_per_market=8 BEFORE the
+        period_interval filter, but only 7 of them share the dominant
+        (earliest) interval -- after filtering, 7 < 8, a distinct check
+        from the pre-filter thin guard above (which this fixture alone
+        would NOT trip, since it only sees the unfiltered count of 9)."""
+        candles = [self._candle(ts, 0.5) for ts in range(1000, 8000, 1000)]  # 7 @ 60
+        tracker.log_price_candles("TKPOSTFILTERTHIN", "KXTEST", 60, candles)
+        tracker.log_price_candles(
+            "TKPOSTFILTERTHIN",
+            "KXTEST",
+            1,  # foreign interval, timestamped after the real candles
+            [self._candle(8000, 0.5), self._candle(9000, 0.5)],
+        )
+
+        result = tracker.get_price_convergence_by_market_age(
+            min_candles_per_market=8, min_candles_per_half=2, min_markets=1
+        )
+        self.assertEqual(result["n"], 0)
+        self.assertEqual(result["markets_considered"], 1)
+        self.assertEqual(result["markets_skipped_thin"], 1)
+        self.assertEqual(result["markets_skipped_no_price"], 0)
+
+    def test_no_real_close_anywhere_is_skipped_as_no_price(self):
+        """All-NULL closes fails the settlement-price walk-back. Note (per
+        independent review): given min_candles_per_half is floored at 1,
+        this condition is ALWAYS also caught by the half-floor check below
+        it (early_prices/late_prices are built from the same all-NULL
+        candle list, so they're necessarily empty too) -- this test can't
+        distinguish the settlement-walk guard firing from the half-floor
+        guard firing, and isn't meant to; it only pins the externally
+        observable behavior (skipped once, under markets_skipped_no_price)
+        for this input shape. See the function's own docstring for why the
+        settlement-walk guard is kept as a defensive/early-exit check
+        despite being structurally redundant with the half-floor check at
+        any floor >=1."""
+        candles = [
+            self._candle(1000, None),
+            self._candle(2000, None),
+            self._candle(3000, None),
+        ]
+        tracker.log_price_candles("TKNOPRICE", "KXTEST", 60, candles)
+
+        result = tracker.get_price_convergence_by_market_age(
+            min_candles_per_market=3, min_candles_per_half=1, min_markets=1
+        )
+        self.assertEqual(result["n"], 0)
+        self.assertEqual(result["markets_considered"], 1)
+        self.assertEqual(result["markets_skipped_no_price"], 1)
+        self.assertEqual(result["markets_skipped_thin"], 0)
+
+    def test_zero_half_floor_does_not_crash(self):
+        """min_candles_per_half=0 must not reach a ZeroDivisionError -- the
+        floor is enforced at a minimum of 1 internally regardless of the
+        caller-supplied value."""
+        candles = [self._candle(1000, None), self._candle(2000, 0.90)]
+        tracker.log_price_candles("TKZEROFLOOR", "KXTEST", 60, candles)
+
+        result = tracker.get_price_convergence_by_market_age(
+            min_candles_per_market=2, min_candles_per_half=0, min_markets=1
+        )
+        self.assertEqual(result["n"], 0)
+        self.assertEqual(result["markets_skipped_no_price"], 1)
+
+    def test_zero_min_markets_does_not_crash(self):
+        """min_markets=0 with n=0 (no market clears the thin floor) must not
+        reach a ZeroDivisionError computing the final aggregates -- without
+        flooring the gate at 1, `n < min_markets` (`0 < 0`) is False and
+        execution falls through to `sum(early_vals) / n` with n=0. Same bug
+        class as test_zero_half_floor_does_not_crash, for the min_markets
+        gate instead of the per-half floor."""
+        candles = [self._candle(1000, 0.5), self._candle(2000, 0.5)]
+        tracker.log_price_candles("TKZEROMARKETS", "KXTEST", 60, candles)
+
+        result = tracker.get_price_convergence_by_market_age(
+            min_candles_per_market=5, min_candles_per_half=2, min_markets=0
+        )
+        self.assertEqual(result["n"], 0)
+        self.assertEqual(result["markets_skipped_thin"], 1)
+        self.assertIsNone(result["mean_diff"])
+
+
 class TestDisputedOutcomeTracking(unittest.TestCase):
     """Restored backlog piece (mystery-revert 24559a7): disputed flag on outcomes,
     set by audit_settlement() on an archive/Kalshi mismatch, excluded from every
