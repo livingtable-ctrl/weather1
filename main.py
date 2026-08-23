@@ -942,14 +942,24 @@ def auto_backtest(client: KalshiClient) -> None:
 
 def auto_backup() -> None:
     """
-    Copy predictions.db and paper_trades.json to data/backups/ on startup.
+    Copy predictions.db, execution_log.db, and paper_trades.json to
+    data/backups/ on startup.
     #103: Keeps the last 30 daily backups (was 7) for better point-in-time recovery.
     #101: Also cleans up stray temp files left by interrupted atomic writes.
+    AUD batch-25: execution_log.db (the live-order/daily-loss ledger) had no
+    local backup at all until now -- only predictions.db and
+    paper_trades.json were ever covered here. The WAL-safe .db copy
+    (opus-review-caught, once per day per file since it only runs when
+    today's backup doesn't exist yet) is measurably slower than the old
+    shutil.copy2 -- ~0.5s for a 51MB predictions.db on local disk, up from
+    ~0.02s -- but still small next to startup's other work.
     Runs silently — never blocks startup.
     """
     import shutil
 
+    from execution_log import DB_PATH as EXECUTION_LOG_DB_PATH
     from paths import PAPER_TRADES_PATH
+    from safe_io import backup_sqlite_db
     from tracker import DB_PATH
     from utils import utc_today as _utc_today
 
@@ -958,6 +968,7 @@ def auto_backup() -> None:
     today = _utc_today().isoformat()
     files = [
         DB_PATH,
+        EXECUTION_LOG_DB_PATH,
         PAPER_TRADES_PATH,
     ]
     for src in files:
@@ -966,9 +977,48 @@ def auto_backup() -> None:
         dst = backup_dir / f"{src.stem}_{today}{src.suffix}"
         if not dst.exists():  # only once per day
             try:
-                shutil.copy2(src, dst)
-                # #104: Verify backup integrity after writing
-                if dst.suffix == ".json":
+                if src.suffix == ".db":
+                    # WAL-safe: shutil.copy2 on the raw .db file silently
+                    # omits anything committed but not yet checkpointed out
+                    # of the .db-wal sidecar -- both DBs backed up here run
+                    # PRAGMA journal_mode=WAL (AUD batch-25 item 1/3).
+                    copy_ok = backup_sqlite_db(src, dst)
+                    if not copy_ok:
+                        _log.error(
+                            "auto_backup: backup copy of %s failed its "
+                            "post-copy readability check -- not retained",
+                            src.name,
+                        )
+                        continue
+                    # #104: Verify backup integrity after writing. Was
+                    # called but its return value discarded -- a backup
+                    # that failed its own verification still got retained
+                    # and still counted toward the 30-backup pruning
+                    # window, potentially evicting the oldest genuinely-
+                    # good backup in its place (AUD batch-25 item 3).
+                    table = "orders" if src.stem == "execution_log" else "predictions"
+                    n = verify_db_backup(dst, table=table)
+                    # opus-review-round-2 M4: verify_db_backup returns -1
+                    # specifically for a hard failure (almost always "no
+                    # such table"), distinct from a genuine 0-row count --
+                    # a legitimately empty table (e.g. execution_log.db's
+                    # orders table before this bot's first live order) is
+                    # NOT a bad backup and must not be deleted.
+                    if n < 0:
+                        _log.error(
+                            "auto_backup: backup verification failed for %s "
+                            "(query against %s table failed) -- deleting "
+                            "bad copy",
+                            dst,
+                            table,
+                        )
+                        try:
+                            dst.unlink()
+                        except Exception:
+                            pass
+                else:
+                    shutil.copy2(src, dst)
+                    # #104: Verify backup integrity after writing
                     try:
                         from paper import cloud_backup, verify_backup
 
@@ -976,15 +1026,19 @@ def auto_backup() -> None:
                         cloud_backup(dst)  # #105: optional S3 upload
                     except Exception:
                         pass
-                elif dst.suffix == ".db":
-                    # verify_db_backup() existed but was never wired in here —
-                    # predictions.db backups rotated through the 30-day
-                    # retention window with zero integrity checking.
-                    verify_db_backup(dst)
-            except Exception:
-                pass
+            except Exception as exc:
+                # AUD batch-25 opus-review M4: was a bare `pass` -- silent
+                # even at DEBUG level. backup_sqlite_db can raise (source
+                # isn't a valid SQLite DB, disk full, destination locked)
+                # in a way shutil.copy2 essentially never did for these
+                # files, so this is a NEW failure mode this batch
+                # introduced; leaving it silent would mean the exact "old
+                # code silently returns success on a bad backup" problem
+                # this batch exists to fix reappearing one layer up, with
+                # zero trace anywhere.
+                _log.error("auto_backup: failed to back up %s: %s", src.name, exc)
     # #103: Prune — keep only the 30 most recent backups per file stem
-    for stem in ("predictions", "paper_trades"):
+    for stem in ("predictions", "execution_log", "paper_trades"):
         backups = sorted(backup_dir.glob(f"{stem}_*"))
         for old in backups[:-30]:
             try:
@@ -1004,21 +1058,63 @@ def auto_backup() -> None:
 _log = logging.getLogger(__name__)
 
 
-def verify_db_backup(path) -> int:
-    """Re-open a backed-up predictions.db, count rows in predictions table. Logs result (#104)."""
+def verify_db_backup(path, table: str = "predictions") -> int:
+    """Re-open a backed-up SQLite DB, count rows in `table`. Logs result (#104).
+
+    `table` defaults to "predictions" (predictions.db). Pass table="orders"
+    for an execution_log.db backup (AUD batch-25 item 2) -- its ledger
+    lives in a table of that name, not "predictions".
+
+    Returns the real row count (0 is a valid, successful answer -- a
+    freshly-reset or never-yet-populated table, e.g. execution_log.db's
+    `orders` table before this bot's first live order, is not a failure)
+    or -1 if the query itself failed (almost always "no such table",
+    which is what a still-uncheckpointed or otherwise genuinely bad copy
+    produces) -- opus-review-round-2 M4: an earlier version returned 0 for
+    BOTH cases, and auto_backup()'s own "0 means bad, delete it" check
+    (right below this function) couldn't tell them apart. Confirmed live
+    against the real data/execution_log.db (`orders`=243 rows, but
+    `daily_live_loss`=0 rows -- a table that's legitimately empty right
+    now): treating any 0 as failure would have deleted a perfectly good
+    backup of exactly the file this batch exists to protect, the moment
+    that table's row count happened to be zero.
+
+    AUD batch-25 item 3 adjacency fix: `con` used to only get closed on
+    the success path -- a query failure (e.g. "no such table", exactly
+    what a still-uncheckpointed or otherwise bad copy produces) left the
+    connection open. Harmless before this batch (nothing needed the file
+    handle released afterward), but auto_backup()'s new "verification
+    failed -> delete the bad copy" step (right below this function) now
+    depends on it: on Windows, an open sqlite3.Connection to a file blocks
+    deleting that file, so the leaked handle silently defeated the very
+    delete this batch adds, via that caller's own `except Exception: pass`
+    around the unlink -- confirmed live (WinError 32) before adding the
+    try/finally below.
+
+    `table` is interpolated directly into the query (sqlite3 has no
+    parameter-binding for identifiers, only values) -- opus-review-caught
+    (L11): both real call sites pass a literal today, but this is public
+    API taking an arbitrary string, so validate against the known set
+    rather than trusting every future caller to only ever pass a literal.
+    """
     import sqlite3
 
     path = Path(path)
+    if table not in ("predictions", "orders"):
+        raise ValueError(f"verify_db_backup: unsupported table {table!r}")
+    con = None
     try:
         con = sqlite3.connect(str(path))
-        row = con.execute("SELECT COUNT(*) FROM predictions").fetchone()
+        row = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()  # noqa: S608
         n = row[0] if row else 0
-        con.close()
         _log.info("backup verified: %s, %d rows", path, n)
         return n
     except Exception as exc:
         _log.warning("backup verification failed for %s: %s", path, exc)
-        return 0
+        return -1
+    finally:
+        if con is not None:
+            con.close()
 
 
 def cmd_settle(client: KalshiClient) -> None:
@@ -6028,8 +6124,21 @@ def cmd_kill() -> None:
 def cmd_resume() -> None:
     """Remove the kill switch — re-enables automated trading. Also clears black swan state."""
     kill_path = KILL_SWITCH_PATH
+    cleared_any = False
     if kill_path.exists():
         kill_path.unlink()
+        cleared_any = True
+    # AUD batch-25 opus-review M5: same fix as web_app.py's api_resume --
+    # during a cmd_cron manual override window, the kill switch is parked
+    # at kill_path + ".tmp" and restored when the override finishes.
+    # Without also clearing that parked copy, resuming mid-override looks
+    # like a no-op ("No kill switch active") and the kill switch silently
+    # re-arms itself once the in-flight override ends.
+    parked = kill_path.with_name(kill_path.name + ".tmp")
+    if parked.exists():
+        parked.unlink(missing_ok=True)
+        cleared_any = True
+    if cleared_any:
         print(green("  Kill switch removed. Trading re-enabled."))
     else:
         print(dim("  No kill switch active."))

@@ -2074,14 +2074,28 @@ setInterval(() => {{
         """Write kill-switch file to stop cron from placing new trades."""
         from flask import request as _req
 
+        from safe_io import AtomicWriteError, atomic_write_json
+
         body = _req.get_json(silent=True) or {}
         reason = body.get("reason", "manual halt via API")
-        _KS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _tmp = _KS_PATH.with_suffix(".tmp")
-        _tmp.write_text(
-            json.dumps({"reason": reason, "halted_at": datetime.now(UTC).isoformat()})
-        )
-        _tmp.replace(_KS_PATH)
+        # AUD batch-25 item 4: was a bare Path.replace() -- no retry, so a
+        # transient Windows sharing-violation (any concurrent reader of
+        # .kill_switch, e.g. cron/watch/this dashboard's own /health and
+        # /api/status polling) could raise an unhandled 500 while the kill
+        # switch was NOT actually installed. atomic_write_json routes
+        # through safe_io._replace_with_retry (the same retry every other
+        # atomic write in this codebase gets) and, since its temp filename
+        # is unique per pid/thread/attempt rather than a hardcoded
+        # ".kill_switch.tmp", can never collide with main.py's cmd_cron
+        # manual-override flow, which parks the *active* kill switch at
+        # that literal filename for the duration of a one-shot override.
+        try:
+            atomic_write_json(
+                {"reason": reason, "halted_at": datetime.now(UTC).isoformat()},
+                _KS_PATH,
+            )
+        except AtomicWriteError as exc:
+            return jsonify({"error": str(exc)}), 500
         return jsonify({"halted": True, "reason": reason})
 
     @app.route("/api/resume", methods=["POST"])
@@ -2090,7 +2104,25 @@ setInterval(() => {{
         existed = _KS_PATH.exists()
         if existed:
             _KS_PATH.unlink()
-        return jsonify({"resumed": True, "was_halted": existed})
+        # AUD batch-25 opus-review M5: during a main.py cmd_cron manual
+        # override window, the kill switch is temporarily parked at
+        # `_KS_PATH` + ".tmp" (main.py's `_kill_tmp`) and restored once
+        # the override cycle finishes. Resuming here must also clear that
+        # parked copy -- otherwise it looked like a no-op (was_halted
+        # reads False, since _KS_PATH itself doesn't exist mid-window) and
+        # the kill switch silently re-arms itself the moment the in-flight
+        # override ends, even though the operator explicitly resumed. Safe
+        # against the cron process concurrently restoring it: main.py's
+        # own restore step already catches OSError (including
+        # FileNotFoundError from the source disappearing mid-restore) and
+        # just logs, matching its documented handling of "another process
+        # touching .kill_switch.tmp between the exists() check and the
+        # action below".
+        parked = _KS_PATH.with_name(_KS_PATH.name + ".tmp")
+        parked_existed = parked.exists()
+        if parked_existed:
+            parked.unlink(missing_ok=True)
+        return jsonify({"resumed": True, "was_halted": existed or parked_existed})
 
     @app.route("/signals")
     def signals_page():
@@ -2464,11 +2496,16 @@ setInterval(() => {{
             "duration_minutes": minutes,
         }
         from paths import MANUAL_OVERRIDE_PATH as _ov_path
+        from safe_io import AtomicWriteError, atomic_write_json
 
-        _ov_path.parent.mkdir(parents=True, exist_ok=True)
-        _tmp = _ov_path.with_suffix(".tmp")
-        _tmp.write_text(json.dumps(state, indent=2))
-        _tmp.replace(_ov_path)
+        # AUD batch-25 item 4: same bare-Path.replace() reliability gap as
+        # api_halt above -- no retry against a transient Windows sharing
+        # violation from a concurrent reader (e.g. cron's own
+        # _check_manual_override poll).
+        try:
+            atomic_write_json(state, _ov_path)
+        except AtomicWriteError as exc:
+            return jsonify({"error": str(exc)}), 500
         return jsonify({"set": True, **state})
 
     @app.route("/api/override", methods=["DELETE"])

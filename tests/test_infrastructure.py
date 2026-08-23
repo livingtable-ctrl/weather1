@@ -601,6 +601,41 @@ def test_verify_db_backup_raises_on_empty(tmp_path):
     assert result == 0
 
 
+def test_verify_db_backup_closes_connection_on_query_failure(tmp_path):
+    """AUD batch-25 item 3 adjacency fix: verify_db_backup() must close its
+    connection even when the query itself raises (e.g. table doesn't
+    exist), not just on the success path -- otherwise the file stays open
+    and a caller can't delete it right afterward.
+
+    Mutation check: reverting to the old shape (con.close() only reached
+    on the success path, no try/finally) makes this test fail on Windows
+    with WinError 32 ("used by another process") when unlinking right
+    after -- exactly how this leak silently defeated auto_backup()'s new
+    delete-bad-copy step before this fix.
+    """
+    import sqlite3
+
+    import main
+
+    db = tmp_path / "no_such_table.db"
+    con = sqlite3.connect(str(db))
+    con.execute("CREATE TABLE unrelated (id INTEGER PRIMARY KEY)")
+    con.commit()
+    con.close()
+
+    result = main.verify_db_backup(db, table="orders")
+    # opus-review-round-2 M4: a genuine query failure (table doesn't
+    # exist) now returns -1, distinct from a real 0-row count for a
+    # table that DOES exist but is legitimately empty.
+    assert result == -1
+
+    # If verify_db_backup leaked its connection, this raises PermissionError
+    # (WinError 32) on Windows -- the file is still "in use" by our own
+    # process from the call above.
+    db.unlink()
+    assert not db.exists()
+
+
 def test_auto_backup_logs_verification(tmp_path, caplog):
     """verify_db_backup logs 'backup verified' with path and row count."""
     import logging
@@ -708,3 +743,333 @@ class TestTrackerConnClosesConnection:
                 ("/rollback-test",),
             ).fetchone()
         assert row is None, "a write inside a raising block must be rolled back"
+
+
+# ── AUD batch-25: execution_log.db backup coverage + WAL-safety ────────────
+
+
+def test_verify_db_backup_accepts_table_param(tmp_path):
+    """verify_db_backup(path, table=...) counts rows in an arbitrary table
+    -- needed for execution_log.db backups, whose ledger lives in an
+    "orders" table, not "predictions" (AUD batch-25 item 2)."""
+    import sqlite3
+
+    import main
+
+    db = tmp_path / "execution_log_test.db"
+    con = sqlite3.connect(str(db))
+    con.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, ticker TEXT)")
+    con.execute("INSERT INTO orders (ticker) VALUES ('KXHIGHNY-26AUG22')")
+    con.execute("INSERT INTO orders (ticker) VALUES ('KXHIGHNY-26AUG23')")
+    con.commit()
+    con.close()
+
+    assert main.verify_db_backup(db, table="orders") == 2
+    # default stays "predictions" -- querying the wrong table for this DB
+    # raises inside verify_db_backup's own try/except, returning -1 (a
+    # hard failure, distinct from a real 0-row count -- opus-review-round-2 M4).
+    assert main.verify_db_backup(db) == -1
+
+
+def test_verify_db_backup_rejects_unsupported_table_name(tmp_path):
+    """AUD batch-25 opus-review L11: `table` is interpolated directly into
+    the query (sqlite3 has no identifier parameter-binding) -- validate
+    against the known set rather than trusting every caller to only ever
+    pass a literal. Guards against both a typo and a genuine injection
+    vector if this ever gets called with anything derived from external
+    input.
+
+    Mutation check: removing the `if table not in (...)` guard makes this
+    test fail -- the malicious/typo'd string would reach the query
+    unvalidated instead of raising ValueError.
+    """
+    import sqlite3
+
+    import main
+
+    db = tmp_path / "test.db"
+    sqlite3.connect(str(db)).close()
+
+    with pytest.raises(ValueError, match="unsupported table"):
+        main.verify_db_backup(db, table="predictions; DROP TABLE predictions--")
+
+
+def _sqlite_row_count(db_path, table):
+    import sqlite3
+
+    con = sqlite3.connect(str(db_path))
+    n = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]  # noqa: S608
+    con.close()
+    return n
+
+
+def _setup_auto_backup_env(tmp_path, monkeypatch):
+    """Wire main.auto_backup()'s three local imports (tracker.DB_PATH,
+    execution_log.DB_PATH, paths.PAPER_TRADES_PATH) and main.DATA_DIR at
+    isolated tmp_path locations. Returns the data_dir Path."""
+    import execution_log
+    import main
+    import paths
+    import tracker
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    monkeypatch.setattr(main, "DATA_DIR", data_dir)
+    monkeypatch.setattr(tracker, "DB_PATH", data_dir / "predictions.db")
+    monkeypatch.setattr(execution_log, "DB_PATH", data_dir / "execution_log.db")
+    monkeypatch.setattr(paths, "PAPER_TRADES_PATH", data_dir / "paper_trades.json")
+    return data_dir
+
+
+def test_auto_backup_includes_execution_log_db(tmp_path, monkeypatch):
+    """execution_log.db must now be backed up alongside predictions.db and
+    paper_trades.json -- AUD batch-25 item 2 (previously it wasn't in the
+    files list at all, so the live-order ledger had zero local backups).
+    """
+    import sqlite3
+
+    import main
+
+    data_dir = _setup_auto_backup_env(tmp_path, monkeypatch)
+
+    con = sqlite3.connect(str(data_dir / "predictions.db"))
+    con.execute("CREATE TABLE predictions (id INTEGER PRIMARY KEY)")
+    con.execute("INSERT INTO predictions DEFAULT VALUES")
+    con.commit()
+    con.close()
+
+    con = sqlite3.connect(str(data_dir / "execution_log.db"))
+    con.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY)")
+    con.execute("INSERT INTO orders DEFAULT VALUES")
+    con.commit()
+    con.close()
+
+    (data_dir / "paper_trades.json").write_text('{"balance": 1000.0, "trades": []}')
+
+    main.auto_backup()
+
+    names = [p.name for p in (data_dir / "backups").iterdir()]
+    assert any(n.startswith("execution_log_") and n.endswith(".db") for n in names), (
+        f"execution_log.db backup not found among: {names}"
+    )
+    assert any(n.startswith("predictions_") for n in names)
+    assert any(n.startswith("paper_trades_") for n in names)
+
+
+def test_auto_backup_logs_error_when_backup_sqlite_db_raises(
+    tmp_path, monkeypatch, caplog
+):
+    """AUD batch-25 opus-review M4: backup_sqlite_db can raise (source
+    isn't a valid SQLite DB) in a way shutil.copy2 essentially never did.
+    That must produce a visible ERROR log, not disappear into a bare
+    `except Exception: pass` -- the whole point of this batch is that a
+    bad backup should never fail silently.
+
+    Mutation check: reverting auto_backup()'s outer except back to a bare
+    `except Exception: pass` makes this test fail -- no ERROR record.
+    """
+    import logging
+
+    import main
+
+    data_dir = _setup_auto_backup_env(tmp_path, monkeypatch)
+    # A file with a .db suffix that isn't a valid SQLite database at all --
+    # backup_sqlite_db's sqlite3.Connection.backup() call raises for this,
+    # it doesn't return False.
+    (data_dir / "execution_log.db").write_bytes(b"not a real sqlite database")
+
+    with caplog.at_level(logging.ERROR):
+        main.auto_backup()
+
+    assert any(
+        "failed to back up" in r.message and "execution_log.db" in r.message
+        for r in caplog.records
+    ), [r.message for r in caplog.records]
+    assert not list((data_dir / "backups").glob("execution_log_*.db"))
+
+
+def test_auto_backup_execution_log_survives_uncheckpointed_wal(tmp_path, monkeypatch):
+    """End-to-end WAL-safety regression guard for auto_backup()'s
+    execution_log.db path specifically (test_safe_io.py already covers
+    backup_sqlite_db in isolation; this proves the wiring in main.py
+    actually uses it for this exact file).
+
+    Mutation check: reverting auto_backup()'s `.db` branch back to
+    `shutil.copy2(src, dst)` makes this test fail the same way the live
+    audit reproduction did -- the backup comes back missing the row (or
+    the whole "orders" table).
+    """
+    import sqlite3
+
+    import main
+
+    data_dir = _setup_auto_backup_env(tmp_path, monkeypatch)
+
+    db_path = data_dir / "execution_log.db"
+    con = sqlite3.connect(str(db_path))
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, note TEXT)")
+    con.commit()
+    con.execute("INSERT INTO orders (note) VALUES ('committed row')")
+    con.commit()
+    wal_path = db_path.with_name(db_path.name + "-wal")
+    assert wal_path.exists() and wal_path.stat().st_size > 0
+
+    try:
+        main.auto_backup()
+    finally:
+        con.close()
+
+    backups = sorted((data_dir / "backups").glob("execution_log_*.db"))
+    assert len(backups) == 1
+    assert _sqlite_row_count(backups[0], "orders") == 1
+
+
+def test_auto_backup_deletes_bad_backup_copy_when_expected_table_missing(
+    tmp_path, monkeypatch
+):
+    """verify_db_backup()'s return value was previously discarded -- a
+    backup that failed verification (its own hard query failure) still
+    got retained and still counted toward the 30-backup pruning window,
+    potentially evicting the oldest genuinely-good backup in its place
+    (AUD batch-25 item 3). Now the bad copy is deleted immediately
+    instead.
+
+    Simulated with a source predictions.db that has SOME table (so
+    backup_sqlite_db's own generic readability check passes -- it's a
+    structurally valid, non-empty DB) but not one named "predictions" --
+    the shape a genuinely bad/incomplete backup produces, distinct from a
+    legitimately empty "predictions" table (see the sibling test below,
+    opus-review-round-2 M4).
+
+    Mutation check: reverting the `if n < 0: ... dst.unlink()` check in
+    main.auto_backup() back to a bare `if n == 0` makes this test pass
+    for the wrong reason and the sibling "retains legitimately empty"
+    test below fail -- together they pin down the intended distinction.
+    """
+    import sqlite3
+
+    import main
+
+    data_dir = _setup_auto_backup_env(tmp_path, monkeypatch)
+
+    con = sqlite3.connect(str(data_dir / "predictions.db"))
+    con.execute("CREATE TABLE wrong_table_name (id INTEGER PRIMARY KEY)")
+    con.execute("INSERT INTO wrong_table_name DEFAULT VALUES")
+    con.commit()
+    con.close()
+
+    main.auto_backup()
+
+    backups = list((data_dir / "backups").glob("predictions_*.db"))
+    assert backups == [], (
+        f"backup missing its expected 'predictions' table should have "
+        f"been deleted, found: {backups}"
+    )
+
+
+def test_auto_backup_retains_backup_with_legitimately_empty_table(
+    tmp_path, monkeypatch
+):
+    """AUD batch-25 opus-review-round-2 M4: a backup whose expected table
+    EXISTS but genuinely has 0 rows (e.g. execution_log.db's `orders`
+    table before this bot's first live order -- confirmed live:
+    data/execution_log.db currently has orders=243 but
+    daily_live_loss=0, so a legitimately-0 table is a real, current
+    state, not a hypothetical) must be RETAINED, not deleted. An earlier
+    version couldn't distinguish this from a hard query failure (both
+    returned 0 from verify_db_backup) and deleted it either way --
+    silently leaving the live-order ledger with zero local backups again,
+    the exact problem this batch exists to fix, for exactly the file it
+    exists to protect.
+
+    Mutation check: reverting verify_db_backup to return 0 (not -1) for a
+    hard query failure makes this test fail -- a legitimately empty table
+    becomes indistinguishable from a missing one again and gets deleted.
+    """
+    import sqlite3
+
+    import main
+
+    data_dir = _setup_auto_backup_env(tmp_path, monkeypatch)
+
+    con = sqlite3.connect(str(data_dir / "execution_log.db"))
+    con.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY)")  # 0 rows, on purpose
+    con.commit()
+    con.close()
+
+    main.auto_backup()
+
+    backups = list((data_dir / "backups").glob("execution_log_*.db"))
+    assert len(backups) == 1, (
+        f"backup with a legitimately empty (but existing) orders table "
+        f"should have been retained, found: {backups}"
+    )
+
+
+def test_auto_backup_prunes_execution_log_backups_past_30(tmp_path, monkeypatch):
+    """The 30-backup retention prune must cover execution_log.db backups
+    too, not just predictions/paper_trades -- otherwise execution_log
+    backups accumulate forever once item 2 starts creating them daily."""
+    import sqlite3
+
+    import main
+
+    data_dir = _setup_auto_backup_env(tmp_path, monkeypatch)
+    backup_dir = data_dir / "backups"
+    backup_dir.mkdir()
+
+    # Pre-seed 32 daily execution_log backups (each a valid, non-empty
+    # "orders" table so none get deleted by the verification-failure path).
+    for i in range(32):
+        db = backup_dir / f"execution_log_2026-07-{i + 1:02d}.db"
+        con = sqlite3.connect(str(db))
+        con.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY)")
+        con.execute("INSERT INTO orders DEFAULT VALUES")
+        con.commit()
+        con.close()
+
+    con = sqlite3.connect(str(data_dir / "execution_log.db"))
+    con.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY)")
+    con.execute("INSERT INTO orders DEFAULT VALUES")
+    con.commit()
+    con.close()
+
+    main.auto_backup()
+
+    remaining = sorted(backup_dir.glob("execution_log_*.db"))
+    assert len(remaining) == 30, (
+        f"expected pruning down to 30 execution_log backups, got "
+        f"{len(remaining)}: {[p.name for p in remaining]}"
+    )
+
+
+def test_cmd_resume_clears_override_parked_kill_switch(tmp_path, monkeypatch, capsys):
+    """AUD batch-25 opus-review M5: same fix as web_app.py's api_resume --
+    during a cmd_cron manual override window, the kill switch is parked at
+    KILL_SWITCH_PATH + ".tmp" and restored when the override finishes.
+    cmd_resume must clear that parked copy too, or the kill switch
+    silently re-arms itself once the in-flight override ends even though
+    the operator explicitly ran `resume`.
+
+    Mutation check: reverting cmd_resume to only check/unlink kill_path
+    makes this test fail -- the parked file survives and stdout wrongly
+    prints "No kill switch active."
+    """
+    import main
+
+    kill_path = tmp_path / ".kill_switch"
+    monkeypatch.setattr(main, "KILL_SWITCH_PATH", kill_path)
+    # kill_path itself does NOT exist -- it's parked mid-override.
+    parked = tmp_path / ".kill_switch.tmp"
+    parked.write_text('{"reason": "parked by cron override"}')
+
+    main.cmd_resume()
+
+    assert not parked.exists(), (
+        "the parked override copy must be cleared, or the kill switch "
+        "re-arms itself when the override cycle finishes"
+    )
+    out = capsys.readouterr().out
+    assert "removed" in out.lower()
+    assert "no kill switch active" not in out.lower()

@@ -1251,3 +1251,419 @@ class TestCrossProcessLock:
             f"holds overlapped ({intervals}) -- the lock did not actually "
             f"provide mutual exclusion"
         )
+
+
+# ── backup_sqlite_db (AUD batch-25 item 1/3) ───────────────────────────────
+
+
+def _make_wal_db_with_uncheckpointed_row(db_path: Path):
+    """Create a WAL-mode DB with a table + committed row that has NOT been
+    checkpointed out of the .db-wal sidecar -- reproduces the exact live
+    state the audit found (data/predictions.db-wal held 2.2MB of committed-
+    but-uncheckpointed data). A plain file copy of `db_path` alone (ignoring
+    the -wal sidecar) would come back missing this row entirely.
+
+    Returns the OPEN connection -- SQLite auto-checkpoints (folds the WAL
+    back into the main .db file) when the last connection to a WAL-mode DB
+    closes, which would silently defeat this fixture's whole purpose if
+    closed before the caller performs its backup. The caller must close it
+    (after the backup happens) to release the file handle."""
+    import sqlite3
+
+    con = sqlite3.connect(str(db_path))
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, note TEXT)")
+    con.commit()
+    con.execute("INSERT INTO orders (note) VALUES ('committed row')")
+    con.commit()
+    wal_path = db_path.with_name(db_path.name + "-wal")
+    assert wal_path.exists() and wal_path.stat().st_size > 0, (
+        "test setup didn't actually produce uncheckpointed WAL data -- "
+        "this test wouldn't be exercising the bug"
+    )
+    return con
+
+
+def test_backup_sqlite_db_includes_uncheckpointed_wal_data(tmp_path):
+    """The real regression guard for the WAL bug: write a row, do NOT
+    checkpoint, back up, and assert the backup copy actually contains the
+    row.
+
+    Mutation check: reverting safe_io.backup_sqlite_db to
+    `shutil.copy2(src, dst)` makes this test fail -- the backup copy would
+    either be missing the table entirely (same "no such table" error this
+    project reproduced live) or missing the row, depending on OS-level
+    write-buffering timing.
+    """
+    from safe_io import backup_sqlite_db
+
+    src = tmp_path / "execution_log.db"
+    setup_con = _make_wal_db_with_uncheckpointed_row(src)
+    try:
+        dst = tmp_path / "backup" / "execution_log.db"
+        result = backup_sqlite_db(src, dst)
+    finally:
+        setup_con.close()
+
+    assert result is True
+    import sqlite3
+
+    con = sqlite3.connect(str(dst))
+    rows = con.execute("SELECT note FROM orders").fetchall()
+    con.close()
+    assert rows == [("committed row",)]
+
+
+def test_backup_sqlite_db_creates_parent_dir(tmp_path):
+    """backup_sqlite_db creates dst's parent directory if missing, matching
+    every other write helper in this module."""
+    from safe_io import backup_sqlite_db
+
+    src = tmp_path / "predictions.db"
+    _make_wal_db_with_uncheckpointed_row(src).close()
+
+    dst = tmp_path / "nested" / "does" / "not" / "exist" / "predictions.db"
+    assert backup_sqlite_db(src, dst) is True
+    assert dst.exists()
+
+
+def test_backup_sqlite_db_returns_false_and_removes_corrupt_copy(tmp_path, monkeypatch):
+    """If the post-copy readability check fails, backup_sqlite_db returns
+    False and removes the bad (temp) copy rather than leaving a corrupt
+    file that a caller might mistake for a good backup. `dst` itself is
+    never created at all in this path (opus-review-caught -- see the
+    dedicated H2 regression test below for why writing straight to `dst`
+    was the actual bug).
+
+    Simulated via a sqlite3.Connection subclass (sqlite3.Connection itself
+    is a C-level immutable type -- can't monkeypatch its `backup` method
+    directly) that writes garbage bytes over whatever path `target` (the
+    destination connection backup_sqlite_db actually opened -- introspected
+    via PRAGMA database_list rather than assumed, since the temp-path
+    redesign means that's no longer literally `dst`) is connected to,
+    instead of actually copying -- the fake backup() call itself doesn't
+    raise, so this exercises the readability CHECK specifically, not a
+    copy-step failure.
+    """
+    import sqlite3
+
+    from safe_io import backup_sqlite_db
+
+    src = tmp_path / "predictions.db"
+    _make_wal_db_with_uncheckpointed_row(src).close()
+    dst = tmp_path / "predictions_backup.db"
+
+    class _CorruptingConnection(sqlite3.Connection):
+        def backup(self, target, *a, **k):
+            target_path = Path(target.execute("PRAGMA database_list").fetchone()[2])
+            target.close()
+            target_path.write_bytes(b"not a real sqlite database")
+
+    real_connect = sqlite3.connect
+
+    def _fake_connect(path, *a, **k):
+        return real_connect(path, factory=_CorruptingConnection)
+
+    monkeypatch.setattr(sqlite3, "connect", _fake_connect)
+
+    result = backup_sqlite_db(src, dst)
+
+    assert result is False
+    assert not dst.exists(), "corrupt backup copy should have been removed"
+    leftover = list(tmp_path.glob(".*backup_tmp*"))
+    assert leftover == [], f"temp file(s) left behind: {leftover}"
+
+
+def test_backup_sqlite_db_returns_false_for_empty_source(tmp_path):
+    """A source DB with zero tables (e.g. a freshly-created but never-
+    initialized file) is copied byte-for-byte fine but has no tables --
+    the readability check should treat that as unreadable/unusable, not a
+    false-positive success."""
+    import sqlite3
+
+    from safe_io import backup_sqlite_db
+
+    src = tmp_path / "empty.db"
+    con = sqlite3.connect(str(src))
+    con.close()  # creates a valid-but-empty SQLite file, zero tables
+
+    dst = tmp_path / "empty_backup.db"
+    result = backup_sqlite_db(src, dst)
+
+    assert result is False
+    assert not dst.exists()
+
+
+def _corrupt_index_leaving_table_data_intact(db_path: Path, index_name: str) -> None:
+    """Byte-flip an index's own b-tree page so PRAGMA integrity_check
+    fails on it, while leaving the underlying TABLE data fully intact and
+    queryable -- reproduces the exact real-world shape found live in this
+    project's own data/execution_log.db (`wrong # of entries in index
+    idx_orders_ticker`, orders table itself fully readable)."""
+    import sqlite3
+
+    con = sqlite3.connect(str(db_path))
+    rootpage = con.execute(
+        "SELECT rootpage FROM sqlite_master WHERE name=?", (index_name,)
+    ).fetchone()[0]
+    page_size = con.execute("PRAGMA page_size").fetchone()[0]
+    baseline = con.execute("PRAGMA integrity_check").fetchone()
+    assert baseline == ("ok",), (
+        f"test setup itself already has integrity issues: {baseline}"
+    )
+    con.close()
+
+    with open(db_path, "r+b") as f:
+        f.seek((rootpage - 1) * page_size + 100)
+        chunk = f.read(50)
+        f.seek((rootpage - 1) * page_size + 100)
+        f.write(bytes(b ^ 0xFF for b in chunk))
+
+
+def test_backup_sqlite_db_accepts_db_with_unrelated_index_corruption(tmp_path):
+    """AUD batch-25 opus-review H1 regression guard: backup_sqlite_db must
+    NOT reject (and must NOT discard the only copy of) a database whose
+    PRAGMA integrity_check fails for a reason UNRELATED to the WAL bug
+    this function exists to fix -- e.g. a corrupt index -- as long as the
+    actual table data is intact and queryable.
+
+    An earlier version of this function additionally required
+    `PRAGMA integrity_check` to return "ok". Verified live against this
+    project's own data/execution_log.db (a real corrupt index,
+    `orders` table fully readable): that version returned False and
+    discarded the copy, making item 2 of this batch a no-op in production
+    -- the live-order ledger it exists to protect. PRAGMA quick_check has
+    the identical false positive (confirmed against the same real file),
+    so the fix drops the integrity_check requirement entirely in favor of
+    a table-existence check, which still catches the actual originally
+    reported bug ("no such table").
+
+    Mutation check: reverting backup_sqlite_db's readability check back to
+    requiring `PRAGMA integrity_check == "ok"` makes this test fail --
+    confirmed by temporarily restoring that requirement and re-running.
+    """
+    import sqlite3
+
+    from safe_io import backup_sqlite_db
+
+    src = tmp_path / "execution_log.db"
+    con = sqlite3.connect(str(src))
+    con.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, ticker TEXT)")
+    con.execute("CREATE INDEX idx_orders_ticker ON orders(ticker)")
+    for i in range(200):
+        con.execute("INSERT INTO orders (ticker) VALUES (?)", (f"T{i}",))
+    con.commit()
+    con.close()
+
+    _corrupt_index_leaving_table_data_intact(src, "idx_orders_ticker")
+
+    # Confirm the corruption actually reproduces the real-world shape
+    # before trusting the rest of this test.
+    verify_con = sqlite3.connect(str(src))
+    integrity = verify_con.execute("PRAGMA integrity_check").fetchall()
+    row_count = verify_con.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
+    verify_con.close()
+    assert integrity != [("ok",)], "test setup didn't reproduce an integrity failure"
+    assert row_count == 200, "table data should still be fully readable pre-backup"
+
+    dst = tmp_path / "backup" / "execution_log.db"
+    result = backup_sqlite_db(src, dst)
+
+    assert result is True, (
+        "an unrelated index corruption must not make backup_sqlite_db "
+        "discard the only copy of an otherwise-readable database"
+    )
+    con2 = sqlite3.connect(str(dst))
+    assert con2.execute("SELECT COUNT(*) FROM orders").fetchone()[0] == 200
+    con2.close()
+
+
+def test_backup_sqlite_db_rejects_db_with_corrupted_table_data(tmp_path):
+    """AUD batch-25 opus-review-round-2 M2: table-existence alone (just
+    counting sqlite_master rows, the fix for H1 above) accepts a copy
+    whose sqlite_master page is intact but a TABLE's own root page is
+    corrupted -- `SELECT name FROM sqlite_master` succeeds while `SELECT
+    * FROM that_table` raises "database disk image is malformed".
+    backup_sqlite_db must reject this (unlike the unrelated-index case
+    above, which it must accept) since the actual data is NOT readable
+    here, not just some orthogonal metadata.
+
+    Reproduced by zeroing out a table's own root b-tree page directly (not
+    an index's, and not corrupting page 1 / sqlite_master itself) -- the
+    same shape opus review round 2 demonstrated live.
+
+    Mutation check: reverting the per-table `LIMIT 1` probe back to a
+    bare `SELECT COUNT(*) FROM sqlite_master WHERE type='table'` count
+    makes this test fail -- the corrupted copy would be accepted.
+    """
+    import sqlite3
+
+    from safe_io import backup_sqlite_db
+
+    src = tmp_path / "predictions.db"
+    con = sqlite3.connect(str(src))
+    con.execute("CREATE TABLE predictions (id INTEGER PRIMARY KEY, note TEXT)")
+    for i in range(200):
+        con.execute("INSERT INTO predictions (note) VALUES (?)", (f"note{i}",))
+    con.commit()
+    rootpage = con.execute(
+        "SELECT rootpage FROM sqlite_master WHERE name='predictions'"
+    ).fetchone()[0]
+    page_size = con.execute("PRAGMA page_size").fetchone()[0]
+    con.close()
+
+    with open(src, "r+b") as f:
+        f.seek((rootpage - 1) * page_size)
+        f.write(b"\x00" * page_size)
+
+    # Confirm the corruption actually reproduces the claimed shape before
+    # trusting the rest of this test: sqlite_master still readable, table
+    # data is not.
+    verify_con = sqlite3.connect(str(src))
+    tables = verify_con.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()
+    assert tables == [("predictions",)], "sqlite_master should still be intact"
+    try:
+        verify_con.execute("SELECT * FROM predictions LIMIT 1").fetchall()
+        raise AssertionError("test setup didn't reproduce table-data corruption")
+    except sqlite3.DatabaseError:
+        pass
+    verify_con.close()
+
+    dst = tmp_path / "backup" / "predictions.db"
+    result = backup_sqlite_db(src, dst)
+
+    assert result is False, (
+        "a copy whose table DATA is corrupted (not just an unrelated "
+        "index) must be rejected"
+    )
+    assert not dst.exists()
+
+
+def test_backup_sqlite_db_probes_table_names_needing_identifier_escaping(tmp_path):
+    """AUD batch-25 opus-review-round-3 L1: the M2 per-table readability
+    probe interpolates each table name into `SELECT * FROM "{name}"
+    LIMIT 1` with `"` doubled for escaping (sqlite3 has no
+    parameter-binding for identifiers). A table literally named with an
+    embedded double-quote must still probe correctly -- round 3 found
+    this had zero test coverage (a mutant removing the escaping entirely
+    passed every existing test).
+
+    Mutation check: reverting the escaping (`table_name.replace('"',
+    '""')` -> `table_name` unescaped) makes this test fail -- the probe
+    query becomes syntactically invalid for this table name and the
+    whole backup is wrongly rejected.
+    """
+    import sqlite3
+
+    from safe_io import backup_sqlite_db
+
+    src = tmp_path / "predictions.db"
+    con = sqlite3.connect(str(src))
+    # A table name containing a literal double-quote -- valid SQLite,
+    # requires proper "" escaping when re-quoted.
+    con.execute('CREATE TABLE "has""quote" (id INTEGER PRIMARY KEY, v TEXT)')
+    con.execute('INSERT INTO "has""quote" (v) VALUES (\'data\')')
+    con.commit()
+    con.close()
+
+    dst = tmp_path / "backup" / "predictions.db"
+    result = backup_sqlite_db(src, dst)
+
+    assert result is True, (
+        "a table name containing a double-quote must not make an "
+        "otherwise-healthy backup get rejected by the readability probe"
+    )
+    con2 = sqlite3.connect(str(dst))
+    assert con2.execute('SELECT v FROM "has""quote"').fetchall() == [("data",)]
+    con2.close()
+
+
+def test_backup_sqlite_db_does_not_delete_preexisting_good_backup_on_failure(
+    tmp_path,
+):
+    """AUD batch-25 opus-review H2 regression guard: if a backup attempt
+    into a `dst` that already holds a GOOD earlier backup fails (either
+    the copy step or the readability check), that pre-existing good file
+    must be left untouched -- not overwritten-then-deleted.
+
+    Real scenario: cloud_backup.backup_data() calls this on the SAME
+    per-day destination path after every cron cycle. An earlier version
+    wrote directly to `dst` and unconditionally removed it on any
+    failure, so a later same-day run that failed (transient error, or a
+    DB that developed the exact index corruption covered by the test
+    above) destroyed the morning's already-good backup.
+
+    Mutation check: reverting backup_sqlite_db to copy straight into
+    `dst` (instead of a sibling temp path, replaced only on success)
+    makes this test fail -- the good backup gets deleted when the second
+    call's source is unreadable.
+    """
+    import sqlite3
+
+    from safe_io import backup_sqlite_db
+
+    good_src = tmp_path / "predictions.db"
+    con = sqlite3.connect(str(good_src))
+    con.execute("CREATE TABLE predictions (id INTEGER PRIMARY KEY)")
+    con.execute("INSERT INTO predictions DEFAULT VALUES")
+    con.commit()
+    con.close()
+
+    dst = tmp_path / "backup" / "predictions.db"
+    assert backup_sqlite_db(good_src, dst) is True
+    good_backup_bytes = dst.read_bytes()
+
+    # A later same-day run: source now has zero tables (simulates a
+    # source that fails the readability check cleanly -- returns False,
+    # doesn't raise).
+    empty_src = tmp_path / "predictions_now_empty.db"
+    sqlite3.connect(str(empty_src)).close()
+
+    result = backup_sqlite_db(empty_src, dst)
+
+    assert result is False
+    assert dst.exists(), "the pre-existing good backup must not be deleted"
+    assert dst.read_bytes() == good_backup_bytes, (
+        "the pre-existing good backup's content must be untouched"
+    )
+
+
+def test_backup_sqlite_db_does_not_delete_preexisting_good_backup_when_copy_raises(
+    tmp_path,
+):
+    """Same H2 guard as above, for the OTHER failure shape: the backup()
+    call itself raising (source isn't a valid SQLite file at all) rather
+    than a clean readability-check False. Both must leave a pre-existing
+    good `dst` untouched.
+
+    Mutation check: reverting backup_sqlite_db to copy straight into
+    `dst` makes this test fail -- the good backup gets deleted (and the
+    exception still propagates) when the second call's source raises.
+    """
+    import sqlite3
+
+    from safe_io import backup_sqlite_db
+
+    good_src = tmp_path / "predictions.db"
+    con = sqlite3.connect(str(good_src))
+    con.execute("CREATE TABLE predictions (id INTEGER PRIMARY KEY)")
+    con.execute("INSERT INTO predictions DEFAULT VALUES")
+    con.commit()
+    con.close()
+
+    dst = tmp_path / "backup" / "predictions.db"
+    assert backup_sqlite_db(good_src, dst) is True
+    good_backup_bytes = dst.read_bytes()
+
+    bad_src = tmp_path / "predictions_now_broken.db"
+    bad_src.write_bytes(b"not a real sqlite database")
+
+    with pytest.raises(sqlite3.DatabaseError):
+        backup_sqlite_db(bad_src, dst)
+
+    assert dst.exists(), "the pre-existing good backup must not be deleted"
+    assert dst.read_bytes() == good_backup_bytes, (
+        "the pre-existing good backup's content must be untouched"
+    )

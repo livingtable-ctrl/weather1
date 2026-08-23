@@ -978,6 +978,173 @@ class TestKillSwitchAPI:
         assert not tmp_file.exists(), "Atomic write must not leave a .tmp file behind"
         assert ks_path.exists(), "Kill switch file must exist after halt"
 
+    def test_halt_no_leftover_temp_files_at_all(self, tmp_path, monkeypatch):
+        """AUD batch-25 item 4: after switching to safe_io.atomic_write_json,
+        confirm no stray temp file of ANY name (its own pid/thread/attempt-
+        keyed scheme, not just the old `.kill_switch.tmp`) is left behind
+        in the kill-switch file's directory."""
+        import web_app
+
+        ks_path = tmp_path / ".kill_switch"
+        monkeypatch.setattr(web_app, "_KS_PATH", ks_path)
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            c.post(
+                "/api/halt",
+                json={"reason": "atomic test"},
+                content_type="application/json",
+            )
+
+        # Other autouse fixtures share this same tmp_path for unrelated
+        # state (circuit breaker, tracker db) -- scope the check to files
+        # that look like a temp artifact of *this* write (anything besides
+        # the final .kill_switch file whose name starts with a dot and
+        # mentions "kill_switch" or ends in .tmp).
+        leftover = [
+            p
+            for p in tmp_path.iterdir()
+            if p != ks_path and ("kill_switch" in p.name or p.suffix == ".tmp")
+        ]
+        assert leftover == [], f"stray temp file(s) left behind: {leftover}"
+
+    def test_halt_retries_transient_permission_error_then_succeeds(
+        self, tmp_path, monkeypatch
+    ):
+        """AUD batch-25 item 4: api_halt's write used to be a bare
+        Path.replace() with no retry -- a transient Windows sharing
+        violation (any concurrent reader of .kill_switch, which this
+        codebase guarantees: cron/watch/this dashboard's own /health and
+        /api/status polling) would raise straight through to an unhandled
+        500 while the kill switch was NOT actually installed. Routing
+        through safe_io.atomic_write_json gets the same bounded retry
+        every other atomic write in this codebase gets.
+
+        Mutation check: reverting api_halt to `_tmp.replace(_KS_PATH)`
+        makes this test fail -- a bare Path.replace() doesn't retry, so
+        the first simulated PermissionError would propagate as an
+        unhandled 500 instead of the halt succeeding after retry.
+        """
+        import os
+
+        import web_app
+
+        ks_path = tmp_path / ".kill_switch"
+        monkeypatch.setattr(web_app, "_KS_PATH", ks_path)
+
+        real_replace = os.replace
+        call_count = {"n": 0}
+
+        def _flaky_replace(src, dst):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise PermissionError(
+                    "[WinError 5] Access is denied (simulated concurrent reader)"
+                )
+            return real_replace(src, dst)
+
+        monkeypatch.setattr(os, "replace", _flaky_replace)
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            resp = c.post(
+                "/api/halt",
+                json={"reason": "retry test"},
+                content_type="application/json",
+            )
+
+        assert resp.status_code == 200
+        assert resp.get_json()["halted"] is True
+        assert call_count["n"] == 2, (
+            "expected exactly one retry after the transient failure"
+        )
+        assert ks_path.exists()
+
+    def test_halt_returns_500_json_when_write_totally_fails(
+        self, tmp_path, monkeypatch
+    ):
+        """AUD batch-25 item 4: when every retry is exhausted, api_halt must
+        return a JSON 500 (matching every other error-handling route in
+        this file), not an unhandled exception / Flask's raw HTML 500
+        page."""
+        import os
+        import time
+
+        import safe_io
+        import web_app
+
+        ks_path = tmp_path / ".kill_switch"
+        monkeypatch.setattr(web_app, "_KS_PATH", ks_path)
+        # project_root() default emergency-copy fallback would otherwise
+        # try to write into this repo's real data/.emergency/ -- isolate it.
+        monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+        monkeypatch.setattr(time, "sleep", lambda _secs: None)
+
+        def _always_fail(src, dst):
+            raise OSError("simulated persistent disk error")
+
+        monkeypatch.setattr(os, "replace", _always_fail)
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            resp = c.post(
+                "/api/halt",
+                json={"reason": "total failure test"},
+                content_type="application/json",
+            )
+
+        assert resp.status_code == 500
+        assert "error" in resp.get_json()
+        assert not ks_path.exists()
+
+    def test_halt_does_not_collide_with_cron_override_parked_kill_switch(
+        self, tmp_path, monkeypatch
+    ):
+        """AUD batch-25 item 4: main.py's cmd_cron manual-override flow
+        parks the ACTIVE kill switch at the literal filename
+        `.kill_switch.tmp` for the duration of a one-shot override (see
+        main.py's `_kill_tmp = _kill_path.with_name(".kill_switch.tmp")`).
+        The old `_KS_PATH.with_suffix(".tmp")` write in api_halt produced
+        that exact same filename, so a halt request arriving mid-override
+        could overwrite the parked state. atomic_write_json's temp names
+        are pid/thread/attempt-keyed (never a fixed name), so this can't
+        happen anymore -- verified by pre-creating that exact filename
+        (simulating an in-progress override) and confirming api_halt
+        leaves it untouched.
+        """
+        import web_app
+
+        ks_path = tmp_path / ".kill_switch"
+        monkeypatch.setattr(web_app, "_KS_PATH", ks_path)
+
+        parked_override_file = ks_path.with_name(".kill_switch.tmp")
+        parked_override_file.write_text('{"reason": "parked by cron override"}')
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            resp = c.post(
+                "/api/halt",
+                json={"reason": "halt during override window"},
+                content_type="application/json",
+            )
+
+        assert resp.status_code == 200
+        # The parked override file must be untouched -- still exists with
+        # its original content, not overwritten or consumed by the halt.
+        assert parked_override_file.exists()
+        assert (
+            parked_override_file.read_text() == '{"reason": "parked by cron override"}'
+        )
+        assert ks_path.exists()
+
     def test_resume_removes_kill_switch_file(self, tmp_path, monkeypatch):
         """POST /api/resume removes the kill-switch file."""
         import web_app
@@ -996,6 +1163,43 @@ class TestKillSwitchAPI:
         assert data["resumed"] is True
         assert data["was_halted"] is True
         assert not ks_path.exists()
+
+    def test_resume_also_clears_override_parked_kill_switch(
+        self, tmp_path, monkeypatch
+    ):
+        """AUD batch-25 opus-review M5: during a main.py cmd_cron manual
+        override window, the kill switch is parked at `.kill_switch.tmp`
+        (not `.kill_switch` itself). /api/resume must clear that parked
+        copy too -- otherwise resuming mid-override looks like a no-op
+        (was_halted reads False) and the kill switch silently re-arms
+        itself the moment the in-flight override finishes.
+
+        Mutation check: reverting api_resume to only check/unlink
+        `_KS_PATH` makes this test fail -- the parked file survives and
+        `was_halted` incorrectly reads False.
+        """
+        import web_app
+
+        ks_path = tmp_path / ".kill_switch"
+        monkeypatch.setattr(web_app, "_KS_PATH", ks_path)
+        # .kill_switch itself does NOT exist -- it's parked mid-override.
+        parked = tmp_path / ".kill_switch.tmp"
+        parked.write_text('{"reason": "parked by cron override"}')
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            resp = c.post("/api/resume")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["resumed"] is True
+        assert data["was_halted"] is True
+        assert not parked.exists(), (
+            "the parked override copy must be cleared, or the kill switch "
+            "re-arms itself when the override cycle finishes"
+        )
 
     def test_status_includes_kill_switch_active(self, tmp_path, monkeypatch):
         """GET /api/status includes kill_switch_active field (False when no file)."""
@@ -1019,6 +1223,85 @@ class TestKillSwitchAPI:
         data = resp.get_json()
         assert "kill_switch_active" in data
         assert data["kill_switch_active"] is False
+
+
+class TestManualOverrideAPIWriteReliability:
+    """AUD batch-25 item 4: api_override_set() had the identical bare
+    Path.replace() reliability gap as api_halt above."""
+
+    def test_override_set_retries_transient_permission_error(
+        self, tmp_path, monkeypatch
+    ):
+        """Mutation check: reverting api_override_set to
+        `_tmp.replace(_ov_path)` makes this test fail -- a bare
+        Path.replace() doesn't retry a transient PermissionError."""
+        import os
+
+        import paths
+        import web_app
+
+        ov_path = tmp_path / "manual_override.json"
+        monkeypatch.setattr(paths, "MANUAL_OVERRIDE_PATH", ov_path)
+
+        real_replace = os.replace
+        call_count = {"n": 0}
+
+        def _flaky_replace(src, dst):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise PermissionError("[WinError 5] simulated concurrent reader")
+            return real_replace(src, dst)
+
+        monkeypatch.setattr(os, "replace", _flaky_replace)
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            resp = c.post(
+                "/api/override",
+                json={"reason": "retry test", "duration_minutes": 30},
+                content_type="application/json",
+            )
+
+        assert resp.status_code == 200
+        assert resp.get_json()["set"] is True
+        assert call_count["n"] == 2
+        assert ov_path.exists()
+
+    def test_override_set_returns_500_json_when_write_totally_fails(
+        self, tmp_path, monkeypatch
+    ):
+        import os
+        import time
+
+        import paths
+        import safe_io
+        import web_app
+
+        ov_path = tmp_path / "manual_override.json"
+        monkeypatch.setattr(paths, "MANUAL_OVERRIDE_PATH", ov_path)
+        monkeypatch.setattr(safe_io, "project_root", lambda: tmp_path)
+        monkeypatch.setattr(time, "sleep", lambda _secs: None)
+
+        def _always_fail(src, dst):
+            raise OSError("simulated persistent disk error")
+
+        monkeypatch.setattr(os, "replace", _always_fail)
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            resp = c.post(
+                "/api/override",
+                json={"reason": "total failure test", "duration_minutes": 30},
+                content_type="application/json",
+            )
+
+        assert resp.status_code == 500
+        assert "error" in resp.get_json()
+        assert not ov_path.exists()
 
 
 def test_status_includes_brier_drift(tmp_path, monkeypatch):
