@@ -16,10 +16,14 @@ this is a first pass, not yet graduated to real auto-placement.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
+import safe_io
+from paths import RAIN_ARB_SHADOW_PATH
 from weather_markets import (
     _KXRAIN_MONTHLY_CITY,
     _KXSNOW_MONTHLY_CITY,
@@ -467,3 +471,203 @@ def find_violations(markets: list[dict]) -> list[Violation]:
     # guaranteed_edge (bid_hi - ask_lo < 0) which is not a real arb opportunity.
     real_violations = [v for v in violations if v.guaranteed_edge > 0]
     return real_violations
+
+
+def record_shadow_observations(all_violations: list[Violation]) -> None:
+    """Persist one cycle's worth of rain-shadow arbitrage observations.
+
+    backlog.txt "RAIN ARBITRAGE-CHECK SHADOW SIGNAL HAS NO GRADUATION
+    DECISION YET": rain-sourced Violation rows have been detectable via
+    is_shadow=True since the entry above this one shipped, but nothing ever
+    persisted them — the only observation surface was whatever an operator
+    happened to see the one time they ran `py main.py consistency`
+    interactively. This gives the eventual graduation decision (still NOT
+    made here — see get_shadow_observation_report()'s own docstring) a real
+    history to look at: how often rain's ladder monotonicity actually
+    breaks, on which city/month pairs, and what edge was on the table.
+
+    Filters to is_shadow=True internally rather than trusting the caller to
+    pre-filter — same "shared resource, one caller forgets to opt in" bug
+    class this project has been burned by before for shadow/gate flags (see
+    _group_markets()'s own is_shadow-tagging comments above), so callers can
+    just pass find_violations()'s raw return value every cycle, including
+    when it's empty.
+
+    Called every cycle run_trade_cycle() executes (cron AND interactive
+    `watch`, since both share that engine) — cycles_observed is the
+    denominator for a future violation-rate calculation, so it must count
+    every cycle checked, not just cycles where a violation actually fired.
+    Keyed by (buy_ticker, sell_ticker) rather than logging one row per
+    occurrence: a persistent violation is seen again on every subsequent
+    cycle it lasts, and rain's tickers already roll over monthly, so this
+    naturally bounds growth to roughly one entry per real ladder-pair
+    mispricing ever observed, not one row per scan. Each pair entry also
+    carries `description` -- the description text from the sighting that
+    set the current `max_edge` (not simply the most recent sighting), so
+    the two fields stay consistent with each other for manual inspection.
+
+    Entirely observational — never raises. A failure here must never affect
+    trading (matches every other once-per-cycle housekeeping call's own
+    try/except isolation, e.g. check_series_drift's) -- opus-review-caught:
+    the isolation try/except originally logged at DEBUG, which would let a
+    permanently-broken recorder (bad file permissions, a corrupted state
+    file reaching an unhandled shape) silently produce nothing for months
+    with zero operator-visible trace, defeating the whole point of building
+    a real history for backlog.txt's eventual graduation decision. Logs at
+    WARNING instead, matching check_series_drift's own level for the
+    identical once-per-cycle-observational-failure case.
+    """
+    try:
+        shadow = [v for v in all_violations if getattr(v, "is_shadow", False)]
+        now = datetime.now(UTC).isoformat()
+
+        state: dict = {
+            "cycles_observed": 0,
+            "cycles_with_violation": 0,
+            "pairs": {},
+        }
+        if RAIN_ARB_SHADOW_PATH.exists():
+            try:
+                loaded = json.loads(RAIN_ARB_SHADOW_PATH.read_text())
+                if not isinstance(loaded, dict):
+                    raise ValueError("state file root is not a JSON object")
+                loaded_pairs = loaded.get("pairs", {})
+                if not isinstance(loaded_pairs, dict):
+                    raise ValueError("state file 'pairs' is not a JSON object")
+                # opus-review-caught: coercing cycles_observed/
+                # cycles_with_violation via int(...) further below, OUTSIDE
+                # this try, meant a parseable-but-wrong-typed existing file
+                # (e.g. cycles_observed stored as a string) raised past this
+                # fallback and aborted the whole call before the write --
+                # never healing, repeating identically (and silently, at the
+                # old DEBUG level) every cycle forever. Coercing here, still
+                # inside this try, means ANY malformed existing state --
+                # decode failure, wrong root type, wrong pairs type, or a
+                # wrong-typed counter -- takes the exact same "log and start
+                # fresh" path and self-heals on the very next write.
+                state["cycles_observed"] = int(loaded.get("cycles_observed", 0))
+                state["cycles_with_violation"] = int(
+                    loaded.get("cycles_with_violation", 0)
+                )
+                state["pairs"] = loaded_pairs
+            except (
+                OSError,
+                ValueError,
+                TypeError,
+                json.JSONDecodeError,
+                UnicodeDecodeError,
+            ) as _read_exc:
+                _log.warning(
+                    "record_shadow_observations: could not read existing state"
+                    " (%s) — starting fresh (any prior accumulated history is"
+                    " lost)",
+                    _read_exc,
+                )
+
+        state["cycles_observed"] += 1
+        if shadow:
+            state["cycles_with_violation"] += 1
+
+        pairs: dict = state["pairs"]
+        for v in shadow:
+            key = f"{v.buy_ticker}|{v.sell_ticker}"
+            # isinstance check rather than truthiness (`pairs.get(key) or
+            # {...}`, the opus-review-caught original shape): the original
+            # discarded ANY falsy stored value, including a non-dict
+            # corrupted entry (0, "", None) where discarding-and-recreating
+            # is actually the right move -- but also an empty-but-real dict,
+            # which isn't reachable today (every real entry has times_seen
+            # >= 1) yet is exactly the "silently drop data" accumulator bug
+            # class to avoid. `entry is None` alone isn't enough either: a
+            # non-dict-non-None falsy value (0, "", False) would pass that
+            # check unmodified and then crash on `entry.get(...)` below.
+            entry = pairs.get(key)
+            if not isinstance(entry, dict):
+                entry = {
+                    "buy_ticker": v.buy_ticker,
+                    "sell_ticker": v.sell_ticker,
+                    "first_seen": now,
+                    "times_seen": 0,
+                    "max_edge": 0.0,
+                    "description": v.description,
+                }
+            entry["times_seen"] = int(entry.get("times_seen", 0)) + 1
+            entry["last_seen"] = now
+            if v.guaranteed_edge >= float(entry.get("max_edge", 0.0)):
+                entry["max_edge"] = v.guaranteed_edge
+                entry["description"] = v.description
+            pairs[key] = entry
+
+        state["last_updated"] = now
+        # emergency_copy=False: this is a purely observational log, not
+        # irreplaceable trading state -- same opt-out safe_io.py's own
+        # docstring documents for backtest.py/hurricane_climatology.py's
+        # equally-refetchable/non-critical caches. Without it, a persistent
+        # write failure pages an operator every single cron cycle over a
+        # file that was never at risk of anything, and each failed attempt
+        # costs ~2-3s of retry/backoff (_atomic_write_payload's 3 retries x
+        # 1s sleep) inside the hot trade-cycle path, ahead of analysis/
+        # placement.
+        safe_io.atomic_write_json(state, RAIN_ARB_SHADOW_PATH, emergency_copy=False)
+    except Exception as exc:
+        _log.warning("record_shadow_observations failed (non-fatal): %s", exc)
+
+
+def get_shadow_observation_report() -> dict | None:
+    """Read back record_shadow_observations()'s accumulated state for
+    display (`py main.py consistency`) — the real history an operator needs
+    to make backlog.txt's rain-arb graduation call, which this function
+    deliberately does NOT make itself: unlike SIGNAL_REGISTRY's sample-
+    floor/correlation-check pattern (built for a probabilistic forecast with
+    a settlement outcome to correlate against), a monotonicity violation has
+    no "was this right or wrong" outcome to score, so there's no sample
+    floor to check here, only real observed frequency/edge to report and let
+    a human judge.
+
+    Returns None when no usable state exists yet -- the state file is
+    missing, unreadable, or not in the shape record_shadow_observations()
+    writes. NOT the same as "no cycle has been observed yet": a state file
+    that parses cleanly with cycles_observed == 0 (freshly created,
+    genuinely zero cycles run) still returns a real dict -- callers wanting
+    "has anything actually happened yet" must check the returned
+    cycles_observed themselves (see cmd_consistency's own `> 0` gate).
+
+    Never raises -- this is display-path-only (`py main.py consistency`,
+    including the interactive menu's 'C' key), so a malformed state file
+    (wrong types, corrupted mid-write, hand-edited) must degrade to "no
+    report" rather than crashing the whole command. Opus-review-caught: an
+    earlier version only guarded the JSON decode step, not the type
+    coercions/attribute access below it -- a parseable-but-wrong-shaped file
+    (e.g. `pairs` stored as a list, or an individual pair entry not a dict)
+    raised straight out of this function with no caller-side guard.
+    """
+    if not RAIN_ARB_SHADOW_PATH.exists():
+        return None
+    try:
+        state = json.loads(RAIN_ARB_SHADOW_PATH.read_text())
+        if not isinstance(state, dict):
+            return None
+
+        cycles_observed = int(state.get("cycles_observed", 0))
+        cycles_with_violation = int(state.get("cycles_with_violation", 0))
+        pairs = state.get("pairs") or {}
+        if not isinstance(pairs, dict):
+            return None
+        top_pairs = sorted(
+            pairs.values(),
+            key=lambda p: p.get("times_seen", 0),
+            reverse=True,
+        )
+        return {
+            "cycles_observed": cycles_observed,
+            "cycles_with_violation": cycles_with_violation,
+            "violation_rate": (
+                cycles_with_violation / cycles_observed if cycles_observed else 0.0
+            ),
+            "distinct_pairs": len(pairs),
+            "top_pairs": top_pairs,
+            "last_updated": state.get("last_updated"),
+        }
+    except Exception as exc:
+        _log.warning("get_shadow_observation_report failed (non-fatal): %s", exc)
+        return None

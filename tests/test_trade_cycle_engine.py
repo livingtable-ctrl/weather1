@@ -259,6 +259,93 @@ class TestGateUnification:
         assert not placed, "placement must never be attempted while externally halted"
 
 
+class TestShadowArbObservationRecording:
+    """backlog.txt "RAIN ARBITRAGE-CHECK SHADOW SIGNAL HAS NO GRADUATION
+    DECISION YET": consistency.record_shadow_observations() must run every
+    single cycle this engine executes (cron AND watch, since both share it)
+    -- it's the only place real observations ever accumulate, since neither
+    caller's own scheduled/manual invocation frequency can be relied on."""
+
+    def test_record_shadow_observations_called_every_cycle_even_with_no_violations(
+        self, engine_env
+    ):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        recorded = []
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[]),
+            patch("consistency.find_violations", return_value=[]),
+            patch(
+                "consistency.record_shadow_observations",
+                side_effect=lambda v: recorded.append(v),
+            ),
+        ):
+            ctx2 = main._build_cron_context()
+            trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert recorded == [[]], (
+            "record_shadow_observations must run even on a zero-violation "
+            "cycle -- cycles_observed needs every cycle as its denominator"
+        )
+
+    def test_record_shadow_observations_receives_the_raw_violations_list(
+        self, engine_env
+    ):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        fake_violations = ["fake-violation-object"]
+        recorded = []
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[]),
+            patch("consistency.find_violations", return_value=fake_violations),
+            patch(
+                "consistency.record_shadow_observations",
+                side_effect=lambda v: recorded.append(v),
+            ),
+        ):
+            ctx2 = main._build_cron_context()
+            trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert recorded == [fake_violations]
+
+    def test_record_shadow_observations_failure_does_not_break_the_cycle(
+        self, engine_env
+    ):
+        """Entirely observational -- a persistence bug in the new recorder
+        must never propagate out and threaten trading (mutation-tested
+        below by removing trade_cycle's own inner try/except)."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        placed = []
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+            patch("consistency.find_violations", return_value=[]),
+            patch(
+                "consistency.record_shadow_observations",
+                side_effect=OSError("disk full"),
+            ),
+            # Mocked so this test verifies the recorder's own error
+            # isolation, not real Kelly-sizing/validation mechanics
+            # (unrelated to what's under test here) -- same rationale as
+            # this file's other _auto_place_trades-mocked tests.
+            patch.object(
+                main,
+                "_auto_place_trades",
+                side_effect=lambda opps, **kw: placed.append(opps) or len(opps),
+            ),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client)  # must not raise
+
+        assert result.consistency_skip is False
+        assert result.placed_strong == 1
+        assert placed, "placement must proceed normally despite the recorder failing"
+
+
 class TestTierAndCapUnification:
     """The strong/med tier split with dynamic-Kelly-cap vs. $20-flat-cap
     sizing must apply identically to require_liquid_for_placement=True
