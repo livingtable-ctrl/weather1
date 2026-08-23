@@ -1118,7 +1118,7 @@ class TestKillSwitchOverrideRenameRace:
         assert not (tmp_path / ".kill_switch.tmp").exists()
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 class TestSamedayOnlyWiring:
     """opus review (2026-08-22): the sameday_only kwarg's full call chain is
     CLI-arg-parse -> main.cmd_cron -> cron.cmd_cron -> _cmd_cron_body ->
@@ -1206,7 +1206,7 @@ class TestSamedayOnlyWiring:
         assert calls == [True]
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 class TestSamedayOnlySignalsCacheSkip:
     """opus review (2026-08-22): SIGNALS_CACHE_PATH is a wholesale-overwritten
     CURRENT-STATE snapshot the dashboard reads -- a --sameday-only cycle
@@ -1272,7 +1272,7 @@ class TestSamedayOnlySignalsCacheSkip:
         )
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 class TestSamedayOnlyFullScanStaleness:
     """opus review (2026-08-22): --sameday-only keeps .cron_last_run fresh
     (the process is genuinely alive), which would otherwise mask a broken
