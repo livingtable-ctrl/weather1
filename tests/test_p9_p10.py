@@ -1056,6 +1056,35 @@ def test_get_recent_city_correlations_skips_below_min_pairs(tmp_tracker):
 # ── CROSS-CITY RECENT-ERROR POOLING (backlog.txt) ───────────────────────────────
 
 
+def _seed_mature_dynamic_bias(t, city, var, n=10, error=0.0):
+    """Seed n 'blended' ensemble_member_scores rows so get_dynamic_station_bias
+    reports this city/var as having cleared its own count>=10 maturity floor.
+
+    get_regional_recent_bias() (opus review, 2026-08-22) now only pools a
+    correlated city's recent error as a lean SOURCE when that source city's
+    OWN dynamic bias correction is this mature -- otherwise a source city
+    with a thin/unverified static-table entry could leak a PERSISTENT
+    residual into its correlated neighbours disguised as a transient
+    regime-driven anomaly (concrete case: Miami's documented ~4.6F cold
+    residual, utils.py CITY_MIN_PROB_EDGE comment). Tests that pool a
+    correlated city's error must call this for that city/var first, or
+    get_regional_recent_bias will correctly exclude it and return (0.0, 0).
+    error is added to a fixed 70.0 baseline (predicted_temp - actual_temp
+    == error for every seeded row) -- 0.0 by default so seeding maturity
+    alone never itself perturbs get_dynamic_station_bias's own mean.
+    """
+    with t._conn() as con:
+        for _ in range(n):
+            con.execute(
+                """
+                INSERT INTO ensemble_member_scores
+                  (city, model, predicted_temp, actual_temp, var, logged_at)
+                VALUES (?, 'blended', ?, ?, ?, datetime('now'))
+                """,
+                (city, 70.0 + error, 70.0, var),
+            )
+
+
 def _log_settled(
     t,
     ticker,
@@ -1117,9 +1146,72 @@ def test_get_regional_recent_bias_no_data(tmp_tracker):
     assert result == (0.0, 0)
 
 
+def test_get_regional_recent_bias_excludes_immature_source_city(tmp_tracker):
+    """opus review, 2026-08-22: a correlated source city whose OWN dynamic
+    station-bias hasn't cleared the count>=10 maturity floor must be excluded
+    entirely, not pooled in at full weight -- Atlanta/Miami is the concrete
+    case this guards (Miami's own bias correction is documented as too thin
+    to trust, backlog.txt/utils.py CITY_MIN_PROB_EDGE), but this test uses
+    Boston/Washington so it doesn't depend on that specific pair staying in
+    _CORRELATED_CITY_GROUPS. Boston is left immature (no seeding) while
+    Washington is seeded mature -> only Washington's error should count."""
+    _seed_mature_dynamic_bias(tmp_tracker, "Washington", "max")
+    market_date = date.today()
+    _log_settled(
+        tmp_tracker,
+        "KXHIGHBOS-IMMATURE",
+        "Boston",
+        market_date,
+        forecast_temp_f=95.0,  # wildly off -- must NOT count, immature source
+        settled_temp_f=70.0,
+    )
+    _log_settled(
+        tmp_tracker,
+        "KXHIGHDC-MATURE",
+        "Washington",
+        market_date,
+        forecast_temp_f=72.0,
+        settled_temp_f=70.0,  # error = +2
+    )
+    bias, n = tmp_tracker.get_regional_recent_bias("NYC", var="max", hours=48)
+    assert n == 1
+    assert abs(bias - 2.0) < 0.01
+
+
+def test_get_regional_recent_bias_maturity_check_fails_closed_on_exception(
+    tmp_tracker, monkeypatch
+):
+    """A raised exception from get_dynamic_station_bias (during the per-
+    source-city maturity check) must exclude that source city, the same as
+    a genuine immature result -- not crash the call or, worse, fail OPEN and
+    pool an unverified source's error anyway (opus review, 2026-08-22: the
+    whole point of the maturity gate is defense against exactly that kind
+    of unverified data leaking through)."""
+    import tracker
+
+    def _boom(city, var, min_samples=10):
+        raise RuntimeError("db unavailable")
+
+    monkeypatch.setattr(tracker, "get_dynamic_station_bias", _boom)
+
+    market_date = date.today()
+    _log_settled(
+        tmp_tracker,
+        "KXHIGHBOS-DBERR",
+        "Boston",
+        market_date,
+        forecast_temp_f=95.0,  # wildly off -- must NOT count if fail-open
+        settled_temp_f=70.0,
+    )
+    bias, n = tmp_tracker.get_regional_recent_bias("NYC", var="max", hours=48)
+    assert (bias, n) == (0.0, 0)
+
+
 def test_get_regional_recent_bias_computes_weighted_mean(tmp_tracker):
     """Boston (corr 0.85) and Washington (corr 0.75) both ran 2F warm on NYC's
     HIGH markets -> weighted mean should be 2.0 (both cities agree exactly)."""
+    _seed_mature_dynamic_bias(tmp_tracker, "Boston", "max")
+    _seed_mature_dynamic_bias(tmp_tracker, "Washington", "max")
     market_date = date.today()
     _log_settled(
         tmp_tracker,
@@ -1146,6 +1238,8 @@ def test_get_regional_recent_bias_weights_by_pair_correlation(tmp_tracker):
     """Boston (corr 0.85, error +4F) and Philadelphia (corr 0.80, error -2F)
     disagree -> the higher-correlation city should dominate the weighted mean,
     which must land strictly between the two raw errors."""
+    _seed_mature_dynamic_bias(tmp_tracker, "Boston", "max")
+    _seed_mature_dynamic_bias(tmp_tracker, "Philadelphia", "max")
     market_date = date.today()
     _log_settled(
         tmp_tracker,
@@ -1174,7 +1268,14 @@ def test_get_regional_recent_bias_weights_by_pair_correlation(tmp_tracker):
 def test_get_regional_recent_bias_var_filters_high_low(tmp_tracker):
     """A LOW-market ticker from a correlated city must not leak into a
     var='max' query, and vice versa — HIGH/LOW temp errors aren't the same
-    physical quantity (same reasoning as get_recent_city_correlations)."""
+    physical quantity (same reasoning as get_recent_city_correlations).
+    Boston is seeded mature for BOTH vars -- seeding only "min" would let
+    the var="max" assertion below pass for the WRONG reason (Boston's
+    unmatured "max" bias would exclude the leaked LOW row via the maturity
+    gate, masking whether the HIGH/LOW ticker_pattern filter itself still
+    works; opus review, 2026-08-22)."""
+    _seed_mature_dynamic_bias(tmp_tracker, "Boston", "min")
+    _seed_mature_dynamic_bias(tmp_tracker, "Boston", "max")
     market_date = date.today()
     _log_settled(
         tmp_tracker,
@@ -1229,6 +1330,7 @@ def test_get_regional_recent_bias_dedups_to_latest_prediction_per_ticker(tmp_tra
     """A ticker re-logged across multiple cron cycles (one predictions row per
     day scanned) must only contribute its LATEST forecast_temp_f, not every
     historical one."""
+    _seed_mature_dynamic_bias(tmp_tracker, "Boston", "max")
     market_date = date.today()
     ticker = "KXHIGHBOS-DEDUP"
     with tmp_tracker._conn() as con:
@@ -1278,6 +1380,7 @@ def test_get_regional_recent_bias_dedups_to_latest_prediction_per_ticker(tmp_tra
 def test_get_regional_recent_bias_as_of_avoids_lookahead(tmp_tracker):
     """as_of lets a caller ask 'what would this have returned at time T' without
     a later settlement leaking in — the backtest use case this exists for."""
+    _seed_mature_dynamic_bias(tmp_tracker, "Boston", "max")
     market_date = date.today()
     _log_settled(
         tmp_tracker,
