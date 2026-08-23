@@ -1188,6 +1188,64 @@ class TestEmos:
         assert c >= 0.0, f"c={c} must be non-negative"
         assert d >= 0.0, f"d={d} must be non-negative"
 
+    def test_fit_emos_raises_on_optimizer_non_convergence(self, monkeypatch):
+        """Audit batch-28 item 3: fit_emos must not silently return an
+        unconverged fit -- mirrors _fit_platt's own res.success check.
+        Mutation-tested via monkeypatching scipy.optimize.minimize directly
+        (forcing real non-convergence on well-behaved synthetic data is
+        unreliable), asserting the specific exception this fix adds."""
+        import scipy.optimize
+
+        import ml_bias
+
+        class _FakeResult:
+            success = False
+            message = "fake non-convergence"
+            x = np.array([0.0, 1.0, 1.0, 0.1])
+
+        monkeypatch.setattr(scipy.optimize, "minimize", lambda *a, **kw: _FakeResult())
+
+        ens_mean = np.array([65.0, 72.0, 58.0])
+        ens_var = np.array([4.0, 9.0, 2.25])
+        obs = np.array([67.0, 70.0, 60.0])
+        with pytest.raises(ValueError, match="did not converge"):
+            ml_bias.fit_emos(ens_mean, ens_var, obs)
+
+    def test_emos_exceedance_prob_clamps_degenerate_fit_to_bounds(self):
+        """Audit batch-28 item 3: a degenerate fit whose Gaussian is
+        extremely tight and far from the threshold must not return an
+        unclamped near-0/near-1 probability -- every sibling calibration
+        applier in this file clamps to [0.01, 0.99]."""
+        from ml_bias import EMOS_SIGMA_VAR_FLOOR, emos_exceedance_prob
+
+        # c=d=0 -> sigma floors at EMOS_SIGMA_VAR_FLOOR regardless of ens_var,
+        # and the threshold is far below the mean -> raw exceedance ~1.0.
+        params = (0.0, 1.0, 0.0, 0.0)
+        prob = emos_exceedance_prob(params, ens_mean=90.0, ens_var=0.0, threshold=50.0)
+        assert prob == pytest.approx(0.99)
+
+        # Positive control: EMOS_SIGMA_VAR_FLOOR is really what's used, not
+        # a residual reference to the old 1e-6 floor -- a threshold just
+        # inside +/-1 sigma of that floor produces a non-extreme probability.
+        near_prob = emos_exceedance_prob(
+            params,
+            ens_mean=90.0,
+            ens_var=0.0,
+            threshold=90.0 - EMOS_SIGMA_VAR_FLOOR**0.5,
+        )
+        assert 0.7 < near_prob < 0.9
+
+    def test_emos_interval_prob_clamps_degenerate_fit_to_bounds(self):
+        from ml_bias import emos_interval_prob
+
+        params = (0.0, 1.0, 0.0, 0.0)
+        # Interval far from the (degenerate, near-point-mass) distribution
+        # -> raw probability ~0.0, must clamp up to 0.01, not return ~0.
+        prob = emos_interval_prob(
+            params, ens_mean=90.0, ens_var=0.0, low=10.0, high=20.0
+        )
+        assert prob == pytest.approx(0.01)
+
     def test_emos_exceedance_prob_in_bounds(self):
         from ml_bias import emos_exceedance_prob
 
@@ -1375,19 +1433,28 @@ class TestEmos:
     ):
         """Positive control for the TOCTOU-race test below: a file that
         exists but is genuinely unparseable must still come back tagged
-        corrupt=True, not silently reclassified as "just a race"."""
+        corrupt=True, not silently reclassified as "just a race". Also
+        patches _TEMP_PATH to a definitely-absent path (audit batch-28
+        item 3 follow-up: t_pinned is now computed and included even in
+        the corrupt branch) so the expected t_pinned=False is deterministic
+        rather than depending on whatever real temperature_scale.json
+        happens to exist on the machine running this test."""
         import ml_bias
         from ml_bias import get_emos_status
 
         path = tmp_path / "emos_params.json"
         path.write_text("not valid json{")
         monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", path)
+        monkeypatch.setattr(
+            ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale_dne.json"
+        )
 
         status = get_emos_status()
         assert status == {
             "active": False,
             "corrupt": True,
             "error": status.get("error"),
+            "t_pinned": False,
         }
         assert status["error"]
 
@@ -1455,6 +1522,75 @@ class TestEmos:
         assert status["active"] is False
         assert status["corrupt"] is True
         assert status["error"]
+
+    def test_get_emos_status_t_pinned_true_when_all_keys_reset(
+        self, tmp_path, monkeypatch
+    ):
+        """Audit batch-28 item 3: t_pinned cross-checks 'active per params
+        file' against 'T actually reset in temperature_scale.json'."""
+        import json
+
+        import ml_bias
+        from ml_bias import get_emos_status, save_emos_params
+
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", tmp_path / "emos_params.json")
+        monkeypatch.setattr(ml_bias, "_EMOS_CACHE", None)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        save_emos_params(1.1, 0.9, 2.2, 0.15, n=55)
+        (tmp_path / "temperature_scale.json").write_text(
+            json.dumps(
+                {
+                    key: {"T": 1.0, "n": 10, "reset_for_emos": True}
+                    for key in ml_bias.EMOS_COVERED_CONDITION_KEYS
+                }
+            )
+        )
+
+        assert get_emos_status()["t_pinned"] is True
+
+    def test_get_emos_status_t_pinned_false_when_diverged(self, tmp_path, monkeypatch):
+        """Positive control for the test above: a temperature_scale.json
+        that's missing the reset markers (state drift, or T-scaling refit
+        over EMOS's placeholder out-of-band) must report t_pinned=False, not
+        silently claim the pin is intact."""
+        import json
+
+        import ml_bias
+        from ml_bias import get_emos_status, save_emos_params
+
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", tmp_path / "emos_params.json")
+        monkeypatch.setattr(ml_bias, "_EMOS_CACHE", None)
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale.json")
+        save_emos_params(1.1, 0.9, 2.2, 0.15, n=55)
+        # 'above' carries a real fitted T, not the reset placeholder -- exactly
+        # the divergence t_pinned exists to catch.
+        (tmp_path / "temperature_scale.json").write_text(
+            json.dumps(
+                {
+                    "global": {"T": 1.0, "n": 10, "reset_for_emos": True},
+                    "above": {"T": 4.1, "n": 20},
+                    "below": {"T": 1.0, "n": 10, "reset_for_emos": True},
+                    "between": {"T": 1.0, "n": 10, "reset_for_emos": True},
+                }
+            )
+        )
+
+        assert get_emos_status()["t_pinned"] is False
+
+    def test_get_emos_status_t_pinned_false_when_temp_scale_file_missing(
+        self, tmp_path, monkeypatch
+    ):
+        import ml_bias
+        from ml_bias import get_emos_status, save_emos_params
+
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", tmp_path / "emos_params.json")
+        monkeypatch.setattr(ml_bias, "_EMOS_CACHE", None)
+        monkeypatch.setattr(
+            ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale_dne.json"
+        )
+        save_emos_params(1.1, 0.9, 2.2, 0.15, n=55)
+
+        assert get_emos_status()["t_pinned"] is False
 
     @pytest.fixture()
     def isolated_temp_paths(self, tmp_path, monkeypatch):
@@ -1564,6 +1700,100 @@ class TestEmos:
         assert snapshot_path.exists()
         snapshot = json.loads(snapshot_path.read_text())
         assert snapshot["global"] == {"T": 5.2, "n": 40}
+
+    def test_reset_called_twice_preserves_original_snapshot_not_placeholder(
+        self, isolated_temp_paths
+    ):
+        """Audit batch-28 item 2 core regression: calling
+        reset_temperature_scale_for_emos() a SECOND time (simulating a
+        retrain of an already-active EMOS, main.py's --activate flow with
+        no separate retrain path) must NOT overwrite the real pre-EMOS
+        snapshot with the 1.0 placeholders the first call itself wrote --
+        that would permanently lose the only recoverable copy of the true T
+        values, reproducing the zero-calibration incident as deactivate's
+        normal outcome after any retrain."""
+        import json
+
+        from ml_bias import reset_temperature_scale_for_emos
+
+        temp_path = isolated_temp_paths / "temperature_scale.json"
+        temp_path.write_text(json.dumps({"global": {"T": 5.2, "n": 40}}))
+        snapshot_path = isolated_temp_paths / "temperature_scale_pre_emos.json"
+
+        reset_temperature_scale_for_emos()  # first activation
+        snapshot_after_first = json.loads(snapshot_path.read_text())
+        assert snapshot_after_first["global"] == {"T": 5.2, "n": 40}
+
+        reset_temperature_scale_for_emos()  # retrain -- must be a no-op on the snapshot
+
+        snapshot_after_second = json.loads(snapshot_path.read_text())
+        assert snapshot_after_second["global"] == {"T": 5.2, "n": 40}, (
+            f"snapshot must still hold the ORIGINAL real T=5.2, got "
+            f"{snapshot_after_second['global']} -- the second reset call "
+            "must have overwritten it with the 1.0 placeholder"
+        )
+
+    def test_activate_deactivate_activate_deactivate_survives_absent_covered_key(
+        self, isolated_temp_paths
+    ):
+        """Independent-review finding (audit batch-28 item 2 follow-up, H1):
+        'between' is a covered key but absent from temperature_scale.json at
+        first activation (e.g. below its own min-samples floor). The first
+        reset still writes it as a reset_for_emos=True placeholder (all 4
+        covered keys always get one); restore only restores keys that WERE
+        in the snapshot, so 'between' would otherwise be left behind as a
+        permanent placeholder after deactivate -- and a same-key check on
+        the SECOND reset would then see that stale marker and wrongly skip
+        snapshotting the REAL global/above/below values, permanently losing
+        them. Full two-cycle round trip: both deactivates must restore the
+        SAME real global/above/below values, and 'between' must not survive
+        either deactivate as a lingering placeholder."""
+        import json
+
+        from ml_bias import (
+            reset_temperature_scale_for_emos,
+            restore_temperature_scale_from_emos_snapshot,
+        )
+
+        temp_path = isolated_temp_paths / "temperature_scale.json"
+        temp_path.write_text(
+            json.dumps(
+                {
+                    "global": {"T": 2.62, "n": 40},
+                    "above": {"T": 1.29, "n": 20},
+                    "below": {"T": 3.9, "n": 18},
+                    # 'between' deliberately absent -- below its own floor
+                }
+            )
+        )
+
+        reset_temperature_scale_for_emos()  # activation #1
+        restored_1 = restore_temperature_scale_from_emos_snapshot()  # deactivate #1
+        assert restored_1 is True
+        state_after_1 = json.loads(temp_path.read_text())
+        assert state_after_1["global"] == {"T": 2.62, "n": 40}
+        assert state_after_1["above"] == {"T": 1.29, "n": 20}
+        assert state_after_1["below"] == {"T": 3.9, "n": 18}
+        assert "between" not in state_after_1, (
+            "a covered key absent before activation must not survive "
+            "deactivate as a leftover reset_for_emos placeholder"
+        )
+
+        reset_temperature_scale_for_emos()  # activation #2 (retrain-shaped)
+        restored_2 = restore_temperature_scale_from_emos_snapshot()  # deactivate #2
+        assert restored_2 is True, (
+            "second deactivate must actually restore something -- if the "
+            "second reset wrongly skipped snapshotting (H1), there would be "
+            "no real snapshot for restore to consume"
+        )
+        state_after_2 = json.loads(temp_path.read_text())
+        assert state_after_2["global"] == {"T": 2.62, "n": 40}, (
+            f"global must still be the ORIGINAL real T=2.62 after the SECOND "
+            f"deactivate too, got {state_after_2['global']} -- the stale "
+            "'between' placeholder must not have blocked the second snapshot"
+        )
+        assert state_after_2["above"] == {"T": 1.29, "n": 20}
+        assert state_after_2["below"] == {"T": 3.9, "n": 18}
 
     def test_restore_from_emos_snapshot_noop_when_no_snapshot(
         self, isolated_temp_paths

@@ -618,14 +618,42 @@ def isolated_emos_paths(tmp_path, monkeypatch):
     return tmp_path
 
 
+def _jitter(i: int) -> float:
+    """Small deterministic residual (+/-0.3F, alternating) so EMOS test
+    fixtures aren't a perfectly noiseless straight line. A perfect line
+    gives fit_emos's CRPS objective a flat minimum at the sigma floor,
+    which scipy's Nelder-Mead can fail to certify as converged (res.success
+    False) at low row counts -- reproduced as a real, row-count-sensitive
+    test flake when the thin fixture below dropped from 12 to 15 rows
+    (independent-review test finding). Real settled_temp_f data always has
+    residual model/measurement error, so this also makes the fixture more
+    representative, not just numerically safer."""
+    return 0.3 if i % 2 == 0 else -0.3
+
+
 @pytest.fixture()
 def emos_training_rows(monkeypatch):
-    """40 rows with real ens_var -- clears the >=40 activation floor
-    (main.py's _EMOS_VAR_FLOOR) so tests exercising the confirm/decline/EOF
-    paths reach the prompt instead of being refused for thin data."""
+    """60 rows with real ens_var, closely linear (settled_temp_f =
+    ens_mean + 1 +/- a small jitter -- see _jitter's own docstring for why
+    exactly linear was fragile) so the fit is both well within the a/b
+    bounds check and clearly beats the held-out CRPS baseline.
+    _cmd_emos_train holds out the most recent ~20% of the ens_var-bearing
+    rows before fitting (audit batch-28 item 3, split independently of any
+    mean-only rows per the item's own follow-up fix) -- 60 rows split 48
+    train / 12 held-out gives the 40-row activation floor (main.py's
+    _EMOS_VAR_FLOOR) an 8-row margin, not the bare zero margin 50 rows
+    would leave (independent-review test finding: a fixture with exactly
+    the floor count makes every test in this class one row away from
+    silently flipping to the refuse path). Tests exercising the
+    confirm/decline/EOF paths need to reach the prompt rather than being
+    refused for thin data or a failed held-out check."""
     rows = [
-        {"ens_mean": 60.0 + i, "ens_var": 4.0 + i * 0.1, "settled_temp_f": 61.0 + i}
-        for i in range(40)
+        {
+            "ens_mean": 60.0 + i,
+            "ens_var": 4.0 + i * 0.1,
+            "settled_temp_f": 61.0 + i + _jitter(i),
+        }
+        for i in range(60)
     ]
     monkeypatch.setattr("tracker.get_emos_training_data", lambda: rows)
     return rows
@@ -633,11 +661,20 @@ def emos_training_rows(monkeypatch):
 
 @pytest.fixture()
 def emos_training_rows_thin(monkeypatch):
-    """Only 12 rows with real ens_var -- below the >=40 activation floor,
-    for testing the floor-refusal path itself."""
+    """15 rows with real ens_var -- below the >=40 activation floor, for
+    testing the floor-refusal path itself. 15 (not 12) so the 80/20 holdout
+    split still leaves 12 training rows >= the SEPARATE >=10 threshold that
+    gates a genuine stage-2 fit vs. the hardcoded c=1.0/d=0.1 defaults
+    (independent-review test finding: 12 rows split to 9/3 crossed that
+    threshold, silently changing what this fixture actually exercises).
+    Jittered per _jitter's own docstring."""
     rows = [
-        {"ens_mean": 60.0 + i, "ens_var": 4.0 + i * 0.1, "settled_temp_f": 61.0 + i}
-        for i in range(12)
+        {
+            "ens_mean": 60.0 + i,
+            "ens_var": 4.0 + i * 0.1,
+            "settled_temp_f": 61.0 + i + _jitter(i),
+        }
+        for i in range(15)
     ]
     monkeypatch.setattr("tracker.get_emos_training_data", lambda: rows)
     return rows
@@ -847,6 +884,305 @@ class TestEmosActivationGate:
         out = capsys.readouterr().out
         assert "FAILED" in out
         assert "Rollback complete" in out
+
+
+class TestEmosRetrainAndCrpsGate:
+    """Audit batch-28 items 2/3: a RETRAIN of an already-active EMOS must not
+    re-snapshot temperature_scale.json (item 2), and a structurally-broken
+    or held-out-CRPS-losing fit must not reach save_emos_params (item 3)."""
+
+    def test_retrain_of_already_active_emos_skips_temperature_scale_reset(
+        self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
+    ):
+        """First activation resets+snapshots T; a second run (retrain) with
+        EMOS already active must leave temperature_scale.json completely
+        untouched -- both the reset_at timestamp and the pre-EMOS snapshot
+        must survive unchanged, proving reset_temperature_scale_for_emos()
+        was never called a second time (not just that its own guard no-op'd)."""
+        import json
+
+        import main
+        import ml_bias
+
+        (isolated_emos_paths / "temperature_scale.json").write_text(
+            json.dumps({"global": {"T": 5.2, "n": 40}})
+        )
+        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "yes")
+
+        main._cmd_emos_train(activate=True)  # first activation
+        temp_after_first = json.loads(
+            (isolated_emos_paths / "temperature_scale.json").read_text()
+        )
+        assert temp_after_first["global"]["T"] == 1.0
+        first_reset_at = temp_after_first["global"]["reset_at"]
+        snapshot_after_first = json.loads(
+            (isolated_emos_paths / "temperature_scale_pre_emos.json").read_text()
+        )
+        assert snapshot_after_first["global"] == {"T": 5.2, "n": 40}
+
+        # Positive control: reset_temperature_scale_for_emos really is
+        # reachable and mutates the file when called directly -- proves the
+        # "untouched" assertion below isn't vacuous (e.g. from a fixture bug
+        # that made the file unwritable).
+        calls = []
+        _real_reset = ml_bias.reset_temperature_scale_for_emos
+
+        def _counting_reset():
+            calls.append(1)
+            return _real_reset()
+
+        monkeypatch.setattr(
+            ml_bias, "reset_temperature_scale_for_emos", _counting_reset
+        )
+        # Skip the held-out-vs-incumbent CRPS comparison for this test: the
+        # retrain here reuses the exact same fixture rows as the first
+        # activation, so the "new" fit is numerically identical to the
+        # incumbent and would tie (not strictly beat) it -- that specific
+        # gate behavior is covered on its own in
+        # test_held_out_crps_gate_beaten_by_incumbent_refuses_retrain. This
+        # test's purpose is item 2 (does a retrain skip the T-reset), so
+        # isolate it from item 3's separate incumbent-comparison gate.
+        monkeypatch.setattr(ml_bias, "_load_emos_params", lambda: None)
+
+        main._cmd_emos_train(activate=True)  # retrain -- EMOS already active
+
+        assert calls == [], (
+            "reset_temperature_scale_for_emos must not be called at all on a "
+            "retrain of an already-active EMOS"
+        )
+        temp_after_retrain = json.loads(
+            (isolated_emos_paths / "temperature_scale.json").read_text()
+        )
+        assert temp_after_retrain["global"]["reset_at"] == first_reset_at, (
+            "temperature_scale.json must be byte-for-byte untouched by a retrain"
+        )
+        assert (isolated_emos_paths / "temperature_scale_pre_emos.json").exists(), (
+            "the original pre-EMOS snapshot must still be there"
+        )
+        snapshot_after_retrain = json.loads(
+            (isolated_emos_paths / "temperature_scale_pre_emos.json").read_text()
+        )
+        assert snapshot_after_retrain["global"] == {"T": 5.2, "n": 40}, (
+            "the snapshot must still hold the ORIGINAL real T=5.2, not a "
+            "placeholder captured by a second (wrongly-run) reset"
+        )
+
+        out = capsys.readouterr().out
+        assert "RETRAIN" in out
+
+    def test_diverged_t_pin_triggers_full_reset_instead_of_skip(
+        self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
+    ):
+        """Independent-review finding (audit batch-28 item 3 follow-up, M2):
+        EMOS active (emos_params.json exists) but temperature_scale.json NOT
+        correctly pinned (a real, non-1.0 T sitting where a placeholder
+        should be -- state drift) must NOT be treated as a normal retrain
+        that skips the T-reset; that would perpetuate the divergence
+        forever. It must instead run the full reset and re-pin T."""
+        import json
+
+        import main
+        import ml_bias
+
+        ml_bias.save_emos_params(1.0, 1.0, 1.0, 0.1, n=50)  # EMOS active
+        # Diverged: 'above' has a real, non-reset T instead of the 1.0
+        # placeholder every OTHER covered key correctly carries.
+        (isolated_emos_paths / "temperature_scale.json").write_text(
+            json.dumps(
+                {
+                    "global": {"T": 1.0, "n": 10, "reset_for_emos": True},
+                    "above": {"T": 4.1, "n": 20},
+                    "below": {"T": 1.0, "n": 10, "reset_for_emos": True},
+                    "between": {"T": 1.0, "n": 10, "reset_for_emos": True},
+                }
+            )
+        )
+        assert ml_bias.get_emos_status()["t_pinned"] is False  # positive control
+
+        # Isolate from the separate held-out-vs-incumbent CRPS gate (already
+        # covered by its own dedicated tests) -- this test's purpose is the
+        # T-pin divergence handling, not the CRPS comparison.
+        monkeypatch.setattr(ml_bias, "_load_emos_params", lambda: None)
+        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "yes")
+        main._cmd_emos_train(activate=True)
+
+        out = capsys.readouterr().out
+        assert "diverged" in out.lower() or "NOT correctly pinned" in out
+        assert "RETRAIN" not in out, (
+            "a diverged pin must not be presented as a normal retrain"
+        )
+
+        temp_after = json.loads(
+            (isolated_emos_paths / "temperature_scale.json").read_text()
+        )
+        assert temp_after["above"]["T"] == 1.0, (
+            "the diverged 'above' key must have been reset to 1.0, not left "
+            "at its stale real value"
+        )
+        assert temp_after["above"]["reset_for_emos"] is True
+        assert ml_bias.get_emos_status()["t_pinned"] is True, (
+            "divergence must be fully resolved after this retrain"
+        )
+
+    def test_invalid_ab_fit_refused_even_with_force(
+        self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
+    ):
+        """A degenerate fit (here: a negative slope b, physically backwards
+        -- a warmer ensemble mean predicting a cooler outcome) must be
+        refused outright, and --force must NOT override it -- --force exists
+        for the data-sufficiency floor, not for a structurally broken fit."""
+        import main
+        import ml_bias
+
+        monkeypatch.setattr(
+            ml_bias, "fit_emos", lambda *_a, **_kw: (0.0, -0.5, 1.0, 0.1)
+        )
+
+        def _unexpected_input(*_a, **_kw):
+            raise AssertionError("input() must not be called on an invalid fit")
+
+        monkeypatch.setattr("builtins.input", _unexpected_input)
+        main._cmd_emos_train(
+            activate=True, force=True
+        )  # must not raise, must not prompt
+
+        assert not (isolated_emos_paths / "emos_params.json").exists()
+        out = capsys.readouterr().out
+        assert "INVALID FIT" in out
+
+    def test_held_out_crps_gate_refuses_worse_than_baseline_fit(
+        self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
+    ):
+        """A fit that ignores the ensemble mean entirely (b~=0, so mu stays
+        near a constant regardless of ens_mean) is far worse than the raw-
+        ensemble baseline on this fixture's perfectly linear held-out data
+        -- must be refused, not just warned about."""
+        import main
+        import ml_bias
+
+        # Passes the a/b bounds check (0 < b <= 3, |a| <= 30) but is a much
+        # worse predictor than the raw-ensemble baseline on this fixture's
+        # held-out rows (the last 12 of 60 ens_var rows: ens_mean ~108-119,
+        # true obs ~109-120): mu stays pinned near 1.1-1.2 since b=0.01
+        # barely responds to ens_mean.
+        monkeypatch.setattr(
+            ml_bias, "fit_emos", lambda *_a, **_kw: (0.0, 0.01, 1.0, 0.1)
+        )
+
+        def _unexpected_input(*_a, **_kw):
+            raise AssertionError(
+                "input() must not be called when the CRPS gate refuses"
+            )
+
+        monkeypatch.setattr("builtins.input", _unexpected_input)
+        main._cmd_emos_train(activate=True)  # must not raise, must not prompt
+
+        assert not (isolated_emos_paths / "emos_params.json").exists()
+        out = capsys.readouterr().out
+        assert "REFUSING to activate" in out
+        assert "held-out data" in out
+
+    def test_held_out_crps_gate_force_overrides(
+        self, isolated_emos_paths, emos_training_rows, monkeypatch
+    ):
+        """--force reaches the normal confirm prompt despite a losing
+        held-out CRPS comparison -- force isn't a silent bypass, 'yes' is
+        still required."""
+        import main
+        import ml_bias
+
+        monkeypatch.setattr(
+            ml_bias, "fit_emos", lambda *_a, **_kw: (0.0, 0.01, 1.0, 0.1)
+        )
+        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "yes")
+
+        main._cmd_emos_train(activate=True, force=True)
+
+        assert (isolated_emos_paths / "emos_params.json").exists()
+
+    def test_held_out_crps_gate_force_still_requires_yes(
+        self, isolated_emos_paths, emos_training_rows, monkeypatch
+    ):
+        """Positive control for the test above: --force reaches the prompt
+        but declining it must still write nothing -- proves --force alone
+        isn't what wrote the file there, the 'yes' answer was necessary too."""
+        import main
+        import ml_bias
+
+        monkeypatch.setattr(
+            ml_bias, "fit_emos", lambda *_a, **_kw: (0.0, 0.01, 1.0, 0.1)
+        )
+        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "no")
+
+        main._cmd_emos_train(activate=True, force=True)
+
+        assert not (isolated_emos_paths / "emos_params.json").exists()
+
+    def test_held_out_rows_are_never_used_in_fitting(
+        self, isolated_emos_paths, monkeypatch, capsys
+    ):
+        """Item 3's central claim, pinned directly: the held-out rows must
+        have zero influence on the fitted a/b. 80 rows follow the true
+        relationship (settled_temp_f = ens_mean + 1); the most recent 20
+        (the held-out slice) follow a wildly different one (+1000 offset).
+        If those 20 leaked into stage-1 fitting, the fitted intercept would
+        be dragged far from 1.0 toward the outliers; if truly excluded, it
+        stays close to 1.0 regardless."""
+        import main
+
+        rows = [
+            {
+                "ens_mean": 60.0 + i,
+                "ens_var": 4.0,
+                "settled_temp_f": 61.0 + i + _jitter(i),
+            }
+            for i in range(80)
+        ] + [
+            {"ens_mean": 60.0 + i, "ens_var": 4.0, "settled_temp_f": 1060.0 + i}
+            for i in range(80, 100)
+        ]
+        monkeypatch.setattr("tracker.get_emos_training_data", lambda: rows)
+
+        main._cmd_emos_train(activate=False)
+
+        out = capsys.readouterr().out
+        import re
+
+        match = re.search(r"a = (-?[\d.]+)\s+b = ", out)
+        assert match is not None, f"could not find stage-1 fit output in:\n{out}"
+        fitted_a = float(match.group(1))
+        assert abs(fitted_a - 1.0) < 5.0, (
+            f"fitted a={fitted_a} looks pulled toward the held-out outliers "
+            "(true training-only intercept is 1.0) -- held-out rows must not "
+            "have influenced stage-1 fitting"
+        )
+
+    def test_held_out_crps_gate_beaten_by_incumbent_refuses_retrain(
+        self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
+    ):
+        """On a retrain, the new fit must beat the CURRENTLY-ACTIVE incumbent
+        on held-out data, not just the raw-ensemble baseline -- an incumbent
+        that's already a good fit (here: the true a=1,b=1,c=1,d=0.1
+        generating relationship) must not be replaced by a worse retrain."""
+        import main
+        import ml_bias
+
+        ml_bias.save_emos_params(1.0, 1.0, 1.0, 0.1, n=50)  # near-perfect incumbent
+        # A fit that's decent (beats the naive baseline) but not as good as
+        # the near-perfect incumbent above.
+        monkeypatch.setattr(
+            ml_bias, "fit_emos", lambda *_a, **_kw: (3.0, 1.0, 1.0, 0.1)
+        )
+
+        def _unexpected_input(*_a, **_kw):
+            raise AssertionError("input() must not be called when the incumbent wins")
+
+        monkeypatch.setattr("builtins.input", _unexpected_input)
+        main._cmd_emos_train(activate=True)  # must not raise, must not prompt
+
+        out = capsys.readouterr().out
+        assert "REFUSING to activate" in out
+        assert "incumbent" in out
 
 
 class TestEmosStatusAndDeactivate:

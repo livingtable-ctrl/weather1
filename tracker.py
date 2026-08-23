@@ -3437,17 +3437,27 @@ def count_settled_west_coast_multiday() -> dict[str, int]:
 
 
 def get_emos_training_data() -> list[dict]:
-    """Return rows for EMOS fitting: {ens_mean, ens_var, settled_temp_f}.
+    """Return rows for EMOS fitting: {ens_mean, ens_var, settled_temp_f,
+    city, market_date}.
 
     Excludes rows where ens_mean or settled_temp_f is NULL.
     ens_var may be NULL for backfill rows — callers must handle None.
     Only multi-day predictions (days_out >= 1 or NULL).
+
+    city/market_date (audit batch-28 item 3 review follow-up, round 2):
+    main.py's _cmd_emos_train needs these to group rows before its temporal
+    train/held-out split -- multiple predictions of the same (city,
+    market_date) (different days_out, different cron cycles) share the same
+    settled_temp_f label and near-identical ens_mean, so a plain row-level
+    split can put part of one real "event" in training and part in the
+    held-out set, leaking that event's outcome into the fit the held-out
+    check is supposed to be validating against.
     """
     init_db()
     with _conn() as con:
         rows = con.execute(
             """
-            SELECT p.ens_mean, p.ens_var, o.settled_temp_f
+            SELECT p.ens_mean, p.ens_var, o.settled_temp_f, p.city, p.market_date
             FROM   predictions p
             JOIN   outcomes_valid o ON o.ticker = p.ticker
             WHERE  p.ens_mean IS NOT NULL
@@ -3461,6 +3471,8 @@ def get_emos_training_data() -> list[dict]:
             "ens_mean": float(r[0]),
             "ens_var": float(r[1]) if r[1] is not None else None,
             "settled_temp_f": float(r[2]),
+            "city": r[3],
+            "market_date": r[4],
         }
         for r in rows
     ]
@@ -3482,6 +3494,30 @@ def get_metar_lockout_calibration_data() -> list[dict]:
     would ever mark a type "validated" the moment a live-trading gate
     flips, so coupling this to those gates was simply wrong, not just
     imprecise.
+
+    COALESCE(p.raw_prob, p.our_prob), NOT a bare `our_prob` (audit batch-28
+    item 1): `our_prob` is the value AFTER this same METAR beta-calibration
+    already ran once (weather_markets.analyze_trade applies
+    apply_metar_calibration and stores the result as our_prob); `raw_prob`
+    is the pre-calibration reconstruction log_prediction added specifically
+    so a retrain fits on the true raw series. Selecting our_prob here would
+    have each weekly retrain fit on its own prior output -- generation 1
+    corrects (0.07->0.57 on the documented two-band geometry), generation 2
+    fits an exact identity transform on the now-already-corrected values,
+    generation 3 reverts -- oscillating rather than converging.
+
+    COALESCE only falls back to our_prob when raw_prob is NULL -- rows
+    written before the raw_prob column existed at all (independent review,
+    audit batch-28 item 1 follow-up: NOT, as an earlier version of this
+    docstring claimed, "any row predating the fix" -- a row written after
+    the column existed but before the 2026-08-16 fix that made `bias`
+    non-zero on the metar_locked path has a real, non-NULL raw_prob that's
+    already equal to our_prob, so COALESCE selects that already-calibrated
+    value for it too. That historical contamination window is small
+    (2026-08-16 landed the same day as the raw_prob column) and not
+    separately excluded here -- fixing it would need a predicted_at cutover
+    filter, deliberately not added since the affected row count is tiny and
+    self-dilutes out of a growing training set over time).
     """
     init_db()
     cond_clause, cond_params = _condition_type_not_in_sql(
@@ -3490,7 +3526,7 @@ def get_metar_lockout_calibration_data() -> list[dict]:
     with _conn() as con:
         rows = con.execute(
             f"""
-            SELECT p.our_prob, o.settled_yes
+            SELECT COALESCE(p.raw_prob, p.our_prob), o.settled_yes
             FROM predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL

@@ -1126,6 +1126,43 @@ def train_all_temperature_scaling(
 
 # ── EMOS (Ensemble Model Output Statistics) ───────────────────────────────────
 
+# Minimum variance floor (sigma >= sqrt(this), degrees F^2) shared by
+# FITTING (fit_emos's own objective) and APPLYING (emos_exceedance_prob/
+# emos_interval_prob) EMOS's Gaussian. The old floor (1e-6, sigma~=0.001F)
+# was numerically-safe but physically meaningless -- a degenerate fit (e.g.
+# the variance coefficient d collapsing to ~0) could reach it and produce a
+# near-certain 0.000001/0.999999 probability (audit batch-28 item 3).
+# 1.0 (sigma=1.0F) is deliberately conservative, not derived from a real
+# sigma value elsewhere in this codebase -- the closest genuine analogue,
+# climatology._SIGMA_FLOOR=1.5F, is itself a floor on a DIFFERENT
+# (climatology-only) forecast path, and weather_markets.py's
+# _SIGMA_1DAY_CAP/_BETWEEN_SIGMA_1DAY_CAP constants are upper CAPS, not
+# floors (that path's actual sigma routinely runs below 1.0 once
+# _time_risk()'s sigma_mult discount applies -- an earlier version of this
+# comment wrongly cited one of those caps as if it were a floor). Chosen to
+# sit low enough that a real, well-behaved fit's c/d never reach it (the
+# real production fit as of 2026-08-22 gives c~5.42, d~0 -- nowhere near
+# 1.0) while still being a meaningful floor against a genuinely degenerate
+# near-zero fit. Fitting and applying MUST share this constant: fitting
+# without it would let the optimizer exploit an unfloored sigma the live
+# path never actually uses, decoupling the fitted CRPS from the deployed
+# behavior.
+EMOS_SIGMA_VAR_FLOOR = 1.0
+
+# fit_emos acceptance bounds for the mean-calibration coefficients (a, b),
+# checked by callers (main.py's _cmd_emos_train) before save_emos_params --
+# NOT inside fit_emos itself, since it's called twice per training run with
+# different data (mean-only stage, then variance-only stage) and each call
+# only keeps two of its four returned params; bounds-checking unconditionally
+# inside fit_emos would reject a variance-stage call over a and b it never
+# uses. b<=0 means a warmer ensemble mean predicts a COOLER outcome --
+# physically backwards, only reachable from a degenerate fit. |a|<=30F and
+# b<=3 comfortably cover every offset/scaling this project's real data has
+# produced (mirrors _fit_platt's own a>0/|a|<=5/|b|<=5 bounds-check pattern,
+# re-scaled for temperature-space rather than logit-space coefficients).
+EMOS_B_BOUNDS = (0.0, 3.0)  # (exclusive lower, inclusive upper)
+EMOS_A_BOUND = 30.0  # |a| <= this, degrees F
+
 
 def fit_emos(
     ens_mean: np.ndarray,
@@ -1136,10 +1173,16 @@ def fit_emos(
 
     Model: T ~ N(mu, sigma^2) where
         mu    = a + b * ens_mean
-        sigma = sqrt(max(c + d * ens_var, 1e-6))
+        sigma = sqrt(max(c + d * ens_var, EMOS_SIGMA_VAR_FLOOR))
 
     Optimizer works in sqrt-space (c_sq, d_sq) to keep sigma positive.
     Returned (c, d) are c_sq**2 and d_sq**2 — non-negative by construction.
+
+    Raises ValueError if the optimizer doesn't converge (mirrors
+    _fit_platt's own res.success check) -- callers must not silently persist
+    an unconverged fit. Does NOT itself bounds-check (a, b) or warn on a
+    near-zero d -- see EMOS_B_BOUNDS/EMOS_A_BOUND's own comment for why that
+    belongs at the call site instead.
 
     CRITICAL: pass ens_var (variance = std**2), NOT std directly.
     Requires: pip install properscoring numpy scipy
@@ -1155,7 +1198,7 @@ def fit_emos(
     def objective(params: list) -> float:
         a_, b_, c_sq, d_sq = params
         mu = a_ + b_ * ens_mean
-        sigma = _np.sqrt(_np.maximum(c_sq**2 + d_sq**2 * ens_var, 1e-6))
+        sigma = _np.sqrt(_np.maximum(c_sq**2 + d_sq**2 * ens_var, EMOS_SIGMA_VAR_FLOOR))
         return float(_np.mean(_ps.crps_gaussian(obs, mu=mu, sig=sigma)))
 
     res = _minimize(
@@ -1164,6 +1207,8 @@ def fit_emos(
         method="Nelder-Mead",
         options={"maxiter": 20_000, "xatol": 1e-7, "fatol": 1e-7},
     )
+    if not res.success:
+        raise ValueError(f"EMOS optimizer did not converge: {res.message}")
     a, b, c_sq, d_sq = res.x
     return float(a), float(b), float(c_sq**2), float(d_sq**2)
 
@@ -1174,7 +1219,11 @@ def emos_exceedance_prob(
     ens_var: float,
     threshold: float,
 ) -> float:
-    """P(T > threshold) from a fitted EMOS Gaussian distribution.
+    """P(T > threshold) from a fitted EMOS Gaussian distribution, clamped to
+    [0.01, 0.99] -- matching every sibling calibration applier in this file
+    (apply_ml_prob_correction, apply_platt_per_city) rather than leaving an
+    unclamped extreme for the caller to catch (audit batch-28 item 3: an
+    unfloored fit could otherwise reach an uncapped 0.000001 undetected).
 
     CRITICAL: pass ens_var (variance = std**2), NOT std.
     If ens_stats provides 'std', square it: ens_var = ens_stats['std'] ** 2
@@ -1183,8 +1232,15 @@ def emos_exceedance_prob(
 
     a, b, c, d = params
     mu = a + b * ens_mean
-    sigma = math.sqrt(max(c + d * ens_var, 1e-6))
-    return float(1.0 - ndtr((threshold - mu) / sigma))
+    raw_variance = c + d * ens_var
+    if raw_variance < EMOS_SIGMA_VAR_FLOOR:
+        _log.debug(
+            "emos_exceedance_prob: sigma floor bound (raw variance %.4f < floor %.4f)",
+            raw_variance,
+            EMOS_SIGMA_VAR_FLOOR,
+        )
+    sigma = math.sqrt(max(raw_variance, EMOS_SIGMA_VAR_FLOOR))
+    return max(0.01, min(0.99, float(1.0 - ndtr((threshold - mu) / sigma))))
 
 
 def emos_interval_prob(
@@ -1195,6 +1251,7 @@ def emos_interval_prob(
     high: float,
 ) -> float:
     """P(low < T < high) from a fitted EMOS Gaussian — for 'between' markets.
+    Clamped to [0.01, 0.99] -- see emos_exceedance_prob's docstring.
 
     CRITICAL: pass ens_var (variance), NOT std.
     """
@@ -1202,8 +1259,17 @@ def emos_interval_prob(
 
     a, b, c, d = params
     mu = a + b * ens_mean
-    sigma = math.sqrt(max(c + d * ens_var, 1e-6))
-    return float(ndtr((high - mu) / sigma) - ndtr((low - mu) / sigma))
+    raw_variance = c + d * ens_var
+    if raw_variance < EMOS_SIGMA_VAR_FLOOR:
+        _log.debug(
+            "emos_interval_prob: sigma floor bound (raw variance %.4f < floor %.4f)",
+            raw_variance,
+            EMOS_SIGMA_VAR_FLOOR,
+        )
+    sigma = math.sqrt(max(raw_variance, EMOS_SIGMA_VAR_FLOOR))
+    return max(
+        0.01, min(0.99, float(ndtr((high - mu) / sigma) - ndtr((low - mu) / sigma)))
+    )
 
 
 def _load_emos_params() -> tuple[float, float, float, float] | None:
@@ -1256,7 +1322,7 @@ def save_emos_params(
     mean_crps: float | None = None,
 ) -> None:
     """Persist EMOS parameters and clear the in-process cache."""
-    global _EMOS_CACHE
+    global _EMOS_CACHE, _EMOS_CACHE_MTIME
     from datetime import UTC, datetime
 
     payload = {
@@ -1271,25 +1337,80 @@ def save_emos_params(
     from safe_io import atomic_write_json_with_history
 
     atomic_write_json_with_history(payload, _EMOS_PARAMS_PATH)
-    _EMOS_CACHE = (float(a), float(b), float(c), float(d))
+    # Invalidate (not manually set) the cache -- forces the next
+    # _load_emos_params() call to actually re-read and re-stat the file,
+    # rather than trust a hand-set value against a stale _EMOS_CACHE_MTIME
+    # that this write never updated (independent review, audit batch-28
+    # item 3 round-2 follow-up: a caller that warmed the cache via
+    # _load_emos_params() shortly before this save -- e.g. the held-out CRPS
+    # gate's incumbent lookup -- could otherwise see a mismatched-but-
+    # coincidentally-equal mtime slip through on a coarse filesystem clock).
+    # Mirrors reset_temperature_scale_for_emos's own _TEMP_CACHE = None
+    # invalidation pattern.
+    _EMOS_CACHE = None
+    _EMOS_CACHE_MTIME = None
     _log.info("EMOS params saved: a=%.4f b=%.4f c=%.4f d=%.4f (n=%d)", a, b, c, d, n)
 
 
 def get_emos_status() -> dict:
-    """Return {"active": bool, "a"/"b"/"c"/"d"/"n"/"mean_crps"/"fitted_at": ...}
-    describing whether EMOS is currently the live probability method for
-    multi-day above/below/between predictions.
+    """Return {"active": bool, "a"/"b"/"c"/"d"/"n"/"mean_crps"/"fitted_at":
+    ..., "t_pinned": bool} describing whether EMOS is currently the live
+    probability method for multi-day above/below/between predictions.
 
     Returns {"active": False} when emos_params.json doesn't exist (including
     when a concurrent deactivate_emos() call unlinks it between this
-    function's own exists() check and read -- a lost race, not corruption),
-    or {"active": False, "corrupt": True, "error": ...} when the file exists
-    and was actually read but fails to parse -- distinct from "doesn't
-    exist" so a caller (e.g. cmd_emos_deactivate) can still offer to remove
-    a corrupt file instead of reporting nothing to do.
+    function's own exists() check and read -- a lost race, not corruption,
+    and NOT computed against t_pinned either since there's no active EMOS
+    to cross-check), or {"active": False, "corrupt": True, "error": ...}
+    when the file exists and was actually read but fails to parse --
+    distinct from "doesn't exist" so a caller (e.g. cmd_emos_deactivate)
+    can still offer to remove a corrupt file instead of reporting nothing
+    to do.
+
+    "t_pinned" (audit batch-28 item 3) cross-checks "active per params
+    file" against "T actually reset in temperature_scale.json" -- these are
+    two separate files with no transactional link between them, so a
+    partial failure or an out-of-band edit can leave them disagreeing
+    silently. True only when every EMOS_COVERED_CONDITION_KEYS entry
+    carries reset_for_emos=True; False (never None) whenever active is
+    True, so a caller can distinguish "correctly pinned" from "diverged"
+    without an extra existence check of its own.
+
+    A legacy single-value {"T": x} temperature_scale.json (never migrated
+    to the per-condition dict shape) also reports t_pinned=False -- not a
+    false positive: reset_temperature_scale_for_emos() always writes the
+    migrated per-key dict format, so a genuinely-active EMOS (which can
+    only get that way through this module's own activation path) should
+    never coexist with a still-legacy-format file. Seeing one is real
+    drift (an out-of-band write, or a corrupt/hand-edited file), not a
+    structurally-expected state this check should special-case around.
+
+    t_pinned is computed BEFORE emos_params.json is parsed, and included
+    even in the corrupt-file return (independent review, audit batch-28
+    item 3 round-2 follow-up): a corrupt/unparseable emos_params.json still
+    makes _load_emos_params() return None (no EMOS applied), and
+    train_all_temperature_scaling() still treats it as "EMOS active" and
+    skips refitting global/above/below/between (it gates on
+    _EMOS_PARAMS_PATH.exists() alone) -- so a corrupt params file with T
+    already pinned to the 1.0 placeholder is a silent, total loss of
+    calibration for all 4 condition types, the exact incident this whole
+    field exists to surface, and the one state the pre-fix version of this
+    check didn't cover at all.
     """
     if not _EMOS_PARAMS_PATH.exists():
         return {"active": False}
+
+    t_pinned = False
+    try:
+        temp_data = json.loads(_TEMP_PATH.read_text()) if _TEMP_PATH.exists() else {}
+        t_pinned = isinstance(temp_data, dict) and all(
+            isinstance(temp_data.get(key), dict)
+            and temp_data[key].get("reset_for_emos") is True
+            for key in EMOS_COVERED_CONDITION_KEYS
+        )
+    except Exception:
+        t_pinned = False
+
     try:
         data = json.loads(_EMOS_PARAMS_PATH.read_text())
         return {
@@ -1301,13 +1422,19 @@ def get_emos_status() -> dict:
             "n": data.get("n"),
             "mean_crps": data.get("mean_crps"),
             "fitted_at": data.get("fitted_at"),
+            "t_pinned": t_pinned,
         }
     except FileNotFoundError:
         # deactivate_emos() unlinked the file between the exists() check
         # above and this read (TOCTOU) -- a lost race, not corruption.
         return {"active": False}
     except Exception as exc:
-        return {"active": False, "corrupt": True, "error": str(exc)}
+        return {
+            "active": False,
+            "corrupt": True,
+            "error": str(exc),
+            "t_pinned": t_pinned,
+        }
 
 
 def reset_temperature_scale_for_emos() -> None:
@@ -1331,6 +1458,32 @@ def reset_temperature_scale_for_emos() -> None:
     the exact zero-calibration incident recorded in backlog.txt's EMOS
     entry. Each reset key is also tagged reset_for_emos/reset_at so it's
     inspectable-by-eye as a placeholder, not a real fit.
+
+    First snapshot always wins (audit batch-28 item 2): this function also
+    runs on every RETRAIN of an already-active EMOS (main.py's
+    _cmd_emos_train --activate has no separate retrain path of its own), at
+    which point `existing` already holds the 1.0 placeholders THIS function
+    wrote on the first activation for keys that had real values then.
+    Snapshotting unconditionally would overwrite the real pre-EMOS snapshot
+    with those placeholders, permanently losing the only recoverable copy
+    of the true T values the instant a second activation runs.
+
+    Building `snapshot` only from keys that DON'T already carry
+    reset_for_emos (rather than skipping the whole write whenever ANY
+    covered key is already marked) matters for a subtler reason than plain
+    idempotency (independent review, audit batch-28 item 2 follow-up): a
+    covered key that was ABSENT from temperature_scale.json at first
+    activation (e.g. 'between' below its own min-samples floor) never
+    enters the snapshot restore_temperature_scale_from_emos_snapshot()
+    writes back on deactivate, so it's left behind as a permanent
+    reset_for_emos=True placeholder even after a full deactivate. A
+    same-key check against `existing` would then see that stale marker
+    forever and skip snapshotting REAL values (global/above/below) on
+    every future activation -- reproducing the zero-calibration incident
+    this whole mechanism exists to prevent, just via a different key.
+    Restricting to not-yet-marked keys and skipping only when that's empty
+    means a stale single-key marker can never block a real snapshot of the
+    other keys.
     """
     global _TEMP_CACHE, _TEMP_CACHE_MTIME
     from datetime import UTC, datetime
@@ -1360,8 +1513,16 @@ def reset_temperature_scale_for_emos() -> None:
         key: existing[key]
         for key in EMOS_COVERED_CONDITION_KEYS
         if isinstance(existing.get(key), dict)
+        and not existing[key].get("reset_for_emos")
     }
-    if snapshot:
+    if _TEMP_PRE_EMOS_SNAPSHOT_PATH.exists() or not snapshot:
+        _log.info(
+            "reset_temperature_scale_for_emos: skipping snapshot write -- %s",
+            "snapshot file already exists"
+            if _TEMP_PRE_EMOS_SNAPSHOT_PATH.exists()
+            else "no covered key has a real (non-placeholder) value to snapshot",
+        )
+    else:
         atomic_write_json_with_history(snapshot, _TEMP_PRE_EMOS_SNAPSHOT_PATH)
 
     reset_at = datetime.now(UTC).isoformat(timespec="seconds")
@@ -1394,6 +1555,14 @@ def restore_temperature_scale_from_emos_snapshot() -> bool:
     Restoring immediately (rather than waiting for the next scheduled
     retrain) closes the double-calibration/zero-calibration gap described
     in reset_temperature_scale_for_emos()'s own docstring.
+
+    A covered key that was never in the snapshot (absent from
+    temperature_scale.json at activation time, e.g. 'between' below its own
+    min-samples floor) still carries reset_for_emos=True here -- deleted
+    outright rather than left behind, restoring it to its true pre-EMOS
+    state (absent) and preventing that stale marker from permanently
+    blocking a real snapshot on some future activation (audit batch-28
+    item 2 follow-up; see reset_temperature_scale_for_emos's own docstring).
     """
     global _TEMP_CACHE, _TEMP_CACHE_MTIME
 
@@ -1416,6 +1585,13 @@ def restore_temperature_scale_from_emos_snapshot() -> bool:
 
         for key, value in snapshot.items():
             existing[key] = value
+        for key in EMOS_COVERED_CONDITION_KEYS:
+            if (
+                key not in snapshot
+                and isinstance(existing.get(key), dict)
+                and existing[key].get("reset_for_emos")
+            ):
+                del existing[key]
 
         from safe_io import atomic_write_json_with_history
 

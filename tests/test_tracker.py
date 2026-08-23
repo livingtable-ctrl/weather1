@@ -1377,6 +1377,151 @@ class TestAlwaysExcludedConditionTypesNotGateCoupled(unittest.TestCase):
         self.assertEqual(result["n"], 1)
 
 
+class TestMetarLockoutCalibrationDataUsesRawProb(unittest.TestCase):
+    """Audit batch-28 item 1: get_metar_lockout_calibration_data() must read
+    the pre-calibration raw_prob column, not the already-calibrated our_prob
+    column -- selecting our_prob would have each weekly retrain fit on its
+    own prior output, oscillating between a real correction and an identity
+    fit rather than converging (see the function's own docstring)."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_raw_prob.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _insert_metar_locked(
+        self, ticker, our_prob, bias_correction, settled_yes, condition_type="above"
+    ):
+        """our_prob (the corrected, post-calibration value stored as
+        analysis["forecast_prob"]) and bias_correction together determine
+        raw_prob = our_prob + bias_correction, mirroring weather_markets.py's
+        real METAR beta-calibration bookkeeping (analyze_trade sets bias =
+        pre_correction_prob - blended_prob after applying the correction)."""
+        analysis = {
+            "condition": {"type": condition_type, "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "bias_correction": bias_correction,
+            "market_prob": 0.50,
+            "edge": our_prob - 0.50,
+            "method": "metar_lockout",
+            "n_members": 20,
+            "days_out": 0,
+        }
+        tracker.log_prediction(ticker, "NYC", date(2099, 1, 1), analysis)
+        tracker.log_outcome(ticker, settled_yes)
+
+    def test_returns_raw_prob_not_calibrated_our_prob(self):
+        """our_prob=0.57 (post-calibration), bias_correction=-0.50 (tracker's
+        raw_prob = forecast_prob + bias_correction, and bias_correction
+        stores the amount SUBTRACTED from raw to produce the calibrated
+        value -- see tracker.log_prediction's own "M-12" comment) -->
+        raw_prob=0.07 (pre-calibration) -- the row returned must carry 0.07,
+        not the already-corrected 0.57, or a retrain would fit on its own
+        prior output."""
+        self._insert_metar_locked("TK-RAW", 0.57, -0.50, True)
+        rows = tracker.get_metar_lockout_calibration_data()
+        self.assertEqual(len(rows), 1)
+        self.assertAlmostEqual(rows[0]["our_prob"], 0.07, places=6)
+
+    def test_falls_back_to_our_prob_for_legacy_rows_with_null_raw_prob(self):
+        """A row predating the raw_prob column has a real NULL raw_prob on
+        disk (log_prediction always populates it going forward, so this can
+        only happen for a pre-existing row -- inserted directly via SQL to
+        reproduce that exact legacy shape). COALESCE must fall back to
+        our_prob rather than dropping the row or returning None for it."""
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO predictions "
+                "(ticker, city, our_prob, raw_prob, market_prob, predicted_at, "
+                " days_out, method, condition_type) "
+                "VALUES ('TK-LEGACY', 'NYC', 0.85, NULL, 0.5, '2026-06-01', "
+                " 0, 'metar_lockout', 'above')"
+            )
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes, settled_at) "
+                "VALUES ('TK-LEGACY', 1, '2026-06-01')"
+            )
+
+        rows = tracker.get_metar_lockout_calibration_data()
+        self.assertEqual(len(rows), 1)
+        self.assertAlmostEqual(rows[0]["our_prob"], 0.85, places=6)
+
+    def test_refit_on_logged_data_does_not_collapse_to_identity(self):
+        """Regression for the oscillation bug itself: fit once (generation
+        1) on synthetic METAR-locked rows with a real, measurable
+        miscalibration, apply that fit and re-log the CALIBRATED values as
+        our_prob (exactly what analyze_trade's real METAR-correction path
+        does), then re-fetch calibration data and re-fit (generation 2).
+        Selecting our_prob (the bug) would make generation 2 fit on
+        already-corrected data and collapse toward an identity transform
+        (a~=1, c~=0); selecting raw_prob (the fix) reproduces the SAME
+        real miscalibration each generation since the true raw series never
+        changes on disk."""
+        import ml_bias
+
+        # Two-band synthetic data matching this file's own documented
+        # geometry: YES-locks cluster high, NO-locks cluster low, and the
+        # true settle rate is systematically different from the raw score
+        # in both bands (the miscalibration fit_metar_calibration exists to
+        # correct).
+        rows = []
+        for i in range(15):
+            our_prob = 0.90 + (i % 3) * 0.01  # YES-lock band, ~0.90-0.92
+            settled_yes = i % 4 != 0  # true rate ~0.75, well below 0.90+
+            rows.append((f"TK-YES-{i}", our_prob, settled_yes))
+        for i in range(15):
+            our_prob = 0.08 + (i % 3) * 0.01  # NO-lock band, ~0.08-0.10
+            settled_yes = i % 4 == 0  # true rate ~0.25, well above 0.08-0.10
+            rows.append((f"TK-NO-{i}", our_prob, settled_yes))
+
+        for ticker, our_prob, settled_yes in rows:
+            self._insert_metar_locked(ticker, our_prob, 0.0, settled_yes)
+
+        gen1_rows = tracker.get_metar_lockout_calibration_data()
+        gen1_fit = ml_bias.fit_metar_calibration(gen1_rows)
+        self.assertIsNotNone(gen1_fit, "generation-1 fit must succeed on this data")
+        assert gen1_fit is not None
+        gen1_a, _, gen1_c = gen1_fit
+        # A real correction: NOT the identity transform (a=1, c=0).
+        self.assertFalse(
+            abs(gen1_a - 1.0) < 0.05 and abs(gen1_c) < 0.05,
+            f"generation-1 fit {gen1_fit} looks like an identity no-op, not a real correction",
+        )
+
+        # Simulate analyze_trade's real bookkeeping: re-log each row with
+        # our_prob = the CALIBRATED value (bias_correction = raw - calibrated,
+        # so raw_prob still reconstructs the true original raw score).
+        for ticker, raw_prob, settled_yes in rows:
+            calibrated = ml_bias.apply_metar_calibration(raw_prob, gen1_fit)
+            bias_correction = raw_prob - calibrated
+            self._insert_metar_locked(ticker, calibrated, bias_correction, settled_yes)
+
+        gen2_rows = tracker.get_metar_lockout_calibration_data()
+        gen2_fit = ml_bias.fit_metar_calibration(gen2_rows)
+        self.assertIsNotNone(gen2_fit, "generation-2 fit must succeed on this data")
+        assert gen2_fit is not None
+        gen2_a, _, gen2_c = gen2_fit
+
+        # The fix: generation 2 fits on the SAME true raw series as
+        # generation 1 (raw_prob is unchanged by re-logging), so it must
+        # reproduce essentially the same correction, not collapse toward
+        # identity.
+        self.assertAlmostEqual(gen1_a, gen2_a, delta=0.15)
+        self.assertAlmostEqual(gen1_c, gen2_c, delta=0.15)
+        self.assertFalse(
+            abs(gen2_a - 1.0) < 0.05 and abs(gen2_c) < 0.05,
+            f"generation-2 fit {gen2_fit} collapsed toward identity -- the "
+            "oscillation bug this test guards against",
+        )
+
+
 class TestBrierByConditionTypeRolling(unittest.TestCase):
     """Tests for tracker.brier_by_condition_type_rolling() (2026-08-12
     investigation follow-up: surfaces a condition_type-specific weakness

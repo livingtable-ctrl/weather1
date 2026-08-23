@@ -6592,11 +6592,16 @@ def _compute_ensemble_prob(
     (daily forecast_temp comes from the bias-corrected blend above this
     point; the hourly path's forecast_temp is the raw ensemble mean).
 
-    Returns (method, ens_prob) -- exactly the daily path's pre-extraction
-    behavior: EMOS (falling back to raw exceedance fraction) when
-    len(temps) >= 10, else a capped-sigma Gaussian via _forecast_probability.
-    ens_prob is None only if condition["type"] is unrecognized (mirrors
-    _forecast_probability's own fallback).
+    Returns (method, ens_prob): EMOS (falling back to raw exceedance
+    fraction) when len(temps) >= 10, else a capped-sigma Gaussian via
+    _forecast_probability. ens_prob is None only if condition["type"] is
+    unrecognized (mirrors _forecast_probability's own fallback). Both the
+    EMOS and raw-exceedance-fraction branches clamp to [0.01, 0.99] (audit
+    batch-28 item 3 review follow-up: EMOS's own clamp, added for a
+    degenerate-fit near-0/near-1 output, would otherwise disagree with an
+    unclamped exact-0.0/1.0 from a unanimous raw-fraction ensemble at the
+    same len(temps)>=10 threshold -- clamping both keeps the two branches'
+    output range identical regardless of which one a given call takes).
     """
     method = "normal_dist"
     ens_prob: float | None = None
@@ -6639,7 +6644,9 @@ def _compute_ensemble_prob(
                 )
             method = "emos"
         else:
-            # Fallback: raw exceedance fraction
+            # Fallback: raw exceedance fraction, clamped to [0.01, 0.99] to
+            # match the EMOS branch above (a unanimous ensemble can
+            # otherwise return an exact 0.0/1.0 here).
             if condition["type"] == "above":
                 ens_prob = sum(
                     1 for t in temps if t > _prob_threshold(condition)
@@ -6651,6 +6658,7 @@ def _compute_ensemble_prob(
             else:
                 lo, hi = condition["lower"], condition["upper"]
                 ens_prob = sum(1 for t in temps if lo <= t <= hi) / len(temps)
+            ens_prob = max(0.01, min(0.99, ens_prob))
     else:
         # Prefer ens_stats["std"] when available — actual model disagreement
         # is more informative than the generic days-out lookup table.
