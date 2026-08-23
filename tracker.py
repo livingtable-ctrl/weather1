@@ -7521,18 +7521,53 @@ def get_regional_recent_bias(
     if not rows:
         return 0.0, 0
 
+    # Only pool a source city's recent error if ITS OWN dynamic station-bias
+    # correction has cleared the same count>=10 floor _get_combined_station_
+    # bias() itself uses as the cutoff below which it stays 100% static-table
+    # (dynamic_weight is 0 exactly at count==10, ramping to 100% dynamic only
+    # by count>=50 -- "cleared the floor" here means "no longer purely static
+    # fallback," not "already fully dynamic") (backlog.txt "CROSS-CITY
+    # RECENT-ERROR POOLING" opus review,
+    # 2026-08-22: a source city whose own bias correction is still thin can
+    # carry a PERSISTENT residual from an unverified/miscalibrated static
+    # table entry -- not the transient regime-driven anomaly this pooling is
+    # meant to capture -- and that persistent residual would otherwise leak
+    # into every correlated neighbour's lean every day, not just on days with
+    # a genuine shared-regime signal. Concrete case this guards: Atlanta's
+    # only correlated partner is Miami (paper.py _CORRELATED_CITY_GROUPS),
+    # and Miami has a documented ~4.6°F persistent cold residual (utils.py
+    # CITY_MIN_PROB_EDGE comment) that its own dynamic bias can't yet
+    # override (too few samples) -- without this filter, Atlanta's lean would
+    # equal Miami's stale residual on every call. Cached per distinct source
+    # city within this call (not module-level) since it only needs to run
+    # once per get_regional_recent_bias() call, not once per row.
+    _maturity_cache: dict[str, bool] = {}
+
+    def _source_city_bias_is_mature(row_city: str) -> bool:
+        if row_city not in _maturity_cache:
+            try:
+                _, count = get_dynamic_station_bias(row_city, var, min_samples=10)
+            except Exception:
+                count = 0
+            _maturity_cache[row_city] = count >= 10
+        return _maturity_cache[row_city]
+
     weighted_sum = 0.0
     weight_total = 0.0
+    n_used = 0
     for row_city, forecast_temp_f, settled_temp_f in rows:
+        if not _source_city_bias_is_mature(row_city):
+            continue
         error = float(forecast_temp_f) - float(settled_temp_f)
         weight = _CITY_PAIR_CORR.get(frozenset({city, row_city}), 0.10)
         weighted_sum += error * weight
         weight_total += weight
+        n_used += 1
 
     if weight_total <= 0:
-        return 0.0, len(rows)
+        return 0.0, 0
 
-    return round(weighted_sum / weight_total, 4), len(rows)
+    return round(weighted_sum / weight_total, 4), n_used
 
 
 def get_edge_realization_by_city() -> list[dict]:

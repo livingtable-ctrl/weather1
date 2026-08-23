@@ -8512,6 +8512,25 @@ RESOLVED 2026-07-24 (item 1 only -- the plumbing; item 2, the actual 3-way
   accumulation clock started to eventually inform that threshold choice
   with real data instead of a guess.
 
+RE-VERIFIED 2026-08-22 (batch-16, item 2 still open -- deliberately deferred
+  further, no code change): ecmwf_consensus_gap_prob's sample floor (20) has
+  cleared -- 68 settled rows via `py main.py signals`. Queried the real
+  correlation before proposing a threshold, per this entry's own "don't
+  guess blind" warning: ecmwf_consensus_gap_prob's typical value is far
+  higher than icon/gfs's own gap (median 0.45, mean 0.48 vs the existing
+  0.12 threshold) -- reusing 0.12 for a 3rd pairwise leg would flag
+  disagreement 87% of the time (59/68), collapsing model_consensus to
+  true ~13% of the time, a large behavior change to a live trade-quality
+  gate. There IS a real but weak signal: splitting on gap>0.5 gives Brier
+  0.234 (low-gap, n=35) vs 0.281 (high-gap, n=33); overall Pearson r=0.22
+  (gap vs Brier, n=68) -- directionally consistent across every threshold
+  tried (0.12/0.3/0.5/0.7) but noisy at this sample size. Surfaced to the
+  user via AskUserQuestion (defer-further / recalibrated-threshold /
+  literal-0.12-all-pairwise); user chose to keep deferring -- log-only
+  stays, model_consensus remains exactly abs(icon_p - gfs_p) > 0.12,
+  unchanged. Revisit again once ecmwf_consensus_gap_prob accumulates
+  meaningfully more rows (150+) for a less noisy threshold fit.
+
 [RESOLVED 2026-07-12] LAS VEGAS / NEW ORLEANS MISSING FROM _HISTORICAL_SIGMA
 Priority: was Low-Medium (silently degraded signal quality for 2 of 20 cities,
   not a crash risk)
@@ -10268,6 +10287,21 @@ When to revisit:
     let the existing `features` importance command arbitrate whether they
     actually earn a place in ml_bias.py's training vector.
 
+RE-VERIFIED 2026-08-22 (batch-16, still open -- no code change): max per-city
+  training-sample count (200 needed) is still 8 (Chicago/Dallas/Minneapolis),
+  nowhere close. `py main.py features` reports "No feature data yet" -- a
+  separate, out-of-scope bug (main.py/feature_importance.py, not this batch's
+  weather_markets.py/tracker.py/ml_bias.py) where record_feature_contribution
+  writes real per-trade "features" entries (114 in data/feature_importance.jsonl)
+  but cmd_features doesn't surface them; not investigated further here, flagged
+  for whoever owns main.py next. Ran the equivalent correlation analysis
+  directly against predictions/outcomes instead: both new columns correlate
+  with real forecast error in the expected direction (ensemble_spread_f vs
+  |forecast error|: r=0.39, n=71; model_disagreement_f vs |forecast error|:
+  r=0.27, n=71; both also weakly positive vs Brier score, r=0.18/0.21) --
+  directionally promising but not yet actionable given the per-city sample
+  floor is still ~25x below the 200 needed to actually retrain on them.
+
 [RESOLVED 2026-07-23 -- Pass 1 (generic mapping) and Pass 2 (GEM/UKMO wiring) both shipped] GENERALIZED PER-MODEL ACCURACY TRACKING + NEW AI MODEL SOURCES
 Priority: Medium (supersedes-and-extends [TRACK ECMWF FORECAST ACCURACY]
   above — read that entry first)
@@ -10821,6 +10855,37 @@ When to revisit:
     which is fine -- that's exactly what the inverse-MAE weighting is
     supposed to discover on its own.
 
+RE-VERIFIED 2026-08-22 (batch-16, items #2/#3/#4 still open -- deliberately
+  deferred, no code change): min_n=20 has cleared for both models (36
+  settled observations each, via `py main.py signals`). Ran the concrete
+  MAE pre-check (#4) -- but per-city data is far too thin for the per-city
+  framing the entry itself specifies (max 6 observations for any single
+  city/model pair, most cells 1-4; get_member_accuracy's own per-city floor
+  is also min_n=20, so _weights_from_mae would fall back to the GLOBAL MAE
+  for literally every city today regardless). At the global level: icon
+  =2.62, gfs=3.76 (worst baseline), ecmwf_aifs=2.71, ecmwf_ifs=2.04; GEM=
+  3.23 and UKMO=2.42 both beat gfs_seamless (today's worst-performing
+  blended model), so both pass the "must not be worse than the worst
+  model already blended" bar this entry sets. Surfaced this to the user via
+  AskUserQuestion (graduate-both / graduate-GEM-only / raise-the-bar /
+  build-mechanism-defer-flip) given n=36 is thin for a live P&L-affecting
+  blend-weight change despite mechanically clearing the floor; user chose
+  to keep both in TRACKING_ONLY_MODEL_NAMES for now -- no flip. Note: item
+  #1 (generalize _model_weights()) is NOT still open -- it shipped 2026-
+  07-23 per the RESOLVED block above and is confirmed still live in the
+  current code (weather_markets.py's `ensemble_candidate_models` union and
+  its own docstring). That same docstring documents a 4th graduation step
+  this entry's own "corrected graduation recipe" above is missing: also
+  add the model to _QUARANTINE_CANDIDATE_MODELS (weather_markets.py, "Per-
+  member EWMA quarantine" section) -- otherwise a graduated model's real
+  weight would never actually reach get_ensemble_temps()/
+  batch_prewarm_ensemble(), reproducing the exact silent-exclusion bug
+  this whole generalization exists to fix. Whoever does the actual flip
+  needs all 4 steps: (1) remove from TRACKING_ONLY_MODEL_NAMES, (2) add to
+  `baseline` in _model_weights(), (3) add to the live-blend fetch lists in
+  get_ensemble_temps()/batch_prewarm_ensemble(), (4) add to
+  _QUARANTINE_CANDIDATE_MODELS.
+
 [RESOLVED 2026-07-19] LIQUIDITY-AWARE SIZING + DYNAMIC EDGE THRESHOLD
 Priority: was Medium (consolidates two existing loose ends into one
   feature).
@@ -11263,6 +11328,16 @@ UPDATE 2026-08-10 (CLI-report settlement fetch shipped, a cheaper angle than
   before deciding whether the sigma computation itself -- unchanged,
   unstarted -- is ready to start, or whether the bulk-harvest pass above
   needs to happen first.
+
+RE-VERIFIED 2026-08-22 (batch-16, still open -- no code change): re-ran the
+  per-city/per-season count query against settled_temp_f directly. Max cell
+  is now 28 (Minneapolis, summer) -- up from 21 (2026-07-20) and closer to
+  but still below the ~30/season floor; 315 settled_temp_f rows total across
+  32 city/season cells (up from 234). The bulk-harvest pass this entry's own
+  2026-08-10 update named as the real remaining blocker is still not built.
+  Not actioned -- genuinely not ready yet, and the bulk-harvest pass is
+  explicitly separately-scoped follow-up work per that same update, not
+  something to fold into this session's batch.
 
 [RESOLVED 2026-07-20, smallest useful version] JOINT FULL-LADDER BRACKET SELECTION
 Priority: was Medium-Low (real EV improvement, real design work)
@@ -12976,8 +13051,18 @@ When to revisit:
   - If the REAL NBM entry's NBS sky/gst/p12 fields ever get pulled in for
     another reason, log them alongside precip_sum_in the same way.
 
-[PARTIALLY RESOLVED 2026-07-23 -- tracker.get_regional_recent_bias() shipped
-  log-only; wiring into an actual forecast lean still gated on more data]
+RE-VERIFIED 2026-08-22 (batch-16, still open -- no action possible): grepped
+  weather_markets.py repo-wide for sky/gst/p12/cloud_cover fields -- none are
+  fetched or parsed anywhere; the only NBM-sourced field wired in is
+  nbm_quantile_prob (temperature quantiles). Genuinely blocked upstream on
+  the REAL NBM entry's NBS bulletin work, which this batch's scope
+  (weather_markets.py/tracker.py/ml_bias.py signal work) doesn't include
+  building.
+
+[PARTIALLY RESOLVED 2026-08-22 -- source-city maturity-gate correctness fix
+  shipped in get_regional_recent_bias() itself; the forecast-lean wiring
+  this entry has been chasing since 2026-07-23 was tried, then reverted
+  again after re-verification found no real signal post-fix, see below]
   CROSS-CITY RECENT-ERROR POOLING -- SYNOPTIC-REGIME BIAS SHARE
 Priority: Low-Medium -- the spatial correlation structure is already
   learned and stored; it's only ever used to *penalize risk*, never to
@@ -13016,16 +13101,90 @@ What shipped:
   new tests, opus review clean (one defense-in-depth hardening applied:
   bound predicted_at by as_of too). Pushed `fd94bf7`.
 
-Still open:
-  - NOT wired into any live forecast lean or blend weight -- the r~0.35
-    result is real but too sparse to trust yet, correctly shipped as a
-    log-only/ad-hoc utility per this entry's own sequencing.
+Still open (2026-08-22: wiring this in was tried and then reverted -- this
+  line is still accurate today; see the resolution note below for why, and
+  its own "When to revisit" for what's next):
+  - NOT wired into any live forecast lean or blend weight -- the original
+    r~0.35 result turned out to be substantially a contamination artifact
+    once investigated further; still log-only.
+
+RESOLVED-then-REVERTED 2026-08-22 (batch-16): re-ran the retrospective
+  validation with current data using the exact methodology described above
+  (get_regional_recent_bias(city, var, hours=48, as_of=predicted_at) for
+  every settled ticker with a logged forecast_temp_f, correlated against
+  same-city same-day forecast error). First pass: Pearson r=0.38 (up from
+  0.35), n=109 usable estimates (up from 85), sign agreement 71% (up from
+  64%) -- correlation appeared to hold up on more data (coverage density
+  didn't improve though, ~1.5 correlated-city samples/estimate, essentially
+  flat vs. 1.67 before). Surfaced to the user via AskUserQuestion; user
+  chose to wire in a bounded lean (capped ±0.5°F, gated on n>=1) into
+  _get_combined_station_bias().
+  Independent opus review (effort=high) of that wiring caught a real HIGH-
+  severity contamination path, verified directly against live data before
+  accepting: Atlanta's only _CORRELATED_CITY_GROUPS partner is Miami
+  (paper.py:354), and Miami has a DOCUMENTED, persistent ~4.6°F cold
+  residual (utils.py's CITY_MIN_PROB_EDGE comment: "forecast_temp_f runs
+  ~4.6F cold vs settled_temp_f... sample (n=7) too thin to safely retune"
+  _STATION_BIAS_HIGH["Miami"]=3.0). Since Miami is Atlanta's ONLY
+  correlated partner, Atlanta's lean would equal Miami's stale residual on
+  literally every call (clipped to -0.5°F) -- not a transient regime signal,
+  a standing miscalibration leaking into a different city every day.
+  Surfaced back to the user (this materially changed the risk picture from
+  the original approval); chose to fix at the root: get_regional_recent_bias()
+  now excludes any correlated SOURCE city whose own dynamic station-bias
+  hasn't cleared the same count>=10 maturity floor _get_combined_station_bias
+  already uses to trust dynamic data over the static table -- a source
+  city's recent "error" is only pooled once its own bias correction is
+  itself considered reliable, cutting off exactly the Miami/Atlanta leak
+  (Miami's own dynamic-bias sample count is 0/thin) while leaving the
+  mechanism intact for cities with mature data. tests/test_p9_p10.py: 1 new
+  helper (_seed_mature_dynamic_bias), 2 new tests (immature source city
+  excluded while a mature one isn't; the maturity check itself fails
+  CLOSED -- excludes the row, doesn't crash or fail open -- when
+  get_dynamic_station_bias raises), and 5 pre-existing weighted-mean/pair-
+  correlation/dedup/as_of tests updated to seed maturity for their source
+  cities (they'd otherwise now get (0.0, 0) from the new guard). A second
+  opus review (effort=high) of this fix, run separately from the first
+  review that found the Miami/Atlanta bug, caught one real test-coverage
+  gap fixed in the same pass: test_get_regional_recent_bias_var_filters_
+  high_low originally seeded Boston mature for "min" only, so its var="max"
+  assertion passed for the WRONG reason (Boston's immature "max" maturity
+  masked the row via the new guard regardless of whether the actual HIGH/
+  LOW ticker-pattern filter still worked) -- fixed by seeding Boston mature
+  for both vars, verified via mutation (removing the ticker_pattern filter
+  now fails the test for the right reason). Every mutation tried across
+  both review rounds was caught after these fixes: disabling the maturity
+  gate entirely, checking the wrong (target instead of source) city,
+  hardcoding var instead of passing it through, reverting the sample-count
+  return-value change, and the fail-open exception path. Re-running the
+  retrospective validation against the FIXED function was
+  the deciding step: coverage collapsed to 35 usable estimates (from 109)
+  and the correlation essentially vanished -- r=0.08 (vs 0.38), sign
+  agreement 18/35=51% (a coin flip). The original r=0.38 that justified
+  wiring this in at all appears to have been substantially an artifact of
+  exactly the contamination the opus review caught, not a real signal.
+  Surfaced this back to the user a second time; chose to revert the
+  _get_combined_station_bias wiring entirely (a capped nudge with no
+  measured correlation can only add noise to live trade decisions) while
+  KEEPING the maturity-gate fix in get_regional_recent_bias() itself, since
+  that's a real, independent correctness improvement regardless of whether
+  anything consumes the function yet.
+  Net result: get_regional_recent_bias() is more correct than it was
+  before this session (source-city contamination fixed) but remains
+  log-only/no-prod-call-site, same as its 2026-07-23 shipped state --
+  tests/test_dead_code_scan.py's allowlist entry updated with this full
+  history rather than reverted to its stale 2026-07-23 wording.
+  weather_markets.py has ZERO net diff this session (the wiring attempt
+  and its revert cancel out exactly -- verified via `git diff`).
 
 When to revisit:
-  - Re-run the retrospective validation once more settled data has
-    accumulated; if correlation holds up with denser per-estimate
-    coverage, size a bounded lean capped well below
-    _get_combined_station_bias's magnitude.
+  - Once more correlated cities' OWN dynamic station-bias clears count>=10
+    (query tracker.get_dynamic_station_bias per city/var, or watch for it
+    via `py main.py signals` if this ever gets a registry entry), re-run
+    the retrospective validation on the now-larger clean (contamination-
+    filtered) sample -- only reconsider wiring in a lean if a real
+    correlation reappears on that denser, unbiased data, not on the basis
+    of the original (now-explained) r=0.38 number.
 
 [MARKET_LIFECYCLE_V2 WS CHANNEL -- LISTING-TIME AWARENESS]
 Priority: Low -- real timing edge, but structurally blocked behind the
