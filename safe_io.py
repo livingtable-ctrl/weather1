@@ -383,7 +383,11 @@ def _atomic_write_payload(
         # weather_markets.py's learned_weights.json were migrated to
         # atomic_write_json -- still unique; alerts.py's own migration added no
         # new basename, since alerts.json was already a call site via
-        # save_alerts()), and the emergency copy is a best-effort recovery aid,
+        # save_alerts(); alerts.py's later .halt_transitions.json call site,
+        # 2026-08-22 batch-24 item 4, passes emergency_copy=False and so
+        # never enters this basename-keyed path at all -- exempt, not a
+        # new collision candidate), and the emergency copy is a best-effort
+        # recovery aid,
         # not the source of truth, so this is deliberately left as-is rather
         # than adding relative-path encoding complexity for a theoretical case.
         emergency_candidates.append(project_root() / "data" / ".emergency")

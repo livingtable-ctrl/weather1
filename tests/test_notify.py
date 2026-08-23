@@ -1,13 +1,22 @@
 """Tests for notify.py's system-alert cooldown persistence.
 
 backlog.txt "NOTIFY.SEND_SYSTEM_ALERT()'S COOLDOWN IS IN-PROCESS MEMORY
-ONLY, DOESN'T SURVIVE A FRESH CRON PROCESS" -- _system_cooldown_elapsed()
+ONLY, DOESN'T SURVIVE A FRESH CRON PROCESS" -- _system_cooldown_reserve()
 persists cooldown timestamps to disk (paths.NOTIFY_COOLDOWN_STATE_PATH) so
 send_system_alert() actually suppresses repeat alerts across separate
 process invocations, not just within one long-lived process. Deliberately
 scoped to send_system_alert()'s cooldown only -- alert_strong_signal()'s
 per-ticker cooldown stays in-process (see notify.py's own comment on
 _last_notified for why).
+
+batch-24 item 3 (2026-08-22): _system_cooldown_elapsed() was split into
+_system_cooldown_reserve() (read + reserve, returns (reserved, previous))
+and _system_cooldown_rollback() (undo a reservation after total delivery
+failure) so send_system_alert() no longer burns the cooldown on a call
+where every channel failed. TestSystemCooldownElapsed below was updated to
+call _system_cooldown_reserve() and unpack its tuple; its assertions and
+intent are otherwise unchanged. See tests/test_batch24_alerting.py for the
+new rollback-specific tests.
 """
 
 from __future__ import annotations
@@ -28,7 +37,8 @@ _SIX_HOURS = 21_600
 
 
 class TestSystemCooldownElapsed:
-    """Direct tests of the new disk-persisted cooldown check. Each test
+    """Direct tests of the disk-persisted cooldown reservation check (now
+    _system_cooldown_reserve(), see module docstring). Each test
     redirects notify.NOTIFY_COOLDOWN_STATE_PATH to an isolated tmp_path file
     so no test ever touches the real data/.notify_cooldowns.json."""
 
@@ -39,11 +49,12 @@ class TestSystemCooldownElapsed:
         path = self._cooldown_path(tmp_path)
         monkeypatch.setattr(notify, "NOTIFY_COOLDOWN_STATE_PATH", path)
 
-        fired = notify._system_cooldown_elapsed(
+        fired, previous = notify._system_cooldown_reserve(
             "emergency_copy", now=_NOW, cooldown_secs=_SIX_HOURS
         )
 
         assert fired is True
+        assert previous == 0.0
         assert path.exists()
         assert json.loads(path.read_text()) == {"emergency_copy": _NOW}
 
@@ -51,15 +62,16 @@ class TestSystemCooldownElapsed:
         path = self._cooldown_path(tmp_path)
         monkeypatch.setattr(notify, "NOTIFY_COOLDOWN_STATE_PATH", path)
 
-        assert notify._system_cooldown_elapsed(
+        assert notify._system_cooldown_reserve(
             "emergency_copy", now=_NOW, cooldown_secs=_SIX_HOURS
-        )
+        )[0]
         # 1 hour later, well inside the 6h cooldown.
-        fired_again = notify._system_cooldown_elapsed(
+        fired_again, previous = notify._system_cooldown_reserve(
             "emergency_copy", now=_NOW + 3600, cooldown_secs=_SIX_HOURS
         )
 
         assert fired_again is False
+        assert previous == _NOW
         # Suppressed call must NOT have updated the persisted timestamp.
         assert json.loads(path.read_text()) == {"emergency_copy": _NOW}
 
@@ -77,13 +89,13 @@ class TestSystemCooldownElapsed:
         path = self._cooldown_path(tmp_path)
         monkeypatch.setattr(notify, "NOTIFY_COOLDOWN_STATE_PATH", path)
 
-        notify._system_cooldown_elapsed(
+        notify._system_cooldown_reserve(
             "emergency_copy", now=_NOW, cooldown_secs=_SIX_HOURS
         )
 
         # Simulate a fresh process: a brand new call with no shared Python
         # state other than the same file path.
-        fired_from_fresh_process = notify._system_cooldown_elapsed(
+        fired_from_fresh_process, _ = notify._system_cooldown_reserve(
             "emergency_copy", now=_NOW + 60, cooldown_secs=_SIX_HOURS
         )
 
@@ -93,27 +105,28 @@ class TestSystemCooldownElapsed:
         path = self._cooldown_path(tmp_path)
         monkeypatch.setattr(notify, "NOTIFY_COOLDOWN_STATE_PATH", path)
 
-        notify._system_cooldown_elapsed(
+        notify._system_cooldown_reserve(
             "emergency_copy", now=_NOW, cooldown_secs=_SIX_HOURS
         )
-        fired_after_window = notify._system_cooldown_elapsed(
+        fired_after_window, previous = notify._system_cooldown_reserve(
             "emergency_copy", now=_NOW + _SIX_HOURS + 0.1, cooldown_secs=_SIX_HOURS
         )
 
         assert fired_after_window is True
+        assert previous == _NOW
         assert json.loads(path.read_text())["emergency_copy"] == _NOW + _SIX_HOURS + 0.1
 
     def test_distinct_cooldown_keys_do_not_interfere(self, tmp_path, monkeypatch):
         path = self._cooldown_path(tmp_path)
         monkeypatch.setattr(notify, "NOTIFY_COOLDOWN_STATE_PATH", path)
 
-        assert notify._system_cooldown_elapsed(
+        assert notify._system_cooldown_reserve(
             "emergency_copy", now=_NOW, cooldown_secs=_SIX_HOURS
-        )
+        )[0]
         # A different key, same instant, must not be suppressed by the first.
-        assert notify._system_cooldown_elapsed(
+        assert notify._system_cooldown_reserve(
             "cron_gap", now=_NOW, cooldown_secs=_SIX_HOURS
-        )
+        )[0]
         state = json.loads(path.read_text())
         assert state == {"emergency_copy": _NOW, "cron_gap": _NOW}
 
@@ -123,9 +136,9 @@ class TestSystemCooldownElapsed:
         path = tmp_path / "does_not_exist.json"
         monkeypatch.setattr(notify, "NOTIFY_COOLDOWN_STATE_PATH", path)
 
-        assert notify._system_cooldown_elapsed(
+        assert notify._system_cooldown_reserve(
             "emergency_copy", now=_NOW, cooldown_secs=_SIX_HOURS
-        )
+        )[0]
 
     def test_corrupt_cooldown_file_fails_open(self, tmp_path, monkeypatch):
         """A corrupt/unparseable cooldown file must never block a real
@@ -134,9 +147,9 @@ class TestSystemCooldownElapsed:
         path.write_text("{not valid json")
         monkeypatch.setattr(notify, "NOTIFY_COOLDOWN_STATE_PATH", path)
 
-        assert notify._system_cooldown_elapsed(
+        assert notify._system_cooldown_reserve(
             "emergency_copy", now=_NOW, cooldown_secs=_SIX_HOURS
-        )
+        )[0]
 
     def test_missing_parent_directory_is_created(self, tmp_path, monkeypatch):
         """End-to-end behavior check -- the parent-directory creation itself
@@ -149,7 +162,7 @@ class TestSystemCooldownElapsed:
         path = tmp_path / "nested" / "does_not_exist_yet" / "notify_cooldowns.json"
         monkeypatch.setattr(notify, "NOTIFY_COOLDOWN_STATE_PATH", path)
 
-        fired = notify._system_cooldown_elapsed(
+        fired, _ = notify._system_cooldown_reserve(
             "emergency_copy", now=_NOW, cooldown_secs=_SIX_HOURS
         )
 
@@ -164,9 +177,9 @@ class TestSystemCooldownElapsed:
         path.write_text("null")
         monkeypatch.setattr(notify, "NOTIFY_COOLDOWN_STATE_PATH", path)
 
-        assert notify._system_cooldown_elapsed(
+        assert notify._system_cooldown_reserve(
             "emergency_copy", now=_NOW, cooldown_secs=_SIX_HOURS
-        )
+        )[0]
 
     def test_read_failure_does_not_clobber_other_keys(self, tmp_path, monkeypatch):
         """A transient read failure (circuit_breaker.py documents a real
@@ -185,7 +198,7 @@ class TestSystemCooldownElapsed:
             raise OSError("simulated transient read failure")
 
         monkeypatch.setattr(notify.json, "loads", _failing_loads)
-        fired = notify._system_cooldown_elapsed(
+        fired, _ = notify._system_cooldown_reserve(
             "new_key", now=_NOW, cooldown_secs=_SIX_HOURS
         )
         assert fired is True, "a read failure must still fail open"
@@ -213,7 +226,7 @@ class TestSystemCooldownElapsed:
 
         def worker():
             barrier.wait()
-            fired = notify._system_cooldown_elapsed(
+            fired, _ = notify._system_cooldown_reserve(
                 "race_key", now=_NOW, cooldown_secs=_SIX_HOURS
             )
             with results_lock:

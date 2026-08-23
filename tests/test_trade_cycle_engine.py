@@ -155,6 +155,33 @@ class TestGateUnification:
         assert result is None
         assert not scan_called, "scan must never run when the kill switch is active"
 
+    def test_kill_switch_fires_system_alert(self, engine_env, tmp_path):
+        """batch-24 item 1 (opus-review T3-caught gap): trade_cycle.py's own
+        kill-switch check -- reached from `watch --auto`'s call path, a
+        separate real invocation from cron.py's -- must ALSO fire
+        send_system_alert(cooldown_key="kill_switch"), not just log/print.
+        No prior test covered this specific check firing an alert."""
+        tmp_path_env, client, main, paper, cron, trade_cycle, ctx = engine_env
+        (tmp_path_env / ".kill_switch").touch()
+
+        import notify
+
+        monkeypatch_cooldown = tmp_path_env / "notify_cooldowns.json"
+        with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+            with patch.object(notify, "send_system_alert") as mock_alert:
+                ctx2 = main._build_cron_context()
+                result = trade_cycle.run_trade_cycle(ctx2, client)
+
+        assert result is None
+        kill_switch_calls = [
+            c
+            for c in mock_alert.call_args_list
+            if c.kwargs.get("cooldown_key") == "kill_switch"
+        ]
+        assert len(kill_switch_calls) == 1, (
+            f"expected exactly one kill_switch alert, got: {mock_alert.call_args_list}"
+        )
+
     def test_manual_override_skips_placement_not_scan(self, engine_env):
         tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
         market, enriched, analysis = _strong_market_analysis()

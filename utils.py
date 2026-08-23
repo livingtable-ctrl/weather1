@@ -637,3 +637,56 @@ def coalesce_market_price(market: dict, *keys: str) -> float:
             return v / 100.0
         return float(v)
     return 0.0
+
+
+def balance_dollars(payload: dict) -> float:
+    """Convert a Kalshi `/portfolio/balance` response to dollars.
+
+    Consolidated 2026-08-22 (audit batch-24 item 5) from 3 independently-
+    implemented copies (order_executor._resolve_live_balance,
+    alerts.run_black_swan_check, output_formatters.cmd_balance) that had
+    silently diverged: two unconditionally divided `payload["balance"]` by
+    100 (correct for the real API's documented int-cents shape), the third
+    branched on `isinstance(balance, int)` and otherwise fell back to
+    `float(payload)` -- which raises TypeError if "balance" was ever absent,
+    since the fallback is the whole dict, not a number.
+
+    Raises ValueError (never TypeError) for any shape other than an int,
+    float, or numeric string under the "balance" key -- including a missing
+    key, or `payload` itself not being a dict at all (opus-review-caught:
+    an earlier version of this function did `"balance" not in payload`
+    unguarded, which raises TypeError -- not ValueError -- for a non-dict
+    payload such as None or a bare number; a caller written to catch only
+    ValueError, matching this docstring's own promise, would still crash)
+    -- so a live-money sizing/display path fails loudly and traceably
+    instead of silently producing a wrong number. Callers on a path that
+    must not crash from a malformed API response (a CLI display command, a
+    best-effort balance check) are expected to catch ValueError themselves,
+    same as they already catch any other exception from client.get_balance().
+    """
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"balance payload is not a dict: {type(payload).__name__} {payload!r}"
+        )
+    if "balance" not in payload:
+        raise ValueError(f"balance payload missing 'balance' key: {payload!r}")
+    value = payload["balance"]
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        raise ValueError(
+            f"balance field has unexpected type {type(value).__name__}: {value!r}"
+        )
+    try:
+        dollars = float(value)
+    except ValueError:
+        raise ValueError(f"balance field is not numeric: {value!r}") from None
+    # opus-review-caught (2nd round, LOW-6): float("nan")/float("inf") don't
+    # raise ValueError, so a payload of {"balance": "nan"} (or a literal
+    # float nan/inf value) silently returned nan/inf, which then flows into
+    # live Kelly sizing via _resolve_live_balance -- `nan <= 0` and
+    # `inf <= 0` are both False, so a downstream "non-positive balance"
+    # fallback check wouldn't catch it either. Extremely unlikely from the
+    # real API, but this function's whole purpose is to fail loudly rather
+    # than let a malformed value silently reach a live-money path.
+    if not math.isfinite(dollars):
+        raise ValueError(f"balance field is not finite: {value!r}")
+    return dollars / 100.0

@@ -298,15 +298,15 @@ def _resolve_live_balance(client) -> float:
     if cached is not None and now - cached[1] < _LIVE_BALANCE_CACHE_TTL_SECS:
         return cached[0]
     try:
+        from utils import balance_dollars as _balance_dollars
+
         bal_data = client.get_balance()
-        api_balance_cents = bal_data.get("balance")
-        if api_balance_cents is not None:
-            balance = float(api_balance_cents) / 100.0
-            try:
-                setattr(client, _LIVE_BALANCE_CACHE_ATTR, (balance, now))
-            except Exception:
-                pass  # some client stand-in that rejects attribute writes -- fine, just no caching
-            return balance
+        balance = _balance_dollars(bal_data)
+        try:
+            setattr(client, _LIVE_BALANCE_CACHE_ATTR, (balance, now))
+        except Exception:
+            pass  # some client stand-in that rejects attribute writes -- fine, just no caching
+        return balance
     except Exception as exc:
         _log.warning(
             "_resolve_live_balance: could not fetch live balance — "
@@ -2971,7 +2971,35 @@ def _auto_place_trades(
     # awareness; is_daily_loss_halted itself remains blind to live losses
     # (mitigated, not eliminated, by _place_live_order's own separate
     # execution_log.get_today_live_loss() check).
-    if is_paused_drawdown(client):
+    # opus-review-caught (F3): the mid-cycle drawdown-breach alert further
+    # below (in the per-candidate loop) always calls
+    # check_halt_transition("drawdown", True) -- it never observes False,
+    # since it only runs on a breach. cron.py's own pre-cycle observation
+    # block clears the flag every cron cycle, but this function is ALSO
+    # reachable from `watch --auto` (main.py -> run_trade_cycle ->
+    # ctx.auto_place_trades), which never runs cron.py's block and is
+    # mutually exclusive with it via the cron lock -- a watch---auto-only
+    # session would never observe the False->clear transition, so a later
+    # real re-engagement of "drawdown" could stay silently suppressed
+    # forever (check_halt_transition's False->True edge never re-fires
+    # while the persisted flag is already stuck True). Recording the REAL
+    # boolean here (both branches) means every entry point to this
+    # function -- cron or watch --auto -- keeps the flag honest.
+    _dd_active = is_paused_drawdown(client)
+    try:
+        from alerts import check_halt_transition as _check_dd_cycle_transition
+        from notify import send_system_alert as _dd_cycle_alert
+
+        # (F10: a True return already implies _dd_active is True)
+        if _check_dd_cycle_transition("drawdown", _dd_active):
+            _dd_cycle_alert(
+                "Kalshi drawdown halt engaged",
+                "Drawdown guard active — no auto-trades placed.",
+                cooldown_key="halt_drawdown",
+            )
+    except Exception as _dd_exc:
+        _log.debug("auto_place_trades: drawdown transition alert failed: %s", _dd_exc)
+    if _dd_active:
         print(
             yellow(
                 "  [Auto] Drawdown guard active — no auto-trades placed."
@@ -2979,7 +3007,21 @@ def _auto_place_trades(
             )
         )
         return 0
-    if is_daily_loss_halted(client):
+    _dl_active = is_daily_loss_halted(client)
+    try:
+        from alerts import check_halt_transition as _check_dl_cycle_transition
+        from notify import send_system_alert as _dl_cycle_alert
+
+        # (F10: a True return already implies _dl_active is True)
+        if _check_dl_cycle_transition("daily_loss", _dl_active):
+            _dl_cycle_alert(
+                "Kalshi daily loss halt engaged",
+                "Daily loss limit reached — no auto-trades placed.",
+                cooldown_key="halt_daily_loss",
+            )
+    except Exception as _dl_exc:
+        _log.debug("auto_place_trades: daily-loss transition alert failed: %s", _dl_exc)
+    if _dl_active:
         from paper import get_daily_pnl
 
         daily_pnl = get_daily_pnl(client)
@@ -3665,6 +3707,28 @@ def _auto_place_trades(
                 "stopping after %d placements",
                 placed,
             )
+            # batch-24 item 4: this is a fresh mid-cycle drawdown breach --
+            # cron.py's own pre-cycle drawdown observation (same
+            # halt_type="drawdown", see alerts.check_halt_transition) ran
+            # before this loop started and can't have seen it yet. Uses the
+            # same halt_type/cooldown_key as that pre-cycle check since both
+            # represent the same real halt condition -- whichever call site
+            # observes the false->true edge first fires the alert.
+            try:
+                from alerts import check_halt_transition as _check_dd_transition
+                from notify import send_system_alert as _dd_alert
+
+                if _check_dd_transition("drawdown", True):
+                    _dd_alert(
+                        "Kalshi drawdown halt engaged",
+                        f"Drawdown floor breached mid-cycle after {placed} "
+                        "placement(s) — remaining candidates this cycle skipped.",
+                        cooldown_key="halt_drawdown",
+                    )
+            except Exception as _dd_exc:
+                _log.debug(
+                    "auto_place_trades: drawdown transition alert failed: %s", _dd_exc
+                )
             break
 
         if live and live_config:
