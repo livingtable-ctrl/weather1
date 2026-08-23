@@ -921,8 +921,10 @@ class TestRecoverUnknownOrders:
             "settled -- it will look open forever to get_filled_unsettled_"
             "live_orders(), triggering repeat real sell attempts"
         )
-        # gross_pnl = 10 * (0.20 - 0.40) = -2.00; loss -> no fee discount.
-        assert position_row["pnl"] == pytest.approx(-2.00)
+        # Batch-22 items 3+6: gross_pnl = 10 * (0.20 - 0.40) = -2.00; fee
+        # (utils.kalshi_taker_fee) applies regardless of win/loss:
+        # ceil(0.07*10*0.20*0.80*100)/100 = 0.12. pnl = -2.00 - 0.12 = -2.12.
+        assert position_row["pnl"] == pytest.approx(-2.12)
         assert position_row["exit_reason"] == "recovered_exit"
 
     def test_recovered_exit_partial_fill_settles_partial_and_leaves_position_open(
@@ -978,8 +980,9 @@ class TestRecoverUnknownOrders:
             "a partial fill (record_live_early_exit), same as _exit_live_"
             "position's partial-fill branch"
         )
-        # gross_pnl = 4 * (0.20 - 0.40) = -0.80
-        assert exit_row["pnl"] == pytest.approx(-0.80)
+        # gross_pnl = 4 * (0.20 - 0.40) = -0.80; fee = ceil(0.07*4*0.20*
+        # 0.80*100)/100 = 0.05. pnl = -0.80 - 0.05 = -0.85.
+        assert exit_row["pnl"] == pytest.approx(-0.85)
 
         position_row = next(o for o in orders if o["id"] == position_id)
         assert position_row["settled_at"] is None, (
@@ -1114,11 +1117,11 @@ class TestRecoverUnknownOrders:
 
         orders = execution_log.get_recent_orders(limit=10)
         position_row = next(o for o in orders if o["id"] == position_id)
-        # gross_pnl = 4 * (0.20 - 0.40) = -0.80 -- must be recorded exactly
-        # once, not twice (-1.60), and the position reduced by 4 once, not
-        # twice (fill_quantity == 6, not 2).
+        # gross_pnl = 4 * (0.20 - 0.40) = -0.80, fee = 0.05, pnl = -0.85 --
+        # must be recorded exactly once, not twice (-1.70), and the position
+        # reduced by 4 once, not twice (fill_quantity == 6, not 2).
         assert position_row["fill_quantity"] == 6
-        assert execution_log.get_today_live_loss() == pytest.approx(0.80)
+        assert execution_log.get_today_live_loss() == pytest.approx(0.85)
 
     def test_missing_client_order_id_leaves_unknown_without_crashing(self):
         """A malformed 'unknown' row with no stored client_order_id must be
@@ -1225,6 +1228,397 @@ class TestRecoverUnknownOrders:
         unknown_row = next(o for o in orders if o["id"] == unknown_row_id)
         assert pending_row["status"] == "filled"
         assert unknown_row["status"] == "pending"
+
+
+class TestRecoverSentOrders:
+    """Batch-22 item 2: status='sent' -- log_order()'s transient
+    pre-placement default -- was written by TWO sources with no path back to
+    a real outcome afterward: (a) main.cmd_order's own pre-log crashing
+    before ANY log_order_result call, and (b) the pending-loop's own "no
+    order_id" fallback just above (TestRecoverPendingOrders). Every live
+    pre-log call site now stashes client_order_id in response BEFORE the API
+    call (kalshi_client.compute_client_order_id) -- _recover_pending_orders
+    promotes a 'sent' row carrying that id to 'unknown' so the existing
+    client_order_id reconciliation (TestRecoverUnknownOrders above) picks it
+    up on the SAME pass, instead of it being a dead end."""
+
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_sent_row_with_client_order_id_is_promoted_and_resolved(self):
+        """The core fix: a 'sent' row carrying a client_order_id (e.g. from
+        main.cmd_order's pre-log, then a crash before the real outcome was
+        recorded) must resolve to 'filled' in the SAME recovery pass, not
+        stay stuck 'sent' forever."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="sent",
+            live=True,
+            response={"client_order_id": "coid_sent_recover"},
+        )
+        # Batch-22 F1/F2 follow-up: the promotion loop now requires a row
+        # to be past _SENT_PROMOTION_MIN_AGE_MINUTES before touching it (an
+        # in-flight placement legitimately sits at 'sent' too) -- backdate
+        # to simulate a genuinely stale row a real crash would leave behind,
+        # not the artificial just-now freshness this test would otherwise
+        # create. See TestRecoverSentOrders' own in-flight/age-guard tests
+        # further down for the guard's own direct coverage.
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET placed_at = datetime('now', '-30 minutes') "
+                "WHERE id = ?",
+                (row_id,),
+            )
+
+        mock_client = MagicMock()
+        mock_client._find_order_by_client_id.return_value = (
+            {
+                "order_id": "ord_found_from_sent",
+                "status": "executed",
+                "fill_count_fp": "2.00",
+            },
+            False,
+        )
+
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == row_id)
+        assert row["status"] == "filled"
+        mock_client._find_order_by_client_id.assert_called_once_with(
+            "coid_sent_recover"
+        )
+
+    def test_sent_row_without_client_order_id_stays_sent(self):
+        """No recoverable id (e.g. a row from before this fix) must leave
+        the row exactly as it was -- matching the prior fail-safe behavior
+        (dedup keeps blocking a re-placement) rather than guessing."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="sent",
+            live=True,
+        )
+
+        mock_client = MagicMock()
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == row_id)
+        assert row["status"] == "sent"
+        mock_client._find_order_by_client_id.assert_not_called()
+
+    def test_pending_row_with_no_order_id_preserves_client_order_id_through_to_sent(
+        self,
+    ):
+        """A 'pending' row (e.g. from _place_live_order's pre-log) that
+        crashes with no order_id recorded must carry its own already-stashed
+        client_order_id through the pending->sent transition -- previously
+        log_order_result's unconditional response overwrite (no COALESCE)
+        wiped it to NULL, permanently orphaning the row even though the id
+        was captured at pre-log time."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="pending",
+            live=True,
+            response={"client_order_id": "coid_preserved"},
+        )
+        # Batch-22 F1/F2 follow-up: backdated so the SAME-pass sent->unknown
+        # promotion below (which now requires the row be past
+        # _SENT_PROMOTION_MIN_AGE_MINUTES) still fires -- a real crash-
+        # recovery scenario has this same gap in practice (recovery runs on
+        # a periodic cron/watch cadence, not instantaneously after the
+        # original pre-log).
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET placed_at = datetime('now', '-30 minutes') "
+                "WHERE id = ?",
+                (row_id,),
+            )
+
+        mock_client = MagicMock()
+        # No order_id in the stored response -> falls into the "no order_id"
+        # branch (writes 'sent', preserving response), then this same call
+        # promotes it straight to 'unknown' and re-checks it -- uncertain=True
+        # here so it stays 'unknown' rather than resolving further, isolating
+        # exactly the claim this test is about: the id survived the
+        # pending->sent transition well enough to be correctly re-checked at
+        # all (a wiped response would have skipped the re-check entirely,
+        # per test_sent_row_without_client_order_id_stays_sent above).
+        mock_client._find_order_by_client_id.return_value = (None, True)
+        _recover_pending_orders(mock_client)
+
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT status, response FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["status"] == "unknown"
+        assert row["response"] is not None
+        import json as _json
+
+        assert _json.loads(row["response"])["client_order_id"] == "coid_preserved"
+        mock_client._find_order_by_client_id.assert_called_once_with("coid_preserved")
+
+    def test_pending_to_sent_to_unknown_resolves_within_one_recovery_call(self):
+        """End-to-end: a 'pending' row with no order_id but a captured
+        client_order_id gets demoted to 'sent' (preserving the id) and then
+        promoted straight to 'unknown' and reconciled -- all inside ONE
+        _recover_pending_orders() call, since the promotion loop runs after
+        the pending loop but before the unknown loop reads its rows."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="pending",
+            live=True,
+            response={"client_order_id": "coid_full_chain"},
+        )
+        # Batch-22 F1/F2 follow-up: see the matching comment on
+        # test_pending_row_with_no_order_id_preserves_client_order_id_through_to_sent
+        # above -- backdated so the same-pass promotion still fires.
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET placed_at = datetime('now', '-30 minutes') "
+                "WHERE id = ?",
+                (row_id,),
+            )
+
+        mock_client = MagicMock()
+        mock_client._find_order_by_client_id.return_value = (
+            {
+                "order_id": "ord_full_chain",
+                "status": "executed",
+                "fill_count_fp": "2.00",
+            },
+            False,
+        )
+
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == row_id)
+        assert row["status"] == "filled"
+
+    def test_in_flight_sent_row_is_not_promoted(self):
+        """Opus review follow-up (F1/F2/F8): a 'sent' row younger than
+        order_executor._SENT_PROMOTION_MIN_AGE_MINUTES must be left alone --
+        it may still be an ordinary in-flight placement (main.cmd_order's
+        own pre-log status, not just a crash artifact) that the ORIGINAL
+        placing process hasn't finished with yet. Promoting it here would
+        race that process's own eventual log_order_result() call."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="sent",
+            live=True,
+            response={"client_order_id": "coid_in_flight"},
+        )
+        # placed_at defaults to "now" -- well inside the age guard's margin.
+
+        mock_client = MagicMock()
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == row_id)
+        assert row["status"] == "sent", (
+            "an in-flight (just-now) 'sent' row must not be touched by "
+            "recovery -- promoting it risks racing the process still "
+            "placing it"
+        )
+        mock_client._find_order_by_client_id.assert_not_called()
+
+    def test_old_sent_row_past_the_age_guard_is_promoted(self):
+        """Positive control for the test above: once a 'sent' row is
+        genuinely old (past any realistic in-flight window), it must still
+        be promoted and reconciled -- the age guard delays recovery, it
+        doesn't disable it."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="sent",
+            live=True,
+            response={"client_order_id": "coid_stale"},
+        )
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET placed_at = datetime('now', '-30 minutes') "
+                "WHERE id = ?",
+                (row_id,),
+            )
+
+        mock_client = MagicMock()
+        mock_client._find_order_by_client_id.return_value = (
+            {
+                "order_id": "ord_stale_found",
+                "status": "executed",
+                "fill_count_fp": "2.00",
+            },
+            False,
+        )
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == row_id)
+        assert row["status"] == "filled"
+        mock_client._find_order_by_client_id.assert_called_once_with("coid_stale")
+
+    def test_paper_sent_rows_are_never_promoted(self):
+        """F8: get_sent_live_orders (and therefore the promotion loop) must
+        stay scoped to live=1 -- a paper order's own 'sent' pre-log default
+        must never be touched by live-order recovery machinery."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="sent",
+            live=False,
+            response={"client_order_id": "coid_paper_should_be_ignored"},
+        )
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET placed_at = datetime('now', '-30 minutes') "
+                "WHERE id = ?",
+                (row_id,),
+            )
+
+        mock_client = MagicMock()
+        _recover_pending_orders(mock_client)
+
+        orders = execution_log.get_recent_orders(limit=10)
+        row = next(o for o in orders if o["id"] == row_id)
+        assert row["status"] == "sent"
+        mock_client._find_order_by_client_id.assert_not_called()
+
+    def test_claim_sent_order_fails_if_row_already_resolved(self):
+        """Opus review follow-up (F3): claim_sent_order must be an atomic
+        claim (WHERE status='sent'), not an unconditional overwrite -- a
+        row a concurrent process already resolved (e.g. to 'filled') must
+        never be silently reverted back to a bare {"client_order_id": ...}
+        'unknown' response, which would wipe real settlement data
+        (order_id, fill_quantity) and make a filled position invisible to
+        get_filled_unsettled_live_orders() again."""
+        import execution_log
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="sent",
+            live=True,
+            response={"client_order_id": "coid_race"},
+        )
+        # Simulate a concurrent process having already resolved this row.
+        execution_log.log_order_result(
+            row_id,
+            status="filled",
+            response={"order_id": "ord_already_resolved", "status": "executed"},
+            fill_quantity=2,
+        )
+
+        won = execution_log.claim_sent_order(row_id, "coid_race")
+
+        assert won is False
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT status, response FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["status"] == "filled", (
+            "the concurrent writer's real resolution must survive untouched"
+        )
+        import json as _json
+
+        assert _json.loads(row["response"])["order_id"] == "ord_already_resolved"
+
+    def test_claim_sent_order_succeeds_when_still_sent(self):
+        """Positive control for the test above."""
+        import execution_log
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="sent",
+            live=True,
+            response={"client_order_id": "coid_ok"},
+        )
+
+        won = execution_log.claim_sent_order(row_id, "coid_ok")
+
+        assert won is True
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT status FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["status"] == "unknown"
 
 
 class TestFinalizeCancel:
@@ -1714,7 +2108,7 @@ class TestPollPendingOrdersExtended:
 
         import execution_log
         import main
-        from utils import KALSHI_FEE_RATE
+        from utils import kalshi_taker_fee
 
         execution_log.log_order(
             ticker="KXHIGH-25MAY15-T75",
@@ -1739,14 +2133,17 @@ class TestPollPendingOrdersExtended:
 
         orders = execution_log.get_recent_orders(limit=10)
         order = orders[0]
-        # pnl = 2 * (1 - 0.55) * (1 - KALSHI_FEE_RATE), NOT the maker-fee
-        # 0.90 test_settlement_recorded_for_finalized_market pins for the
-        # identical price/quantity with order_type='limit' (the default).
-        expected = 2 * (1 - 0.55) * (1 - KALSHI_FEE_RATE)
-        assert order["pnl"] == pytest.approx(expected, rel=1e-3)
-        assert expected != pytest.approx(
-            0.90, rel=1e-3
-        )  # mutation guard: fee must differ from maker
+        # Batch-22 items 3+6: gross = 2 * (1 - 0.55) = 0.90; fee =
+        # ceil(0.07*2*0.55*0.45*100)/100 = 0.04. pnl = 0.90 - 0.04 = 0.86 --
+        # NOT the maker-fee 0.90 test_settlement_recorded_for_finalized_market
+        # pins for the identical price/quantity with order_type='limit' (the
+        # default), and NOT the old flat-KALSHI_FEE_RATE approximation.
+        # Literal expected value (opus review follow-up: a call computed
+        # from kalshi_taker_fee itself can't catch a bug inside that
+        # function) cross-checked against utils.kalshi_taker_fee(2, 0.55) as
+        # a positive control that the two independent computations agree.
+        assert order["pnl"] == pytest.approx(0.86)
+        assert kalshi_taker_fee(2, 0.55) == pytest.approx(0.04)
 
     def test_settlement_defaults_to_taker_fee_for_unrecognized_order_type(self):
         """AUD-0003: a missing/unrecognized order_type must NOT be assumed
@@ -1759,7 +2156,6 @@ class TestPollPendingOrdersExtended:
 
         import execution_log
         import main
-        from utils import KALSHI_FEE_RATE
 
         row_id = execution_log.log_order(
             ticker="KXHIGH-25MAY15-T75",
@@ -1785,8 +2181,9 @@ class TestPollPendingOrdersExtended:
         main._poll_pending_orders(mock_client, config={})
 
         order = execution_log.get_recent_orders(limit=10)[0]
-        expected = 2 * (1 - 0.55) * (1 - KALSHI_FEE_RATE)
-        assert order["pnl"] == pytest.approx(expected, rel=1e-3)
+        # Literal (see the matching test above for the hand-computed
+        # derivation) -- not derived from the function under test.
+        assert order["pnl"] == pytest.approx(0.86)
 
 
 class TestPlaceLiveOrderDedup:
@@ -3723,10 +4120,11 @@ class TestExitLivePosition(_LiveDBTestBase):
                 "FROM orders WHERE id = ?",
                 (row_id,),
             ).fetchone()
-        # Loss case -> no fee discount (matches the natural-settlement
-        # convention: fee only ever discounts a genuine gain).
-        # gross_pnl = 10 * (0.20 - 0.40) = -2.00
-        assert row["pnl"] == pytest.approx(-2.00)
+        # Batch-22 items 3+6: fee applies on a loss too now (charged on the
+        # taker fill itself, independent of outcome). gross_pnl = 10 *
+        # (0.20 - 0.40) = -2.00; fee = ceil(0.07*10*0.20*0.80*100)/100 =
+        # 0.12. pnl = -2.00 - 0.12 = -2.12.
+        assert row["pnl"] == pytest.approx(-2.12)
         assert row["exit_price"] == pytest.approx(0.20)
         assert row["exit_reason"] == "stop_loss"
         assert row["outcome_yes"] is None
@@ -3779,8 +4177,9 @@ class TestExitLivePosition(_LiveDBTestBase):
 
     def test_gain_case_applies_fee_discount(self):
         """A genuine gain (exit_price > entry_price, e.g. a model-exit that
-        fires on a favorable move) DOES get the taker-fee discount -- only a
-        loss skips it, matching the natural-settlement win/loss asymmetry."""
+        fires on a favorable move) DOES get the taker-fee discount -- and
+        (batch-22 items 3+6) so does a loss, since the fee is charged on the
+        taker fill itself regardless of outcome."""
         from unittest.mock import MagicMock, patch
 
         import execution_log
@@ -3806,13 +4205,13 @@ class TestExitLivePosition(_LiveDBTestBase):
             )
 
         assert result is True
-        # gross_pnl = 10 * (0.60 - 0.40) = 2.00; gain -> fee applies:
-        # 2.00 * (1 - 0.07) = 1.86
+        # gross_pnl = 10 * (0.60 - 0.40) = 2.00; fee = ceil(0.07*10*0.60*
+        # 0.40*100)/100 = 0.17. pnl = 2.00 - 0.17 = 1.83.
         with execution_log._conn() as con:
             row = con.execute(
                 "SELECT pnl FROM orders WHERE id = ?", (row_id,)
             ).fetchone()
-        assert row["pnl"] == pytest.approx(1.86)
+        assert row["pnl"] == pytest.approx(1.83)
 
     def test_ioc_no_fill_leaves_position_open(self):
         from unittest.mock import MagicMock, patch
@@ -3893,10 +4292,10 @@ class TestExitLivePosition(_LiveDBTestBase):
         assert len(reopened) == 1
         assert reopened[0]["fill_quantity"] == 6
 
-        # Loss case -> no fee discount: gross_pnl = 4 * (0.20 - 0.40) = -0.80,
-        # realized immediately via add_live_loss even though the row itself
-        # isn't settled yet.
-        assert execution_log.get_today_live_loss() == pytest.approx(0.80)
+        # gross_pnl = 4 * (0.20 - 0.40) = -0.80; fee = ceil(0.07*4*0.20*
+        # 0.80*100)/100 = 0.05. pnl = -0.85, realized immediately via
+        # add_live_loss even though the row itself isn't settled yet.
+        assert execution_log.get_today_live_loss() == pytest.approx(0.85)
 
     def test_partial_fill_gain_case_applies_fee_discount(self):
         """Mirrors test_gain_case_applies_fee_discount for the partial-fill
@@ -3928,9 +4327,9 @@ class TestExitLivePosition(_LiveDBTestBase):
             )
 
         assert result is False
-        # gross_pnl = 4 * (0.60 - 0.40) = 0.80; gain -> fee applies:
-        # 0.80 * (1 - 0.07) = 0.744
-        assert execution_log.get_today_live_loss() == pytest.approx(-0.744, rel=1e-3)
+        # gross_pnl = 4 * (0.60 - 0.40) = 0.80; fee = ceil(0.07*4*0.60*
+        # 0.40*100)/100 = 0.07. pnl = 0.80 - 0.07 = 0.73.
+        assert execution_log.get_today_live_loss() == pytest.approx(-0.73)
         with execution_log._conn() as con:
             row = con.execute(
                 "SELECT fill_quantity FROM orders WHERE id = ?", (row_id,)
@@ -3995,12 +4394,13 @@ class TestExitLivePosition(_LiveDBTestBase):
             )
 
         assert result is True
-        # Loss case -> no fee discount. gross_pnl = 5 * (0.15 - 0.30) = -0.75
+        # gross_pnl = 5 * (0.15 - 0.30) = -0.75; fee = ceil(0.07*5*0.15*
+        # 0.85*100)/100 = 0.05. pnl = -0.75 - 0.05 = -0.80.
         with execution_log._conn() as con:
             row = con.execute(
                 "SELECT pnl FROM orders WHERE id = ?", (row_id,)
             ).fetchone()
-        assert row["pnl"] == pytest.approx(-0.75)
+        assert row["pnl"] == pytest.approx(-0.80)
 
     def test_partial_fill_settles_the_exit_orders_own_row(self):
         """L1378: a partial IOC exit must settle its OWN row (not the
@@ -4046,8 +4446,9 @@ class TestExitLivePosition(_LiveDBTestBase):
         assert exit_row["settled_at"] is not None
         assert exit_row["exit_price"] == pytest.approx(0.60)
         assert exit_row["exit_reason"] == "model_exit"
-        # gross_pnl = 3 * (0.60 - 0.40) = 0.60; gain -> fee: 0.60 * 0.93
-        assert exit_row["pnl"] == pytest.approx(0.558)
+        # gross_pnl = 3 * (0.60 - 0.40) = 0.60; fee = ceil(0.07*3*0.60*
+        # 0.40*100)/100 = 0.06. pnl = 0.60 - 0.06 = 0.54.
+        assert exit_row["pnl"] == pytest.approx(0.54)
 
     def test_partial_then_full_exit_combined_pnl_not_under_reported(self, tmp_path):
         """Regression for L1378: a position sold in two legs (a partial IOC
@@ -4069,8 +4470,8 @@ class TestExitLivePosition(_LiveDBTestBase):
             live=True,
         )
 
-        # Leg 1: partial exit, gain. gross = 3*(0.60-0.40)=0.60, fee applies:
-        # 0.60 * 0.93 = 0.558
+        # Leg 1: partial exit, gain. gross = 3*(0.60-0.40)=0.60, fee =
+        # ceil(0.07*3*0.60*0.40*100)/100 = 0.06. pnl = 0.60 - 0.06 = 0.54.
         mock_client = MagicMock()
         mock_client.place_order.return_value = {
             "order_id": "ord_partial",
@@ -4082,10 +4483,11 @@ class TestExitLivePosition(_LiveDBTestBase):
                 mock_client, position, 0.60, "model_exit", "2026-05-15_12z"
             )
         assert leg1_result is False
-        partial_pnl = 0.558
+        partial_pnl = 0.54
 
         # Leg 2: full exit of the reduced remainder (7 left), loss. gross =
-        # 7*(0.30-0.40)=-0.70, loss -> no fee.
+        # 7*(0.30-0.40)=-0.70; fee = ceil(0.07*7*0.30*0.70*100)/100 = 0.11
+        # (batch-22 items 3+6: fee now applies on a loss too). pnl = -0.81.
         mock_client2 = MagicMock()
         mock_client2.place_order.return_value = {
             "order_id": "ord_final",
@@ -4097,7 +4499,7 @@ class TestExitLivePosition(_LiveDBTestBase):
                 mock_client2, position2, 0.30, "stop_loss", "2026-05-15_12z"
             )
         assert leg2_result is True
-        final_pnl = -0.70
+        final_pnl = -0.81
 
         summary = execution_log.get_live_pnl_summary()
         # The core assertion: the combined total, not just the final leg.
@@ -4150,7 +4552,8 @@ class TestExitLivePosition(_LiveDBTestBase):
             live=True,
         )
 
-        # Leg 1: partial, gain. gross=3*(0.60-0.40)=0.60, fee: 0.60*0.93=0.558
+        # Leg 1: partial, gain. gross=3*(0.60-0.40)=0.60, fee=ceil(0.07*3*
+        # 0.60*0.40*100)/100=0.06, pnl=0.54.
         mock1 = MagicMock()
         mock1.place_order.return_value = {"order_id": "ord1", "fill_count_fp": "3.00"}
         with patch("trading_gates.pre_live_trade_check", return_value=None):
@@ -4162,9 +4565,11 @@ class TestExitLivePosition(_LiveDBTestBase):
                 "2026-05-15_12z",
             )
         assert r1 is False
-        pnl1 = 0.558
+        pnl1 = 0.54
 
-        # Leg 2: partial, loss. gross=4*(0.30-0.40)=-0.40, no fee.
+        # Leg 2: partial, loss. gross=4*(0.30-0.40)=-0.40; fee=ceil(0.07*4*
+        # 0.30*0.70*100)/100=0.06 (batch-22 items 3+6: fee now applies on a
+        # loss too). pnl=-0.46.
         mock2 = MagicMock()
         mock2.place_order.return_value = {"order_id": "ord2", "fill_count_fp": "4.00"}
         with patch("trading_gates.pre_live_trade_check", return_value=None):
@@ -4176,10 +4581,10 @@ class TestExitLivePosition(_LiveDBTestBase):
                 "2026-05-15_12z",
             )
         assert r2 is False
-        pnl2 = -0.40
+        pnl2 = -0.46
 
-        # Leg 3: final close of the last 3. gross=3*(0.50-0.40)=0.30, fee:
-        # 0.30*0.93=0.279
+        # Leg 3: final close of the last 3. gross=3*(0.50-0.40)=0.30, fee=
+        # ceil(0.07*3*0.50*0.50*100)/100=0.06, pnl=0.24.
         mock3 = MagicMock()
         mock3.place_order.return_value = {"order_id": "ord3", "fill_count_fp": "3.00"}
         with patch("trading_gates.pre_live_trade_check", return_value=None):
@@ -4191,7 +4596,7 @@ class TestExitLivePosition(_LiveDBTestBase):
                 "2026-05-15_12z",
             )
         assert r3 is True
-        pnl3 = 0.279
+        pnl3 = 0.24
 
         summary = execution_log.get_live_pnl_summary()
         assert summary["total_pnl"] == pytest.approx(pnl1 + pnl2 + pnl3)

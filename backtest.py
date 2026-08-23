@@ -536,16 +536,40 @@ def run_backtest(
         is_holdout = holdout_cutoff is not None and tdate >= holdout_cutoff
 
         # ── Benchmark P&L calculations ────────────────────────────────────────
+        # Batch-22 items 3+6: these 3 benchmarks intentionally model a naive
+        # taker-style "just take the market price" strategy (see the L2-B
+        # comment above re: the bot's own Kelly sizing correctly using the
+        # maker rate instead) -- the real taker fee is charged on the fill
+        # itself, independent of win/loss, so it's now subtracted
+        # unconditionally rather than only inside the win branch (the old
+        # `* (1 - KALSHI_FEE_RATE)` win-only multiplier).
+        #
+        # Opus review follow-up: an earlier version of this fix called
+        # utils.kalshi_taker_fee(stake/price, price) directly -- WRONG, since
+        # that helper rounds UP to a whole CENT, and this loop's units are a
+        # FRACTION of bankroll (yes_stake=0.05 is 5%, not $0.05). Any
+        # positive raw-cents value rounds up to at least 1 cent regardless of
+        # true magnitude, so every benchmark trade at every price was
+        # overcharged a flat 0.01 -- up to ~286x the true fee near the
+        # extremes, and large enough on its own to turn a real winning trade
+        # into a reported net loss. kalshi_taker_fee's cent-rounding only
+        # makes sense for real dollar amounts; deriving the SAME curved
+        # formula directly in fractional units instead: substituting
+        # contracts C = stake/price into fee = KALSHI_FEE_RATE*C*P*(1-P)
+        # gives fee = KALSHI_FEE_RATE*stake*(1-P) -- a smooth fraction, not
+        # cent-quantized (there are no real cents at this bankroll-fraction
+        # scale to round to).
         # Always-YES benchmark
         yes_stake = min(0.05, 0.05)  # same 5% cap
         yes_won = actual == 1
         yes_entry = market_prob
         if yes_entry <= 0:
             yes_entry = 0.5
+        _yes_fee = KALSHI_FEE_RATE * yes_stake * (1 - yes_entry)
         if yes_won:
-            bench_yes = yes_stake * (1 - yes_entry) / yes_entry * (1 - KALSHI_FEE_RATE)
+            bench_yes = yes_stake * (1 - yes_entry) / yes_entry - _yes_fee
         else:
-            bench_yes = -yes_stake
+            bench_yes = -yes_stake - _yes_fee
 
         # Follow-market benchmark (bet whichever side market prices >50%)
         mkt_side = "yes" if market_prob > 0.5 else "no"
@@ -555,10 +579,11 @@ def run_backtest(
         mkt_entry = market_prob if mkt_side == "yes" else 1 - market_prob
         if mkt_entry <= 0:
             mkt_entry = 0.5
+        _mkt_fee = KALSHI_FEE_RATE * yes_stake * (1 - mkt_entry)
         if mkt_won:
-            bench_mkt = yes_stake * (1 - mkt_entry) / mkt_entry * (1 - KALSHI_FEE_RATE)
+            bench_mkt = yes_stake * (1 - mkt_entry) / mkt_entry - _mkt_fee
         else:
-            bench_mkt = -yes_stake
+            bench_mkt = -yes_stake - _mkt_fee
 
         # Random benchmark (reproducible with seed based on ticker)
         rng_local = random.Random(hash(ticker) & 0xFFFFFF)
@@ -569,12 +594,11 @@ def run_backtest(
         rand_entry = market_prob if rand_side == "yes" else 1 - market_prob
         if rand_entry <= 0:
             rand_entry = 0.5
+        _rand_fee = KALSHI_FEE_RATE * yes_stake * (1 - rand_entry)
         if rand_won:
-            bench_rand = (
-                yes_stake * (1 - rand_entry) / rand_entry * (1 - KALSHI_FEE_RATE)
-            )
+            bench_rand = yes_stake * (1 - rand_entry) / rand_entry - _rand_fee
         else:
-            bench_rand = -yes_stake
+            bench_rand = -yes_stake - _rand_fee
 
         results.append(
             {

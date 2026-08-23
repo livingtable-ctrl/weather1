@@ -476,6 +476,90 @@ class TestPlaceMakerOrderIdempotency:
         assert first_id != second_id
 
 
+class TestComputeClientOrderId:
+    """Batch-22 item 2: compute_client_order_id() is the standalone helper
+    place_order() now routes its own deterministic-key derivation through
+    (instead of an inline formula) -- exposed so order_executor.py/main.py's
+    live pre-log call sites can precompute the SAME id before ever calling
+    place_order, so a crash between the pre-log and the real API response
+    still leaves a row _recover_pending_orders can reconcile against Kalshi.
+    See kalshi_client.place_order's own client_order_id line, which now
+    calls this same function."""
+
+    def _make_client(self):
+        from unittest.mock import patch
+
+        import kalshi_client
+
+        with patch("kalshi_client.KalshiClient.__init__", return_value=None):
+            client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+        client.get_order = lambda order_id: {"order_id": order_id, "status": "resting"}
+        return client
+
+    def test_matches_place_orders_own_internal_derivation(self):
+        """The core contract: a caller that pre-computes the id via this
+        function and later calls place_order with the identical inputs must
+        get byte-identical results -- otherwise a pre-logged client_order_id
+        would never actually match what Kalshi received."""
+        import kalshi_client
+
+        precomputed = kalshi_client.compute_client_order_id(
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "12z"
+        )
+
+        client = self._make_client()
+        mock_post = MagicMock(return_value={"order_id": "ord_test"})
+        client._post = mock_post
+        client.place_order(
+            "KXHIGH-26APR25-T72",
+            "yes",
+            "buy",
+            5,
+            0.45,
+            time_in_force="good_till_canceled",
+            cycle="12z",
+        )
+        actual = mock_post.call_args.args[1]["client_order_id"]
+
+        assert actual == precomputed
+
+    def test_deterministic_for_identical_inputs(self):
+        import kalshi_client
+
+        id1 = kalshi_client.compute_client_order_id(
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "12z"
+        )
+        id2 = kalshi_client.compute_client_order_id(
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "12z"
+        )
+        assert id1 == id2
+
+    def test_differs_when_action_differs(self):
+        """A buy and a sell for the same ticker/side/qty/price/cycle (e.g.
+        an entry and a same-cycle exit) must not collide on the same id --
+        distinct real orders on the exchange."""
+        import kalshi_client
+
+        buy_id = kalshi_client.compute_client_order_id(
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "12z"
+        )
+        sell_id = kalshi_client.compute_client_order_id(
+            "KXHIGH-26APR25-T72", "yes", "sell", 5, 0.45, "12z"
+        )
+        assert buy_id != sell_id
+
+    def test_differs_when_price_differs(self):
+        import kalshi_client
+
+        id1 = kalshi_client.compute_client_order_id(
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "12z"
+        )
+        id2 = kalshi_client.compute_client_order_id(
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.46, "12z"
+        )
+        assert id1 != id2
+
+
 class TestKeyPermissions:
     def test_warns_on_world_readable_key(self, tmp_path, caplog):
         """Loading a key file with group/other read bits set emits a warning (Unix only)."""

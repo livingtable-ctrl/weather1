@@ -57,7 +57,11 @@ from colors import (
 )
 from config import load_and_validate as _load_config
 from consistency import find_violations
-from kalshi_client import KalshiClient, OrderStatusUnknownError
+from kalshi_client import (
+    KalshiClient,
+    OrderStatusUnknownError,
+    compute_client_order_id,
+)
 from notify import alert_strong_signal
 from order_executor import (  # noqa: F401 — re-exports: tests + main code reference these via main.*
     _auto_place_trades,
@@ -2704,6 +2708,50 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                     except RuntimeError as _gate_err:
                         print(red(f"  Live trading gate blocked: {_gate_err}"))
                         return
+                    # Batch-22 item 1 (adjacency, confirmed via
+                    # AskUserQuestion): this branch is a second manual live-
+                    # order path with the exact same gate-coverage gap
+                    # cmd_order had -- _place_live_order (the automated live
+                    # path) gates every entry on daily live loss, daily live
+                    # spend, and max open live positions, but this path had
+                    # none of the three. Always a BUY (this whole function is
+                    # "quick paper buy"), so no buy/sell scoping needed --
+                    # mirrors cmd_order's own gate order exactly.
+                    import execution_log as _execution_log_qpb
+
+                    _live_cfg_qpb = _load_live_config()
+                    if _execution_log_qpb.get_today_live_loss() >= _live_cfg_qpb.get(
+                        "daily_loss_limit", float("inf")
+                    ):
+                        print(
+                            red(
+                                f"  Daily live loss limit ${_live_cfg_qpb.get('daily_loss_limit', 'inf')} "
+                                "reached — refusing to place this order."
+                            )
+                        )
+                        return
+                    from utils import MAX_DAILY_SPEND as _MAX_DAILY_SPEND_QPB
+
+                    if (
+                        _execution_log_qpb.get_today_live_spend()
+                        >= _MAX_DAILY_SPEND_QPB
+                    ):
+                        print(
+                            red(
+                                f"  Daily live spend cap ${_MAX_DAILY_SPEND_QPB:.0f} reached — "
+                                "refusing to place this order."
+                            )
+                        )
+                        return
+                    _max_open_qpb = _live_cfg_qpb.get("max_open_positions", 10)
+                    if order_executor._count_open_live_orders() >= _max_open_qpb:
+                        print(
+                            red(
+                                f"  Max open live positions {_max_open_qpb} reached — "
+                                "refusing to place this order."
+                            )
+                        )
+                        return
                 # AUD-0010: this places a REAL live order via place_maker_order
                 # (client.place_order under the hood) -- pre-log BEFORE the API
                 # call, same as every other live-order call site in the repo
@@ -2764,6 +2812,26 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                                 "Monitor and close it manually if needed."
                             )
                         )
+                # Minute-bucketed pseudo-cycle so a quick manual retry after a
+                # lost response dedups server-side instead of generating a
+                # fresh random UUID (place_maker_order's default) and
+                # silently double-placing (2026-07-09). Deliberately NOT
+                # derived from ticker/side/price/qty alone -- that would
+                # dedup across the market's whole life and swallow a
+                # legitimate re-place after a cancel. Computed here (before
+                # the pre-log, not inside the try below) so the
+                # client_order_id pre-computed from it matches exactly what
+                # place_maker_order -> place_order will derive internally.
+                _maker_cycle = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M")
+                # Batch-22 item 2 (adjacency): pre-computed and stored BEFORE
+                # the API call, same reasoning as cmd_order's own fix -- a
+                # crash between this pre-log and the log_order_result calls
+                # below otherwise leaves a row _recover_pending_orders can't
+                # reconcile. place_maker_order is a thin place_order()
+                # wrapper (action="buy", same idempotency formula).
+                _qpb_cid = compute_client_order_id(
+                    ticker, side, "buy", qty, maker_price, _maker_cycle
+                )
                 _qpb_log_id = log_order(
                     ticker,
                     side,
@@ -2772,6 +2840,7 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                     order_type="limit",
                     status="pending",
                     live=_qpb_is_live,
+                    response={"client_order_id": _qpb_cid},
                     close_time=(
                         (
                             _market_for_limits.get("close_time")
@@ -2784,14 +2853,6 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                     forecast_cycle=order_executor._current_forecast_cycle(),
                 )
                 try:
-                    # Minute-bucketed pseudo-cycle so a quick manual retry
-                    # after a lost response dedups server-side instead of
-                    # generating a fresh random UUID (place_maker_order's
-                    # default) and silently double-placing (2026-07-09).
-                    # Deliberately NOT derived from ticker/side/price/qty
-                    # alone -- that would dedup across the market's whole
-                    # life and swallow a legitimate re-place after a cancel.
-                    _maker_cycle = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M")
                     result = client.place_maker_order(
                         ticker, side, maker_price, qty, cycle=_maker_cycle
                     )
@@ -4858,15 +4919,41 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         )
         return
 
+    # Batch-22 item 5: rain previously had no direct guard here at all --
+    # every other shadow-only family (hurricane-count, hurricane-next-event,
+    # storm-order, unsupported-hurricane, snow, hourly) refuses outright;
+    # rain relied solely on paper.check_position_limits() below, which (a)
+    # sits inside a try/except that WARNS and CONTINUES on failure rather
+    # than blocking the order, and (b) only runs for action == "buy" (a
+    # manual live SELL of a rain ticker was entirely unguarded). Mirrors the
+    # snow guard's exact shape immediately below for the same fail-closed
+    # reasoning, INCLUDING that same guard's known/accepted tradeoff (opus
+    # review, LOW #14): if _rain_gates_active() ever flips back to False
+    # (its settled-count bar can drop, not just rise) while a live rain
+    # position is genuinely open, this also refuses the manual SELL needed
+    # to close it, same as the pre-existing snow guard already does today.
+    # Not a regression this fix introduces -- accepted here for the exact
+    # same reason the snow guard already accepts it.
+    if (
+        ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY))
+        and not _rain_gates_active()
+    ):
+        print(
+            red(
+                f"  {ticker}: monthly rain markets are shadow-only until RAIN_TRADING_ENABLED=1 "
+                "and >=20 settled rain predictions exist — refusing to place this order."
+            )
+        )
+        return
+
     # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" -- Snow Step 2
-    # (2026-07-30): kept as its own explicit refuse-outright guard rather
-    # than dropping it to match rain's leaner shape (relying solely on
-    # check_position_limits()) -- an opus review originally added this
-    # direct check because relying on check_position_limits() alone fails
-    # open on an unhandled exception at that call site; that reasoning
-    # applies regardless of whether a model exists. Now conditional on
-    # _snow_gates_active() (shadow-only), not unconditional, matching the
-    # model's real state.
+    # (2026-07-30): kept as its own explicit refuse-outright guard -- an
+    # opus review originally added this direct check because relying on
+    # check_position_limits() alone fails open on an unhandled exception at
+    # that call site; that reasoning applies regardless of whether a model
+    # exists (and, per batch-22 item 5 above, now applies to rain too). Now
+    # conditional on _snow_gates_active() (shadow-only), not unconditional,
+    # matching the model's real state.
     if (
         ticker.upper().startswith(tuple(_KXSNOW_MONTHLY_CITY))
         and not _snow_gates_active()
@@ -4978,6 +5065,73 @@ def cmd_order(client: KalshiClient, action: str, args: list):
             pre_live_trade_check(client)
         except RuntimeError as _gate_err:
             print(red(f"  Live trading gate blocked: {_gate_err}"))
+            return
+
+    # Batch-22 item 1: _place_live_order (the automated live path) gates
+    # every entry on 3 execution_log-backed hard stops (daily live loss,
+    # daily live spend, max open live positions) in addition to the shared
+    # LiveTradingGate above -- this manual path had none of the three, so
+    # repeated manual buy invocations faced no live daily-loss halt, no cap
+    # on cumulative same-day live dollars, and no cap on concurrent live
+    # positions opened via this path specifically. Mirrors
+    # _place_live_order's own gate order (steps 1/1b/2) and, like the
+    # position-limit check just below, only for "buy" -- these are all
+    # ADDED-exposure caps; applying them to "sell" would block an exit
+    # exactly when the account is already at/over a limit and most needs to
+    # reduce it (same reasoning as the check_position_limits scoping below).
+    #
+    # Opus review follow-up, accepted as documented rather than changed:
+    # (F10) these gates run after the analysis fetch and the operator's own
+    # "Confirm? (y/N)" prompt further up -- a confirmed order can still get
+    # refused here. Moving them earlier would mean computing _is_live before
+    # this function's existing analysis/confirm flow, a larger reorder for a
+    # UX-only cost (a wasted confirm click, not a correctness or financial-
+    # risk issue -- the refusal itself is unaffected by where it runs).
+    # (F11) mirrors only _place_live_order's steps 1/1b/2 (loss/spend/open-
+    # count), not step 3's max_trade_dollars size cap -- deliberate: this
+    # manual path lets the operator specify an explicit count, unlike the
+    # automated Kelly-sized path step 3 exists to bound; auto-capping the
+    # operator's own explicit size here would fight that intent rather than
+    # add safety.
+    # (F12) an UNMATCHED live sell (no tracked position for this ticker/side
+    # -- the `elif action == "sell":` branch further down) reaches Kalshi
+    # with none of these 3 checks either, same as every "sell" -- pre-
+    # existing, unrelated to this fix (these gates only ever apply to
+    # "buy"). Real risk assessed as low: Kalshi itself rejects a sell that
+    # would open a new short position rather than reduce an existing one,
+    # so this can only ever reduce/close real exposure, never add it.
+    if _is_live and action == "buy":
+        import execution_log as _execution_log_ord
+
+        _live_cfg_ord = _load_live_config()
+        if _execution_log_ord.get_today_live_loss() >= _live_cfg_ord.get(
+            "daily_loss_limit", float("inf")
+        ):
+            print(
+                red(
+                    f"  Daily live loss limit ${_live_cfg_ord.get('daily_loss_limit', 'inf')} "
+                    "reached — refusing to place this order."
+                )
+            )
+            return
+        from utils import MAX_DAILY_SPEND as _MAX_DAILY_SPEND_ORD
+
+        if _execution_log_ord.get_today_live_spend() >= _MAX_DAILY_SPEND_ORD:
+            print(
+                red(
+                    f"  Daily live spend cap ${_MAX_DAILY_SPEND_ORD:.0f} reached — "
+                    "refusing to place this order."
+                )
+            )
+            return
+        _max_open_ord = _live_cfg_ord.get("max_open_positions", 10)
+        if order_executor._count_open_live_orders() >= _max_open_ord:
+            print(
+                red(
+                    f"  Max open live positions {_max_open_ord} reached — "
+                    "refusing to place this order."
+                )
+            )
             return
 
     # Position-limit check (city/date, directional, correlated-group caps) —
@@ -5095,6 +5249,19 @@ def cmd_order(client: KalshiClient, action: str, args: list):
                 "manually if needed."
             )
         )
+    # Captured once (not re-derived at the place_order call below) so the
+    # client_order_id computed here for the pre-log and the one
+    # place_order() derives internally are guaranteed to match -- both must
+    # see the identical cycle value. Batch-22 item 2: pre-computed and
+    # stored in response BEFORE the API call so a crash between this pre-log
+    # and the log_order_result calls below leaves a row
+    # _recover_pending_orders can still reconcile against Kalshi, instead of
+    # a dead-end 'sent' status. See kalshi_client.compute_client_order_id's
+    # own docstring.
+    _cycle = order_executor._current_forecast_cycle()
+    _cmd_order_cid = compute_client_order_id(
+        ticker, side, action, int(count), price, _cycle
+    )
     row_id = log_order(
         ticker,
         side,
@@ -5109,12 +5276,13 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         # orders get client.place_order's own GTC default.
         order_type=("market" if _is_live else "limit"),
         live=_is_live,
+        response={"client_order_id": _cmd_order_cid},
         closes_position_id=(
             _live_close_position["id"] if _live_close_position else None
         ),
         close_time=_market.get("close_time") if _market else None,
         entry_prob=_analysis.get("forecast_prob") if _analysis else None,
-        forecast_cycle=order_executor._current_forecast_cycle(),
+        forecast_cycle=_cycle,
     )
     _placed_order: dict | None = None
     # Only mirror what actually filled — a resting/partially-filled order was
@@ -5149,8 +5317,10 @@ def cmd_order(client: KalshiClient, action: str, args: list):
         # count+price+cycle) -- omitting it (as this code did before the
         # 2026-08-17 opus review) falls back to a random UUID, so a manual
         # retry of a failed/uncertain cmd_order call gets no server-side
-        # dedup protection the automated paths already have.
-        _cycle = order_executor._current_forecast_cycle()
+        # dedup protection the automated paths already have. Reuses the same
+        # _cycle captured above (not re-derived here) so this call's own
+        # internally-computed client_order_id matches the one already
+        # pre-logged.
         if _is_live:
             result = client.place_order(
                 ticker,

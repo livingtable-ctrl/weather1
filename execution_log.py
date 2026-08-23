@@ -800,6 +800,79 @@ def get_unknown_live_orders() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_sent_live_orders(older_than_minutes: int = 0) -> list[dict]:
+    """Return every live order still at status='sent' (log_order()'s
+    transient pre-placement default), unbounded.
+
+    Batch-22 item 2: 'sent' is written in two situations, both meaning "we
+    don't know what happened to this order attempt": (a) log_order()'s own
+    default, when a caller (main.cmd_order) pre-logs before ever touching
+    the API and the process then crashes before the real outcome is
+    recorded; (b) order_executor._recover_pending_orders' own "pending row
+    with no order_id" branch, which downgrades TO 'sent' for the same
+    reason. Neither get_pending_live_orders() nor get_unknown_live_orders()
+    nor get_filled_unsettled_live_orders() ever select 'sent' -- before this
+    fix, nothing ever re-checked these rows again, so a real fill could go
+    permanently untracked. Mirrors get_pending_live_orders'/
+    get_unknown_live_orders' unbounded WHERE-scoped shape.
+
+    older_than_minutes: opus review (batch-22 follow-up, F1/F2) -- a 'sent'
+    row is genuinely "unknown outcome" for its ENTIRE lifetime, not just
+    after a crash: main.cmd_order/main._quick_paper_buy pre-log with this
+    exact status BEFORE calling place_order at all, so a row can be 'sent'
+    for the ordinary few seconds an in-flight placement takes. Without this
+    filter, a concurrent _recover_pending_orders() pass (cron vs `watch
+    --auto --live`, deliberately unserialized per AUD-0013) could read and
+    promote/resolve a row the ORIGINAL placing process hasn't finished with
+    yet -- racing its own eventual log_order_result() call and, worse,
+    potentially resolving a not-yet-actually-attempted order to 'failed'
+    (unblocking dedup) or double-applying a partial-exit settlement. The
+    default (0) is unbounded for callers that intentionally want every
+    'sent' row regardless of age (e.g. an operator inspection script);
+    order_executor._recover_pending_orders passes a real margin.
+    """
+    init_log()
+    with _conn() as con:
+        if older_than_minutes > 0:
+            rows = con.execute(
+                f"SELECT * FROM orders WHERE live = 1 AND status = 'sent' "
+                f"AND {sql_normalize_iso_column('placed_at')} <= datetime('now', ?) "
+                f"ORDER BY placed_at",
+                (f"-{older_than_minutes} minutes",),
+            ).fetchall()
+        else:
+            rows = con.execute(
+                "SELECT * FROM orders WHERE live = 1 AND status = 'sent' "
+                "ORDER BY placed_at",
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def claim_sent_order(row_id: int, client_order_id: str) -> bool:
+    """Atomically promote a 'sent' row to 'unknown' (carrying its recovered
+    client_order_id) ONLY if it is still 'sent' at the moment of this
+    UPDATE. Returns whether THIS call won the claim.
+
+    Opus review follow-up (batch-22, F3): the original promotion write was
+    a plain unconditional UPDATE (no WHERE status='sent' predicate) --
+    log_order_result() always overwrites status/response/error/fill_quantity
+    regardless of the row's CURRENT state, so a promotion landing after a
+    concurrent process had already resolved the same row (e.g. to 'filled'
+    via the 'unknown' reconciliation loop just below, in the same or a
+    different process) could silently revert real settlement data (order_id,
+    fill_quantity) back to a bare {"client_order_id": ...} response. Mirrors
+    claim_unknown_order's exact atomicity pattern for the identical reason.
+    """
+    init_log()
+    with _conn() as con:
+        cur = con.execute(
+            "UPDATE orders SET status = 'unknown', response = ? "
+            "WHERE id = ? AND status = 'sent'",
+            (json.dumps({"client_order_id": client_order_id}), row_id),
+        )
+    return cur.rowcount > 0
+
+
 def get_filled_unsettled_live_orders() -> list[dict]:
     """Return live filled orders that have not yet had their settlement
     outcome recorded -- i.e. open POSITIONS, not exit orders.
@@ -1014,16 +1087,71 @@ def record_live_early_exit_with_retry(
         retries,
         last_exc,
     )
+    # Batch-22 item 7: was a plain write_text() read-modify-write with no
+    # lock and no atomic_write_json -- two processes (cron and `watch --auto
+    # --live`, deliberately unserialized per AUD-0013) could each read the
+    # same pre-append list and one write would clobber the other's record; a
+    # crash mid-write (plain write_text is not atomic) could truncate the
+    # WHOLE accumulated list, not just this append. CrossProcessLock (same
+    # class settlement_monitor.run_settlement_monitor already uses) guards
+    # the read-modify-write as one critical section; atomic_write_json does
+    # the actual write (temp + fsync + rename).
+    #
+    # Opus review follow-up: the prior version of this comment claimed this
+    # matches "_set_degraded_flag's sibling sentinel file... for the same
+    # 'fails CLOSED on corruption' reasoning" -- inaccurate on both counts.
+    # _set_degraded_flag (this module, ~line 433) uses a plain write_text()
+    # too, not atomic_write_json; and its fail-CLOSED property lives
+    # entirely in the READ side (_degraded_for_today treats ANY read
+    # exception, including a corrupt file, as "degraded" -- the safe
+    # direction for that specific flag), not in how it's written. This
+    # write-side fix (atomic + locked) is this item's own, standalone
+    # improvement, not a mirror of an existing pattern elsewhere in the file.
+    from safe_io import CrossProcessLock, atomic_write_json
+
+    flag_path = _unsettled_exit_flag_path()
+    lock = CrossProcessLock(flag_path.with_name(flag_path.name + ".lock"), timeout=10.0)
+    _locked = lock.acquire()
+    if not _locked:
+        _log.error(
+            "record_live_early_exit_with_retry: could not acquire sentinel "
+            "flag lock for order %d -- writing unlocked, a concurrent writer "
+            "could lose a record",
+            order_id,
+        )
     try:
-        flag_path = _unsettled_exit_flag_path()
         existing: list = []
         if flag_path.exists():
             try:
-                existing = json.loads(flag_path.read_text(encoding="utf-8"))
-                if not isinstance(existing, list):
-                    existing = []
-            except (json.JSONDecodeError, OSError):
-                existing = []
+                loaded = json.loads(flag_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, list):
+                    existing = loaded
+            except (json.JSONDecodeError, OSError) as _read_exc:
+                # Opus review follow-up (LOW #9): preserve the unreadable
+                # file under a .corrupt suffix before starting a fresh list
+                # and overwriting it below -- the prior version's "prior
+                # records may be lost" warning was true and then made itself
+                # true, discarding a possibly-still-partially-recoverable
+                # record of earlier phantom positions with nothing but a log
+                # line. Best-effort: a rename failure here must not block
+                # this function's own primary job (recording THIS row's
+                # unsettled-exit flag).
+                try:
+                    flag_path.rename(flag_path.with_name(flag_path.name + ".corrupt"))
+                except OSError as _rename_exc:
+                    _log.error(
+                        "record_live_early_exit_with_retry: could not "
+                        "preserve unreadable sentinel flag file as "
+                        ".corrupt (%s) -- it will be overwritten",
+                        _rename_exc,
+                    )
+                _log.error(
+                    "record_live_early_exit_with_retry: sentinel flag file "
+                    "unreadable (%s) -- preserved as %s.corrupt, starting a "
+                    "fresh list",
+                    _read_exc,
+                    flag_path.name,
+                )
         existing.append(
             {
                 "order_id": order_id,
@@ -1032,7 +1160,14 @@ def record_live_early_exit_with_retry(
                 "flagged_at": datetime.now(UTC).isoformat(),
             }
         )
-        flag_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+        # atomic_write_json's own signature is typed for a dict payload --
+        # this sentinel file's established on-disk shape (every existing
+        # reader, including this function's own read above and
+        # get_unsettled_exit_flags below) is a bare JSON list, and changing
+        # that shape is out of this batch's scope (safe_io.py belongs to a
+        # different batch per INDEX.md). json.dumps handles a list identically
+        # to a dict at runtime -- only the static type differs.
+        atomic_write_json(existing, flag_path)  # type: ignore[arg-type]
     except Exception as flag_exc:
         _log.error(
             "record_live_early_exit_with_retry: could not even write "
@@ -1040,6 +1175,9 @@ def record_live_early_exit_with_retry(
             order_id,
             flag_exc,
         )
+    finally:
+        if _locked:
+            lock.release()
     return False
 
 
@@ -1056,16 +1194,28 @@ def get_unsettled_exit_flags() -> list[dict]:
     lingering flag surfaces as a recurring warning, not just a one-time
     console line an operator could miss.
 
-    Returns [] (not an error) if the file is missing, empty, or corrupt --
-    this is a best-effort visibility aid, not itself a safety gate.
+    Batch-22 item 7: a decode failure used to silently return [] -- the
+    operator's one recurring warning about a still-open phantom live
+    position would disappear with no trace. Now logs at ERROR before
+    returning [] so the failure itself is visible even though the caller
+    still gets a safe empty list (this remains a best-effort visibility aid,
+    not itself a safety gate -- returning [] rather than raising keeps a
+    corrupt sentinel file from also taking down the poll cycle that calls
+    this).
     """
+    flag_path = _unsettled_exit_flag_path()
     try:
-        flag_path = _unsettled_exit_flag_path()
         if not flag_path.exists():
             return []
-        flagged = json.loads(flag_path.read_text(encoding="utf-8"))
-        return flagged if isinstance(flagged, list) else []
-    except (json.JSONDecodeError, OSError):
+        loaded = json.loads(flag_path.read_text(encoding="utf-8"))
+        return loaded if isinstance(loaded, list) else []
+    except (json.JSONDecodeError, OSError) as exc:
+        _log.error(
+            "get_unsettled_exit_flags: sentinel flag file unreadable (%s) -- "
+            "returning empty, but a real unsettled-exit record may be "
+            "hidden behind this failure",
+            exc,
+        )
         return []
 
 
@@ -1127,15 +1277,45 @@ def record_live_exit_fill(
     order_executor._exit_live_position (automated protective exits) and
     main.cmd_order (manual live sells) need.
 
-    Mirrors _exit_live_position's own formula exactly: fee only discounts a
-    genuine gain, never applied to a loss (the entry side already paid $0,
-    always a resting maker order -- matching the convention verified across
-    weather_markets.py/paper.py/order_executor.py). Note this fee
-    assumption is exact for _exit_live_position's always-IOC/taker fills;
-    main.cmd_order's live sells are also always-IOC as of the fix that added
-    this second caller, so the same assumption holds there too -- this
-    would need revisiting if a future caller ever placed a resting
-    (maker-eligible) live exit order.
+    Batch-22 items 3+6: subtracts utils.kalshi_taker_fee(clamped_fill_count,
+    exit_price) from gross P&L unconditionally (win or loss) -- this exit is
+    always an IOC/taker fill (see below), so the real fee is charged on this
+    leg regardless of how the position resolves. The prior formula
+    (KALSHI_FEE_RATE as a flat fraction of gross P&L, applied only when
+    gross_pnl > 0) both understated a losing exit's real cost (zero fee
+    charged) and mis-shaped a winning exit's fee (flat-percent-of-winnings
+    instead of the curved per-contract formula) -- see kalshi_taker_fee's
+    own docstring for the reproduced numeric error. This also drops the
+    old docstring's "the entry side already paid $0, always a resting maker
+    order" assumption: that's false for a position entered via
+    main.cmd_order's live buy (always IOC/taker post-e5331a8d) or the
+    auto-path's taker-cross reprice fallback -- but this function only ever
+    models the EXIT leg's own fee, so that assumption never actually
+    affected THIS formula's own math; it's called out here only because the
+    stale comment previously implied otherwise.
+
+    KNOWN GAP (opus review, batch-22 follow-up, filed as its own backlog
+    entry -- deliberately not fixed in this change): for a taker-entered
+    position, the ENTRY leg's own taker fee is never charged anywhere once
+    the position is closed via THIS function (early exit) rather than
+    natural settlement -- order_executor._poll_pending_orders' settlement
+    branch is the only place that computes an entry-side fee, and it never
+    runs for a row this function has already marked settled_at. Realized
+    P&L on every taker-entered, early-exited live position is overstated by
+    the unrecorded entry fee. Not fixed here because it needs its own
+    signature change (this function/position dict would need the ORIGINAL
+    entry quantity, not just the currently-remaining quantity, to correctly
+    prorate a one-time entry fee across potentially more than one partial
+    exit -- recognizing the full fee on the first partial exit would be
+    fine for a single exit but wrong the moment a position closes across
+    two or more separate exit events) -- a genuinely separate piece of
+    surgery, not a same-payload adjacency fix.
+
+    This exit is always an IOC/taker fill for every caller of this function
+    (order_executor._exit_live_position and main.cmd_order's live sells both
+    place immediate_or_cancel), so kalshi_taker_fee's per-fill formula
+    applies unconditionally here -- this would need revisiting if a future
+    caller ever placed a resting (maker-eligible) live exit order.
 
     position must have "id" (its execution_log row id -- used both as the
     closes_position_id linkage and as the row this update targets),
@@ -1160,13 +1340,13 @@ def record_live_exit_fill(
     writer before this call's UPDATE landed -- add_live_loss is deliberately
     NOT called in that case, so the same exit's P&L is never double-counted.
     """
-    from utils import KALSHI_FEE_RATE
+    from utils import kalshi_taker_fee
 
     qty = position["quantity"]
     entry_price = position["entry_price"]
     clamped_fill_count = min(fill_count, qty)
     gross_pnl = clamped_fill_count * (exit_price - entry_price)
-    pnl = round(gross_pnl * (1 - KALSHI_FEE_RATE) if gross_pnl > 0 else gross_pnl, 4)
+    pnl = round(gross_pnl - kalshi_taker_fee(clamped_fill_count, exit_price), 4)
     resolved_reason = "manual_close" if reason is None else reason
 
     if clamped_fill_count < qty:

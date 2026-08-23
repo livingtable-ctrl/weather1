@@ -19,6 +19,58 @@ from schema_validator import validate_market
 
 _log = logging.getLogger(__name__)
 
+
+def compute_client_order_id(
+    ticker: str, side: str, action: str, count: float, price: float, cycle: str
+) -> str:
+    """The same deterministic idempotency key place_order() derives
+    internally when a real (non-None) cycle is given -- exposed as a
+    standalone function so a caller can pre-compute it BEFORE calling
+    place_order() and persist it immediately, rather than only learning it
+    after a successful/failed placement response.
+
+    Batch-22 item 2: every live pre-log call site (order_executor.py's
+    _place_live_order/_exit_live_position/_replace_live_order/micro-live,
+    and main.cmd_order) now stashes this in execution_log's pre-placement
+    row (response={"client_order_id": ...}) before calling place_order() at
+    all. If the process crashes between that pre-log write and
+    log_order_result() recording the real outcome, the row is left with no
+    order_id -- previously written to status='sent' and never re-checked
+    against Kalshi again (a real filled position could go permanently
+    untracked). order_executor._recover_pending_orders now has this id
+    already on hand for exactly that row and can fold it into the same
+    client._find_order_by_client_id reconciliation 'unknown' rows already
+    get, instead of a dead end.
+
+    Requires a real (non-None/non-empty) cycle -- place_order() falls back
+    to a random UUID when cycle is omitted specifically so a caller-less
+    retry won't dedup server-side; that fallback is deliberately
+    unreproducible from outside place_order() (it depends on call-time
+    randomness), so pre-computing only makes sense when the caller already
+    has a deterministic cycle string, which every current live call site
+    does.
+    """
+    # Opus review follow-up (F6): a falsy cycle here would silently produce
+    # an id that place_order() itself can never reproduce (its own
+    # `cycle or uuid.uuid4()` fallback is random and call-time-only) --
+    # the row would then be pre-logged with a client_order_id that doesn't
+    # match anything on the exchange, and _recover_pending_orders'
+    # client_order_id lookup would confidently report "not found," resolving
+    # a possibly-real order to 'failed' and unblocking a duplicate
+    # placement. Fail loudly here instead of producing a silently-wrong id.
+    if not cycle:
+        raise ValueError(
+            "compute_client_order_id requires a real, non-empty cycle -- "
+            "every current live call site has one; if a new caller doesn't, "
+            "it must not pre-compute this id at all (let place_order's own "
+            "random-UUID fallback apply instead)"
+        )
+    idempotency_input = f"{ticker}:{side}:{action}:{count:.2f}:{price:.4f}:{cycle}"
+    import hashlib
+
+    return hashlib.sha256(idempotency_input.encode()).hexdigest()[:32]
+
+
 # Separate circuit breakers so read failures don't block order placement.
 _kalshi_cb_read = CircuitBreaker(
     name="kalshi_api_read", failure_threshold=5, recovery_timeout=60
@@ -642,15 +694,18 @@ class KalshiClient:
             cycle:         Forecast cycle string (e.g. "12z") for deterministic dedup key.
                            If omitted, a random UUID is used so retries won't dedup.
         """
-        import hashlib
         import uuid
 
         # Deterministic within a cycle: same ticker+side+count+price+cycle → same ID.
         # Kalshi deduplicates server-side when the same client_order_id is resubmitted.
-        idempotency_input = (
-            f"{ticker}:{side}:{action}:{count:.2f}:{price:.4f}:{cycle or uuid.uuid4()}"
+        # Routed through the shared compute_client_order_id() (not computed
+        # inline) so a caller that pre-computes this same id before calling
+        # place_order() -- see that function's own docstring, batch-22 item 2
+        # -- is guaranteed to get byte-identical results, not two independent
+        # formulas that could silently drift apart.
+        client_order_id = compute_client_order_id(
+            ticker, side, action, count, price, cycle or str(uuid.uuid4())
         )
-        client_order_id = hashlib.sha256(idempotency_input.encode()).hexdigest()[:32]
 
         v2_side, v2_price = _to_v2_side_price(side, action, price)
         body = {
