@@ -257,9 +257,28 @@ def run_trade_cycle(
             on_markets_fetched(markets)
 
         try:
-            from consistency import find_violations
+            from consistency import find_violations, record_shadow_observations
 
             violations = find_violations(markets)
+            # backlog.txt "RAIN ARBITRAGE-CHECK SHADOW SIGNAL HAS NO
+            # GRADUATION DECISION YET": persist this cycle's shadow-only
+            # rain-arb observations regardless of whether any violation
+            # fired (cycles_observed needs every cycle as its denominator,
+            # not just cycles with a hit) -- own try/except so a persistence
+            # bug can never turn into a consistency_skip/trading-halt.
+            # record_shadow_observations() already has its own internal
+            # try/except (never raises); this outer one exists only in case
+            # something ABOVE that (e.g. the import itself) fails. Logs at
+            # WARNING, not DEBUG, matching this project's other once-per-
+            # cycle observational-failure calls (e.g. check_series_drift) --
+            # opus-review-caught: DEBUG would let a permanently-broken
+            # recorder silently produce nothing for months.
+            try:
+                record_shadow_observations(violations)
+            except Exception as _rec_exc:
+                _log.warning(
+                    "record_shadow_observations failed (non-fatal): %s", _rec_exc
+                )
             if violations:
                 # backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE
                 # CHECK STILL BLANKET-EXCLUDES KXRAIN*M": rain's ladder

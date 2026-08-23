@@ -7987,8 +7987,9 @@ RESOLVED 2026-08-06: this entry's own "not yet verified against real rain
   tests) passes; ruff/ruff format/mypy clean on all 5 changed files
   (consistency.py, main.py, trade_cycle.py, and the 2 test files).
 
-[OPEN 2026-08-06 -- new, split out of the entry above per its own "not part
-  of this pass" framing]
+[PARTIALLY RESOLVED 2026-08-22 -- the persistence/observation piece shipped;
+  the actual graduation decision (still genuinely open, see below) is
+  deliberately NOT made by this change]
   RAIN ARBITRAGE-CHECK SHADOW SIGNAL HAS NO GRADUATION DECISION YET
 Priority: Low -- shadow-only, doesn't block or corrupt anything live; just
   means real rain arbitrage (if it exists) never gets auto-corrected.
@@ -8030,6 +8031,135 @@ When to revisit:
   to judge whether real violations occur often enough / at enough edge to be
   worth auto-correcting -- not gated on a specific count, purely an
   operator judgment call once real data exists.
+
+RESOLVED (partially) 2026-08-22 -- shipped the persistence/report half of
+  this entry's own "what it would look like" section (its own simpler-
+  manual-review-path option: a real accumulated history behind `py main.py
+  consistency`, not the SIGNAL_REGISTRY-graduation-report option, since a
+  monotonicity violation genuinely has no settlement outcome to correlate
+  against -- the same reasoning this entry's own text already gave for why
+  that pattern doesn't transfer cleanly). Did NOT make the graduation
+  decision itself -- that's still explicitly deferred until real history
+  exists to judge, unchanged from this entry's own "why not now."
+
+  consistency.record_shadow_observations(all_violations) is now called
+  every single cycle trade_cycle.run_trade_cycle() executes (cron AND
+  interactive `watch`, since both share that engine) -- own try/except
+  isolation so a persistence bug can never affect consistency_skip/real
+  trading. Persists to a new RAIN_ARB_SHADOW_PATH JSON state file
+  (data/rain_arb_shadow_observations.json): cycles_observed (every cycle
+  checked, the denominator for a future violation-rate calc),
+  cycles_with_violation, and a pairs dict keyed by (buy_ticker,
+  sell_ticker) tracking times_seen/max_edge/first_seen/last_seen/
+  description per real ladder-pair mispricing ever observed -- bounded
+  growth by construction (rain's tickers roll over monthly; a persistent
+  violation accumulates onto one entry, not one row per cycle).
+  consistency.get_shadow_observation_report() reads it back;
+  `py main.py consistency` now prints an accumulated-history section below
+  its existing live-violations table (unconditionally, even with zero live
+  violations right now, since the report reflects history not this
+  instant).
+
+  Independent `Agent(opus, effort=high)` review before push found the
+  diff SAFE TO SHIP as-is, with 2 MEDIUM + 9 LOW findings, all addressed
+  (per this project's standing "every finding regardless of severity"
+  rule):
+  (M1) Both the function's own and trade_cycle.py's isolation try/except
+  logged failures at DEBUG, not WARNING -- a permanently-broken recorder
+  (bad permissions, a corrupted state file reaching an unhandled shape)
+  could silently produce nothing for months with zero operator-visible
+  trace, defeating the whole point of building a real history. Fixed to
+  WARNING, matching check_series_drift's own level for the identical
+  once-per-cycle-observational-failure case.
+  (M2) atomic_write_json was called with the default emergency_copy=True
+  -- a purely observational log, not irreplaceable trading state (same
+  category safe_io.py's own docstring already documents the opt-out for,
+  citing backtest.py/hurricane_climatology.py as precedent). Left as-is, a
+  persistent write failure would page an operator every single cron cycle
+  over a file at no real risk, and cost ~2-3s of retry/backoff inside the
+  hot trade-cycle path on every attempt. Fixed with emergency_copy=False.
+  (M3) first_seen/last_seen had zero test assertions -- a mutation
+  resetting first_seen on every sighting (destroying the "how long has
+  this pair been misbehaving" signal) passed all 11 original tests. Fixed
+  with dedicated tests for both fields plus a real (not hand-built)
+  description-tracks-max-edge test.
+  (L1/L2) get_shadow_observation_report() only guarded the JSON-decode
+  step, not the type coercions/attribute access below it -- a parseable-
+  but-wrong-shaped file (pairs stored as a list, or one pair entry not a
+  dict) raised straight out with no caller-side guard in cmd_consistency.
+  Separately, record_shadow_observations()'s own int()-coercion of a
+  wrong-typed existing counter happened OUTSIDE the inner read-fallback
+  try, so a parseable-but-wrong-typed file aborted the whole call before
+  ever writing -- never healing, repeating the identical silent failure
+  every cycle forever (unlike an unparseable file, which self-heals on the
+  next write). Both fixed: the report function now wraps its full body in
+  one broad try/except (mutation-confirmed load-bearing for the "one pair
+  entry not a dict" case, which passes both top-level isinstance guards);
+  the recorder now validates/coerces types INSIDE the same inner try that
+  already handles decode failures, so any malformed existing state takes
+  the identical "log and start fresh" path.
+  (L3) get_shadow_observation_report's docstring claimed "Returns None if
+  no cycle has been observed yet" -- false, a genuinely-empty-but-well-
+  formed state (cycles_observed == 0) returns a real dict; cmd_consistency
+  already compensated with its own `> 0` gate, but the docstring itself
+  was fixed to describe the real return contract.
+  (L4) `pairs.get(key) or {...}` used truthiness where isinstance-checked
+  replacement was needed -- would silently discard a stored-but-falsy
+  entry (not reachable today) and, more concretely, would pass a non-dict-
+  non-None falsy value (e.g. a corrupted `0`) through unmodified into a
+  crash on the next line's `entry.get(...)`. Fixed with an
+  isinstance(entry, dict) check (mutation-confirmed: a bare `entry is None`
+  check alone still crashes on the `0` case).
+  (L8) description was undocumented and semantically mismatched -- always
+  overwritten with the MOST RECENT sighting's text regardless of whether
+  that sighting set a new max_edge, so an operator reading the raw JSON
+  could see an edge number next to an unrelated description. Fixed to
+  update description only when max_edge actually advances, and documented
+  in the docstring's field list.
+  (L9) The isinstance(loaded, dict)/isinstance(pairs, dict) guards had no
+  dedicated tests -- added (JSON list/scalar at the state root, and a
+  dict `pairs` whose own values aren't dicts).
+  (L5/L6/L7/L11) Deliberate no-ops, reasoned per-finding rather than
+  silently dropped: L5 (paths.py/consistency.py must deploy together or
+  auto-trading warns every cycle) -- inherent to how this repo already
+  deploys (one commit, one push), not a new risk this change introduces.
+  L6 (RAIN_ARB_SHADOW_PATH is only patched via consistency.py's own
+  binding in tests/conftest.py) -- correct as of today, consistency.py is
+  the sole importer (verified by grep); watch for a second importer the
+  same way CRON_LAST_RUN_PATH's 3-binding precedent already warns about.
+  L7 (no retention/pruning, full-file rewrite every cycle) -- growth is
+  already confirmed bounded (tens of entries per year, verified by
+  reviewer), and every write's cycles_observed genuinely does change, so
+  there's no "unchanged, skip the write" case to optimize. L11
+  (read_text() without explicit encoding) -- matches this file's own
+  established convention (calibration.py/config.py/circuit_breaker.py/
+  cron.py all do the same); safe today since json.dumps defaults to
+  ensure_ascii=True.
+
+  Every fix mutation-tested (temporarily reverted via the Edit tool,
+  confirmed the corresponding test fails, restored). 10 new tests added
+  during the review-fix pass (21 total in tests/test_rain_arb_shadow_
+  observations.py, up from 11 in the first-pass implementation); full
+  scoped sweep (tests/test_rain_arb_shadow_observations.py,
+  tests/test_trade_cycle_engine.py, tests/test_cmd_consistency.py,
+  tests/test_consistency.py, tests/test_cron_integration.py,
+  tests/test_series_drift.py) passes; ruff/ruff-format/mypy clean on all
+  8 touched files (consistency.py, trade_cycle.py, main.py, paths.py,
+  tests/conftest.py, tests/test_trade_cycle_engine.py, and the 2 new test
+  files).
+
+  tests/conftest.py's isolate_cron_generated_files fixture (the fixture
+  this project's earlier "TEST FIXTURE TICKER LEAKED 467 FAKE SIGNALS INTO
+  PRODUCTION data/cron.log" incident exists to prevent a recurrence of)
+  gained a new consistency.RAIN_ARB_SHADOW_PATH redirect -- without it,
+  every test exercising run_trade_cycle() would have written real
+  observations into the actual production
+  data/rain_arb_shadow_observations.json.
+
+  Still genuinely open: the graduation decision itself. This history now
+  exists for an operator to eventually judge against -- no code change
+  flips is_shadow's default automatically, and none should until that
+  judgment call is made.
 
 [RESOLVED 2026-08-01] RAIN'S MARKET-IMPLIED DISTRIBUTION
   (implied_mean/implied_sigma) HAS NO GRADUATION/SAMPLE-FLOOR TRACKING OF

@@ -709,6 +709,7 @@ def isolate_cron_generated_files(tmp_path, monkeypatch):
     day this fixture was first added) and its resolution note for this
     follow-up widening.
     """
+    import consistency
     import cron
     import main
     import watchdog
@@ -747,6 +748,16 @@ def isolate_cron_generated_files(tmp_path, monkeypatch):
     # production quarantine scan for 24h.
     monkeypatch.setattr(
         cron, "LAST_QUARANTINE_SCAN_PATH", tmp_path / ".last_quarantine_scan"
+    )
+    # record_shadow_observations() (backlog.txt "RAIN ARBITRAGE-CHECK SHADOW
+    # SIGNAL HAS NO GRADUATION DECISION YET") is called from inside
+    # trade_cycle.run_trade_cycle() on every single cycle -- the exact
+    # "something it calls" this fixture's own docstring warns about, same
+    # leak class as the original CRON_LOG_PATH incident.
+    monkeypatch.setattr(
+        consistency,
+        "RAIN_ARB_SHADOW_PATH",
+        tmp_path / "rain_arb_shadow_observations.json",
     )
 
 

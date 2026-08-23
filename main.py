@@ -56,7 +56,7 @@ from colors import (
     yellow,
 )
 from config import load_and_validate as _load_config
-from consistency import find_violations
+from consistency import find_violations, get_shadow_observation_report
 from kalshi_client import KalshiClient, OrderStatusUnknownError
 from notify import alert_strong_signal
 from order_executor import (  # noqa: F401 — re-exports: tests + main code reference these via main.*
@@ -4351,47 +4351,97 @@ def cmd_consistency(client: KalshiClient):
     markets = get_weather_markets(client)
     violations = find_violations(markets)
     if not violations:
-        print(green("No violations — all prices are internally consistent."))
-        return
-    print(yellow(f"Found {len(violations)} arbitrage opportunity/ies:\n"))
-    rows = []
-    for v in violations:
-        rows.append(
-            [
-                green(v.buy_ticker),
-                f"{v.buy_prob * 100:.1f}%",
-                red(v.sell_ticker),
-                f"{v.sell_prob * 100:.1f}%",
-                bold(f"{v.guaranteed_edge * 100:.1f}%"),
-                # backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE
-                # CHECK STILL BLANKET-EXCLUDES KXRAIN*M": this manual report
-                # is the observation surface for rain's shadow-only first
-                # pass -- mark shadow rows so an operator deciding whether
-                # to graduate them isn't misled by rows that look
-                # auto-tradeable but aren't.
-                dim("shadow") if getattr(v, "is_shadow", False) else "",
+        print(green("No violations right now — all prices are internally consistent."))
+    else:
+        print(yellow(f"Found {len(violations)} arbitrage opportunity/ies:\n"))
+        rows = []
+        for v in violations:
+            rows.append(
+                [
+                    green(v.buy_ticker),
+                    f"{v.buy_prob * 100:.1f}%",
+                    red(v.sell_ticker),
+                    f"{v.sell_prob * 100:.1f}%",
+                    bold(f"{v.guaranteed_edge * 100:.1f}%"),
+                    # backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE
+                    # CHECK STILL BLANKET-EXCLUDES KXRAIN*M": this manual report
+                    # is the observation surface for rain's shadow-only first
+                    # pass -- mark shadow rows so an operator deciding whether
+                    # to graduate them isn't misled by rows that look
+                    # auto-tradeable but aren't.
+                    dim("shadow") if getattr(v, "is_shadow", False) else "",
+                ]
+            )
+        print(
+            tabulate(
+                rows,
+                headers=[
+                    "BUY this",
+                    "Price",
+                    "SELL this",
+                    "Price",
+                    "Free edge",
+                    "Type",
+                ],
+                tablefmt="rounded_outline",
+            )
+        )
+        print(
+            dim(
+                "\nBuy the cheaper contract and sell the pricier one — profit is guaranteed."
+                " 'shadow' rows are logged only, never auto-placed."
+            )
+        )
+
+    # backlog.txt "RAIN ARBITRAGE-CHECK SHADOW SIGNAL HAS NO GRADUATION
+    # DECISION YET": this session's live snapshot above only ever shows
+    # what's true RIGHT NOW -- the accumulated history from every cron/watch
+    # cycle's own shadow-observation recording (consistency.
+    # record_shadow_observations) is what the eventual graduation call
+    # actually needs. Printed unconditionally (even with zero live
+    # violations above) since the report reflects history, not this instant.
+    report = get_shadow_observation_report()
+    if report is not None and report["cycles_observed"] > 0:
+        print(bold("\n── Rain Shadow-Arb Observation History ──\n"))
+        print(
+            dim(
+                f"  {report['cycles_observed']} cycle(s) observed,"
+                f" {report['cycles_with_violation']} with a shadow violation"
+                f" ({report['violation_rate']:.1%})"
+                f" — {report['distinct_pairs']} distinct ladder-pair(s) ever flagged."
+            )
+        )
+        if report["top_pairs"]:
+            hist_rows = [
+                [
+                    p.get("buy_ticker", ""),
+                    p.get("sell_ticker", ""),
+                    p.get("times_seen", 0),
+                    f"{p.get('max_edge', 0.0) * 100:.1f}%",
+                    (p.get("last_seen") or "")[:10],
+                ]
+                for p in report["top_pairs"][:10]
             ]
+            print(
+                tabulate(
+                    hist_rows,
+                    headers=[
+                        "Buy",
+                        "Sell",
+                        "Times seen",
+                        "Max edge",
+                        "Last seen",
+                    ],
+                    tablefmt="rounded_outline",
+                )
+            )
+        print(
+            dim(
+                '\n  Not yet a graduation decision — see backlog.txt "RAIN'
+                " ARBITRAGE-CHECK SHADOW SIGNAL HAS NO GRADUATION DECISION"
+                ' YET" for what to do once this history looks conclusive.'
+            )
         )
-    print(
-        tabulate(
-            rows,
-            headers=[
-                "BUY this",
-                "Price",
-                "SELL this",
-                "Price",
-                "Free edge",
-                "Type",
-            ],
-            tablefmt="rounded_outline",
-        )
-    )
-    print(
-        dim(
-            "\nBuy the cheaper contract and sell the pricier one — profit is guaranteed."
-            " 'shadow' rows are logged only, never auto-placed."
-        )
-    )
 
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
