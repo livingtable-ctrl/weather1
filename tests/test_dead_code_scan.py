@@ -259,6 +259,24 @@ _DEAD_CODE_ALLOWLIST: dict[tuple[str, str], str] = {
         "enablement trigger -- both tables start empty and only accumulate "
         "from markets settling after this ships"
     ),
+    ("tracker.py", "get_price_convergence_by_market_age"): (
+        "TESTED, NO PROD CALL SITE -- the 'is early entry actually better' "
+        "cheap precursor named by the MARKET_LIFECYCLE_V2 WS CHANNEL backlog "
+        "entry (backlog.txt, partially resolved 2026-08-22 -- precursor only, "
+        "live WS wiring still fully open): checks whether captured price is "
+        "further from settlement early in a market's own candle history than "
+        "late, using existing price_history data. Independent review found "
+        "this statistic can't distinguish real exploitable mispricing from "
+        "ordinary uncertainty resolution in an efficient market (see the "
+        "function's own docstring and the backlog note) -- shipped anyway as "
+        "a real, callable, tested query per this entry's own instruction, "
+        "with the limitation documented rather than hidden. Read-only "
+        "research/reporting query, same shape as "
+        "get_trade_flow_settlement_correlation above -- callable by hand or "
+        "a future CLI/report command, not wired into trading. Run once "
+        "against real data at ship time (n=323, mean_diff=0.215, "
+        "fraction_early_greater=0.904)"
+    ),
     ("tracker.py", "get_trade_flow_settlement_correlation"): (
         "TESTED, NO PROD CALL SITE -- the 'did informed flow precede "
         "settlement-direction moves' analysis pass deferred by the PUBLIC "
@@ -266,8 +284,9 @@ _DEAD_CODE_ALLOWLIST: dict[tuple[str, str], str] = {
         "Read-only research/reporting query, same shape as "
         "get_regional_recent_bias below -- callable by hand or a future "
         "CLI/report command, not wired into trading. Run once against real "
-        "data at ship time (n=29, r=-0.042); intended to be re-run as "
-        "trade_history keeps accumulating, not re-derived from scratch"
+        "data at ship time (n=42, r=-0.035); intended to be re-run as "
+        "trade_history keeps accumulating, not re-derived from scratch -- "
+        "re-run 2026-08-22 (n=92, r=0.036), same null finding at 2x the scale"
     ),
     ("tracker.py", "get_regional_recent_bias"): (
         "TESTED, NO PROD CALL SITE -- correlation-weighted mean forecast "
