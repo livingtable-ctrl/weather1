@@ -7223,17 +7223,21 @@ def _edge_label(edge: float, side: str) -> str:
         return f"WEAK {direction}     "
 
 
-def _nws_days_out_scale(
-    w_ens: float, w_clim: float, w_nws: float, days_out: int
-) -> tuple[float, float, float]:
+def _nws_days_out_scale(weights: dict[str, float], days_out: int) -> dict[str, float]:
     """Decay NWS weight at longer horizons; preserve calibrated weights at days_out=1.
 
     Scale factor: 1.0x at days_out=1 (no change — calibration data is at d=1),
     decaying 10% per day beyond that, floored at 0.6x. NWS capped at 0.85 to
     prevent over-concentration when calibrated nws weight is very high.
+
+    The returned dict is a fresh object the caller owns outright — never mutate
+    a dict reached from a module-level weight table (_REGIME_BLEND_WEIGHTS,
+    _CITY_WEIGHTS, etc.); always build/copy before writing into a `w[...]` key.
     """
+    w_nws = weights["nws"]
     if w_nws == 0.0 or days_out <= 0:
-        return w_ens, w_clim, w_nws
+        return weights
+    w_ens, w_clim = weights["ensemble"], weights["climatology"]
     scale = max(0.6, 1.0 - (days_out - 1) * 0.10)
     w_nws_new = min(w_nws * scale, 0.85)
     remaining = 1.0 - w_nws_new
@@ -7244,18 +7248,18 @@ def _nws_days_out_scale(
     else:
         w_ens_new = remaining
         w_clim_new = 0.0
-    return w_ens_new, w_clim_new, w_nws_new
+    return {"ensemble": w_ens_new, "climatology": w_clim_new, "nws": w_nws_new}
 
 
-# Per-regime domain-knowledge blend weights (w_ens, w_clim, w_nws).
+# Per-regime domain-knowledge blend weights (ensemble, climatology, nws).
 # Extreme regimes (heat_dome, cold_snap, blocking_high) shift weight toward ensemble
 # because NWP ensembles outperform NWS MOS at extremes. Volatile shifts toward NWS.
 # "normal" is intentionally absent — falls through to existing condition/seasonal logic.
-_REGIME_BLEND_WEIGHTS: dict[str, tuple[float, float, float]] = {
-    "heat_dome": (0.70, 0.05, 0.25),
-    "cold_snap": (0.70, 0.05, 0.25),
-    "blocking_high": (0.65, 0.05, 0.30),
-    "volatile": (0.30, 0.10, 0.60),
+_REGIME_BLEND_WEIGHTS: dict[str, dict[str, float]] = {
+    "heat_dome": {"ensemble": 0.70, "climatology": 0.05, "nws": 0.25},
+    "cold_snap": {"ensemble": 0.70, "climatology": 0.05, "nws": 0.25},
+    "blocking_high": {"ensemble": 0.65, "climatology": 0.05, "nws": 0.30},
+    "volatile": {"ensemble": 0.30, "climatology": 0.10, "nws": 0.60},
 }
 
 # Mutable state dict so tests can reset between runs by setting ["active"] = None.
@@ -7739,8 +7743,12 @@ def _blend_weights(
     season: str | None = None,
     condition_type: str | None = None,
     regime: str | None = None,
-) -> tuple[float, float, float]:
-    """Return (w_ensemble, w_climatology, w_nws).
+) -> dict[str, float]:
+    """Return {"ensemble": w_ensemble, "climatology": w_climatology, "nws": w_nws}.
+
+    A plain named dict (not a positional tuple) so a future graduated signal can enter
+    as a new key without renumbering every existing call site's unpacking — see
+    backlog.txt "SIGNAL GRADUATION IS A CONVENTION, NOT A MECHANISM" part (c).
 
     Priority: regime override (highest, when active) > city > condition-type > seasonal > schedule.
     Early return from the regime block means it wins over all other tiers when the feature
@@ -7749,55 +7757,68 @@ def _blend_weights(
     # 0. Regime override — highest priority when feature is active and regime is extreme.
     # Runs before city/condition/seasonal weights so extreme regimes always win.
     if regime and regime in _REGIME_BLEND_WEIGHTS and _regime_blend_active():
-        w_ens, w_clim, w_nws = _REGIME_BLEND_WEIGHTS[regime]
+        # Built from explicit keys (not dict(_REGIME_BLEND_WEIGHTS[regime])) so a future
+        # non-weight key on a regime entry (e.g. an "_uncalibrated"-style sentinel,
+        # mirroring the other 3 weight tables) can't reach the total/normalize math below
+        # — matches the city/condition/seasonal branches' construction exactly.
+        _regime_w = _REGIME_BLEND_WEIGHTS[regime]
+        w = {
+            "ensemble": _regime_w["ensemble"],
+            "climatology": _regime_w["climatology"],
+            "nws": _regime_w["nws"],
+        }
         if not has_nws:
-            w_ens += w_nws * 0.6
-            w_clim += w_nws * 0.4
-            w_nws = 0.0
+            w["ensemble"] += w["nws"] * 0.6
+            w["climatology"] += w["nws"] * 0.4
+            w["nws"] = 0.0
         if not has_clim:
-            w_ens += w_clim
-            w_clim = 0.0
-        total = w_ens + w_clim + w_nws
+            w["ensemble"] += w["climatology"]
+            w["climatology"] = 0.0
+        total = w["ensemble"] + w["climatology"] + w["nws"]
         if total > 0.0:
-            w_ens, w_clim, w_nws = w_ens / total, w_clim / total, w_nws / total
-        return _nws_days_out_scale(w_ens, w_clim, w_nws, days_out)
+            w = {k: v / total for k, v in w.items()}
+        return _nws_days_out_scale(w, days_out)
 
     # 1. City-specific calibration weights
     if city and city in _CITY_WEIGHTS and not _CITY_WEIGHTS[city].get("_uncalibrated"):
         cal = _CITY_WEIGHTS[city]
-        w_ens = cal["ensemble"]
-        w_clim = cal["climatology"]
-        w_nws = cal["nws"]
+        w = {
+            "ensemble": cal["ensemble"],
+            "climatology": cal["climatology"],
+            "nws": cal["nws"],
+        }
         if not has_nws:
-            w_ens += w_nws * 0.6
-            w_clim += w_nws * 0.4
-            w_nws = 0.0
+            w["ensemble"] += w["nws"] * 0.6
+            w["climatology"] += w["nws"] * 0.4
+            w["nws"] = 0.0
         if not has_clim:
-            w_ens += w_clim
-            w_clim = 0.0
-        total = w_ens + w_clim + w_nws
+            w["ensemble"] += w["climatology"]
+            w["climatology"] = 0.0
+        total = w["ensemble"] + w["climatology"] + w["nws"]
         if total > 0.0:
-            w_ens, w_clim, w_nws = w_ens / total, w_clim / total, w_nws / total
-            return _nws_days_out_scale(w_ens, w_clim, w_nws, days_out)
+            w = {k: v / total for k, v in w.items()}
+            return _nws_days_out_scale(w, days_out)
         # Degenerate calibration data; fall through to condition/seasonal/hardcoded
 
     # 2. Condition-type calibration weights
     _cond_cal = _CONDITION_WEIGHTS.get(condition_type) if condition_type else None
     if isinstance(_cond_cal, dict) and not _cond_cal.get("_uncalibrated"):
-        w_ens = _cond_cal["ensemble"]
-        w_clim = _cond_cal["climatology"]
-        w_nws = _cond_cal["nws"]
+        w = {
+            "ensemble": _cond_cal["ensemble"],
+            "climatology": _cond_cal["climatology"],
+            "nws": _cond_cal["nws"],
+        }
         if not has_nws:
-            w_ens += w_nws * 0.6
-            w_clim += w_nws * 0.4
-            w_nws = 0.0
+            w["ensemble"] += w["nws"] * 0.6
+            w["climatology"] += w["nws"] * 0.4
+            w["nws"] = 0.0
         if not has_clim:
-            w_ens += w_clim
-            w_clim = 0.0
-        total = w_ens + w_clim + w_nws
+            w["ensemble"] += w["climatology"]
+            w["climatology"] = 0.0
+        total = w["ensemble"] + w["climatology"] + w["nws"]
         if total > 0.0:
-            w_ens, w_clim, w_nws = w_ens / total, w_clim / total, w_nws / total
-            return _nws_days_out_scale(w_ens, w_clim, w_nws, days_out)
+            w = {k: v / total for k, v in w.items()}
+            return _nws_days_out_scale(w, days_out)
         # Degenerate calibration data; fall through to seasonal/hardcoded
 
     # 3. Seasonal calibration weights
@@ -7807,20 +7828,22 @@ def _blend_weights(
         and not _SEASONAL_WEIGHTS[season].get("_uncalibrated")
     ):
         cal = _SEASONAL_WEIGHTS[season]
-        w_ens = cal["ensemble"]
-        w_clim = cal["climatology"]
-        w_nws = cal["nws"]
+        w = {
+            "ensemble": cal["ensemble"],
+            "climatology": cal["climatology"],
+            "nws": cal["nws"],
+        }
         if not has_nws:
-            w_ens += w_nws * 0.6
-            w_clim += w_nws * 0.4
-            w_nws = 0.0
+            w["ensemble"] += w["nws"] * 0.6
+            w["climatology"] += w["nws"] * 0.4
+            w["nws"] = 0.0
         if not has_clim:
-            w_ens += w_clim
-            w_clim = 0.0
-        total = w_ens + w_clim + w_nws
+            w["ensemble"] += w["climatology"]
+            w["climatology"] = 0.0
+        total = w["ensemble"] + w["climatology"] + w["nws"]
         if total > 0.0:
-            w_ens, w_clim, w_nws = w_ens / total, w_clim / total, w_nws / total
-            return _nws_days_out_scale(w_ens, w_clim, w_nws, days_out)
+            w = {k: v / total for k, v in w.items()}
+            return _nws_days_out_scale(w, days_out)
         # Degenerate calibration data; fall through to hardcoded schedule
 
     # 3. Hardcoded schedule (original logic)
@@ -7860,7 +7883,11 @@ def _blend_weights(
         w_clim = 0.0
 
     total = w_ens + w_clim + w_nws
-    return w_ens / total, w_clim / total, w_nws / total
+    return {
+        "ensemble": w_ens / total,
+        "climatology": w_clim / total,
+        "nws": w_nws / total,
+    }
 
 
 _ENS_STD_REF = 4.0  # °F — typical tight ensemble spread
@@ -7936,9 +7963,9 @@ def _confidence_scaled_blend_weights(
     season: str | None = None,
     condition_type: str | None = None,
     regime: str | None = None,
-) -> tuple[float, float, float]:
+) -> dict[str, float]:
     """#31: _blend_weights scaled by inverse ensemble variance."""
-    w_ens, w_clim, w_nws = _blend_weights(
+    weights = _blend_weights(
         days_out,
         has_nws,
         has_clim,
@@ -7948,7 +7975,8 @@ def _confidence_scaled_blend_weights(
         regime=regime,
     )
     if ens_std is None or ens_std <= 0:
-        return w_ens, w_clim, w_nws
+        return weights
+    w_ens, w_clim, w_nws = weights["ensemble"], weights["climatology"], weights["nws"]
     scale = max(0.5, min(1.5, _ENS_STD_REF / ens_std))
     # Clamp w_ens_scaled so it cannot exceed the available weight budget (w_ens stays ≤ 1.0)
     w_ens_scaled = min(w_ens * scale, 1.0)
@@ -7961,7 +7989,11 @@ def _confidence_scaled_blend_weights(
         w_clim_new = w_clim
         w_nws_new = w_nws
     total = w_ens_scaled + w_clim_new + w_nws_new
-    return w_ens_scaled / total, w_clim_new / total, w_nws_new / total
+    return {
+        "ensemble": w_ens_scaled / total,
+        "climatology": w_clim_new / total,
+        "nws": w_nws_new / total,
+    }
 
 
 def wet_bulb_temp(temp_f: float, rh_pct: float) -> float:
@@ -8816,9 +8848,10 @@ def _analyze_precip_trade(
             pass
 
     # ── Dynamic blend weights (mirrors temperature path) ─────────────────────
-    w_ens, w_clim, _ = _blend_weights(
+    _weights = _blend_weights(
         days_out, has_nws=False, has_clim=True
     )  # calibration not yet wired for precip/snow path
+    w_ens, w_clim = _weights["ensemble"], _weights["climatology"]
     blended_prob = ens_prob * w_ens + clim_prior * w_clim
 
     # Same-day override: a positive observation means precip has definitely
@@ -9000,11 +9033,10 @@ def _analyze_snow_trade(
         ens_prob = clim_prior
 
     # ── Blend ensemble with climatological prior ──────────────────────────────
-    w_ens, w_clim, _ = (
-        _confidence_scaled_blend_weights(  # calibration not yet wired for precip/snow path
-            days_out, has_nws=False, has_clim=True, ens_std=None
-        )
+    _weights = _confidence_scaled_blend_weights(  # calibration not yet wired for precip/snow path
+        days_out, has_nws=False, has_clim=True, ens_std=None
     )
+    w_ens, w_clim = _weights["ensemble"], _weights["climatology"]
     blended_prob = ens_prob * w_ens + clim_prior * w_clim
     blended_prob = max(0.01, min(0.99, blended_prob))
 
@@ -12662,7 +12694,7 @@ def analyze_trade(
                 10: "fall",
                 11: "fall",
             }.get(_month, "spring")
-            w_ens, w_clim, w_nws = _confidence_scaled_blend_weights(
+            _weights = _confidence_scaled_blend_weights(
                 days_out,
                 _nws_prob is not None,
                 clim_prob is not None,
@@ -12671,6 +12703,11 @@ def analyze_trade(
                 season=_season,
                 condition_type=condition.get("type"),
                 regime=_regime_info.get("regime"),
+            )
+            w_ens, w_clim, w_nws = (
+                _weights["ensemble"],
+                _weights["climatology"],
+                _weights["nws"],
             )
             if persistence_p is not None and days_out <= 2:
                 w_persist = 0.15

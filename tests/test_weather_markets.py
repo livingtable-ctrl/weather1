@@ -647,14 +647,14 @@ class TestNormalCdf:
 def test_ensemble_confidence_scale_high_std_reduces_ens_weight():
     from weather_markets import _confidence_scaled_blend_weights
 
-    w_ens_tight, w_clim_tight, w_nws_tight = _confidence_scaled_blend_weights(
+    w_tight = _confidence_scaled_blend_weights(
         days_out=3, has_nws=True, has_clim=True, ens_std=2.0
     )
-    w_ens_wide, w_clim_wide, w_nws_wide = _confidence_scaled_blend_weights(
+    w_wide = _confidence_scaled_blend_weights(
         days_out=3, has_nws=True, has_clim=True, ens_std=12.0
     )
-    assert w_ens_wide < w_ens_tight
-    assert abs(w_ens_wide + w_clim_wide + w_nws_wide - 1.0) < 1e-6
+    assert w_wide["ensemble"] < w_tight["ensemble"]
+    assert abs(sum(w_wide.values()) - 1.0) < 1e-6
 
 
 def test_ensemble_confidence_scale_no_std_unchanged():
@@ -667,14 +667,35 @@ def test_ensemble_confidence_scale_no_std_unchanged():
     assert w1 == pytest.approx(w2, abs=1e-6)
 
 
-def test_ensemble_confidence_scale_clamped():
-    from weather_markets import _blend_weights, _confidence_scaled_blend_weights
+def test_ensemble_confidence_scale_clamped(monkeypatch):
+    """w_ens_scaled must clamp to 1.0 when scale * w_ens would exceed the weight budget.
 
-    base_ens, _, _ = _blend_weights(3, has_nws=True, has_clim=True)
-    scaled_ens, _, _ = _confidence_scaled_blend_weights(
-        3, has_nws=True, has_clim=True, ens_std=0.01
+    City calibration ensemble=0.90 (days_out=1 so _nws_days_out_scale is a no-op:
+    "no change -- calibration data is at d=1") + ens_std=0.01 (scale=max(0.5,
+    min(1.5, 4.0/0.01))=1.5) -> unclamped w_ens*scale = 0.90*1.5 = 1.35, which
+    exceeds 1.0 and must be clamped -- the old vacuous version of this test
+    (scaled["ensemble"] <= 1.0) passed for every possible input regardless of
+    whether the clamp branch ever actually engaged.
+    """
+    import weather_markets as wm
+
+    monkeypatch.setattr(
+        wm,
+        "_CITY_WEIGHTS",
+        {"NYC": {"ensemble": 0.90, "climatology": 0.05, "nws": 0.05}},
     )
-    assert scaled_ens <= 1.0
+    unscaled = wm._blend_weights(days_out=1, has_nws=True, has_clim=True, city="NYC")
+    assert unscaled["ensemble"] == pytest.approx(0.90)  # sanity: clamp not yet applied
+    assert (
+        unscaled["ensemble"] * 1.5 > 1.0
+    )  # confirms this input actually triggers the clamp
+
+    scaled = wm._confidence_scaled_blend_weights(
+        days_out=1, has_nws=True, has_clim=True, ens_std=0.01, city="NYC"
+    )
+    assert scaled["ensemble"] == pytest.approx(1.0)
+    assert scaled["climatology"] == pytest.approx(0.0)
+    assert scaled["nws"] == pytest.approx(0.0)
 
 
 # ── Task 5: Wet-bulb snow-to-liquid ratio (#34) ───────────────────────────────
@@ -1203,11 +1224,11 @@ class TestBlendWeightCalibrationPriority:
         monkeypatch.setattr(wm, "_CITY_WEIGHTS", city_weights)
         monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
 
-        w_ens, w_clim, w_nws = wm._blend_weights(
+        w = wm._blend_weights(
             days_out=1, has_nws=True, has_clim=True, city="NYC", season="spring"
         )
-        assert w_ens == pytest.approx(0.50, abs=1e-6)
-        assert w_nws == pytest.approx(0.40, abs=1e-6)
+        assert w["ensemble"] == pytest.approx(0.50, abs=1e-6)
+        assert w["nws"] == pytest.approx(0.40, abs=1e-6)
 
     def test_seasonal_weights_used_when_no_city_weights(self, monkeypatch):
         """If no city weights but seasonal weights loaded, use seasonal (days_out=1 = neutral NWS scale)."""
@@ -1220,11 +1241,11 @@ class TestBlendWeightCalibrationPriority:
             {"spring": {"ensemble": 0.45, "climatology": 0.20, "nws": 0.35}},
         )
 
-        w_ens, w_clim, w_nws = wm._blend_weights(
+        w = wm._blend_weights(
             days_out=1, has_nws=True, has_clim=True, city="NYC", season="spring"
         )
-        assert w_ens == pytest.approx(0.45, abs=1e-6)
-        assert w_nws == pytest.approx(0.35, abs=1e-6)
+        assert w["ensemble"] == pytest.approx(0.45, abs=1e-6)
+        assert w["nws"] == pytest.approx(0.35, abs=1e-6)
 
     def test_fallback_to_hardcoded_when_no_calibration(self, monkeypatch):
         """With empty dicts, result should match original hardcoded schedule."""
@@ -1234,13 +1255,13 @@ class TestBlendWeightCalibrationPriority:
         monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
 
         # days_out=5, hardcoded: w_nws=0.25, remainder split ensemble/clim
-        w_ens, w_clim, w_nws = wm._blend_weights(
+        w = wm._blend_weights(
             days_out=5, has_nws=True, has_clim=True, city="NYC", season="spring"
         )
-        assert abs(w_ens + w_clim + w_nws - 1.0) < 1e-6
-        assert w_nws == pytest.approx(0.25, abs=1e-6)
-        assert w_ens == pytest.approx(0.5175, abs=1e-6)
-        assert w_clim == pytest.approx(0.2325, abs=1e-6)
+        assert abs(sum(w.values()) - 1.0) < 1e-6
+        assert w["nws"] == pytest.approx(0.25, abs=1e-6)
+        assert w["ensemble"] == pytest.approx(0.5175, abs=1e-6)
+        assert w["climatology"] == pytest.approx(0.2325, abs=1e-6)
 
 
 def test_analyze_trade_result_has_model_consensus_field(monkeypatch):

@@ -188,7 +188,7 @@ def test_blend_weights_below_uses_condition_weights(monkeypatch):
     )
 
     w = wm._blend_weights(1, has_nws=True, has_clim=True, condition_type="below")
-    w_ens, w_clim, w_nws = w
+    w_ens, w_clim = w["ensemble"], w["climatology"]
 
     # clim should dominate (not the hardcoded 0.039)
     assert w_clim > 0.60, f"Expected clim > 0.60 for below, got {w_clim:.3f}"
@@ -209,7 +209,7 @@ def test_blend_weights_above_uses_explicit_condition_weights(monkeypatch):
     )
 
     w = wm._blend_weights(1, has_nws=True, has_clim=True, condition_type="above")
-    w_ens, w_clim, w_nws = w
+    w_ens, w_clim = w["ensemble"], w["climatology"]
 
     assert w_ens > 0.50, f"Expected ens-heavy for above, got {w_ens:.3f}"
     assert w_clim < 0.10, f"Expected low clim for above, got {w_clim:.3f}"
@@ -245,7 +245,7 @@ def test_blend_weights_above_uncalibrated_falls_through_to_hardcoded(monkeypatch
     )
 
     w = wm._blend_weights(1, has_nws=True, has_clim=True, condition_type="above")
-    w_ens, w_clim, _w_nws = w
+    w_ens, w_clim = w["ensemble"], w["climatology"]
 
     # Hardcoded days_out=1: ens ~0.61, clim ~0.04
     assert w_ens > 0.50, f"Expected ens > 0.50 for hardcoded, got {w_ens:.3f}"

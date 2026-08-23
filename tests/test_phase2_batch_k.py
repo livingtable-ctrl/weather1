@@ -30,44 +30,44 @@ class TestConfidenceScaledBlendWeightsNoNegative:
 
     def test_no_negative_weights_tight_spread(self):
         """With ens_std=0.5 (scale=4/0.5=8, clamped to 1.5), w_clim/w_nws stay >= 0."""
-        w_ens, w_clim, w_nws = self._call(ens_std=0.5)
-        assert w_ens >= 0.0
-        assert w_clim >= 0.0
-        assert w_nws >= 0.0
+        w = self._call(ens_std=0.5)
+        assert w["ensemble"] >= 0.0
+        assert w["climatology"] >= 0.0
+        assert w["nws"] >= 0.0
 
     def test_weights_sum_to_one(self):
         """All weights must sum to 1.0 regardless of scaling."""
         for std in (0.1, 0.5, 1.0, 2.0, 4.0, 8.0, None):
-            w_ens, w_clim, w_nws = self._call(ens_std=std)
-            assert abs(w_ens + w_clim + w_nws - 1.0) < 1e-9, (
-                f"weights don't sum to 1 for std={std}: {w_ens}+{w_clim}+{w_nws}"
+            w = self._call(ens_std=std)
+            assert abs(sum(w.values()) - 1.0) < 1e-9, (
+                f"weights don't sum to 1 for std={std}: {w}"
             )
 
     def test_tight_spread_boosts_ensemble(self):
         """Tighter-than-reference spread (std < 4°F) must increase w_ens."""
-        w_ens_base, _, _ = self._call(ens_std=None)
-        w_ens_tight, _, _ = self._call(ens_std=1.0)
-        assert w_ens_tight > w_ens_base
+        w_base = self._call(ens_std=None)
+        w_tight = self._call(ens_std=1.0)
+        assert w_tight["ensemble"] > w_base["ensemble"]
 
     def test_wide_spread_reduces_ensemble(self):
         """Wider-than-reference spread (std > 4°F) must decrease w_ens."""
-        w_ens_base, _, _ = self._call(ens_std=None)
-        w_ens_wide, _, _ = self._call(ens_std=8.0)
-        assert w_ens_wide < w_ens_base
+        w_base = self._call(ens_std=None)
+        w_wide = self._call(ens_std=8.0)
+        assert w_wide["ensemble"] < w_base["ensemble"]
 
     def test_no_negative_weights_no_nws(self):
         """No negative weights when NWS is unavailable and spread is tight."""
-        w_ens, w_clim, w_nws = self._call(ens_std=0.5, has_nws=False, has_clim=True)
-        assert w_ens >= 0.0
-        assert w_clim >= 0.0
-        assert w_nws == 0.0
+        w = self._call(ens_std=0.5, has_nws=False, has_clim=True)
+        assert w["ensemble"] >= 0.0
+        assert w["climatology"] >= 0.0
+        assert w["nws"] == 0.0
 
     def test_no_negative_weights_no_clim(self):
         """No negative weights when climatology is unavailable and spread is tight."""
-        w_ens, w_clim, w_nws = self._call(ens_std=0.5, has_nws=True, has_clim=False)
-        assert w_ens >= 0.0
-        assert w_clim == 0.0
-        assert w_nws >= 0.0
+        w = self._call(ens_std=0.5, has_nws=True, has_clim=False)
+        assert w["ensemble"] >= 0.0
+        assert w["climatology"] == 0.0
+        assert w["nws"] >= 0.0
 
 
 # ── P2-26: clim_prior uses climatological_prob, not hardcoded 0.30 ────────────

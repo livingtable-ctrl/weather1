@@ -260,32 +260,32 @@ class TestConfidenceScaledBlendWeights:
         """ens_std > 8Â°F (high uncertainty) must reduce w_ens vs baseline."""
         from weather_markets import _confidence_scaled_blend_weights
 
-        w_ens_base, _, _ = _confidence_scaled_blend_weights(
+        w_base = _confidence_scaled_blend_weights(
             days_out=3, has_nws=True, has_clim=True, ens_std=None
         )
-        w_ens_high, _, _ = _confidence_scaled_blend_weights(
+        w_high = _confidence_scaled_blend_weights(
             days_out=3, has_nws=True, has_clim=True, ens_std=10.0
         )
-        assert w_ens_high < w_ens_base
+        assert w_high["ensemble"] < w_base["ensemble"]
 
     def test_low_ens_std_increases_ensemble_weight(self):
         """ens_std = 2Â°F (tight spread) must increase w_ens vs baseline."""
         from weather_markets import _confidence_scaled_blend_weights
 
-        w_ens_base, _, _ = _confidence_scaled_blend_weights(
+        w_base = _confidence_scaled_blend_weights(
             days_out=3, has_nws=True, has_clim=True, ens_std=None
         )
-        w_ens_low, _, _ = _confidence_scaled_blend_weights(
+        w_low = _confidence_scaled_blend_weights(
             days_out=3, has_nws=True, has_clim=True, ens_std=2.0
         )
-        assert w_ens_low > w_ens_base
+        assert w_low["ensemble"] > w_base["ensemble"]
 
     def test_weights_sum_to_one(self):
         from weather_markets import _confidence_scaled_blend_weights
 
         for ens_std in [None, 2.0, 4.0, 8.0, 12.0]:
             w = _confidence_scaled_blend_weights(3, True, True, ens_std)
-            assert abs(sum(w) - 1.0) < 1e-9, (
+            assert abs(sum(w.values()) - 1.0) < 1e-9, (
                 f"weights don't sum to 1 for ens_std={ens_std}"
             )
 
@@ -303,42 +303,42 @@ class TestBlendWeights:
         """days_out <= 3: NWS weight must be 0.35."""
         from weather_markets import _blend_weights
 
-        _, _, w_nws = _blend_weights(days_out=1, has_nws=True, has_clim=True)
-        assert w_nws == pytest.approx(0.35)
+        w1 = _blend_weights(days_out=1, has_nws=True, has_clim=True)
+        assert w1["nws"] == pytest.approx(0.35)
 
-        _, _, w_nws3 = _blend_weights(days_out=3, has_nws=True, has_clim=True)
-        assert w_nws3 == pytest.approx(0.35)
+        w3 = _blend_weights(days_out=3, has_nws=True, has_clim=True)
+        assert w3["nws"] == pytest.approx(0.35)
 
     def test_nws_weight_medium_horizon(self):
         """days_out 4-7: NWS weight must be 0.25."""
         from weather_markets import _blend_weights
 
-        _, _, w_nws = _blend_weights(days_out=5, has_nws=True, has_clim=True)
-        assert w_nws == pytest.approx(0.25)
+        w = _blend_weights(days_out=5, has_nws=True, has_clim=True)
+        assert w["nws"] == pytest.approx(0.25)
 
     def test_nws_weight_long_horizon(self):
         """days_out > 7: NWS weight must be 0.10."""
         from weather_markets import _blend_weights
 
-        _, _, w_nws = _blend_weights(days_out=10, has_nws=True, has_clim=True)
-        assert w_nws == pytest.approx(0.10)
+        w = _blend_weights(days_out=10, has_nws=True, has_clim=True)
+        assert w["nws"] == pytest.approx(0.10)
 
     def test_weights_sum_to_one(self):
         from weather_markets import _blend_weights
 
         for d in [0, 1, 3, 4, 5, 7, 8, 14]:
             w = _blend_weights(d, True, True)
-            assert abs(sum(w) - 1.0) < 1e-9
+            assert abs(sum(w.values()) - 1.0) < 1e-9
 
     def test_nws_weight_redistributed_when_unavailable(self):
         """When NWS unavailable, its weight redistributed to ens+clim."""
         from weather_markets import _blend_weights
 
-        w_ens_with, w_clim_with, _ = _blend_weights(1, True, True)
-        w_ens_no, w_clim_no, w_nws_no = _blend_weights(1, False, True)
-        assert w_nws_no == 0.0
-        assert w_ens_no > w_ens_with
-        assert abs(w_ens_no + w_clim_no - 1.0) < 1e-9
+        w_with = _blend_weights(1, True, True)
+        w_no = _blend_weights(1, False, True)
+        assert w_no["nws"] == 0.0
+        assert w_no["ensemble"] > w_with["ensemble"]
+        assert abs(w_no["ensemble"] + w_no["climatology"] - 1.0) < 1e-9
 
 
 class TestSnowLiquidRatio:
@@ -1466,7 +1466,7 @@ class TestRegimeBlend:
 
         monkeypatch.setattr("weather_markets._regime_blend_settled_count", lambda: 35)
         wm._regime_blend_state["active"] = None
-        w_ens, w_clim, w_nws = wm._blend_weights(
+        w = wm._blend_weights(
             days_out=1,
             has_nws=True,
             has_clim=True,
@@ -1475,9 +1475,9 @@ class TestRegimeBlend:
             condition_type="above",
             regime="heat_dome",
         )
-        assert w_ens == pytest.approx(0.70, abs=0.01)
-        assert w_nws == pytest.approx(0.25, abs=0.01)
-        assert w_clim == pytest.approx(0.05, abs=0.01)
+        assert w["ensemble"] == pytest.approx(0.70, abs=0.01)
+        assert w["nws"] == pytest.approx(0.25, abs=0.01)
+        assert w["climatology"] == pytest.approx(0.05, abs=0.01)
 
     def test_normal_regime_uses_existing_weights(self, monkeypatch):
         """normal regime -> existing condition/seasonal weights unchanged."""
@@ -1485,7 +1485,7 @@ class TestRegimeBlend:
 
         monkeypatch.setattr("weather_markets._regime_blend_settled_count", lambda: 35)
         wm._regime_blend_state["active"] = None
-        w_ens_regime, _, _ = wm._blend_weights(
+        w_regime = wm._blend_weights(
             days_out=1,
             has_nws=True,
             has_clim=True,
@@ -1495,7 +1495,7 @@ class TestRegimeBlend:
             regime="normal",
         )
         wm._regime_blend_state["active"] = None
-        w_ens_base, _, _ = wm._blend_weights(
+        w_base = wm._blend_weights(
             days_out=1,
             has_nws=True,
             has_clim=True,
@@ -1504,7 +1504,7 @@ class TestRegimeBlend:
             condition_type="above",
             regime=None,
         )
-        assert w_ens_regime == pytest.approx(w_ens_base, abs=0.01)
+        assert w_regime["ensemble"] == pytest.approx(w_base["ensemble"], abs=0.01)
 
     def test_notify_writes_feature_activations_file(self, monkeypatch, tmp_path):
         """_notify_feature_activation writes data/feature_activations.json on first call."""

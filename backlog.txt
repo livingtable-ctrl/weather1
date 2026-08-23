@@ -14808,12 +14808,13 @@ Resolution (2026-08-14):
   -- genuinely has no duplication risk, pure internal consistency, pick up
   opportunistically or if these functions are touched for another reason.
 
-[PARTIALLY RESOLVED 2026-07-25 -- parts (a) and (b) shipped; part (c), the
-  blend-weights-dict refactor, still open, deliberately scoped out as its
-  own separately-reviewed pass given its live-blend blast radius --
+[RESOLVED 2026-08-22 -- parts (a) and (b) shipped 2026-07-24/25; part (c),
+  the blend-weights-dict refactor, shipped 2026-08-22 (see that dated note
+  near the end) -- nothing remains open in this entry --
   STALE TITLE CORRECTED 2026-08-06, see note near the end: part (b) shipped
   a real mechanism (SIGNAL_REGISTRY + a standing graduation-report command),
-  so "IS A CONVENTION, NOT A MECHANISM" no longer describes what's left]
+  so "IS A CONVENTION, NOT A MECHANISM" no longer describes what this entry
+  tracked by the time it closed]
   SIGNAL GRADUATION IS A CONVENTION, NOT A MECHANISM -- SIGNAL #3 REBUILDS RUN-TREND'S PLUMBING
 Priority: Medium -- the log-only->trigger->blend pattern is now this
   project's explicit strategy for all new alpha; its marginal cost is
@@ -15156,6 +15157,84 @@ STALE TITLE CORRECTED 2026-08-06: this entry's title ("SIGNAL GRADUATION IS
   corrections on the ForecastCache and main.py-frozen-import entries
   above) -- title/header corrected per this project's standing convention;
   historical resolution text above left unchanged.
+
+RESOLVED 2026-08-22 (part (c) -- the _blend_weights() positional-tuple-to-
+  named-dict refactor; this closes the entry, nothing remains open):
+  re-verified this entry's own text live before starting -- AUD-0004
+  (Brier-score contamination in graduation_check(), commit 31e55b1e) is
+  confirmed unrelated territory, not this entry. Parts (a)/(b) above are
+  genuinely shipped. Found this entry's batch header (audit/handoff_prompts/
+  batches/batch-19.md) listed tracker.py/ml_bias.py as the touch files, but
+  part (c)'s actual work is entirely in weather_markets.py -- zero
+  ml_bias.py involvement anywhere in this entry's own history -- confirmed
+  with the user before proceeding there. Also found this entry's own stated
+  gate ("build (c) when a real signal graduates to a real blend weight, or
+  the tuple-arity ergonomics actually start to bite") had not literally
+  fired: `py main.py signals` showed 7 of 11 SIGNAL_REGISTRY entries
+  clearing their sample floor for the first time ever (previously "best
+  still 6/20" as of 2026-07-26), but none had passed their correlation
+  check or moved out of TRACKING_ONLY_MODEL_NAMES into baseline -- i.e.
+  floor-cleared, not graduated. Surfaced this via AskUserQuestion rather
+  than silently building or silently deferring again; user chose to build
+  now given the floor-clearing momentum across so many signals at once.
+  Design (AskUserQuestion): _blend_weights()/_confidence_scaled_blend_
+  weights()/_nws_days_out_scale()/_REGIME_BLEND_WEIGHTS now return/consume
+  a plain dict[str, float] with keys "ensemble"/"climatology"/"nws" instead
+  of a positional 3-tuple -- matches the existing _CITY_WEIGHTS/
+  _CONDITION_WEIGHTS/_SEASONAL_WEIGHTS calibration-table convention exactly
+  (this entry's own "let graduated signals enter as named entries in a
+  weights dict" wording), rather than a new dataclass shape. The
+  redistribution math (NWS-unavailable 60/40 reallocation, day-out decay,
+  confidence-scaling) deliberately stays hardcoded to today's 3 known keys
+  rather than generalized to N keys -- no real 4th weight exists yet to
+  design a generalization against, and this entry's own text already
+  states "leave blend wiring manual -- the deliberate human step is the
+  point of the pattern." A pure representational swap, zero intended live
+  behavior change: all 4 _blend_weights() branches (regime/city/condition/
+  seasonal) + the hardcoded-schedule tail, both wrapper functions, the
+  regime weight table, and all 3 real production call sites
+  (_analyze_precip_trade, _analyze_snow_trade, analyze_trade's main
+  temperature path) converted, plus ~30 test call sites across 5 test
+  files from positional unpacking to dict-key access.
+  Independent Agent(opus, effort=high) review: zero CRITICAL/HIGH/MEDIUM
+  findings. Independently confirmed "zero live behavior change" via a
+  from-scratch differential harness comparing old (git show
+  HEAD:weather_markets.py) vs new across 430,080 _blend_weights /
+  1,290,240 _confidence_scaled_blend_weights / 2,000 _nws_days_out_scale
+  input combinations, bit-for-bit exact (not approx). 5 LOW findings, all
+  fixed: (1) the returned dicts are now caller-mutable (were immutable
+  tuples) -- documented the "callers own the dict, never mutate a
+  table-sourced one" invariant in _nws_days_out_scale's docstring; no live
+  caller currently violates it. (2) the regime branch bulk-copied via
+  dict(_REGIME_BLEND_WEIGHTS[regime]) while city/condition/seasonal build
+  from 3 explicit keys -- made the regime branch match (explicit-key
+  construction), closing a latent TypeError/silent-corruption risk if a
+  future non-weight sentinel key (mirroring _uncalibrated) is ever added
+  to a regime entry. (3) test_ensemble_confidence_scale_clamped was
+  vacuous (scaled["ensemble"] <= 1.0, trivially true for any valid weight)
+  -- rewrote to pin an exact numeric outcome for an input that actually
+  pushes the confidence-scale past budget; mutation-tested (caught a
+  sign-flip in delta). While probing for the specific w_ens clamp
+  mutation, discovered (not fixed -- pre-existing, unrelated to this
+  diff's behavior either way) that _confidence_scaled_blend_weights'
+  min(w_ens*scale, 1.0) clamp and its paired max(0.0, ...) floor are both
+  provably mathematically dead code given _blend_weights' own sum-to-1
+  output invariant: whenever the clamp condition triggers, the function's
+  final /total renormalization converges to the identical (1.0, 0.0, 0.0)
+  result whether or not the inner clamp/floor exist, for any valid input.
+  Flagged as a side-finding, not filed as its own entry (zero behavior
+  impact, no correctness bug). (4) trimmed the new docstring's changelog-
+  flavored sentence that would read as false the moment a real signal
+  does graduate. (5) reordered _nws_days_out_scale's early-return to skip
+  unpacking unused locals (cosmetic).
+  447 passed / 1 pre-existing-unrelated failure (test_price_and_size.py's
+  TestTemperatureTradeWiring::test_yes_side_normal_book, root-caused via
+  git stash on pristine HEAD to another session's in-flight uncommitted
+  data/temperature_scale.json changes, shared across worktrees -- fails
+  identically with zero of this diff's changes applied) / 4 skipped in the
+  final scoped suite (test_forecasting.py/test_weather_markets.py/
+  test_phase2_batch_k.py/test_phase2_batch_p.py/test_price_and_size.py);
+  ruff/ruff-format/mypy clean via the real pre-commit hook throughout.
 
 [RESOLVED 2026-07-23 -- as a side effect of GENERALIZED PER-MODEL ACCURACY TRACKING Pass 1, see that entry] THE ANALYSIS-DICT -> TRADE-RECORD BOUNDARY EXPLODES DICTS INTO NAMED SCALARS
 Priority: was Medium -- sharpened the GENERALIZED PER-MODEL ACCURACY
