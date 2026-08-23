@@ -152,7 +152,13 @@ def _replace_with_retry(src: str, dst: Path, deadline_secs: float = 0.5) -> None
     extended from 10s) -- callers that
     hold that lock across an atomic_write_json/atomic_write_text call
     should account for this function's contribution to worst-case latency,
-    not just the write itself.
+    not just the write itself. paper.py's _save() (the paper-trades ledger,
+    held across that same 30s-budget lock on every call) is exactly such a
+    caller -- it raises both retries (6) and deadline_secs (1.0, via
+    atomic_write_json's replace_deadline_secs) to 6*1.0 + 5*1.0 = 11s worst
+    case (AUD batch-30 item 4b), specifically bounded well under 30s rather
+    than raised further, so a slow write can't itself exhaust the lock
+    budget it's running inside of.
     """
     start = time.monotonic()
     while True:
@@ -203,6 +209,7 @@ def atomic_write_json(
     fallback_dir: Path | None = None,
     *,
     emergency_copy: bool = True,
+    replace_deadline_secs: float = 0.5,
 ) -> None:
     """
     Write data to path atomically (write temp → fsync → rename).
@@ -222,6 +229,12 @@ def atomic_write_json(
     why: cron.py's check_emergency_copies() monitor re-alerts an operator
     every cycle until a landed emergency copy is manually deleted, which a
     trivially-refetchable cache shouldn't trigger).
+
+    `replace_deadline_secs` is the per-attempt PermissionError retry window
+    passed to _replace_with_retry -- raise it (e.g. paper.py's ledger save)
+    when the destination is an irreplaceable file that real-world Defender/
+    OneDrive scan pressure has been observed contending for; see
+    _replace_with_retry's own docstring for the worst-case latency formula.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -233,6 +246,7 @@ def atomic_write_json(
         fallback_dir,
         emergency_copy,
         caller_name="atomic_write_json",
+        replace_deadline_secs=replace_deadline_secs,
     )
 
 
@@ -243,6 +257,7 @@ def atomic_write_text(
     fallback_dir: Path | None = None,
     *,
     emergency_copy: bool = True,
+    replace_deadline_secs: float = 0.5,
 ) -> None:
     """
     Write raw text to path atomically -- same write-temp/fsync/rename,
@@ -265,6 +280,8 @@ def atomic_write_text(
     loss. AtomicWriteError is still raised on total failure either way
     (the caller's own fail-open handling is unaffected) -- this flag only
     controls whether a best-effort recovery copy is ALSO attempted.
+
+    See atomic_write_json's docstring for `replace_deadline_secs`.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -275,6 +292,7 @@ def atomic_write_text(
         fallback_dir,
         emergency_copy,
         caller_name="atomic_write_text",
+        replace_deadline_secs=replace_deadline_secs,
     )
 
 
@@ -286,6 +304,7 @@ def _atomic_write_payload(
     emergency_copy: bool = True,
     *,
     caller_name: str,
+    replace_deadline_secs: float = 0.5,
 ) -> None:
     """Shared write-temp/fsync/rename/retry/emergency-copy core for
     atomic_write_json and atomic_write_text -- both public functions only
@@ -332,7 +351,7 @@ def _atomic_write_payload(
                         tmp_path_str,
                         _fsync_err,
                     )
-            _replace_with_retry(tmp_path_str, path)
+            _replace_with_retry(tmp_path_str, path, deadline_secs=replace_deadline_secs)
             return
         except Exception as exc:
             if tmp_path_str:

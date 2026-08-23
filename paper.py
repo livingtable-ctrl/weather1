@@ -465,7 +465,23 @@ def _save(data: dict) -> None:
     payload = {k: v for k, v in data.items() if k not in ("_crc32", "_checksum")}
     payload["_checksum"] = _compute_checksum(payload)
     try:
-        atomic_write_json(payload, DATA_PATH, retries=3)
+        # AUD (batch-30 item 4b): paper_trades.json is the entire paper-
+        # ledger source of truth, written at the end of every cron cycle
+        # alongside ~55-57 other data/ files during cloud_backup's own sync
+        # pass -- exactly when Defender/OneDrive scan pressure on data/ peaks.
+        # The default retries=3/deadline_secs=0.5 (~3.5s worst case) can be
+        # exhausted by a multi-second scan lock; raise both here since this
+        # write's failure mode (a lost/corrupted ledger) is worse than the
+        # added latency. Every _save() call site holds _DATA_LOCK
+        # (_CrossProcessDataLock) across this write, and that lock's own
+        # _acquire_file_lock gives up after a fixed 30s budget and proceeds
+        # UNLOCKED on timeout (opus-review-caught: silently trading "lost
+        # ledger write" for the arguably worse "unlocked concurrent
+        # read-modify-write" under the exact same contention this change
+        # targets) -- retries=6/deadline_secs=1.0 gives 6*1.0 + 5*1.0 = 11s
+        # worst case, more than 3x the original 3.5s while leaving ~19s of
+        # headroom under that 30s budget for a single waiter.
+        atomic_write_json(payload, DATA_PATH, retries=6, replace_deadline_secs=1.0)
     except (AtomicWriteError, RuntimeError) as e:
         _log.error("CRITICAL: Could not save paper trades: %s", e)
         raise

@@ -24846,3 +24846,108 @@ Problem:
   contract) to it first. If it's genuinely dead/abandoned, consider deleting
   it or marking it explicitly as such to stop future audits/reviews from
   re-flagging its bugs as live risk.
+
+[RESOLVED 2026-08-22 -- batch-30 item 1] cron.py's cron-lock staleness check relies solely on psutil.pid_exists(pid), with no create_time/cmdline verification -- Windows PID reuse after an unclean shutdown could leave the lock permanently unacquirable
+Priority: HIGH (as a VM-move prerequisite; correction addendum in the original 2026-08-21 finding noted today's fully-manual cron invocation makes this a latent risk, not a live incident, until automation exists)
+Files: cron.py (_acquire_cron_lock, _release_cron_lock, _is_cron_running, _cron_lock_pid_reused)
+Note: this entry has no prior [OPEN] record in this branch's committed backlog.txt -- the original finding (audit/handoff_prompts/batches/batch-30.md item 1, from the 2026-08-21 live-trading readiness review) exists only as uncommitted work in the main clone, never committed to any branch (see project memory project_weather1_batch_backlog_shared_corpus.md). Added fresh per user's explicit choice, matching the batch-24/batch-25 sessions' precedent for the same gap.
+
+Resolution 2026-08-22: data/cron.lock now additionally records psutil.Process(pid).create_time() at
+  acquire time. A new _cron_lock_pid_reused(pid, lock_create_time) helper positively confirms
+  Windows PID reuse (the live process's own create_time differs from the lock's recorded value by
+  >= 2.0s) rather than trusting pid_exists() alone; _acquire_cron_lock and _is_cron_running both
+  gate on it. An initial version of this fix also added a 1800s age-based override to
+  _acquire_cron_lock's psutil-available branch (reasoning cron's own internal watchdog,
+  _install_cron_watchdog, 720s default, bounds how old a genuine cron lock can get) -- independent
+  opus review (effort:high) caught that this was unsound: cmd_watch (main.py, `watch --auto --live`)
+  acquires the SAME lock across run_trade_cycle() with NO watchdog at all, so the override could have
+  stolen the lock from a still-running, still-placing-real-orders watch session and let a second cron
+  cycle start concurrently -- removed before ship, replaced with pure create_time verification (no age
+  component) for the psutil-available branch. A second opus review round (fixes re-reviewed with fresh
+  eyes, per this project's standing 2-round policy for live-order-adjacent changes) then found the
+  create_time comparison itself lived OUTSIDE its own try/except (a malformed/non-numeric create_time
+  value would raise an unhandled TypeError into this function's two unguarded web_app.py callers,
+  api_run_cron/api_cron_status via _is_cron_running) -- fixed by moving it inside. That same round also
+  found the removed age-backstop had thrown out a real, safe use case along with the unsafe one: a lock
+  whose reuse can NEVER be positively confirmed (e.g. persistent AccessDenied querying a reassigned PID)
+  would now block cron forever with no self-heal -- the exact permanent-lock-out failure mode this whole
+  item exists to eliminate, just reachable via a different path. Added a new, much longer
+  _STUCK_RUNNING_BACKSTOP_SECS (86400s/24h, shared by both _acquire_cron_lock and _is_cron_running) that
+  IS safe at that age specifically, since neither cmd_cron (watchdog-bounded) nor a single cmd_watch
+  auto-trade cycle can plausibly reach it.
+  Adjacent fix (H2, opus-review-caught): _release_cron_lock() previously unlinked the lock file
+  unconditionally regardless of which process currently held it -- a process whose own lock got
+  overridden as stale by a later acquirer could, on its own delayed release, delete the NEW holder's
+  fresh lock, letting a THIRD acquirer start concurrently. Now verifies the lock file's own recorded pid
+  matches os.getpid() before unlinking (a corrupt/unreadable lock, with no pid to protect, is still
+  deleted as before).
+  Tests: 25 new/updated tests across tests/test_cron_lock.py and tests/test_p0_16_cron_endpoint.py,
+  covering the create_time reuse check (matching/mismatched/vanished-process/AccessDenied/non-numeric
+  cases), the acquire-side and is-running-side backstops, and the release-ownership check -- every
+  production-code claim above mutation-tested individually (Edit-revert-restore against the real fix,
+  confirmed each test actually fails on the reverted code). 378 tests pass in the final broader
+  regression sweep (cron/trade-cycle/execution-stability suites). ruff/ruff-format/mypy clean.
+  Full record: audit/handoff_prompts/batches/batch-30.md item 1 (untracked in this repo as of
+  2026-08-22 -- see Note above).
+
+[RESOLVED 2026-08-22 -- batch-30 item 2] run_and_sleep.bat has no resume loop, force-suspends without letting any process object, and depends on an unregisterable wake flag
+Priority: dormant/dead-code, per the original finding's correction addendum (user confirmed the script is unused, "no longer a thing")
+Files: run_and_sleep.bat (repo root)
+Note: same uncommitted-original-entry situation as item 1 above; added fresh per the same user decision.
+
+Resolution 2026-08-22: Confirmed via AskUserQuestion that this file is genuinely unused (not merely
+  low-priority) -- deleted from the repo rather than fixed in place, since its documented bugs (no
+  resume loop, force-suspend with bForce=1 giving no running process a chance to object, an
+  unregisterable Task Scheduler wake flag) would only ever matter if it were revived, and
+  cmd_schedule_cycles's own printed registration commands target `main.py cron` directly, never this
+  file. The one remaining reference anywhere in the repo (a paths.py comment citing the file's own `cd`
+  behavior as part of a "why this was never a production bug" argument) was updated to note the removal
+  while preserving the rest of that argument (web_app.py's own cwd=Path(__file__).parent).
+  Full record: audit/handoff_prompts/batches/batch-30.md item 2 (untracked in this repo as of
+  2026-08-22 -- see Note above).
+
+[RESOLVED 2026-08-22 -- batch-30 item 3] Zero reboot/power-loss recovery path -- no ONSTART/ONLOGON trigger, no runbook procedure
+Priority: accurately describes the current fully-manual operating state (per the original finding's correction addendum), not a gap in an otherwise-automated system
+Files: LIVE_TRADING_RUNBOOK.md
+Note: same uncommitted-original-entry situation as item 1 above; added fresh per the same user decision.
+
+Resolution 2026-08-22: Added a new "Part 5 -- Reboot / Power-Loss Recovery" section to
+  LIVE_TRADING_RUNBOOK.md documenting the manual recovery procedure for the current fully-manual
+  operating mode: checking/clearing a possibly-stale data/cron.lock (now self-healing via item 1's fix
+  for the ordinary crash case), letting _recover_pending_orders run (already automatic, no separate
+  step), manually reconciling open positions before resuming, and manually restarting whichever process
+  was running. Deliberately did NOT register an actual ONSTART-triggered scheduled task or add such
+  print commands to cmd_schedule_cycles -- that half is intentionally deferred to when the VM move picks
+  a real scheduling mechanism, so it can be designed against that mechanism once instead of twice.
+  Full record: audit/handoff_prompts/batches/batch-30.md item 3 (untracked in this repo as of
+  2026-08-22 -- see Note above).
+
+[RESOLVED 2026-08-22 -- batch-30 item 4] Nothing monitors whether the scheduled task itself still exists; safe_io's atomic-replace retry budget can be exhausted by Defender/OneDrive scan pressure
+Priority: (a) moot today (no scheduled task exists to monitor); (b) a real, independent bug worth fixing regardless of hosting model
+Files: main.py (cmd_schedule_cycles), safe_io.py (_replace_with_retry, atomic_write_json/atomic_write_text/_atomic_write_payload), paper.py (_save)
+Note: same uncommitted-original-entry situation as item 1 above; added fresh per the same user decision.
+
+Resolution 2026-08-22: Part (a) -- per user's explicit choice (AskUserQuestion), left as documentation-
+  only: no scheduled-task-existence assertion code was added, since any such check would either always
+  fire (noisy false-positive under today's normal manual operation) or need a flag that doesn't exist
+  yet to suppress it; the gap and its resolution timing are now noted in the new runbook section (item
+  3's resolution above).
+  Part (b): safe_io.atomic_write_json/atomic_write_text gained a new `replace_deadline_secs` kwarg
+  (default 0.5, matching the prior hardcoded behavior) threaded down to _replace_with_retry's own
+  deadline_secs -- every one of the ~40 existing non-test call sites is unaffected (kwarg-only,
+  after `*`). paper.py's _save() (writes data/paper_trades.json, the entire paper-trading ledger,
+  written at the end of every cron cycle alongside ~55-57 other data/ files during cloud_backup's own
+  sync pass -- exactly when Defender/OneDrive scan pressure peaks) now calls
+  atomic_write_json(..., retries=6, replace_deadline_secs=1.0), raising the worst-case retry budget from
+  ~3.5s to 11s. An initial version used retries=6/replace_deadline_secs=2.0 (17s); independent opus
+  review caught that every _save() call site holds paper.py's own _CrossProcessDataLock across the
+  write, whose _acquire_file_lock gives up after a fixed 30s budget and proceeds UNLOCKED on timeout --
+  under the exact contention this change targets, that 17s figure left too little headroom against
+  concurrent holders, risking trading "lost ledger write" for the arguably worse "unlocked concurrent
+  read-modify-write." Dialed back to 1.0s/11s, verified (per _CrossProcessDataLock's own call-site audit)
+  every real hold contains at most one _save(), leaving comfortable margin even under multi-waiter
+  contention.
+  Tests: 6 new/updated tests across tests/test_safe_io.py, verifying the kwarg threads through to
+  _replace_with_retry and that _save() actually passes the raised budget -- mutation-tested.
+  Full record: audit/handoff_prompts/batches/batch-30.md item 4 (untracked in this repo as of
+  2026-08-22 -- see Note above).

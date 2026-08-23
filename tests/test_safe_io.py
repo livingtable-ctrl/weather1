@@ -57,6 +57,38 @@ def test_save_then_load_roundtrip(tmp_path, monkeypatch):
     assert loaded["balance"] == 1234.56
 
 
+def test_save_uses_raised_retry_budget_for_the_ledger_write(tmp_path, monkeypatch):
+    """AUD (batch-30 item 4b): paper_trades.json is the entire paper-ledger
+    source of truth and is written alongside ~55-57 other data/ files during
+    cloud_backup's own end-of-cycle sync pass, exactly when Defender/OneDrive
+    scan pressure peaks -- the default retries=3/deadline_secs=0.5 (~3.5s
+    worst case) budget can be exhausted by that contention. _save() must
+    pass a raised retries/replace_deadline_secs to atomic_write_json rather
+    than relying on the library default. Mutation-tested: reverting _save's
+    call back to plain `retries=3` (no replace_deadline_secs) makes this
+    fail."""
+    import paper
+
+    captured = {}
+    real_atomic_write_json = paper.atomic_write_json
+
+    def _spy(*args, **kwargs):
+        captured.update(kwargs)
+        return real_atomic_write_json(*args, **kwargs)
+
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    monkeypatch.setattr(paper, "atomic_write_json", _spy)
+
+    paper._save({"balance": 1000.0, "trades": []})
+
+    assert captured.get("retries", 3) > 3, (
+        f"expected a raised retry count for the ledger write, got {captured}"
+    )
+    assert captured.get("replace_deadline_secs", 0.5) > 0.5, (
+        f"expected a raised per-attempt deadline for the ledger write, got {captured}"
+    )
+
+
 def test_verify_backup_passes_on_good_file(tmp_path):
     from paper import verify_backup
 
@@ -263,6 +295,34 @@ def test_replace_with_retry_does_not_retry_other_exceptions(tmp_path):
             safe_io._replace_with_retry(str(src), dst)
 
     assert calls["n"] == 1
+
+
+def test_atomic_write_json_threads_replace_deadline_secs_to_retry(tmp_path):
+    """AUD (batch-30 item 4b): atomic_write_json's replace_deadline_secs
+    kwarg must actually reach _replace_with_retry's own deadline_secs, not
+    just be accepted and silently dropped -- callers writing an
+    irreplaceable file (paper.py's ledger save) rely on this to raise the
+    real PermissionError retry window under Defender/OneDrive contention.
+    Mutation-tested: hard-coding the call inside _atomic_write_payload back
+    to `_replace_with_retry(tmp_path_str, path)` (dropping the
+    deadline_secs kwarg) makes this fail."""
+    from unittest.mock import patch
+
+    import safe_io
+
+    captured = {}
+    _real_replace_with_retry = safe_io._replace_with_retry
+
+    def _spy(src, dst, deadline_secs=0.5):
+        captured["deadline_secs"] = deadline_secs
+        return _real_replace_with_retry(src, dst, deadline_secs=deadline_secs)
+
+    with patch.object(safe_io, "_replace_with_retry", _spy):
+        safe_io.atomic_write_json(
+            {"x": 1}, tmp_path / "data.json", replace_deadline_secs=2.5
+        )
+
+    assert captured["deadline_secs"] == 2.5
 
 
 # ── atomic_write_text (backlog.txt "hurricane_climatology.fetch_hurdat2_raw's

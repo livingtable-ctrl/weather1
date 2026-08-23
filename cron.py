@@ -202,6 +202,88 @@ try:
 except ImportError:
     _PSUTIL_AVAILABLE = False
 
+# Only used by _acquire_cron_lock's no-psutil fallback (unchanged from
+# before the create_time-aware check below was added). Deliberately NOT
+# used as a general age-based override when psutil IS available -- an
+# earlier version of this fix added a 1800s override to that branch,
+# reasoning that cron's own internal watchdog (_install_cron_watchdog, 720s
+# default) bounds how old a genuinely-running cron process's lock can get.
+# That reasoning doesn't hold at 1800s specifically: `cmd_watch`
+# (`watch --auto --live`, main.py) also acquires this SAME lock, across one
+# run_trade_cycle() per auto-trade cycle, with NO watchdog at all -- a
+# session that legitimately runs for a while (well under 1800s per cycle,
+# but the OVERALL watch session has no such bound) could plausibly still be
+# mid-cycle at 1800s, so an override at that threshold could steal the lock
+# from a still-running, still-placing-real-orders watch cycle and let a
+# second cron cycle start concurrently -- opus-review-caught before ship.
+# See _STUCK_RUNNING_BACKSTOP_SECS below for the much longer (24h) backstop
+# that IS safe to apply even to the psutil-available branch, since neither
+# cmd_cron nor a single cmd_watch cycle can plausibly reach that age.
+_STALE_LOCK_AGE_SECS = 1800
+
+# Shared self-heal backstop for both _acquire_cron_lock's psutil-available
+# branch and _is_cron_running: once a lock is this old, override/report-not-
+# running regardless of what pid_exists()/_cron_lock_pid_reused conclude --
+# neither cmd_cron (bounded by _install_cron_watchdog, 720s default) nor a
+# single cmd_watch auto-trade cycle (acquires/releases the lock once per
+# cycle, main.py:3923/3949) can plausibly hold this lock anywhere near 24h,
+# so a lock this old cannot be a genuine holder no matter how inconclusive
+# _cron_lock_pid_reused's own verdict is (e.g. AccessDenied querying a
+# reassigned PID -- opus-review-caught: without this, EITHER function could
+# get stuck on that specific case forever, reproducing the exact permanent-
+# lock-out failure mode this whole batch exists to eliminate).
+_STUCK_RUNNING_BACKSTOP_SECS = 86400
+
+
+def _cron_lock_pid_reused(pid: int, lock_create_time: float | None) -> bool:
+    """Return True only when `pid` is POSITIVELY confirmed to be a different
+    OS process than the one that originally wrote `lock_create_time` into
+    the lock file -- i.e. Windows reused a low-numbered PID for an unrelated
+    process after the real cron holder already exited.
+
+    Returns False when this can't be positively confirmed (no create_time
+    recorded in the lock -- an old-format lock predating this field -- or
+    the process vanished, or querying it raised for any other reason, e.g.
+    AccessDenied for a protected process that reused the PID). False here
+    means "not disproven", NOT "proven alive" -- callers must still gate on
+    pid_exists() themselves. The broad `except Exception` is deliberate
+    (opus-review-caught): this function's two web_app.py callers
+    (api_run_cron, api_cron_status, via _is_cron_running) have no try/except
+    of their own around it, so an unguarded psutil.Error here would become
+    an unhandled 500 instead of the safe "can't confirm" default.
+
+    Platform note (opus-review-caught, forward-looking for the VM move --
+    this codebase currently only deploys on Windows, same assumption
+    safe_io.CrossProcessLock's own docstring already documents): on Windows,
+    psutil's create_time() reads GetProcessTimes, an absolute value stamped
+    at process creation and stable across the process's life. On Linux,
+    psutil instead derives it from boot_time() + /proc/[pid]/stat's
+    starttime, and boot_time() itself is *recomputed* from `/proc/stat`'s
+    `btime` on every call -- a wall-clock step (e.g. an NTP correction
+    shortly after boot) can shift a still-running process's OWN reported
+    create_time between two reads, which would make this function
+    misreport a genuinely-alive holder as "reused". Not a live risk today;
+    revisit this specific assumption before the VM move if its target
+    platform ends up being Linux rather than Windows.
+    """
+    if lock_create_time is None:
+        return False
+    try:
+        # The comparison lives INSIDE this try (opus-review-caught, round 2):
+        # a malformed lock_create_time (e.g. a hand-edited or corrupted
+        # data/cron.lock with a non-numeric "create_time" field) would raise
+        # TypeError on the subtraction below -- if that happened outside the
+        # try it would propagate unhandled to this function's two unguarded
+        # web_app.py callers (via _is_cron_running), exactly the 500 this
+        # function's broad except already exists to prevent for every OTHER
+        # failure shape.
+        actual_create_time = _psutil.Process(pid).create_time()
+        # A genuinely reused PID's create_time differs by seconds-to-hours,
+        # never sub-second -- 2.0s is well clear of any clock-rounding noise.
+        return abs(float(actual_create_time) - float(lock_create_time)) >= 2.0
+    except Exception:
+        return False
+
 
 def _acquire_cron_lock() -> bool:
     """
@@ -212,9 +294,16 @@ def _acquire_cron_lock() -> bool:
     concurrent cron run is never allowed through on an unexpected failure.
 
     Stale detection is PID-aware when psutil is available:
-    - Live PID  → block (another instance is really running).
-    - Dead PID  → override (process is gone, lock is stale).
-    - No psutil → conservative 1800 s age threshold before overriding.
+    - Live PID, matching create_time → block (another instance is really
+      running) UNLESS the lock has outlived _STUCK_RUNNING_BACKSTOP_SECS
+      (24h) -- see that constant's own comment for why this is safe.
+    - Live PID, but create_time doesn't match the lock's recorded value →
+      Windows reused the PID for an unrelated process; override immediately.
+    - Dead PID → override (process is gone, lock is stale).
+    - No psutil → conservative _STALE_LOCK_AGE_SECS age threshold before
+      overriding (unchanged from before this create_time-aware check; see
+      that constant's own comment for why this fallback is NOT mirrored
+      into the psutil-available branch above).
 
     AUD-0006: the exists()-check + later write_text() below is a TOCTOU race
     on its own -- two processes can both observe exists()==False (or both
@@ -244,11 +333,13 @@ def _acquire_cron_lock() -> bool:
             pid = None
             started_at = 0
             heartbeat = 0
+            lock_create_time = None
             try:
                 existing = json.loads(lp.read_text())
                 pid = existing.get("pid")
                 started_at = existing.get("started_at", 0)
                 heartbeat = existing.get("heartbeat", started_at)
+                lock_create_time = existing.get("create_time")
             except Exception as parse_err:
                 # Fail closed: corrupt / unreadable lock means we cannot verify whether
                 # another cron instance is running. Remove the bad file and refuse to
@@ -265,23 +356,48 @@ def _acquire_cron_lock() -> bool:
                 return False
 
             if pid and _PSUTIL_AVAILABLE:
-                if _psutil.pid_exists(pid):
+                if _psutil.pid_exists(pid) and not _cron_lock_pid_reused(
+                    pid, lock_create_time
+                ):
                     age = _time.time() - started_at
+                    if age < _STUCK_RUNNING_BACKSTOP_SECS:
+                        _log.warning(
+                            "cmd_cron: lock held by live PID %d (started %.0fs ago) — skipping",
+                            pid,
+                            age,
+                        )
+                        return False
+                    # opus-review-caught (round 2, F2): without this, a lock
+                    # whose reuse can never be positively confirmed (e.g.
+                    # persistent AccessDenied querying the holding PID) would
+                    # block cron forever with no self-heal -- the exact
+                    # permanent-lock-out failure mode this batch exists to
+                    # eliminate. Safe at this age specifically: see
+                    # _STUCK_RUNNING_BACKSTOP_SECS's own comment for why
+                    # neither cmd_cron nor cmd_watch can reach it genuinely.
                     _log.warning(
-                        "cmd_cron: lock held by live PID %d (started %.0fs ago) — skipping",
+                        "cmd_cron: overriding lock for PID %d — age %.0fs exceeds "
+                        "the %ds self-heal backstop even though reuse couldn't be "
+                        "positively confirmed",
                         pid,
                         age,
+                        _STUCK_RUNNING_BACKSTOP_SECS,
                     )
-                    return False
-                # PID is gone — safe to override.
-                _log.warning("cmd_cron: overriding stale lock from dead PID %d", pid)
+                else:
+                    # PID is gone, or was reused by an unrelated process — stale.
+                    _log.warning(
+                        "cmd_cron: overriding stale lock (PID %d dead or reused by "
+                        "a different process)",
+                        pid,
+                    )
             else:
                 # psutil unavailable — use conservative heartbeat age.
                 age = _time.time() - heartbeat
-                if age < 1800:
+                if age < _STALE_LOCK_AGE_SECS:
                     _log.warning(
-                        "cmd_cron: lock age %.0fs < 1800s; refusing to override without psutil",
+                        "cmd_cron: lock age %.0fs < %ds; refusing to override without psutil",
                         age,
+                        _STALE_LOCK_AGE_SECS,
                     )
                     return False
                 _log.warning(
@@ -295,6 +411,18 @@ def _acquire_cron_lock() -> bool:
             "started_at": _time.time(),
             "heartbeat": _time.time(),
         }
+        if _PSUTIL_AVAILABLE:
+            try:
+                # float() so a malformed/mocked return value fails INSIDE
+                # this best-effort block rather than reaching the
+                # json.dumps() below unguarded and aborting the whole
+                # acquire over a field that's allowed to just be absent.
+                lock_data["create_time"] = float(
+                    _psutil.Process(os.getpid()).create_time()
+                )
+            except Exception:
+                pass  # best-effort — an old-format lock without this field
+                # still gets the pre-existing pid_exists()-only protection.
         lp.write_text(json.dumps(lock_data))
         return True
 
@@ -308,7 +436,8 @@ def _acquire_cron_lock() -> bool:
 
 
 def _release_cron_lock() -> None:
-    """Delete the cron lock file.
+    """Delete the cron lock file -- but ONLY if this process is still the
+    one that owns it.
 
     AUD-0006 followup (opus review): the acquire-side mutex only serializes
     _acquire_cron_lock's own check-then-write body -- without also taking it
@@ -319,6 +448,15 @@ def _release_cron_lock() -> None:
     attempts the unlink even if the mutex itself can't be acquired within
     its timeout (never let the locking mechanism block releasing the real
     lock -- leaving the lock file behind would be worse than a narrow race).
+
+    H2 (opus-review-caught): a bare unconditional unlink() would also delete
+    a DIFFERENT process's lock once one exists to override -- e.g. process A
+    holds the lock past _STALE_LOCK_AGE_SECS (no-psutil fallback), process B
+    overrides it and starts running, and A's own delayed `finally` then
+    unlinks B's fresh lock, leaving B completely unprotected and letting a
+    THIRD acquirer start concurrently. The ownership check below (still
+    inside the same mutex hold, so no new torn-read risk) makes release a
+    no-op whenever the lock currently on disk isn't this process's own.
     """
     from safe_io import CrossProcessLock
 
@@ -326,6 +464,19 @@ def _release_cron_lock() -> None:
     _mutex = CrossProcessLock(lp.with_name(lp.name + ".mutex"), timeout=5.0)
     _mutex.acquire()
     try:
+        try:
+            owner_pid = json.loads(lp.read_text()).get("pid")
+        except Exception:
+            owner_pid = None  # missing/unreadable -- nothing of ours to protect
+        if owner_pid is not None and owner_pid != os.getpid():
+            _log.warning(
+                "cmd_cron: not releasing lock -- currently held by PID %d, "
+                "not this process (%d); an earlier acquire must have "
+                "already overridden it as stale",
+                owner_pid,
+                os.getpid(),
+            )
+            return
         lp.unlink(missing_ok=True)
     except Exception as _e:
         _log.warning("cmd_cron: could not release lock: %s", _e)
@@ -339,6 +490,23 @@ def _is_cron_running() -> bool:
     Uses the same PID-aware logic as _acquire_cron_lock but never writes.
     Returns False (not running) when the lock file is absent, stale, or unreadable,
     so callers default to allowing a new run rather than blocking indefinitely.
+
+    Shares _cron_lock_pid_reused AND _STUCK_RUNNING_BACKSTOP_SECS with
+    _acquire_cron_lock (see that constant's own comment) so a Windows
+    PID-reuse situation doesn't make this report "running" forever the way
+    a bare pid_exists() check would, and an inconclusive reuse verdict
+    (e.g. AccessDenied querying a reassigned PID) doesn't either. Applies
+    the backstop unconditionally once PID reuse is ruled out -- not only in
+    the inconclusive case -- since a genuinely still-running holder can
+    never legitimately reach that age either (see the constant's comment);
+    keeping the check unconditional here is simpler than branching on why
+    reuse couldn't be confirmed. Deliberately does NOT apply
+    _STALE_LOCK_AGE_SECS (1800s, `_acquire_cron_lock`'s no-psutil-only
+    threshold) -- this is a passive display/rate-limit check for callers
+    (the web dashboard's /api/run_cron and /api/cron_status, main.py's EMOS
+    activate/deactivate) that don't need or want an ordinary long-running
+    session to start reading as "not running" just because it's been up
+    for a while.
     """
     import time as _time
 
@@ -350,13 +518,18 @@ def _is_cron_running() -> bool:
         pid = existing.get("pid")
         started_at = existing.get("started_at", 0)
         heartbeat = existing.get("heartbeat", started_at)
+        lock_create_time = existing.get("create_time")
     except Exception:
         return False  # unreadable lock — treat as not running
 
     if pid and _PSUTIL_AVAILABLE:
-        return bool(_psutil.pid_exists(pid))
+        if not _psutil.pid_exists(pid):
+            return False
+        if _cron_lock_pid_reused(pid, lock_create_time):
+            return False
+        return (_time.time() - started_at) < _STUCK_RUNNING_BACKSTOP_SECS
     # psutil unavailable — treat as running only if the lock is recent
-    return (_time.time() - heartbeat) < 1800
+    return (_time.time() - heartbeat) < _STALE_LOCK_AGE_SECS
 
 
 def _check_graduation_gate() -> None:
