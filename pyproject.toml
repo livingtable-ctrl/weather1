@@ -1,8 +1,10 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+addopts = "-m 'not integration'"
 markers = [
-    "integration: integration tests — live API tests require KALSHI_ENV=demo; cron integration tests use only mocks and are CI-safe (run with '-m integration')",
+    "integration: live API tests (some require KALSHI_ENV=demo, e.g. Kalshi client calls) — excluded from normal pytest runs by default, run with '-m integration'",
+    "cron_integration: cmd_cron() orchestration tests that use only mocks — CI-safe, run by default like any other test",
 ]
 
 [tool.coverage.run]
