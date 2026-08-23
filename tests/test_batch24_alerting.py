@@ -1013,6 +1013,11 @@ class TestMidCycleDrawdownBreachAlert:
         monkeypatch.setattr(alerts, "_HALT_TRANSITION_PATH", tmp_path / "halts.json")
         monkeypatch.setattr(notify, "NOTIFY_COOLDOWN_STATE_PATH", tmp_path / "cd.json")
         monkeypatch.setattr(order_executor, "is_trading_paused", lambda: False)
+        # _make_opp's target_date is a fixed placeholder, unrelated to
+        # place_paper_order's target_date-freshness guard (opus-review-
+        # caught: this test drives the real _auto_place_trades ->
+        # place_paper_order path).
+        monkeypatch.setattr(paper, "STALE_TARGET_DATE_GRACE_DAYS", 10_000)
 
         opp1 = _make_opp("KXHIGHNY-26APR17-B70", datetime.date(2026, 4, 17))
         opp2 = _make_opp("KXHIGHNY-26APR18-B71", datetime.date(2026, 4, 18))
@@ -1054,6 +1059,8 @@ class TestMidCycleDrawdownBreachAlert:
         monkeypatch.setattr(notify, "NOTIFY_COOLDOWN_STATE_PATH", tmp_path / "cd.json")
         monkeypatch.setattr(order_executor, "is_trading_paused", lambda: False)
         monkeypatch.setattr(paper, "is_paused_drawdown", lambda client=None: False)
+        # See test_fires_alert_on_mid_cycle_breach above for rationale.
+        monkeypatch.setattr(paper, "STALE_TARGET_DATE_GRACE_DAYS", 10_000)
 
         opp1 = _make_opp("KXHIGHNY-26APR19-B72", datetime.date(2026, 4, 19))
         opp2 = _make_opp("KXHIGHNY-26APR20-B73", datetime.date(2026, 4, 20))
@@ -1091,6 +1098,11 @@ class TestMidCycleDrawdownBreachAlert:
         monkeypatch.setattr(alerts, "_HALT_TRANSITION_PATH", tmp_path / "halts.json")
         monkeypatch.setattr(notify, "NOTIFY_COOLDOWN_STATE_PATH", tmp_path / "cd.json")
         monkeypatch.setattr(order_executor, "is_trading_paused", lambda: False)
+        # See test_fires_alert_on_mid_cycle_breach above for rationale. This
+        # test's own drawdown-halt short-circuits placement before reaching
+        # place_paper_order today, so it passes either way -- patched
+        # defensively so it doesn't silently start failing if that changes.
+        monkeypatch.setattr(paper, "STALE_TARGET_DATE_GRACE_DAYS", 10_000)
 
         opp = _make_opp("KXHIGHNY-26APR21-B74", datetime.date(2026, 4, 21))
 

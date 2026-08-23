@@ -332,6 +332,86 @@ class TestPlacePaperOrderValidation:
         with pytest.raises(ValueError, match="entry_price must be in"):
             paper.place_paper_order("TICKER", "yes", 1, 1.1)
 
+    def test_stale_target_date_raises(self, tmp_path, monkeypatch):
+        """Root cause of the KXHIGHNY-26APR17-B70 incident (2026-08-23): a
+        leaked test fixture placed a real paper trade against a months-
+        expired ticker, which then 404s on every settle/quote/sync attempt
+        and (lacking close_time) permanently bypasses the stop-loss/
+        breakeven gates. This must fail closed before the trade record is
+        ever written -- verified below, not just asserted in this docstring
+        (opus-review-caught: the balance/trade-list checks are the actual
+        proof, the raise alone doesn't establish it)."""
+        import paper
+
+        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+        _balance_before = paper.get_balance()
+        _very_stale = (
+            paper.utc_today()
+            - paper.timedelta(days=paper.STALE_TARGET_DATE_GRACE_DAYS + 50)
+        ).isoformat()
+        with pytest.raises(ValueError, match="days in the past"):
+            paper.place_paper_order("TICKER", "yes", 1, 0.50, target_date=_very_stale)
+        assert paper.get_balance() == _balance_before
+        assert paper.get_all_trades() == []
+
+    def test_target_date_just_past_grace_raises(self, tmp_path, monkeypatch):
+        """Boundary case (opus-review-caught via mutation: a loosened
+        `> GRACE + 1` comparison passed the suite before this test existed)
+        -- exactly one day past the grace window must still raise."""
+        import paper
+
+        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+        _just_past_grace = (
+            paper.utc_today()
+            - paper.timedelta(days=paper.STALE_TARGET_DATE_GRACE_DAYS + 1)
+        ).isoformat()
+        with pytest.raises(ValueError, match="days in the past"):
+            paper.place_paper_order(
+                "TICKER", "yes", 1, 0.50, target_date=_just_past_grace
+            )
+
+    def test_target_date_within_grace_accepted(self, tmp_path, monkeypatch):
+        import paper
+
+        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+        _within_grace = (
+            paper.utc_today() - paper.timedelta(days=paper.STALE_TARGET_DATE_GRACE_DAYS)
+        ).isoformat()
+        trade = paper.place_paper_order(
+            "TICKER", "yes", 1, 0.50, target_date=_within_grace
+        )
+        assert trade["target_date"] == _within_grace
+
+    def test_target_date_future_accepted(self, tmp_path, monkeypatch):
+        """Positive control: every real caller derives target_date from a
+        live market fetch, so it's normally in the future -- must not be
+        rejected (the 4 other target_date tests only cover past/boundary/
+        None/unparseable)."""
+        import paper
+
+        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+        _future = (paper.utc_today() + paper.timedelta(days=5)).isoformat()
+        trade = paper.place_paper_order("TICKER", "yes", 1, 0.50, target_date=_future)
+        assert trade["target_date"] == _future
+
+    def test_target_date_none_accepted(self, tmp_path, monkeypatch):
+        import paper
+
+        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+        trade = paper.place_paper_order("TICKER", "yes", 1, 0.50, target_date=None)
+        assert trade["target_date"] is None
+
+    def test_target_date_unparseable_accepted(self, tmp_path, monkeypatch):
+        """An unparseable target_date is a different, pre-existing failure
+        mode (not this guard's job) — must not raise here."""
+        import paper
+
+        monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+        trade = paper.place_paper_order(
+            "TICKER", "yes", 1, 0.50, target_date="not-a-date"
+        )
+        assert trade["target_date"] == "not-a-date"
+
 
 # ---------------------------------------------------------------------------
 # Fix C — log_prediction warnings visible (not silently swallowed)

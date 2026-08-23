@@ -721,6 +721,9 @@ class TestCmdOrderLiveRecording:
             "execution_log.was_recently_ordered", lambda ticker, side: False
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+        # _fake_analysis_triple's target_date is a fixed placeholder,
+        # unrelated to place_paper_order's target_date-freshness guard.
+        monkeypatch.setattr(paper, "STALE_TARGET_DATE_GRACE_DAYS", 10_000)
 
         with (
             patch.object(main, "enrich_with_forecast", return_value=fake_enriched),

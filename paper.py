@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 import zlib as _zlib
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -50,6 +50,7 @@ from utils import (
     MAX_CITY_DATE_EXPOSURE,
     METHOD_KELLY_GATE,
     STRATEGY,
+    utc_today,
 )
 
 if TYPE_CHECKING:
@@ -403,6 +404,14 @@ _CITY_PAIR_CORR: dict[frozenset, float] = {
 MAX_SINGLE_TICKER_EXPOSURE = _env_float("MAX_SINGLE_TICKER_EXPOSURE", "0.10")  # #47
 MIN_ORDER_COST = 0.05  # #42: minimum order size in dollars
 MAX_ORDER_LATENCY_MS = 5000  # #79: warn if place_paper_order exceeds this latency
+# Every real caller derives target_date from a live market fetch (enrich_with_
+# forecast's _date), so it should never be more than ~1 day stale relative to
+# UTC "today" -- a west-of-UTC city's same-day trade placed right after UTC
+# midnight can still legitimately show yesterday's UTC date. A days-in-the-
+# past guard tighter than this would false-positive on that case; anything
+# beyond it means the market has already resolved/expired (a stale cache
+# entry, a leaked test fixture, or a genuine bug upstream), not a live trade.
+STALE_TARGET_DATE_GRACE_DAYS = 3
 
 
 _SCHEMA_VERSION = 2  # increment when adding new required fields
@@ -1062,6 +1071,29 @@ def place_paper_order(
     if not (0.0 < entry_price <= 1.0):
         raise ValueError(f"entry_price must be in (0, 1], got {entry_price}")
 
+    # Reject placement against a market whose target_date has already
+    # resolved/expired -- see STALE_TARGET_DATE_GRACE_DAYS above. Root-caused
+    # by a leaked test fixture placing a real trade against a
+    # months-expired ticker (KXHIGHNY-26APR17-B70, 2026-08-23): the market
+    # 404s on every subsequent settle/quote/sync attempt and, lacking
+    # close_time, permanently bypasses the 24h stop-loss/breakeven gates --
+    # this check exists to fail closed before that trade record is ever
+    # written, not to clean it up after.
+    if target_date is not None:
+        try:
+            _target_date_obj = date.fromisoformat(target_date)
+        except (TypeError, ValueError):
+            _target_date_obj = None
+        if _target_date_obj is not None:
+            _stale_days = (utc_today() - _target_date_obj).days
+            if _stale_days > STALE_TARGET_DATE_GRACE_DAYS:
+                raise ValueError(
+                    f"target_date {target_date} for {ticker} is {_stale_days} "
+                    f"days in the past (grace={STALE_TARGET_DATE_GRACE_DAYS}) "
+                    "-- refusing to place a trade against an already-"
+                    "resolved/expired market"
+                )
+
     if is_daily_loss_halted():
         daily_pnl = get_daily_pnl()
         raise ValueError(
@@ -1120,6 +1152,24 @@ def place_paper_order(
             )
             raise ValueError(
                 f"Duplicate paper order: {ticker} already has an open position"
+            )
+
+        # opus-review-caught: the target_date-freshness guard above catches
+        # a stale/expired market, but a trade missing close_time has the
+        # SAME actual harm cited in that guard's own comment (positions.py's
+        # StopLoss/BreakevenStop both skip a trade outright when close_time
+        # is None -- "cannot apply 24h gate"), independent of how fresh
+        # target_date is. Not upgraded to a hard reject here: some real
+        # callers (e.g. cmd_paper's explicit-qty path) legitimately place
+        # trades without a market fetch succeeding. A visible warning at
+        # least surfaces it instead of the position silently going
+        # unprotected with no trace until StopLoss's own per-cycle warning.
+        if close_time is None:
+            _log.warning(
+                "place_paper_order: %s placed with no close_time -- "
+                "24h StopLoss/BreakevenStop exit gates will be disabled for "
+                "this trade until close_time is backfilled",
+                ticker,
             )
 
         trade = {
@@ -1420,8 +1470,6 @@ def _score_ensemble_members(trade: dict, outcome_yes: bool) -> None:
     prob_threshold = None
     if condition_type in ("above", "below") and raw_threshold is not None:
         try:
-            from datetime import date
-
             from weather_markets import _CITY_TZ, _time_risk, get_historical_sigma
 
             month = date.fromisoformat(target_date).month
@@ -2174,8 +2222,6 @@ def position_correlation_matrix(open_trades: list[dict]) -> list[list[float]]:
       Different cities            → _CITY_PAIR_CORR lookup (default 0.10)
       Self                        → 1.0
     """
-    from datetime import date as _date
-
     n = len(open_trades)
     mat: list[list[float]] = [
         [1.0 if i == j else 0.0 for j in range(n)] for i in range(n)
@@ -2194,7 +2240,7 @@ def position_correlation_matrix(open_trades: list[dict]) -> list[list[float]]:
                 else:
                     try:
                         days_apart = abs(
-                            (_date.fromisoformat(di) - _date.fromisoformat(dj)).days
+                            (date.fromisoformat(di) - date.fromisoformat(dj)).days
                         )
                         rho = 0.50 if days_apart <= 1 else 0.30
                     except (ValueError, TypeError):
@@ -3299,8 +3345,6 @@ def check_correlated_event_exposure() -> list[dict]:
     a 3-day window (same weather event, correlated outcomes).
     Returns list of {"city": str, "dates": list, "trades": list, "total_cost": float}
     """
-    from datetime import date
-
     # AUD-0001 adjacency: this feeds the SAME /api/risk dashboard
     # payload as get_total_exposure() (web_app.py's correlated_events key,
     # alongside total_exposure/expiry_clustering/aged_positions) -- leaving

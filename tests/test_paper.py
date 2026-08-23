@@ -419,8 +419,15 @@ class TestPortfolioKelly(unittest.TestCase):
         self._patch.start()
         self._patch_exp = patch("paper.MAX_SINGLE_TICKER_EXPOSURE", 1.0)
         self._patch_exp.start()
+        # This class's fixtures use fixed 2026-04-09-style dates purely as
+        # exposure-cap lookup keys, unrelated to place_paper_order's
+        # target_date-freshness guard -- widen the grace period so those
+        # literals (which keep aging into the past) don't trip it.
+        self._patch_stale = patch("paper.STALE_TARGET_DATE_GRACE_DAYS", 10_000)
+        self._patch_stale.start()
 
     def tearDown(self):
+        self._patch_stale.stop()
         self._patch_exp.stop()
         self._patch.stop()
         shutil.rmtree(self._tmpdir, ignore_errors=True)
@@ -683,8 +690,13 @@ class TestDirectionalExposure(unittest.TestCase):
         self._patch.start()
         self._patch_exp = patch("paper.MAX_SINGLE_TICKER_EXPOSURE", 1.0)
         self._patch_exp.start()
+        # See TestPortfolioKelly.setUp — same fixed-date-vs-freshness-guard
+        # rationale.
+        self._patch_stale = patch("paper.STALE_TARGET_DATE_GRACE_DAYS", 10_000)
+        self._patch_stale.start()
 
     def tearDown(self):
+        self._patch_stale.stop()
         self._patch_exp.stop()
         self._patch.stop()
         shutil.rmtree(self._tmpdir, ignore_errors=True)
@@ -763,8 +775,13 @@ class TestExportTrades(unittest.TestCase):
         self._tmpdir = tempfile.mkdtemp()
         self._patch = patch("paper.DATA_PATH", Path(self._tmpdir) / "paper_trades.json")
         self._patch.start()
+        # See TestPortfolioKelly.setUp — same fixed-date-vs-freshness-guard
+        # rationale.
+        self._patch_stale = patch("paper.STALE_TARGET_DATE_GRACE_DAYS", 10_000)
+        self._patch_stale.start()
 
     def tearDown(self):
+        self._patch_stale.stop()
         self._patch.stop()
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -1041,7 +1058,13 @@ class TestGaussianFillSlippage:
 
         tmpdir = tempfile.mkdtemp()
         try:
-            with patch("paper.DATA_PATH", Path(tmpdir) / "trades.json"):
+            with (
+                patch("paper.DATA_PATH", Path(tmpdir) / "trades.json"),
+                # Fixed 2025-04-10 is purely a placeholder here, unrelated to
+                # place_paper_order's target_date-freshness guard — see
+                # TestPortfolioKelly.setUp for the same rationale.
+                patch("paper.STALE_TARGET_DATE_GRACE_DAYS", 10_000),
+            ):
                 trade = paper.place_paper_order(
                     ticker="KXHIGH-25APR10-NYC",
                     side=side,

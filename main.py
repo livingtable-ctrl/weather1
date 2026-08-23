@@ -3110,7 +3110,21 @@ def _quick_paper_buy(client: KalshiClient) -> None:
             if qty and qty > 0:
                 from paper import place_paper_order as _ppo_qpb  # noqa: F811
 
-                trade = _ppo_qpb(ticker, side, qty, price, thesis=thesis)
+                # opus-review-caught: city/target_date (already derived
+                # above for the position-limit check) were never passed
+                # through here, leaving the new target_date-freshness guard
+                # inert on this path AND (pre-existing, same root cause)
+                # every such trade permanently invisible to city/date
+                # exposure sums and _multiday_date_counts.
+                trade = _ppo_qpb(
+                    ticker,
+                    side,
+                    qty,
+                    price,
+                    city=city,
+                    target_date=tdate_str,
+                    thesis=thesis,
+                )
                 print(green(f"  Paper trade #{trade['id']} placed."))
                 # #110: audit trail — record every manual paper buy
                 try:

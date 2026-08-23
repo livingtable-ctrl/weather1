@@ -333,7 +333,12 @@ class TestSlippageAdjustedPrice:
 
         tmpdir = tempfile.mkdtemp()
         try:
-            with patch("paper.DATA_PATH", Path(tmpdir) / "paper_trades.json"):
+            with (
+                patch("paper.DATA_PATH", Path(tmpdir) / "paper_trades.json"),
+                # Fixed 2025-04-10 is a placeholder date, unrelated to
+                # place_paper_order's target_date-freshness guard.
+                patch("paper.STALE_TARGET_DATE_GRACE_DAYS", 10_000),
+            ):
                 trade = paper.place_paper_order(
                     ticker="KXHIGH-25APR10-NYC",
                     side="yes",
@@ -975,6 +980,9 @@ def test_auto_place_trades_logs_paper_order_to_execution_log(tmp_path, monkeypat
     importlib.reload(execution_log)
     monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
     monkeypatch.setattr(execution_log, "DB_PATH", tmp_path / "exec.db")
+    # Fixed 2026-04-30 below is a placeholder date, unrelated to
+    # place_paper_order's target_date-freshness guard.
+    monkeypatch.setattr(paper, "STALE_TARGET_DATE_GRACE_DAYS", 10_000)
 
     from utils import STRONG_EDGE
 

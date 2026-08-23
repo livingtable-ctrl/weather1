@@ -353,6 +353,9 @@ def test_place_paper_order_stores_var_on_trade(tmp_path, monkeypatch):
     import paper
 
     monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    # Fixed 2026-07-20 is a placeholder date, unrelated to place_paper_order's
+    # target_date-freshness guard.
+    monkeypatch.setattr(paper, "STALE_TARGET_DATE_GRACE_DAYS", 10_000)
 
     trade = paper.place_paper_order(
         "KXTEMPNYCH-26JUL2006-T60.99",
@@ -380,6 +383,9 @@ def test_place_paper_order_stores_model_forecast_means(tmp_path, monkeypatch):
     import paper
 
     monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    # Fixed 2026-07-04 is a placeholder date, unrelated to place_paper_order's
+    # target_date-freshness guard.
+    monkeypatch.setattr(paper, "STALE_TARGET_DATE_GRACE_DAYS", 10_000)
 
     trade = paper.place_paper_order(
         "KXHIGHNY-26JUL04-T85",
@@ -411,6 +417,9 @@ def test_place_paper_order_defaults_model_forecast_means_to_empty_dict(
     import paper
 
     monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    # Fixed 2026-07-04 is a placeholder date, unrelated to place_paper_order's
+    # target_date-freshness guard.
+    monkeypatch.setattr(paper, "STALE_TARGET_DATE_GRACE_DAYS", 10_000)
 
     trade = paper.place_paper_order(
         "KXHIGHNY-26JUL04-T85", "yes", 10, 0.5, city="NYC", target_date="2026-07-04"

@@ -1,6 +1,210 @@
 BACKLOG — future improvements to implement when ready
 ======================================================
 
+[RESOLVED 2026-08-23 -- found while doing a line-by-line read of a real
+  cron.log run] LEAKED TEST FIXTURE PLACED A REAL PAPER TRADE AGAINST A
+  MONTHS-EXPIRED MARKET (KXHIGHNY-26APR17-B70)
+Priority: High -- corrupted live paper-trading state (balance, Brier/
+  calibration input, execution_log) and permanently disabled that
+  position's stop-loss/breakeven exits.
+Files: paper.py (place_paper_order), tests/test_debug_fixes.py,
+  tests/test_paper.py, tests/test_paper_metrics.py, tests/test_trading.py,
+  tests/test_trading_gates.py
+
+Problem:
+  On 2026-08-23 01:25:49 UTC, trade #244 (KXHIGHNY-26APR17-B70, 7x YES
+  @ $0.44, cost $3.08) was placed into the REAL data/paper_trades.json,
+  predictions.db, and execution_log.db. Every field matched
+  tests/test_batch24_alerting.py's `_make_opp("KXHIGHNY-26APR17-B70",
+  date(2026, 4, 17))` fixture exactly (entry_prob=0.75, market_prob=0.40,
+  net_edge=STRONG_EDGE+0.05, days_out=1, city=NYC) -- that test calls the
+  real `order_executor._auto_place_trades(...)` pipeline with only
+  alert/halt paths monkeypatched, not data-store isolation. The timing
+  (test file's own mtime, and exactly one trade landing -- matching that
+  one test's `assert placed == 1` after its simulated drawdown halt breaks
+  the loop) points to a manual/debug invocation of that test body outside
+  pytest, bypassing conftest.py's autouse DATA_PATH isolation -- the same
+  failure mode as [[feedback_manual_scripts_bypass_test_db_isolation]].
+  KXHIGH-NYC-26APR17-B70 is also the repo's OTHER known-leak ticker
+  (conftest.py:719-724 documents an earlier, separate incident where the
+  same fixture ticker overwrote the real signals_cache.json).
+  Once live, the trade 404'd on every subsequent auto_settle/
+  get_unrealized_pnl_paper/sync_outcomes call (market genuinely archived
+  by Kalshi), and — lacking a close_time (the test fixture never sets
+  one) — permanently bypassed the 24h StopLoss/BreakevenStop gate, so it
+  sat unprotected every cycle until manually found.
+
+Resolution 2026-08-23: Removed trade #244 from data/paper_trades.json
+  (balance restored $957.35 -> $960.43, checksum recomputed -- the manual
+  JSON edit invalidated paper.py's stored SHA-256 and would otherwise have
+  crashed the next real _load() with CorruptionError, caught immediately
+  via two now-passing kelly_bet_dollars tests reading the real file
+  through a reload-triggered isolation gap), deleted the matching
+  predictions/analysis_attempts rows from predictions.db, and the orders
+  row from execution_log.db. Backups of all three pre-cleanup files saved
+  to data/backups/b70_cleanup_<timestamp>/.
+  Added a guard to place_paper_order() (paper.py): rejects any target_date
+  more than STALE_TARGET_DATE_GRACE_DAYS (3, chosen to tolerate a
+  west-of-UTC city's same-day trade placed right after UTC midnight,
+  which can legitimately show yesterday's UTC date -- not to accommodate
+  genuinely stale dates) in the past, before the trade record is ever
+  written. Confirmed via user AskUserQuestion: delete-not-flag cleanup and
+  the 3-day grace value were both the right call.
+  This surfaced 23 pre-existing tests (across test_paper.py,
+  test_paper_metrics.py, test_trading.py, test_trading_gates.py) that used
+  fixed calendar-date fixtures (e.g. "2026-04-09") as arbitrary exposure-
+  cap/CSV-export/slippage placeholders, unrelated to trade freshness --
+  these now fail as the fixed dates age into the past. Widened
+  STALE_TARGET_DATE_GRACE_DAYS locally in each via the same
+  `patch("paper.X", ...)` idiom already used there for
+  MAX_SINGLE_TICKER_EXPOSURE, rather than editing 20+ individual date
+  literals.
+  Tests: 5 new tests in tests/test_debug_fixes.py::TestPlacePaperOrderValidation
+  (stale-raises, within-grace-accepted, None-accepted, unparseable-
+  accepted) -- the stale-raises case mutation-tested via Edit (disabled
+  the guard's comparison, confirmed the test failed; re-enabled, confirmed
+  it passed). Every test file in the repo calling place_paper_order (25
+  files, 987 tests) run and green. ruff/ruff-format/mypy clean via the
+  actual pre-commit hook.
+
+Opus review follow-up (effort=high, 2026-08-23): 1 HIGH + 3 MEDIUM + 10 LOW
+  findings, all addressed (per [[feedback_implementation_workflow]] step
+  13 -- every finding, not just HIGH/MEDIUM).
+  HIGH (real regression): the "987 tests, 25 files" claim above was
+  derived from a literal grep of `place_paper_order` in tests/, which
+  missed TRANSITIVE callers -- tests/test_batch24_alerting.py never
+  contains that string but drives the real `_auto_place_trades()` ->
+  `place_paper_order()` path, and its `_make_opp()` fixture (fixed April
+  2026 dates) broke 2 of its tests exactly like the incident this fix
+  addresses. Fixed: patched STALE_TARGET_DATE_GRACE_DAYS in all 3 tests in
+  that class. Root cause of the miss addressed properly, not just patched:
+  re-swept every real entry point (_auto_place_trades, cmd_order,
+  cmd_paper, /api/paper-order, _quick_paper_buy) across all tests/ for
+  transitive callers this time -- found 7 more previously-unrun files
+  (test_dedup.py, test_hourly_markets.py, test_hurricane_gating.py,
+  test_hurricane_markets.py, test_snow_markets.py, test_rain_markets.py,
+  test_phase2_batch_l.py), all green (461 tests).
+  MEDIUM: (1) main.py's `_quick_paper_buy` paper-order branch never passed
+  city/target_date to place_paper_order() at all (already-derived
+  variables sitting unused one function up) -- the new guard was
+  completely inert on the single most likely path for a human to type a
+  stale ticker by hand, AND (same root cause, pre-existing) those trades
+  were permanently invisible to every city/date exposure sum. Fixed: pass
+  both through. (2) Mutation-verified off-by-one: a loosened
+  `> GRACE_DAYS + 1` comparison still passed the full new-test suite.
+  Fixed: added a boundary test at exactly grace+1 days stale
+  (test_target_date_just_past_grace_raises), mutation-confirmed it now
+  catches that exact mutation. (3) predictions.db's `price_improvement`
+  table still held one leaked row (id 366, 7x$0.44) missed by the original
+  cleanup sweep -- deleted; a broader brute-force column search across
+  every table in both DBs afterward found nothing else except 5
+  `api_requests` rows (real 404 API calls the leaked trade genuinely
+  triggered -- accurate operational telemetry, not fabricated financial
+  data, nothing scores against it; left in place, not deleted).
+  LOW, all addressed: switched `datetime.now(UTC).date()` to the existing
+  `utils.utc_today()` for explicitness (verified safe first: all 21
+  _CITY_TZ entries are US/UTC-negative, so the UTC form was already
+  strictly stricter, never looser, than city-local -- 2 of 3 days'
+  headroom preserved either way); added a close_time-is-None warning log
+  (the guard's own comment cites 24h stop-loss/breakeven bypass as the
+  real harm, which a fresh-but-close_time-less trade -- e.g. exactly
+  M-1's pre-fix shape -- shared but wasn't itself covered); removed 3 now-
+  redundant local `from datetime import date` imports (module-level
+  covers them since the guard's own `date` import); test_debug_fixes.py's
+  stale-date fixture converted from a hardcoded "2026-04-17" literal to a
+  self-maintaining relative date; that same test strengthened to assert
+  balance/trade-list untouched after the raise, not just that it raised;
+  added a positive-control future-target_date-accepted test (the other 4
+  only covered past/boundary/None/unparseable). 2 LOW findings confirmed
+  as deliberate, correct behavior needing no change: fails open on a
+  non-str/unparseable target_date (a different, pre-existing failure mode
+  -- already documented in test_target_date_unparseable_accepted's own
+  docstring); the per-test `patch(...).start()`-in-setUp/`.stop()`-in-
+  teardown idiom doesn't leak the new patch (verified: it's the LAST
+  setUp statement and FIRST teardown statement in every affected class,
+  and both `-p no:randomly` and randomized-order runs showed zero bleed).
+  3 findings scoped as new backlog entries below rather than fixed inline
+  (per step 27's same-payload test: each is a genuinely separate
+  consumer/root-cause needing its own surgery, not a one-line extension of
+  this change) -- see "TARGET_DATE GUARD HAS NO UPPER BOUND", "LIVE
+  cmd_order BUY NEVER VALIDATES target_date FRESHNESS", and "HURRICANE-
+  NEXT-EVENT TICKERS GET THE WRONG _date FROM enrich_with_forecast" below.
+  Final re-verification: 1573 tests pass across every file (33) directly
+  or transitively reaching place_paper_order, re-run fresh in this same
+  pass (not carried over from the 987 figure above). ruff/ruff-format/mypy
+  clean via the actual pre-commit hook on every changed file (paper.py,
+  main.py, and the 6 changed test files).
+
+[OPEN 2026-08-23 -- found by the opus review (effort=high) of the
+  KXHIGHNY-26APR17-B70 stale-target_date guard immediately above this
+  entry; scoped out per step 27's same-payload test rather than fixed
+  inline -- picking a correct upper bound needs the same per-market-family
+  MAX_DAYS_OUT-style research the analysis layer already has (weather_
+  markets.py's HURRICANE_MAX_DAYS_OUT/RAIN_MAX_DAYS_OUT/SNOW_MAX_DAYS_OUT/
+  MAX_DAYS_OUT), not a guessed constant that risks blocking a legitimate
+  long-horizon trade.] place_paper_order()'S NEW STALE-TARGET_DATE GUARD
+  HAS NO UPPER BOUND
+Priority: Low -- no known real trigger today (hypothetical: a mis-parsed
+  ticker with a garbage 2-digit year producing a far-future target_date).
+Files: paper.py (place_paper_order)
+
+Problem:
+  The new STALE_TARGET_DATE_GRACE_DAYS guard (see the entry immediately
+  above) only rejects a target_date more than 3 days in the PAST. A
+  target_date far in the FUTURE (e.g. from a ticker-parsing bug computing
+  the wrong century/year) sails through unchecked -- only one direction of
+  the same underlying "is this date sane" question is guarded.
+What it would look like:
+  Cross-reference each market family's own already-existing MAX_DAYS_OUT-
+  style ceiling (weather_markets.py) rather than inventing a new generic
+  bound in paper.py, which doesn't know which family a given ticker
+  belongs to.
+
+[OPEN 2026-08-23 -- found by the same opus review as the entry above.]
+  LIVE cmd_order BUY NEVER VALIDATES target_date FRESHNESS BEFORE PLACING
+  A REAL ORDER
+Priority: Low today (LIVE_TRADING_ENABLED unset, this path is dormant),
+  but higher-stakes than the paper-mirror guard once live trading is ever
+  enabled -- a stale/expired ticker reaching this path places a REAL
+  order, not just a paper-ledger write.
+Files: main.py (cmd_order's `if not _is_live:` branch at the paper-mirror
+  call -- the guard added to place_paper_order() only ever runs on that
+  paper-mirror side)
+
+Problem:
+  cmd_order's live-order branch (main.py, `_is_live` True) calls the real
+  Kalshi order-placement API directly and does NOT go through
+  place_paper_order() at all -- so the new target_date-freshness guard
+  never runs before a genuinely live buy. Scoped out of the immediate fix
+  (per step 27's same-payload test) since it's a different function/code
+  path (the live order-placement call, not the paper-mirror recording
+  call this change touches) needing its own design decision: should the
+  live path gain the identical guard, a different one, or rely on
+  upstream market-existence checks instead?
+
+[OPEN 2026-08-23 -- found by the same opus review as the two entries
+  above, itself a pre-existing bug unrelated to this session's actual
+  change (discovered only because it's now a latent input to the new
+  guard).] HURRICANE-NEXT-EVENT TICKERS GET THE WRONG _date FROM
+  enrich_with_forecast (SHARED SEASON-REFERENCE SEGMENT, NOT THE REAL
+  THRESHOLD DATE)
+Priority: Low -- these ticker families are shadow-gated (no real
+  placement happens for them today), so currently dormant; would become a
+  real false-positive risk against the new stale-date guard once/if that
+  gate ever opens and the season-reference segment ever names an
+  already-past date.
+Files: weather_markets.py (parse_city_date, enrich_with_forecast)
+
+Problem:
+  weather_markets.parse_city_date() early-returns (None, None) for
+  _HURRICANE_NEXT_EVENT_SERIES tickers, but enrich_with_forecast() has no
+  matching guard -- empirically, `enrich_with_forecast({'ticker':
+  'KXNEXTHURDATE-26DEC01-26SEP15'})["_date"]` returns 2026-12-01 (the
+  shared season-reference segment) rather than the real 2026-09-15
+  threshold date. order_executor.py prefers `m["_date"]` over
+  `a["target_date"]`, so this wrong value is what actually gets stored on
+  a trade record and what the new stale-date guard would evaluate.
+
 [OPEN 2026-08-16 -- found by opus review (effort=high) while shipping the
   settlement-lag METAR calibration fix immediately below this entry; not
   fixed in that same change -- see "Why not now" below.] METAR
