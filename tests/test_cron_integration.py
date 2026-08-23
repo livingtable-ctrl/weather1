@@ -93,7 +93,7 @@ def cron_env(tmp_path, monkeypatch):
     yield tmp_path, client, main, paper
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cron_places_paper_trade_on_strong_signal(cron_env):
     """Full cron run with a mocked strong signal: _auto_place_trades called with strong_opps."""
     tmp_path, client, main, paper = cron_env
@@ -123,7 +123,7 @@ def test_cron_places_paper_trade_on_strong_signal(cron_env):
     )
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cron_strong_signal_does_not_write_to_real_production_cron_log(cron_env):
     """A full cmd_cron() run producing a real STRONG signal must write its
     JSONL entry to the isolated tmp_path file (conftest.py's autouse
@@ -205,7 +205,7 @@ def test_cron_strong_signal_does_not_write_to_real_production_cron_log(cron_env)
     assert any(e.get("ticker") == "KXHIGH-NYC-26APR17-B70" for e in written)
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cron_skips_stale_markets_before_analysis(cron_env):
     """A market with zero volume/open-interest closing within 60 minutes must
     never reach enrich_with_forecast/analyze_trade -- wired 2026-07-12
@@ -281,7 +281,7 @@ def test_cron_skips_stale_markets_before_analysis(cron_env):
     )
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cron_closes_position_via_check_paper_position_exits(cron_env):
     """cmd_cron must call paper.check_paper_position_exits() and actually
     close a stop-loss-breaching paper position -- confirms the position-
@@ -314,7 +314,7 @@ def test_cron_closes_position_via_check_paper_position_exits(cron_env):
     )
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cron_drawdown_guard_blocks_auto_trades(cron_env):
     """When drawdown guard is active, _auto_place_trades returns 0 and places nothing."""
     tmp_path, client, main, paper = cron_env
@@ -374,7 +374,7 @@ def test_cron_drawdown_guard_blocks_auto_trades(cron_env):
             pytest.fail(f"Drawdown guard failed: {e}")
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cron_drift_tightens_effective_edge(cron_env, caplog):
     """When Brier drift is detected, cmd_cron logs the tightened STRONG_EDGE threshold."""
     tmp_path, client, main, paper = cron_env
@@ -406,7 +406,7 @@ def test_cron_drift_tightens_effective_edge(cron_env, caplog):
     )
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cron_kill_switch_halts_before_scan(cron_env):
     """If kill switch file exists, cmd_cron must return without calling get_weather_markets."""
     tmp_path, client, main, paper = cron_env
@@ -438,7 +438,7 @@ def test_cron_kill_switch_halts_before_scan(cron_env):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cron_gate_blocks_when_adjusted_edge_below_threshold(cron_env):
     """A market whose net_edge clears STRONG_EDGE but adjusted_edge does not must
     NOT be auto-placed — the gate must use adjusted_edge (L2-E)."""
@@ -491,7 +491,7 @@ def test_cron_gate_blocks_when_adjusted_edge_below_threshold(cron_env):
     )
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cron_gate_allows_when_adjusted_edge_above_threshold(cron_env):
     """A market whose adjusted_edge clears STRONG_EDGE must be auto-placed (L2-E)."""
     tmp_path, client, main, paper = cron_env
@@ -542,7 +542,7 @@ def test_cron_gate_allows_when_adjusted_edge_above_threshold(cron_env):
     )
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cron_lock_released_on_keyboard_interrupt(cron_env):
     """Lock must be cleaned up even if cron is interrupted mid-run."""
     import cron as _cron
@@ -603,7 +603,7 @@ def test_check_market_anomalies_filters_by_threshold():
 # ── P1-15: anomaly check return value halts trading ──────────────────────────
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_p1_15_anomaly_check_halts_cron(cron_env, caplog, monkeypatch):
     """P1-15: when run_anomaly_check returns anomalies, cron must halt before placement."""
 
@@ -638,7 +638,7 @@ def test_p1_15_anomaly_check_halts_cron(cron_env, caplog, monkeypatch):
     )
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_p1_15_empty_anomaly_list_does_not_halt(cron_env):
     """P1-15: empty anomaly list must not halt — cron continues normally."""
     import alerts as _alerts
@@ -655,7 +655,7 @@ def test_p1_15_empty_anomaly_list_does_not_halt(cron_env):
 # ── Soft halts must not skip settlement/stop-losses (only placement) ─────────
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_accuracy_halt_still_runs_settlement(cron_env, monkeypatch):
     """An accuracy halt must not skip settlement — the halt is computed from
     settled trades, so skipping settlement while halted would make it
@@ -684,7 +684,7 @@ def test_accuracy_halt_still_runs_settlement(cron_env, monkeypatch):
     assert not placed, "no trades must be placed during an accuracy halt"
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_anomaly_halt_still_runs_settlement(cron_env, monkeypatch):
     """An anomaly halt (declined in non-interactive/loop mode) must still settle."""
     import alerts as _alerts
@@ -717,7 +717,7 @@ def test_anomaly_halt_still_runs_settlement(cron_env, monkeypatch):
     assert not placed, "no trades must be placed during an anomaly halt"
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_anomaly_override_prompt_skipped_when_already_halted(cron_env, monkeypatch):
     """Deep-review followup: when an earlier soft-halt (accuracy halt here)
     already stopped placement this cycle, the interactive anomaly-override
@@ -761,7 +761,7 @@ def test_anomaly_override_prompt_skipped_when_already_halted(cron_env, monkeypat
     )
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_kill_switch_still_skips_settlement(cron_env, monkeypatch):
     """Unlike the soft halts, the kill switch remains a full stop by design —
     it's the one operator-engaged 'stop everything now' mechanism."""
@@ -786,7 +786,7 @@ def test_kill_switch_still_skips_settlement(cron_env, monkeypatch):
 # ── P1-12: kill switch check inside per-market analysis loop ─────────────────
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_p1_12_kill_switch_mid_scan_breaks_loop(monkeypatch, tmp_path, caplog):
     """P1-12: kill switch created during scan must break the analysis loop."""
     import importlib
@@ -842,7 +842,7 @@ def test_p1_12_kill_switch_mid_scan_breaks_loop(monkeypatch, tmp_path, caplog):
     )
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cmd_cron_stops_active_websocket_on_exit(cron_env):
     """2026-07-12: a KalshiWebSocket started this cycle must be stopped before
     cmd_cron() returns, regardless of how _cmd_cron_body() exits. Before this
@@ -876,7 +876,7 @@ def test_cmd_cron_stops_active_websocket_on_exit(cron_env):
     )
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cmd_cron_body_registers_real_websocket_before_cleanup(cron_env, monkeypatch):
     """End-to-end version of the test above: exercises the REAL
     _cmd_cron_body registration line (`_active_ws = _ws` right after
@@ -905,7 +905,7 @@ def test_cmd_cron_body_registers_real_websocket_before_cleanup(cron_env, monkeyp
     assert cron_module._active_ws is None
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cmd_cron_stops_websocket_even_on_body_exception(cron_env):
     """The WS cleanup must run via the existing finally block even when
     _cmd_cron_body raises -- not just on the happy path."""
@@ -926,7 +926,7 @@ def test_cmd_cron_stops_websocket_even_on_body_exception(cron_env):
     assert cron_module._active_ws is None
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 def test_cron_logs_near_settlement_row_with_real_trade_fields(cron_env):
     """End-to-end regression for near_settlement_log being silently broken
     since it shipped: the snapshot code previously read "recommended_side"/
@@ -1012,7 +1012,7 @@ def test_cron_reads_settlement_signals_with_generous_staleness_window(cron_env):
     assert 610 <= captured["max_age_minutes"] < 1440
 
 
-@pytest.mark.integration
+@pytest.mark.cron_integration
 class TestKillSwitchOverrideRenameRace:
     """AUD-0039 regression: cmd_cron's kill-switch override used unguarded
     Path.rename() (raises FileExistsError if the destination already

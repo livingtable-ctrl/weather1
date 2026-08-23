@@ -200,7 +200,7 @@ Once you have enough settled trades, the bot automatically recalibrates forecast
 
 **EMOS calibration**
 
-For deeper ensemble calibration, run `python main.py backfill-emos` to populate historical ensemble mean and variance from the Open-Meteo archive. Once ~25 rows are accumulated, an `emos-train` command will fit an Ensemble Model Output Statistics model that corrects for ensemble under-dispersion.
+For deeper ensemble calibration, run `python main.py backfill-emos` to populate historical ensemble mean and variance from the Open-Meteo archive. Once 40 rows are accumulated, an `emos-train` command will fit an Ensemble Model Output Statistics model that corrects for ensemble under-dispersion.
 
 **Monte Carlo portfolio simulation**
 
@@ -275,7 +275,7 @@ All settings have sensible defaults. Override any of them in `.env`:
 | `LOG_LEVEL` | `WARNING` | Python logging level for the `kalshi` logger |
 | `DISCORD_WEBHOOK_URL` | — | Discord webhook for trade notifications (optional) |
 | `DISCORD_WEBHOOK_URLS` | — | Comma-separated list of Discord webhooks (optional) |
-| `NOTIFY_CHANNELS` | `desktop,discord` | Active notification channels: `desktop`, `discord`, `pushover`, `ntfy`, `email` |
+| `NOTIFY_CHANNELS` | `desktop,pushover,ntfy,discord,email` | Active notification channels: `desktop`, `discord`, `pushover`, `ntfy`, `email` |
 | `SMTP_HOST` | `smtp.gmail.com` | SMTP server for email notifications |
 | `SMTP_PORT` | `587` | SMTP port |
 | `SMTP_USER` | — | SMTP username / sender address |
@@ -283,6 +283,12 @@ All settings have sensible defaults. Override any of them in `.env`:
 | `SMTP_TO` | — | Recipient address for email notifications |
 | `GOOGLE_DRIVE_PATH` | — | Override Google Drive sync folder path for backups |
 | `CLOUD_BACKUP_PATH` | — | Override backup destination (any folder: OneDrive, Dropbox, etc.) |
+| `HOURLY_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled hourly predictions exist; until then hourly opportunities are analyzed and logged but no real order is placed |
+| `RAIN_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled monthly-rain predictions exist |
+| `SNOW_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled monthly-snow predictions exist |
+| `HURRICANE_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled hurricane-season-count predictions exist |
+| `HURRICANE_NEXT_EVENT_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled time-to-next-hurricane-event predictions exist |
+| `STORM_ORDER_TRADING_ENABLED` | — (disabled) | Shadow-only until set to `1`/`true`/`yes` AND ≥20 settled storm-order predictions exist |
 
 ---
 
@@ -358,7 +364,7 @@ CLOUD_BACKUP_PATH=C:\path\to\your\sync\folder
 ## Notes
 
 - The `.env` file and `.pem` key are gitignored — never commit them
-- The bot only trades Kalshi weather markets (temperature and precipitation). It ignores all other market types.
+- The bot only trades Kalshi weather markets (temperature, precipitation, and hurricane markets). It ignores all other market types. Several of these are shadow-only until manually enabled — see the `*_TRADING_ENABLED` rows in Environment variables above.
 - `python main.py kill` writes a halt flag that persists across restarts; `python main.py resume` clears it.
 - The `train-bias` command requires `scikit-learn` (included in `requirements.txt`) and at least 200 settled predictions per city to produce a model that outperforms the static bias table. Basic blend-weight and temperature-scale calibration runs automatically and requires far fewer samples.
 - Add `--debug` to any command to enable verbose logging: `python main.py cron --debug`

@@ -9558,7 +9558,7 @@ def cmd_weekly_summary() -> None:
 
 
 def cmd_schedule():
-    """Register a Windows Task Scheduler job to auto-scan every hour."""
+    """Register a Windows Task Scheduler job to auto-scan every 3 hours."""
     if sys.platform != "win32":
         print(yellow("Scheduled tasks are only supported on Windows."))
         return
