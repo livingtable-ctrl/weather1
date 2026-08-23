@@ -111,6 +111,7 @@ _DEAD_FIELD_ALLOWLIST = {
     "below_gate_enabled": "enforced via weather_markets.py's own os.getenv('BELOW_GATE_ENABLED')",
     "same_day_reserve_slots": "enforced via utils.SAME_DAY_RESERVE_SLOTS",
     "same_day_reserve_after_hour_utc": "enforced via utils.SAME_DAY_RESERVE_AFTER_HOUR_UTC",
+    "max_daily_loss_pct": "enforced via paper.MAX_DAILY_LOSS_PCT (paper.py's is_daily_loss_halted() imports its own module-level copy directly) -- see config._live_max_daily_loss_pct's docstring. A third independent copy also exists at utils.py's own module level (display-only, feeds get_config_fingerprint). Added batch-29: this field previously didn't exist at all, so validate() couldn't range-check the env var even though paper.py's own fail-soft parser accepted a scale-typo value (e.g. '3' for the intended '0.03') that silently disabled the daily-loss circuit breaker",
     "ntfy_topic": "enforced via notify.py's/watchdog.py's own os.getenv('NTFY_TOPIC')",
 }
 

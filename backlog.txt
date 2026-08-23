@@ -24299,3 +24299,302 @@ Problem:
   obs_not_locked (tests/test_phase2_batch_d.py).
   Full record: none (not from the original max-depth audit -- surfaced by
   independent review during this session's own fix).
+
+[RESOLVED 2026-08-22 -- batch-29 item 1] SEVERAL ENV VARS PARSE SUCCESSFULLY BUT HAVE NO RANGE VALIDATION -- MOST NOTABLY MAX_DAILY_LOSS_PCT, WHICH CAN SILENTLY DISABLE THE DAILY-LOSS CIRCUIT BREAKER
+Priority: MEDIUM
+
+Problem:
+  MAX_DAILY_LOSS_PCT is parsed by paper.py's own fail-SOFT _env_float (a
+  value like "3", a natural "3 percent" typo for the intended "0.03",
+  parses fine) and had no BotConfig field at all, so config.py's
+  validate() could not catch it even in principle. Unbounded: at 3.0, the
+  daily-loss threshold becomes 300% of balance and can never trip. The
+  interactive settings menu (main.py's Settings screen) DOES enforce a
+  real 0-1 range on this exact value, proving the intended bound was
+  already known -- but the documented .env-editing workflow bypasses that
+  menu entirely. Also reproduced: negative MAX_DAILY_SPEND/MAX_SAME_DAY_
+  SPEND (fail-safe direction -- any real spend check trips immediately --
+  but still a silently-accepted nonsense value), MAX_CITY_DATE_EXPOSURE=50
+  (this field's own docstring already documents a past 50-vs-0.25 scale-
+  confusion incident on this exact field but only ever fixed the literal,
+  never added a bound), negative/zero MIN_BRIER_SAMPLES, and
+  SAME_DAY_RESERVE_AFTER_HOUR_UTC=99. PAPER_MIN_EDGE additionally bypassed
+  the standard _env_float parser (a raw float(env_val) call) and had no
+  lower bound at all.
+  Re-verified against live code before starting: config.py's validate()
+  (~L328-387 pre-fix) had zero range checks for any of the 7 fields above;
+  confirmed via direct grep/read, not assumed from the finding text.
+Recommendation:
+  Add max_daily_loss_pct to BotConfig with a 0 < x < 1 check in
+  validate(), matching the interactive menu's existing bound. Add
+  0 < max_city_date_exposure <= 1 and a 0-23 range check for the reserve
+  hour. Route PAPER_MIN_EDGE through the standard _env_float parser with a
+  real lower bound.
+Full record: not independently filed in backlog.txt prior to this
+  resolution -- audit/handoff_prompts/batches/batch-29.md's own "Full
+  record: backlog.txt:24169" citation was stale/inaccurate even at the
+  time that batch was written (backlog.txt had only 23294 lines at
+  batch-29's own cited HEAD commit 0ef17231); this is a fresh entry, not a
+  resolved pre-existing one.
+
+Resolution (2026-08-22):
+  AskUserQuestion confirmed scope (include all 7 unbounded fields named in
+  the Problem section, not just the 4 the Recommendation called out by
+  name) and the PAPER_MIN_EDGE floor (>= 0.01, not just > 0).
+  config.py: added max_daily_loss_pct: float field (default_factory=
+  _live_max_daily_loss_pct, mirroring the established _live_* pattern --
+  falls back to paper.py's own resolved MAX_DAILY_LOSS_PCT rather than a
+  second hardcoded literal that could diverge) and 7 new validate() range
+  checks: MAX_DAILY_LOSS_PCT (0,1), MAX_CITY_DATE_EXPOSURE (0,1],
+  SAME_DAY_RESERVE_AFTER_HOUR_UTC [0,23], PAPER_MIN_EDGE >= 0.01,
+  MAX_DAILY_SPEND > 0, MAX_SAME_DAY_SPEND > 0, MIN_BRIER_SAMPLES >= 1.
+  PAPER_MIN_EDGE now routed through the standard _env_float parser (was a
+  bare float(env_val) call) so a malformed value raises the same friendly,
+  named error every other _env_float-backed field raises.
+  Added "max_daily_loss_pct" to tests/test_config_divergence_guard.py's
+  _DEAD_FIELD_ALLOWLIST (real enforcement stays in paper.py's own module-
+  level copy, matching max_city_date_exposure's existing precedent) --
+  the guard's own test caught this immediately when first added.
+  Testing: 20 new tests across tests/test_config.py (positive control +
+  negative-value + boundary-value case per field) and
+  tests/test_config_validation.py (env-fresh-read + fallback-to-paper.py-
+  default + malformed-PAPER_MIN_EDGE-error-message). All 7 new validate()
+  checks mutation-tested by removing them as a block, confirming all 13
+  negative-case tests fail (positive-case tests correctly kept passing),
+  then restoring. The _live_max_daily_loss_pct fallback and the
+  PAPER_MIN_EDGE routing fix were separately mutation-tested by reverting
+  each to its pre-fix form and confirming the corresponding test fails
+  with the predicted wrong value/message, then restoring.
+
+  Independent opus review (effort=high) before push found 9 real findings
+  (1 MEDIUM, 1 LOW/MEDIUM, 7 LOW) plus 4 informational notes -- all
+  addressed:
+    - MEDIUM: SAME_DAY_RESERVE_AFTER_HOUR_UTC=24 is a legitimate sentinel
+      ("never release the same-day reserve" -- order_executor.py's own
+      check is `hour >= X` and datetime.now(UTC).hour never reaches 24)
+      that the new [0,23] bound wrongly rejected, bricking startup for
+      anyone using it. Widened to [0,24] inclusive.
+    - LOW/MEDIUM: adding max_daily_loss_pct routes MAX_DAILY_LOSS_PCT
+      through config.py's raising _env_float, unlike paper.py's fail-soft
+      copy -- a malformed value now hard-fails main.py at module import
+      (main.py:161), including the `setup` .env-repair path. NOT changed:
+      every other numeric BotConfig field already has this exact property
+      (config.py's _env_float/_env_int always raise), and failing closed
+      on a malformed value for a circuit-breaker threshold specifically is
+      the correct direction, not an accident -- silently defaulting a bad
+      MAX_DAILY_LOSS_PCT to some fallback would risk exactly the
+      "circuit breaker doesn't actually protect anything" failure mode
+      this whole item exists to close. Documented here as a deliberate,
+      reasoned no-op rather than left unaddressed.
+    - LOW: the new item-1 entry's "matching the interactive menu's
+      existing bound" claim was FALSE at the time it was written -- the
+      menu's shared "0-1" format (main.py) is inclusive (0<=x<=1) while
+      config.py's new bound is exclusive (0<x<1), so the menu could write
+      0.0 or 1.0 to .env and brick the next startup. Fixed: MAX_DAILY_
+      LOSS_PCT gets its own "0-1 excl" menu format (main.py's
+      setting_keys/validation branch) instead of sharing "0-1" with
+      KALSHI_MAKER_FEE_RATE (which legitimately needs inclusive-of-0).
+      The claim is now actually true.
+    - LOW: utils.py's own MAX_DAILY_LOSS_PCT module constant (a THIRD
+      independent copy, feeding get_config_fingerprint, display-only) was
+      undocumented in both _live_max_daily_loss_pct's docstring and the
+      _DEAD_FIELD_ALLOWLIST entry -- both updated to name it explicitly.
+      Not a divergence risk in practice (test_no_env_var_has_conflicting_
+      hardcoded_defaults already covers it, all three copies read "0.03"),
+      just an omission in the new documentation.
+    - LOW: test_max_daily_loss_pct_falls_back_to_paper_default_when_unset
+      was vacuous -- mutation-proven: hardcoding config.py's fallback back
+      to a literal "0.03" left all 41 tests green because paper.py's real
+      default also happens to be "0.03". Fixed: the test now monkeypatches
+      paper.MAX_DAILY_LOSS_PCT to a distinctive 0.17 and asserts against
+      that, re-mutation-tested to confirm it now fails on the same
+      hardcoded-literal regression.
+    - LOW (x2): missing boundary tests let `max_daily_loss_pct < 1.0`
+      silently regress to `< 2.0` and `max_city_date_exposure <= 1.0` to
+      `<= 1.5` without any test catching it (the existing 50.0/negative
+      cases don't discriminate those specific thresholds). Added
+      test_max_daily_loss_pct_at_one_raises and
+      test_max_city_date_exposure_above_one_raises (1.2, not 50.0, to
+      actually pin the boundary).
+    - LOW (x2): the SAME_DAY_RESERVE_AFTER_HOUR_UTC bound widening (above)
+      needed its own updated boundary tests -- added 24-passes and
+      25-raises cases.
+    - INFO: config.py's `_env_float("PAPER_MIN_EDGE", env_val)` passes as
+      its own "default" the value it just read from the same env var --
+      harmless redundancy (the os.getenv re-read inside _env_float just
+      returns the same already-set value), left as-is, not worth a special
+      case for a one-line readability nit.
+    - INFO: no max_same_day_spend <= max_daily_spend cross-field check
+      added, even though the real .env has 400 > 200. Pre-existing gap,
+      not introduced or claimed fixed by this item -- the two new `> 0`
+      checks this item adds are unrelated to that cross-field relationship.
+      Left for a future entry if it ever matters in practice.
+    - INFO: graphify-out/ exists but was not refreshed. Following the
+      immediately-prior batch-07 session's own explicit precedent (same
+      day, overlapping files, backlog.txt's own note on that commit):
+      scoping to this batch's changed files would hit the same already-
+      documented substantial staleness (main.py's node IDs were already
+      74/78 mismatched independent of any new work) that made a prior
+      refresh attempt risk reproducing a ~394K-line reorder-churn diff
+      this repo already reverted once. Skipped for the same reason, now
+      stated explicitly rather than silently omitted.
+  Interactive-menu test coverage: NOT added for the new "0-1 excl" branch
+  in main.py's cmd_settings(). Explicit reasoned decision: cmd_settings()
+  has zero pre-existing test coverage anywhere in this repo (grepped;
+  confirmed) -- it's a `while True`/`input()` REPL loop whose env_path
+  resolution is hardcoded to `Path(__file__).parent / ".env"` (the REAL
+  production .env, which exists on this machine, so the function's own
+  cwd-relative fallback path never triggers), making it unsafe to test
+  without either an invasive signature change (out of scope for this
+  narrow fix) or fragile Path-patching with real risk of writing to the
+  actual .env file on a mocking mistake. The added branch is a mechanical,
+  low-risk mirror of the immediately adjacent "0-1" branch's exact
+  pattern (`0 <= fv <= 1` narrowed to `0 < fv < 1`), independently
+  verified correct via direct interpreter evaluation of the exact
+  predicate against {0, 1, 0.0, 1.0, 0.5, 0.03, "abc", -0.1, 1.5} before
+  shipping, not just asserted.
+
+  Fresh count at the moment of writing this narrative (post-review-fixes):
+  tests/test_config.py + tests/test_config_validation.py +
+  tests/test_config_divergence_guard.py: 44 passed.
+  ruff/ruff-format/mypy clean via the actual pre-commit hook.
+
+[RESOLVED 2026-08-22 -- batch-29 item 3; two of the three sub-findings resolved, one confirmed NOT a defect and already covered by a prior entry -- see resolution note below] THREE SMALLER UTC-VS-LOCAL-BASIS FINDINGS, NONE FEEDING A LIVE GATING DECISION DIRECTLY
+Priority: LOW
+
+Problem (as originally filed by batch-29):
+  (a) weather_markets.py's _days_out_from_close_time (~L6141-6146) uses
+  raw UTC date instead of the ET-adjusted date the codebase already uses
+  elsewhere for the identical Kalshi-close-time-crosses-midnight-UTC
+  issue -- both sides UTC so internally consistent, only affects markets
+  sitting exactly on the horizon threshold.
+  (b) main.py's cmd_schedule_cycles (~L9707-9710 pre-fix) snapshots a
+  fixed UTC offset (datetime.now().astimezone().tzinfo) for local
+  scheduling times instead of a real per-target-instant-aware conversion
+  -- currently dormant, nothing is registered via this path on the real
+  machine (cron is manual-only, per this file's own prior notes).
+  (c) weather_markets.py's seasonal-blend-weight bucket (~L12609 pre-fix)
+  falls back to naive server-local time (not UTC, not city-local) via
+  __import__("datetime").datetime.now().month when target_date is None --
+  impact bounded to a few hours near a month boundary given 3-month-wide
+  buckets.
+Recommendation (as originally filed):
+  (a) Convert close_dt to America/New_York before reading .month/.day.
+  (b) Use the fromtimestamp()-based pattern like the settlement-monitor
+  registration does. (c) Use utils.utc_today() explicitly.
+
+Re-verification before implementing (step 1 of this project's standing
+  workflow) found (a)'s recommendation was WRONG -- superseded by a more
+  careful investigation this project had already done:
+
+  (a) NOT a defect, left as-is. A 2026-08-17 opus-review entry earlier in
+  this same file (search "_days_out_from_close_time") already
+  investigated this exact function and explicitly concluded it is
+  "correctly UTC-vs-UTC internally consistent" and "correctly left
+  alone" -- a genuinely different bug class from the city-local-vs-UTC
+  comparisons that entry was fixing elsewhere. That entry's own nuance
+  note: Kalshi's close_time for an ET-calendar-date market is an
+  evening-ET instant whose UTC date is the FOLLOWING day, so
+  close_dt.date() in raw UTC slightly OVERSTATES true ET-local days-out
+  by up to 1 day near a market's close -- but converting to ET (as
+  batch-29 recommended) would REMOVE that bias, making time_kelly_scale/
+  edge_confidence LESS conservative for markets near the months-scale
+  RAIN_MAX_DAYS_OUT/SNOW_MAX_DAYS_OUT/HURRICANE_MAX_DAYS_OUT ceilings --
+  the opposite of an improvement. batch-29's own framing ("both sides
+  UTC so internally consistent") already correctly identified this isn't
+  the city-local bug class, but its Recommendation contradicted its own
+  Problem framing by proposing the ET conversion anyway. Fix NOT applied;
+  a code comment was added to _days_out_from_close_time instead, pointing
+  future readers at this entry so the same mis-fix isn't attempted again
+  without re-reading it.
+
+  (b) and (c) confirmed real and distinct from any prior entry (grepped
+  backlog.txt for both before implementing; no match). (c) additionally
+  found to be currently UNREACHABLE dead code: analyze_trade's own
+  no_date gate (~L11546-11554) returns None before target_date can ever
+  be falsy for any ticker type that reaches the seasonal-blend code at
+  ~L12609 (rain/snow/hurricane-next-event/hurricane-count, the only
+  families where target_date is legitimately None, all `return` earlier
+  in the function, before this code is reached). Fixed anyway as
+  defensive-correct (harmless today, correct if a future ticker family or
+  caller ever reaches this branch with target_date unset) -- matching the
+  recommendation -- but no behavioral test is possible against genuinely
+  dead code, so none was written; this reachability finding is
+  documented here instead.
+
+Resolution (2026-08-22):
+  (a) No code change -- see re-verification above. Added a docstring note
+  to _days_out_from_close_time explaining the deliberate UTC-vs-UTC
+  design and pointing at this entry.
+  (b) main.py's cmd_schedule_cycles: removed the snapshotted
+  datetime.now().astimezone().tzinfo offset; each of the 4 target UTC
+  instants is now localized individually via
+  datetime.fromtimestamp(utc_dt.timestamp()), mirroring cmd_schedule()'s
+  own settlement-monitor task registration pattern exactly (fromtimestamp()
+  asks the OS to localize the TARGET instant, correctly DST-adjusted for
+  it, rather than reusing whatever offset was in effect at registration
+  time).
+  (c) weather_markets.py's seasonal-blend fallback: replaced
+  __import__("datetime").datetime.now().month with _local_today.month (the
+  city-local "today" already computed once near the top of analyze_trade
+  and reused by every other days-out/date comparison in the function --
+  see revision below; utc_today().month was the first-pass fix, changed
+  after independent review).
+  Testing: (b) tests/test_cmd_schedule_cycles.py (new file, 5 tests) --
+  summer/winter happy-path, a UTC-host straight-echo case, plus spring-
+  forward/fall-back DST-transition regression tests, using the same real-
+  datetime-subclass _FakeDT pattern already established in tests/
+  test_cmd_schedule_settlement_monitor.py (a plain Mock() can't prove
+  which zone a now(tz)/fromtimestamp(ts) call actually resolved to).
+  Mutation-tested: reverting to the pre-fix snapshot-offset code makes the
+  2 DST-transition tests fail with exactly the predicted 1-hour-off times
+  (08/14/20 UTC entries), while the 2 Eastern-host happy-path tests
+  correctly keep passing (no transition in view) -- confirming the tests
+  target the DST-crossing bug specifically, not incidentally. (c) no
+  dedicated test -- see the dead-code finding above; no behavioral test is
+  possible against code that cannot be reached.
+
+  Independent opus review (effort=high) before push additionally found,
+  for this entry:
+    - LOW: test_summer_eastern_host was non-discriminating ON THIS HOST --
+      re-running cmd_schedule_cycles() with the _FakeDT monkeypatch
+      entirely removed produced byte-identical output on this Eastern-
+      timezone dev machine, so a silently-broken monkeypatch would not
+      have been caught. Confirmed by independently re-running it unpatched.
+    - LOW: the new test file dropped the sibling test_cmd_schedule_
+      settlement_monitor.py's TestHostTimezoneIndependence pattern (a
+      UTC-host case, where local==UTC makes any non-echo output prove the
+      patch is real) -- both findings fixed together by adding
+      TestHostTimezoneIndependence::test_utc_host_is_a_straight_echo.
+    - LOW: (c)'s fix used utc_today().month, but _local_today (city-local)
+      was already in scope at that exact line and is the basis every
+      other days-out/date comparison in analyze_trade uses post-batch-07 --
+      utc_today() would have reintroduced a (currently dead, zero-impact)
+      instance of the UTC-vs-city-local basis mismatch this codebase spent
+      several batches eliminating elsewhere. Switched to _local_today.month;
+      the now-unused `utc_today` import was removed from weather_markets.py's
+      `from utils import (...)` block.
+    - The review independently re-derived and confirmed, with a stronger
+      proof than this entry's own reachability argument
+      (weather_markets.py's `assert target_date is not None` sits between
+      the monthly-rain/snow/hurricane-next-event fast-paths and the
+      seasonal-blend code, and target_date is never reassigned in
+      between): the dead-code finding for (c) is correct, and the item-3a
+      revert (see above) is correct and well-reasoned, independently
+      re-derived from the actual close_time semantics rather than trusting
+      the backlog narrative.
+    - INFO: the fixed-offset schtasks /ST value in cmd_schedule_cycles()
+      still drifts an hour in UTC terms after the NEXT DST transition
+      following registration -- inherent to the fromtimestamp()-at-
+      registration-time pattern this fix mirrors from cmd_schedule()'s own
+      settlement-monitor task (same limitation there), not a defect this
+      change introduces or could fix without also changing the sibling
+      pattern it's deliberately matching. Left as-is.
+
+  Fresh count at the moment of writing this narrative (post-review-fixes):
+  tests/test_cmd_schedule_cycles.py: 5 passed.
+  tests/test_weather_markets.py + test_rain_markets.py +
+  test_snow_markets.py + test_hurricane_markets.py (full regression sweep
+  given weather_markets.py was touched): 601 passed, 4 skipped (unchanged
+  by the (a)/(c) revisions above -- neither changes runtime behavior).
+  ruff/ruff-format/mypy clean via the actual pre-commit hook.

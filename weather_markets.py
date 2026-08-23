@@ -6182,7 +6182,22 @@ def _days_out_from_close_time(close_dt: datetime) -> int:
     """max(0, (close_dt.date() - today).days) -- the monthly-rain analog of
     the daily path's target_date-based days_out calc (backlog.txt "RAIN /
     SNOW / HURRICANE MARKETS" Step 2), computed from close_time since
-    target_date stays None for these tickers by design."""
+    target_date stays None for these tickers by design.
+
+    Deliberately UTC-vs-UTC, not ET-converted -- re-verified 2026-08-22
+    (batch-29 item 3a) against a prior 2026-08-17 opus-review finding
+    (backlog.txt) that already investigated this exact function: both sides
+    of this comparison are UTC, so it's internally self-consistent, a
+    genuinely different bug class from the city-local-vs-UTC comparisons
+    fixed elsewhere in this file. Converting to ET would remove a small
+    (<1 day) conservative bias -- close_dt.date() in UTC slightly
+    OVERSTATES true ET-local days-out near a market's close (Kalshi's
+    close_time for an ET-calendar-date market is an evening-ET instant
+    whose UTC date is the FOLLOWING day) -- which is immaterial against the
+    months-scale RAIN_MAX_DAYS_OUT/SNOW_MAX_DAYS_OUT/HURRICANE_MAX_DAYS_OUT
+    ceilings this gates and biases edge_confidence/time_kelly_scale down,
+    not up. Do not "fix" this without re-reading that backlog entry first.
+    """
     return max(0, (close_dt.date() - datetime.now(UTC).date()).days)
 
 
@@ -12675,11 +12690,13 @@ def analyze_trade(
             )
             blend_sources = {"obs": round(_obs_w, 4), "ensemble": round(_ens_w, 4)}
         else:
-            _month = (
-                target_date.month
-                if target_date
-                else __import__("datetime").datetime.now().month
-            )
+            # _local_today (city-local, computed once near the top of this
+            # function) rather than utc_today() -- this branch is currently
+            # unreachable (target_date is guaranteed non-None by the no_date
+            # gate for every ticker family that reaches here), but if that
+            # ever changes, city-local matches the basis every other days-
+            # out/date comparison in this function already uses, not UTC.
+            _month = target_date.month if target_date else _local_today.month
             _season = {
                 12: "winter",
                 1: "winter",

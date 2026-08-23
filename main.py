@@ -6323,7 +6323,11 @@ def cmd_settings(client: KalshiClient | None = None) -> None:  # noqa: ARG001
         setting_keys = [
             ("MIN_EDGE", "minimum edge to show in analyze", "0-1"),
             ("STRONG_EDGE", "threshold for STRONG BUY signal", "0-1"),
-            ("MAX_DAILY_LOSS_PCT", "halt trading if down this % today", "0-1"),
+            (
+                "MAX_DAILY_LOSS_PCT",
+                "halt trading if down this % today",
+                "0-1 excl",
+            ),
             ("MAX_POSITION_AGE_DAYS", "warn on positions older than N days", "int"),
             ("KALSHI_FEE_RATE", "taker fee (reference only — see below)", "0-1"),
             (
@@ -6401,6 +6405,19 @@ def cmd_settings(client: KalshiClient | None = None) -> None:  # noqa: ARG001
             try:
                 fv = float(new_val)
                 if not 0 <= fv <= 1:
+                    valid = False
+            except ValueError:
+                valid = False
+        elif fmt == "0-1 excl":
+            # Strictly between 0 and 1 -- unlike the inclusive "0-1" format
+            # above, this backs a field whose config.py validate() bound is
+            # exclusive on both ends (MAX_DAILY_LOSS_PCT: 0 halts on any
+            # loss at all, degenerate; 1 can only trip at exactly 100%
+            # loss). Writing 0 or 1 here via the menu would otherwise pass
+            # this screen but then fail validate() at the next startup.
+            try:
+                fv = float(new_val)
+                if not 0 < fv < 1:
                     valid = False
             except ValueError:
                 valid = False
@@ -9720,10 +9737,6 @@ def cmd_schedule_cycles() -> None:
     script_path = Path(__file__).resolve()
 
     utc_times = [2, 8, 14, 20]
-    try:
-        local_tz = datetime.now().astimezone().tzinfo
-    except Exception:
-        local_tz = UTC
 
     print(bold("\nNWP Cycle-Aligned Scan Schedule"))
     print(
@@ -9737,8 +9750,14 @@ def cmd_schedule_cycles() -> None:
         utc_dt = datetime.now(UTC).replace(
             hour=utc_hour, minute=15, second=0, microsecond=0
         )
-        local_dt = utc_dt.astimezone(local_tz)
-        local_time_str = local_dt.strftime("%H:%M")
+        # fromtimestamp() asks the OS to localize this specific TARGET instant
+        # to the host's own local wall clock, correctly DST-adjusted for it —
+        # mirrors cmd_schedule()'s settlement-monitor task registration just
+        # above. A snapshotted `datetime.now().astimezone().tzinfo` fixed
+        # offset (the prior approach here) gets this wrong for any of these
+        # 4 daily times that fall on the opposite side of a DST transition
+        # from whenever this command happens to be run.
+        local_time_str = datetime.fromtimestamp(utc_dt.timestamp()).strftime("%H:%M")
         task_name = f"KalshiCron_{utc_hour:02d}UTC"
         # Each path must be individually quoted (a space in the repo path,
         # e.g. "C:\claude kalshi", otherwise splits the command line) and

@@ -98,6 +98,54 @@ def test_validate_env_accepts_exact_demo_and_prod(monkeypatch, tmp_path):
         assert main.validate_env() is True
 
 
+def test_max_daily_loss_pct_reads_env_fresh(monkeypatch):
+    """MAX_DAILY_LOSS_PCT is actually enforced from paper.py -- confirm
+    config.BotConfig's own copy (used by validate()/dashboard) reads the
+    env var fresh rather than only ever seeing paper.py's default."""
+    monkeypatch.setenv("MAX_DAILY_LOSS_PCT", "0.08")
+    from config import BotConfig, reset_config
+
+    reset_config()
+    cfg = BotConfig.from_env()
+    assert abs(cfg.max_daily_loss_pct - 0.08) < 0.001
+
+
+def test_max_daily_loss_pct_falls_back_to_paper_default_when_unset(monkeypatch):
+    """Unset env var -- must fall back to paper.py's own resolved default,
+    not a second independent hardcoded literal that could silently diverge
+    (the exact MAX_CITY_DATE_EXPOSURE/MAX_DAYS_OUT divergence class this
+    dataclass's other _live_* fields already guard against).
+
+    Patches paper.MAX_DAILY_LOSS_PCT to a distinctive, non-default value
+    (0.17 -- not paper.py's real "0.03" default, not any other field's
+    default in this file) rather than comparing against paper.py's real
+    resolved value: opus-review-caught, comparing against the real value
+    is vacuous here because config.py's own hardcoded fallback literal
+    ("0.03") happens to already match paper.py's, so a regression that
+    silently reintroduced a second hardcoded copy would pass unnoticed."""
+    monkeypatch.delenv("MAX_DAILY_LOSS_PCT", raising=False)
+    import paper
+    from config import BotConfig, reset_config
+
+    monkeypatch.setattr(paper, "MAX_DAILY_LOSS_PCT", 0.17)
+    reset_config()
+    cfg = BotConfig.from_env()
+    assert abs(cfg.max_daily_loss_pct - 0.17) < 0.001
+
+
+def test_paper_min_edge_bad_value_raises_friendly_error(monkeypatch):
+    """PAPER_MIN_EDGE now routes through the standard _env_float parser
+    (batch-29 item 1) -- a malformed value must raise the same friendly,
+    named error every other _env_float-backed field raises, not a bare
+    ValueError from a raw float() call."""
+    monkeypatch.setenv("PAPER_MIN_EDGE", "not-a-number")
+    from config import BotConfig, reset_config
+
+    reset_config()
+    with pytest.raises(ValueError, match="PAPER_MIN_EDGE"):
+        BotConfig.from_env()
+
+
 def test_bot_config_defaults_are_sane(monkeypatch):
     """breakeven_trigger_pct and max_days_out both read their env var fresh
     from the environment by design (see config._live_breakeven_trigger_pct

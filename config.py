@@ -93,6 +93,28 @@ def _live_max_city_date_exposure() -> float:
     return _env_float("MAX_CITY_DATE_EXPOSURE", str(_fallback))
 
 
+def _live_max_daily_loss_pct() -> float:
+    """MAX_DAILY_LOSS_PCT is actually enforced from paper.py, not this
+    dataclass (paper.py's is_daily_loss_halted() imports its own module-level
+    copy directly). Read the env var fresh here too, but fall back to
+    paper.py's already-resolved default rather than a second hardcoded copy
+    -- so validate()'s bound check below can actually catch a value (e.g. a
+    "3" typo for the intended "0.03") that paper.py's own fail-soft parser
+    accepts without error and that would silently disable the daily-loss
+    circuit breaker (threshold becomes 300% of balance, never trips).
+
+    A THIRD independent copy also exists at utils.py's own module level
+    (display-only, feeds get_config_fingerprint) -- deliberately not made
+    the fallback source here since paper.py's is_daily_loss_halted() is the
+    actual enforcement path, but worth knowing if this ever needs updating:
+    all three copies read the same env var with the same "0.03" default, so
+    test_no_env_var_has_conflicting_hardcoded_defaults (test_config_
+    divergence_guard.py) would catch a literal drifting out of sync."""
+    from paper import MAX_DAILY_LOSS_PCT as _fallback
+
+    return _env_float("MAX_DAILY_LOSS_PCT", str(_fallback))
+
+
 def _live_method_kelly_gate() -> float:
     """METHOD_KELLY_GATE is actually enforced from utils.py, not this
     dataclass (paper.py imports it directly). Read the env var fresh here too,
@@ -169,7 +191,7 @@ def _paper_min_edge_default() -> float:
     """
     env_val = os.getenv("PAPER_MIN_EDGE")
     if env_val is not None:
-        return float(env_val)
+        return _env_float("PAPER_MIN_EDGE", env_val)
 
     import param_sweep as _param_sweep
 
@@ -285,6 +307,7 @@ class BotConfig:
     # Settled-trade count gate before per-method Kelly multiplier activates (paper.py)
     method_kelly_gate: float = field(default_factory=_live_method_kelly_gate)
     max_city_date_exposure: float = field(default_factory=_live_max_city_date_exposure)
+    max_daily_loss_pct: float = field(default_factory=_live_max_daily_loss_pct)
     breakeven_trigger_pct: float = field(default_factory=_live_breakeven_trigger_pct)
     min_arb_edge: float = field(default_factory=_live_min_arb_edge)
     below_gate_enabled: bool = field(
@@ -353,6 +376,31 @@ class BotConfig:
             errors.append(
                 f"BREAKEVEN_TRIGGER_PCT ({self.breakeven_trigger_pct}) must be between 0 and 1"
             )
+        if not (0.0 < self.max_daily_loss_pct < 1.0):
+            errors.append(
+                f"MAX_DAILY_LOSS_PCT ({self.max_daily_loss_pct}) must be between 0 and 1 "
+                "-- a value >= 1 can never trip the daily-loss circuit breaker"
+            )
+        if not (0.0 < self.max_city_date_exposure <= 1.0):
+            errors.append(
+                f"MAX_CITY_DATE_EXPOSURE ({self.max_city_date_exposure}) must be "
+                "between 0 (exclusive) and 1 (inclusive) -- it's a fraction of balance"
+            )
+        if not (0 <= self.same_day_reserve_after_hour_utc <= 24):
+            errors.append(
+                f"SAME_DAY_RESERVE_AFTER_HOUR_UTC ({self.same_day_reserve_after_hour_utc}) "
+                "must be 0-24 (24 is a legitimate sentinel meaning 'never release the "
+                "same-day reserve' -- order_executor.py's own check is `hour >= X`, "
+                "and datetime.now(UTC).hour never reaches 24)"
+            )
+        if self.paper_min_edge < 0.01:
+            errors.append(f"PAPER_MIN_EDGE ({self.paper_min_edge}) must be >= 0.01")
+        if self.max_daily_spend <= 0:
+            errors.append(f"MAX_DAILY_SPEND ({self.max_daily_spend}) must be > 0")
+        if self.max_same_day_spend <= 0:
+            errors.append(f"MAX_SAME_DAY_SPEND ({self.max_same_day_spend}) must be > 0")
+        if self.min_brier_samples < 1:
+            errors.append(f"MIN_BRIER_SAMPLES ({self.min_brier_samples}) must be >= 1")
         if errors:
             raise ValueError(
                 "Invalid configuration:\n" + "\n".join(f"  - {e}" for e in errors)
