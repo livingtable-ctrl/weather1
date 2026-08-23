@@ -2587,6 +2587,17 @@ def check_model_exits(client=None) -> list[dict]:
     Returns a list of exit recommendations:
       [{"trade": {...}, "reason": "model_flipped"|"edge_gone",
         "current_edge": float, "held_side": str}, ...]
+
+    Sources positions via the shared Position read-model (positions.py),
+    built per-trade inside each trade's own try/except (not batched ahead
+    of the loop, so one malformed trade dict only drops that one trade)
+    rather than reading raw trade-dict fields directly, so this function's
+    field defaults can't independently drift from PaperPositionStore's.
+    Still returns the raw trade dict itself (not Position) in the "trade"
+    key, via the loop variable `t` -- no separate id lookup needed, since
+    each Position is built from that same `t`: callers (main.py's
+    exit-signal display, cmd_brief) read fields (thesis, full market dict,
+    etc.) Position deliberately doesn't carry.
     """
     if client is None:
         return []
@@ -2600,21 +2611,28 @@ def check_model_exits(client=None) -> list[dict]:
     recommendations = []
     for t in open_trades:
         try:
-            market = client.get_market(t["ticker"])
+            # Built inside the per-trade try (not batched ahead of the loop)
+            # so a single malformed trade dict only drops that one trade,
+            # matching the original per-trade error isolation -- a batched
+            # `[_trade_to_position(t) for t in open_trades]` would instead
+            # abort the whole cycle on the first bad record (opus review
+            # finding, batch-18).
+            pos = _trade_to_position(t)
+            market = client.get_market(pos.ticker)
             enriched = enrich_with_forecast(market)
             analysis = analyze_trade(enriched)
             if not analysis:
                 continue
-            held_side = t["side"]
+            held_side = pos.side
             net_edge = analysis.get("net_edge", analysis["edge"])
 
             # Minimum hold time: do not exit positions entered within the last
             # EXIT_MIN_HOLD_HOURS. New forecast data stabilises after 6-12h; early
             # exits on noisy first-cycle updates are almost always spurious.
             if not _passes_exit_gates(
-                ticker=t.get("ticker", "?"),
+                ticker=pos.ticker or "?",
                 log_tag="[ModelExit]",
-                entered_at=t.get("entered_at", ""),
+                entered_at=pos.entered_at or "",
                 min_hold_hours=EXIT_MIN_HOLD_HOURS,
             ):
                 continue  # too soon — let the position breathe

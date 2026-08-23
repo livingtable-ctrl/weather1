@@ -313,3 +313,102 @@ class TestExitSignals:
         assert not crashed, (
             "KeyboardInterrupt on close prompt must be caught and not escape the menu"
         )
+
+
+class TestRatingTierAwareness:
+    """backlog.txt "main.py's _rating() CLI TABLE IS A 4TH, STILL-TEXT-DERIVED
+    STAR LADDER" (batch-18): _rating() (nested in _render_analysis_results)
+    must key off the authoritative `tier` field when the caller's analysis
+    dict carries one (cycle_result.liquid_opps, from trade_cycle.py) instead
+    of always falling back to raw net_edge/risk magnitude -- the same
+    tier-first shift the dashboard stars and watch-mode alert already got in
+    the resolved sibling entry this one explicitly built on."""
+
+    _SENTINEL = object()
+
+    def _opp(self, tier=_SENTINEL, net_edge=0.35, time_risk="LOW"):
+        import datetime as _dt
+
+        market = {
+            "ticker": "KXHIGH-NYC-TESTTIER",
+            "title": "Test market",
+            "_city": "NYC",
+            "_date": _dt.date(2026, 6, 1),
+            "close_time": "2026-06-01T12:00:00+00:00",
+        }
+        analysis = {
+            "net_edge": net_edge,
+            "edge": net_edge,
+            "market_prob": 0.40,
+            "forecast_prob": 0.75,
+            "recommended_side": "yes",
+            "time_risk": time_risk,
+        }
+        if tier is not self._SENTINEL:
+            analysis["tier"] = tier
+        return market, analysis
+
+    def _render(self, capsys, market, analysis):
+        import main
+
+        main._render_analysis_results(
+            client=MagicMock(),
+            markets=[],
+            liquid_opps=[(market, analysis)],
+            no_quote_opps=[],
+            previous_tickers=None,
+            min_edge=0.10,
+            show_summary=False,
+            _open_trades=[],
+            _arb_ticker_city={},
+        )
+        return capsys.readouterr().out
+
+    def test_tiered_strong_at_low_risk_shows_three_stars(self, capsys):
+        """tier=STRONG + time_risk=LOW must show 3 stars even though
+        net_edge (0.05) is well UNDER STRONG_EDGE (0.30) -- under the old
+        net_edge/risk-only math this would render a single dim star, so this
+        genuinely proves tier (not raw magnitude) now drives the rating when
+        tier is present, not just a case both old and new math agree on."""
+        import trade_cycle
+
+        market, analysis = self._opp(tier=trade_cycle.TIER_STRONG, net_edge=0.05)
+        out = self._render(capsys, market, analysis)
+        assert out.count("★") == 3
+
+    def test_tiered_none_shows_single_star_not_three(self, capsys):
+        """The exact bug this entry fixes: net_edge=0.35 clears the old
+        net_edge>=STRONG_EDGE(0.30) math for 3 stars, but tier=None (present
+        -- the candidate did NOT clear trade_cycle.py's placement gate) is
+        the authoritative verdict and must win. Before the fix this rendered
+        ★★★ here while signals_cache.json's `stars` field showed just "★"
+        for the identical candidate shape (see the resolved sibling entry's
+        own regression test, test_untiered_strong_text_no_longer_shows_
+        multiple_stars, for that other site)."""
+        import trade_cycle
+
+        market, analysis = self._opp(tier=None, net_edge=0.35)
+        out = self._render(capsys, market, analysis)
+        assert out.count("★") == 1, (
+            f"tier=None (gate-failed) must render 1 star even though "
+            f"net_edge=0.35 clears the legacy net_edge>=STRONG_EDGE math -- "
+            f"got {out.count('★')} stars"
+        )
+        # Positive control: TIER_MED with the same net_edge DOES get 2 stars,
+        # proving the low count above is really tier-driven and not some
+        # unrelated rendering failure suppressing all stars.
+        market2, analysis2 = self._opp(tier=trade_cycle.TIER_MED, net_edge=0.35)
+        out2 = self._render(capsys, market2, analysis2)
+        assert out2.count("★") == 2
+
+    def test_untiered_candidate_keeps_legacy_net_edge_math(self, capsys):
+        """_analyze_once's own analysis dicts never carry a "tier" key at
+        all (unlike cycle_result.liquid_opps, which always sets it, even to
+        None) -- _rating() must keep working correctly with tier absent, per
+        this entry's own explicit requirement. net_edge=0.35 clears
+        STRONG_EDGE (0.30) and risk="LOW" != "HIGH", so 3 stars (unchanged
+        legacy behavior)."""
+        market, analysis = self._opp(net_edge=0.35)  # no "tier" key at all
+        assert "tier" not in analysis
+        out = self._render(capsys, market, analysis)
+        assert out.count("★") == 3

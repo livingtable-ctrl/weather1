@@ -1795,8 +1795,43 @@ def _render_analysis_results(
     attribution on placed arb trades whenever analyze_trade() returned falsy).
     """
 
-    def _rating(net_edge: float, risk: str) -> str:
-        """★★★ = strong edge + low risk, ★★ = good edge, ★ = fair edge."""
+    # backlog.txt "main.py's _rating() CLI TABLE IS A 4TH, STILL-TEXT-DERIVED
+    # STAR LADDER": a sentinel (not None) distinguishes "analysis dict never
+    # carries a tier field at all" (_analyze_once's own opps -- _rating must
+    # keep using the net_edge/risk math below, unchanged) from "tier field
+    # present but None" (cycle_result.liquid_opps opps that didn't clear
+    # trade_cycle.py's placement gate -- a real, authoritative verdict that
+    # must NOT be overridden by raw net_edge magnitude). Plain `None` can't
+    # make that distinction since both cases read back as None via .get().
+    _NO_TIER = object()
+
+    def _rating(net_edge: float, risk: str, tier: object = _NO_TIER) -> str:
+        """★★★ = strong edge + low risk, ★★ = good edge, ★ = fair edge.
+
+        When ``tier`` is passed (a candidate sourced from cycle_result.
+        liquid_opps, which does carry the authoritative `tier` field), it
+        takes priority over the net_edge/risk math, mirroring trade_cycle.
+        py's dashboard-stars ladder's own STRONG-requires-LOW-time-risk /
+        MED-or-STRONG-otherwise shape for the 3-star/2-star rungs. Not a
+        byte-for-byte match to that ladder or to signals_cache.json's
+        `stars` field, though: this table always renders one of the three
+        rungs for every row it shows (it has no blank/no-stars case), so a
+        gate-failed candidate (tier=None) renders the bottom dim-★ rung
+        here where the dashboard/signals_cache ladder would show "" (empty)
+        for the same candidate if it also failed the passes_threshold check
+        those sites additionally gate on -- a real, deliberate difference in
+        contract, not a bug, since this table is displaying "here are your
+        top opportunities" rather than "did this clear the alert bar."
+        """
+        if tier is not _NO_TIER:
+            from trade_cycle import TIER_MED, TIER_STRONG
+
+            if tier == TIER_STRONG and risk == "LOW":
+                return green("★★★")
+            elif tier in (TIER_STRONG, TIER_MED):
+                return yellow("★★ ")
+            else:
+                return dim("★  ")
         ae = abs(net_edge)
         if ae >= STRONG_EDGE and risk != "HIGH":
             return green("★★★")
@@ -1844,7 +1879,7 @@ def _render_analysis_results(
                 buy_side = buy_side + cyan(" [HEDGE]")
             rows.append(
                 [
-                    _rating(net_edge, risk),
+                    _rating(net_edge, risk, a.get("tier", _NO_TIER)),
                     ticker_str,
                     title,
                     m.get("_city", ""),

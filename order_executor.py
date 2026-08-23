@@ -1548,13 +1548,17 @@ def _reprice_or_cancel_pending_orders(
 
 def _get_live_open_positions() -> list[dict]:
     """Build a paper-trade-shaped dict from execution_log's filled-unsettled
-    live orders. Kept as the raw-dict adapter (not Position-returning) so
-    _check_live_model_exits/_check_early_exits, which still read the full
-    dict shape directly, are unaffected -- LivePositionStore.get_open()
-    layers _live_dict_to_position() on top of this for the shared
-    positions.check_stop_losses()/check_breakeven_stops()/
-    update_peak_profits(), the same pattern paper.PaperPositionStore.get_open()
-    uses over paper.get_open_trades().
+    live orders. Kept as the raw-dict adapter (not Position-returning) --
+    _check_live_model_exits now also converts each dict to a Position via
+    _live_dict_to_position() (per-item, batch-18, inside its own per-record
+    try/except so one malformed dict only drops that one position), but
+    still calls this function for the initial raw fetch rather than
+    LivePositionStore(...).get_open(), which would re-fetch and risk seeing
+    a different open-position set. LivePositionStore.get_open() layers
+    _live_dict_to_position() on top of this for the shared positions.
+    check_stop_losses()/check_breakeven_stops()/update_peak_profits(), the
+    same pattern paper.PaperPositionStore.get_open() uses over
+    paper.get_open_trades().
     """
     # AUD-0001/AUD-0002: city/target_date backfilled from the ticker alone
     # (weather_markets.parse_city_date needs only market["ticker"] -- title
@@ -2036,29 +2040,49 @@ def _check_live_model_exits(client, config: dict | None = None) -> int:
     Positions with entry_prob=None (placed before that field existed, or a
     reprice/replacement row) are skipped, same as _check_early_exits does
     for paper trades missing entry_prob.
+
+    Sources positions via LivePositionStore (positions.py's shared Position
+    read-model) rather than reading _get_live_open_positions()'s raw dict
+    fields directly -- built from a single fetch (not store.get_open(),
+    which would re-fetch and risk seeing a different open-position set),
+    mirroring _check_live_position_exits' own LivePositionStore usage.
     """
     if client is None:
         return 0
 
-    positions = _get_live_open_positions()
-    if not positions:
+    raw_positions = _get_live_open_positions()
+    if not raw_positions:
         return 0
 
     markets = get_weather_markets(client)
     markets_by_ticker = {m["ticker"]: m for m in markets}
     cycle = _current_forecast_cycle()
+    store = LivePositionStore(client, cycle)
 
     from positions import _passes_exit_gates
 
     closed = 0
-    for pos in positions:
-        ticker = pos["ticker"]
-        entry_prob = pos.get("entry_prob")
-        side = pos.get("side", "yes")
-        if entry_prob is None:
-            continue
-
+    for d in raw_positions:
         try:
+            # Built inside the per-position try (not batched via a list
+            # comprehension ahead of the loop, and not before this try
+            # either) so a single malformed raw position dict -- e.g.
+            # missing "id"/"quantity", which _live_dict_to_position
+            # subscripts unguarded -- only drops that one position, not
+            # every position already processed this cycle (opus review
+            # finding, batch-18). The pre-refactor code's own unguarded
+            # pos["ticker"] access was ALSO effectively try-protected by
+            # virtue of "id"/"quantity"/etc. only being read later, deep
+            # inside this same try (via _exit_live_position) -- building the
+            # whole Position up front, even per-item, would have re-exposed
+            # exactly that same failure mode one line earlier and outside
+            # the guard.
+            pos = _live_dict_to_position(d)
+            ticker = pos.ticker
+            entry_prob = pos.entry_prob
+            side = pos.side
+            if entry_prob is None:
+                continue
             market = markets_by_ticker.get(ticker)
             if not market:
                 continue  # market may have closed already
@@ -2076,8 +2100,8 @@ def _check_live_model_exits(client, config: dict | None = None) -> int:
             if not _passes_exit_gates(
                 ticker=ticker,
                 log_tag="[LiveModelExit]",
-                entered_at=pos.get("entered_at", ""),
-                close_time=pos.get("close_time"),
+                entered_at=pos.entered_at or "",
+                close_time=pos.close_time,
                 min_hold_hours=EXIT_MIN_HOLD_HOURS,
                 settlement_gate_hours=EXIT_SETTLEMENT_GATE_HOURS,
             ):
@@ -2098,7 +2122,7 @@ def _check_live_model_exits(client, config: dict | None = None) -> int:
                         ticker,
                     )
                     continue
-                if _exit_live_position(client, pos, exit_price, "model_exit", cycle):
+                if store.exit(pos, exit_price, "model_exit"):
                     _log.info(
                         "[LiveModelExit] %s %s closed: entry_prob=%.2f current=%.2f",
                         ticker,
@@ -2108,7 +2132,9 @@ def _check_live_model_exits(client, config: dict | None = None) -> int:
                     )
                     closed += 1
         except Exception as exc:
-            _log.warning("[LiveModelExit] Error checking %s: %s", ticker, exc)
+            _log.warning(
+                "[LiveModelExit] Error checking %s: %s", d.get("ticker", "?"), exc
+            )
             continue
 
     return closed
@@ -2460,6 +2486,12 @@ def _check_early_exits(client=None) -> int:
     _check_live_model_exits uses for live positions.
 
     Returns the number of positions closed.
+
+    Sources positions via PaperPositionStore (positions.py's shared Position
+    read-model) rather than reading get_open_trades()'s raw dict fields
+    directly -- built from a single fetch (not store.get_open(), which
+    would re-fetch and risk seeing a different open-trades set), mirroring
+    paper.check_paper_position_exits' own single-fetch + adapter pattern.
     """
     import paper as _paper
     from paper import get_open_trades
@@ -2474,16 +2506,28 @@ def _check_early_exits(client=None) -> int:
 
     markets = get_weather_markets(client)
     markets_by_ticker = {m["ticker"]: m for m in markets}
+    store = _paper.PaperPositionStore()
 
     closed = 0
-    for trade in open_trades:
-        ticker = trade.get("ticker", "")
-        entry_prob = trade.get("entry_prob")
-        side = trade.get("side", "yes")
-        if entry_prob is None:
-            continue  # cannot assess shift without entry probability
-
+    for t in open_trades:
         try:
+            # Built inside the per-trade try (not batched via a list
+            # comprehension ahead of the loop, and not before this try
+            # either) so a single malformed trade dict -- e.g. missing "id",
+            # which _trade_to_position subscripts unguarded -- only drops
+            # that one trade, not every trade already processed this cycle
+            # (opus review finding, batch-18). The pre-refactor code's own
+            # `.get()`-based ticker/entry_prob/side extraction never raised
+            # here; "id" itself was only read later, inside this same try
+            # (via close_paper_early(trade["id"], ...)) -- building the
+            # whole Position up front would have moved that same failure
+            # mode outside the guard.
+            pos = _paper._trade_to_position(t)
+            ticker = pos.ticker
+            entry_prob = pos.entry_prob
+            side = pos.side
+            if entry_prob is None:
+                continue  # cannot assess shift without entry probability
             market = markets_by_ticker.get(ticker)
             if not market:
                 continue  # market may have closed already
@@ -2504,12 +2548,11 @@ def _check_early_exits(client=None) -> int:
             # shift forecast_prob sharply in the final hours before settlement
             # without the temperature outcome actually changing, so let the market
             # converge naturally rather than closing on a transient model revision.
-            close_time_str = trade.get("close_time") or trade.get("expires_at")
             if not _passes_exit_gates(
-                ticker=trade.get("ticker", "?"),
+                ticker=ticker or "?",
                 log_tag="[EarlyExit]",
-                entered_at=trade.get("entered_at", ""),
-                close_time=close_time_str,
+                entered_at=pos.entered_at or "",
+                close_time=pos.close_time,
                 min_hold_hours=EXIT_MIN_HOLD_HOURS,
                 settlement_gate_hours=EXIT_SETTLEMENT_GATE_HOURS,
             ):
@@ -2532,9 +2575,9 @@ def _check_early_exits(client=None) -> int:
                         ticker,
                     )
                     continue
-                result = _paper.close_paper_early(trade["id"], exit_price)
+                result = store.exit(pos, exit_price)
                 _log.info(
-                    f"[EarlyExit] #{trade['id']} {ticker} {side.upper()} closed: "
+                    f"[EarlyExit] #{pos.id} {ticker} {side.upper()} closed: "
                     f"entry_prob={entry_prob:.2f} current={current_prob:.2f} "
                     f"pnl=${result['pnl']:.2f}"
                 )
@@ -2543,7 +2586,8 @@ def _check_early_exits(client=None) -> int:
             import traceback as _tb
 
             _log.warning(
-                f"[EarlyExit] Error checking {ticker}: {exc}\n{_tb.format_exc()}"
+                f"[EarlyExit] Error checking {t.get('ticker', '?')}: "
+                f"{exc}\n{_tb.format_exc()}"
             )
             continue
 
