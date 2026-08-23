@@ -216,7 +216,7 @@ class TestGateUnification:
             ctx2 = main._build_cron_context()
             ctx2 = dataclasses.replace(
                 ctx2,
-                log_shadow_predictions=lambda opps: shadow_calls.append(opps) or 0,
+                log_shadow_predictions=lambda opps: shadow_calls.append(opps) or set(),
             )
             result = trade_cycle.run_trade_cycle(ctx2, client)
 
@@ -2664,3 +2664,130 @@ class TestScanSetupResilience:
         )
         assert result.scanned == 0
         assert synced, "sync_outcomes must still run after a scan-setup crash"
+
+
+class TestPositionReconciliationHook:
+    """AUD-0025: run_trade_cycle() must reconcile execution_log's tracked
+    live positions against Kalshi's own ground truth once per cycle whenever
+    a real client is available -- gated on client is not None ONLY, matching
+    _recover_pending_orders' own precedent (see that hook's own tests right
+    above these). Opus review (round 1) caught that gating on live=True
+    additionally made this dead code on the only unattended path: cron.py
+    hardcodes live=False, but order_executor's micro-live block still places
+    real Kalshi orders from that same path when ENABLE_MICRO_LIVE is set --
+    exactly the drift this gate exists to catch would never be reconciled
+    automatically under a live=True gate. This is the only automated call
+    site added for this gate -- see order_executor._reconcile_live_positions'
+    own docstring for the check itself."""
+
+    def test_reconcile_called_when_client_present(self, engine_env, monkeypatch):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+
+        calls = []
+        monkeypatch.setattr(
+            "order_executor._reconcile_live_positions", lambda c: calls.append(c)
+        )
+
+        trade_cycle.run_trade_cycle(ctx, client, live=True)
+
+        assert calls == [client]
+
+    def test_reconcile_still_called_when_not_live(self, engine_env, monkeypatch):
+        """The regression this test guards: micro-live can place real orders
+        from a live=False (paper/cron) cycle, so this gate must NOT skip
+        just because live=False -- only the client's presence matters."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+
+        calls = []
+        monkeypatch.setattr(
+            "order_executor._reconcile_live_positions", lambda c: calls.append(c)
+        )
+
+        trade_cycle.run_trade_cycle(ctx, client, live=False)
+
+        assert calls == [client], (
+            "reconciliation must still run when live=False as long as a "
+            "real client is present -- micro-live orders can exist on a "
+            "live=False cron cycle"
+        )
+
+    def test_reconcile_skipped_when_client_is_none(self, engine_env, monkeypatch):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+
+        calls = []
+        monkeypatch.setattr(
+            "order_executor._reconcile_live_positions", lambda c: calls.append(c)
+        )
+
+        trade_cycle.run_trade_cycle(ctx, None, live=True)
+
+        assert calls == []
+
+    def test_reconcile_failure_does_not_abort_the_cycle(self, engine_env, monkeypatch):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+
+        def _boom(_client):
+            raise RuntimeError("Kalshi API down")
+
+        monkeypatch.setattr("order_executor._reconcile_live_positions", _boom)
+
+        result = trade_cycle.run_trade_cycle(ctx, client, live=True)
+
+        assert result is not None, (
+            "a reconciliation failure must not abort the whole trade cycle"
+        )
+
+
+class TestAnalysisPoolShutdown:
+    """AUD-0050 (opus review, round 1): the SAME shutdown(wait=False) defect
+    found in the prewarm pool also exists in run_trade_cycle's own analysis
+    ThreadPoolExecutor (the pool doing per-market enrich_with_forecast/
+    analyze_trade work) -- same file, same fix needed."""
+
+    def test_shutdown_passes_cancel_futures_true(self, engine_env, monkeypatch):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        market, enriched, analysis = _strong_market_analysis()
+
+        mock_pool = MagicMock()
+        mock_pool.submit.return_value = MagicMock()
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[market]),
+            patch.object(main, "enrich_with_forecast", return_value=enriched),
+            patch.object(main, "analyze_trade", return_value=analysis),
+            patch("concurrent.futures.ThreadPoolExecutor", return_value=mock_pool),
+            patch("concurrent.futures.as_completed", return_value=[]),
+        ):
+            ctx2 = main._build_cron_context()
+            trade_cycle.run_trade_cycle(ctx2, client)
+
+        mock_pool.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+
+
+class TestPrewarmPoolShutdown:
+    """AUD-0050: _run_batch_prewarm_for_pairs' ThreadPoolExecutor.shutdown()
+    call must pass cancel_futures=True -- shutdown(wait=False) alone only
+    stops NEW submissions, it neither cancels queued-but-not-started futures
+    nor interrupts already-running ones, so a 200s as_completed timeout left
+    prewarm work running into the next (analysis) phase."""
+
+    def test_shutdown_passes_cancel_futures_true(self, monkeypatch):
+        import trade_cycle
+
+        monkeypatch.setattr(
+            "weather_markets.batch_prewarm_forecasts", lambda *a, **k: 0
+        )
+        monkeypatch.setattr("weather_markets.batch_prewarm_ensemble", lambda *a, **k: 0)
+        monkeypatch.setattr("weather_markets.flush_ensemble_disk_cache", lambda: None)
+
+        mock_pool = MagicMock()
+        mock_pool.submit.return_value = MagicMock()
+
+        with (
+            patch("concurrent.futures.ThreadPoolExecutor", return_value=mock_pool),
+            patch("concurrent.futures.as_completed", return_value=[]),
+        ):
+            ctx = MagicMock()
+            trade_cycle._run_batch_prewarm_for_pairs(ctx, {("NYC", "2026-01-01")})
+
+        mock_pool.shutdown.assert_called_once_with(wait=False, cancel_futures=True)

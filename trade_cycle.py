@@ -245,6 +245,33 @@ def run_trade_cycle(
         except Exception as exc:
             _log.warning("run_trade_cycle: _recover_pending_orders failed: %s", exc)
 
+    # AUD-0025: cross-check execution_log's tracked live positions against
+    # Kalshi's own /portfolio/positions once per cycle -- no automated path
+    # did this before (the only caller of client.get_positions() was a
+    # manual CLI display command). Gated on client is not None ONLY, matching
+    # _recover_pending_orders' own precedent right above -- NOT on live=True.
+    # Opus review (round 1) caught that gating on live=True made this dead
+    # code on the only unattended path: cron.py hardcodes live=False, but
+    # order_executor's micro-live block still places real Kalshi orders
+    # (live=1 execution_log rows) from that same cron path when
+    # ENABLE_MICRO_LIVE is set -- exactly the drift this check exists to
+    # catch would then never be reconciled automatically. execution_log.
+    # get_filled_unsettled_live_orders() only ever returns live=1 rows
+    # regardless of the caller's own live flag, so this is safe and correct
+    # to run whenever a real client is available, paper-only cron cycles
+    # included (tracked_tickers is simply empty there). Runs every cycle
+    # regardless of whether this cycle finds any new signals to place, same
+    # as recover-pending above -- a quiet cycle with existing open positions
+    # is exactly when drift would otherwise go unnoticed longest. Log-only,
+    # never blocks placement.
+    if client is not None:
+        try:
+            from order_executor import _reconcile_live_positions
+
+            _reconcile_live_positions(client)
+        except Exception as exc:
+            _log.warning("run_trade_cycle: _reconcile_live_positions failed: %s", exc)
+
     # Settle (pre-scan) -- before scanning so same-day slot counts reflect
     # current open risk, not yesterday's expired-but-not-yet-settled positions.
     pre_settled: list[dict] = []
@@ -856,7 +883,13 @@ def run_trade_cycle(
                     + dbg["prob_edge"],
                 )
         finally:
-            _pool.shutdown(wait=False)  # never block on a stuck SSL thread
+            # AUD-0050 (opus review, round 1): same defect as the prewarm
+            # pool's shutdown -- wait=False alone only stops new
+            # submissions, it doesn't cancel queued-but-not-started
+            # analysis tasks. cancel_futures=True (3.9+) drops those on a
+            # timeout or kill-switch break; never blocks on a stuck SSL
+            # thread either way.
+            _pool.shutdown(wait=False, cancel_futures=True)
     except TimeoutError:
         _log.error(
             "run_trade_cycle: analysis scan timed out after %ds — %d markets processed so far",
@@ -895,7 +928,12 @@ def run_trade_cycle(
                 "run_trade_cycle: TRADING_PAUSED is set — scan/data collection ran, "
                 "trade placement skipped"
             )
-        shadow_logged_count = ctx.log_shadow_predictions(strong_opps + med_opps) or 0
+        # AUD-0021: _log_shadow_predictions now returns the SET of tickers
+        # actually logged (not a count) so a batched multi-family caller can
+        # still tell which of its own tickers landed -- len() it here.
+        shadow_logged_count = len(
+            ctx.log_shadow_predictions(strong_opps + med_opps) or set()
+        )
     elif consistency_skip:
         _log.warning(
             "run_trade_cycle: auto-trading skipped this cycle due to consistency violations"
@@ -1201,5 +1239,10 @@ def _run_batch_prewarm_for_pairs(
                 n_pairs,
             )
     finally:
-        warm_pool.shutdown(wait=False)
+        # AUD-0050: cancel_futures=True (3.9+) drops queued-but-not-started
+        # tasks on timeout -- shutdown(wait=False) alone only stops new
+        # submissions, it neither cancels queued futures nor interrupts ones
+        # already running, so the "prewarm phase" the rest of the cycle
+        # treats as finished wasn't actually over.
+        warm_pool.shutdown(wait=False, cancel_futures=True)
     print(flush=True)  # newline after in-place counter

@@ -763,3 +763,128 @@ def test_sibling_hurricane_gate_state_does_not_affect_storm_order_routing(monkey
     assert placed_calls == []
     rows = _fetch("KXFIRSTHURRICANE-26DEC01ATL-JOS")
     assert len(rows) == 1 and rows[0]["is_shadow"] == 1
+
+
+# ── AUD-0021: shadow logging must batch across the WHOLE per-ticker loop,
+# not call _log_shadow_predictions once per shadow-routed ticker -- each
+# call independently reopens a tracker connection and re-reads the paper
+# ledger with no caching, so N shadow-routed tickers meant N connection
+# opens instead of 1. ──────────────────────────────────────────────────
+
+
+def test_shadow_routed_tickers_across_different_families_batch_into_one_call(
+    monkeypatch,
+):
+    """Two shadow-routed opps from DIFFERENT families (hourly + rain) in the
+    same batch must trigger exactly ONE _log_shadow_predictions call, not
+    one per ticker -- the actual N+1 pattern AUD-0021 describes."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._hourly_gates_active", lambda: False)
+    monkeypatch.setattr("order_executor._rain_gates_active", lambda: False)
+
+    real_fn = order_executor._log_shadow_predictions
+    calls = []
+
+    def _counting_wrapper(opps, live=False):
+        calls.append(list(opps))
+        return real_fn(opps, live=live)
+
+    monkeypatch.setattr("order_executor._log_shadow_predictions", _counting_wrapper)
+
+    hourly_opp = _make_flat_opp("KXTEMPNYCH-26JUL2017-T75.99")
+    rain_opp = _make_flat_opp("KXRAINDENM-26OCT-7", city="Denver")
+
+    order_executor._auto_place_trades([hourly_opp, rain_opp], client=None)
+
+    assert len(calls) == 1, (
+        f"expected exactly 1 batched _log_shadow_predictions call, got {len(calls)}"
+    )
+    assert len(calls[0]) == 2, "the single call must carry BOTH shadow-routed opps"
+
+    hourly_rows = _fetch("KXTEMPNYCH-26JUL2017-T75.99")
+    assert len(hourly_rows) == 1 and hourly_rows[0]["is_shadow"] == 1
+    rain_rows = _fetch("KXRAINDENM-26OCT-7")
+    assert len(rain_rows) == 1 and rain_rows[0]["is_shadow"] == 1
+
+
+def test_shadow_batch_skip_reasons_report_per_ticker_logged_status(monkeypatch):
+    """The console diagnostic (_skip_reasons) must still report each
+    shadow-routed ticker's OWN logged=True/False outcome after batching --
+    not just an aggregate count -- so a per-ticker validation/dedup failure
+    inside the batched call stays individually visible."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._hourly_gates_active", lambda: False)
+    # This ticker will fail _log_shadow_predictions' own internal
+    # was_ordered_recently gate, so it's shadow-ROUTED but not shadow-
+    # LOGGED -- the batch must still tell the two tickers apart.
+    monkeypatch.setattr(
+        "order_executor.execution_log.was_ordered_recently",
+        lambda ticker, days=7: ticker == "KXTEMPNYCH-26JUL2018-T75.99",
+    )
+
+    logs_ok = _make_flat_opp("KXTEMPNYCH-26JUL2019-T75.99")
+    fails_dedup = _make_flat_opp("KXTEMPNYCH-26JUL2018-T75.99")
+
+    import io
+    from contextlib import redirect_stdout
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        order_executor._auto_place_trades([logs_ok, fails_dedup], client=None)
+    out = buf.getvalue()
+
+    assert "KXTEMPNYCH-26JUL2019-T75.99: hourly_shadow_only(logged=True)" in out
+    assert "KXTEMPNYCH-26JUL2018-T75.99: hourly_shadow_only(logged=False)" in out
+
+
+def test_kwargs_building_happens_before_the_connection_opens(monkeypatch):
+    """Opus review (round 1) on AUD-0021: _prediction_kwargs_from_analysis's
+    run_trend fetch can make up to 3 sequential HTTP calls (its own
+    docstring: up to ~60s worst case). tracker._conn has no connect()
+    timeout override (5s sqlite3 default), so building those kwargs WHILE
+    the batched write's connection/write-lock is held risked starving any
+    concurrent writer on tracker.db. Must build every opp's kwargs in a
+    pass that runs entirely before the connection opens."""
+    import contextlib
+
+    import tracker
+
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._hourly_gates_active", lambda: False)
+
+    conn_open = {"value": False}
+    real_conn = tracker._conn
+
+    @contextlib.contextmanager
+    def _tracking_conn():
+        conn_open["value"] = True
+        try:
+            with real_conn() as con:
+                yield con
+        finally:
+            conn_open["value"] = False
+
+    monkeypatch.setattr(tracker, "_conn", _tracking_conn)
+
+    saw_conn_open_during_kwargs = []
+    real_kwargs_fn = order_executor._prediction_kwargs_from_analysis
+
+    def _spy_kwargs(a):
+        saw_conn_open_during_kwargs.append(conn_open["value"])
+        return real_kwargs_fn(a)
+
+    monkeypatch.setattr("order_executor._prediction_kwargs_from_analysis", _spy_kwargs)
+
+    opp = _make_flat_opp("KXTEMPNYCH-26JUL2021-T75.99")
+
+    order_executor._auto_place_trades([opp], client=None)
+
+    assert saw_conn_open_during_kwargs == [False], (
+        "kwargs building (including the run_trend HTTP fetch) ran while "
+        "the tracker connection/write-lock was held"
+    )
+    rows = _fetch("KXTEMPNYCH-26JUL2021-T75.99")
+    assert len(rows) == 1 and rows[0]["is_shadow"] == 1, (
+        "positive control: the opp must still actually get logged, proving "
+        "the spy didn't just short-circuit real behavior"
+    )

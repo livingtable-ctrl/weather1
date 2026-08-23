@@ -1275,3 +1275,77 @@ class TestSqlNormalizeIsoColumn:
             f"SELECT {expr} < datetime('now')", ("2020-01-01T00:00:00+00:00",)
         ).fetchone()[0]
         assert row == 1
+
+
+class TestConnClosesConnection:
+    """AUD-0048: every `with _conn() as con:` call site relied on
+    sqlite3.Connection's own context-manager protocol, which only commits/
+    rolls back the transaction on exit -- it does NOT close the connection.
+    _conn() itself was converted to a generator-based context manager so
+    every one of those ~30 call sites gets a real con.close() for free,
+    without any of them changing."""
+
+    def setup_method(self):
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def test_connection_is_closed_after_the_with_block_exits(self):
+        execution_log.init_log()
+        with execution_log._conn() as con:
+            con.execute("SELECT 1")
+
+        with pytest.raises(sqlite3.ProgrammingError):
+            con.execute("SELECT 1")
+
+    def test_a_successful_write_still_commits(self):
+        """The generator-based wrapper must preserve sqlite3.Connection's
+        own commit-on-success behavior -- a write inside the block must be
+        visible on a FRESH connection after the block exits, not just
+        within the same (now-closed) connection object."""
+        execution_log.init_log()
+        with execution_log._conn() as con:
+            con.execute(
+                "INSERT INTO orders (ticker, side, quantity, price, order_type, "
+                "status, placed_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))",
+                ("KXCOMMITTEST", "yes", 1, 0.5, "limit", "sent"),
+            )
+
+        with execution_log._conn() as con2:
+            row = con2.execute(
+                "SELECT ticker FROM orders WHERE ticker=?", ("KXCOMMITTEST",)
+            ).fetchone()
+        assert row is not None, "a write inside the block must be committed on exit"
+
+    def test_a_write_is_rolled_back_and_connection_still_closes_on_exception(self):
+        """The generator-based wrapper must preserve sqlite3.Connection's
+        own rollback-on-exception behavior AND still close the connection
+        even when the block raises."""
+        execution_log.init_log()
+        with pytest.raises(RuntimeError):
+            with execution_log._conn() as con:
+                con.execute(
+                    "INSERT INTO orders (ticker, side, quantity, price, "
+                    "order_type, status, placed_at) VALUES "
+                    "(?, ?, ?, ?, ?, ?, datetime('now'))",
+                    ("KXROLLBACKTEST", "yes", 1, 0.5, "limit", "sent"),
+                )
+                raise RuntimeError("simulated failure mid-transaction")
+
+        # Connection must still be closed despite the exception.
+        with pytest.raises(sqlite3.ProgrammingError):
+            con.execute("SELECT 1")
+
+        with execution_log._conn() as con2:
+            row = con2.execute(
+                "SELECT ticker FROM orders WHERE ticker=?", ("KXROLLBACKTEST",)
+            ).fetchone()
+        assert row is None, "a write inside a raising block must be rolled back"

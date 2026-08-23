@@ -1400,11 +1400,17 @@ setInterval(() => {{
     @app.route("/api/trades")
     def api_trades():
         try:
-            from paper import get_all_trades, get_open_trades
+            from paper import get_all_trades
         except ImportError as e:
             return jsonify({"error": str(e)}), 500
 
-        open_trades = get_open_trades()
+        # AUD-0053: one _load() (full read+parse+SHA-256 of paper_trades.json)
+        # instead of two -- get_open_trades() and get_all_trades() both
+        # independently call _load() with no caching, so calling both here
+        # cost this single request two full ledger reads. Mirrors
+        # get_open_trades()'s own `not t["settled"]` filter locally instead.
+        all_trades = get_all_trades()
+        open_trades = [t for t in all_trades if not t.get("settled")]
 
         # Live quote enrichment (L18015): batch-fetch every open position's
         # own ticker in ONE request via Kalshi's GET /markets `tickers=`
@@ -1474,7 +1480,6 @@ setInterval(() => {{
             # Pass through needs_manual_settle flag so the UI can badge it
             t.setdefault("needs_manual_settle", bool(t.get("needs_manual_settle")))
 
-        all_trades = get_all_trades()
         closed = [t for t in all_trades if t.get("settled")]
 
         return jsonify({"open": open_trades, "closed": closed})

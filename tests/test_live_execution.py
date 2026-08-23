@@ -745,6 +745,155 @@ class TestRecoverPendingOrders:
         )
 
 
+class TestReconcileLivePositions:
+    """AUD-0025: no automated code path ever cross-checked execution_log's
+    internally-tracked live positions against Kalshi's own ground truth
+    (GET /portfolio/positions) -- the only caller of client.get_positions()
+    was a manual CLI display command (output_formatters.cmd_positions).
+    Log-only: this never corrects anything, it just makes drift visible."""
+
+    def setup_method(self):
+        import tempfile
+        from pathlib import Path
+
+        import execution_log
+
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+        from pathlib import Path
+
+        import execution_log
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def _log_filled_position(self, ticker):
+        import execution_log
+
+        row_id = execution_log.log_order(
+            ticker=ticker,
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="pending",
+            live=True,
+            response={"order_id": "ord_" + ticker},
+        )
+        execution_log.log_order_result(row_id, status="filled", fill_quantity=2)
+        return row_id
+
+    def test_no_drift_does_not_log_a_warning(self, caplog):
+        import logging
+        from unittest.mock import MagicMock
+
+        from order_executor import _reconcile_live_positions
+
+        self._log_filled_position("KXHIGH-25MAY15-T75")
+
+        mock_client = MagicMock()
+        mock_client.get_positions.return_value = [
+            {"ticker": "KXHIGH-25MAY15-T75", "position": 2}
+        ]
+
+        with caplog.at_level(logging.WARNING, logger="order_executor"):
+            _reconcile_live_positions(mock_client)
+
+        assert not any("drift" in r.message for r in caplog.records), (
+            "matching positions on both sides must not log a drift warning"
+        )
+
+    def test_tracked_but_not_on_exchange_logs_warning(self, caplog):
+        """Simulates a position execution_log believes is still open but
+        Kalshi's own ledger no longer shows (e.g. closed by hand on the
+        Kalshi UI, bypassing this bot entirely)."""
+        import logging
+        from unittest.mock import MagicMock
+
+        from order_executor import _reconcile_live_positions
+
+        self._log_filled_position("KXHIGH-25MAY15-T75")
+
+        mock_client = MagicMock()
+        mock_client.get_positions.return_value = []
+
+        with caplog.at_level(logging.WARNING, logger="order_executor"):
+            _reconcile_live_positions(mock_client)
+
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert any("KXHIGH-25MAY15-T75" in r.message for r in warnings), (
+            "a position tracked here but missing from Kalshi must log a warning"
+        )
+
+    def test_on_exchange_but_untracked_logs_warning(self, caplog):
+        """Simulates the opposite drift direction: a real exchange position
+        execution_log has no row for at all (e.g. a crash-recovery gap this
+        gate exists as a backstop for)."""
+        import logging
+        from unittest.mock import MagicMock
+
+        from order_executor import _reconcile_live_positions
+
+        mock_client = MagicMock()
+        mock_client.get_positions.return_value = [
+            {"ticker": "KXHIGH-25MAY15-T99", "position": -3}
+        ]
+
+        with caplog.at_level(logging.WARNING, logger="order_executor"):
+            _reconcile_live_positions(mock_client)
+
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert any("KXHIGH-25MAY15-T99" in r.message for r in warnings), (
+            "a position on the exchange but untracked here must log a warning"
+        )
+
+    def test_zero_position_on_exchange_is_not_counted_as_held(self, caplog):
+        """A ticker with position=0 in the API response (fully flat) must
+        not be treated as a real held position -- otherwise it would falsely
+        manufacture drift against execution_log's own (empty) tracking."""
+        import logging
+        from unittest.mock import MagicMock
+
+        from order_executor import _reconcile_live_positions
+
+        mock_client = MagicMock()
+        mock_client.get_positions.return_value = [
+            {"ticker": "KXHIGH-25MAY15-T75", "position": 0}
+        ]
+
+        with caplog.at_level(logging.WARNING, logger="order_executor"):
+            _reconcile_live_positions(mock_client)
+
+        assert not any("drift" in r.message for r in caplog.records), (
+            "a zero-position row must not be treated as a real exchange position"
+        )
+
+    def test_client_get_positions_failure_does_not_raise(self, caplog):
+        """Opus review (round 1): the function's own docstring claims it
+        never raises, but the original code had no internal guard -- only
+        the CALLER's try/except delivered that. Verify the function itself
+        is safe when called directly, with no caller wrapper at all."""
+        import logging
+        from unittest.mock import MagicMock
+
+        from order_executor import _reconcile_live_positions
+
+        mock_client = MagicMock()
+        mock_client.get_positions.side_effect = RuntimeError("Kalshi API down")
+
+        with caplog.at_level(logging.WARNING, logger="order_executor"):
+            _reconcile_live_positions(mock_client)  # must not raise
+
+        assert any("lookup failed" in r.message for r in caplog.records), (
+            "a lookup failure should be logged, not silently swallowed"
+        )
+
+
 class TestRecoverUnknownOrders:
     """AUD-0007: 'unknown' rows (place_order()'s POST failed AND
     reconciliation itself couldn't confirm either way) have no order_id --

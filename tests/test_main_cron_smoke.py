@@ -792,6 +792,35 @@ class TestEmosActivationGate:
         out = capsys.readouterr().out
         assert "cron cycle is currently running" in out
 
+    def test_activate_refuses_if_cron_starts_during_confirmation_wait(
+        self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
+    ):
+        """AUD-0029: the pre-prompt check alone can't catch a cron cycle that
+        starts DURING the (unbounded-duration) confirmation wait -- must
+        re-check immediately before the write, not just before the prompt.
+        _is_cron_running() returns False for the pre-prompt check (reaching
+        the prompt) then True for the re-check right before save_emos_params
+        (simulating cron starting while the operator was typing 'yes')."""
+        import main
+
+        calls = []
+
+        def _is_cron_running():
+            calls.append(None)
+            return len(calls) >= 2  # False first call, True from the second on
+
+        monkeypatch.setattr("cron._is_cron_running", _is_cron_running)
+        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "yes")
+
+        main._cmd_emos_train(activate=True)  # must not raise
+
+        assert not (isolated_emos_paths / "emos_params.json").exists(), (
+            "a cron cycle starting mid-confirmation must still block the write"
+        )
+        assert len(calls) >= 2, "the re-check before the write must actually run"
+        out = capsys.readouterr().out
+        assert "cron cycle started while waiting" in out
+
     def test_activate_rolls_back_if_temperature_reset_fails(
         self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
     ):
@@ -903,6 +932,33 @@ class TestEmosStatusAndDeactivate:
         assert (isolated_emos_paths / "emos_params.json").exists()
         out = capsys.readouterr().out
         assert "cron cycle is currently running" in out
+
+    def test_deactivate_refuses_if_cron_starts_during_confirmation_wait(
+        self, isolated_emos_paths, monkeypatch, capsys
+    ):
+        """AUD-0029: same TOCTOU fix as activation's re-check, mirrored for
+        deactivation's own write."""
+        import main
+        import ml_bias
+
+        ml_bias.save_emos_params(1.5, 0.9, 2.0, 0.2, n=48, mean_crps=0.31)
+        calls = []
+
+        def _is_cron_running():
+            calls.append(None)
+            return len(calls) >= 2  # False first call, True from the second on
+
+        monkeypatch.setattr("cron._is_cron_running", _is_cron_running)
+        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "yes")
+
+        main.cmd_emos_deactivate()  # must not raise
+
+        assert (isolated_emos_paths / "emos_params.json").exists(), (
+            "a cron cycle starting mid-confirmation must still block the write"
+        )
+        assert len(calls) >= 2, "the re-check before the write must actually run"
+        out = capsys.readouterr().out
+        assert "cron cycle started while waiting" in out
 
     def test_deactivate_restores_pre_activation_temperature_scale(
         self, isolated_emos_paths, emos_training_rows, monkeypatch

@@ -24,9 +24,8 @@ class TestExecutionLogSynchronousFull:
         monkeypatch.setattr(execution_log, "DB_PATH", tmp_path / "test_exec.db")
         monkeypatch.setattr(execution_log, "_initialized", False)
 
-        con = execution_log._conn()
-        row = con.execute("PRAGMA synchronous").fetchone()
-        con.close()
+        with execution_log._conn() as con:
+            row = con.execute("PRAGMA synchronous").fetchone()
         # FULL == 2 in SQLite's integer encoding (0=OFF, 1=NORMAL, 2=FULL, 3=EXTRA)
         assert row[0] == 2, f"Expected synchronous=FULL (2), got {row[0]}"
 
