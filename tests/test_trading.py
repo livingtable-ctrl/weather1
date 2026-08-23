@@ -606,7 +606,7 @@ def test_check_early_exits_closes_position_when_prob_flips(tmp_path, monkeypatch
 
     closed = []
 
-    def fake_close(tid, exit_price):
+    def fake_close(tid, exit_price, reason=None):
         closed.append((tid, exit_price))
         return {"id": tid, "outcome": "early_exit", "pnl": -1.0}
 

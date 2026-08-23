@@ -4714,3 +4714,142 @@ class TestCheckLiveModelExits(_LiveDBTestBase):
 
         assert closed == 0
         mock_client.place_order.assert_not_called()
+
+    def test_closes_correct_position_among_multiple_open(self):
+        """AUD-0018-adjacent (batch-18): _check_live_model_exits now sources
+        positions via LivePositionStore/_live_dict_to_position (positions.py's
+        shared Position read-model) instead of reading _get_live_open_
+        positions()'s raw dict fields directly. With two open positions where
+        only one's shift clears MODEL_EXIT_SHIFT_PP, this proves the
+        Position-based sourcing still targets the RIGHT row when closing --
+        a list/dict misalignment bug in the refactor would either close the
+        wrong ticker or close both."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _check_live_model_exits
+
+        row_a = self._open_position_row(ticker="KXHIGH-25MAY15-FLIP", entry_prob=0.65)
+        row_b = self._open_position_row(ticker="KXHIGH-25MAY15-HOLD", entry_prob=0.65)
+
+        market_a = {
+            "ticker": "KXHIGH-25MAY15-FLIP",
+            "close_time": "2026-06-01T12:00:00+00:00",
+            "yes_bid": "0.30",
+            "yes_ask": "0.35",
+        }
+        market_b = {
+            "ticker": "KXHIGH-25MAY15-HOLD",
+            "close_time": "2026-06-01T12:00:00+00:00",
+            "yes_bid": "0.62",
+            "yes_ask": "0.66",
+        }
+
+        def _fake_analyze(enriched):
+            # entry_prob=0.65 for both; FLIP shifts 0.30 (>0.25 threshold),
+            # HOLD shifts only 0.05 (stays open).
+            if enriched.get("ticker") == "KXHIGH-25MAY15-FLIP":
+                return {"forecast_prob": 0.35}
+            return {"forecast_prob": 0.60}
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        with (
+            patch(
+                "order_executor.get_weather_markets",
+                return_value=[market_a, market_b],
+            ),
+            patch("order_executor.enrich_with_forecast", side_effect=lambda m: m),
+            patch("order_executor.analyze_trade", side_effect=_fake_analyze),
+            patch("order_executor._get_current_book", return_value=None),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            closed = _check_live_model_exits(mock_client)
+
+        assert closed == 1
+        with execution_log._conn() as con:
+            row_a_data = con.execute(
+                "SELECT exit_reason, settled_at FROM orders WHERE id = ?", (row_a,)
+            ).fetchone()
+            row_b_data = con.execute(
+                "SELECT exit_reason, settled_at FROM orders WHERE id = ?", (row_b,)
+            ).fetchone()
+        assert row_a_data["exit_reason"] == "model_exit", (
+            "the FLIP position (real shift > threshold) must be the one closed"
+        )
+        assert row_b_data["exit_reason"] is None and row_b_data["settled_at"] is None, (
+            "the HOLD position (shift under threshold) must remain open -- a "
+            "list/dict misalignment bug would close this one instead of/as "
+            "well as FLIP"
+        )
+
+    def test_one_malformed_raw_position_does_not_drop_others(self, caplog):
+        """Opus review finding (batch-18): _live_dict_to_position is now
+        called per-item inside the loop, not via a list comprehension
+        batched ahead of it -- a batched
+        `[_live_dict_to_position(d) for d in raw_positions]` would raise on
+        the FIRST malformed dict (missing "quantity", which
+        _live_dict_to_position subscripts unguarded) before the loop even
+        starts, dropping every other -- otherwise perfectly fine -- position
+        for that whole cycle. The "good" position is a REAL execution_log
+        row (via _open_position_row), not a synthetic dict, so closing it
+        actually exercises record_live_exit_fill's DB update rather than
+        risking an unrelated crash from a nonexistent row id. Also asserts
+        the malformed position was logged, not silently swallowed
+        (round-2 opus review INFO finding)."""
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _check_live_model_exits, _get_live_open_positions
+
+        self._open_position_row(ticker="KXHIGH-GOOD", entry_prob=0.65)
+        real_positions = _get_live_open_positions()
+        assert len(real_positions) == 1
+
+        bad_position = {
+            "id": 9001,
+            "ticker": "KXHIGH-BAD",
+            "side": "yes",
+            "entry_price": 0.50,
+            "cost": 5.0,
+            "entry_prob": 0.65,
+            # "quantity" deliberately missing -- triggers the unguarded
+            # d["quantity"] subscript in _live_dict_to_position.
+        }
+        market_good = {
+            "ticker": "KXHIGH-GOOD",
+            "close_time": "2026-06-01T12:00:00+00:00",
+            "yes_bid": "0.30",
+            "yes_ask": "0.35",
+        }
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        with (
+            patch(
+                "order_executor._get_live_open_positions",
+                return_value=[bad_position, *real_positions],
+            ),
+            patch("order_executor.get_weather_markets", return_value=[market_good]),
+            patch("order_executor.enrich_with_forecast", side_effect=lambda m: m),
+            patch(
+                "order_executor.analyze_trade",
+                return_value={"forecast_prob": 0.35},  # shift 0.30 > threshold
+            ),
+            patch("order_executor._get_current_book", return_value=None),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+            caplog.at_level("WARNING"),
+        ):
+            closed = _check_live_model_exits(mock_client)
+
+        assert closed == 1, (
+            "the good position (listed after the malformed one) must still be closed"
+        )
+        assert "[LiveModelExit] Error checking" in caplog.text, (
+            "the malformed position must be logged, not silently dropped"
+        )

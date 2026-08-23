@@ -438,7 +438,7 @@ class TestEarlyExitPricingConvention:
 
         captured = {}
 
-        def _fake_close(trade_id, exit_price):
+        def _fake_close(trade_id, exit_price, reason=None):
             captured["exit_price"] = exit_price
             return {"pnl": 0.0}
 
@@ -471,7 +471,7 @@ class TestEarlyExitPricingConvention:
 
         captured = {}
 
-        def _fake_close(trade_id, exit_price):
+        def _fake_close(trade_id, exit_price, reason=None):
             captured["exit_price"] = exit_price
             return {"pnl": 0.0}
 
@@ -555,6 +555,188 @@ class TestEarlyExitPricingConvention:
         assert closed == 0
         mock_close.assert_not_called()
         assert "could not compute exit price" in caplog.text
+
+
+class TestPositionSourcing:
+    """backlog.txt's dict-vs-Position sourcing entry (batch-18): check_model_
+    exits/_check_early_exits now build a positions.Position for each open
+    trade via the shared _trade_to_position adapter (the same one paper.
+    check_paper_position_exits already uses) instead of reading raw trade-
+    dict fields directly, closing via PaperPositionStore.exit() rather than
+    calling paper.close_paper_early()/_paper.close_paper_early() inline."""
+
+    def test_check_model_exits_returns_full_original_trade_dict(self):
+        """positions.Position only carries a fixed subset of fields (see its
+        own docstring) -- check_model_exits must still return the ORIGINAL
+        trade dict (with fields Position doesn't carry, e.g. "thesis") in
+        the "trade" key, not a Position-derived reconstruction. A mistaken
+        `"trade": pos.__dict__`-style change would silently drop this field
+        and this test would catch it."""
+        from paper import check_model_exits
+
+        fake_trade = _make_trade(entered_hours_ago=24)
+        fake_trade["thesis"] = "NWS ensemble spread favors YES by 12F"
+
+        mock_analysis = {
+            "net_edge": -0.20,  # clears the model_flipped threshold
+            "edge": -0.20,
+            "recommended_side": "yes",
+        }
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {"ticker": fake_trade["ticker"]}
+
+        with (
+            patch("paper.get_open_trades", return_value=[fake_trade]),
+            patch("weather_markets.enrich_with_forecast", return_value={}),
+            patch("weather_markets.analyze_trade", return_value=mock_analysis),
+        ):
+            recs = check_model_exits(mock_client)
+
+        assert len(recs) == 1
+        assert recs[0]["trade"]["thesis"] == "NWS ensemble spread favors YES by 12F", (
+            "the returned 'trade' dict must be the full original record, "
+            "not a Position-shaped reconstruction that drops extra fields"
+        )
+        assert recs[0]["trade"]["id"] == fake_trade["id"]
+
+    def test_check_early_exits_closes_correct_trade_among_multiple_open(self):
+        """Two open paper trades, only one's shift clears MODEL_EXIT_SHIFT_PP
+        -- proves the Position-based sourcing (built once from get_open_
+        trades(), not re-fetched via store.get_open()) still targets the
+        right trade id when closing. A list/id misalignment bug in the
+        refactor would either close the wrong trade or close both."""
+        import order_executor
+
+        far_future = (datetime.now(UTC) + timedelta(days=10)).isoformat()
+        trade_flip = _make_trade(entered_hours_ago=24, side="yes")
+        trade_flip["id"] = 101
+        trade_flip["ticker"] = "KXWT-FLIP"
+        trade_flip["close_time"] = far_future
+        trade_hold = _make_trade(entered_hours_ago=24, side="yes")
+        trade_hold["id"] = 102
+        trade_hold["ticker"] = "KXWT-HOLD"
+        trade_hold["close_time"] = far_future
+
+        market_flip = {"ticker": "KXWT-FLIP", "yes_bid": 30, "yes_ask": 34}
+        market_hold = {"ticker": "KXWT-HOLD", "yes_bid": 63, "yes_ask": 67}
+
+        def _fake_analyze(enriched):
+            # entry_prob=0.65 for both; FLIP shifts 0.35 (>0.25 threshold),
+            # HOLD shifts only 0.05 (stays open).
+            if enriched.get("ticker") == "KXWT-FLIP":
+                return {"forecast_prob": 0.30}
+            return {"forecast_prob": 0.60}
+
+        mock_client = MagicMock()
+        closed_ids = []
+
+        def _fake_close(trade_id, exit_price, reason=None):
+            closed_ids.append(trade_id)
+            return {"pnl": 0.0}
+
+        with (
+            patch(
+                "order_executor.get_weather_markets",
+                return_value=[market_flip, market_hold],
+            ),
+            patch("order_executor.enrich_with_forecast", side_effect=lambda m: m),
+            patch("order_executor.analyze_trade", side_effect=_fake_analyze),
+            patch("paper.get_open_trades", return_value=[trade_flip, trade_hold]),
+            patch("paper.close_paper_early", side_effect=_fake_close),
+        ):
+            closed = order_executor._check_early_exits(mock_client)
+
+        assert closed == 1
+        assert closed_ids == [101], (
+            f"expected only trade #101 (FLIP) to close, got {closed_ids}"
+        )
+
+    def test_check_model_exits_one_malformed_trade_does_not_drop_others(self, caplog):
+        """Opus review finding (batch-18): the Position adapter must be built
+        per-trade inside the per-trade try/except, not via a list
+        comprehension batched ahead of the loop -- a batched
+        `[_trade_to_position(t) for t in open_trades]` would raise on the
+        FIRST malformed trade (missing "id", which _trade_to_position
+        subscripts unguarded) before the loop even starts, dropping every
+        other -- otherwise perfectly fine -- trade for that whole cycle. A
+        good trade placed AFTER the bad one in the list must still be
+        processed. Also asserts the malformed trade was logged, not silently
+        swallowed (round-2 opus review INFO finding)."""
+        from paper import check_model_exits
+
+        bad_trade = _make_trade(entered_hours_ago=24)
+        del bad_trade["id"]  # triggers _trade_to_position's unguarded t["id"]
+        good_trade = _make_trade(entered_hours_ago=24)
+        good_trade["id"] = 55
+        good_trade["ticker"] = "KXWT-GOOD"
+
+        mock_analysis = {
+            "net_edge": -0.20,  # clears the model_flipped threshold
+            "edge": -0.20,
+            "recommended_side": "yes",
+        }
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {"ticker": "KXWT-GOOD"}
+
+        with (
+            patch("paper.get_open_trades", return_value=[bad_trade, good_trade]),
+            patch("weather_markets.enrich_with_forecast", return_value={}),
+            patch("weather_markets.analyze_trade", return_value=mock_analysis),
+            caplog.at_level("WARNING"),
+        ):
+            recs = check_model_exits(mock_client)
+
+        assert len(recs) == 1, (
+            "the good trade (listed after the malformed one) must still be "
+            "processed and recommended for exit"
+        )
+        assert recs[0]["trade"]["id"] == 55
+        assert "check_model_exits" in caplog.text and "failed" in caplog.text, (
+            "the malformed trade must be logged, not silently dropped"
+        )
+
+    def test_check_early_exits_one_malformed_trade_does_not_drop_others(self, caplog):
+        """Same claim as the model_exits test above, for the paper-side
+        early-exit function. Also asserts the malformed trade was logged."""
+        import order_executor
+
+        far_future = (datetime.now(UTC) + timedelta(days=10)).isoformat()
+        bad_trade = _make_trade(entered_hours_ago=24, side="yes")
+        del bad_trade["id"]
+        good_trade = _make_trade(entered_hours_ago=24, side="yes")
+        good_trade["id"] = 77
+        good_trade["ticker"] = "KXWT-GOOD2"
+        good_trade["close_time"] = far_future
+
+        market_good = {"ticker": "KXWT-GOOD2", "yes_bid": 30, "yes_ask": 34}
+
+        closed_ids = []
+
+        def _fake_close(trade_id, exit_price, reason=None):
+            closed_ids.append(trade_id)
+            return {"pnl": 0.0}
+
+        with (
+            patch("order_executor.get_weather_markets", return_value=[market_good]),
+            patch("order_executor.enrich_with_forecast", side_effect=lambda m: m),
+            patch(
+                "order_executor.analyze_trade",
+                return_value={"forecast_prob": 0.30},  # shift 0.35 > threshold
+            ),
+            patch("paper.get_open_trades", return_value=[bad_trade, good_trade]),
+            patch("paper.close_paper_early", side_effect=_fake_close),
+            caplog.at_level("WARNING"),
+        ):
+            closed = order_executor._check_early_exits(MagicMock())
+
+        assert closed == 1
+        assert "[EarlyExit] Error checking" in caplog.text, (
+            "the malformed trade must be logged, not silently dropped"
+        )
+        assert closed_ids == [77], (
+            "the good trade (listed after the malformed one) must still be "
+            f"closed, got {closed_ids}"
+        )
 
 
 class TestBreakevenStops:

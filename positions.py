@@ -41,12 +41,17 @@ class Position:
 
     check_stop_losses/check_breakeven_stops/update_peak_profits (below) only
     read id/ticker/side/quantity/entry_price/cost/close_time/peak_profit_pct.
-    entry_prob and entered_at are carried for check_model_exits/
+    entry_prob and entered_at exist for check_model_exits/
     _check_live_model_exits/_check_early_exits (paper.py/order_executor.py),
-    which still source positions as raw dicts rather than via this
-    dataclass -- kept here so those functions have a path onto this shape
-    if/when their own position-sourcing gets migrated (see backlog.txt's
-    follow-up entry on that).
+    which now also source positions via this dataclass (batch-18, via
+    _trade_to_position/_live_dict_to_position, built per-item inside each
+    function's own try/except rather than a batched list comprehension, so
+    one malformed record doesn't drop every position that cycle) -- their
+    external return contracts are unchanged, so check_model_exits still
+    returns the full raw trade dict (the same loop variable each Position
+    was built from, not a separate id lookup) rather than a
+    Position, since its callers read fields (thesis, full market dict) this
+    dataclass deliberately doesn't carry.
     """
 
     id: int

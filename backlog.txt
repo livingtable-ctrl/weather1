@@ -15088,10 +15088,9 @@ RESOLVED 2026-08-13: Shipped the full Position read-model this entry's
       unreachable in practice, same as before this change), but worth
       knowing if that guard is ever loosened.
 
-[PARTIALLY RESOLVED 2026-08-14 -- the Medium-priority price-convention
-  divergence is fixed; the Low-priority dict-vs-Position sourcing is
-  deliberately still open, unchanged from the original filing, see "Why
-  not now" below] check_model_exits/_check_live_model_exits/
+[RESOLVED -- price-convention divergence fixed 2026-08-14, dict-vs-Position
+  sourcing fixed 2026-08-22, see both Resolution sections below]
+  check_model_exits/_check_live_model_exits/
   _check_early_exits STILL SOURCE POSITIONS AS RAW DICTS, NOT THE NEW
   Position READ-MODEL -- AND THEIR EXIT-PRICE CONVENTIONS HAVE ALREADY
   DIVERGED
@@ -15353,6 +15352,178 @@ Resolution (2026-08-14):
   deliberately still not touched, unchanged from the original filing above
   -- genuinely has no duplication risk, pure internal consistency, pick up
   opportunistically or if these functions are touched for another reason.
+
+Resolution (2026-08-22, dict-vs-Position sourcing, batch-18):
+  All three functions now source positions via the shared Position
+  read-model instead of reading raw trade/position-dict fields directly.
+  Each Position is built PER-ITEM, as the first statement inside that
+  item's own try/except (not batched via a list comprehension ahead of the
+  loop -- see the opus review findings below for why the placement inside
+  vs. before the try mattered). External contracts are unchanged:
+  paper.check_model_exits still returns the full original trade dict in
+  each recommendation's "trade" key -- the same loop variable `t` each
+  Position was built from, no separate by_id lookup -- since callers
+  (main.py's exit-signal display, cmd_brief) read fields (thesis, full
+  market dict) Position doesn't carry; order_executor._check_live_
+  model_exits/_check_early_exits still return only an int closed-count and
+  now close via LivePositionStore.exit()/PaperPositionStore.exit() (the
+  same store methods check_paper_position_exits/_check_live_position_exits
+  already use) instead of calling _exit_live_position()/close_paper_early()
+  inline with a hand-assembled dict.
+
+  Scope decision surfaced via AskUserQuestion before implementing: whether
+  to do this Low-priority/cosmetic sourcing change at all this session,
+  given it touches order_executor.py's live-order-adjacent exit path for a
+  non-bug reason. Chosen to implement, since the design reuses an
+  already-shipped, already-tested pattern (check_paper_position_exits'
+  own single-fetch/by_id shape) rather than inventing a new one, keeping
+  incremental risk low.
+
+  File-scope note: implementing this correctly required editing
+  order_executor.py and paper.py, not just main.py/positions.py as
+  audit/handoff_prompts/batches/INDEX.md's batch-18 row literally lists
+  (positions.py's Position dataclass/PaperPositionStore/LivePositionStore
+  already existed unchanged from the prior position-unification work; the
+  3 functions being converted live in order_executor.py/paper.py).
+  Verified before proceeding that no other batch's actual fix touches
+  check_model_exits/_check_live_model_exits/_check_early_exits: batch-01's
+  6 items are entirely different functions (check_position_limits,
+  _auto_place_trades' gates, LiveTradingGate.check(), _count_open_live_
+  orders, _poll_pending_orders); batch-02/batch-04 reference _check_live_
+  model_exits only as a CALL SITE to wrap in try/except (cmd_watch/cron.py),
+  not its body; batches 03/12/22/24/26/29/30 don't mention these functions
+  at all. Confirmed with the user via AskUserQuestion before proceeding.
+
+  Tests: 4 new mutation-tested tests in tests/test_early_exits.py's new
+  TestPositionSourcing class -- test_check_model_exits_returns_full_
+  original_trade_dict (proves the "trade" key in a recommendation is still
+  the full original dict, not a Position-shaped reconstruction, by
+  round-tripping an extra "thesis" field Position doesn't carry;
+  mutation-tested by temporarily building the returned dict from Position
+  fields only -- fails with KeyError('thesis') as expected);
+  test_check_early_exits_closes_correct_trade_among_multiple_open (two open
+  paper trades, only one's shift clears MODEL_EXIT_SHIFT_PP, asserts the
+  closed trade id is the right one; mutation-tested by closing
+  positions[-1] instead of the per-iteration pos -- fails by closing trade
+  #102 instead of #101 as expected); test_check_model_exits_one_malformed_
+  trade_does_not_drop_others and test_check_early_exits_one_malformed_
+  trade_does_not_drop_others (added during opus review, see below -- a
+  trade missing "id" must not abort the whole cycle, and must be logged).
+  2 new tests in tests/test_live_execution.py's TestCheckLiveModelExits --
+  test_closes_correct_position_among_multiple_open (same multi-position
+  targeting shape for the live side, using real execution_log DB rows;
+  mutation-tested the same way -- fails by leaving the FLIP row's
+  exit_reason unset while closing the wrong row) and test_one_malformed_
+  raw_position_does_not_drop_others (same malformed-record isolation shape,
+  using a real DB-backed "good" position spliced with a synthetic
+  missing-"quantity" "bad" one so closing the good one exercises
+  record_live_exit_fill's real DB update rather than risking an unrelated
+  crash from a nonexistent row id). 2 existing tests' mock arity updated
+  for the close_paper_early(..., reason=...) kwarg PaperPositionStore.exit()
+  now always passes explicitly (tests/test_early_exits.py's
+  TestEarlyExitPricingConvention, tests/test_trading.py's
+  test_check_early_exits_closes_position_when_prob_flips) -- same pattern
+  as the sibling 2026-08-14 fix's own test-arity updates.
+
+  Independent opus review (effort=high) before push found no HIGH/MEDIUM
+  findings, 5 LOW + 1 informational specific to this entry (2 more LOW
+  findings on the sibling _rating() entry, addressed there), all addressed:
+    - LOW, fixed: all three functions originally built their Position via a
+      list comprehension BATCHED ahead of the per-item loop
+      (`[_trade_to_position(t) for t in open_trades]`) -- a single
+      malformed raw record (e.g. missing "id") would raise during that
+      batch construction and abort the ENTIRE cycle, dropping every
+      position that cycle instead of just the bad one. Fixed by moving the
+      adapter call to be the FIRST STATEMENT INSIDE each item's own
+      try/except (not merely "per-item," which a first fix attempt got
+      subtly wrong for 2 of the 3 functions -- moving the adapter call to
+      before the try but still per-item was its own regression, since the
+      pre-refactor code deliberately deferred trade["id"]/d["id"] access to
+      deep inside the guarded try; building the whole Position earlier,
+      even per-item, re-exposed that exact failure point one step too
+      early, outside the guard). Caught by writing the malformed-record
+      regression tests above and mutation-testing them by hand (Edit-tool
+      revert to "before try"): both placements were tried, only "first
+      line inside try" passes.
+    - LOW, fixed: 3 `except` handlers (paper.py's check_model_exits,
+      order_executor.py's _check_live_model_exits and _check_early_exits)
+      referenced a Position/lookup variable (`pos.ticker`, `ticker`) that
+      would be UNASSIGNED if the adapter call itself raised -- exactly the
+      case the finding above is about -- causing an UnboundLocalError
+      INSIDE the exception handler that masks the real error. Changed to
+      reference the always-present raw dict/loop variable instead
+      (`t.get("ticker","?")` / `d.get("ticker","?")`).
+    - LOW, resolved by supersession: check_model_exits' original `by_id[
+      pos.id]` hard-subscript lookup (a theoretical duplicate-id collapse
+      risk, unreachable given the ledger's own duplicate-order guard) is
+      gone entirely -- the per-item try/except restructure above means the
+      loop variable `t` IS the trade a Position was just built from, no
+      separate id lookup needed.
+    - LOW, fixed: stale docstrings (order_executor.py's
+      _get_live_open_positions, positions.py's Position class) described
+      the pre-refactor world; updated. A second independent opus review of
+      these fixes then caught that the FIRST docstring update introduced a
+      new factual error (claimed _get_current_book() needs the raw dict's
+      ticker -- false, it uses the Position's ticker) and left 2 more
+      stale "by_id lookup" references (paper.py's check_model_exits
+      docstring, and a test docstring) that the by_id-removal above should
+      have updated but didn't -- all 3 fixed in the same follow-up pass.
+    - LOW, documented as a deliberate no-op (round-2 opus review finding):
+      check_model_exits now reaches `side`/`ticker` through _trade_to_
+      position's permissive .get()-with-default fields instead of the old
+      hard t["side"]/t["ticker"] subscripts -- a trade dict missing "side"
+      would previously KeyError (caught, skipped, logged) but now silently
+      defaults to "yes" and could produce a model-exit recommendation for
+      an assumed-wrong side. Not fixed: this is inherent to using the
+      shared _trade_to_position adapter at all (paper.check_paper_
+      position_exits already has the identical property, unguarded, in
+      production) -- adding extra validation here alone would diverge from
+      that established sibling pattern for no real benefit, since
+      paper.place_paper_order always writes id/ticker/side and this path
+      is genuinely unreachable with real ledger data. The exit-signal
+      consumer (main.py's sub=="4" menu) also always requires an explicit
+      y/N human confirmation before actually closing anything, bounding
+      the blast radius even in the unreachable case.
+    - Informational, fixed: the 3 malformed-record regression tests only
+      asserted the good record still processed, not that the bad one was
+      actually logged (a regression that silently swallowed it with no
+      warning would have passed). Added a caplog assertion to all 3.
+    - Informational, no action: the live-side malformed-record test has to
+      patch _get_live_open_positions to inject a bad dict, since that
+      function's own SQL query always populates every field
+      _live_dict_to_position needs -- the isolation fix is genuinely
+      defensive-only for the live path, not a reachable-today failure mode
+      either. Noted, not actioned (correctly conservative code, nothing to
+      fix).
+    - Informational, no action: paper's model-flip exit still records
+      exit_reason=None while the live sibling records "model_exit" -- a
+      pre-existing asymmetry (confirmed unchanged by this diff:
+      PaperPositionStore.exit's own reason=None default is byte-identical
+      to the pre-refactor call's implicit None), nothing currently reads
+      it, out of scope for this entry.
+    Both opus reviews independently mutation-verified the LivePositionStore.
+    exit() field-completeness claim (id/ticker/side/quantity/entry_price/
+    close_time -- all 6 fields _exit_live_position and execution_log.
+    record_live_exit_fill actually read, nothing dropped from the old raw
+    dict) and the close_time/expires_at fallback preservation in
+    _trade_to_position, finding both clean.
+
+  graphify-out/ refresh (step 29): attempted, then reverted. Scoped AST
+  extraction (graphify.extract.extract() on just the 7 changed files) plus
+  a hand-merged graph.json update produced a diff spanning roughly half of
+  the ~130k-line file even for a true ~950-node change, because graph.
+  json's node/edge arrays are not grouped contiguously by source file (any
+  insertion/removal at a scattered list position cascades a git line-based
+  diff through everything downstream of it) -- tried both remove+append and
+  an in-place positional replace-by-id merge, neither got the diff under
+  ~280k changed lines. Also hit an unrelated cache-directory version-scheme
+  churn (extract() alone deleted 366 files under graphify-out/cache/ast/
+  v0.9.48-s2/ and created an untracked v0.9.48/ dir) and a Windows LF/CRLF
+  mismatch on the raw write. All reverted; graphify-out/ is untouched by
+  this commit. See memory feedback_graphify_obsidian_prune_unscoped.md for
+  the full writeup (a concurrent session hit and partially worked around
+  the same cache-churn issue independently the same day, but not the
+  diff-size problem).
 
 [RESOLVED 2026-08-22 -- parts (a) and (b) shipped 2026-07-24/25; part (c),
   the blend-weights-dict refactor, shipped 2026-08-22 (see that dated note
@@ -18042,6 +18213,20 @@ RE-VERIFIED 2026-07-31 (staleness re-check on this entry's own title/header,
   runs before an identity-check test) is unchanged and still real; only the
   title's count was stale.
 
+RE-VERIFIED 2026-08-22 (batch-18, no new action -- confirms this entry's
+  own "Why not now"/"When to revisit" text is still current, 3+ weeks
+  later): grepped reload(utils) fresh rather than trusting the 2026-07-31
+  count from memory -- still exactly the same 4 sites (test_p9_p10.py:681,
+  690; test_risk_control.py:606; test_starting_balance.py:36), matching
+  what's already documented above. main.py:110-124's frozen-import-hazard
+  comment (added by the 2026-07-19 resolution) is still present and still
+  accurate. No new main.py<->utils identity-check test has been added
+  since, so the latent risk is unchanged and still real, not a live bug.
+  No code change made -- this entry's own prescribed remediation (audit
+  the reload sites; document the hazard in main.py) was already done in
+  full by 2026-07-19; nothing left to do until one of this entry's own
+  "When to revisit" triggers actually fires.
+
 ======================================================
 [RESOLVED 2026-07-19] AUTO UN-RETIREMENT -- RETIRED FORECASTING METHODS COULD NEVER GENERATE FRESH RECOVERY EVIDENCE
 Priority: Medium -- surfaced by manually un-retiring 'ensemble' on
@@ -19845,7 +20030,8 @@ RESOLVED 2026-08-08: Both sites converted exactly as specified above.
   trade_cycle.py, main.py, cron.py, and the test file.
 
 ======================================================
-[main.py's _rating() CLI TABLE IS A 4TH, STILL-TEXT-DERIVED STAR LADDER, NOW CONTRADICTING THE FIXED ONES]
+[RESOLVED 2026-08-22 -- see Resolution below; batch-18]
+main.py's _rating() CLI TABLE IS A 4TH, STILL-TEXT-DERIVED STAR LADDER, NOW CONTRADICTING THE FIXED ONES
 Priority: Low -- cosmetic/display-only, same family as the entry above and
   equally not a placement-path bug (placement still gates on `tier` alone,
   never on any of these star renderings).
@@ -19930,6 +20116,80 @@ Problem:
   `tier`-unavailable shape as `_analyze_once`, not fixable without the same
   analyze_trade()-level plumbing the fallback-alert bullet above would also
   need.
+
+Resolution (2026-08-22, batch-18):
+  _rating() (nested in _render_analysis_results) now takes an optional
+  third parameter `tier: object = _NO_TIER`, where `_NO_TIER = object()` is
+  a sentinel (not plain `None`) so the function can distinguish "analysis
+  dict never carries a tier field at all" (_analyze_once's own opps -- must
+  keep using the unchanged net_edge/risk math) from "tier field present but
+  None" (cycle_result.liquid_opps opps that didn't clear trade_cycle.py's
+  placement gate -- a real, authoritative verdict that must NOT be
+  overridden by raw net_edge magnitude, since both cases read back as None
+  via `.get("tier")` and a plain-None default can't tell them apart). The
+  call site passes `a.get("tier", _NO_TIER)`. When a tier IS present, the
+  ladder mirrors trade_cycle.py's own dashboard-stars shape exactly:
+  tier==STRONG and time_risk=="LOW" -> 3 stars, tier in (STRONG, MED) ->
+  2 stars, else -> 1 (dim) star. When tier is absent, falls through to the
+  original, byte-for-byte-unchanged net_edge/risk math.
+
+  Chose the "add a tier parameter, priority over net_edge/risk math when
+  present" option this entry's own "What it would look like" section named
+  (over "the call site needs to branch") -- keeps all star logic in one
+  place rather than duplicating the ladder shape at each of the two
+  make_rows() call sites (liquid_opps and no_quote_opps tables both route
+  through the same _rating()).
+
+  Deliberately NOT folded into this pass (per this entry's own "Also worth
+  folding into the same pass" list): the `_analyze_once`-reached fallback
+  watch alert (main.py's alert on lock-contended cycles) needs `tier`
+  plumbed through analyze_trade()/_analyze_once itself -- genuinely bigger
+  surgery, a different function chain and trigger condition (same-payload
+  test: not the same output this entry's fix touches) than a Rating-column
+  render function, left open for its own pass. The frontend legend copy
+  fix (frontend/src/App.jsx) is out of scope for batch-18 (file list is
+  main.py/positions.py only) -- left open for whichever batch covers that
+  file.
+
+  Tests: 3 new tests in tests/test_menu_ux.py's new TestRatingTierAwareness
+  class, driving the real _render_analysis_results() end-to-end (capsys,
+  no mocking of _rating() itself) -- test_tiered_strong_at_low_risk_shows_
+  three_stars (tier=STRONG+LOW with net_edge=0.05, well under STRONG_EDGE
+  0.30 -- deliberately chosen so the old net_edge-only math would NOT have
+  produced 3 stars, proving tier actually drives the result rather than
+  agreeing with legacy math by coincidence); test_tiered_none_shows_
+  single_star_not_three (the exact bug: net_edge=0.35 clears the legacy
+  net_edge>=STRONG_EDGE math, but tier=None must still render 1 star, with
+  a positive-control companion assertion that the same net_edge under
+  tier=MED correctly gets 2 stars, proving the 1-star result is genuinely
+  tier-driven and not some unrelated rendering failure suppressing all
+  stars); test_untiered_candidate_keeps_legacy_net_edge_math (no "tier" key
+  in the analysis dict at all -- confirms _rating() still works correctly
+  with tier absent, this entry's own explicit requirement). All 3
+  mutation-tested by temporarily removing the tier-priority branch entirely
+  (reverting to the original 2-arg-only math): the tier-sensitive tests
+  both failed for the right reason (the tier=STRONG+low-edge case got 1
+  star instead of 3 under the old math; the tier=None case got 3 stars
+  instead of 1); the untiered test correctly still passed either way, as
+  expected.
+
+  Independent opus review (effort=high) before push (run jointly with the
+  dict-vs-Position sourcing entry above, same diff/same session): no HIGH/
+  MEDIUM findings. 2 LOW findings specific to this entry, both fixed:
+  (1) the docstring overstated agreement with trade_cycle.py's dashboard
+  ladder -- softened to explicitly note this table's 3-rung (never blank)
+  contract differs from the dashboard/signals_cache 4-rung (has a blank/
+  no-stars case) one, and why (this table shows "here are your top
+  opportunities," not "did this clear the alert bar"). (2) `from trade_
+  cycle import TIER_MED, TIER_STRONG` was unconditional at the top of
+  _render_analysis_results, importing trade_cycle even when rendering
+  _analyze_once's tier-free tables -- moved inside `_rating()`'s
+  `if tier is not _NO_TIER:` branch. A second independent opus review
+  (effort=high) of these 2 fixes plus the sibling entry's fixes together
+  found no new issues in this entry's code and confirmed both were fixed
+  correctly (verified the STRONG+LOW/STRONG-or-MED shape matches trade_
+  cycle.py:735-744 exactly, and that TIER_MED/TIER_STRONG have no other use
+  anywhere in _render_analysis_results that the import move could break).
 
 [RESOLVED 2026-08-14 -- see resolution below. Originally found via opus
   review (effort=high) during the model-exit pricing-convention fix, see
