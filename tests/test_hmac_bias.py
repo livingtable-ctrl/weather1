@@ -141,3 +141,32 @@ class TestHmacVerification:
         stored = (tmp_path / ".bias_models.hmac").read_text().strip()
         expected = hmac.new(b"testsecret", pkl_bytes, hashlib.sha256).hexdigest()
         assert stored == expected
+
+    def test_write_hmac_uses_atomic_write(self, tmp_path, monkeypatch):
+        """AUD-0078: the .hmac sidecar must go through
+        safe_io.atomic_write_text (temp file + fsync + rename), not a bare
+        Path.write_text(), so a process kill mid-write can't leave a
+        truncated/corrupt sidecar that then fails HMAC verification on the
+        next _load_models() call.
+
+        Mutation-tested: reverting _write_hmac to a bare
+        `_HMAC_PATH.write_text(_compute_hmac(pkl_bytes))` call makes this
+        fail (atomic_write_text never called) -- confirmed via Edit revert.
+        """
+        import ml_bias
+
+        hmac_path = tmp_path / ".bias_models.hmac"
+        monkeypatch.setattr(ml_bias, "_HMAC_PATH", hmac_path)
+        pkl_bytes = b"fake-pickle-bytes"
+
+        with (
+            patch.dict("os.environ", {"MODEL_HMAC_SECRET": "testsecret"}),
+            patch("safe_io.atomic_write_text") as mock_atomic,
+        ):
+            ml_bias._write_hmac(pkl_bytes)
+
+        mock_atomic.assert_called_once()
+        written_text, written_path = mock_atomic.call_args[0][:2]
+        assert written_path == hmac_path
+        expected = hmac.new(b"testsecret", pkl_bytes, hashlib.sha256).hexdigest()
+        assert written_text == expected

@@ -70,9 +70,19 @@ def _compute_hmac(data: bytes) -> str:
 
 
 def _write_hmac(pkl_bytes: bytes) -> None:
-    """Write HMAC sidecar for a freshly serialised pickle."""
-    _HMAC_PATH.parent.mkdir(exist_ok=True)
-    _HMAC_PATH.write_text(_compute_hmac(pkl_bytes))
+    """Write HMAC sidecar for a freshly serialised pickle.
+
+    Uses safe_io.atomic_write_text (temp file + fsync + rename) rather than
+    a plain write_text(), so a process kill mid-write can't leave a
+    truncated/corrupt .hmac file that would then fail _load_models()'s HMAC
+    verification and silently disable bias correction until re-trained. The
+    adjacent .pkl write (_MODEL_PATH.write_bytes above this function's only
+    caller) remains non-atomic -- safe_io has no atomic_write_bytes
+    primitive today, and adding one is out of scope here.
+    """
+    from safe_io import atomic_write_text
+
+    atomic_write_text(_compute_hmac(pkl_bytes), _HMAC_PATH)
 
 
 def _load_models() -> dict:
@@ -1270,11 +1280,13 @@ def get_emos_status() -> dict:
     describing whether EMOS is currently the live probability method for
     multi-day above/below/between predictions.
 
-    Returns {"active": False} when emos_params.json doesn't exist, or
-    {"active": False, "corrupt": True, "error": ...} when it exists but
-    fails to parse -- distinct from "doesn't exist" so a caller (e.g.
-    cmd_emos_deactivate) can still offer to remove a corrupt file instead
-    of reporting nothing to do.
+    Returns {"active": False} when emos_params.json doesn't exist (including
+    when a concurrent deactivate_emos() call unlinks it between this
+    function's own exists() check and read -- a lost race, not corruption),
+    or {"active": False, "corrupt": True, "error": ...} when the file exists
+    and was actually read but fails to parse -- distinct from "doesn't
+    exist" so a caller (e.g. cmd_emos_deactivate) can still offer to remove
+    a corrupt file instead of reporting nothing to do.
     """
     if not _EMOS_PARAMS_PATH.exists():
         return {"active": False}
@@ -1290,6 +1302,10 @@ def get_emos_status() -> dict:
             "mean_crps": data.get("mean_crps"),
             "fitted_at": data.get("fitted_at"),
         }
+    except FileNotFoundError:
+        # deactivate_emos() unlinked the file between the exists() check
+        # above and this read (TOCTOU) -- a lost race, not corruption.
+        return {"active": False}
     except Exception as exc:
         return {"active": False, "corrupt": True, "error": str(exc)}
 

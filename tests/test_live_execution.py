@@ -3616,7 +3616,15 @@ class TestExitLivePosition(_LiveDBTestBase):
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
 
-        # Must not raise -- and must not silently report success either.
+        # Must not raise. True here means "the exchange fill itself
+        # succeeded" (it did), not "this attempt's own bookkeeping won" --
+        # AUD-0079: this stop_loss path's own caller (_check_live_position_
+        # exits) discards the return value, but elsewhere in the codebase
+        # _check_live_model_exits DOES branch on it (logs "closed" and
+        # increments a counter on True), so a race-loss on THAT path can
+        # make its log line cite this attempt's exit_price/reason instead of
+        # the concurrent writer's -- cosmetic only there too, since the DB
+        # row below is unaffected and belongs to whoever actually won.
         assert result is True
         # The concurrent writer's real settlement must survive untouched.
         row = execution_log.get_order_by_id(row_id)

@@ -1370,6 +1370,92 @@ class TestEmos:
         assert status["mean_crps"] == pytest.approx(0.28)
         assert status["fitted_at"]
 
+    def test_get_emos_status_genuinely_corrupt_file_reports_corrupt(
+        self, tmp_path, monkeypatch
+    ):
+        """Positive control for the TOCTOU-race test below: a file that
+        exists but is genuinely unparseable must still come back tagged
+        corrupt=True, not silently reclassified as "just a race"."""
+        import ml_bias
+        from ml_bias import get_emos_status
+
+        path = tmp_path / "emos_params.json"
+        path.write_text("not valid json{")
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", path)
+
+        status = get_emos_status()
+        assert status == {
+            "active": False,
+            "corrupt": True,
+            "error": status.get("error"),
+        }
+        assert status["error"]
+
+    def test_get_emos_status_toctou_delete_race_is_not_reported_as_corrupt(
+        self, monkeypatch
+    ):
+        """AUD-0073: a concurrent deactivate_emos() unlinking the file
+        between this function's exists() check and its read() must report
+        the same {"active": False} shape as "never existed" -- not
+        {"corrupt": True}, which would incorrectly tell an operator the
+        params file is damaged when it's simply gone.
+
+        Mutation-tested: removing the FileNotFoundError-specific except
+        clause (letting it fall into the broad `except Exception`) makes
+        this fail with {"active": False, "corrupt": True, "error": ...}
+        instead -- confirmed by temporarily reverting the fix via Edit.
+        """
+        import ml_bias
+        from ml_bias import get_emos_status
+
+        class _RacyPath:
+            def exists(self):
+                return True
+
+            def read_text(self):
+                raise FileNotFoundError(
+                    "[Errno 2] No such file or directory: 'emos_params.json'"
+                )
+
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", _RacyPath())
+
+        status = get_emos_status()
+        assert status == {"active": False}
+        assert "corrupt" not in status
+
+    def test_get_emos_status_other_read_errors_still_report_corrupt(self, monkeypatch):
+        """Regression guard (opus-review-caught during batch-14): the
+        FileNotFoundError-specific except above must not accidentally
+        narrow the surrounding coverage so a DIFFERENT read-time exception
+        (PermissionError, IsADirectoryError, UnicodeDecodeError, ...)
+        propagates uncaught instead of degrading to corrupt=True like it
+        did before this fix. cmd_emos_status/cmd_emos_deactivate in main.py
+        call get_emos_status() with no surrounding try/except, so an
+        uncaught exception here would crash those CLI commands outright.
+
+        Mutation-tested: replacing the single shared try/except chain with
+        two separate try blocks (one narrowly catching only
+        FileNotFoundError around the read, a second around the parse) makes
+        this fail with an unhandled PermissionError -- confirmed via Edit
+        revert to that exact shape during review.
+        """
+        import ml_bias
+        from ml_bias import get_emos_status
+
+        class _UnreadablePath:
+            def exists(self):
+                return True
+
+            def read_text(self):
+                raise PermissionError("[Errno 13] Permission denied")
+
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", _UnreadablePath())
+
+        status = get_emos_status()
+        assert status["active"] is False
+        assert status["corrupt"] is True
+        assert status["error"]
+
     @pytest.fixture()
     def isolated_temp_paths(self, tmp_path, monkeypatch):
         """Shared isolation for reset/deactivate tests -- patches every

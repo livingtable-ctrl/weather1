@@ -167,9 +167,11 @@ def _build_app(client):
     def _check_auth():
         # Single auth layer for ALL routes — including kill switch, halt/resume,
         # paper-order, close-position, and override endpoints.
-        # Route-level @_require_auth decorators were removed (WA-16): before_request
-        # runs unconditionally on every request, making per-route decoration redundant
-        # and creating a confusing dual-layer with no added security.
+        # Route-level @_require_auth decorators are redundant (WA-16):
+        # before_request runs unconditionally on every request, so any route
+        # still wearing @_require_auth (api_emos_status, api_weather_alerts,
+        # as of AUD-0075) is a confusing but harmless dual-layer, not a gap —
+        # this hook is the actual, sole blocking authority either way.
         import utils as _utils
 
         pwd = _utils.DASHBOARD_PASSWORD
