@@ -93,6 +93,43 @@ class TestClientOrderId:
         assert "client_order_id" in sent_body
         assert len(sent_body["client_order_id"]) == 32
 
+    def test_client_order_id_differs_across_time_in_force(self):
+        """AUD batch-23 #1: a GTC entry and an IOC taker-cross replacement
+        at the same price must never produce the same client_order_id, even
+        with every other input (ticker/side/action/count/cycle) identical --
+        previously they collided whenever the taker-cross price happened to
+        round to the same value as the original entry price, silently
+        dedup'ing the replacement into a no-op."""
+        client = self._make_client()
+        ids = []
+
+        def fake_post(path, body):
+            ids.append(body.get("client_order_id"))
+            return {"order_id": "ord_tif"}
+
+        client._post = fake_post
+
+        client.place_order(
+            "KXTEST",
+            "yes",
+            "buy",
+            3,
+            0.55,
+            time_in_force="good_till_canceled",
+            cycle="12z",
+        )
+        client.place_order(
+            "KXTEST",
+            "yes",
+            "buy",
+            3,
+            0.55,
+            time_in_force="immediate_or_cancel",
+            cycle="12z",
+        )
+
+        assert ids[0] != ids[1]
+
     def test_no_cycle_uses_random_id(self):
         """Omitting cycle produces a random (non-deterministic) client_order_id."""
         client = self._make_client()

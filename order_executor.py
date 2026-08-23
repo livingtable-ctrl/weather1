@@ -1191,7 +1191,14 @@ def _replace_live_order(
             count=quantity,
             price=price,
             time_in_force=time_in_force,
-            cycle=cycle,
+            # AUD batch-23 #1: NOT the bare forecast cycle -- this is a
+            # replacement for a specific just-canceled order (replaces_order_id
+            # is unique per original order), so its idempotency key must never
+            # collide with that original entry's own key (which used the bare
+            # cycle) even when this reprice/taker-cross happens to land on the
+            # exact same price. A genuine retry of this SAME replacement still
+            # dedups correctly, since replaces_order_id repeats across retries.
+            cycle=f"{cycle}:replace:{replaces_order_id}",
         )
     except OrderStatusUnknownError as _unk_exc:
         # AUD-0007: see _place_live_order's matching handler.
@@ -1323,7 +1330,26 @@ def _amend_live_order(
             count=quantity,
             price=price,
             client_order_id=original_client_order_id,
-            cycle=cycle,
+            # AUD batch-23 #1: amend_order's own key already folds in
+            # order_id (fixed for the life of this resting order), so a
+            # bare cycle here only distinguishes different TARGET PRICES
+            # within the cycle -- a price that moves away and back to a
+            # prior value within the same cycle (oscillation) would
+            # otherwise regenerate an identical key and get treated as a
+            # resubmit of the earlier amend, silently no-op'ing the second
+            # one. log_id (this attempt's own pre-log row id, just created
+            # above) is monotonic per real attempt regardless of price, so
+            # every genuine amend gets a key Kalshi has never seen before.
+            #
+            # Opus review (2026-08-22), same accepted trade-off as
+            # _exit_live_position above: a lost-response amend that BOTH
+            # this call's own reconciliation and the next cycle's recovery
+            # pass fail to resolve could see a second real amend land on a
+            # cross-cycle retry, instead of Kalshi dedup'ing it away. Lower
+            # stakes here than the exit case -- worst case is the resting
+            # order's price gets set twice in a row to the same target, not
+            # a duplicate order -- so kept as-is for the same reason.
+            cycle=f"{cycle}:amend:{log_id}",
         )
     except Exception as exc:
         # The exchange call itself failed -- nothing changed on the
@@ -1819,7 +1845,32 @@ def _exit_live_position(
             count=qty,
             price=exit_price,
             time_in_force="immediate_or_cancel",
-            cycle=cycle,
+            # AUD batch-23 #1: NOT the bare forecast cycle -- a protective
+            # exit that doesn't fill (illiquid book) MUST actually retry on
+            # a later cycle scan, not silently dedupe against the earlier
+            # no-op attempt just because the book (and so exit_price) hasn't
+            # moved within the same 12h window. log_id (this attempt's own
+            # pre-log row id, just created above) is monotonic per real
+            # attempt, guaranteeing every exit try gets a fresh key.
+            #
+            # Opus review (2026-08-22), accepted trade-off: this also means
+            # a genuine cross-cycle retry of the SAME conceptual exit no
+            # longer dedups against itself server-side the way it used to
+            # (a real fill whose response is lost, then BOTH place_order's
+            # own _find_order_by_client_id AND the next cycle's
+            # _recover_pending_orders' unknown-row re-check independently
+            # fail to reconcile it, would let a second real sell land). This
+            # requires two consecutive cycles of reconciliation failure to
+            # bite -- _recover_pending_orders already runs before
+            # _check_live_position_exits every cycle (cron.py, main.py) and
+            # re-resolves 'unknown' rows via the stored client_order_id with
+            # an atomic claim guard, which is the load-bearing protection
+            # against a lost-response double-exit going forward, not this
+            # key. Kept as-is rather than reverting: the alternative (bare
+            # cycle) is the exact bug this fix closes, and would reliably
+            # (not just on double reconciliation failure) block a real
+            # illiquid-market retry.
+            cycle=f"{cycle}:exit:{log_id}",
         )
     except OrderStatusUnknownError as _unk_exc:
         # AUD-0007: see _place_live_order's matching handler -- reconciliation

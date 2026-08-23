@@ -302,6 +302,108 @@ class TestKalshiWebSocketLifecycle:
         )
 
 
+class TestWsListenerCleanCloseReconnect:
+    """AUD batch-23 #4: a clean disconnect (the async-for read loop simply
+    ends with no exception -- e.g. a rejected auth/subscribe, or the server
+    closing with a valid close frame) must clear _ws_alive and back off
+    exactly like the except-Exception path already did, instead of
+    reconnecting at full speed while get_ws_health() keeps reporting
+    alive=True throughout the thrash."""
+
+    def test_clean_close_clears_alive_and_backs_off_before_reconnecting(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+
+        import kalshi_ws
+
+        class _FakeConnection:
+            """Models a clean close: `async for raw in ws` ends immediately
+            with no messages and no exception -- NOT a raised exception,
+            which is what the except-Exception branch already handled."""
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc_info):
+                return False
+
+            async def send(self, data):
+                return None
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise StopAsyncIteration
+
+        fake_key = MagicMock(spec=RSAPrivateKey)
+        fake_key.sign.return_value = b"fake-signature"
+
+        # A single ordered event log (not separate counters) so the test can
+        # assert WHEN alive went False relative to the second connect
+        # attempt -- not just that it eventually went False somewhere (the
+        # pre-fix code also clears it, just too late: only in the outer
+        # `finally`, after CancelledError from the SECOND connect has
+        # already unwound the loop).
+        events = []
+        real_set_alive = kalshi_ws._set_ws_alive
+
+        def _spy_set_alive(value):
+            real_set_alive(value)
+            events.append(("alive", value))
+
+        connect_calls = {"n": 0}
+
+        def _fake_connect(url, additional_headers=None):
+            connect_calls["n"] += 1
+            events.append(("connect", connect_calls["n"]))
+            if connect_calls["n"] >= 2:
+                # Deterministically end the otherwise-infinite reconnect
+                # loop once one full clean-close cycle has been observed.
+                # CancelledError is a BaseException (not Exception), so it
+                # is NOT swallowed by the `except Exception` branch -- it
+                # propagates straight out, same as a real task cancellation.
+                raise asyncio.CancelledError()
+            return _FakeConnection()
+
+        with (
+            patch(
+                "cryptography.hazmat.primitives.serialization.load_pem_private_key",
+                return_value=fake_key,
+            ),
+            patch("websockets.connect", side_effect=_fake_connect),
+            patch.object(kalshi_ws, "_set_ws_alive", side_effect=_spy_set_alive),
+            patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                asyncio.run(kalshi_ws._ws_listener("key", "pem", ["TICKER"]))
+
+        assert events[0] == ("connect", 1)
+        assert events[1] == ("alive", True)
+        # The clean close must clear alive=False BEFORE the second connect
+        # attempt fires -- not merely "eventually" via the outer `finally`
+        # once the whole loop has already unwound. Find each event's index
+        # explicitly rather than assuming a fixed slice position.
+        first_false_idx = events.index(("alive", False))
+        second_connect_idx = events.index(("connect", 2))
+        assert first_false_idx < second_connect_idx, (
+            f"_ws_alive must go False before the reconnect attempt, not "
+            f"after: events={events}"
+        )
+
+        # The clean-close path must back off exactly like the exception
+        # path already did -- one 10s sleep between the clean close and the
+        # second connect attempt.
+        mock_sleep.assert_awaited_once_with(10)
+
+        # Positive control: it DID actually reconnect after backing off
+        # (not stuck) -- the second connect call is what raised
+        # CancelledError to end this test.
+        assert connect_calls["n"] == 2
+
+
 class TestWsHealth:
     def test_get_ws_health_initially_not_alive(self):
         """Fresh import: ws not alive, no messages recorded."""

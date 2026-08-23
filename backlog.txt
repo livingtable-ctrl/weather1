@@ -24299,3 +24299,202 @@ Problem:
   obs_not_locked (tests/test_phase2_batch_d.py).
   Full record: none (not from the original max-depth audit -- surfaced by
   independent review during this session's own fix).
+
+[RESOLVED 2026-08-22 -- see resolution below. Filed retroactively: batch-23.md
+  (audit/handoff_prompts/batches/batch-23.md) cited a backlog.txt line number
+  for this finding that never actually existed in the file -- no matching
+  entry was found by line number or content search when this batch was
+  implemented. This entry documents the fix per the user's own choice to add
+  it after the fact rather than leave batch-23.md as the only record.]
+  place_order()'s idempotency key is stable for a 12-hour forecast-cycle
+  window and omits time_in_force, so genuinely DISTINCT order attempts can
+  collide
+Priority: HIGH -- flagged as the single most consequential item across
+  batches 22-30 (audit/handoff_prompts/batches/INDEX.md)
+Files: kalshi_client.py (place_order, amend_order), order_executor.py
+  (_current_forecast_cycle, _replace_live_order, _amend_live_order,
+  _exit_live_position)
+
+Problem:
+  idempotency_input = f"{ticker}:{side}:{action}:{count:.2f}:{price:.4f}:{cycle}"
+  where cycle is constant for a 12-hour window and time_in_force wasn't part
+  of the key at all. Three real collision shapes: (a) a GTC entry order and
+  its later IOC taker-cross replacement hash identically whenever the
+  midpoint price rounds to the same value as the taker price -- the resubmit
+  dedups against the just-canceled original, the position closes with no
+  re-entry, logged as success; (b) a repeated IOC exit at an unchanged book
+  regenerates the identical key within the same 12h window, so a protective
+  exit can never actually be re-placed; (c) amend_order's key can
+  oscillate-collide on a price moving back to a prior value within one
+  cycle, leaving the bot's own book price wrong relative to what's actually
+  resting.
+Full record: none in this backlog before this fix (see note above).
+
+Resolution (2026-08-22):
+  Design decision (AskUserQuestion): overload the existing `cycle` string
+  parameter with a per-attempt discriminator at the 3 non-entry call sites,
+  rather than adding a new parameter or making every place_order/amend_order
+  call (including fresh entries) per-attempt-unique. Matches an existing
+  precedent in this same codebase: main._quick_paper_buy already passes a
+  minute-bucketed pseudo-cycle instead of the literal forecast cycle for the
+  identical collision reason.
+  kalshi_client.place_order() now folds time_in_force into the key
+  (fixes collision (a) directly -- a GTC entry and an IOC taker-cross now
+  always differ regardless of price). order_executor._replace_live_order
+  passes cycle=f"{cycle}:replace:{replaces_order_id}" (deterministic across
+  retries of the SAME replacement, since replaces_order_id repeats, but
+  distinct from the original entry and from any other order's replacement).
+  _amend_live_order and _exit_live_position pass
+  cycle=f"{cycle}:amend:{log_id}" / f"{cycle}:exit:{log_id}" (log_id is the
+  execution_log pre-log row id, monotonic per real attempt via AUTOINCREMENT
+  with no DELETE anywhere in that table, so every retry of an unfilled exit
+  or an oscillating reprice gets a genuinely fresh key). Fresh entries
+  (_place_live_order) deliberately left unchanged -- they already have
+  execution_log.was_ordered_this_cycle() as the real dedup mechanism, plus
+  the bare-cycle key as a belt-and-suspenders cross-process race backstop
+  (load-bearing per AUD-0013's note that cmd_watch's recovery pass runs
+  outside the shared cron lock deliberately) that replace/amend/exit don't
+  need since they have their own concurrency guards
+  (_cancel_and_verify_safe_to_replace, a settled_at-race RuntimeError guard).
+  Independent opus review (effort=high) traced every place_order/amend_order
+  call site in the repo and confirmed none was missed, log_id's monotonicity
+  guarantee, and that fresh entries' time_in_force is genuinely constant
+  (always "good_till_canceled") so the new key component doesn't silently
+  change entry dedup behavior. One accepted trade-off documented in-code
+  (order_executor.py comments near the exit/amend cycle= calls): per-attempt
+  keys mean a lost-response fill that BOTH place_order's own reconciliation
+  AND the next cycle's _recover_pending_orders unknown-row re-check fail to
+  resolve could see a second real order land on a cross-cycle retry, instead
+  of Kalshi's own dedup catching it -- judged acceptable since
+  _recover_pending_orders' atomic-claim-guarded unknown-row re-check is the
+  real protection against this now, and the alternative (bare cycle) is the
+  exact bug this fix closes.
+  10 new/extended tests (tests/test_idempotency.py, tests/test_live_execution.py),
+  each mutation-tested via Edit-revert-run-restore, including a direct repro
+  of collision (b) (two unfilled IOC exit attempts against the same position
+  now get provably distinct client_order_id keys).
+
+[RESOLVED 2026-08-22 -- see resolution below. Same retroactive-filing note as
+  the entry immediately above.] get_markets() is missing the termination
+  guards its sibling paginators already carry, and its deepest consumer
+  passes no limit at all
+Priority: MEDIUM
+Files: kalshi_client.py (get_markets, contrast get_trades/_get_orders_by_status)
+
+Problem:
+  get_trades/_get_orders_by_status both use `not cursor or not page` as the
+  real loop terminator (not just cursor truthiness) plus a 50-page backstop
+  and limit=1000, specifically because Kalshi was observed live to sometimes
+  return a fresh cursor on an already-empty final page. get_markets() only
+  had the repeated-cursor guard -- unbounded on a server returning fresh
+  cursors with empty pages.
+Full record: none in this backlog before this fix (see note above).
+
+Resolution (2026-08-22):
+  Lifted get_trades' 3-guard shape into get_markets (not-cursor-or-not-page
+  stop, repeated-cursor guard, 50-page runaway backstop); defaults
+  limit=1000 via setdefault() when the caller doesn't supply one (never
+  overrides an explicit caller limit). 8 new/extended tests in
+  tests/test_kalshi_client.py (TestGetMarketsPagination), each mutation-tested.
+
+[RESOLVED 2026-08-22 -- see resolution below. Same retroactive-filing note as
+  the two entries above.] get_positions()/get_events()/get_series_list()
+  don't paginate at all
+Priority: LOW today, directly relevant to AUD-0025's still-open
+  recommendation to build live-position reconciliation on top of
+  get_positions()
+Files: kalshi_client.py (get_positions, get_events, get_series_list)
+
+Problem:
+  All three returned data.get(<key>, []) from a single unpaginated call,
+  unlike every other portfolio/market endpoint in this file. If the account
+  ever exceeds one page, get_positions() would silently truncate with no log
+  -- and a future reconciliation routine (AUD-0025) built on it would report
+  phantom mismatches.
+Full record: none in this backlog before this fix (see note above).
+
+Resolution (2026-08-22):
+  Added a shared _paginate_get() helper (kalshi_client.py) with the same
+  3-guard termination shape as get_markets/get_trades, and routed all three
+  through it. Opus review caught that a single hardcoded limit isn't
+  universal across these endpoints: /events documents a real max of 200 (not
+  1000), and /series documents no limit/cursor support at all -- fixed via a
+  per-call default_limit parameter (_paginate_get's own default stays 1000
+  for get_positions, matching /portfolio/positions' real max; get_events
+  passes default_limit=200; get_series_list passes default_limit=None, so no
+  limit param is ever sent there -- the loop still safely runs once and
+  stops on `not cursor` if the endpoint genuinely never returns one).
+  Documented in-code as an accepted, unverified risk rather than fixed:
+  /portfolio/positions may return two parallel lists (event_positions +
+  market_positions) sharing one cursor, so the generic `not page` guard
+  (checking only market_positions) could theoretically stop one page early
+  if market_positions is empty on a page that still has event_positions and
+  a valid cursor -- unverifiable without live API access, flagged for the
+  DEMO_BASE smoke test this batch's own context section already recommends
+  running next; strictly no worse than the prior always-single-page
+  behavior even in the worst case. 9 new tests in tests/test_kalshi_client.py
+  (TestPaginatedPortfolioAndPublicListEndpoints), each mutation-tested.
+
+[RESOLVED 2026-08-22 -- see resolution below. Same retroactive-filing note as
+  the three entries above.] WebSocket clean-close reconnect has no backoff
+  and _ws_alive stays True through the resulting gap
+Priority: LOW
+Files: kalshi_ws.py (_ws_listener's reconnect loop)
+
+Problem:
+  The 10s reconnect backoff and _set_ws_alive(False) clearing lived only in
+  the `except Exception` branch. A CLEAN close (a rejected auth or
+  subscribe) ends the read loop without raising, so the outer `while True`
+  reconnects immediately at full speed with get_ws_health() reporting
+  alive=True throughout the thrash.
+Full record: none in this backlog before this fix (see note above).
+
+Resolution (2026-08-22):
+  Mirrored the same _set_ws_alive(False) + 10s backoff immediately after the
+  `async with`/`async for` block exits normally (clean close), not just in
+  the exception branch. New test in tests/test_kalshi_ws.py
+  (TestWsListenerCleanCloseReconnect) drives the real _ws_listener coroutine
+  via asyncio.run() with a mocked websockets.connect/private-key-loading,
+  asserting alive goes False strictly BEFORE the reconnect attempt fires
+  (not merely "eventually" via the outer finally) -- confirmed this ordering
+  assertion, not just a looser "sleep was called" check, actually fails
+  against the pre-fix code.
+
+[RESOLVED 2026-08-22 -- see resolution below. Same retroactive-filing note as
+  the four entries above.] .env is never permission-hardened despite
+  potentially carrying the full private key in plaintext
+Priority: LOW
+Files: kalshi_client.py (_check_key_permissions, .pem-only), cron.py
+  (KALSHI_PRIVATE_KEY_PEM read), kalshi_ws.py (retains the raw PEM string
+  for the process lifetime)
+
+Problem:
+  _check_key_permissions() hardens the .pem file via icacls on every
+  KalshiClient construction. No equivalent existed for .env, which -- when
+  the WebSocket feed is enabled -- can carry KALSHI_PRIVATE_KEY_PEM, the
+  entire private key as a plaintext env value, on default (often broader)
+  file permissions.
+Full record: none in this backlog before this fix (see note above).
+
+Resolution (2026-08-22):
+  First implementation reused _check_key_permissions' Windows icacls path
+  (/inheritance:r + /grant:r, strips ALL inherited ACEs including
+  SYSTEM/Administrators) on .env. Independent opus review caught this as a
+  real operational risk before it shipped: empirically demonstrated it would
+  fire on every unpatched KalshiClient() construction (including 2 existing
+  unguarded test-suite call sites) and could silently lock a future
+  SYSTEM/service-account deployment (this project's own planned VM move) out
+  of .env -- every authenticated call would then fail closed in
+  _sign_headers with no obvious cause, a worse failure mode than the
+  plaintext-exposure risk being guarded against. Redesigned to WARN-ONLY on
+  both platforms: Windows runs a read-only `icacls <path>` call (no
+  /inheritance:r, no /grant:r) and warns only if a broad principal
+  (Everyone/BUILTIN\Users/Authenticated Users) shows up in the output; Unix
+  keeps the existing chmod-based warning. Scoped to only ever check a .env
+  that lives inside kalshi_client.py's own directory -- never
+  find_dotenv()'s upward-walk fallback to an unrelated parent/home .env.
+  9 new tests in tests/test_kalshi_client.py (TestEnvFilePermissions), each
+  mutation-tested; the Unix test uses a monkeypatched kalshi_client.__file__
+  pointing at a tmp_path so it never touches this repo's real .env (a first
+  draft of this test wrote directly to the real repo .env before being
+  caught and fixed).
