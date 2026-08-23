@@ -11853,7 +11853,7 @@ CLOSED 2026-08-07 (LLM confidence/lean scoring half only -- the fetch/
   regex/keyword scoring pass, as the entry's own AskUserQuestion round
   already considered and declined in favor of fetch-only).
 
-[CITY-LOCAL AFTERNOON SAME-DAY SWEEP]
+[RESOLVED 2026-08-22] CITY-LOCAL AFTERNOON SAME-DAY SWEEP
 Priority: Low (mostly covered by loop/watch when they run)
 
 Problem:
@@ -11903,6 +11903,107 @@ When to revisit:
     is still the operating mode at that point (i.e. the VM move hasn't
     landed yet) -- check both conditions fresh rather than assuming either
     still holds.
+
+RESOLVED 2026-08-22 -- both re-check conditions from the UPDATE above were
+  re-verified live before building, per this entry's own recommendation:
+  TRADING_PAUSED is now unset in .env (cleared after Belgium return), and
+  [MOVE OFF LOCAL CRON -- HOST ON A SMALL ALWAYS-ON VM] (backlog ~L9477) is
+  still OPEN -- manual cron cadence is still the operating mode, so this
+  was NOT superseded and was implemented as originally scoped.
+
+  What shipped: `cron --sameday-only`, threaded CLI-flag -> main.cmd_cron
+  -> cron.cmd_cron -> cron._cmd_cron_body -> trade_cycle.run_trade_cycle
+  (new `sameday_only: bool = False` kwarg at every hop). New
+  `weather_markets.is_sameday_market(market)` filters the raw market fetch
+  down to markets whose ticker-parsed (city, target_date) equals the
+  market's own city-local today (reusing parse_city_date()'s existing
+  ticker regex + the module's existing _CITY_TZ per-city ZoneInfo
+  convention), applied immediately after the fetch and before
+  on_markets_fetched (WS subscribe)/the consistency check/prewarm/analysis
+  ever see the list -- "skip multi-day scan" and "skip multi-day batch
+  prewarm" both fall out of this one filter point rather than needing two
+  separate mechanisms, since prewarm always warms exactly whatever's left
+  in the (now-filtered) list by the time it runs.
+
+  Scope decision (AskUserQuestion, chosen: temperature-only): rain/snow/
+  hurricane markets are excluded from the filter regardless of their real
+  close date, since their tickers carry no day-level date by
+  parse_city_date's own pre-existing design and those signal types are
+  separately feature-flagged off by default anyway (RAIN_TRADING_ENABLED/
+  SNOW_TRADING_ENABLED/HURRICANE_TRADING_ENABLED). Hourly (KXTEMP*H)
+  temperature tickers DO pass the filter (they carry a real day-level
+  date) even though analyze_trade() doesn't score that series yet
+  (Step-1 discovery only) -- a documented, harmless inefficiency today
+  that becomes a real signal for free once hourly scoring ships, with no
+  change needed to this filter.
+
+  Independent opus review (effort:high) before push found the core filter
+  logic itself correct (exhaustively verified across all 65
+  KNOWN_WEATHER_SERIES: no misclassification found either direction) but
+  caught 4 real gaps in the surrounding wiring/interaction, all fixed:
+  (1) HIGH -- 2 of the 4 kwarg-forwarding hops (main.cmd_cron's normal
+  path -> cron.cmd_cron, and cron._cmd_cron_body -> run_trade_cycle) had
+  no test coverage and could silently regress to a full scan with a fully
+  green suite; added dedicated wiring tests for all 4 hops (both
+  main.py->cron.py call sites, plus _cmd_cron_body->run_trade_cycle),
+  each mutation-tested by deleting the real forward and confirming the
+  new test fails. (2) MEDIUM -- data/signals_cache.json (the dashboard's
+  wholesale-overwritten current-state snapshot, unlike cron.log's
+  additive per-signal append) would have been silently truncated to the
+  small sameday subset on every --sameday-only run, making every
+  multi-day signal from the prior full scan disappear from the dashboard
+  until the next full scan; fixed by skipping that specific write when
+  sameday_only (the same-day signal itself stays fully visible via
+  cron.log/console output/any resulting paper trade). (3) MEDIUM --
+  --sameday-only kept data/.cron_last_run and cron_heartbeat.json's
+  last_run fresh (correctly -- the process genuinely is alive), which
+  would otherwise mask a broken SCHEDULED full-scan task for days while
+  an operator manually ran sameday-only cycles during exactly the
+  manual-cadence gap this mode targets; fixed with a new
+  cron_heartbeat.json "last_full_scan" field (only advanced on a real,
+  non-sameday_only run) plus two new independent staleness alerts keyed
+  off it -- one in-process in cron.py's existing dead-man's-switch block
+  (distinct cooldown_key="cron_full_scan_gap", so it can't share/starve
+  the pre-existing "cron_gap" key), one in main.py's CLI-banner-time
+  _check_cron_staleness() (with a documented last_run fallback for
+  heartbeat files written before this field existed). (4) MEDIUM -- the
+  original 2 tests proved the FINAL filtered result but not that the
+  filter runs BEFORE on_markets_fetched/prewarm see the list -- a
+  refactor moving the filter to right before the analyze loop (after both
+  already saw the full unfiltered list, silently defeating the whole
+  point of the mode) would still have passed them; added a 3rd test
+  capturing what each callback actually received, mutation-tested by
+  moving the real filter to that exact wrong position and confirming it
+  fails. Also addressed at LOW severity: wrapped is_sameday_market's
+  ZoneInfo lookup in the same try/except-with-UTC-fallback analyze_trade
+  itself already uses (an unhandled raise here would otherwise propagate
+  into run_trade_cycle's broad "scan setup crashed" catch-all, silently
+  zeroing the whole cycle's analyzed-market count instead of just this
+  one market falling back to UTC); reworded COMMANDS.md's row so
+  "lightweight" doesn't overclaim -- the market fetch and weekly
+  retrain/backup/drift-check housekeeping still run unconditionally, only
+  the multi-day analysis pool and forecast prewarm are actually skipped.
+
+  Deliberately NOT done (LOW, informational, not a defect): no
+  cmd_schedule_cycles() integration -- registering an actual afternoon
+  Task Scheduler entry would need its own city-timezone-band design
+  decision (the entry's own "what the fix looks like" text names TWO
+  distinct trigger bands, 2pm ET and 2pm PT, to cover all traded
+  timezones), which is genuinely separate scope from shipping the CLI
+  mode itself; the entry's own text frames the CLI flag as the
+  deliverable and leaves scheduling it to the operator. Revisit as its
+  own follow-up if/when this mode sees enough real manual-cadence use to
+  justify automating its schedule too.
+
+  26 new tests across tests/test_sameday_only.py (new file) and new
+  classes in tests/test_trade_cycle_engine.py/tests/test_cron_integration.py,
+  every test-suite-shape claim in this narrative (test names/counts/what
+  each mutation-tests) re-verified fresh at the moment of writing this
+  note, not carried over from an earlier draft in the same session. Full
+  scoped regression (test_sameday_only.py, test_trade_cycle_engine.py,
+  test_cron_integration.py, test_main_cron_smoke.py, test_cron_group_c.py,
+  test_sameday_reserve.py, test_notify.py) green; ruff/ruff-format/mypy
+  clean via the real pre-commit hook.
 
 ======================================================
 2026-07-16 WHOLE-PROGRAM SCOUTING SESSION (feature half) -- three parallel

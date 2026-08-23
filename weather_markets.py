@@ -5989,6 +5989,46 @@ def parse_city_date(market: dict) -> tuple[str | None, date | None]:
     return city, target_date
 
 
+def is_sameday_market(market: dict) -> bool:
+    """True when ``market``'s ticker-parsed target_date falls on its city's
+    LOCAL today. Network-free -- reuses parse_city_date()'s cheap ticker
+    parse plus the same city-local `datetime.now(ZoneInfo(...)).date()`
+    convention every other days_out call site in this module uses (e.g.
+    ``_analyze_precip_trade``'s ``local_today``).
+
+    Markets whose ticker carries no day-level date -- rain/snow ladders,
+    hurricane season markets, see parse_city_date's own docstring -- return
+    False here: their same-day-ness isn't determinable from this cheap a
+    check, and cron.py's ``--sameday-only`` mode (the only caller) is
+    explicitly scoped to the METAR-lockable temperature signal that
+    motivated it, not those markets.
+    """
+    city, target_date = parse_city_date(market)
+    if not city or target_date is None:
+        return False
+    try:
+        from zoneinfo import ZoneInfo as _ZoneInfo
+
+        local_today = datetime.now(
+            _ZoneInfo(_CITY_TZ.get(city, "America/New_York"))
+        ).date()
+    except Exception:
+        # Matches analyze_trade's own ZoneInfo-unavailable fallback (opus
+        # review, 2026-08-22): a raise here would otherwise propagate out of
+        # run_trade_cycle's per-market filter comprehension into the broad
+        # "scan setup crashed" catch-all, silently degrading a whole cron
+        # cycle to zero analyzed markets instead of just this one market
+        # falling back to a UTC-based same-day comparison.
+        _log.warning(
+            "is_sameday_market[%s]: ZoneInfo unavailable for city=%s — "
+            "falling back to UTC date",
+            market.get("ticker", ""),
+            city,
+        )
+        local_today = datetime.now(UTC).date()
+    return target_date == local_today
+
+
 def parse_ticker_hour(ticker: str) -> int | None:
     """Extract the local hour from a KXTEMPxxxH hourly ticker (e.g.
     "KXTEMPNYCH-26APR0908-T45.99" -> 8), or None for a daily ticker / parse

@@ -333,6 +333,173 @@ class TestTierAndCapUnification:
         )
 
 
+class TestSamedayOnly:
+    """cron --sameday-only (backlog.txt "CITY-LOCAL AFTERNOON SAME-DAY
+    SWEEP") -- run_trade_cycle(sameday_only=True) must filter the raw fetch
+    down to weather_markets.is_sameday_market() markets before WS-subscribe/
+    consistency-check/prewarm/analysis ever see it. Default (sameday_only=
+    False, every existing caller) must stay completely unaffected."""
+
+    @staticmethod
+    def _fixed_datetime(instant):
+        from datetime import datetime as _real_datetime
+
+        class _FixedDatetime(_real_datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return instant.replace(tzinfo=None)
+                return instant.astimezone(tz)
+
+        return _FixedDatetime
+
+    def _mixed_markets(self):
+        # city-local-today (NYC, America/New_York) at the fixed instant below.
+        sameday_market = {
+            "ticker": "KXHIGHNY-26AUG22-T80",
+            "yes_bid": 40,
+            "yes_ask": 44,
+        }
+        # 3 days out -- same city, real ticker date, just not today.
+        multiday_market = {
+            "ticker": "KXHIGHNY-26AUG25-T80",
+            "yes_bid": 40,
+            "yes_ask": 44,
+        }
+        # rain ticker: month-only, no day-level date segment -- parse_city_date
+        # returns target_date=None for these by design (see its own docstring).
+        undated_market = {
+            "ticker": "KXRAINDENM-26JUL-7",
+            "yes_bid": 40,
+            "yes_ask": 44,
+        }
+        return [sameday_market, multiday_market, undated_market], sameday_market
+
+    def test_sameday_only_filters_out_multiday_and_undated_markets(self, engine_env):
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        from datetime import UTC, datetime
+
+        import weather_markets
+
+        # 2026-08-22 18:00 UTC == 2026-08-22 14:00 America/New_York (EDT).
+        fixed_instant = datetime(2026, 8, 22, 18, 0, tzinfo=UTC)
+        markets, sameday_market = self._mixed_markets()
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=markets),
+            patch.object(
+                main,
+                "enrich_with_forecast",
+                side_effect=lambda m: dict(m, _city=None, _date=None),
+            ),
+            patch.object(main, "analyze_trade", return_value=None),
+            patch.object(
+                weather_markets, "datetime", self._fixed_datetime(fixed_instant)
+            ),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(ctx2, client, sameday_only=True)
+
+        assert result.markets == [sameday_market], (
+            "sameday_only=True must drop both the multi-day market and the "
+            "undated (no ticker date) market, keeping only the city-local-"
+            "today one"
+        )
+
+    def test_sameday_only_filters_before_ws_subscribe_and_prewarm_see_it(
+        self, engine_env
+    ):
+        """opus review (2026-08-22): result.markets alone doesn't prove the
+        filter runs BEFORE on_markets_fetched/prewarm, only that the final
+        returned list is filtered -- a refactor that moved the filter to
+        run right before the analysis loop (after WS-subscribe and prewarm
+        already saw the full unfiltered list, defeating the whole point of
+        this mode) would still pass that assertion. Capture what each of
+        those two callbacks actually received."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        from datetime import UTC, datetime
+
+        import weather_markets
+
+        fixed_instant = datetime(2026, 8, 22, 18, 0, tzinfo=UTC)
+        markets, sameday_market = self._mixed_markets()
+
+        ws_subscribe_saw = []
+        prewarm_saw = []
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=markets),
+            patch.object(
+                main,
+                "enrich_with_forecast",
+                side_effect=lambda m: dict(m, _city=None, _date=None),
+            ),
+            patch.object(main, "analyze_trade", return_value=None),
+            patch.object(
+                weather_markets, "datetime", self._fixed_datetime(fixed_instant)
+            ),
+            # Override engine_env's own no-op prewarm stub for this one test
+            # so its received market list can be captured.
+            patch.object(
+                trade_cycle,
+                "_run_batch_prewarm",
+                side_effect=lambda ctx, mkts: prewarm_saw.extend(mkts),
+            ),
+        ):
+            ctx2 = main._build_cron_context()
+            trade_cycle.run_trade_cycle(
+                ctx2,
+                client,
+                sameday_only=True,
+                prewarm=True,
+                on_markets_fetched=ws_subscribe_saw.extend,
+            )
+
+        assert ws_subscribe_saw == [sameday_market], (
+            "on_markets_fetched (WS ticker subscribe) must only see the "
+            "already-filtered same-day market, not the full raw fetch"
+        )
+        assert prewarm_saw == [sameday_market], (
+            "batch prewarm must only warm the already-filtered same-day "
+            "market's forecast cache, not every city/date pair in the full "
+            "raw fetch"
+        )
+
+    def test_sameday_only_false_keeps_every_market_unfiltered(self, engine_env):
+        """Positive control for the test above: proves the filter is
+        genuinely opt-in (default behavior unchanged) rather than the prior
+        test passing because run_trade_cycle drops those markets for some
+        unrelated reason regardless of the flag."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        from datetime import UTC, datetime
+
+        import weather_markets
+
+        fixed_instant = datetime(2026, 8, 22, 18, 0, tzinfo=UTC)
+        markets, _sameday_market = self._mixed_markets()
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=markets),
+            patch.object(
+                main,
+                "enrich_with_forecast",
+                side_effect=lambda m: dict(m, _city=None, _date=None),
+            ),
+            patch.object(main, "analyze_trade", return_value=None),
+            patch.object(
+                weather_markets, "datetime", self._fixed_datetime(fixed_instant)
+            ),
+        ):
+            ctx2 = main._build_cron_context()
+            result = trade_cycle.run_trade_cycle(
+                ctx2, client
+            )  # sameday_only defaults False
+
+        assert result.markets == markets, (
+            "sameday_only defaulting False must leave every market untouched"
+        )
+
+
 class TestRealThresholdDrivesTrading:
     """watch's old display-only MIN_EDGE tag must no longer drive trading
     decisions -- cron's real two-gate threshold (net-edge floor + prob-edge

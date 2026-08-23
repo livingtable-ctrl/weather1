@@ -10,6 +10,7 @@ All commands: `py main.py <command> [args]`
 |---|---|
 | `cron` | Run one scan cycle — fetch markets, score edges, place paper trades, settle outcomes |
 | `cron --edge 12` | Same but override minimum edge threshold (number = percent) |
+| `cron --sameday-only` | Same but skip the multi-day scan/prewarm — only city-local-today temperature markets. Still fetches every open market and still runs cron's normal weekly housekeeping (retrain/backup/drift-check) when due; the savings are the multi-day analysis pool and forecast prewarm specifically, not the whole cycle |
 | `brief` | Single-screen daily summary (balance, positions, Brier, graduation gates) |
 | `brief --email` | Same + send email notification |
 | `today` | Plain-English "what should I do today?" recommendation |

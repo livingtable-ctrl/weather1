@@ -18,7 +18,7 @@ rather than from this engine. Live-order poll-fills/reprice remains
 watch-only -- that's a genuinely different responsibility (watch manages
 orders it just placed this cycle) than the now-unified paper checks, not
 duplicated strategy. cron-only periodic housekeeping beyond the
-scan-relevant ``prewarm`` flag
+scan-relevant ``prewarm``/``sameday_only`` flags
 (weekly retrains, cloud backup, drift detection, etc.), and all interactive
 display/UI. Those stay in cron.py's wrapper and main.py's cmd_watch loop.
 
@@ -128,6 +128,7 @@ def run_trade_cycle(
     require_liquid_for_placement: bool = False,
     external_halted_reason: str | None = None,
     on_markets_fetched: Callable[[list[dict]], None] | None = None,
+    sameday_only: bool = False,
 ) -> TradeCycleResult | None:
     """Run one full recover-pending -> settle -> scan -> analyze -> decide/
     place cycle.
@@ -184,6 +185,25 @@ def run_trade_cycle(
     raised exception from this callback propagates like any other
     caller-supplied error -- callers are expected to guard their own WS
     setup internally, matching their pre-extraction try/except shape.
+
+    ``sameday_only``: cron-only lightweight-scan mode (backlog.txt
+    "CITY-LOCAL AFTERNOON SAME-DAY SWEEP") -- when True, the raw fetch is
+    filtered down to ``weather_markets.is_sameday_market()`` markets
+    (ticker-parsed target_date == the market's city-local today) before
+    ``on_markets_fetched``/the consistency check/prewarm/analysis ever see
+    it. Since ``prewarm`` (above) always warms exactly the markets in this
+    filtered list, "skip multi-day scan" and "skip multi-day batch prewarm"
+    fall out of the same filter rather than needing two separate
+    mechanisms. Markets whose ticker carries no day-level date (rain/snow
+    ladders, hurricane season markets) are excluded regardless of their
+    actual close date -- this mode is scoped to daily/hourly TEMPERATURE
+    markets, the METAR-lockable signal that motivated it. Note: hourly
+    (``KXTEMP*H``) tickers pass this filter but ``analyze_trade()``
+    currently returns None for the whole series (Step-1 discovery only, no
+    scoring yet) -- they cost a wasted enrich/prewarm cycle today, not a
+    correctness issue, and will start producing real signals here for free
+    once hourly scoring ships, with no change needed to this filter.
+    Default False (every existing caller's behavior is unchanged).
     """
     if cron.KILL_SWITCH_PATH.exists():
         _log.critical(
@@ -249,6 +269,18 @@ def run_trade_cycle(
     consistency_skip = False
     try:
         markets = ctx.get_weather_markets(client)
+
+        if sameday_only:
+            from weather_markets import is_sameday_market as _is_sameday_market
+
+            _pre_sameday_count = len(markets)
+            markets = [m for m in markets if _is_sameday_market(m)]
+            _log.info(
+                "run_trade_cycle: --sameday-only filtered %d market(s) down to "
+                "%d same-day",
+                _pre_sameday_count,
+                len(markets),
+            )
 
         # Subscribe/start the caller's WebSocket now, at the same point in
         # the cycle it ran at pre-extraction (right after the fetch, before

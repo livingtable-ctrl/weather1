@@ -856,7 +856,7 @@ def test_cmd_cron_stops_active_websocket_on_exit(cron_env):
 
     fake_ws = MagicMock()
 
-    def _fake_cmd_cron_body(ctx, client, min_edge=None):
+    def _fake_cmd_cron_body(ctx, client, min_edge=None, sameday_only=False):
         # Simulate what the real _cmd_cron_body does once it constructs and
         # starts a KalshiWebSocket for this cycle.
         cron_module._active_ws = fake_ws
@@ -914,7 +914,7 @@ def test_cmd_cron_stops_websocket_even_on_body_exception(cron_env):
 
     fake_ws = MagicMock()
 
-    def _fake_cmd_cron_body(ctx, client, min_edge=None):
+    def _fake_cmd_cron_body(ctx, client, min_edge=None, sameday_only=False):
         cron_module._active_ws = fake_ws
         raise RuntimeError("simulated scan failure")
 
@@ -1116,3 +1116,305 @@ class TestKillSwitchOverrideRenameRace:
 
         assert ks_path.exists(), "kill switch must be restored after the override"
         assert not (tmp_path / ".kill_switch.tmp").exists()
+
+
+@pytest.mark.integration
+class TestSamedayOnlyWiring:
+    """opus review (2026-08-22): the sameday_only kwarg's full call chain is
+    CLI-arg-parse -> main.cmd_cron -> cron.cmd_cron -> _cmd_cron_body ->
+    trade_cycle.run_trade_cycle. tests/test_sameday_only.py covers the two
+    ends (CLI-arg parse, and run_trade_cycle's own filtering); this class
+    covers the two middle hops that were previously untested -- confirmed
+    by mutation: deleting either `sameday_only=sameday_only` forward left
+    the full suite green before this class existed."""
+
+    def test_main_cmd_cron_normal_path_threads_sameday_only_to_cron_cmd_cron(
+        self, cron_env
+    ):
+        tmp_path, client, main, paper = cron_env
+
+        calls = []
+        with patch.object(
+            main,
+            "_cron_cmd_cron",
+            side_effect=lambda ctx,
+            client,
+            min_edge=None,
+            sameday_only=False: calls.append(sameday_only),
+        ):
+            # No kill switch file -- this exercises main.cmd_cron's normal
+            # (non-override) call site. _called_from_loop reset in a finally
+            # for test isolation (it's a persistent function attribute).
+            try:
+                main.cmd_cron(client, sameday_only=True)
+            finally:
+                main.cmd_cron._called_from_loop = False
+
+        assert calls == [True]
+
+    def test_main_cmd_cron_override_path_threads_sameday_only_to_cron_cmd_cron(
+        self, cron_env, monkeypatch
+    ):
+        """Same claim as above, but through the kill-switch-override branch
+        (main.py's OTHER _cron_cmd_cron(...) call site) -- the two call
+        sites are separate lines of code and either could independently
+        forget to forward the kwarg."""
+        tmp_path, client, main, paper = cron_env
+
+        ks_path = tmp_path / ".kill_switch"
+        ks_path.write_text('{"reason": "test halt"}')
+        monkeypatch.setattr("builtins.input", lambda *_a, **_kw: "y")
+
+        calls = []
+        with patch.object(
+            main,
+            "_cron_cmd_cron",
+            side_effect=lambda ctx,
+            client,
+            min_edge=None,
+            sameday_only=False: calls.append(sameday_only),
+        ):
+            main.cmd_cron._called_from_loop = False
+            try:
+                main.cmd_cron(client, sameday_only=True)
+            finally:
+                main.cmd_cron._called_from_loop = False
+
+        assert calls == [True]
+        assert ks_path.exists(), "override is one-shot -- kill switch stays active"
+
+    def test_cmd_cron_body_threads_sameday_only_to_run_trade_cycle(self, cron_env):
+        """The other untested hop: cron._cmd_cron_body -> trade_cycle.run_trade_cycle."""
+        tmp_path, client, main, paper = cron_env
+        import cron
+        import trade_cycle
+
+        calls = []
+
+        def _fake_run_trade_cycle(ctx, client, **kwargs):
+            calls.append(kwargs.get("sameday_only"))
+            return (
+                None  # kill-switch-style hard abort -- _cmd_cron_body returns cleanly
+            )
+
+        with patch.object(
+            trade_cycle, "run_trade_cycle", side_effect=_fake_run_trade_cycle
+        ):
+            ctx = main._build_cron_context()
+            cron._cmd_cron_body(ctx, client, sameday_only=True)
+
+        assert calls == [True]
+
+
+@pytest.mark.integration
+class TestSamedayOnlySignalsCacheSkip:
+    """opus review (2026-08-22): SIGNALS_CACHE_PATH is a wholesale-overwritten
+    CURRENT-STATE snapshot the dashboard reads -- a --sameday-only cycle
+    must not replace it with its own small subset, which would silently
+    make every multi-day signal from the prior full scan disappear from
+    the dashboard until the next full scan. tests/conftest.py's autouse
+    isolate_cron_generated_files fixture already redirects
+    cron.SIGNALS_CACHE_PATH to a per-test tmp_path, so writing to/reading
+    from it directly here never touches the real production file."""
+
+    def _run_with_fake_signal(self, main, client, sameday_only):
+        fake_market, fake_enriched, fake_analysis = _fake_strong_signal()
+        with (
+            patch.object(main, "get_weather_markets", return_value=[fake_market]),
+            patch.object(main, "enrich_with_forecast", return_value=fake_enriched),
+            patch.object(main, "analyze_trade", return_value=fake_analysis),
+            patch.object(main, "_auto_place_trades", return_value=0),
+            patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+            patch("paper.is_paused_drawdown", return_value=False),
+        ):
+            try:
+                main.cmd_cron(client, sameday_only=sameday_only)
+            except SystemExit:
+                pass
+
+    def test_sameday_only_does_not_overwrite_signals_cache(self, cron_env):
+        tmp_path, client, main, paper = cron_env
+        import json
+
+        import cron
+
+        cron.SIGNALS_CACHE_PATH.write_text(
+            json.dumps({"summary": {"scanned": 999}, "signals": []})
+        )
+
+        self._run_with_fake_signal(main, client, sameday_only=True)
+
+        saved = json.loads(cron.SIGNALS_CACHE_PATH.read_text())
+        assert saved["summary"]["scanned"] == 999, (
+            "sameday_only=True must leave the prior full-scan signals cache "
+            "untouched, not overwrite it with the smaller sameday subset"
+        )
+
+    def test_full_scan_still_overwrites_signals_cache(self, cron_env):
+        """Positive control for the test above -- proves the skip is
+        genuinely opt-in, not that cmd_cron simply never writes this file
+        under this test's mocks regardless of the flag."""
+        tmp_path, client, main, paper = cron_env
+        import json
+
+        import cron
+
+        cron.SIGNALS_CACHE_PATH.write_text(
+            json.dumps({"summary": {"scanned": 999}, "signals": []})
+        )
+
+        self._run_with_fake_signal(main, client, sameday_only=False)
+
+        saved = json.loads(cron.SIGNALS_CACHE_PATH.read_text())
+        assert saved["summary"]["scanned"] != 999, (
+            "a full (non-sameday_only) scan must still overwrite the cache "
+            "with this cycle's own scan summary"
+        )
+
+
+@pytest.mark.integration
+class TestSamedayOnlyFullScanStaleness:
+    """opus review (2026-08-22): --sameday-only keeps .cron_last_run fresh
+    (the process is genuinely alive), which would otherwise mask a broken
+    scheduled full-scan task for however long the operator keeps the bot
+    "alive" with manual sameday-only cycles -- precisely the manual-cadence
+    scenario this mode targets. cron_heartbeat.json's last_full_scan must
+    only advance on a real (non-sameday_only) run."""
+
+    def _run(self, main, client, sameday_only):
+        with (
+            patch.object(main, "get_weather_markets", return_value=[]),
+            patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+            patch("paper.is_paused_drawdown", return_value=False),
+        ):
+            try:
+                main.cmd_cron(client, sameday_only=sameday_only)
+            except SystemExit:
+                pass
+
+    def test_sameday_only_does_not_advance_last_full_scan(self, cron_env):
+        tmp_path, client, main, paper = cron_env
+        import json
+
+        import cron
+
+        old_iso = "2020-01-01T00:00:00+00:00"
+        cron.CRON_HEARTBEAT_PATH.write_text(
+            json.dumps(
+                {"last_run": old_iso, "cycle_count": 5, "last_full_scan": old_iso}
+            )
+        )
+
+        self._run(main, client, sameday_only=True)
+
+        hb = json.loads(cron.CRON_HEARTBEAT_PATH.read_text())
+        assert hb["last_full_scan"] == old_iso, (
+            "a sameday_only cycle must not advance last_full_scan"
+        )
+        assert hb["last_run"] != old_iso, (
+            "last_run itself (the plain liveness heartbeat) must still "
+            "advance every cycle regardless of sameday_only"
+        )
+
+    def test_full_scan_advances_last_full_scan(self, cron_env):
+        """Positive control: a real scan DOES advance the marker."""
+        tmp_path, client, main, paper = cron_env
+        import json
+
+        import cron
+
+        old_iso = "2020-01-01T00:00:00+00:00"
+        cron.CRON_HEARTBEAT_PATH.write_text(
+            json.dumps(
+                {"last_run": old_iso, "cycle_count": 5, "last_full_scan": old_iso}
+            )
+        )
+
+        self._run(main, client, sameday_only=False)
+
+        hb = json.loads(cron.CRON_HEARTBEAT_PATH.read_text())
+        assert hb["last_full_scan"] != old_iso
+
+    def test_first_ever_run_seeds_last_full_scan_even_when_sameday_only(self, cron_env):
+        """No prior heartbeat at all (this repo's very first cron run) must
+        seed last_full_scan with *something* rather than crash or write
+        None -- there is no prior full scan to carry forward."""
+        tmp_path, client, main, paper = cron_env
+        import json
+
+        import cron
+
+        assert not cron.CRON_HEARTBEAT_PATH.exists()
+
+        self._run(main, client, sameday_only=True)
+
+        hb = json.loads(cron.CRON_HEARTBEAT_PATH.read_text())
+        assert hb.get("last_full_scan"), "last_full_scan must be seeded, not omitted"
+
+    def test_full_scan_gap_alert_fires_with_distinct_cooldown_key(
+        self, cron_env, monkeypatch
+    ):
+        """The actual masking scenario: .cron_last_run is fresh (this very
+        cycle just wrote it) but last_full_scan is >48h stale -- the new
+        alert must still fire, using a cooldown_key distinct from the
+        pre-existing "cron_gap" dead-man's-switch so the two don't share
+        (and silently starve) the same disk-persisted cooldown."""
+        tmp_path, client, main, paper = cron_env
+        import json
+        from datetime import UTC, datetime, timedelta
+
+        import cron
+
+        stale_iso = (datetime.now(UTC) - timedelta(hours=50)).isoformat()
+        cron.CRON_HEARTBEAT_PATH.write_text(
+            json.dumps(
+                {"last_run": stale_iso, "cycle_count": 1, "last_full_scan": stale_iso}
+            )
+        )
+
+        alert_calls = []
+        monkeypatch.setattr(
+            "notify.send_system_alert",
+            lambda title, msg, **kw: alert_calls.append(
+                (title, kw.get("cooldown_key"))
+            ),
+        )
+
+        self._run(main, client, sameday_only=True)
+
+        assert ("Kalshi cron full-scan gap detected", "cron_full_scan_gap") in (
+            alert_calls
+        ), f"expected a full-scan-gap alert, got: {alert_calls}"
+
+    def test_no_full_scan_gap_alert_when_recent(self, cron_env, monkeypatch):
+        """Positive control: a recent last_full_scan must NOT fire the alert."""
+        tmp_path, client, main, paper = cron_env
+        import json
+        from datetime import UTC, datetime, timedelta
+
+        import cron
+
+        recent_iso = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        cron.CRON_HEARTBEAT_PATH.write_text(
+            json.dumps(
+                {
+                    "last_run": recent_iso,
+                    "cycle_count": 1,
+                    "last_full_scan": recent_iso,
+                }
+            )
+        )
+
+        alert_calls = []
+        monkeypatch.setattr(
+            "notify.send_system_alert",
+            lambda title, msg, **kw: alert_calls.append(
+                (title, kw.get("cooldown_key"))
+            ),
+        )
+
+        self._run(main, client, sameday_only=True)
+
+        assert not any(key == "cron_full_scan_gap" for _title, key in alert_calls), (
+            f"unexpected full-scan-gap alert with a recent last_full_scan: {alert_calls}"
+        )

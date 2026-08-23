@@ -265,7 +265,11 @@ def _build_cron_context() -> _CronContext:
     )
 
 
-def cmd_cron(client: "KalshiClient", min_edge: float | None = None) -> None:
+def cmd_cron(
+    client: "KalshiClient",
+    min_edge: float | None = None,
+    sameday_only: bool = False,
+) -> None:
     """Wrapper that builds CronContext from the current namespace and delegates to cron.cmd_cron.
 
     Keeping this wrapper in main.py means call sites and integration tests
@@ -273,6 +277,11 @@ def cmd_cron(client: "KalshiClient", min_edge: float | None = None) -> None:
     ``main.get_weather_markets``, ``main._auto_place_trades`` etc. are picked
     up at call-time because ``_build_cron_context()`` reads the current
     module-level names (which monkeypatch has already replaced).
+
+    ``sameday_only``: see trade_cycle.run_trade_cycle()'s own docstring.
+    Only the CLI ``cron --sameday-only`` dispatch below sets this True --
+    every other caller (loop, the interactive menu's "Cron" option) keeps
+    the default full scan.
     """
     _called_from_loop = getattr(cmd_cron, "_called_from_loop", False)
 
@@ -385,7 +394,12 @@ def cmd_cron(client: "KalshiClient", min_edge: float | None = None) -> None:
             _cron_cmd_cron._called_from_loop = False  # type: ignore[attr-defined]
             _cron_module.USER_OVERRIDE_ACTIVE = True
             _paper_module.KILL_SWITCH_OVERRIDE_ACTIVE = True
-            _cron_cmd_cron(_build_cron_context(), client, min_edge=min_edge)
+            _cron_cmd_cron(
+                _build_cron_context(),
+                client,
+                min_edge=min_edge,
+                sameday_only=sameday_only,
+            )
         finally:
             _cron_module.USER_OVERRIDE_ACTIVE = False
             _paper_module.KILL_SWITCH_OVERRIDE_ACTIVE = False
@@ -422,7 +436,9 @@ def cmd_cron(client: "KalshiClient", min_edge: float | None = None) -> None:
     # Normal (non-override) path: propagate _called_from_loop flag so cron's
     # loop-mode sys.exit guard works.
     _cron_cmd_cron._called_from_loop = _called_from_loop  # type: ignore[attr-defined]
-    _cron_cmd_cron(_build_cron_context(), client, min_edge=min_edge)
+    _cron_cmd_cron(
+        _build_cron_context(), client, min_edge=min_edge, sameday_only=sameday_only
+    )
 
 
 def _brier_sparkline() -> str:
@@ -9931,14 +9947,25 @@ def _validate_config() -> None:
 
 
 def _check_cron_staleness() -> None:
-    """Print a prominent warning if cron hasn't run in 48h."""
+    """Print a prominent warning if cron hasn't run in 48h.
+
+    Also warns separately if the last FULL (non ``--sameday-only``) scan is
+    stale even though cron itself has been running -- a manual-cadence
+    operator can keep the bot "alive" with sameday-only cycles for days
+    while a broken scheduled full-scan task goes unnoticed, since that
+    scenario would otherwise leave the primary check above silent (opus
+    review, 2026-08-22; see cron.py's matching in-process check for the
+    live-alert half of this, which fires from inside a running cron cycle
+    rather than only when a human happens to look at the CLI banner).
+    """
     try:
         import json as _j
 
         _hb = CRON_HEARTBEAT_PATH
         if not _hb.exists():
             return
-        _last = datetime.fromisoformat(_j.loads(_hb.read_text())["last_run"])
+        _hb_data = _j.loads(_hb.read_text())
+        _last = datetime.fromisoformat(_hb_data["last_run"])
         _age_min = (datetime.now(UTC) - _last).total_seconds() / 60
         if _age_min > 2880:  # 48h
             print(
@@ -9947,6 +9974,22 @@ def _check_cron_staleness() -> None:
                     "  Trading is paused until cron runs. Run: py main.py cron\n"
                 )
             )
+        # Older heartbeat files (written before --sameday-only existed) have
+        # no "last_full_scan" key -- every run they recorded WAS a full scan,
+        # so falling back to "last_run" for them is correct, not a guess.
+        _last_full_iso = _hb_data.get("last_full_scan", _hb_data.get("last_run"))
+        if _last_full_iso:
+            _full_age_min = (
+                datetime.now(UTC) - datetime.fromisoformat(_last_full_iso)
+            ).total_seconds() / 60
+            if _full_age_min > 2880:  # 48h
+                print(
+                    red(
+                        f"\n  WARNING: Last FULL cron scan was {_full_age_min / 60:.0f}h "
+                        "ago (only --sameday-only runs since, if any).\n"
+                        "  Multi-day markets are not being scanned. Run: py main.py cron\n"
+                    )
+                )
     except Exception:
         pass
 
@@ -10125,7 +10168,7 @@ def main():
                 _cron_edge = float(args[args.index("--edge") + 1]) / 100
             except (IndexError, ValueError):
                 pass
-        cmd_cron(client, min_edge=_cron_edge)
+        cmd_cron(client, min_edge=_cron_edge, sameday_only="--sameday-only" in args)
     elif cmd == "unlock":
         if LOCK_PATH.exists():
             LOCK_PATH.unlink()

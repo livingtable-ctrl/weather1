@@ -616,9 +616,16 @@ def _placement_outcome_phrase(placed: int, found: int) -> str:
 
 
 def _cmd_cron_body(
-    ctx: CronContext, client: KalshiClient, min_edge: float | None = None
+    ctx: CronContext,
+    client: KalshiClient,
+    min_edge: float | None = None,
+    sameday_only: bool = False,
 ) -> bool | None:
-    """Core scan logic — extracted from cmd_cron so it can be wrapped in try/finally."""
+    """Core scan logic — extracted from cmd_cron so it can be wrapped in try/finally.
+
+    ``sameday_only``: threaded straight through to trade_cycle.run_trade_cycle()
+    -- see that function's own docstring for what it does. Default False.
+    """
     # Soft-halt reason (manual override, accuracy halt, graduation gate, anomaly
     # halt). Unlike the kill switch below, these must NOT stop the whole cycle —
     # settlement and stop-loss protection need to keep running (accuracy halt in
@@ -708,6 +715,46 @@ def _cmd_cron_body(
     except Exception as _gap_exc:
         _log.debug("cmd_cron: dead-man's-switch check failed: %s", _gap_exc)
 
+    # Full-scan staleness check — distinct from the dead-man's-switch above.
+    # --sameday-only (opus review, 2026-08-22) keeps .cron_last_run fresh
+    # (the process is genuinely alive and scanning), which would otherwise
+    # silently mask a scheduled full-scan task having stopped running for
+    # days while an operator keeps the bot "alive" with manual sameday-only
+    # cycles during that exact gap -- the manual-cadence scenario this mode
+    # itself targets. cron_heartbeat.json's last_full_scan (written in the
+    # cmd_cron finally block, only advanced on a non-sameday_only run) is
+    # the freshness signal for that specific risk.
+    try:
+        if CRON_HEARTBEAT_PATH.exists():
+            _hb_check = json.loads(CRON_HEARTBEAT_PATH.read_text())
+            _last_full_iso = _hb_check.get("last_full_scan")
+            if _last_full_iso:
+                from datetime import UTC as _UTC
+                from datetime import datetime as _dt_check
+
+                _full_gap_hours = (
+                    _dt_check.now(_UTC) - _dt_check.fromisoformat(_last_full_iso)
+                ).total_seconds() / 3600
+                if _full_gap_hours > 48:
+                    _log.warning(
+                        "cmd_cron: %.0fh since last FULL (non-sameday-only) "
+                        "scan — full-scan gap alert fired",
+                        _full_gap_hours,
+                    )
+                    from notify import send_system_alert as _sys_alert2
+
+                    _sys_alert2(
+                        "Kalshi cron full-scan gap detected",
+                        f"Last full multi-day scan was {_full_gap_hours:.0f}h ago "
+                        "— only sameday-only runs since. Run: py main.py cron",
+                        # Distinct key from "cron_gap" above -- see that call
+                        # site's own comment for why a distinct cooldown key
+                        # matters now that the cooldown is disk-persisted.
+                        cooldown_key="cron_full_scan_gap",
+                    )
+    except Exception as _full_gap_exc:
+        _log.debug("cmd_cron: full-scan staleness check failed: %s", _full_gap_exc)
+
     # Spend cap validation — warn if MAX_DAILY_SPEND exceeds current balance.
     # This is a cosmetic config-mistake warning, not a safety gate — a
     # paper.get_balance() failure here must not crash the whole cycle before
@@ -725,6 +772,7 @@ def _cmd_cron_body(
     print(
         cyan(
             f"  [cron] scan starting \u2014 {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC"
+            + (" (same-day only)" if sameday_only else "")
         ),
         flush=True,
     )
@@ -1427,6 +1475,7 @@ def _cmd_cron_body(
         # just in this function's own (now-removed) copy of the gate.
         external_halted_reason=_cron_halted_reason,
         on_markets_fetched=_subscribe_and_start_ws,
+        sameday_only=sameday_only,
     )
     if result is None:
         # Kill switch tripped inside run_trade_cycle() (e.g. activated
@@ -1512,47 +1561,60 @@ def _cmd_cron_body(
     except Exception:
         pass
 
-    # Write rich signals cache for the web dashboard
-    try:
-        cache_path = SIGNALS_CACHE_PATH
-        above_threshold = [s for s in signals_cache if s.get("passes_threshold", True)]
-        # backlog.txt "DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF
-        # SIGNAL TEXT, NOT THE tier FIELD": read the authoritative `tier`
-        # trade_cycle.py's classification loop set (now also carried on this
-        # same signals_cache entry, see its "tier" key), not signal text --
-        # this summary shares cache_payload with the "stars" field the same
-        # fix converted, and must agree with it.
-        strong = [s for s in above_threshold if s.get("tier") == TIER_STRONG]
-        low_risk = [s for s in strong if s["time_risk"] == "LOW"]
-        # Sort: above-threshold candidates first (by edge), then below-threshold (by edge).
-        signals_cache.sort(
-            key=lambda x: (not x.get("passes_threshold", True), -abs(x["edge_pct"]))
-        )
-        # Capture gate-level rejection counts so the dashboard can show a
-        # filter-breakdown chart without needing any in-memory state from cron.
-        _filter_gate_counts = result.gate_counts
-        cache_payload = {
-            "signals": signals_cache[:200],
-            "summary": {
-                "scanned": scanned,
-                "with_edge": len(
-                    above_threshold
-                ),  # only counts candidates that cleared edge gates
-                "strong": len(strong),
-                "low_risk": len(low_risk),
-            },
-            "filter_stats": {
-                "filters": dict(_dbg),
-                "gate_counts": _filter_gate_counts,
-                "total_scanned": scanned,
-            },
-            "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
-        }
-        from safe_io import atomic_write_json as _atomic_write
+    # Write rich signals cache for the web dashboard. Skipped entirely for
+    # --sameday-only (opus review, 2026-08-22): this file is a wholesale-
+    # overwritten CURRENT-STATE snapshot (unlike cron.log's per-signal
+    # append above, which is additive), and sameday_only's own market list
+    # is a small subset by design -- overwriting it here would make the
+    # dashboard silently drop every multi-day signal from the prior full
+    # scan for however long until the next full scan runs, with no visual
+    # indicator anything was truncated. Leaving the prior (full-scan) cache
+    # in place is strictly safer than replacing it with a misleadingly
+    # narrow one; the same-day signal itself is still fully visible via
+    # cron.log, the console output, and any resulting paper trade.
+    if not sameday_only:
+        try:
+            cache_path = SIGNALS_CACHE_PATH
+            above_threshold = [
+                s for s in signals_cache if s.get("passes_threshold", True)
+            ]
+            # backlog.txt "DASHBOARD STARS + WATCH-MODE STRONG ALERT KEY OFF
+            # SIGNAL TEXT, NOT THE tier FIELD": read the authoritative `tier`
+            # trade_cycle.py's classification loop set (now also carried on this
+            # same signals_cache entry, see its "tier" key), not signal text --
+            # this summary shares cache_payload with the "stars" field the same
+            # fix converted, and must agree with it.
+            strong = [s for s in above_threshold if s.get("tier") == TIER_STRONG]
+            low_risk = [s for s in strong if s["time_risk"] == "LOW"]
+            # Sort: above-threshold candidates first (by edge), then below-threshold (by edge).
+            signals_cache.sort(
+                key=lambda x: (not x.get("passes_threshold", True), -abs(x["edge_pct"]))
+            )
+            # Capture gate-level rejection counts so the dashboard can show a
+            # filter-breakdown chart without needing any in-memory state from cron.
+            _filter_gate_counts = result.gate_counts
+            cache_payload = {
+                "signals": signals_cache[:200],
+                "summary": {
+                    "scanned": scanned,
+                    "with_edge": len(
+                        above_threshold
+                    ),  # only counts candidates that cleared edge gates
+                    "strong": len(strong),
+                    "low_risk": len(low_risk),
+                },
+                "filter_stats": {
+                    "filters": dict(_dbg),
+                    "gate_counts": _filter_gate_counts,
+                    "total_scanned": scanned,
+                },
+                "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+            from safe_io import atomic_write_json as _atomic_write
 
-        _atomic_write(cache_payload, cache_path)
-    except Exception:
-        pass
+            _atomic_write(cache_payload, cache_path)
+        except Exception:
+            pass
 
     # Check for market anomalies — price drifted >12pp against our model
     _anomaly_signals = [
@@ -2518,9 +2580,15 @@ def _install_cron_watchdog(timeout_secs: int = 720) -> threading.Event:
 
 
 def cmd_cron(
-    ctx: CronContext, client: KalshiClient, min_edge: float | None = None
+    ctx: CronContext,
+    client: KalshiClient,
+    min_edge: float | None = None,
+    sameday_only: bool = False,
 ) -> None:
-    """Silent background scan — writes to data/cron.log, auto-places strong paper trades."""
+    """Silent background scan — writes to data/cron.log, auto-places strong paper trades.
+
+    ``sameday_only``: see trade_cycle.run_trade_cycle()'s own docstring. Default False.
+    """
     import sys as _sys
 
     if os.getenv("KALSHI_ENV") == "prod":
@@ -2549,7 +2617,9 @@ def cmd_cron(
 
         _full_scan = False
         try:
-            _full_scan = bool(_cmd_cron_body(ctx, client, min_edge))
+            _full_scan = bool(
+                _cmd_cron_body(ctx, client, min_edge, sameday_only=sameday_only)
+            )
         except KeyboardInterrupt:
             print()
             _log.warning("cmd_cron: interrupted by user")
@@ -2577,15 +2647,32 @@ def cmd_cron(
             try:
                 _hb_path = CRON_HEARTBEAT_PATH
                 try:
-                    _cycle = (
-                        json.loads(_hb_path.read_text()).get("cycle_count", 0) + 1
-                        if _hb_path.exists()
-                        else 1
+                    _hb_prev = (
+                        json.loads(_hb_path.read_text()) if _hb_path.exists() else {}
                     )
                 except Exception:
-                    _cycle = 1
+                    _hb_prev = {}
+                _cycle = _hb_prev.get("cycle_count", 0) + 1
+                # opus review (2026-08-22): a --sameday-only run must NOT
+                # advance last_full_scan -- it skips the multi-day scan this
+                # marker exists to track freshness of. Carry the prior value
+                # forward (falling back to _now_iso only when no prior
+                # heartbeat exists at all, i.e. this repo's very first cron
+                # run ever) so main._check_cron_staleness()'s full-scan
+                # warning stays meaningful across a run of sameday-only
+                # cycles instead of being silently refreshed by them.
+                if sameday_only:
+                    _last_full_scan = _hb_prev.get("last_full_scan", _now_iso)
+                else:
+                    _last_full_scan = _now_iso
                 _hb_path.write_text(
-                    json.dumps({"last_run": _now_iso, "cycle_count": _cycle})
+                    json.dumps(
+                        {
+                            "last_run": _now_iso,
+                            "cycle_count": _cycle,
+                            "last_full_scan": _last_full_scan,
+                        }
+                    )
                 )
             except Exception:
                 pass
