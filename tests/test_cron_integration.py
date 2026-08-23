@@ -433,6 +433,704 @@ def test_cron_kill_switch_halts_before_scan(cron_env):
     )
 
 
+# ── opus-review T2/F15: cron._build_toast_message (pure, extracted) ────────
+# The toast-send block itself is gated behind
+# `if os.environ.get("PYTEST_CURRENT_TEST"): raise StopIteration`, so it
+# never runs under pytest -- this pure helper is what makes the message-
+# building logic (including the PowerShell single-quote escaping) testable
+# at all.
+
+
+class TestBuildToastMessage:
+    def test_no_signals_no_halt(self):
+        import cron
+
+        msg = cron._build_toast_message(
+            signals=0,
+            placed_count=0,
+            settled_count=0,
+            halted_reason=None,
+            risk_halt_notes=[],
+            graduated=False,
+        )
+        assert msg == "No signals today"
+
+    def test_signals_placed_and_settled(self):
+        import cron
+
+        msg = cron._build_toast_message(
+            signals=3,
+            placed_count=2,
+            settled_count=1,
+            halted_reason=None,
+            risk_halt_notes=[],
+            graduated=False,
+        )
+        assert msg == "3 signal(s), 2 placed, 1 settled"
+
+    def test_all_signals_placed(self):
+        import cron
+
+        msg = cron._build_toast_message(
+            signals=2,
+            placed_count=2,
+            settled_count=0,
+            halted_reason=None,
+            risk_halt_notes=[],
+            graduated=False,
+        )
+        assert msg == "2 placed"
+
+    def test_halted_reason_appended(self):
+        """batch-24 item 4: a halted cycle's toast must be distinguishable
+        from a quiet one -- previously built purely from counts."""
+        import cron
+
+        msg = cron._build_toast_message(
+            signals=0,
+            placed_count=0,
+            settled_count=0,
+            halted_reason="manual override active",
+            risk_halt_notes=[],
+            graduated=False,
+        )
+        assert msg == "No signals today — HALTED: manual override active"
+
+    def test_risk_halt_notes_appended(self):
+        import cron
+
+        msg = cron._build_toast_message(
+            signals=0,
+            placed_count=0,
+            settled_count=0,
+            halted_reason=None,
+            risk_halt_notes=["daily loss limit reached"],
+            graduated=False,
+        )
+        assert msg == "No signals today — HALTED: daily loss limit reached"
+
+    def test_halted_reason_and_risk_notes_combined_ordering(self):
+        """halted_reason leads, risk_halt_notes follow -- matches the
+        original insert(0, ...) ordering."""
+        import cron
+
+        msg = cron._build_toast_message(
+            signals=0,
+            placed_count=0,
+            settled_count=0,
+            halted_reason="anomaly halt: WIN_RATE_COLLAPSE",
+            risk_halt_notes=["daily loss limit reached", "drawdown guard active"],
+            graduated=False,
+        )
+        assert msg == (
+            "No signals today — HALTED: anomaly halt: WIN_RATE_COLLAPSE; "
+            "daily loss limit reached; drawdown guard active"
+        )
+
+    def test_embedded_single_quote_is_escaped_for_powershell(self):
+        """The exact case the escaping exists for -- a halt reason (which
+        can carry arbitrary exception text) containing a single quote must
+        not break the PowerShell single-quoted string literal it's
+        interpolated into by the caller."""
+        import cron
+
+        msg = cron._build_toast_message(
+            signals=0,
+            placed_count=0,
+            settled_count=0,
+            halted_reason="black swan check error: can't fetch balance",
+            risk_halt_notes=[],
+            graduated=False,
+        )
+        assert "can''t fetch balance" in msg
+        assert "can't fetch balance" not in msg  # the un-escaped form must be gone
+
+    def test_graduation_overrides_but_keeps_halt_info(self):
+        """opus-review-caught (F15): an earlier version fully overwrote msg
+        on graduation, silently discarding any halt text from the same
+        cycle. Graduation is still the headline, but halt info must
+        survive appended, not vanish."""
+        import cron
+
+        msg = cron._build_toast_message(
+            signals=1,
+            placed_count=1,
+            settled_count=0,
+            halted_reason="manual override active",
+            risk_halt_notes=[],
+            graduated=True,
+        )
+        assert msg.startswith("READY TO GO LIVE")
+        assert "manual override active" in msg
+
+    def test_graduation_without_halt_is_unchanged(self):
+        """Positive control: graduation with no concurrent halt reads
+        exactly as the original fixed graduation string, unmodified."""
+        import cron
+
+        msg = cron._build_toast_message(
+            signals=1,
+            placed_count=1,
+            settled_count=0,
+            halted_reason=None,
+            risk_halt_notes=[],
+            graduated=False,
+        )
+        assert "READY TO GO LIVE" not in msg  # sanity: graduated=False path
+
+        msg_graduated = cron._build_toast_message(
+            signals=1,
+            placed_count=1,
+            settled_count=0,
+            halted_reason=None,
+            risk_halt_notes=[],
+            graduated=True,
+        )
+        assert msg_graduated == (
+            "READY TO GO LIVE — 30 trades, +$50 P&L, Brier ≤ 0.23 met!"
+        )
+
+
+# ── batch-24 item 1: kill-switch alerting + dead-man's-switch ordering ──────
+#
+# main.cmd_cron() has TWO independent kill-switch checks in series: its own
+# interactive pre-check (only reached when NOT called from loop mode -- see
+# `if _kill_path.exists() and not _called_from_loop:`), and cron.cmd_cron's
+# (_cmd_cron_body's) own non-interactive check further downstream, which
+# main.cmd_cron only reaches when `_called_from_loop=True` (loop mode) or
+# when the interactive override is accepted. Discovered while writing these
+# tests: calling main.cmd_cron(client) directly (as the OTHER kill-switch
+# test above does) never reaches cron.py's own check at all -- it returns
+# from main.py's own pre-check first. Both checks needed the same fix; both
+# are covered below via the loop-mode / non-loop-mode split real callers use.
+
+
+def _run_via_loop_mode(main, client):
+    """Set _called_from_loop=True so main.cmd_cron skips its own interactive
+    pre-check and proceeds into cron.cmd_cron()/_cmd_cron_body() -- matches
+    how main.py's own `loop` command invokes it (see main.py's _run_cycle).
+
+    opus-review-caught (T5): `main.cmd_cron._called_from_loop` (set here)
+    and `cron.cmd_cron._called_from_loop` (a DIFFERENT attribute, on a
+    different function object, mutated by main.cmd_cron's own override
+    path further down in main.py) are two separate flags that happen to
+    share a name -- don't conflate them when reading this test file or
+    main.py's cmd_cron.
+    """
+    main.cmd_cron._called_from_loop = True
+    try:
+        main.cmd_cron(client)
+    except SystemExit:
+        pass
+    finally:
+        main.cmd_cron._called_from_loop = False
+
+
+@pytest.mark.integration
+def test_main_cmd_cron_kill_switch_fires_system_alert(cron_env):
+    """main.cmd_cron's OWN interactive kill-switch pre-check (reached when
+    NOT in loop mode -- i.e. the actual `py main.py cron` manual invocation
+    this project runs today) must fire send_system_alert(cooldown_key=
+    "kill_switch") before attempting the interactive prompt, so a headless/
+    scripted invocation (input() raises, caught and silently returns) still
+    alerts. Previously this branch returned with nothing beyond two print()s
+    a non-interactive caller never sees (adjacency finding surfaced while
+    testing batch-24 item 1's cron.py fix -- this is a separate check that
+    the original finding's file list didn't cite).
+
+    opus-review-caught (T4): an earlier version relied on pytest's own
+    stdin capture making input() raise OSError to exercise this path,
+    without pinning down which of the three caught exception types
+    (EOFError/KeyboardInterrupt/OSError) it actually got, or documenting
+    that dependency -- brittle against a pytest capture-behavior change,
+    and didn't directly test the scenario the docstring names (a piped/
+    scripted invocation raising EOFError). Patches builtins.input directly
+    instead, and asserts the alert fires BEFORE input() is even reached
+    (this fix's actual design: unconditional, ahead of the prompt) rather
+    than depending on any particular exception path at all."""
+    tmp_path, client, main, paper = cron_env
+
+    (tmp_path / ".kill_switch").write_text('{"reason":"test"}')
+
+    import notify
+
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+    with patch("builtins.input", side_effect=EOFError):
+        with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+            with patch.object(notify, "send_system_alert") as mock_alert:
+                try:
+                    main.cmd_cron(client)  # NOT loop mode -- hits main.py's own check
+                except SystemExit:
+                    pass
+
+    kill_switch_calls = [
+        c
+        for c in mock_alert.call_args_list
+        if c.kwargs.get("cooldown_key") == "kill_switch"
+    ]
+    assert len(kill_switch_calls) == 1, (
+        f"expected exactly one kill_switch alert, got: {mock_alert.call_args_list}"
+    )
+
+
+@pytest.mark.integration
+def test_main_cmd_cron_kill_switch_alert_message_is_readable_with_reason(cron_env):
+    """opus-review-caught (F14): the notification body used to inline
+    _reason_str verbatim (formatted for a terminal print, with a leading
+    "\\n  "), producing a literal newline mid-sentence and no space before
+    "Remove" ("...present.\\n  Reason: X Remove the file..."). Must read as
+    plain, properly-spaced text instead."""
+    import json
+
+    tmp_path, client, main, paper = cron_env
+
+    (tmp_path / ".kill_switch").write_text("{}")
+    bs_path = tmp_path / "black_swan.json"
+    bs_path.write_text(json.dumps({"reason": "consecutive losses"}))
+
+    import notify
+
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+    with patch("builtins.input", side_effect=EOFError):
+        with patch.object(main, "BLACK_SWAN_PATH", bs_path):
+            with patch.object(
+                notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown
+            ):
+                with patch.object(notify, "send_system_alert") as mock_alert:
+                    try:
+                        main.cmd_cron(client)
+                    except SystemExit:
+                        pass
+
+    call = next(
+        c
+        for c in mock_alert.call_args_list
+        if c.kwargs.get("cooldown_key") == "kill_switch"
+    )
+    message = call.args[1]
+    assert "\n" not in message, (
+        f"message must not contain a literal newline: {message!r}"
+    )
+    assert "present. Reason:" in message, f"missing space before 'Reason:': {message!r}"
+    assert "consecutive losses. Remove" in message, (
+        f"missing space before 'Remove': {message!r}"
+    )
+
+
+@pytest.mark.integration
+def test_main_cmd_cron_kill_switch_alert_message_handles_multiline_reason(cron_env):
+    """opus-review-caught (2nd round, LOW-4): a reason value with an
+    EMBEDDED (not just leading) newline -- reachable via
+    activate_black_swan_halt(f"black swan check error: {exc}"), where
+    str(exc) can itself be multi-line -- previously survived into the
+    notification body verbatim. Must be collapsed to single-line text."""
+    import json
+
+    tmp_path, client, main, paper = cron_env
+
+    (tmp_path / ".kill_switch").write_text("{}")
+    bs_path = tmp_path / "black_swan.json"
+    bs_path.write_text(json.dumps({"reason": "line one\nline two\nline three."}))
+
+    import notify
+
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+    with patch("builtins.input", side_effect=EOFError):
+        with patch.object(main, "BLACK_SWAN_PATH", bs_path):
+            with patch.object(
+                notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown
+            ):
+                with patch.object(notify, "send_system_alert") as mock_alert:
+                    try:
+                        main.cmd_cron(client)
+                    except SystemExit:
+                        pass
+
+    call = next(
+        c
+        for c in mock_alert.call_args_list
+        if c.kwargs.get("cooldown_key") == "kill_switch"
+    )
+    message = call.args[1]
+    assert "\n" not in message, f"embedded newlines must be collapsed: {message!r}"
+    assert "line one line two line three. Remove" in message, (
+        f"expected single-space-joined text with no doubled period: {message!r}"
+    )
+
+
+@pytest.mark.integration
+def test_cron_loop_mode_kill_switch_fires_system_alert(cron_env):
+    """cron.py's own kill-switch check (inside _cmd_cron_body, reached via
+    loop mode) must ALSO fire send_system_alert(cooldown_key="kill_switch")
+    -- previously this abort only logged/printed (backlog.txt batch-24
+    item 1)."""
+    tmp_path, client, main, paper = cron_env
+
+    (tmp_path / ".kill_switch").write_text('{"reason":"test"}')
+
+    import notify
+
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+    with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+        with patch.object(notify, "send_system_alert") as mock_alert:
+            _run_via_loop_mode(main, client)
+
+    kill_switch_calls = [
+        c
+        for c in mock_alert.call_args_list
+        if c.kwargs.get("cooldown_key") == "kill_switch"
+    ]
+    assert len(kill_switch_calls) == 1, (
+        f"expected exactly one kill_switch alert, got: {mock_alert.call_args_list}"
+    )
+
+
+@pytest.mark.integration
+def test_cron_kill_switch_does_not_overwrite_cron_last_run(cron_env):
+    """batch-24 item 1: cmd_cron's finally block must NOT rewrite
+    CRON_LAST_RUN_PATH on a kill-switch-aborted cycle -- previously it did,
+    unconditionally, resetting the dead-man's-switch gap to ~0 on every
+    such cycle so the 48h gap alert could never fire no matter how long the
+    switch stayed engaged."""
+    tmp_path, client, main, paper = cron_env
+    import cron
+
+    (tmp_path / ".kill_switch").write_text('{"reason":"test"}')
+    cron.CRON_LAST_RUN_PATH.write_text("STALE_MARKER_NOT_A_REAL_TIMESTAMP")
+
+    _run_via_loop_mode(main, client)
+
+    assert cron.CRON_LAST_RUN_PATH.read_text() == "STALE_MARKER_NOT_A_REAL_TIMESTAMP", (
+        "CRON_LAST_RUN_PATH must stay untouched while the kill switch is engaged"
+    )
+
+
+@pytest.mark.integration
+def test_cron_last_run_is_written_once_kill_switch_cleared(cron_env):
+    """Positive control for the test above: once the kill switch is gone,
+    the very next cycle DOES refresh CRON_LAST_RUN_PATH again -- proves the
+    skip is specific to kill-switch-engaged cycles, not a general regression
+    of the write path."""
+    tmp_path, client, main, paper = cron_env
+    import cron
+
+    cron.CRON_LAST_RUN_PATH.write_text("STALE_MARKER_NOT_A_REAL_TIMESTAMP")
+
+    _run_via_loop_mode(main, client)
+
+    assert cron.CRON_LAST_RUN_PATH.read_text() != "STALE_MARKER_NOT_A_REAL_TIMESTAMP"
+
+
+@pytest.mark.integration
+def test_cron_dead_mans_switch_fires_while_kill_switch_engaged(cron_env):
+    """batch-24 item 1 core regression: the dead-man's-switch 48h-gap check
+    previously sat AFTER the kill-switch abort's `return None`, so it could
+    never run at all while the switch stayed engaged. It's now hoisted
+    ahead of the kill-switch check, so a stale CRON_LAST_RUN_PATH is
+    detected and alerted on even on a kill-switch-aborted cycle."""
+    tmp_path, client, main, paper = cron_env
+    import cron
+
+    (tmp_path / ".kill_switch").write_text('{"reason":"test"}')
+    cron.CRON_LAST_RUN_PATH.write_text("2020-01-01T00:00:00+00:00")
+    import os as _os
+    import time as _time
+
+    _old = _time.time() - 49 * 3600
+    _os.utime(cron.CRON_LAST_RUN_PATH, (_old, _old))
+
+    import notify
+
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+    with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+        with patch.object(notify, "send_system_alert") as mock_alert:
+            _run_via_loop_mode(main, client)
+
+    gap_calls = [
+        c
+        for c in mock_alert.call_args_list
+        if c.kwargs.get("cooldown_key") == "cron_gap"
+    ]
+    assert len(gap_calls) == 1, (
+        f"expected the dead-man's-switch gap alert to fire even with the kill "
+        f"switch engaged; calls were: {mock_alert.call_args_list}"
+    )
+
+
+@pytest.mark.integration
+def test_cron_dead_mans_switch_does_not_fire_within_48h(cron_env):
+    """Positive control for the test above: a recent (< 48h) last-run
+    timestamp must NOT trigger the gap alert, proving the alert reflects a
+    real elapsed gap and not just "kill switch is engaged"."""
+    tmp_path, client, main, paper = cron_env
+    import cron
+
+    (tmp_path / ".kill_switch").write_text('{"reason":"test"}')
+    cron.CRON_LAST_RUN_PATH.write_text("recent")
+    import os as _os
+    import time as _time
+
+    _recent = _time.time() - 3600  # 1h ago
+    _os.utime(cron.CRON_LAST_RUN_PATH, (_recent, _recent))
+
+    import notify
+
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+    with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+        with patch.object(notify, "send_system_alert") as mock_alert:
+            _run_via_loop_mode(main, client)
+
+    gap_calls = [
+        c
+        for c in mock_alert.call_args_list
+        if c.kwargs.get("cooldown_key") == "cron_gap"
+    ]
+    assert len(gap_calls) == 0
+
+
+# ── batch-24 item 4: daily-loss/drawdown pre-cycle halt observation ────────
+
+
+@pytest.mark.integration
+def test_cron_daily_loss_halt_fires_alert_on_transition(cron_env):
+    """cron.py's new unconditional (not gated on candidates existing)
+    daily-loss-halt observation must fire send_system_alert(cooldown_key=
+    "halt_daily_loss") the first cycle it's observed active -- previously
+    is_daily_loss_halted() was only ever checked inside
+    order_executor._auto_place_trades(), which isn't called at all on a
+    zero-candidate cycle, so a halted-but-quiet cycle produced no alert."""
+    tmp_path, client, main, paper = cron_env
+    import alerts
+    import notify
+
+    monkeypatch_transitions = tmp_path / "halt_transitions.json"
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+    with patch.object(alerts, "_HALT_TRANSITION_PATH", monkeypatch_transitions):
+        with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+            with patch.object(paper, "is_daily_loss_halted", lambda client=None: True):
+                with patch.object(notify, "send_system_alert") as mock_alert:
+                    try:
+                        main.cmd_cron(client)
+                    except SystemExit:
+                        pass
+
+    dl_calls = [
+        c
+        for c in mock_alert.call_args_list
+        if c.kwargs.get("cooldown_key") == "halt_daily_loss"
+    ]
+    assert len(dl_calls) == 1, (
+        f"expected one halt_daily_loss alert, got: {mock_alert.call_args_list}"
+    )
+
+
+@pytest.mark.integration
+def test_cron_daily_loss_halt_does_not_realert_same_cycle_state(cron_env):
+    """Transition semantics: a SECOND consecutive cycle observing the same
+    still-active halt must NOT alert again (only the false->true edge
+    does) -- proves this fires on transitions, not every cycle."""
+    tmp_path, client, main, paper = cron_env
+    import alerts
+    import notify
+
+    monkeypatch_transitions = tmp_path / "halt_transitions.json"
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+    with patch.object(alerts, "_HALT_TRANSITION_PATH", monkeypatch_transitions):
+        with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+            with patch.object(paper, "is_daily_loss_halted", lambda client=None: True):
+                with patch.object(notify, "send_system_alert") as mock_alert:
+                    for _ in range(2):
+                        try:
+                            main.cmd_cron(client)
+                        except SystemExit:
+                            pass
+
+    dl_calls = [
+        c
+        for c in mock_alert.call_args_list
+        if c.kwargs.get("cooldown_key") == "halt_daily_loss"
+    ]
+    assert len(dl_calls) == 1, (
+        f"expected exactly one alert across 2 cycles of an unchanged active "
+        f"halt, got: {mock_alert.call_args_list}"
+    )
+
+
+@pytest.mark.integration
+def test_cron_daily_loss_halt_not_active_does_not_alert(cron_env):
+    """Positive control: with is_daily_loss_halted() returning False (the
+    cron_env default -- no client activity), no halt_daily_loss alert
+    fires at all."""
+    tmp_path, client, main, paper = cron_env
+    import alerts
+    import notify
+
+    monkeypatch_transitions = tmp_path / "halt_transitions.json"
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+    with patch.object(alerts, "_HALT_TRANSITION_PATH", monkeypatch_transitions):
+        with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+            with patch.object(notify, "send_system_alert") as mock_alert:
+                try:
+                    main.cmd_cron(client)
+                except SystemExit:
+                    pass
+
+    dl_calls = [
+        c
+        for c in mock_alert.call_args_list
+        if c.kwargs.get("cooldown_key") == "halt_daily_loss"
+    ]
+    assert len(dl_calls) == 0
+
+
+@pytest.mark.integration
+def test_cron_anomaly_alert_failure_does_not_falsely_halt_placement(cron_env):
+    """opus-review-caught (F5): the anomaly-transition-alert code sits
+    inside the SAME try block whose except treats any exception as
+    "run_anomaly_check itself failed" and fails closed (blocks placement +
+    emits a false "anomaly halt engaged" alert). A failure in the alerting
+    call itself (check_halt_transition raising, e.g. from a corrupt
+    persisted state file) must NOT propagate there -- a perfectly healthy
+    cycle (no real anomaly) must still place trades normally."""
+    tmp_path, client, main, paper = cron_env
+    import alerts
+
+    def _raise_for_anomaly(halt_type, active):
+        if halt_type == "anomaly":
+            raise RuntimeError("simulated corrupt transition state")
+        return False
+
+    fake_market, fake_enriched, fake_analysis = _fake_strong_signal()
+    placed_calls: list = []
+
+    def _fake_auto_place(opps, client=None, cap=None, **kwargs):
+        placed_calls.extend(opps)
+        return len(opps)
+
+    with patch.object(alerts, "check_halt_transition", side_effect=_raise_for_anomaly):
+        with (
+            patch.object(main, "get_weather_markets", return_value=[fake_market]),
+            patch.object(main, "enrich_with_forecast", return_value=fake_enriched),
+            patch.object(main, "analyze_trade", return_value=fake_analysis),
+            patch.object(main, "_auto_place_trades", side_effect=_fake_auto_place),
+            patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+            patch("paper.is_paused_drawdown", return_value=False),
+        ):
+            try:
+                main.cmd_cron(client)
+            except SystemExit:
+                pass
+
+    assert len(placed_calls) > 0, (
+        "a failure in the anomaly ALERTING path must not falsely block "
+        "placement on an otherwise-healthy cycle"
+    )
+
+
+@pytest.mark.integration
+def test_cron_drawdown_halt_fires_alert_on_transition(cron_env):
+    """Same coverage as the daily-loss tests above, for the drawdown check
+    -- opus-review T3-caught: only daily_loss had cron-level coverage."""
+    tmp_path, client, main, paper = cron_env
+    import alerts
+    import notify
+
+    monkeypatch_transitions = tmp_path / "halt_transitions.json"
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+    with patch.object(alerts, "_HALT_TRANSITION_PATH", monkeypatch_transitions):
+        with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+            with patch.object(paper, "is_paused_drawdown", lambda client=None: True):
+                with patch.object(notify, "send_system_alert") as mock_alert:
+                    try:
+                        main.cmd_cron(client)
+                    except SystemExit:
+                        pass
+
+    dd_calls = [
+        c
+        for c in mock_alert.call_args_list
+        if c.kwargs.get("cooldown_key") == "halt_drawdown"
+    ]
+    assert len(dd_calls) == 1, (
+        f"expected one halt_drawdown alert, got: {mock_alert.call_args_list}"
+    )
+
+
+@pytest.mark.integration
+def test_cron_risk_halt_observation_called_with_paper_only_client(cron_env):
+    """opus-review-caught (F6): the pre-cycle observation must call
+    is_daily_loss_halted/is_paused_drawdown with client=None, NOT the real
+    client -- passing the real client adds uncached per-open-trade
+    client.get_market() API calls to EVERY cron cycle (not a "cheap
+    duplicate" of order_executor's own check, as an earlier comment
+    claimed)."""
+    tmp_path, client, main, paper = cron_env
+
+    dl_calls = []
+    dd_calls = []
+    with patch.object(
+        paper,
+        "is_daily_loss_halted",
+        lambda client=None: dl_calls.append(client) or False,
+    ):
+        with patch.object(
+            paper,
+            "is_paused_drawdown",
+            lambda client=None: dd_calls.append(client) or False,
+        ):
+            try:
+                main.cmd_cron(client)
+            except SystemExit:
+                pass
+
+    assert dl_calls == [None], (
+        f"is_daily_loss_halted must be called with None, got {dl_calls}"
+    )
+    assert dd_calls == [None], (
+        f"is_paused_drawdown must be called with None, got {dd_calls}"
+    )
+
+
+@pytest.mark.integration
+def test_cron_one_risk_halt_check_raising_does_not_lose_the_other(cron_env):
+    """opus-review-caught (F4): an earlier version evaluated both halt
+    booleans eagerly in a tuple literal before the loop ran, so ONE raising
+    silently lost BOTH observations for the cycle. Each check must now be
+    independent -- drawdown raising must not prevent daily_loss's real
+    (active) state from being observed and alerted."""
+    tmp_path, client, main, paper = cron_env
+    import alerts
+    import notify
+
+    monkeypatch_transitions = tmp_path / "halt_transitions.json"
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+
+    def _raise(client=None):
+        raise RuntimeError("simulated failure")
+
+    with patch.object(alerts, "_HALT_TRANSITION_PATH", monkeypatch_transitions):
+        with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+            with patch.object(paper, "is_paused_drawdown", _raise):
+                with patch.object(
+                    paper, "is_daily_loss_halted", lambda client=None: True
+                ):
+                    with patch.object(notify, "send_system_alert") as mock_alert:
+                        try:
+                            main.cmd_cron(client)
+                        except SystemExit:
+                            pass
+
+    dl_calls = [
+        c
+        for c in mock_alert.call_args_list
+        if c.kwargs.get("cooldown_key") == "halt_daily_loss"
+    ]
+    assert len(dl_calls) == 1, (
+        f"daily_loss's real active state must still be observed and alerted "
+        f"even though drawdown's check raised, got: {mock_alert.call_args_list}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # L2-E regression tests: gate must use adjusted_edge, not net_edge
 # ---------------------------------------------------------------------------

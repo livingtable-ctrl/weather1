@@ -9,15 +9,101 @@ import json
 import logging
 import os
 import re
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
 import safe_io
 from paths import ALERTS_PATH as _DATA_PATH
 from paths import BLACK_SWAN_PATH as _BLACK_SWAN_PATH
+from paths import HALT_TRANSITION_STATE_PATH as _HALT_TRANSITION_PATH
 from paths import KILL_SWITCH_PATH as _KILL_SWITCH_PATH
 
 _log = logging.getLogger(__name__)
+
+# batch-24 item 4: thread-level lock guarding _HALT_TRANSITION_PATH, same
+# scope/rationale as notify.py's _NOTIFY_COOLDOWN_FILE_LOCK (concurrent
+# threads in one process; not cross-process -- this project's cron
+# invocations run one at a time).
+_HALT_TRANSITION_LOCK = threading.Lock()
+
+
+def check_halt_transition(halt_type: str, active: bool) -> bool:
+    """Track a risk halt's active/inactive state across cron cycles via a
+    persisted flag file, and report whether THIS call is a false->true edge.
+
+    Used so send_system_alert() fires once when a halt (anomaly, daily-loss,
+    drawdown) newly engages, not every cycle it stays engaged -- the 6h
+    send_system_alert cooldown alone would still re-alert periodically for
+    an unchanged, ongoing halt (backlog.txt "SEVERAL RISK-HALT TRANSITIONS
+    ARE LOG/PRINT-ONLY"). Always persists `active` for `halt_type` (so a
+    later true->false observation clears the flag and the NEXT engagement
+    is treated as a fresh transition again), and returns True only when the
+    halt is active now and was NOT active on the last recorded observation.
+
+    Fails safe toward alerting on any read error -- a corrupt/missing state
+    file is treated as "previously inactive" so a real transition is never
+    silently swallowed by a bad read (same fail-open reasoning as notify.py's
+    _system_cooldown_reserve for the same category of file).
+
+    Skips the write entirely when the read succeeded and the value is
+    unchanged (opus-review-caught, F11) -- called unconditionally every
+    cron cycle for 2-3 halt types, so an unconditional write was 2-3 full
+    atomic writes (temp file + fsync + rename) per cycle even when nothing
+    changed. A failed read still writes (can't know whether skipping is
+    safe without a successful prior read to compare against). Also passes
+    emergency_copy=False (opus-review-caught, F11): this is a small,
+    trivially-reconstructible flag file (worst case: one halt type's next
+    real transition gets treated as fresh instead of a duplicate, purely
+    cosmetic) -- the default emergency_copy=True would otherwise leave a
+    file in data/.emergency/ that cron's own check_emergency_copies()
+    monitor re-alerts on every cycle until an operator manually deletes it,
+    for state that was never worth backing up in the first place.
+    """
+    with _HALT_TRANSITION_LOCK:
+        read_ok = True
+        try:
+            state = (
+                json.loads(_HALT_TRANSITION_PATH.read_text())
+                if _HALT_TRANSITION_PATH.exists()
+                else {}
+            )
+            if not isinstance(state, dict):
+                raise ValueError(
+                    f"halt transition state must be a dict, got {type(state).__name__}"
+                )
+        except Exception as exc:
+            _log.warning(
+                "check_halt_transition: failed to load persisted state (treating "
+                "as previously inactive): %s",
+                exc,
+            )
+            state = {}
+            read_ok = False
+        was_active = bool(state.get(halt_type, False))
+        if read_ok and active == was_active:
+            return False
+        # opus-review-caught (2nd round, MEDIUM-3): on a failed read, `state`
+        # is a blank {} -- writing `state[halt_type] = active` into THAT
+        # would silently wipe every OTHER halt_type's already-persisted
+        # flag from the file (not just fail to update this one), the exact
+        # hazard notify.py's own _read_cooldown_state already avoids for the
+        # same category of file ("failing open, not writing to avoid
+        # clobbering other keys"). Skip the write entirely in that case --
+        # the transition report below still fails open toward alerting
+        # (was_active is already correctly False from the blank state), so
+        # a real transition is never silently swallowed by this branch;
+        # only the SUBSEQUENT calls this cycle lose their own persistence,
+        # same residual risk notify.py's sibling function documents.
+        if read_ok:
+            state[halt_type] = active
+            try:
+                safe_io.atomic_write_json(
+                    state, _HALT_TRANSITION_PATH, emergency_copy=False
+                )
+            except Exception as exc:
+                _log.warning("check_halt_transition: failed to persist state: %s", exc)
+        return active and not was_active
 
 
 def _load() -> dict:
@@ -598,21 +684,26 @@ def activate_black_swan_halt(reason: str) -> None:
             ks_exc,
         )
 
-    # Send external notification so operator learns about halt immediately
+    # Send external notification so operator learns about halt immediately.
+    # batch-24 item 2: previously called _send_pushover/_send_discord/
+    # _send_email directly, silently omitting ntfy and desktop and discarding
+    # each channel's return value in a bare except-pass (total silent
+    # failure was possible even with channels configured). Routed through
+    # send_system_alert() so all 5 NOTIFY_CHANNELS are honored and a
+    # total-failure warning is logged. No cooldown suppression is intended
+    # here in practice -- activate_black_swan_halt() is itself gated by the
+    # kill switch it just engaged (a fresh halt only re-fires this function
+    # after an operator has run `resume`), so cooldown_key="black_swan_halt"
+    # is for the narrow same-cycle-multi-caller case, not repeat spam.
     try:
         import notify as _notify
 
-        _title = "⚠ BLACK SWAN HALT ACTIVATED"
-        _msg = f"{reason}\n\nKill switch engaged. Run `py main.py resume` after investigation."
-        for _chan_fn in [
-            lambda: _notify._send_pushover(_title, _msg),
-            lambda: _notify._send_discord(_title, _msg, color=0xF85149),
-            lambda: _notify._send_email(_title, _msg),
-        ]:
-            try:
-                _chan_fn()
-            except Exception:
-                pass
+        _notify.send_system_alert(
+            "⚠ BLACK SWAN HALT ACTIVATED",
+            f"{reason}\n\nKill switch engaged. Run `py main.py resume` after investigation.",
+            cooldown_key="black_swan_halt",
+            discord_color=0xF85149,  # red -- restores the pre-routing severity color (F13)
+        )
     except Exception as _n_exc:
         _log.warning("activate_black_swan_halt: notification failed: %s", _n_exc)
 
@@ -635,6 +726,20 @@ def clear_black_swan_state() -> bool:
     if _BLACK_SWAN_PATH.exists():
         _BLACK_SWAN_PATH.unlink()
         _log.info("black_swan: state file cleared")
+        # batch-24 item 2 opus-review-caught (F1): activate_black_swan_halt()
+        # now routes through send_system_alert(cooldown_key="black_swan_halt"),
+        # which is exactly the scenario the 6h cooldown must NOT suppress --
+        # an operator investigates, resumes, and a second, genuinely distinct
+        # black-swan condition trips soon after must still alert.
+        try:
+            from notify import clear_system_cooldown as _clear_cooldown
+
+            _clear_cooldown("black_swan_halt")
+        except Exception as _clear_exc:
+            _log.warning(
+                "clear_black_swan_state: failed to clear alert cooldown: %s",
+                _clear_exc,
+            )
         return True
     return False
 
@@ -674,12 +779,11 @@ def run_black_swan_check(
         # with callers that do want the real-vs-paper distinction (e.g. logging).
         if client is not None:
             try:
+                from utils import balance_dollars as _balance_dollars
+
                 bal_data = client.get_balance()
-                # Kalshi returns balance in cents; convert to dollars.
-                api_balance_cents = bal_data.get("balance", None)
-                if api_balance_cents is not None:
-                    balance = float(api_balance_cents) / 100.0
-                    _log.debug("black_swan: using real Kalshi balance $%.2f", balance)
+                balance = _balance_dollars(bal_data)
+                _log.debug("black_swan: using real Kalshi balance $%.2f", balance)
             except Exception as _bal_exc:
                 _log.debug(
                     "black_swan: could not fetch Kalshi balance, using paper state: %s",

@@ -210,6 +210,20 @@ def run_trade_cycle(
             "run_trade_cycle: KILL SWITCH ACTIVE — halting immediately. "
             "Remove data/.kill_switch to resume."
         )
+        # batch-24 item 1: this abort previously only logged -- an operator
+        # relying on push channels got zero signal. cooldown_key is shared
+        # with cron.py's own kill-switch check (same real-world event) so a
+        # simultaneous cron+watch trigger alerts once per 6h window.
+        # send_system_alert() never raises, matching this function's
+        # existing no-wrapping convention for other never-raise calls.
+        from notify import send_system_alert as _ks_alert
+
+        _ks_alert(
+            "Kalshi kill switch engaged",
+            "run_trade_cycle found data/.kill_switch present and halted "
+            "immediately. Remove the file to resume trading.",
+            cooldown_key="kill_switch",
+        )
         return None
 
     halted_reason: str | None = external_halted_reason

@@ -402,10 +402,32 @@ def cmd_balance(client: KalshiClient) -> None:
     if not validate_api_key(client):
         return
     from paper import get_balance as paper_balance
+    from utils import balance_dollars
 
-    data = client.get_balance()
-    balance = data.get("balance", data)
-    val = float(balance) / 100 if isinstance(balance, int) else float(balance)
+    # opus-review-caught (F2): client.get_balance() itself used to sit
+    # OUTSIDE any try/except entirely (there was no try/except here at
+    # all) -- a network error from the fetch (not just a malformed
+    # response) still crashed the CLI command uncaught. Both the fetch and
+    # the conversion are now covered by one broad except, matching every
+    # other get_balance() call site in this codebase (order_executor.
+    # _resolve_live_balance, alerts.run_black_swan_check), both of which
+    # already wrapped their own fetch+convert in one try/except.
+    # opus-review-noted (2nd round, LOW-5): a user-visible display change
+    # from the pre-consolidation code -- the old inline logic treated a
+    # FLOAT balance as already-in-dollars (`float(balance)` with no /100),
+    # only dividing when it was an int. balance_dollars() always divides by
+    # 100, matching the real API's documented int-cents shape and the
+    # other 2 (already-unconditional-divide) call sites this consolidates
+    # -- e.g. {"balance": 100.0} now displays $1.00, not $100.00 (see
+    # utils.py's TestBalanceDollars.test_float_cents, which pins the new
+    # behavior as correct).
+    try:
+        data = client.get_balance()
+        val = balance_dollars(data)
+    except Exception as exc:
+        _log.error("cmd_balance: could not fetch/parse balance: %s", exc)
+        print(red(f"\n  Kalshi balance response was malformed or unavailable: {exc}"))
+        return
     try:
         paper_val = paper_balance()
         paper_str = f"  {dim('Paper:')}  {bold(f'${paper_val:.2f}')}"

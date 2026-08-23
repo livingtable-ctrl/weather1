@@ -615,6 +615,64 @@ def _placement_outcome_phrase(placed: int, found: int) -> str:
     return f"0 of {found} placed (see [Auto] lines above for why)"
 
 
+def _build_toast_message(
+    signals: int,
+    placed_count: int,
+    settled_count: int,
+    halted_reason: str | None,
+    risk_halt_notes: list[str],
+    graduated: bool,
+) -> str:
+    """Build the Windows toast notification text for one cron cycle.
+
+    Pure helper extracted from the toast-send block itself (opus-review-
+    caught, F15/T2) so it's independently testable: the block that CALLS
+    this sits behind a `if os.environ.get("PYTEST_CURRENT_TEST"): raise
+    StopIteration` skip (so it never actually sends a real toast during a
+    test run), which meant this text-building logic -- including the
+    single-quote escaping for the PowerShell string it gets interpolated
+    into below -- previously had zero test coverage, including the exact
+    case it exists for (a halt reason containing a literal single quote,
+    reachable via arbitrary exception text).
+
+    batch-24 item 4: appends halt info (from `halted_reason` and
+    `risk_halt_notes`) so a halted cycle's toast is distinguishable from a
+    normal quiet cycle -- previously built purely from signal/placed/
+    settled counts. When `graduated` is True, the graduation message is
+    the headline but halt info is still appended rather than silently
+    discarded (opus-review-caught, F15: an earlier version fully
+    overwrote `msg` on graduation, dropping any halt text the same cycle
+    -- rare, since graduation fires at most once ever, but the two must
+    not silently conflict when they do coincide).
+    """
+    parts = []
+    if signals > 0:
+        parts.append(
+            f"{placed_count} placed"
+            if placed_count == signals
+            else f"{signals} signal(s), {placed_count} placed"
+        )
+    if settled_count > 0:
+        parts.append(f"{settled_count} settled")
+    msg = ", ".join(parts) if parts else "No signals today"
+
+    halt_display_notes = list(risk_halt_notes)
+    if halted_reason:
+        halt_display_notes.insert(0, halted_reason)
+    halt_text = ""
+    if halt_display_notes:
+        # Escape embedded single-quotes -- this string is interpolated into
+        # a single-quoted PowerShell literal by the caller.
+        halt_text = "; ".join(halt_display_notes).replace("'", "''")
+        msg = f"{msg} — HALTED: {halt_text}"
+
+    if graduated:
+        grad_msg = "READY TO GO LIVE — 30 trades, +$50 P&L, Brier ≤ 0.23 met!"
+        msg = f"{grad_msg} — HALTED: {halt_text}" if halt_text else grad_msg
+
+    return msg
+
+
 def _cmd_cron_body(
     ctx: CronContext,
     client: KalshiClient,
@@ -634,6 +692,55 @@ def _cmd_cron_body(
     # mirroring the existing TRADING_PAUSED handling further down.
     _cron_halted_reason: str | None = None
 
+    # Dead-man's-switch: if more than 48h have elapsed since the last
+    # non-kill-switch-aborted cron run completed, log a warning and fire a
+    # system notification so the user knows the bot went quiet. .cron_last_run
+    # is written in the cmd_cron finally block, EXCEPT on a cycle the kill
+    # switch aborts (see that block's own comment below the kill-switch
+    # check) — so a gap > 48h means either the process was stopped/crashing
+    # for two days, or the kill switch has stayed engaged that whole time.
+    # Deliberately runs BEFORE the kill-switch check below (batch-24 item 1:
+    # this used to sit after the kill-switch return, so it could never fire
+    # while the switch stayed engaged — the one scenario a dead-man's-switch
+    # most needs to survive).
+    #
+    # opus-review-noted (2nd round, LOW-7): a known, accepted consequence
+    # of freezing CRON_LAST_RUN_PATH while the switch is engaged (see the
+    # finally block's own comment) -- the FIRST cycle after a >48h halt is
+    # deliberately cleared sees the full accumulated gap and fires this
+    # alert once more, a false alarm for an operator who just resumed on
+    # purpose. In practice the cron_gap 6h cooldown will usually have
+    # already suppressed it from firing during the halt itself, bounding
+    # how often this actually surfaces. Not fixed: the alternative (also
+    # resetting the gap timer on resume) would need its own hook into every
+    # resume path, same complication as the kill_switch/black_swan_halt
+    # cooldown-clearing this session already added to cmd_resume -- and
+    # unlike those, a stale FALSE POSITIVE alert here is far less costly
+    # than a missed real one, so it's not worth the same treatment.
+    try:
+        _last_run_path = CRON_LAST_RUN_PATH
+        if _last_run_path.exists():
+            import time as _gap_time
+
+            _gap_hours = (_gap_time.time() - _last_run_path.stat().st_mtime) / 3600
+            if _gap_hours > 48:
+                _log.warning(
+                    "cmd_cron: %.0fh since last cron run — gap alert fired",
+                    _gap_hours,
+                )
+                from notify import send_system_alert as _sys_alert
+
+                _sys_alert(
+                    "Kalshi cron gap detected",
+                    f"Last run was {_gap_hours:.0f}h ago — check the bot.",
+                    # Distinct key -- see the prod-reminder call site's
+                    # identical comment above for why this matters now that
+                    # the cooldown is disk-persisted (opus review, 2026-07-31).
+                    cooldown_key="cron_gap",
+                )
+    except Exception as _gap_exc:
+        _log.debug("cmd_cron: dead-man's-switch check failed: %s", _gap_exc)
+
     # P8.3 — hard kill switch: touch data/.kill_switch to halt immediately.
     # Deliberately still a full stop — this is the one operator-engaged
     # "stop absolutely everything now" mechanism, not one of the soft halts above.
@@ -645,6 +752,20 @@ def _cmd_cron_body(
             red(
                 "\n  \u26a0  KILL SWITCH ACTIVE \u2014 trading halted. Delete data/.kill_switch to resume.\n"
             )
+        )
+        # batch-24 item 1: this abort previously only logged/printed -- an
+        # operator relying on push channels (not watching the terminal) got
+        # zero signal that the kill switch had engaged. cooldown_key is
+        # shared with trade_cycle.py's own kill-switch check (same
+        # real-world event) so a simultaneous cron+watch trigger alerts once
+        # per 6h window, not twice.
+        from notify import send_system_alert as _ks_alert
+
+        _ks_alert(
+            "Kalshi kill switch engaged",
+            "Cron found data/.kill_switch present and halted this cycle "
+            "immediately. Remove the file to resume trading.",
+            cooldown_key="kill_switch",
         )
         return None
 
@@ -687,35 +808,10 @@ def _cmd_cron_body(
         _cron_halted_reason = _cron_halted_reason or str(_gate_err)
         _log.error("cmd_cron: %s — skipping trade placement this cycle", _gate_err)
 
-    # Dead-man's-switch: if more than 48h have elapsed since the last cron run completed,
-    # log a warning and fire a system notification so the user knows the bot went quiet.
-    # .cron_last_run is written in the cmd_cron finally block on every completion, so a
-    # gap > 48h means the process was stopped or crashing for at least two days.
-    try:
-        _last_run_path = CRON_LAST_RUN_PATH
-        if _last_run_path.exists():
-            import time as _gap_time
-
-            _gap_hours = (_gap_time.time() - _last_run_path.stat().st_mtime) / 3600
-            if _gap_hours > 48:
-                _log.warning(
-                    "cmd_cron: %.0fh since last cron run — gap alert fired",
-                    _gap_hours,
-                )
-                from notify import send_system_alert as _sys_alert
-
-                _sys_alert(
-                    "Kalshi cron gap detected",
-                    f"Last run was {_gap_hours:.0f}h ago — check the bot.",
-                    # Distinct key -- see the prod-reminder call site's
-                    # identical comment above for why this matters now that
-                    # the cooldown is disk-persisted (opus review, 2026-07-31).
-                    cooldown_key="cron_gap",
-                )
-    except Exception as _gap_exc:
-        _log.debug("cmd_cron: dead-man's-switch check failed: %s", _gap_exc)
-
-    # Full-scan staleness check — distinct from the dead-man's-switch above.
+    # Full-scan staleness check — distinct from the dead-man's-switch above
+    # (batch-24 item 1 moved that check earlier in this function, ahead of
+    # the kill-switch check — see its own comment there; this one doesn't
+    # need the same hoist, since it isn't kill-switch-related).
     # --sameday-only (opus review, 2026-08-22) keeps .cron_last_run fresh
     # (the process is genuinely alive and scanning), which would otherwise
     # silently mask a scheduled full-scan task having stopped running for
@@ -1056,9 +1152,46 @@ def _cmd_cron_body(
 
     # P8.2 — anomaly detection at start of cron cycle
     try:
+        from alerts import check_halt_transition as _check_halt_transition
         from alerts import run_anomaly_check as _run_anomaly_check
 
         _detected_anomalies, _should_halt = _run_anomaly_check(log_results=True)
+        # batch-24 item 4: fire a system alert on the false->true edge of
+        # this halt condition, not every cycle it stays engaged. Keyed off
+        # `_should_halt` itself rather than whether an override below ends
+        # up suppressing PLACEMENT this cycle -- the underlying anomaly
+        # condition firing is what an operator needs to know about, even if
+        # they (or another halt) already suppressed this cycle's placement.
+        #
+        # Wrapped in its OWN try/except (opus-review-caught, F5): this
+        # whole block sits inside the OUTER try below, whose except treats
+        # ANY exception as "run_anomaly_check itself failed" and fails
+        # CLOSED (sets _cron_halted_reason, blocking real placement) --
+        # appropriate for a genuine anomaly-check failure, but wrong for a
+        # failure in the ALERTING call itself (e.g. a corrupt cooldown/
+        # transition state file). send_system_alert() is documented "Never
+        # raises," but the arithmetic inside _system_cooldown_reserve isn't
+        # inside ITS OWN try (only the read is) -- a hand-edited or
+        # otherwise malformed persisted cooldown value could still raise
+        # there. Without this inner try, that would falsely halt a
+        # perfectly healthy trading cycle AND emit a misleading "anomaly
+        # halt engaged" alert.
+        try:
+            # check_halt_transition() returns `active and not was_active`,
+            # so a True return already implies _should_halt is True -- no
+            # separate `and _should_halt` needed (opus-review-caught, F10).
+            if _check_halt_transition("anomaly", _should_halt):
+                from notify import send_system_alert as _anom_alert
+
+                _anom_alert(
+                    "Kalshi anomaly halt engaged",
+                    f"Anomaly halt triggered: {'; '.join(_detected_anomalies)}",
+                    cooldown_key="halt_anomaly",
+                )
+        except Exception as _anom_alert_exc:
+            _log.debug(
+                "cmd_cron: anomaly halt transition/alert failed: %s", _anom_alert_exc
+            )
         if _should_halt:
             if USER_OVERRIDE_ACTIVE:
                 # Kill-switch override already acknowledged — suppress anomaly halt too
@@ -1130,6 +1263,19 @@ def _cmd_cron_body(
         # continuing as if the check had passed.
         _log.error("cmd_cron: run_anomaly_check call failed — failing closed: %s", _e)
         _cron_halted_reason = _cron_halted_reason or f"anomaly check error: {_e}"
+        try:
+            from alerts import check_halt_transition as _check_halt_transition_err
+
+            if _check_halt_transition_err("anomaly", True):
+                from notify import send_system_alert as _anom_alert_err
+
+                _anom_alert_err(
+                    "Kalshi anomaly halt engaged",
+                    f"run_anomaly_check failed — failing closed: {_e}",
+                    cooldown_key="halt_anomaly",
+                )
+        except Exception:
+            pass
 
     # Black swan emergency shutdown check.  Always runs — even during a user
     # override — so conditions that arise MID-RUN (after trades are placed) are
@@ -1156,6 +1302,98 @@ def _cmd_cron_body(
             "cmd_cron: run_black_swan_check call failed — failing closed: %s", _e
         )
         _cron_halted_reason = _cron_halted_reason or f"black swan check error: {_e}"
+
+    # Daily-loss / drawdown halt observation — batch-24 item 4. These are
+    # ALSO checked inside order_executor._auto_place_trades(), but only when
+    # there are candidate signals to place (auto_place_trades isn't called
+    # on a zero-candidate cycle), which would leave both a quiet halted
+    # cycle silently unalerted and the halt's "cleared" transition never
+    # observed. Checked here unconditionally, every cycle, purely for
+    # alerting/toast visibility — this does NOT gate placement (that
+    # remains order_executor's own job).
+    #
+    # Deliberately called with client=None (paper-only check), NOT the real
+    # `client` (opus-review-caught, F6: an earlier version passed `client`
+    # here, which is NOT a cheap duplicate of order_executor's own check --
+    # is_daily_loss_halted(client)/is_paused_drawdown(client) with a real
+    # client fetch live balance/positions via UNCACHED per-open-trade
+    # client.get_market() calls (paper.get_unrealized_pnl_paper), adding N
+    # extra Kalshi API calls to EVERY cron cycle, doubled on cycles that
+    # also place trades since order_executor runs the same checks again
+    # with the real client). client=None still catches every
+    # paper-balance-driven halt (the vast majority, since live trading is
+    # currently dormant) for alerting purposes -- the real, client-aware
+    # check still runs at order_executor's own placement gate regardless of
+    # what this observation-only block sees.
+    #
+    # Each halt's check + transition + alert is wrapped in its OWN
+    # try/except (opus-review-caught, F4: an earlier version evaluated both
+    # booleans eagerly in a tuple literal built before the loop ran, so one
+    # raising lost both observations for the cycle, silently, at
+    # _log.debug -- with check_halt_transition's disk-persisted state, a
+    # lost observation isn't just a missed alert THIS cycle, it can also
+    # leave a flag stuck unable to clear).
+    _risk_halt_notes: list[str] = []
+    _risk_halt_checks: list[tuple[str, Callable[[object], bool], str, str]] = []
+    try:
+        from paper import is_daily_loss_halted as _is_daily_loss_halted
+        from paper import is_paused_drawdown as _is_paused_drawdown_check
+
+        _risk_halt_checks = [
+            (
+                "daily_loss",
+                _is_daily_loss_halted,
+                "Kalshi daily loss halt engaged",
+                "daily loss limit reached",
+            ),
+            (
+                "drawdown",
+                _is_paused_drawdown_check,
+                "Kalshi drawdown halt engaged",
+                "drawdown guard active",
+            ),
+        ]
+    except Exception as _e:
+        _log.debug("cmd_cron: daily-loss/drawdown halt import failed: %s", _e)
+
+    for _halt_type, _halt_check_fn, _halt_title, _halt_note in _risk_halt_checks:
+        try:
+            _halt_active = _halt_check_fn(None)
+        except Exception as _e:
+            _log.debug("cmd_cron: %s halt observation failed: %s", _halt_type, _e)
+            continue
+        if _halt_active:
+            _risk_halt_notes.append(_halt_note)
+        try:
+            from alerts import check_halt_transition as _check_risk_halt_transition
+
+            # opus-review-caught (2nd round, MEDIUM-2): this observer
+            # (client=None, paper-only, per F6) and order_executor.py's own
+            # cycle-level observer (the real client, sees live MTM/realized
+            # loss too) write the SAME halt_type with genuinely different
+            # inputs -- whenever the two disagree (e.g. a live-only halt),
+            # they flip-flop the shared flag every cycle (cron: False,
+            # order_executor: True, cron: False again next cycle, ...),
+            # degrading "fire once per engagement" back to "fire at most
+            # once per 6h cooldown" -- the exact pre-batch-24-item-4
+            # cadence this was meant to improve on. Tracked under a
+            # DISTINCT halt_type ("<type>_paper") so this observer's own
+            # true/false history never gets overwritten by the
+            # client-aware one (or vice versa) -- each observer's flag now
+            # correctly reflects only what THAT observer has seen. Both
+            # still share the SAME cooldown_key (the un-suffixed name) so
+            # the operator gets one alert stream per real condition, not
+            # two, regardless of which observer's edge fired it.
+            if _check_risk_halt_transition(f"{_halt_type}_paper", _halt_active):
+                from notify import send_system_alert as _risk_halt_alert
+
+                _risk_halt_alert(
+                    _halt_title,
+                    f"{_halt_note} — auto-trade placement is skipped while active.",
+                    cooldown_key=f"halt_{_halt_type}",
+                )
+        except Exception as _e:
+            _log.debug("cmd_cron: %s halt transition/alert failed: %s", _halt_type, _e)
 
     # Snapshot directional accuracy once for use by drift detection and pin logic below.
     # Directional accuracy measures whether the model's predicted direction is correct
@@ -2072,12 +2310,17 @@ def _cmd_cron_body(
                     _log.warning("P10.3 Brier alert: %s", _brier_msg)
                     print(red(_fmt_brier(scores=_recent_two)))
                     try:
-                        from notify import _send_discord as _brier_discord
+                        # batch-24 item 2: was Discord-only via a direct
+                        # _send_discord call with its return value discarded
+                        # -- routed through send_system_alert so all
+                        # NOTIFY_CHANNELS are honored and total-failure is
+                        # logged, not silently swallowed.
+                        from notify import send_system_alert as _brier_alert
 
-                        _brier_discord(
+                        _brier_alert(
                             "\u26a0\ufe0f Brier Score Alert",
                             _brier_msg,
-                            color=0xE3B341,
+                            cooldown_key="brier_alert",
                         )
                     except Exception:
                         pass
@@ -2227,7 +2470,13 @@ def _cmd_cron_body(
             and _pre_scan_cb_states
             and _scan_cbs
         ):
-            from notify import _send_discord as _discord_cb
+            # batch-24 item 2: was Discord-only via a direct _send_discord
+            # call with its return value discarded -- routed through
+            # send_system_alert so all NOTIFY_CHANNELS are honored. Cooldown
+            # key is scoped per-circuit-name so one data source opening
+            # doesn't suppress a genuinely different data source's alert for
+            # the rest of the 6h window.
+            from notify import send_system_alert as _cb_alert
 
             for _cb_name, _cb_obj in _scan_cbs.items():
                 if not _pre_scan_cb_states.get(_cb_name, True) and _cb_obj.is_open():
@@ -2235,12 +2484,13 @@ def _cmd_cron_body(
                         "Circuit '%s' OPENED during cron scan \u2014 notifying",
                         _cb_name,
                     )
-                    _discord_cb(
+                    _cb_alert(
                         f"\u26a1 Circuit Opened: {_cb_name}",
                         f"The `{_cb_name}` data source tripped during cron scan.\n"
                         f"Failures: {_cb_obj.failure_count}  |  "
                         f"Retry in: {round(_cb_obj.seconds_until_retry())}s",
-                        color=0xF85149,
+                        cooldown_key=f"circuit_open:{_cb_name}",
+                        discord_color=0xF85149,  # red -- restores the prior color (F13)
                     )
     except Exception as _e:
         _log.debug("cmd_cron: circuit-open alert failed: %s", _e)
@@ -2253,28 +2503,26 @@ def _cmd_cron_body(
         if _os.environ.get("PYTEST_CURRENT_TEST"):
             raise StopIteration  # skip toast in tests
 
-        signals = len(strong_opps) + len(med_opps)
-        parts = []
-        if signals > 0:
-            parts.append(
-                f"{placed_count} placed"
-                if placed_count == signals
-                else f"{signals} signal(s), {placed_count} placed"
-            )
-        if settled_count > 0:
-            parts.append(f"{settled_count} settled")
-        msg = ", ".join(parts) if parts else "No signals today"
-
         # Graduation alert — fires once when all criteria are first met
         _grad_flag = GRADUATED_FLAG_PATH
+        _graduated_now = False
         try:
             from paper import graduation_check as _grad_check
 
             if _grad_check() is not None and not _grad_flag.exists():
                 _grad_flag.touch()
-                msg = "READY TO GO LIVE \u2014 30 trades, +$50 P&L, Brier \u2264 0.23 met!"
+                _graduated_now = True
         except Exception:
             pass
+
+        msg = _build_toast_message(
+            signals=len(strong_opps) + len(med_opps),
+            placed_count=placed_count,
+            settled_count=settled_count,
+            halted_reason=_cron_halted_reason,
+            risk_halt_notes=_risk_halt_notes,
+            graduated=_graduated_now,
+        )
         _sp.run(
             [
                 "powershell",
@@ -2696,6 +2944,18 @@ def _install_cron_watchdog(timeout_secs: int = 720) -> threading.Event:
     in-process and then sleeps for hours between cycles) would have this
     watchdog thread outlive the cycle it was guarding and force-kill the
     whole idling process partway through the sleep.
+
+    Opus-review-noted (F12, batch-24): notify.send_system_alert()'s
+    reserve/rollback retries delivery (all configured channel timeouts,
+    ~30s worst case) on EVERY call during a sustained network outage,
+    where the old cooldown-always-burns behavior would have limited that
+    to once per 6h per cooldown_key. With several distinct keys firing the
+    same cycle (kill_switch, cron_gap, halt_daily_loss, halt_drawdown, one
+    circuit_open:<name> per tripped source), the cumulative worst case
+    could approach this watchdog's timeout. Accepted: still well under the
+    default 8 minutes for the realistic number of simultaneously-active
+    alert keys, and the alternative (silently losing an alert during
+    exactly the outage that most needs one, batch-24 item 3) is worse.
     """
     _wdog_secs = int(os.getenv("CRON_WATCHDOG_SECS", str(timeout_secs)))
     _done_event = threading.Event()
@@ -2785,7 +3045,15 @@ def cmd_cron(
                     .datetime.now(__import__("datetime").timezone.utc)
                     .isoformat()
                 )
-                _last_run_path.write_text(_now_iso)
+                # batch-24 item 1: skip the write while the kill switch is
+                # engaged. Unconditionally rewriting this file every cycle
+                # reset the dead-man's-switch gap to ~0 on every
+                # kill-switch-aborted run, so the 48h gap alert could never
+                # fire no matter how long the switch stayed engaged. Leaving
+                # the timestamp stale lets that gap grow correctly; the next
+                # cycle after the switch is cleared resumes normal writes.
+                if not KILL_SWITCH_PATH.exists():
+                    _last_run_path.write_text(_now_iso)
             except Exception:
                 pass
             try:

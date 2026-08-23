@@ -354,6 +354,48 @@ def cmd_cron(
                 pass
         print(red(f"\n  ⚠  Kill switch active — trading halted.{_reason_str}"))
         print(dim("  Delete data/.kill_switch to permanently resume."))
+        # batch-24 item 1 (adjacency finding, opus-review-flagged during
+        # testing): this is a SEPARATE kill-switch check from cron.py's own
+        # _cmd_cron_body one -- reached only when NOT called from `loop`
+        # mode, i.e. exactly the manual `py main.py cron` path this
+        # project's real usage runs today. If input() below raises (no
+        # attached stdin -- a scripted/headless invocation of this same
+        # manual command) this function returns immediately below with
+        # nothing beyond the two print()s above, which a non-interactive
+        # caller never sees. Fired here, before the prompt, so it covers
+        # that silent-return path unconditionally -- same cooldown_key as
+        # cron.py's/trade_cycle.py's kill-switch alerts (same real-world
+        # event); this code path can't have reached theirs yet since the
+        # kill switch hasn't been moved aside and cron.cmd_cron() hasn't
+        # been called at this point.
+        from notify import send_system_alert as _ks_alert
+
+        # opus-review-caught (F14): _reason_str is formatted for the
+        # terminal print above ("\n  Reason: X"), which reads badly inlined
+        # into a push-notification body ("...present.\n  Reason: X Remove
+        # the file..." -- a literal newline mid-sentence, no space before
+        # "Remove"). Collapse it to plain text for the notification body
+        # instead of re-deriving from _bs_data (which may be unset if the
+        # json.loads above raised).
+        #
+        # opus-review-caught (2nd round, LOW-4): the original collapse only
+        # stripped the LEADING "\n  " -- a reason value with any OTHER
+        # embedded newline (reachable: activate_black_swan_halt() builds
+        # its own reason from `str(exc)`, which can be multi-line) still
+        # broke the single-sentence body, and a reason already ending in
+        # "." doubled it. `" ".join(...split())` collapses every whitespace
+        # run (any number/kind of embedded newlines or repeated spaces)
+        # into single spaces regardless of shape, and `.rstrip(".")` before
+        # appending "." avoids a doubled trailing period.
+        _reason_plain = (
+            " " + " ".join(_reason_str.split()).rstrip(".") + "." if _reason_str else ""
+        )
+        _ks_alert(
+            "Kalshi kill switch engaged",
+            f"py main.py cron found data/.kill_switch present.{_reason_plain}"
+            " Remove the file to resume trading.",
+            cooldown_key="kill_switch",
+        )
         try:
             _ans = (
                 input(yellow("  Override and run this cycle anyway? (y/N): "))
@@ -5992,6 +6034,20 @@ def cmd_resume() -> None:
     else:
         print(dim("  No kill switch active."))
 
+    # opus-review-caught (2nd round, LOW-1/LOW-3): clear the kill-switch
+    # alert's cooldown UNCONDITIONALLY (not gated on the file having
+    # existed) -- resume is the operator's explicit "I've handled this"
+    # signal. Without this, a second, genuinely NEW kill-switch engagement
+    # within the still-warm 6h window from a prior one would silently not
+    # alert (batch-24 item 1's 3 kill-switch check sites -- cron.py,
+    # trade_cycle.py, main.py's own -- all share this one cooldown_key).
+    try:
+        from notify import clear_system_cooldown as _clear_ks_cooldown
+
+        _clear_ks_cooldown("kill_switch")
+    except Exception:
+        pass
+
     # P10.2: also clear black swan state file if present
     try:
         from alerts import clear_black_swan_state as _clear_bs
@@ -5999,12 +6055,24 @@ def cmd_resume() -> None:
 
         bs = _bs_status()
         if bs:
-            _clear_bs()
+            _clear_bs()  # also clears the "black_swan_halt" cooldown (F1)
             print(
                 yellow(
                     f"  Black swan state cleared (was: {bs.get('reason', 'unknown')[:60]})"
                 )
             )
+        else:
+            # opus-review-caught (LOW-2): clear_black_swan_state()'s own
+            # cooldown-clear is gated on _BLACK_SWAN_PATH.exists() -- if
+            # activate_black_swan_halt()'s own state-file WRITE had failed
+            # (logged, not fatal -- see its own try/except) while the kill
+            # switch still got engaged and the alert still fired, that gate
+            # would never open even after resume. Clear the same cooldown
+            # key directly here too, independent of whether the state file
+            # itself ever existed.
+            from notify import clear_system_cooldown as _clear_bs_cooldown
+
+            _clear_bs_cooldown("black_swan_halt")
     except Exception:
         pass
 
@@ -8118,21 +8186,36 @@ def cmd_menu(client: KalshiClient):
         try:
             import time as _t
 
-            _last_run_path = CRON_LAST_RUN_PATH
-            if not _last_run_path.exists():
+            # batch-24 item 1 opus-review-caught (F7): cron.cmd_cron's finally
+            # block deliberately stops refreshing CRON_LAST_RUN_PATH while the
+            # kill switch is engaged (so the dead-man's-switch gap can grow --
+            # see that block's own comment), which would otherwise make THIS
+            # banner misleadingly suggest "press L to start the loop" while the
+            # loop is in fact running fine, just halted. Show the kill-switch
+            # state instead in that case.
+            if KILL_SWITCH_PATH.exists():
                 print(
-                    yellow(
-                        "  ⚠  Loop hasn't run yet — press L to start the auto-run loop.\n"
+                    red(
+                        "  ⚠  Kill switch active — trading halted. "
+                        "Run `py main.py resume`, or delete data/.kill_switch.\n"
                     )
                 )
             else:
-                _hours_since = (_t.time() - _last_run_path.stat().st_mtime) / 3600
-                if _hours_since > 5:
+                _last_run_path = CRON_LAST_RUN_PATH
+                if not _last_run_path.exists():
                     print(
                         yellow(
-                            f"  ⚠  Cron last ran {_hours_since:.0f}h ago — press L to start the loop.\n"
+                            "  ⚠  Loop hasn't run yet — press L to start the auto-run loop.\n"
                         )
                     )
+                else:
+                    _hours_since = (_t.time() - _last_run_path.stat().st_mtime) / 3600
+                    if _hours_since > 5:
+                        print(
+                            yellow(
+                                f"  ⚠  Cron last ran {_hours_since:.0f}h ago — press L to start the loop.\n"
+                            )
+                        )
 
             # Unsettled due trades
             from paper import get_open_trades as _got

@@ -311,6 +311,16 @@ def _build_app(client):
         _last_cron: str | None = None
         _hours_since: float | None = None
         _cron_stale = False
+        # batch-24 item 1 opus-review-caught (F7): cron.cmd_cron's finally
+        # block deliberately stops refreshing CRON_LAST_RUN_PATH while the
+        # kill switch is engaged, so the dead-man's-switch gap alert can grow
+        # correctly instead of resetting to ~0 every cycle -- see that
+        # block's own comment. That means CRON_LAST_RUN_PATH going stale is
+        # EXPECTED while the switch is engaged, not evidence the bot process
+        # itself is down -- an external monitor must not page "bot down" for
+        # a deliberate, operator-visible halt it can already see via
+        # kill_switch_active below.
+        _kill_switch_active = _KS_PATH.exists()
         if _last_run_path.exists():
             try:
                 _hours_since = round(
@@ -319,7 +329,9 @@ def _build_app(client):
                     2,
                 )
                 _last_cron = _last_run_path.read_text().strip() or None
-                _cron_stale = _hours_since > _stale_threshold
+                _cron_stale = (
+                    _hours_since > _stale_threshold and not _kill_switch_active
+                )
             except Exception:
                 pass
         _cron_age_minutes: float | None = None
@@ -352,7 +364,7 @@ def _build_app(client):
                 "cron_stale": _cron_stale,
                 "cron_age_minutes": _cron_age_minutes,
                 "cycle_count": _cycle_count,
-                "kill_switch_active": _KS_PATH.exists(),
+                "kill_switch_active": _kill_switch_active,
                 "open_trade_count": _open_count,
             }
         )

@@ -66,6 +66,10 @@ HOURLY_TARGET_HOURS_PATH = _DATA / "hourly_target_hours.json"
 HURRICANE_COUNT_TO_DATE_PATH = _DATA / "hurricane_count_to_date.json"
 NOTIFY_COOLDOWN_STATE_PATH = _DATA / ".notify_cooldowns.json"
 RAIN_ARB_SHADOW_PATH = _DATA / "rain_arb_shadow_observations.json"
+# batch-24 item 4: persisted false->true edge tracking for risk-halt alerts
+# (anomaly/daily-loss/drawdown) so send_system_alert() fires once per
+# engagement instead of every cron cycle the halt stays active.
+HALT_TRANSITION_STATE_PATH = _DATA / ".halt_transitions.json"
 
 # cron.py periodic-task gate sentinels — each gates a weekly/periodic
 # maintenance task (calibration, ML retrain, param sweep, walk-forward, weights
