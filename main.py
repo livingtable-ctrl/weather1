@@ -2865,7 +2865,13 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                 # reconcile. place_maker_order is a thin place_order()
                 # wrapper (action="buy", same idempotency formula).
                 _qpb_cid = compute_client_order_id(
-                    ticker, side, "buy", qty, maker_price, _maker_cycle
+                    ticker,
+                    side,
+                    "buy",
+                    qty,
+                    maker_price,
+                    "good_till_canceled",  # matches place_maker_order's own fixed value
+                    _maker_cycle,
                 )
                 _qpb_log_id = log_order(
                     ticker,
@@ -5345,7 +5351,15 @@ def cmd_order(client: KalshiClient, action: str, args: list):
     # own docstring.
     _cycle = order_executor._current_forecast_cycle()
     _cmd_order_cid = compute_client_order_id(
-        ticker, side, action, int(count), price, _cycle
+        ticker,
+        side,
+        action,
+        int(count),
+        price,
+        # Must match the actual time_in_force the place_order() call below
+        # will use for this same _is_live branch.
+        "immediate_or_cancel" if _is_live else "good_till_canceled",
+        _cycle,
     )
     row_id = log_order(
         ticker,

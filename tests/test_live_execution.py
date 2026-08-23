@@ -2998,6 +2998,75 @@ class TestReplaceLiveOrder:
         new_row = next(r for r in rows if r["replaces_order_id"] == 99)
         assert new_row["order_type"] == "market"
 
+    def test_replacement_cycle_key_scoped_to_replaces_order_id(self):
+        """AUD batch-23 #1: the idempotency-key string passed to
+        client.place_order must be scoped to this specific
+        replaces_order_id, not the bare forecast cycle -- otherwise a
+        taker-cross replacement landing at the same rounded price as the
+        original GTC entry order would silently dedupe against it (same
+        client_order_id) and never actually re-enter the position, while
+        logging success."""
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _replace_live_order
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {"order_id": "ord_new"}
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            _replace_live_order(
+                "KXHIGH-25MAY15-T75",
+                "yes",
+                5,
+                0.52,
+                "immediate_or_cancel",
+                mock_client,
+                "2026-05-15_12z",
+                99,
+                None,
+            )
+
+        cycle_arg = mock_client.place_order.call_args.kwargs["cycle"]
+        assert cycle_arg == "2026-05-15_12z:replace:99"
+
+    def test_two_replacements_of_different_orders_get_different_cycle_keys(self):
+        """A same-priced taker-cross of TWO DIFFERENT original orders (same
+        ticker/side/quantity/price, different replaces_order_id) must not
+        collide with each other either -- each original order gets its own
+        replacement key."""
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _replace_live_order
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {"order_id": "ord_new"}
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            _replace_live_order(
+                "KXHIGH-25MAY15-T75",
+                "yes",
+                5,
+                0.52,
+                "immediate_or_cancel",
+                mock_client,
+                "2026-05-15_12z",
+                99,
+                None,
+            )
+            first_cycle = mock_client.place_order.call_args.kwargs["cycle"]
+            _replace_live_order(
+                "KXHIGH-25MAY15-T75",
+                "yes",
+                5,
+                0.52,
+                "immediate_or_cancel",
+                mock_client,
+                "2026-05-15_12z",
+                100,
+                None,
+            )
+            second_cycle = mock_client.place_order.call_args.kwargs["cycle"]
+
+        assert first_cycle != second_cycle
+
 
 class TestFillInstrumentation:
     """_poll_pending_orders must capture filled_at/market_mid_at_fill the
@@ -3802,6 +3871,96 @@ class TestRepriceOrCancelPendingOrders:
         )
         mock_client.amend_order.assert_called_once()
 
+    def test_amend_cycle_key_scoped_to_this_attempts_log_id(self):
+        """AUD batch-23 #1: amend_order's own key already folds in order_id
+        (constant for the life of this resting order), so an oscillating
+        target price (A -> B -> back to A within one forecast cycle) needs
+        the caller's cycle string to carry a per-attempt discriminator too
+        -- otherwise the second amend back to price A regenerates an
+        identical key to the first A-priced amend and Kalshi treats it as a
+        resubmit, silently no-op'ing the second reprice."""
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _amend_live_order
+
+        ticker = "KXHIGH-25MAY15-T75"
+        old_row_id = self._seed_pending(ticker=ticker, price=0.50, age_minutes=10)
+        mock_client = MagicMock()
+        mock_client.amend_order.return_value = {
+            "order_id": "ord_orig",
+            "remaining_count": None,
+            "fill_count": None,
+            "ts_ms": 123,
+        }
+
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            _amend_live_order(
+                "ord_orig",
+                ticker,
+                "yes",
+                5,
+                0.55,
+                mock_client,
+                "12z",
+                old_row_id,
+                None,
+                None,
+            )
+
+        cycle_arg = mock_client.amend_order.call_args.kwargs["cycle"]
+        assert cycle_arg != "12z"
+        assert cycle_arg.startswith("12z:amend:")
+
+    def test_two_amends_at_the_same_price_get_different_cycle_keys(self):
+        """The oscillation case itself: two separate amend attempts to the
+        SAME order at the SAME target price (a price that moved away and
+        back within one cycle) must still get distinct keys -- proving a
+        real retry actually reaches the exchange as a fresh attempt rather
+        than deduping against the earlier one."""
+        from unittest.mock import MagicMock, patch
+
+        from order_executor import _amend_live_order
+
+        ticker = "KXHIGH-25MAY15-T75"
+        old_row_id = self._seed_pending(ticker=ticker, price=0.50, age_minutes=10)
+        mock_client = MagicMock()
+        mock_client.amend_order.return_value = {
+            "order_id": "ord_orig",
+            "remaining_count": None,
+            "fill_count": None,
+            "ts_ms": 123,
+        }
+
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            _amend_live_order(
+                "ord_orig",
+                ticker,
+                "yes",
+                5,
+                0.55,
+                mock_client,
+                "12z",
+                old_row_id,
+                None,
+                None,
+            )
+            first_cycle = mock_client.amend_order.call_args.kwargs["cycle"]
+            _amend_live_order(
+                "ord_orig",
+                ticker,
+                "yes",
+                5,
+                0.55,
+                mock_client,
+                "12z",
+                old_row_id,
+                None,
+                None,
+            )
+            second_cycle = mock_client.amend_order.call_args.kwargs["cycle"]
+
+        assert first_cycle != second_cycle
+
     def test_price_unchanged_leaves_order_resting(self):
         from unittest.mock import MagicMock, patch
 
@@ -4230,6 +4389,83 @@ class TestExitLivePosition(_LiveDBTestBase):
 
         assert result is False
         mock_client.place_order.assert_not_called()
+
+    def test_exit_cycle_key_scoped_to_this_attempts_log_id(self):
+        """AUD batch-23 #1: NOT the bare forecast cycle -- a protective exit
+        that doesn't fill (illiquid book) must be able to actually retry
+        with a fresh key, not one that would dedupe against itself."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "10.00",
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        cycle_arg = mock_client.place_order.call_args.kwargs["cycle"]
+        assert cycle_arg != "2026-05-15_12z"
+        assert cycle_arg.startswith("2026-05-15_12z:exit:")
+
+    def test_repeated_unfilled_exit_attempts_get_distinct_cycle_keys(self):
+        """The exact collision this fix closes: an IOC exit that doesn't
+        fill (illiquid market) leaves the book, ticker, side, exit_price,
+        and forecast cycle all unchanged for a retry on the next cycle
+        scan -- prior to this fix, that retry would regenerate the SAME
+        client_order_id as the first no-op attempt and Kalshi would dedupe
+        it, so the protective exit could never actually be re-placed."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit_1",
+            "fill_count_fp": "0.00",
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result1 = _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+        assert result1 is False  # unfilled IOC -- position remains open
+        first_cycle = mock_client.place_order.call_args.kwargs["cycle"]
+
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit_2",
+            "fill_count_fp": "0.00",
+        }
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+        second_cycle = mock_client.place_order.call_args.kwargs["cycle"]
+
+        assert first_cycle != second_cycle
 
     def test_full_fill_records_fee_adjusted_pnl(self):
         from unittest.mock import MagicMock, patch

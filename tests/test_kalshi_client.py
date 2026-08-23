@@ -504,7 +504,7 @@ class TestComputeClientOrderId:
         import kalshi_client
 
         precomputed = kalshi_client.compute_client_order_id(
-            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "12z"
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "good_till_canceled", "12z"
         )
 
         client = self._make_client()
@@ -527,10 +527,10 @@ class TestComputeClientOrderId:
         import kalshi_client
 
         id1 = kalshi_client.compute_client_order_id(
-            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "12z"
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "good_till_canceled", "12z"
         )
         id2 = kalshi_client.compute_client_order_id(
-            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "12z"
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "good_till_canceled", "12z"
         )
         assert id1 == id2
 
@@ -541,10 +541,10 @@ class TestComputeClientOrderId:
         import kalshi_client
 
         buy_id = kalshi_client.compute_client_order_id(
-            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "12z"
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "good_till_canceled", "12z"
         )
         sell_id = kalshi_client.compute_client_order_id(
-            "KXHIGH-26APR25-T72", "yes", "sell", 5, 0.45, "12z"
+            "KXHIGH-26APR25-T72", "yes", "sell", 5, 0.45, "good_till_canceled", "12z"
         )
         assert buy_id != sell_id
 
@@ -552,12 +552,31 @@ class TestComputeClientOrderId:
         import kalshi_client
 
         id1 = kalshi_client.compute_client_order_id(
-            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "12z"
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "good_till_canceled", "12z"
         )
         id2 = kalshi_client.compute_client_order_id(
-            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.46, "12z"
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.46, "good_till_canceled", "12z"
         )
         assert id1 != id2
+
+    def test_differs_when_time_in_force_differs(self):
+        """AUD batch-23 #1: a GTC entry and a later IOC taker-cross
+        replacement of it (order_executor._replace_live_order) round to the
+        identical ticker+side+action+count+price+cycle -- without
+        time_in_force in the key, the taker-cross would silently dedupe
+        against the earlier GTC attempt and become a no-op that logs
+        success while the position never actually re-enters. Mutation-
+        tested: dropping time_in_force from compute_client_order_id's own
+        idempotency_input f-string makes this fail."""
+        import kalshi_client
+
+        gtc_id = kalshi_client.compute_client_order_id(
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "good_till_canceled", "12z"
+        )
+        ioc_id = kalshi_client.compute_client_order_id(
+            "KXHIGH-26APR25-T72", "yes", "buy", 5, 0.45, "immediate_or_cancel", "12z"
+        )
+        assert gtc_id != ioc_id
 
 
 class TestKeyPermissions:
@@ -707,6 +726,116 @@ class TestGetMarketsPagination:
             result = client.get_markets()
 
         assert len(result) == 3
+
+    def test_default_limit_applied_when_caller_omits_it(self):
+        """AUD batch-23 #2: weather_markets.py's own series-wide scan calls
+        get_markets(series_ticker=series) with no limit at all -- must
+        default to 1000 (Kalshi's max page size) rather than relying on
+        Kalshi's own unstated server-side default."""
+        import kalshi_client
+
+        client = self._make_client()
+        client._get = MagicMock(return_value={"markets": []})
+        client._validate = MagicMock()
+
+        with patch.object(kalshi_client, "validate_market"):
+            client.get_markets(series_ticker="KXHIGHNY")
+
+        params = client._get.call_args[1]["params"]
+        assert params["limit"] == 1000
+        assert params["series_ticker"] == "KXHIGHNY"
+
+    def test_caller_supplied_limit_is_not_overridden(self):
+        import kalshi_client
+
+        client = self._make_client()
+        client._get = MagicMock(return_value={"markets": []})
+        client._validate = MagicMock()
+
+        with patch.object(kalshi_client, "validate_market"):
+            client.get_markets(limit=50)
+
+        params = client._get.call_args[1]["params"]
+        assert params["limit"] == 50
+
+    def test_stops_on_empty_page_with_nonempty_cursor(self):
+        """AUD batch-23 #2: lifts get_trades' 3-guard shape -- Kalshi can
+        return a non-empty cursor on what turns out to be the LAST page
+        (confirmed live, see get_trades' docstring); an empty `markets` list
+        on the NEXT call is what actually signals done, not cursor absence
+        alone. Uses a DIFFERENT cursor on the empty final page so this
+        isolates the `not page` check from the separate repeated-cursor
+        guard."""
+        import kalshi_client
+
+        client = self._make_client()
+        page1 = [{"ticker": "MKT-1", "yes_bid": 50, "yes_ask": 55, "volume": 100}]
+        client._get = MagicMock(
+            side_effect=[
+                {"markets": page1, "cursor": "abc123"},
+                {"markets": [], "cursor": "different-cursor"},
+            ]
+        )
+        client._validate = MagicMock()
+
+        with patch.object(kalshi_client, "validate_market"):
+            result = client.get_markets()
+
+        assert result == page1
+        assert client._get.call_count == 2
+
+    def test_repeated_cursor_stops_pagination(self):
+        """A cursor identical to one already seen must stop the loop rather
+        than spin forever."""
+        import kalshi_client
+
+        client = self._make_client()
+        client._get = MagicMock(
+            return_value={
+                "markets": [
+                    {"ticker": "MKT-1", "yes_bid": 50, "yes_ask": 55, "volume": 100}
+                ],
+                "cursor": "same-cursor",
+            }
+        )
+        client._validate = MagicMock()
+
+        with patch.object(kalshi_client, "validate_market"):
+            result = client.get_markets()
+
+        assert client._get.call_count == 2
+        assert len(result) == 2
+
+    def test_page_cap_stops_at_50_pages(self):
+        """A server that keeps minting fresh (never-repeated) cursors must
+        not hang this synchronous scan indefinitely."""
+        import kalshi_client
+
+        client = self._make_client()
+        call_count = {"n": 0}
+
+        def _fake_get(path, params=None, auth=False):
+            call_count["n"] += 1
+            return {
+                "markets": [
+                    {
+                        "ticker": f"MKT-{call_count['n']}",
+                        "yes_bid": 50,
+                        "yes_ask": 55,
+                        "volume": 100,
+                    }
+                ],
+                "cursor": f"cursor-{call_count['n']}",
+            }
+
+        client._get = MagicMock(side_effect=_fake_get)
+        client._validate = MagicMock()
+
+        with patch.object(kalshi_client, "validate_market"):
+            result = client.get_markets()
+
+        assert client._get.call_count == 50
+        assert len(result) == 50
 
 
 class TestGetCandlesticks:
@@ -902,3 +1031,341 @@ class TestGetTrades:
         result = client.get_trades("TK")
 
         assert result == []
+
+
+class TestPaginatedPortfolioAndPublicListEndpoints:
+    """AUD batch-23 #3: get_positions()/get_events()/get_series_list()
+    previously returned only a single unpaginated page each, unlike every
+    other list endpoint in this file -- an account/catalog exceeding one
+    page silently truncated with no log. All three now route through the
+    shared _paginate_get helper."""
+
+    def _make_client(self):
+        with patch("kalshi_client.KalshiClient.__init__", return_value=None):
+            import kalshi_client
+
+            client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+        return client
+
+    def test_get_positions_single_page(self):
+        client = self._make_client()
+        positions = [{"ticker": "MKT-1"}, {"ticker": "MKT-2"}]
+        client._get = MagicMock(return_value={"market_positions": positions})
+        client._validate = MagicMock()
+
+        result = client.get_positions()
+
+        assert result == positions
+        client._get.assert_called_once()
+        assert client._get.call_args[0][0] == "/portfolio/positions"
+        assert client._get.call_args[1]["auth"] is True
+
+    def test_get_positions_paginates_across_pages(self):
+        client = self._make_client()
+        page1 = [{"ticker": "MKT-1"}]
+        page2 = [{"ticker": "MKT-2"}]
+        client._get = MagicMock(
+            side_effect=[
+                {"market_positions": page1, "cursor": "c1"},
+                {"market_positions": page2},
+            ]
+        )
+        client._validate = MagicMock()
+
+        result = client.get_positions()
+
+        assert len(result) == 2
+        assert client._get.call_count == 2
+        second_params = client._get.call_args_list[1][1]["params"]
+        assert second_params.get("cursor") == "c1"
+
+    def test_get_positions_stops_on_empty_page_with_nonempty_cursor(self):
+        client = self._make_client()
+        page1 = [{"ticker": "MKT-1"}]
+        client._get = MagicMock(
+            side_effect=[
+                {"market_positions": page1, "cursor": "c1"},
+                {"market_positions": [], "cursor": "c2"},
+            ]
+        )
+        client._validate = MagicMock()
+
+        result = client.get_positions()
+
+        assert result == page1
+        assert client._get.call_count == 2
+
+    def test_get_positions_repeated_cursor_stops_pagination(self):
+        client = self._make_client()
+        client._get = MagicMock(
+            return_value={
+                "market_positions": [{"ticker": "MKT-1"}],
+                "cursor": "same-cursor",
+            }
+        )
+        client._validate = MagicMock()
+
+        result = client.get_positions()
+
+        assert client._get.call_count == 2
+        assert len(result) == 2
+
+    def test_get_events_paginates_and_preserves_filter_params(self):
+        client = self._make_client()
+        page1 = [{"event_ticker": "EV-1"}]
+        page2 = [{"event_ticker": "EV-2"}]
+        client._get = MagicMock(
+            side_effect=[
+                {"events": page1, "cursor": "c1"},
+                {"events": page2},
+            ]
+        )
+        client._validate = MagicMock()
+
+        result = client.get_events(status="open")
+
+        assert len(result) == 2
+        assert client._get.call_args_list[0][0][0] == "/events"
+        first_params = client._get.call_args_list[0][1]["params"]
+        assert first_params["status"] == "open"
+        # AUD batch-23 #3 opus follow-up: /events documents a max of 200,
+        # NOT 1000 (get_markets/get_trades/get_positions' max) -- an
+        # out-of-range limit risks a 400 where the endpoint previously
+        # returned data at all.
+        assert first_params["limit"] == 200
+
+    def test_get_series_list_paginates_and_preserves_filter_params(self):
+        client = self._make_client()
+        page1 = [{"ticker": "SER-1"}]
+        page2 = [{"ticker": "SER-2"}]
+        client._get = MagicMock(
+            side_effect=[
+                {"series": page1, "cursor": "c1"},
+                {"series": page2},
+            ]
+        )
+        client._validate = MagicMock()
+
+        result = client.get_series_list(category="Climate and Weather")
+
+        assert len(result) == 2
+        assert client._get.call_args_list[0][0][0] == "/series"
+        first_params = client._get.call_args_list[0][1]["params"]
+        assert first_params["category"] == "Climate and Weather"
+        # AUD batch-23 #3 opus follow-up: /series documents no limit/cursor
+        # support at all -- unlike /events and /portfolio/positions, no
+        # limit param must ever be sent here (an unrecognized query param
+        # risks rejection on a strict server).
+        assert "limit" not in first_params
+
+    def test_page_cap_stops_at_50_pages(self):
+        """Runaway-loop backstop shared across all three via _paginate_get --
+        exercised once here (get_series_list) rather than duplicated 3x,
+        since it's the same helper underneath."""
+        client = self._make_client()
+        call_count = {"n": 0}
+
+        def _fake_get(path, params=None, auth=False):
+            call_count["n"] += 1
+            return {
+                "series": [{"ticker": f"SER-{call_count['n']}"}],
+                "cursor": f"cursor-{call_count['n']}",
+            }
+
+        client._get = MagicMock(side_effect=_fake_get)
+        client._validate = MagicMock()
+
+        result = client.get_series_list()
+
+        assert client._get.call_count == 50
+        assert len(result) == 50
+
+
+class TestEnvFilePermissions:
+    """AUD batch-23 #5: .env can carry KALSHI_PRIVATE_KEY_PEM -- the entire
+    private key in plaintext -- when the WebSocket feed is enabled, but was
+    never permission-checked the way the .pem file already is.
+
+    Deliberately WARN-ONLY (never mutates ACLs/chmod) -- opus review caught
+    that reusing _check_key_permissions' destructive Windows icacls path
+    (strips ALL inherited ACEs, including SYSTEM/Administrators) on a
+    general config file like .env risks silently locking out a future
+    service-account/SYSTEM deployment, a worse failure mode (every
+    authenticated call fails closed) than the plaintext-exposure risk being
+    warned about."""
+
+    def test_noop_when_env_file_not_found(self):
+        import kalshi_client
+
+        with (
+            patch("dotenv.find_dotenv", return_value=""),
+            patch("subprocess.run") as mock_run,
+        ):
+            kalshi_client._check_env_file_permissions()
+
+        mock_run.assert_not_called()
+
+    def test_noop_when_found_env_is_outside_this_repos_directory(self, tmp_path):
+        """find_dotenv()'s upward filesystem walk could land on an
+        unrelated .env in a parent/home directory if none exists in the
+        repo -- must never act on that file."""
+        import kalshi_client
+
+        outside_dir = tmp_path / "unrelated"
+        outside_dir.mkdir()
+        outside_env = outside_dir / ".env"
+        outside_env.write_text("SOME_OTHER_APPS_SECRET=xyz\n")
+
+        with (
+            patch("dotenv.find_dotenv", return_value=str(outside_env)),
+            patch("subprocess.run") as mock_run,
+        ):
+            kalshi_client._check_env_file_permissions()
+
+        mock_run.assert_not_called()
+
+    def _fake_repo_env(self, monkeypatch, tmp_path):
+        """Point kalshi_client's own __file__ at a throwaway directory so
+        the scope check (env must live in kalshi_client.py's own directory)
+        passes for a tmp_path .env -- WITHOUT ever touching this repo's
+        real .env file. Returns the fake .env path (not yet created)."""
+        import kalshi_client
+
+        monkeypatch.setattr(
+            kalshi_client, "__file__", str(tmp_path / "kalshi_client.py")
+        )
+        return tmp_path / ".env"
+
+    def test_windows_icacls_call_is_read_only(self, monkeypatch, tmp_path):
+        """The Windows branch must NEVER pass /inheritance:r or /grant:r --
+        those are what makes _check_key_permissions' .pem-file treatment
+        destructive; .env must only ever be inspected, never mutated."""
+        import subprocess as _subprocess
+
+        import kalshi_client
+
+        env_file = self._fake_repo_env(monkeypatch, tmp_path)
+        env_file.write_text("KALSHI_KEY_ID=abc\n")
+        monkeypatch.setattr("platform.system", lambda: "Windows")
+
+        mock_run = MagicMock(
+            return_value=_subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="SRTGSTG\\thesa:(F)\n", stderr=""
+            )
+        )
+        with (
+            patch("dotenv.find_dotenv", return_value=str(env_file)),
+            patch("subprocess.run", mock_run),
+        ):
+            kalshi_client._check_env_file_permissions()
+
+        mock_run.assert_called_once()
+        argv = mock_run.call_args[0][0]
+        assert argv[0] == "icacls"
+        assert "/inheritance:r" not in argv
+        assert "/grant:r" not in argv
+
+    def test_windows_warns_on_broad_grant(self, monkeypatch, tmp_path, caplog):
+        import logging
+        import subprocess as _subprocess
+
+        import kalshi_client
+
+        env_file = self._fake_repo_env(monkeypatch, tmp_path)
+        env_file.write_text("KALSHI_KEY_ID=abc\n")
+        monkeypatch.setattr("platform.system", lambda: "Windows")
+
+        mock_run = MagicMock(
+            return_value=_subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="BUILTIN\\Users:(F)\nSRTGSTG\\thesa:(F)\n",
+                stderr="",
+            )
+        )
+        with (
+            patch("dotenv.find_dotenv", return_value=str(env_file)),
+            patch("subprocess.run", mock_run),
+            caplog.at_level(logging.WARNING, logger="kalshi_client"),
+        ):
+            kalshi_client._check_env_file_permissions()
+
+        assert "readable by more than the current user" in caplog.text
+
+    def test_windows_no_warning_on_narrow_grant(self, monkeypatch, tmp_path, caplog):
+        import logging
+        import subprocess as _subprocess
+
+        import kalshi_client
+
+        env_file = self._fake_repo_env(monkeypatch, tmp_path)
+        env_file.write_text("KALSHI_KEY_ID=abc\n")
+        monkeypatch.setattr("platform.system", lambda: "Windows")
+
+        mock_run = MagicMock(
+            return_value=_subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="SRTGSTG\\thesa:(F)\n", stderr=""
+            )
+        )
+        with (
+            patch("dotenv.find_dotenv", return_value=str(env_file)),
+            patch("subprocess.run", mock_run),
+            caplog.at_level(logging.WARNING, logger="kalshi_client"),
+        ):
+            kalshi_client._check_env_file_permissions()
+
+        assert caplog.text == ""
+
+    def test_warns_on_world_readable_env_file(self, monkeypatch, tmp_path, caplog):
+        """Unix: mirrors _check_key_permissions' own chmod-based check. Uses
+        a throwaway tmp_path .env (never the real repo .env)."""
+        import logging
+        import platform
+
+        import kalshi_client
+
+        if platform.system() == "Windows":
+            pytest.skip("Permission checks not applicable on Windows")
+
+        env_file = self._fake_repo_env(monkeypatch, tmp_path)
+        env_file.write_text("KALSHI_KEY_ID=abc\n")
+        env_file.chmod(0o644)
+
+        with (
+            patch("dotenv.find_dotenv", return_value=str(env_file)),
+            caplog.at_level(logging.WARNING, logger="kalshi_client"),
+        ):
+            kalshi_client._check_env_file_permissions()
+        assert "readable by group/others" in caplog.text
+
+    def test_no_warning_on_private_env_file(self, monkeypatch, tmp_path, caplog):
+        """Unix: 0600 permissions must not warn."""
+        import logging
+        import platform
+
+        import kalshi_client
+
+        if platform.system() == "Windows":
+            pytest.skip("Permission checks not applicable on Windows")
+
+        env_file = self._fake_repo_env(monkeypatch, tmp_path)
+        env_file.write_text("KALSHI_KEY_ID=abc\n")
+        env_file.chmod(0o600)
+
+        with (
+            patch("dotenv.find_dotenv", return_value=str(env_file)),
+            caplog.at_level(logging.WARNING, logger="kalshi_client"),
+        ):
+            kalshi_client._check_env_file_permissions()
+        assert caplog.text == ""
+
+    def test_client_init_checks_env_file(self):
+        """Every KalshiClient() construction checks .env, unconditionally --
+        not gated on whether KALSHI_PRIVATE_KEY_PEM happens to be set this
+        run."""
+        import kalshi_client
+
+        with patch("kalshi_client._check_env_file_permissions") as mock_check_env:
+            kalshi_client.KalshiClient(key_id="k", private_key_path=None, env="demo")
+
+        mock_check_env.assert_called_once()

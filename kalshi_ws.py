@@ -373,7 +373,22 @@ async def _ws_listener(api_key: str, private_key_pem: str, tickers: list[str]) -
                         except Exception as exc:
                             _log.warning("kalshi_ws: parse error: %s", exc)
 
+                # AUD batch-23 #4: the `async with`/`async for` above exited
+                # WITHOUT raising -- a clean close (e.g. a rejected auth or
+                # subscribe, or the server ending the connection with a
+                # valid close frame). This path is distinct from the
+                # `except Exception` branch below; without clearing
+                # _ws_alive and backing off here too, a clean-close reconnect
+                # thrashes the connection at full speed while
+                # get_ws_health() keeps reporting alive=True the entire time.
+                _set_ws_alive(False)
+                _log.warning(
+                    "kalshi_ws: connection closed cleanly — reconnecting in 10s"
+                )
+                await asyncio.sleep(10)
+
             except Exception as exc:
+                _set_ws_alive(False)
                 _log.warning(
                     "kalshi_ws: connection error: %s — reconnecting in 10s", exc
                 )

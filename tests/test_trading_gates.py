@@ -1344,8 +1344,9 @@ class TestCmdOrderLiveRecording:
         mock_client.place_order.assert_called_once()
         _args, _kwargs = mock_client.place_order.call_args
         posted_cycle = _kwargs["cycle"]
+        posted_tif = _kwargs["time_in_force"]
         expected_cid = compute_client_order_id(
-            "KXTEST-25JUN01-T70", "yes", "buy", 5, 0.40, posted_cycle
+            "KXTEST-25JUN01-T70", "yes", "buy", 5, 0.40, posted_tif, posted_cycle
         )
 
         assert len(prelog_calls) == 1
@@ -1475,8 +1476,16 @@ class TestQuickPaperBuyMakerRecording:
         mock_client.place_maker_order.assert_called_once()
         _args, _kwargs = mock_client.place_maker_order.call_args
         posted_cycle = _kwargs["cycle"]
+        # place_maker_order always uses good_till_canceled internally (not a
+        # kwarg of place_maker_order itself, unlike place_order above).
         expected_cid = compute_client_order_id(
-            "KXTEST-25JUN01-T70", "yes", "buy", 5, 0.45, posted_cycle
+            "KXTEST-25JUN01-T70",
+            "yes",
+            "buy",
+            5,
+            0.45,
+            "good_till_canceled",
+            posted_cycle,
         )
 
         assert len(prelog_calls) == 1

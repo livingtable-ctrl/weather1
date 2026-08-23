@@ -21,13 +21,28 @@ _log = logging.getLogger(__name__)
 
 
 def compute_client_order_id(
-    ticker: str, side: str, action: str, count: float, price: float, cycle: str
+    ticker: str,
+    side: str,
+    action: str,
+    count: float,
+    price: float,
+    time_in_force: str,
+    cycle: str,
 ) -> str:
     """The same deterministic idempotency key place_order() derives
     internally when a real (non-None) cycle is given -- exposed as a
     standalone function so a caller can pre-compute it BEFORE calling
     place_order() and persist it immediately, rather than only learning it
     after a successful/failed placement response.
+
+    AUD batch-23 #1: time_in_force is part of the key (not just an inert
+    field on the request body) because two calls with everything else equal
+    -- notably ticker+side+action+count+cycle -- but different
+    time_in_force are NOT the same order attempt: a GTC entry and a later
+    IOC taker-cross replacement of it (order_executor._replace_live_order)
+    can otherwise round to the identical price and silently dedupe against
+    each other, which would make the taker-cross a no-op that logs success
+    while the position never re-enters.
 
     Batch-22 item 2: every live pre-log call site (order_executor.py's
     _place_live_order/_exit_live_position/_replace_live_order/micro-live,
@@ -65,7 +80,9 @@ def compute_client_order_id(
             "it must not pre-compute this id at all (let place_order's own "
             "random-UUID fallback apply instead)"
         )
-    idempotency_input = f"{ticker}:{side}:{action}:{count:.2f}:{price:.4f}:{cycle}"
+    idempotency_input = (
+        f"{ticker}:{side}:{action}:{count:.2f}:{price:.4f}:{time_in_force}:{cycle}"
+    )
     import hashlib
 
     return hashlib.sha256(idempotency_input.encode()).hexdigest()[:32]
@@ -132,6 +149,93 @@ def _check_key_permissions(key_path) -> None:
                 key_path,
                 mode & 0o777,
                 key_path,
+            )
+    except OSError:
+        pass
+
+
+def _check_env_file_permissions() -> None:
+    """Warn (never mutate) if .env is readable more broadly than intended
+    (AUD batch-23 #5). .env can carry KALSHI_PRIVATE_KEY_PEM -- the entire
+    private key as a plaintext env value -- whenever the WebSocket feed is
+    enabled (see kalshi_ws.KalshiWebSocket / cron.py's KALSHI_PRIVATE_KEY_PEM
+    read); .env also always carries KALSHI_KEY_ID.
+
+    Deliberately WARN-ONLY, never an active fix like _check_key_permissions'
+    Windows branch (icacls /inheritance:r, which strips ALL inherited ACEs
+    including SYSTEM/Administrators). Opus review (2026-08-22) caught that
+    reusing that destructive path on .env -- a general config file, not a
+    single-purpose secret like the .pem -- would silently lock out any
+    account other than whichever one first constructs a KalshiClient(),
+    including SYSTEM/a service account under a future scheduled-task or
+    VM-hosted deployment (already planned for this project). That account
+    losing read access to .env means every authenticated call fails closed
+    in _sign_headers with no order ever attempted -- a worse, harder-to-
+    diagnose outcome than the plaintext-exposure risk being warned about
+    here. The icacls call below is read-only (no /inheritance:r, no
+    /grant:r) for exactly this reason.
+
+    Only checks a .env that lives in THIS repo's own directory -- not
+    wherever find_dotenv()'s upward filesystem walk happens to land if no
+    .env exists here (e.g. a stray .env in a parent or home directory that
+    has nothing to do with this bot).
+    """
+    import platform
+
+    try:
+        from dotenv import find_dotenv
+
+        env_path_str = find_dotenv()
+    except Exception as exc:
+        _log.debug("_check_env_file_permissions: could not locate .env: %s", exc)
+        return
+    if not env_path_str:
+        return
+    env_path = Path(env_path_str)
+    try:
+        if env_path.parent.resolve() != Path(__file__).resolve().parent:
+            return
+    except OSError:
+        return
+
+    if platform.system() == "Windows":
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["icacls", str(env_path)],
+                check=True,
+                capture_output=True,
+                timeout=10,
+                text=True,
+            )
+            _broad_principals = ("Everyone", "BUILTIN\\Users", "Authenticated Users")
+            if any(p in result.stdout for p in _broad_principals):
+                _log.warning(
+                    ".env at %s appears readable by more than the current "
+                    "user (icacls shows a broad grant) and may carry "
+                    "KALSHI_PRIVATE_KEY_PEM in plaintext. Consider "
+                    "restricting it to your own account only:\n%s",
+                    env_path,
+                    result.stdout,
+                )
+        except FileNotFoundError:
+            pass  # icacls not available (e.g. wine/WSL) — skip silently
+        except Exception as exc:
+            _log.debug("_check_env_file_permissions: icacls read failed: %s", exc)
+        return
+
+    try:
+        import stat as _stat
+
+        mode = env_path.stat().st_mode
+        if mode & (_stat.S_IRGRP | _stat.S_IROTH):
+            _log.warning(
+                ".env at %s is readable by group/others (mode %o) and may "
+                "carry KALSHI_PRIVATE_KEY_PEM in plaintext. Run: chmod 600 %s",
+                env_path,
+                mode & 0o777,
+                env_path,
             )
     except OSError:
         pass
@@ -343,6 +447,12 @@ class KalshiClient:
         self.key_id = key_id
         self._private_key = None
 
+        # AUD batch-23 #5: .env can carry the private key in plaintext
+        # (KALSHI_PRIVATE_KEY_PEM) just as easily as private_key_path's file
+        # does -- harden it unconditionally, not gated on whether that
+        # specific env var happens to be set this run.
+        _check_env_file_permissions()
+
         if private_key_path and Path(private_key_path).exists():
             _check_key_permissions(Path(private_key_path))
             with open(private_key_path, "rb") as f:
@@ -435,21 +545,36 @@ class KalshiClient:
     # ── Public endpoints (no auth needed) ────────────────────────────────────
 
     def get_markets(self, **params) -> list[dict]:
+        """Fetch every open market page via cursor pagination.
+
+        AUD batch-23 #2: lifts get_trades'/_get_orders_by_status' full
+        3-guard termination shape (not just cursor truthiness) -- Kalshi can
+        return a non-empty cursor on what turns out to be the last page
+        (confirmed live, see get_trades' docstring), so `not page` is also a
+        stop condition, plus a repeated-cursor guard and a 50-page runaway-
+        loop backstop. Also defaults limit=1000 (Kalshi's max page size)
+        when the caller doesn't supply one -- weather_markets.py's own
+        series-wide scan (30k+ markets on some series) previously relied on
+        Kalshi's un-stated default page size with no cap at all.
+        """
         all_markets: list[dict] = []
         cursor: str | None = None
         seen_cursors: set[str] = set()
+        page_count = 0
         while True:
             p = dict(params)
+            p.setdefault("limit", 1000)
             if cursor:
                 p["cursor"] = cursor
-            data = self._get("/markets", params=p or None, auth=True)
+            data = self._get("/markets", params=p, auth=True)
             self._validate(data, "markets", "/markets")
             page = data.get("markets", [])
             for market in page:
                 validate_market(market, source="kalshi")
             all_markets.extend(page)
+            page_count += 1
             cursor = data.get("cursor")
-            if not cursor:
+            if not cursor or not page:
                 break
             if cursor in seen_cursors:
                 _log.error(
@@ -459,6 +584,12 @@ class KalshiClient:
                 )
                 break
             seen_cursors.add(cursor)
+            if page_count >= 50:
+                _log.error(
+                    "get_markets: exceeded 50 pages (50,000+ markets) -- "
+                    "stopping pagination early as a runaway-loop backstop"
+                )
+                break
         return all_markets
 
     def get_market(self, ticker: str) -> dict:
@@ -561,15 +692,79 @@ class KalshiClient:
                 break
         return all_trades
 
+    def _paginate_get(
+        self,
+        path: str,
+        list_key: str,
+        params: dict | None = None,
+        default_limit: int | None = 1000,
+    ) -> list[dict]:
+        """Fetch every page of a Kalshi cursor-paginated GET endpoint.
+
+        AUD batch-23 #3: get_positions/get_events/get_series_list previously
+        returned only a single unpaginated page each -- unlike every other
+        list endpoint in this file. Shared here (rather than duplicating the
+        3-guard shape a 4th/5th/6th time) since, unlike get_trades/
+        _get_orders_by_status, none of these three has any endpoint-specific
+        response handling to preserve. Same termination shape as
+        get_trades/_get_orders_by_status/get_markets: stops on no cursor, an
+        empty page (Kalshi can return a fresh cursor on an already-empty
+        final page -- confirmed live, see get_trades' docstring), a repeated
+        cursor, or a 50-page runaway-loop backstop.
+
+        default_limit: applied via setdefault (never overrides a
+        caller-supplied limit) only when not None. Opus review (2026-08-22)
+        caught that 1000 -- Kalshi's documented max for /markets,
+        /markets/trades, and /portfolio/positions -- is NOT universal:
+        /events documents a max of 200 (get_events passes default_limit=200
+        below), and /series documents no limit/cursor support at all
+        (get_series_list passes default_limit=None so no limit param is
+        ever sent there -- if the endpoint genuinely never returns a
+        cursor, this loop just runs once and stops on `not cursor`,
+        identical to the pre-pagination behavior). An out-of-range `limit`
+        risks a 400 where the endpoint previously returned data at all.
+        """
+        all_items: list[dict] = []
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
+        page_count = 0
+        while True:
+            p = dict(params or {})
+            if default_limit is not None:
+                p.setdefault("limit", default_limit)
+            if cursor:
+                p["cursor"] = cursor
+            data = self._get(path, params=p, auth=True)
+            self._validate(data, list_key, path)
+            page = data.get(list_key, [])
+            all_items.extend(page)
+            page_count += 1
+            cursor = data.get("cursor")
+            if not cursor or not page:
+                break
+            if cursor in seen_cursors:
+                _log.error(
+                    "_paginate_get(%s): Kalshi returned a repeated cursor %r "
+                    "— stopping pagination early instead of looping forever",
+                    path,
+                    cursor,
+                )
+                break
+            seen_cursors.add(cursor)
+            if page_count >= 50:
+                _log.error(
+                    "_paginate_get(%s): exceeded 50 pages (50,000+ items) -- "
+                    "stopping pagination early as a runaway-loop backstop",
+                    path,
+                )
+                break
+        return all_items
+
     def get_events(self, **params) -> list[dict]:
-        data = self._get("/events", params=params or None, auth=True)
-        self._validate(data, "events", "/events")
-        return data.get("events", [])
+        return self._paginate_get("/events", "events", params, default_limit=200)
 
     def get_series_list(self, **params) -> list[dict]:
-        data = self._get("/series", params=params or None, auth=True)
-        self._validate(data, "series", "/series")
-        return data.get("series", [])
+        return self._paginate_get("/series", "series", params, default_limit=None)
 
     # ── Authenticated endpoints ───────────────────────────────────────────────
 
@@ -577,9 +772,21 @@ class KalshiClient:
         return self._get("/portfolio/balance", auth=True)
 
     def get_positions(self) -> list[dict]:
-        data = self._get("/portfolio/positions", auth=True)
-        self._validate(data, "market_positions", "/portfolio/positions")
-        return data.get("market_positions", [])
+        # Opus review (2026-08-22): Kalshi's /portfolio/positions response
+        # shape may return TWO parallel lists (event_positions and
+        # market_positions) advanced by a single shared cursor -- if so, a
+        # page with zero market_positions but a non-empty event_positions
+        # and a valid cursor would make _paginate_get's `not page` guard
+        # stop one page early, silently truncating (the same failure class
+        # this fix exists to close). Unverified without live API access;
+        # nothing in this repo references event_positions today, and the
+        # current single production consumer (output_formatters.py) is
+        # display-only, so this is strictly no worse than the prior
+        # single-page behavior even in the worst case. Flag for the
+        # DEMO_BASE smoke test batch-23 already recommends running after
+        # this batch lands, before AUD-0025's live-position reconciliation
+        # is built on top of this.
+        return self._paginate_get("/portfolio/positions", "market_positions")
 
     def _get_orders_by_status(self, status: str) -> list[dict]:
         """Fetch every order with the given status, following Kalshi's cursor
@@ -696,15 +903,36 @@ class KalshiClient:
         """
         import uuid
 
-        # Deterministic within a cycle: same ticker+side+count+price+cycle → same ID.
-        # Kalshi deduplicates server-side when the same client_order_id is resubmitted.
-        # Routed through the shared compute_client_order_id() (not computed
-        # inline) so a caller that pre-computes this same id before calling
-        # place_order() -- see that function's own docstring, batch-22 item 2
-        # -- is guaranteed to get byte-identical results, not two independent
-        # formulas that could silently drift apart.
+        # Deterministic within a cycle: same ticker+side+count+price+
+        # time_in_force+cycle → same ID. Kalshi deduplicates server-side when
+        # the same client_order_id is resubmitted. Routed through the shared
+        # compute_client_order_id() (not computed inline) so a caller that
+        # pre-computes this same id before calling place_order() -- see that
+        # function's own docstring, batch-22 item 2 -- is guaranteed to get
+        # byte-identical results, not two independent formulas that could
+        # silently drift apart. AUD batch-23 #1: time_in_force is part of
+        # the key (not just an inert field on the request body) because two
+        # calls with everything else equal -- notably
+        # ticker+side+action+count+cycle -- but different time_in_force are
+        # NOT the same order attempt: a GTC entry and a later IOC
+        # taker-cross replacement of it (order_executor._replace_live_order)
+        # can otherwise round to the identical price and silently dedupe
+        # against each other, which would make the taker-cross a no-op that
+        # logs success while the position never re-enters. Callers that need
+        # each real attempt (a reprice, an exit retry) to get its own key
+        # regardless of price/time_in_force repetition fold a per-attempt
+        # discriminator into the `cycle` string they pass in, rather than
+        # this method dedup'ing across attempts it can't distinguish (see
+        # order_executor._replace_live_order/_amend_live_order/
+        # _exit_live_position).
         client_order_id = compute_client_order_id(
-            ticker, side, action, count, price, cycle or str(uuid.uuid4())
+            ticker,
+            side,
+            action,
+            count,
+            price,
+            time_in_force,
+            cycle or str(uuid.uuid4()),
         )
 
         v2_side, v2_price = _to_v2_side_price(side, action, price)
