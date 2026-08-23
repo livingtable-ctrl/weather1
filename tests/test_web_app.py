@@ -332,42 +332,26 @@ def test_trades_route_returns_200_with_title(client):
 
 def test_api_trades_returns_correct_shape(client):
     """/api/trades returns open and closed keys as lists."""
-    with (
-        patch(
-            "paper.get_open_trades",
-            return_value=[
-                {
-                    "id": 1,
-                    "ticker": "T1",
-                    "city": "NYC",
-                    "side": "yes",
-                    "entry_price": 0.6,
-                    "cost": 10.0,
-                    "target_date": "2025-12-01",
-                }
-            ],
-        ),
-        patch(
-            "paper.get_all_trades",
-            return_value=[
-                {
-                    "id": 1,
-                    "ticker": "T1",
-                    "settled": False,
-                    "city": "NYC",
-                    "side": "yes",
-                },
-                {
-                    "id": 2,
-                    "ticker": "T2",
-                    "settled": True,
-                    "pnl": 5.0,
-                    "city": "LA",
-                    "side": "no",
-                    "outcome": "no",
-                },
-            ],
-        ),
+    with patch(
+        "paper.get_all_trades",
+        return_value=[
+            {
+                "id": 1,
+                "ticker": "T1",
+                "settled": False,
+                "city": "NYC",
+                "side": "yes",
+            },
+            {
+                "id": 2,
+                "ticker": "T2",
+                "settled": True,
+                "pnl": 5.0,
+                "city": "LA",
+                "side": "no",
+                "outcome": "no",
+            },
+        ],
     ):
         # The `client` fixture's underlying Kalshi client is a plain
         # object() with no get_markets -- /api/trades' live batch-fetch
@@ -385,6 +369,28 @@ def test_api_trades_returns_correct_shape(client):
         assert len(d["open"]) == 1
         assert len(d["closed"]) == 1
         assert d["closed"][0]["ticker"] == "T2"
+
+
+def test_api_trades_loads_the_paper_ledger_only_once(client):
+    """AUD-0053: api_trades() used to call both paper.get_open_trades() and
+    paper.get_all_trades() -- each independently doing a full read+parse+
+    SHA-256-checksum of paper_trades.json with no caching, so one HTTP
+    request cost two full ledger loads. Must derive open trades from the
+    single get_all_trades() call instead of a second _load()."""
+    with (
+        patch(
+            "paper.get_all_trades",
+            return_value=[
+                {"id": 1, "ticker": "T1", "settled": False, "city": "NYC"},
+                {"id": 2, "ticker": "T2", "settled": True, "city": "LA"},
+            ],
+        ) as mock_all,
+        patch("paper.get_open_trades") as mock_open,
+    ):
+        r = client.get("/api/trades")
+        assert r.status_code == 200
+        mock_all.assert_called_once()
+        mock_open.assert_not_called()
 
 
 class TestApiTradesLiveQuoteEnrichment:
@@ -419,8 +425,7 @@ class TestApiTradesLiveQuoteEnrichment:
         quote via the batched call -- the actual bug this entry describes."""
         c, mock_kalshi = client_and_kalshi_mock
         with (
-            patch("paper.get_open_trades", return_value=[self._open_trade("T1")]),
-            patch("paper.get_all_trades", return_value=[]),
+            patch("paper.get_all_trades", return_value=[self._open_trade("T1")]),
             patch(
                 "web_app._get_live_market_snapshot", return_value=[]
             ),  # empty SSE cache
@@ -445,8 +450,7 @@ class TestApiTradesLiveQuoteEnrichment:
         up to however long since the operator last loaded /analyze."""
         c, mock_kalshi = client_and_kalshi_mock
         with (
-            patch("paper.get_open_trades", return_value=[self._open_trade("T1")]),
-            patch("paper.get_all_trades", return_value=[]),
+            patch("paper.get_all_trades", return_value=[self._open_trade("T1")]),
             patch(
                 "web_app._get_live_market_snapshot",
                 return_value=[{"ticker": "T1", "yes_bid": 0.10, "yes_ask": 0.12}],
@@ -467,8 +471,7 @@ class TestApiTradesLiveQuoteEnrichment:
         /api/trades -- fall back to whatever the SSE cache has."""
         c, mock_kalshi = client_and_kalshi_mock
         with (
-            patch("paper.get_open_trades", return_value=[self._open_trade("T1")]),
-            patch("paper.get_all_trades", return_value=[]),
+            patch("paper.get_all_trades", return_value=[self._open_trade("T1")]),
             patch(
                 "web_app._get_live_market_snapshot",
                 return_value=[{"ticker": "T1", "yes_bid": 0.40, "yes_ask": 0.44}],
@@ -489,10 +492,9 @@ class TestApiTradesLiveQuoteEnrichment:
         c, mock_kalshi = client_and_kalshi_mock
         with (
             patch(
-                "paper.get_open_trades",
+                "paper.get_all_trades",
                 return_value=[self._open_trade("T1"), self._open_trade("T2")],
             ),
-            patch("paper.get_all_trades", return_value=[]),
             patch(
                 "web_app._get_live_market_snapshot",
                 return_value=[{"ticker": "T2", "yes_bid": 0.10, "yes_ask": 0.15}],
@@ -514,10 +516,7 @@ class TestApiTradesLiveQuoteEnrichment:
         """No open positions -> no tickers to batch -> get_markets is never
         even called (no wasted API call)."""
         c, mock_kalshi = client_and_kalshi_mock
-        with (
-            patch("paper.get_open_trades", return_value=[]),
-            patch("paper.get_all_trades", return_value=[]),
-        ):
+        with patch("paper.get_all_trades", return_value=[]):
             r = c.get("/api/trades")
             assert r.status_code == 200
             mock_kalshi.get_markets.assert_not_called()
@@ -527,12 +526,9 @@ class TestApiTradesLiveQuoteEnrichment:
         the entire point of using the batched endpoint over per-ticker
         get_market() calls."""
         c, mock_kalshi = client_and_kalshi_mock
-        with (
-            patch(
-                "paper.get_open_trades",
-                return_value=[self._open_trade("T1"), self._open_trade("T2")],
-            ),
-            patch("paper.get_all_trades", return_value=[]),
+        with patch(
+            "paper.get_all_trades",
+            return_value=[self._open_trade("T1"), self._open_trade("T2")],
         ):
             mock_kalshi.get_markets.return_value = []
             c.get("/api/trades")
@@ -549,8 +545,7 @@ class TestApiTradesLiveQuoteEnrichment:
         matching the SSE cache's own established handling."""
         c, mock_kalshi = client_and_kalshi_mock
         with (
-            patch("paper.get_open_trades", return_value=[self._open_trade("T1")]),
-            patch("paper.get_all_trades", return_value=[]),
+            patch("paper.get_all_trades", return_value=[self._open_trade("T1")]),
             patch("web_app._get_live_market_snapshot", return_value=[]),
         ):
             mock_kalshi.get_markets.return_value = [

@@ -7277,6 +7277,24 @@ def _cmd_emos_train(activate: bool = False, force: bool = False) -> None:
 
     from ml_bias import deactivate_emos, reset_temperature_scale_for_emos
 
+    # AUD-0029: re-check immediately before the write, not just before the
+    # (unbounded-duration) confirmation prompt above -- a cron cycle that
+    # starts during the human's "yes"/no wait is invisible to the earlier
+    # check alone, and is exactly the split-scan failure mode this gate
+    # exists to prevent.
+    try:
+        if _cron_module._is_cron_running():
+            print(
+                red(
+                    "\nA cron cycle started while waiting for confirmation — "
+                    "refusing to activate mid-scan. Wait for it to finish and "
+                    "try again."
+                )
+            )
+            return
+    except Exception:
+        pass  # fail open on an inability to check, matching _is_cron_running's own default
+
     try:
         save_emos_params(a, b, c, d, n=n, mean_crps=mean_crps)
         reset_temperature_scale_for_emos()
@@ -7408,6 +7426,21 @@ def cmd_emos_deactivate(reason: str = "manual deactivation") -> None:
     if answer != "yes":
         print(dim("  Cancelled — EMOS still active."))
         return
+
+    # AUD-0029: re-check immediately before the write -- see the matching
+    # comment in cmd_emos_train's activation path.
+    try:
+        if _cron_module._is_cron_running():
+            print(
+                red(
+                    "\nA cron cycle started while waiting for confirmation — "
+                    "refusing to deactivate mid-scan. Wait for it to finish "
+                    "and try again."
+                )
+            )
+            return
+    except Exception:
+        pass  # fail open on an inability to check, matching _is_cron_running's own default
 
     deactivate_emos()
     _log.info("cmd_emos_deactivate: EMOS deactivated (reason: %s)", reason)

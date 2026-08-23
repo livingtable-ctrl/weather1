@@ -29,7 +29,7 @@ Every batch instructs the recipient session to follow the 29-step `feedback-impl
 | [9](batch-09.md) | Security & config hardening | audit | 4 | kalshi_client.py, .env.example, main.py |
 | [10](batch-10.md) | Test-gap sweep | audit | 6 | tests/*.py, conftest.py |
 | [11](batch-11.md) | README / docstring accuracy sweep | audit | 8 | README.md, main.py, metar.py, ci.yml, pyproject.toml |
-| [12](batch-12.md) | Performance & reliability misc | audit | 7 | order_executor.py, trade_cycle.py, web_app.py, settlement_monitor.py |
+| [12](batch-12.md) | Performance & reliability misc | audit | 7 | order_executor.py, trade_cycle.py, web_app.py, settlement_monitor.py, main.py, execution_log.py, tracker.py |
 | [13](batch-13.md) | Rain/hurricane/shadow-signal misc correctness | audit | 7 | weather_markets.py, cron.py, tracker.py, schema_validator.py |
 | [14](batch-14.md) | INFO-tier confirmations (verify-and-close, minimal code) | audit | 14 | various |
 | [15](batch-15.md) | Rain/snow/hurricane market category expansion | roadmap | 5 | weather_markets.py, cron.py, settlement_monitor.py |
@@ -55,7 +55,7 @@ Every batch instructs the recipient session to follow the 29-step `feedback-impl
 | [9](batch-09.md) | Security & config hardening | audit | 4 | kalshi_client.py, .env.example, main.py |
 | [10](batch-10.md) | Test-gap sweep | audit | 6 | tests/*.py, conftest.py |
 | [11](batch-11.md) | README / docstring accuracy sweep | audit | 8 | README.md, main.py, metar.py, ci.yml, pyproject.toml |
-| [12](batch-12.md) | Performance & reliability misc | audit | 7 | order_executor.py, trade_cycle.py, web_app.py, settlement_monitor.py |
+| [12](batch-12.md) | Performance & reliability misc | audit | 7 | order_executor.py, trade_cycle.py, web_app.py, settlement_monitor.py, main.py, execution_log.py, tracker.py |
 | [13](batch-13.md) | Rain/hurricane/shadow-signal misc correctness | audit | 7 | weather_markets.py, cron.py, tracker.py, schema_validator.py |
 | [14](batch-14.md) | INFO-tier confirmations (verify-and-close, minimal code) | audit | 14 | various |
 | [15](batch-15.md) | Rain/snow/hurricane market category expansion | roadmap | 5 | weather_markets.py, cron.py, settlement_monitor.py |

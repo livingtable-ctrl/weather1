@@ -882,3 +882,105 @@ class TestSettlementMonitorLock:
             for r in caplog.records
             if r.levelname == "ERROR"
         ), "must log at ERROR when skipping due to contention"
+
+
+class TestSettlementMonitorPollingErrorVisibility:
+    """AUD-0047: the two exception handlers in the polling loop's per-city
+    body used to log at DEBUG only -- invisible on console (main.py's
+    console handler is INFO-level) for a task that runs unattended daily."""
+
+    @staticmethod
+    def _isolate_single_city(monkeypatch, sm):
+        """One fake city, monitoring window forced wide open so the real
+        wall-clock hour never gates the per-city body out."""
+        monkeypatch.setattr(
+            sm,
+            "_MONITOR_CITIES",
+            {"NYC": {"station": "KNYC", "tz": "America/New_York"}},
+        )
+        monkeypatch.setattr(sm, "_CITY_SERIES_TICKER", {"NYC": "KXHIGHNY"})
+        monkeypatch.setattr(sm, "_MONITOR_START_HOUR", 0)
+        monkeypatch.setattr(sm, "_MONITOR_END_HOUR", 24)
+
+    @staticmethod
+    def _stop_after_one_pass(monkeypatch, sm):
+        """time.sleep is called exactly once per while-loop pass, at the very
+        end -- raising from it deterministically stops the loop after
+        processing every city exactly once, with no real waiting and no need
+        to fake datetime.now() itself."""
+
+        class _StopLoop(Exception):
+            pass
+
+        def _stop(*_a, **_kw):
+            raise _StopLoop
+
+        monkeypatch.setattr(sm.time, "sleep", _stop)
+        return _StopLoop
+
+    def test_market_fetch_failure_logs_at_warning_not_debug(self, monkeypatch, caplog):
+        import logging
+
+        import settlement_monitor as sm
+
+        self._isolate_single_city(monkeypatch, sm)
+        stop_loop = self._stop_after_one_pass(monkeypatch, sm)
+
+        class _FakeClient:
+            def get_markets(self, **_kwargs):
+                raise RuntimeError("simulated network blip")
+
+        with (
+            caplog.at_level(logging.DEBUG, logger="settlement_monitor"),
+            pytest.raises(stop_loop),
+        ):
+            sm._run_settlement_monitor_loop(_FakeClient(), duration_minutes=120)
+
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert any("market fetch" in r.message for r in warnings), (
+            "a market-fetch failure must log at WARNING, not DEBUG, to be "
+            "visible on an unattended daily cron run's console"
+        )
+        # Positive control: prove DEBUG-level records ARE being captured at
+        # all here (caplog is at DEBUG level) -- otherwise the assertion
+        # above could pass vacuously if this handler silently stopped
+        # logging altogether instead of merely logging at the wrong level.
+        assert any("market fetch" in r.message for r in caplog.records), (
+            "the market-fetch failure must be logged at SOME level"
+        )
+
+    def test_general_per_city_error_logs_at_warning_not_debug(
+        self, monkeypatch, caplog
+    ):
+        import logging
+
+        import settlement_monitor as sm
+
+        self._isolate_single_city(monkeypatch, sm)
+        stop_loop = self._stop_after_one_pass(monkeypatch, sm)
+
+        # Market fetch itself succeeds (empty result) so the INNER handler
+        # never fires -- isolates the OUTER per-city handler specifically.
+        def _boom(_city, _active_tickers):
+            raise RuntimeError("simulated settlement-check crash")
+
+        monkeypatch.setattr(sm, "check_city_settlement", _boom)
+
+        class _FakeClient:
+            def get_markets(self, **_kwargs):
+                return []
+
+        with (
+            caplog.at_level(logging.DEBUG, logger="settlement_monitor"),
+            pytest.raises(stop_loop),
+        ):
+            sm._run_settlement_monitor_loop(_FakeClient(), duration_minutes=120)
+
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert any("NYC error" in r.message for r in warnings), (
+            "a general per-city error must log at WARNING, not DEBUG, to be "
+            "visible on an unattended daily cron run's console"
+        )
+        assert any("NYC error" in r.message for r in caplog.records), (
+            "the per-city error must be logged at SOME level"
+        )

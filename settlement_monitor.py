@@ -686,7 +686,13 @@ def _run_settlement_monitor_loop(client, duration_minutes: int) -> None:
                                     }
                                 )
                 except Exception as exc:
-                    _log.debug("settlement_monitor: market fetch for %s: %s", city, exc)
+                    # AUD-0047: bumped from debug to warning -- this runs as an
+                    # unattended daily cron task now, and the console handler
+                    # is INFO-level (main.py), so a DEBUG line here was only
+                    # ever visible in bot.log, never on an interactive console.
+                    _log.warning(
+                        "settlement_monitor: market fetch for %s: %s", city, exc
+                    )
 
                 new = check_city_settlement(city, active_tickers)
                 for sig in new:
@@ -694,7 +700,9 @@ def _run_settlement_monitor_loop(client, duration_minutes: int) -> None:
                         all_signals.append(sig)
                         signalled_tickers.add(sig["ticker"])
             except Exception as exc:
-                _log.debug("settlement_monitor: %s error: %s", city, exc)
+                # AUD-0047: bumped from debug to warning -- see the matching
+                # comment on the market-fetch handler above.
+                _log.warning("settlement_monitor: %s error: %s", city, exc)
 
         if all_signals:
             write_settlement_signals(all_signals)

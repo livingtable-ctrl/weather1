@@ -8,11 +8,13 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import sqlite3
 import threading as _el_threading
 import time as _el_time
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -106,12 +108,28 @@ def _run_migrations(con: sqlite3.Connection) -> None:
     con.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
 
 
-def _conn() -> sqlite3.Connection:
+@contextlib.contextmanager
+def _conn() -> Iterator[sqlite3.Connection]:
+    """AUD-0048: every one of this module's ~30 `with _conn() as con:` call
+    sites relied on sqlite3.Connection's own context-manager protocol, which
+    only commits/rolls back the transaction on exit -- it does NOT close the
+    connection, and none of those call sites ever called con.close(). Wrapping
+    _conn() itself in a generator-based context manager fixes every call site
+    at once (none of them change): `with con:` below still gives the exact
+    same commit-on-success/rollback-on-exception behavior every caller
+    already depends on, and the outer try/finally now also closes the
+    connection once that block exits -- including when commit() itself
+    raises.
+    """
     con = sqlite3.connect(DB_PATH, timeout=30)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA synchronous=FULL")
-    return con
+    try:
+        with con:
+            yield con
+    finally:
+        con.close()
 
 
 def init_log() -> None:

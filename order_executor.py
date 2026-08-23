@@ -767,6 +767,60 @@ def _recover_pending_orders(client) -> None:
             )
 
 
+def _reconcile_live_positions(client) -> None:
+    """AUD-0025: cross-check execution_log's internally-tracked live
+    positions against Kalshi's own ground truth (GET /portfolio/positions).
+
+    Every live position-lifecycle path (crash recovery above, fill polling,
+    the protective-exit scanner) trusts execution_log's own ledger as if it
+    were always in sync with the exchange. Nothing ever periodically
+    verified that assumption — this does, log-only: no data heals itself
+    here, it just makes a drift visible instead of silent. Mirrors
+    _recover_pending_orders' own call-site convention (called once per
+    trade cycle from run_trade_cycle) and its own fail-safe shape: never
+    raises, a lookup failure just skips this cycle's check rather than
+    blocking the cycle. Opus review (round 1) caught that this guarantee
+    was previously only true by accident of the caller ALSO wrapping the
+    call in try/except -- the function itself had no guard, so a future
+    caller reading only this docstring could reasonably omit its own and
+    get an unhandled exception. Guarded here directly now; the caller's own
+    try/except (trade_cycle.py) is deliberately left in place too, matching
+    _recover_pending_orders' belt-and-suspenders convention.
+
+    KNOWN LIMITATION (opus review, round 1, deliberately not fixed here --
+    kalshi_client.py belongs to a different batch): client.get_positions()
+    is a single unpaginated GET, unlike _get_orders_by_status's cursor loop
+    (hardened for the same class of gap under AUD-0007). Once the account
+    holds more than one page of market positions, positions on page 2+
+    would show up in missing_from_kalshi and warn every cycle -- log-only,
+    so no money risk, but it degrades the signal to noise once the account
+    grows. Follow-up: paginate kalshi_client.get_positions() the same way
+    _get_orders_by_status already was.
+    """
+    try:
+        tracked_tickers = {
+            row["ticker"] for row in execution_log.get_filled_unsettled_live_orders()
+        }
+        real_tickers = {
+            p.get("ticker", "") for p in client.get_positions() if p.get("position", 0)
+        }
+        real_tickers.discard("")
+    except Exception as exc:
+        _log.warning("_reconcile_live_positions: lookup failed: %s", exc)
+        return
+
+    missing_from_kalshi = tracked_tickers - real_tickers
+    missing_from_tracker = real_tickers - tracked_tickers
+    if missing_from_kalshi or missing_from_tracker:
+        _log.warning(
+            "[Reconcile] execution_log/Kalshi position drift detected — "
+            "tracked here but not on the exchange: %s | "
+            "on the exchange but not tracked here: %s",
+            sorted(missing_from_kalshi),
+            sorted(missing_from_tracker),
+        )
+
+
 # Cancel GTC orders this many minutes before market close — prevents leaving
 # an open order on a market that is about to expire unfilled.
 _GTC_PRECLOSE_CANCEL_MINUTES = 30
@@ -2829,7 +2883,7 @@ def _prediction_kwargs_from_analysis(a: dict) -> dict:
     )
 
 
-def _log_shadow_predictions(opps: list, live: bool = False) -> int:
+def _log_shadow_predictions(opps: list, live: bool = False) -> set[str]:
     """Log predictions for signals that passed analysis but were never placed
     (TRADING_PAUSED, drawdown halt, daily-loss halt, or position/spend caps —
     see the early-return branches below).
@@ -2851,10 +2905,30 @@ def _log_shadow_predictions(opps: list, live: bool = False) -> int:
     Writes are batched onto a single connection (mirrors
     tracker.batch_log_analysis_attempts' approach to the same "log every
     candidate" problem) rather than one connection open/close per opp.
+    AUD-0021: this batching only actually helps if callers pass the full set
+    of candidate opps in ONE call -- _auto_place_trades does that for every
+    caller now (see its per-family shadow-routing loop, which accumulates
+    across the whole batch instead of calling this once per ticker).
 
-    Returns the number of predictions actually written (excludes opps that
-    failed validation/dedup, or that log_prediction itself skipped, e.g. for
-    a missing city).
+    Opus review (round 1): gate/validate/kwargs-building runs as its own
+    pass BEFORE the connection ever opens, specifically because
+    _prediction_kwargs_from_analysis's run_trend fetch can make up to 3
+    sequential HTTP calls (its own docstring: "up to ~60s worst case on a
+    cache miss") per opp. tracker.db has no configured connect() timeout
+    (tracker._conn uses sqlite3's 5s default), so holding the write lock
+    open across N opps' worth of that -- taken at this loop's first INSERT,
+    released only at the very end -- risked starving any concurrent writer
+    (web_app, another cron step, log_api_request from any Kalshi call on
+    another thread) with `database is locked` well before this loop
+    finished. The actual DB writes below are now pure local INSERTs with no
+    I/O in between, so the connection's held duration no longer scales with
+    batch size.
+
+    Returns the set of tickers actually written (excludes opps that failed
+    validation/dedup, or that log_prediction itself skipped, e.g. for a
+    missing city) -- a set, not a count, so a caller that shadow-routed
+    several distinct families in one batched call can still tell exactly
+    which of ITS tickers landed.
     """
     from paper import get_all_open_positions
     from tracker import _conn as _tracker_conn
@@ -2873,47 +2947,67 @@ def _log_shadow_predictions(opps: list, live: bool = False) -> int:
         _log.warning("_log_shadow_predictions: get_all_open_positions failed: %s", _e)
         open_tickers = set()
 
-    logged = 0
-    with _tracker_conn() as _con:
-        for item in opps:
-            try:
-                ticker, city, target_date_obj, a, m = _unpack_opp(item)
-            except Exception as _e:
-                _log.warning(
-                    "_log_shadow_predictions: failed to unpack opp %r: %s", item, _e
-                )
-                continue
-            if not ticker or ticker in open_tickers:
-                continue
-            rec_side = a.get("recommended_side", a.get("side", "yes"))
-            if execution_log.was_ordered_recently(
-                ticker, days=7
-            ) or execution_log.was_traded_today(ticker, rec_side):
-                continue
-            _ok, _reason = _validate_trade_opportunity(
-                {**a, "ticker": ticker}, live=live, market=m
+    # Pass 1: unpack/gate/validate every opp and build its log_prediction
+    # kwargs (including the potentially-slow run_trend HTTP fetch) -- all
+    # BEFORE the tracker connection opens. Only opps that clear every gate
+    # reach pass 2.
+    _to_write: list[tuple[str, str | None, date | None, dict, dict]] = []
+    for item in opps:
+        try:
+            ticker, city, target_date_obj, a, m = _unpack_opp(item)
+        except Exception as _e:
+            _log.warning(
+                "_log_shadow_predictions: failed to unpack opp %r: %s", item, _e
             )
-            if not _ok:
-                _log.debug("_log_shadow_predictions: skip %s — %s", ticker, _reason)
-                continue
-            try:
-                if _log_pred(
-                    ticker,
-                    city,
-                    target_date_obj,
-                    a,
-                    is_shadow=True,
-                    conn=_con,
-                    **_prediction_kwargs_from_analysis(a),
-                ):
-                    logged += 1
-            except Exception as _e:
-                _log.warning(
-                    "_log_shadow_predictions: log_prediction failed for %s: %s",
-                    ticker,
-                    _e,
-                )
-    return logged
+            continue
+        if not ticker or ticker in open_tickers:
+            continue
+        rec_side = a.get("recommended_side", a.get("side", "yes"))
+        if execution_log.was_ordered_recently(
+            ticker, days=7
+        ) or execution_log.was_traded_today(ticker, rec_side):
+            continue
+        _ok, _reason = _validate_trade_opportunity(
+            {**a, "ticker": ticker}, live=live, market=m
+        )
+        if not _ok:
+            _log.debug("_log_shadow_predictions: skip %s — %s", ticker, _reason)
+            continue
+        try:
+            _kwargs = _prediction_kwargs_from_analysis(a)
+        except Exception as _e:
+            _log.warning(
+                "_log_shadow_predictions: building log_prediction kwargs "
+                "failed for %s: %s",
+                ticker,
+                _e,
+            )
+            continue
+        _to_write.append((ticker, city, target_date_obj, a, _kwargs))
+
+    # Pass 2: one connection, pure local writes -- no I/O between opps.
+    logged_tickers: set[str] = set()
+    if _to_write:
+        with _tracker_conn() as _con:
+            for ticker, city, target_date_obj, a, _kwargs in _to_write:
+                try:
+                    if _log_pred(
+                        ticker,
+                        city,
+                        target_date_obj,
+                        a,
+                        is_shadow=True,
+                        conn=_con,
+                        **_kwargs,
+                    ):
+                        logged_tickers.add(ticker)
+                except Exception as _e:
+                    _log.warning(
+                        "_log_shadow_predictions: log_prediction failed for %s: %s",
+                        ticker,
+                        _e,
+                    )
+    return logged_tickers
 
 
 def _auto_place_trades(
@@ -2948,7 +3042,7 @@ def _auto_place_trades(
     def _shadow_suffix() -> str:
         """Shadow-log opps blocked by a whole-batch guard below and return a
         suffix describing how many were logged (empty if none)."""
-        _n = _log_shadow_predictions(opps, live=live)
+        _n = len(_log_shadow_predictions(opps, live=live))
         return (
             f" Logged {_n} shadow prediction(s) for scoring continuity." if _n else ""
         )
@@ -3211,6 +3305,32 @@ def _auto_place_trades(
                 )
 
     _skip_reasons: list[str] = []
+    # AUD-0021: accumulate every shadow-routed (ticker, family-label) pair
+    # across the WHOLE per-ticker loop below instead of calling
+    # _log_shadow_predictions once per ticker -- each call independently
+    # re-opens a tracker connection and re-reads+re-checksums the paper
+    # ledger, so 6 per-ticker call sites meant up to 6x that cost per cycle
+    # for no benefit. One batched call after the loop (see below) lets
+    # _log_shadow_predictions' own single-connection/single-open-positions-
+    # fetch design actually apply across the whole batch, as its docstring
+    # already claims.
+    #
+    # Opus review (round 1), reviewed and accepted: deferring every shadow-
+    # routed ticker's write to ONE call after this whole loop means an
+    # uncaught exception later in the loop (in a non-shadow item's real
+    # placement path, which this loop does not wrap in a blanket try/
+    # except) now loses the ENTIRE accumulated shadow batch, where
+    # previously each ticker's shadow write had already landed on disk
+    # before the loop moved on. Both existing early-exit paths (kill switch,
+    # drawdown halt) already reach the batched call correctly -- verified.
+    # The residual risk is scoring-data completeness (brier_score_by_method
+    # staleness for the lost tickers), not order placement or money;
+    # wrapping this ~800-line loop in a top-level try/finally to guarantee
+    # the flush always fires was judged higher-risk (of masking an
+    # unrelated bug or altering existing break/continue control flow) than
+    # the data-completeness gap it would close. Left as-is.
+    _shadow_batch: list = []
+    _shadow_batch_labels: list[tuple[str, str]] = []
 
     from paths import KILL_SWITCH_PATH as _KILL_SWITCH_PATH
 
@@ -3271,54 +3391,42 @@ def _auto_place_trades(
             any(ticker.upper().startswith(p) for p in _KXTEMP_HOURLY_CITY)
             and not _hourly_gate_active
         ):
-            _n_shadow = _log_shadow_predictions([item], live=live)
-            _skip_reasons.append(
-                f"{ticker}: hourly_shadow_only(logged={bool(_n_shadow)})"
-            )
+            _shadow_batch.append(item)
+            _shadow_batch_labels.append((ticker, "hourly_shadow_only"))
             continue
 
         if (
             any(ticker.upper().startswith(p) for p in _KXRAIN_MONTHLY_CITY)
             and not _rain_gate_active
         ):
-            _n_shadow = _log_shadow_predictions([item], live=live)
-            _skip_reasons.append(
-                f"{ticker}: rain_shadow_only(logged={bool(_n_shadow)})"
-            )
+            _shadow_batch.append(item)
+            _shadow_batch_labels.append((ticker, "rain_shadow_only"))
             continue
 
         if (
             any(ticker.upper().startswith(p) for p in _KXSNOW_MONTHLY_CITY)
             and not _snow_gate_active
         ):
-            _n_shadow = _log_shadow_predictions([item], live=live)
-            _skip_reasons.append(
-                f"{ticker}: snow_shadow_only(logged={bool(_n_shadow)})"
-            )
+            _shadow_batch.append(item)
+            _shadow_batch_labels.append((ticker, "snow_shadow_only"))
             continue
 
         if is_hurricane_count_ticker(ticker) and not _hurricane_count_gate_active:
-            _n_shadow = _log_shadow_predictions([item], live=live)
-            _skip_reasons.append(
-                f"{ticker}: hurricane_count_shadow_only(logged={bool(_n_shadow)})"
-            )
+            _shadow_batch.append(item)
+            _shadow_batch_labels.append((ticker, "hurricane_count_shadow_only"))
             continue
 
         if (
             is_hurricane_next_event_ticker(ticker)
             and not _hurricane_next_event_gate_active
         ):
-            _n_shadow = _log_shadow_predictions([item], live=live)
-            _skip_reasons.append(
-                f"{ticker}: hurricane_next_event_shadow_only(logged={bool(_n_shadow)})"
-            )
+            _shadow_batch.append(item)
+            _shadow_batch_labels.append((ticker, "hurricane_next_event_shadow_only"))
             continue
 
         if is_storm_order_ticker(ticker) and not _storm_order_gate_active:
-            _n_shadow = _log_shadow_predictions([item], live=live)
-            _skip_reasons.append(
-                f"{ticker}: storm_order_shadow_only(logged={bool(_n_shadow)})"
-            )
+            _shadow_batch.append(item)
+            _shadow_batch_labels.append((ticker, "storm_order_shadow_only"))
             continue
 
         # Merge ticker from market dict so tuple-format callers aren't penalised.
@@ -4066,6 +4174,14 @@ def _auto_place_trades(
                 _log.warning(
                     "[MicroLive] unexpected error for %s: %s", ticker, _ml_outer_exc
                 )
+
+    # AUD-0021: one batched _log_shadow_predictions call for every
+    # shadow-routed ticker accumulated across the loop above, instead of one
+    # call per ticker -- see _shadow_batch's own comment for why.
+    if _shadow_batch:
+        _shadow_logged = _log_shadow_predictions(_shadow_batch, live=live)
+        for _st, _slabel in _shadow_batch_labels:
+            _skip_reasons.append(f"{_st}: {_slabel}(logged={_st in _shadow_logged})")
 
     if placed == 0:
         print(dim("  [Auto] No qualifying signals this scan."))

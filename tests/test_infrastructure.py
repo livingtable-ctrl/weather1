@@ -620,3 +620,91 @@ def test_auto_backup_logs_verification(tmp_path, caplog):
 
     assert count >= 1
     assert any("backup verified" in r.message.lower() for r in caplog.records)
+
+
+class TestTrackerConnClosesConnection:
+    """AUD-0048: tracker._conn()'s ~100+ `with _conn() as con:` call sites
+    relied on sqlite3.Connection's own context-manager protocol, which only
+    commits/rolls back on exit -- it does NOT close the connection. _conn()
+    itself was converted to a generator-based context manager so every call
+    site gets a real con.close() for free, without any of them changing.
+    Mirrors execution_log.py's own TestConnClosesConnection (same fix,
+    same tests, different module)."""
+
+    def setup_method(self):
+        import tracker
+
+        self._orig_path = tracker.DB_PATH
+
+    def teardown_method(self):
+        import tracker
+
+        tracker.DB_PATH = self._orig_path
+        tracker._db_initialized = False
+
+    def test_connection_is_closed_after_the_with_block_exits(self, tmp_path):
+        import sqlite3
+
+        import tracker
+
+        tracker.DB_PATH = tmp_path / "test_conn_close.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        with tracker._conn() as con:
+            con.execute("SELECT 1")
+
+        with pytest.raises(sqlite3.ProgrammingError):
+            con.execute("SELECT 1")
+
+    def test_a_successful_write_still_commits(self, tmp_path):
+        import tracker
+
+        tracker.DB_PATH = tmp_path / "test_conn_commit.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        with tracker._conn() as con:
+            con.execute(
+                "INSERT INTO api_requests (method, endpoint, status_code, "
+                "latency_ms, logged_at) VALUES (?, ?, ?, ?, datetime('now'))",
+                ("GET", "/commit-test", 200, 12.3),
+            )
+
+        with tracker._conn() as con2:
+            row = con2.execute(
+                "SELECT endpoint FROM api_requests WHERE endpoint=?",
+                ("/commit-test",),
+            ).fetchone()
+        assert row is not None, "a write inside the block must be committed on exit"
+
+    def test_a_write_is_rolled_back_and_connection_still_closes_on_exception(
+        self, tmp_path
+    ):
+        import sqlite3
+
+        import tracker
+
+        tracker.DB_PATH = tmp_path / "test_conn_rollback.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+        with pytest.raises(RuntimeError):
+            with tracker._conn() as con:
+                con.execute(
+                    "INSERT INTO api_requests (method, endpoint, status_code, "
+                    "latency_ms, logged_at) VALUES "
+                    "(?, ?, ?, ?, datetime('now'))",
+                    ("GET", "/rollback-test", 200, 12.3),
+                )
+                raise RuntimeError("simulated failure mid-transaction")
+
+        with pytest.raises(sqlite3.ProgrammingError):
+            con.execute("SELECT 1")
+
+        with tracker._conn() as con2:
+            row = con2.execute(
+                "SELECT endpoint FROM api_requests WHERE endpoint=?",
+                ("/rollback-test",),
+            ).fetchone()
+        assert row is None, "a write inside a raising block must be rolled back"
