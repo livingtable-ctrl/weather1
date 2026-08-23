@@ -441,6 +441,38 @@ def check_city_settlement(city: str, active_tickers: list[dict]) -> list[dict]:
         )
         _local_today = datetime.now(UTC).date()
 
+    # Per-observation local-date guard (mirrors weather_markets.py's
+    # _metar_lock_in, hoisted the same way -- a property of `obs` itself,
+    # shared by BOTH the between and T-ticker paths below, not something
+    # either path should re-derive independently). Without this, a METAR
+    # obs_time near local midnight converts to ~11 PM the PRIOR local
+    # calendar day; `_local_today` above only confirms what today's date
+    # IS, not that this specific observation is FROM today. This is the
+    # exact mechanism behind the real OKC/SATX losing trades (backlog.txt
+    # "METAR ABOVE/BELOW SAME-DAY LOCK-IN..."): this settlement-monitor
+    # path had NO date guard at all on EITHER branch before this fix (the
+    # between path's own _check_between_settlement never checked obs_time
+    # either), and its result force-closes paper positions via cron.py's
+    # >=0.80 gate.
+    try:
+        _obs_local_date = obs["obs_time"].astimezone(ZoneInfo(config["tz"])).date()
+    except Exception:
+        _log.warning(
+            "check_city_settlement: could not determine local date for %s's "
+            "METAR obs — skipping lock-in this cycle",
+            city,
+        )
+        return []
+    if _obs_local_date != _local_today:
+        _log.info(
+            "check_city_settlement: %s METAR obs from %s != target %s — "
+            "prior-day temp cannot confirm today's extreme, skipping",
+            city,
+            _obs_local_date,
+            _local_today,
+        )
+        return []
+
     new_signals = []
     for market in active_tickers:
         direction = market.get("direction", "above")
