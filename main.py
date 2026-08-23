@@ -7126,7 +7126,9 @@ def cmd_calibrate() -> None:
 
 
 def _cmd_emos_train(activate: bool = False, force: bool = False) -> None:
-    """Two-stage EMOS fit: mean calibration (a,b) from all rows, variance (c,d) from ens_var rows.
+    """Two-stage EMOS fit: mean calibration (a,b) from a training split,
+    variance (c,d) from that split's ens_var rows, validated on a temporally
+    held-out slice never used in fitting.
 
     Fitting and activating are deliberately separate: by default this only
     computes and prints the fit (a dry run) without writing emos_params.json
@@ -7138,10 +7140,43 @@ def _cmd_emos_train(activate: bool = False, force: bool = False) -> None:
     this command with no separate go-live step -- see backlog.txt's EMOS
     entry.
 
-    --activate refuses to proceed when fewer than 40 rows have real ens_var
-    (the c/d variance fit's actual population -- Gneiting 2005's 10-cases-
-    per-parameter floor for 4 EMOS parameters), since c/d below 10 rows are
-    hardcoded defaults, not a real fit. Pass --force to override.
+    Holds out the most recent ~20% of the ens_var-bearing rows specifically
+    (independent review, audit batch-28 item 3 follow-up -- NOT ~20% of all
+    rows) for an out-of-sample CRPS check before allowing activation --
+    fit_emos had no acceptance gate of its own: a degenerate fit (e.g. a
+    collapsed variance coefficient) would otherwise sail straight through to
+    save_emos_params. ens_var is only populated on recent forward-fill rows
+    (backfilled Previous-Runs-API rows never carry it), so a plain 80/20
+    split over ALL rows disproportionately removes exactly the population
+    stage 2 needs -- measured on the real production DB, that naive split
+    would have dropped ens_var-bearing training rows from 56 to 30, pushing
+    a currently-passing dataset below the 40-row floor below. Splitting the
+    ens_var subpopulation on its own preserves the floor's original meaning
+    regardless of how much non-ens_var backfill data exists; all mean-only
+    (no ens_var) rows go entirely to stage-1 training, since they can't be
+    scored in the held-out CRPS check anyway.
+
+    --activate refuses to proceed when fewer than 40 TRAINING ens_var rows
+    exist (Gneiting 2005's 10-cases-per-parameter floor for 4 EMOS
+    parameters), since c/d below 10 rows are hardcoded defaults, not a real
+    fit. Also refuses when the new fit's held-out CRPS doesn't beat both a
+    no-EMOS baseline and (on a retrain) the currently-active incumbent --
+    that comparison fails CLOSED (refuses) rather than open on a computation
+    error or on too little held-out data to trust when an incumbent exists
+    to protect. Pass --force to override either data-sufficiency refusal --
+    NOT the separate a/b coefficient bounds check, which rejects a
+    structurally-broken fit outright regardless of --force (but no longer
+    skips the rest of the diagnostics on a dry run -- a degenerate fit is
+    exactly when an operator most needs to see stage 2 and the held-out
+    comparison too).
+
+    Detects an already-active, CORRECTLY-PINNED EMOS (get_emos_status()'s
+    active AND t_pinned both true) as a retrain and skips
+    reset_temperature_scale_for_emos() entirely in that case -- T was
+    already pinned to 1.0 on the first activation. An active-but-NOT-pinned
+    EMOS (t_pinned False -- active/T-reset state has diverged) is instead
+    treated as if inactive, so the T-reset runs and re-pins it rather than
+    perpetuating the divergence.
     """
     try:
         import numpy as np
@@ -7154,59 +7189,248 @@ def _cmd_emos_train(activate: bool = False, force: bool = False) -> None:
         print("ERROR: properscoring not installed. Run: pip install properscoring")
         return
 
-    from ml_bias import fit_emos, save_emos_params
+    from ml_bias import (
+        EMOS_A_BOUND,
+        EMOS_B_BOUNDS,
+        EMOS_SIGMA_VAR_FLOOR,
+        _load_emos_params,
+        fit_emos,
+        get_emos_status,
+        save_emos_params,
+    )
     from tracker import get_emos_training_data
 
     print("Loading EMOS training data…")
-    rows = get_emos_training_data()
+    rows = get_emos_training_data()  # temporally ordered ascending (predicted_at)
     if not rows:
         print("No EMOS training data found. Run: py main.py backfill-emos")
         return
 
-    n = len(rows)
-    print(f"  {n} rows with ens_mean + settled_temp_f")
+    n_total = len(rows)
+    print(f"  {n_total} rows with ens_mean + settled_temp_f")
 
-    ens_mean_arr = np.array([r["ens_mean"] for r in rows])
-    settled_temp_arr = np.array([r["settled_temp_f"] for r in rows])
+    # Split the ens_var subpopulation independently (see docstring) -- both
+    # non_var_rows and var_rows_all are already temporally ordered, being
+    # subsequences of `rows`.
+    non_var_rows = [r for r in rows if r["ens_var"] is None]
+    var_rows_all = [r for r in rows if r["ens_var"] is not None]
+
+    _HOLDOUT_FRAC = 0.20
+    _var_holdout_start = int(len(var_rows_all) * (1 - _HOLDOUT_FRAC))
+    if _var_holdout_start > 0:
+        var_rows = var_rows_all[:_var_holdout_start]
+        held_out_var_rows = var_rows_all[_var_holdout_start:]
+    else:
+        var_rows, held_out_var_rows = var_rows_all, []
+
+    # Group-aware adjustment (independent review, audit batch-28 item 3
+    # round-2 follow-up): multiple predictions of the same (city,
+    # market_date) -- different days_out, different cron cycles -- share
+    # the same settled_temp_f label and near-identical ens_mean. A plain
+    # index cutoff can split one such "event" across train and held-out,
+    # leaking its outcome into the fit the held-out check is meant to
+    # validate against (measured on the real production DB: 1 of 12
+    # held-out rows shared its (city, market_date) with a training row
+    # under the naive split). Any held-out row whose group already has a
+    # representative in the train split gets moved into train instead --
+    # a group split between the two sides is absorbed into train entirely;
+    # a group that started life fully within held-out stays fully there.
+    def _row_group_key(row: dict, idx: int) -> tuple:
+        if row.get("city") is not None and row.get("market_date") is not None:
+            return (row["city"], row["market_date"])
+        return ("_ungrouped", idx)  # no grouping info -- never merge blindly
+
+    _train_group_keys = {_row_group_key(r, i) for i, r in enumerate(var_rows)}
+    _still_held_out = []
+    _moved_for_grouping = 0
+    for i, r in enumerate(held_out_var_rows, start=len(var_rows)):
+        if _row_group_key(r, i) in _train_group_keys:
+            var_rows.append(r)
+            _moved_for_grouping += 1
+        else:
+            _still_held_out.append(r)
+    held_out_var_rows = _still_held_out
+
+    train_rows = non_var_rows + var_rows
+    n = len(train_rows)
+    if held_out_var_rows or _moved_for_grouping:
+        print(
+            f"  Temporal split (ens_var rows only): {len(var_rows)} train / "
+            f"{len(held_out_var_rows)} held-out ens_var rows, never used in "
+            f"fitting. {len(non_var_rows)} mean-only (no ens_var) rows all go "
+            f"to stage-1 training."
+            + (
+                f" ({_moved_for_grouping} row(s) moved from held-out to train "
+                "to keep a same-city/market_date group from straddling the "
+                "split.)"
+                if _moved_for_grouping
+                else ""
+            )
+        )
+
+    ens_mean_arr = np.array([r["ens_mean"] for r in train_rows])
+    settled_temp_arr = np.array([r["settled_temp_f"] for r in train_rows])
     # Rows without ens_var get unit-variance placeholder for stage 1
     ens_var_all = np.array(
-        [r["ens_var"] if r["ens_var"] is not None else 1.0 for r in rows]
+        [r["ens_var"] if r["ens_var"] is not None else 1.0 for r in train_rows]
     )
 
-    print("\nStage 1 — fitting a, b (mean calibration) from all rows…")
-    a, b, _, _ = fit_emos(ens_mean_arr, ens_var_all, settled_temp_arr)
+    print("\nStage 1 — fitting a, b (mean calibration) from training rows…")
+    try:
+        a, b, _, _ = fit_emos(ens_mean_arr, ens_var_all, settled_temp_arr)
+    except ValueError as exc:
+        print(red(f"\nEMOS stage-1 fit failed: {exc}"))
+        return
     print(f"  a = {a:.4f}   b = {b:.4f}")
 
-    var_rows = [r for r in rows if r["ens_var"] is not None]
+    # Structurally-broken fit -- flagged here but NOT an early return: an
+    # operator running a plain (non---activate) dry run needs to see stage 2
+    # and the held-out comparison too, not just one red line (independent
+    # review, audit batch-28 item 3 follow-up). Only blocks --activate,
+    # checked again further down, and is never overridable by --force there.
+    _ab_invalid = not (
+        EMOS_B_BOUNDS[0] < b <= EMOS_B_BOUNDS[1] and abs(a) <= EMOS_A_BOUND
+    )
+    if _ab_invalid:
+        print(
+            red(
+                f"\nINVALID FIT — a={a:.4f} b={b:.4f} outside plausible bounds "
+                f"(expected 0<b<={EMOS_B_BOUNDS[1]}, |a|<={EMOS_A_BOUND}°F). This "
+                "indicates a degenerate/broken fit, not a data-sufficiency "
+                "judgment call — will refuse activation regardless of --force "
+                "(diagnostics below still run for review)."
+            )
+        )
+
     n_var = len(var_rows)
     print(
-        f"\nStage 2 — fitting c, d (variance calibration) from {n_var} rows with real ens_var…"
+        f"\nStage 2 — fitting c, d (variance calibration) from {n_var} training rows with real ens_var…"
     )
 
     if n_var >= 10:
         vm = np.array([r["ens_mean"] for r in var_rows])
         vv = np.array([r["ens_var"] for r in var_rows])
         vo = np.array([r["settled_temp_f"] for r in var_rows])
-        _, _, c, d = fit_emos(vm, vv, vo)
+        try:
+            _, _, c, d = fit_emos(vm, vv, vo)
+        except ValueError as exc:
+            print(red(f"\nEMOS stage-2 fit failed: {exc}"))
+            return
         print(f"  c = {c:.4f}   d = {d:.4f}")
+        if d < 0.01:
+            # d is d_sq**2 from a real fit_emos() call, so never negative in
+            # practice (only reachable here at all via a monkeypatched/
+            # hand-edited fit) -- "near zero" covers that case too since a
+            # negative d is, if anything, further from a meaningful positive
+            # variance response than exactly zero.
+            print(
+                yellow(
+                    f"  WARNING: variance coefficient d={d:.4f} is near zero — "
+                    "EMOS sigma will barely respond to ensemble spread, "
+                    "discarding the ensemble's own disagreement signal."
+                )
+            )
     else:
         c, d = 1.0, 0.1
         print(
-            f"  WARNING: only {n_var} ens_var rows (need >= 10). Using defaults c=1.0, d=0.1"
+            f"  WARNING: only {n_var} training ens_var rows (need >= 10). Using defaults c=1.0, d=0.1"
         )
 
     mean_crps = None
     try:
         import properscoring as ps
 
-        sigma_all = np.sqrt(np.maximum(c + d * ens_var_all, 1e-6))
+        sigma_all = np.sqrt(np.maximum(c + d * ens_var_all, EMOS_SIGMA_VAR_FLOOR))
         mu_all = a + b * ens_mean_arr
         mean_crps = float(
             np.mean(ps.crps_gaussian(settled_temp_arr, mu=mu_all, sig=sigma_all))
         )
-        print(f"\nMean CRPS on training set: {mean_crps:.4f}")
+        print(f"\nMean CRPS on training set ({n} rows): {mean_crps:.4f}")
     except Exception:
         pass
+
+    # Held-out CRPS acceptance gate -- refuse activation unless the new fit
+    # beats both a no-EMOS baseline (raw ensemble Gaussian: mu=ens_mean,
+    # sigma=sqrt(ens_var), i.e. identity EMOS params a=0,b=1,c=0,d=1 -- the
+    # closest computable stand-in for "T-scaling only" since T-scaling
+    # recalibrates a probability rather than fitting its own mu/sigma) and,
+    # on a retrain, the currently-active incumbent params -- all measured
+    # on the SAME held-out ens_var rows, none of which were used in either
+    # fit. Fails CLOSED (independent review, audit batch-28 item 3
+    # follow-up): a computation error, or too little held-out data to trust
+    # when there's a working incumbent to protect, now REFUSES rather than
+    # silently letting a possibly-worse fit through. Only a first activation
+    # (no incumbent) with too little held-out data proceeds without the
+    # check -- there's nothing at risk of being replaced in that case.
+    _incumbent = _load_emos_params()
+    _HELD_OUT_MIN = 5
+    _crps_gate_passed = True
+    if len(held_out_var_rows) >= _HELD_OUT_MIN:
+        try:
+            import properscoring as ps
+
+            ho_mean = np.array([r["ens_mean"] for r in held_out_var_rows])
+            ho_var = np.array([r["ens_var"] for r in held_out_var_rows])
+            ho_obs = np.array([r["settled_temp_f"] for r in held_out_var_rows])
+
+            def _held_out_crps(params: tuple[float, float, float, float]) -> float:
+                pa, pb, pc, pd = params
+                mu = pa + pb * ho_mean
+                sigma = np.sqrt(np.maximum(pc + pd * ho_var, EMOS_SIGMA_VAR_FLOOR))
+                return float(np.mean(ps.crps_gaussian(ho_obs, mu=mu, sig=sigma)))
+
+            new_crps = _held_out_crps((a, b, c, d))
+            baseline_crps = _held_out_crps((0.0, 1.0, 0.0, 1.0))
+            print(
+                f"\nHeld-out CRPS ({len(held_out_var_rows)} rows, never fit on): "
+                f"new={new_crps:.4f}  baseline(raw ensemble)={baseline_crps:.4f}"
+            )
+            _crps_gate_passed = new_crps < baseline_crps
+            if not _crps_gate_passed:
+                print(
+                    red(
+                        f"  New fit does NOT beat the raw-ensemble baseline on "
+                        f"held-out data ({new_crps:.4f} >= {baseline_crps:.4f})."
+                    )
+                )
+
+            if _incumbent is not None:
+                incumbent_crps = _held_out_crps(_incumbent)
+                print(f"  incumbent (currently active)={incumbent_crps:.4f}")
+                if new_crps >= incumbent_crps:
+                    _crps_gate_passed = False
+                    print(
+                        red(
+                            f"  New fit does NOT beat the currently-active "
+                            f"incumbent on held-out data ({new_crps:.4f} >= "
+                            f"{incumbent_crps:.4f})."
+                        )
+                    )
+        except Exception as exc:
+            _crps_gate_passed = False
+            print(
+                red(
+                    f"\nHeld-out CRPS check failed to run ({exc}) — refusing "
+                    "activation rather than assuming the fit is safe."
+                )
+            )
+    elif _incumbent is not None:
+        _crps_gate_passed = False
+        print(
+            red(
+                f"\nOnly {len(held_out_var_rows)} held-out ens_var rows (need >= "
+                f"{_HELD_OUT_MIN}) — too few to validate a retrain against the "
+                "currently-active incumbent. Refusing."
+            )
+        )
+    else:
+        print(
+            dim(
+                f"\nOnly {len(held_out_var_rows)} held-out ens_var rows (need >= "
+                f"{_HELD_OUT_MIN}) — skipping the held-out CRPS gate (no "
+                "incumbent to protect on a first activation)."
+            )
+        )
 
     if not activate:
         print(
@@ -7218,13 +7442,22 @@ def _cmd_emos_train(activate: bool = False, force: bool = False) -> None:
         )
         return
 
+    if _ab_invalid:
+        print(
+            red(
+                "\nREFUSING to activate — a/b fit is outside plausible bounds "
+                "(see INVALID FIT above). Not overridable by --force."
+            )
+        )
+        return
+
     _EMOS_VAR_FLOOR = 40
     if n_var < _EMOS_VAR_FLOOR and not force:
         print(
             red(
-                f"\nREFUSING to activate — only {n_var} rows have real ens_var "
-                f"(need >= {_EMOS_VAR_FLOOR}, Gneiting 2005's 10-cases-per-parameter "
-                f"floor for 4 EMOS parameters). c/d above "
+                f"\nREFUSING to activate — only {n_var} training rows have real "
+                f"ens_var (need >= {_EMOS_VAR_FLOOR}, Gneiting 2005's "
+                f"10-cases-per-parameter floor for 4 EMOS parameters). c/d above "
                 + (
                     "came from a genuine fit on a thin sample, well short of the floor."
                     if n_var >= 10
@@ -7232,6 +7465,16 @@ def _cmd_emos_train(activate: bool = False, force: bool = False) -> None:
                 )
                 + " Wait for more forward-fill data, or pass --force to override "
                 "(not recommended — sigma would be built on an unreliable variance fit)."
+            )
+        )
+        return
+
+    if not _crps_gate_passed and not force:
+        print(
+            red(
+                "\nREFUSING to activate — new fit underperforms on held-out data "
+                "(see above). Pass --force to override (not recommended — this "
+                "would put a worse-than-baseline calibration live)."
             )
         )
         return
@@ -7250,21 +7493,67 @@ def _cmd_emos_train(activate: bool = False, force: bool = False) -> None:
     except Exception:
         pass  # fail open on an inability to check, matching _is_cron_running's own default
 
-    print(
-        yellow(
-            f"\nThis will make EMOS the live probability method for multi-day "
-            f"above/below/between predictions (n={n}, ens_var-populated n_var={n_var}), "
-            f"replacing the current ensemble/climatology blend + temperature scaling. "
-            f"It will also reset T_global/T_above/T_below/T_between to 1.0 in "
-            f"temperature_scale.json (EMOS's own fit replaces T-scaling's role for "
-            f"those condition types — leaving the old T in place would double-"
-            f"calibrate on top of it; the pre-reset values are saved so "
-            f"emos-deactivate can restore them immediately). "
-            f"Type 'yes' to confirm: "
-        ),
-        end="",
-        flush=True,
-    )
+    _status = get_emos_status()
+    _was_active = bool(_status.get("active")) and _status.get("t_pinned") is True
+    _diverged = bool(_status.get("active")) and _status.get("t_pinned") is False
+    if _diverged:
+        print(
+            red(
+                "\nWARNING: EMOS is active but temperature_scale.json is NOT "
+                "correctly pinned (t_pinned=False) -- treating this as a fresh "
+                "activation so the T-reset runs and re-pins it, rather than "
+                "perpetuating the divergence. Note: the held-out CRPS gate "
+                "above still compares against the currently-active incumbent "
+                "-- if it refuses, --force is needed to re-pin here even "
+                "though this isn't really a normal retrain."
+            )
+        )
+    if _was_active:
+        print(
+            yellow(
+                f"\nEMOS is already active — this is a RETRAIN (training-split "
+                f"n={n} of {n_total} total rows, ens_var-populated n_var={n_var}). "
+                f"New a/b/c/d will replace the current fit; temperature_scale.json "
+                f"is left untouched (T was already reset to 1.0 on first "
+                f"activation and stays there). "
+                f"Type 'yes' to confirm: "
+            ),
+            end="",
+            flush=True,
+        )
+    elif _diverged:
+        print(
+            yellow(
+                f"\nThis will re-pin EMOS's diverged T-reset (training-split "
+                f"n={n} of {n_total} total rows, ens_var-populated n_var={n_var}). "
+                f"T_global/T_above/T_below/T_between will be reset to 1.0 in "
+                f"temperature_scale.json, but NO new pre-EMOS snapshot will be "
+                f"written -- the original snapshot from EMOS's first-ever "
+                f"activation is retained as-is (first snapshot always wins), "
+                f"so emos-deactivate will still restore the true original T "
+                f"values, not whatever T happened to be sitting here just now. "
+                f"Type 'yes' to confirm: "
+            ),
+            end="",
+            flush=True,
+        )
+    else:
+        print(
+            yellow(
+                f"\nThis will make EMOS the live probability method for multi-day "
+                f"above/below/between predictions (training-split n={n} of "
+                f"{n_total} total rows, ens_var-populated n_var={n_var}), "
+                f"replacing the current ensemble/climatology blend + temperature scaling. "
+                f"It will also reset T_global/T_above/T_below/T_between to 1.0 in "
+                f"temperature_scale.json (EMOS's own fit replaces T-scaling's role for "
+                f"those condition types — leaving the old T in place would double-"
+                f"calibrate on top of it; the pre-reset values are saved so "
+                f"emos-deactivate can restore them immediately). "
+                f"Type 'yes' to confirm: "
+            ),
+            end="",
+            flush=True,
+        )
     try:
         answer = input().strip().lower()
     except (EOFError, KeyboardInterrupt):
@@ -7279,9 +7568,25 @@ def _cmd_emos_train(activate: bool = False, force: bool = False) -> None:
 
     try:
         save_emos_params(a, b, c, d, n=n, mean_crps=mean_crps)
-        reset_temperature_scale_for_emos()
+        if not _was_active:
+            reset_temperature_scale_for_emos()
     except Exception as exc:
         print(red(f"\nACTIVATION FAILED partway through: {exc}"))
+        if _was_active:
+            # A retrain's only write is save_emos_params, which is atomic
+            # (atomic_write_json_with_history either fully replaces the file
+            # or leaves it untouched) -- the previous working incumbent is
+            # very likely still intact. Deactivating here would needlessly
+            # take down a working EMOS over a failed retrain attempt
+            # (independent review, audit batch-28 item 3 follow-up).
+            print(
+                red(
+                    "This was a RETRAIN of an already-active EMOS -- NOT "
+                    "deactivating, the previous incumbent should still be live. "
+                    "Run 'py main.py emos-status' to confirm."
+                )
+            )
+            return
         print(red("Rolling back to avoid a partially-activated state..."))
         try:
             deactivate_emos()
@@ -7297,11 +7602,14 @@ def _cmd_emos_train(activate: bool = False, force: bool = False) -> None:
         return
 
     print(green("\nEMOS is now LIVE → data/emos_params.json"))
-    print(
-        green(
-            "T_global/T_above/T_below/T_between reset to 1.0 → data/temperature_scale.json"
+    if _was_active:
+        print(dim("Retrain only — temperature_scale.json left untouched."))
+    else:
+        print(
+            green(
+                "T_global/T_above/T_below/T_between reset to 1.0 → data/temperature_scale.json"
+            )
         )
-    )
     print(
         dim(
             "\nRun 'py main.py emos-status' any time to check, or "
@@ -7322,6 +7630,18 @@ def cmd_emos_status() -> None:
                 f"{status.get('error')}"
             )
         )
+        if status.get("t_pinned") is True:
+            print(
+                red(
+                    "  WARNING: temperature_scale.json IS pinned to the 1.0 "
+                    "placeholder for every EMOS-covered condition type, but "
+                    "emos_params.json (the fit that placeholder exists to "
+                    "defer to) is unreadable -- predictions are currently "
+                    "running with NO calibration at all for global/above/"
+                    "below/between, not even the pre-EMOS temperature "
+                    "scaling. This is urgent."
+                )
+            )
         print(dim("  Run 'py main.py emos-deactivate' to remove it."))
         return
     if not status["active"]:
@@ -7331,6 +7651,16 @@ def cmd_emos_status() -> None:
         return
 
     print(green("  EMOS is ACTIVE (live probability method for above/below/between)."))
+    if status.get("t_pinned") is False:
+        print(
+            red(
+                "  WARNING: temperature_scale.json is NOT pinned to 1.0 for all "
+                "EMOS-covered condition types — active/T-reset state has diverged "
+                "(audit batch-28 item 3's t_pinned cross-check). Investigate before "
+                "trusting current predictions; 'py main.py emos-deactivate' then "
+                "re-activate will re-pin it."
+            )
+        )
     print(
         f"  a={status['a']:.4f}  b={status['b']:.4f}  c={status['c']:.4f}  d={status['d']:.4f}"
     )
