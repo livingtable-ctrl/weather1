@@ -34,10 +34,44 @@ safe_io.py itself is excluded from the scan entirely (like paths.py is
 excluded from its own bypass guard) -- it's the single legitimate call site
 (`_replace_with_retry`, safe_io.py:60) other code should route through
 instead of calling `os.replace()` directly.
+
+AUD batch-25 item 4: this guard originally only matched the `os.replace(`/
+`_os.replace(` function-call form, not the equivalent `some_path.replace(
+dest)` METHOD form on a `pathlib.Path` object -- which is exactly what
+web_app.py's `api_halt`/`api_override_set` used (`_tmp.replace(_KS_PATH)`),
+so both slipped past this guard entirely despite being the identical
+Windows sharing-violation failure mode.
+
+First attempt (opus-review-caught) scoped the method-form scan to a regex
+matching identifiers containing "tmp" (`\b\w*tmp\w*\.replace\(`), reasoned
+as "every real atomic-rename call site in this codebase names its temp
+variable with 'tmp' in it". That claim was false: `cron.py`'s log-rotation
+call `log_path.replace(log_path.with_suffix(".log.1"))` is a real
+Path.replace() rename on a file with guaranteed concurrent readers (a log
+file) -- the exact shape this guard exists to catch -- and it slipped past
+the tmp-name heuristic entirely, since neither operand is named with
+"tmp". `cron.py` belongs to a different batch's file ownership (this
+batch owns cloud_backup.py/main.py/web_app.py/safe_io.py only), so it's
+allowlisted below as a known, pre-existing gap rather than fixed here --
+but the guard itself needed to actually detect it, not stay blind to it.
+
+The scan is now an AST check instead of a naming-convention regex:
+`str.replace(old, new[, count])` always takes >= 2 positional arguments,
+so ANY `<expr>.replace(<exactly one positional arg, no keywords>)` call is
+unambiguously the `pathlib.Path.replace(target)` rename form, regardless
+of what the receiver is named -- no false negatives from naming
+convention, and (as a side effect of parsing real syntax instead of
+scanning raw text) no false positives from a docstring merely mentioning
+`foo.replace(bar)` in prose either, since that text never becomes an
+`ast.Call` node. The original `_BARE_REPLACE_PATTERN` function-form scan
+below is unchanged -- it's still a text regex (matching
+test_paths_bypass_guard.py's established approach) and still needs the
+text-mention allowlist entries for it specifically.
 """
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -50,24 +84,56 @@ _SAFE_IO = _REPO_ROOT / "safe_io.py"
 # doesn't try to distinguish the two.
 _BARE_REPLACE_PATTERN = re.compile(r"\b_?os\.replace\(")
 
-# Value is (expected match count, reason) -- keying on the exact count
-# (not just "skip this file") means a new, unallowlisted occurrence in an
-# already-allowlisted file still fails loudly, matching
-# test_paths_bypass_guard.py's own _ALLOWLIST discipline.
-_ALLOWLIST: dict[str, tuple[int, str]] = {
+
+def _find_single_arg_replace_calls(source: str) -> list[str]:
+    """AST-based scan for `<expr>.replace(<one positional arg>)` calls --
+    the pathlib.Path.replace(target) rename form. See module docstring for
+    why this replaced an earlier naming-convention regex. Returns one
+    string per match (its line number) so callers can treat it the same
+    way as a regex findall() result -- a count via len(), and something
+    printable in a failure message.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    return [
+        f"line {node.lineno}: <expr>.replace(<1 arg>)"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "replace"
+        and len(node.args) == 1
+        and not node.keywords
+    ]
+
+
+# Value is (expected bare-function-form count, expected AST single-arg-
+# method-form count, reason) -- keying on the exact count per DETECTOR
+# (not just a combined total) means a new, unallowlisted occurrence in an
+# already-allowlisted file still fails loudly even if it happens to net
+# out to the same combined total another allowlisted change removed
+# elsewhere in the same file (opus-review-round-2 L4: a single merged
+# count could let "delete one docstring mention, add one real
+# `x.replace(y)` call" pass silently since both detectors' counts would
+# otherwise be summed into one number).
+_ALLOWLIST: dict[str, tuple[int, int, str]] = {
     "circuit_breaker.py": (
         1,
+        0,
         "_load_state()'s own comment documents the READER-side precedent "
         "for this exact Windows behavior -- text mention, not a call.",
     ),
     "tests/test_p1_remaining.py": (
         1,
+        0,
         "Docstring mentions os.replace() while describing "
         "circuit_breaker.py's reader-side PermissionError precedent -- "
         "text mention, not a call.",
     ),
     "tests/test_safe_io.py": (
         2,
+        0,
         "Docstrings describing safe_io._replace_with_retry's own "
         "Windows PermissionError behavior -- text mentions, not calls "
         "(the actual mocked/real os.replace calls in this file target "
@@ -75,27 +141,44 @@ _ALLOWLIST: dict[str, tuple[int, str]] = {
     ),
     "tests/test_alerts.py": (
         2,
+        0,
         "TestSaveRoutesThroughSafeIO's docstring/comment describe this "
         "guard's own backlog entry by name -- text mentions, not calls.",
     ),
     "tests/test_p9_p10.py": (
         2,
+        0,
         "TestPersistenceRoutesThroughSafeIO's docstring/comment describe "
         "this guard's own backlog entry by name -- text mentions, not "
         "calls.",
     ),
     "tests/test_weather_markets.py": (
         2,
+        0,
         "test_save_fails_open_when_atomic_write_raises' docstring/comment "
         "describe this guard's own backlog entry by name -- text "
         "mentions, not calls.",
     ),
     "tests/test_cron_integration.py": (
         2,
+        0,
         "TestKillSwitchOverrideRenameRace's docstring/comment describe the "
         "AUD-0039 fix (which routes through safe_io._replace_with_retry, "
         "not a bare call) by naming the old Path.rename()/os.replace() "
         "semantics gap it closed -- text mentions, not calls.",
+    ),
+    "cron.py": (
+        0,
+        1,
+        "AUD batch-25 item 4 (opus review): log-rotation call "
+        "`log_path.replace(log_path.with_suffix('.log.1'))` is a real, "
+        "unfixed instance of this exact anti-pattern on a file with "
+        "guaranteed concurrent readers -- found only once this guard's "
+        "method-form scan was broadened to catch it. Left allowlisted "
+        "rather than fixed here: cron.py belongs to a different batch's "
+        "file ownership (this batch owns cloud_backup.py/main.py/"
+        "web_app.py/safe_io.py only) -- filed as a follow-up instead of "
+        "expanding this batch's scope.",
     ),
 }
 
@@ -114,46 +197,53 @@ def _all_source_files() -> list[Path]:
 
 def test_no_new_bare_os_replace_sites():
     """No *.py file outside safe_io.py should call os.replace()/_os.replace()
-    directly -- route through safe_io.atomic_write_json/atomic_write_text
-    (or, for a payload shape those don't fit, safe_io._replace_with_retry)
-    instead, so a Windows transient-PermissionError gets retried.
+    (function form) or ANY single-argument `<expr>.replace(...)` (the
+    pathlib.Path.replace(target) rename method form) directly -- route
+    through safe_io.atomic_write_json/atomic_write_text (or, for a payload
+    shape those don't fit, safe_io._replace_with_retry) instead, so a
+    Windows transient-PermissionError gets retried.
 
-    Mutation check: reverting any one of this entry's 4 fixes (e.g.
-    restoring tracker.py's old
-    `_os.replace(tmp_name, _PINS_PATH)` in `_save_strategy_pins`) makes
-    this test fail, since the regex matches the exact call each of those
-    reverts would reintroduce.
+    Mutation check: reverting any one of this entry's 4 function-form fixes
+    (e.g. restoring tracker.py's old `_os.replace(tmp_name, _PINS_PATH)` in
+    `_save_strategy_pins`) makes this test fail, since the regex matches
+    the exact call each of those reverts would reintroduce. Same for the
+    method-form fix (AUD batch-25 item 4): reverting web_app.py's
+    `api_halt`/`api_override_set` to their old `_tmp.replace(_KS_PATH)` /
+    `_tmp.replace(_ov_path)` calls makes this test fail via
+    `_find_single_arg_replace_calls`'s AST scan.
     """
     offenders: dict[str, list[str]] = {}
     for path in _all_source_files():
         rel = path.relative_to(_REPO_ROOT).as_posix()
         src = path.read_text(encoding="utf-8")
-        matches = _BARE_REPLACE_PATTERN.findall(src)
-        expected_count, _reason = _ALLOWLIST.get(rel, (0, ""))
-        if len(matches) != expected_count:
-            offenders[rel] = matches
+        bare_matches = _BARE_REPLACE_PATTERN.findall(src)
+        ast_matches = _find_single_arg_replace_calls(src)
+        expected_bare, expected_ast, _reason = _ALLOWLIST.get(rel, (0, 0, ""))
+        if len(bare_matches) != expected_bare or len(ast_matches) != expected_ast:
+            offenders[rel] = bare_matches + ast_matches
 
     assert not offenders, (
-        "Found a bare os.replace()/_os.replace() call (or an unallowlisted "
-        "mention) outside safe_io.py, or an allowlisted file's match count "
-        "changed -- route the write through safe_io.atomic_write_json/"
-        "atomic_write_text instead, or document/update a real exception in "
-        "_ALLOWLIST above:\n"
+        "Found a bare os.replace()/_os.replace() call, a single-argument "
+        "<expr>.replace(...) rename call, or an unallowlisted mention of "
+        "the former, outside safe_io.py, or an allowlisted file's match "
+        "count changed -- route the write through "
+        "safe_io.atomic_write_json/atomic_write_text instead, or "
+        "document/update a real exception in _ALLOWLIST above:\n"
         + "\n".join(f"  {name}: {ms}" for name, ms in offenders.items())
     )
 
 
 def test_allowlist_entries_still_exist_and_are_justified():
-    """Every _ALLOWLIST entry must name a real file, a positive expected
-    count, and a non-empty reason -- prevents a stale entry from silently
-    masking a real regression."""
-    for rel_path, (expected_count, reason) in _ALLOWLIST.items():
+    """Every _ALLOWLIST entry must name a real file, at least one positive
+    expected count (bare-form or AST-form), and a non-empty reason --
+    prevents a stale entry from silently masking a real regression."""
+    for rel_path, (expected_bare, expected_ast, reason) in _ALLOWLIST.items():
         assert (_REPO_ROOT / rel_path).is_file(), (
             f"_ALLOWLIST references {rel_path!r}, which doesn't exist"
         )
-        assert expected_count > 0, (
-            f"_ALLOWLIST entry for {rel_path!r} has a non-positive expected "
-            "count -- remove the entry entirely instead of allowlisting "
-            "zero occurrences"
+        assert expected_bare > 0 or expected_ast > 0, (
+            f"_ALLOWLIST entry for {rel_path!r} has no positive expected "
+            "count in either detector -- remove the entry entirely instead "
+            "of allowlisting zero occurrences"
         )
         assert reason.strip(), f"_ALLOWLIST entry for {rel_path!r} has no reason"

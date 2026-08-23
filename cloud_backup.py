@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import sqlite3
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,6 +17,41 @@ _log = logging.getLogger(__name__)
 # Files in data/ worth backing up (skip .shm/.wal SQLite temp files and logs)
 _BACKUP_EXTENSIONS = {".json", ".db"}
 _SKIP_NAMES = {"signals_cache.json", "analyze_log.txt"}
+
+
+def _sqlite_source_is_empty(path: Path) -> bool:
+    """True only if `path` is a VALID, openable SQLite DB with zero
+    tables -- e.g. a 0-byte file (SQLite treats an empty file as a valid,
+    freshly-initialized empty database, confirmed live) or one that was
+    `sqlite3.connect()`ed but never had a schema created. False for
+    anything else, including a file that ISN'T a valid SQLite DB at all
+    (garbage bytes, truncated/corrupt) -- that's a real failure the
+    caller should still attempt to back up (and warn about when it fails),
+    not silently skip.
+
+    AUD batch-25 opus-review-round-2 M1: this project's own data/ has 4
+    vestigial zero-byte .db files (kalshi.db, paper_trades.db, tracker.db,
+    trades.db -- nothing in the codebase opens them) that backup_data()
+    used to happily shutil.copy2() as-is. Once backup_data() started
+    routing .db files through backup_sqlite_db's readability check
+    (table-existence required), these 4 files failed it on every single
+    cron cycle forever -- 4 spurious WARNINGs per run and a permanently
+    False return value, both of which bury the genuine backup failure
+    this batch exists to make visible. A file with zero tables was never
+    going to have anything worth backing up in the first place, so it's
+    treated as "nothing to do" here, not "backup failed".
+    """
+    try:
+        con = sqlite3.connect(str(path))
+        try:
+            n = con.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
+            ).fetchone()[0]
+            return n == 0
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return False
 
 
 def _find_google_drive() -> Path | None:
@@ -145,13 +182,61 @@ def backup_data(data_dir: Path | None = None) -> bool:
     dest = sync_root / "KalshiBot" / "data" / today_str
     dest.mkdir(parents=True, exist_ok=True)
 
+    from safe_io import backup_sqlite_db
+
     copied = 0
+    all_readable = True
     try:
         for src_file in data_dir.iterdir():
             if src_file.is_file() and src_file.suffix in _BACKUP_EXTENSIONS:
                 if src_file.name in _SKIP_NAMES:
                     continue
-                shutil.copy2(src_file, dest / src_file.name)
+                dest_file = dest / src_file.name
+                try:
+                    if src_file.suffix == ".db":
+                        if _sqlite_source_is_empty(src_file):
+                            _log.debug(
+                                "cloud_backup: skipping %s -- no tables "
+                                "(nothing to back up)",
+                                src_file.name,
+                            )
+                            continue
+                        # WAL-safe: shutil.copy2 on the raw .db file
+                        # silently omits anything committed but not yet
+                        # checkpointed out of the .db-wal sidecar (AUD
+                        # backup/pass20 finding -- reproduced live: a
+                        # committed row survived only in the WAL, and the
+                        # plain-copy backup came back with "no such table"
+                        # for a table that had existed since before the
+                        # last checkpoint).
+                        if not backup_sqlite_db(src_file, dest_file):
+                            _log.warning(
+                                "cloud_backup: backup copy of %s failed its "
+                                "post-copy readability check -- not "
+                                "retained (any earlier good backup at this "
+                                "path is untouched)",
+                                src_file.name,
+                            )
+                            all_readable = False
+                            continue
+                    else:
+                        shutil.copy2(src_file, dest_file)
+                except Exception as file_exc:
+                    # Per-file isolation: one unreadable/corrupt source
+                    # file (backup_sqlite_db can raise for a source that
+                    # isn't a valid SQLite DB at all, not just an
+                    # unreadable-after-copy one) must not abort the whole
+                    # run and silently skip every OTHER file in data_dir --
+                    # that would include execution_log.db, the live-order
+                    # ledger this batch exists to make sure gets backed up.
+                    _log.warning(
+                        "cloud_backup: failed to back up %s: %s -- "
+                        "skipping, continuing with remaining files",
+                        src_file.name,
+                        file_exc,
+                    )
+                    all_readable = False
+                    continue
                 copied += 1
         _log.info("cloud_backup: synced %d file(s) to %s", copied, dest)
 
@@ -169,7 +254,7 @@ def backup_data(data_dir: Path | None = None) -> bool:
                     _log.debug("cloud_backup: pruned old backup %s", old_dir.name)
             except ValueError:
                 pass  # not a date-named directory
-        return True
+        return all_readable
     except Exception as exc:
         _log.warning("cloud_backup: sync failed: %s", exc)
         return False
@@ -220,26 +305,116 @@ def restore_data(data_dir: Path | None = None, confirm: bool = False) -> bool:
         data_dir / f".pre_restore_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}"
     )
     if data_dir.exists():
-        shutil.copytree(
-            data_dir, snapshot_dir, ignore=shutil.ignore_patterns("*.shm", "*.wal")
-        )
+        # AUD batch-25 opus-review M6: previously passed
+        # ignore=shutil.ignore_patterns("*.shm", "*.wal") here, intending
+        # to exclude SQLite's WAL/SHM sidecars. Those globs never actually
+        # matched anything, though -- SQLite names them
+        # "<dbname>.db-wal"/"<dbname>.db-shm" (hyphen before the suffix,
+        # not a dot), so this snapshot was already including them by
+        # accident, not by design. Removed anyway: dead exclusion logic
+        # that LOOKS like it's protecting the pre-restore safety net from
+        # this batch's WAL-omission bug (item 1) but silently does nothing
+        # is worse than no logic at all for the next person reading it.
+        shutil.copytree(data_dir, snapshot_dir)
         print(f"  Current data/ snapshotted to {snapshot_dir.name}")
 
     data_dir.mkdir(parents=True, exist_ok=True)
 
+    from safe_io import _replace_with_retry
+
     copied = 0
+    attempted = 0
     for src_file in src.iterdir():
         if src_file.is_file() and src_file.suffix in _BACKUP_EXTENSIONS:
+            attempted += 1
             dest_file = data_dir / src_file.name
             try:
-                shutil.copy2(src_file, dest_file)
+                if src_file.suffix == ".db":
+                    # AUD batch-25 opus-review M6: the backup copy being
+                    # restored is a complete, checkpointed snapshot (it was
+                    # made via backup_sqlite_db, or is a legacy plain
+                    # copy) -- but any -wal/-shm sidecar still sitting next
+                    # to the LIVE dest_file belongs to the OLD database
+                    # this restore is about to replace. Left in place,
+                    # those stale sidecars would apply outdated WAL frames
+                    # (wrong page numbers/checksums for the new file
+                    # underneath them) the moment something next opens
+                    # dest_file in WAL mode.
+                    #
+                    # opus-review-round-2 M3 / round-3 M-1: copy to a
+                    # sibling temp path first and swap it into place with
+                    # a Windows-retry-safe replace BEFORE touching the
+                    # live sidecars, not after. Round 2 caught the
+                    # original order (delete sidecars, then copy) risking
+                    # data loss if the copy raised; round 3 caught that
+                    # round 2's fix (copy, delete sidecars, THEN replace)
+                    # still had the identical risk one step later -- if
+                    # `_replace_with_retry` itself failed (e.g. sustained
+                    # Windows sharing violation past its retry budget)
+                    # after the sidecar unlinks had already succeeded, the
+                    # live WAL was gone with no replacement in place,
+                    # reproduced live in round 3's review. Doing the
+                    # replace FIRST means by the time sidecar cleanup
+                    # happens, dest_file already holds the new, correct
+                    # content -- a failure at THAT point can only leave a
+                    # stale sidecar behind (loud ERROR below, matching the
+                    # M6 bug's failure mode but now logged instead of
+                    # silent), never lose data the restore was supposed to
+                    # deliver.
+                    tmp_restore = dest_file.with_name(
+                        f".{dest_file.name}.restore_tmp_{os.getpid()}_"
+                        f"{threading.get_ident()}"
+                    )
+                    try:
+                        shutil.copy2(src_file, tmp_restore)
+                        _replace_with_retry(str(tmp_restore), dest_file)
+                    except Exception:
+                        tmp_restore.unlink(missing_ok=True)
+                        raise
+                    # The restore itself has now succeeded -- dest_file
+                    # holds the new content. Cleaning up stale sidecars
+                    # from the OLD database is a correctness follow-up
+                    # (leaving them risks the M6 bug the next time
+                    # dest_file is opened), not something a failure here
+                    # should be allowed to undo the restore over.
+                    for suffix in ("-wal", "-shm"):
+                        stale = dest_file.with_name(dest_file.name + suffix)
+                        try:
+                            stale.unlink(missing_ok=True)
+                        except OSError as sidecar_exc:
+                            _log.error(
+                                "restore_data: restored %s but could not "
+                                "remove its stale %s sidecar (%s) -- "
+                                "delete it manually before this database "
+                                "is next opened, or it may apply stale "
+                                "WAL frames left over from the previous "
+                                "database",
+                                dest_file.name,
+                                suffix,
+                                sidecar_exc,
+                            )
+                else:
+                    shutil.copy2(src_file, dest_file)
                 copied += 1
                 print(f"  Restored {src_file.name}")
             except Exception as exc:
                 _log.warning("restore_data: failed to copy %s: %s", src_file.name, exc)
 
     if copied == 0:
-        print("Backup folder exists but contains no data files.")
+        if attempted == 0:
+            print("Backup folder exists but contains no data files.")
+        else:
+            # opus-review-round-3 L4: the old message here ("contains no
+            # data files") was actively misleading when files WERE found
+            # but every single one failed to restore -- it reads as "there
+            # was nothing to restore" rather than "a restore was attempted
+            # and failed", and gives no hint that live sidecars may have
+            # been touched (see the ERROR log above, if any).
+            print(
+                f"Restore failed: found {attempted} file(s) in the backup "
+                f"folder but none restored successfully -- see warnings "
+                f"above."
+            )
         return False
 
     print(f"\n  {copied} file(s) restored from {src}")

@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -606,3 +607,135 @@ def atomic_write_json_with_history(
 
     # Write the new version atomically (call existing atomic_write_json, do NOT use json.dump)
     atomic_write_json(data, path)
+
+
+def backup_sqlite_db(src: Path, dst: Path) -> bool:
+    """WAL-safe copy of a SQLite database via the sqlite3 backup API.
+
+    Shared by cloud_backup.backup_data() and main.auto_backup() -- both used
+    to shutil.copy2() the raw .db file, which only contains whatever was
+    flushed at the last checkpoint. Every SQLite DB in this codebase runs
+    PRAGMA journal_mode=WAL, so a committed transaction can sit in the
+    .db-wal sidecar (never copied by shutil.copy2) for an unbounded time
+    before its next checkpoint -- the backup silently omits it, up to and
+    including the entire database's contents when a fresh WAL hasn't
+    checkpointed yet. sqlite3.Connection.backup() reads through a live
+    connection to `src` instead of copying raw file bytes, so it always
+    reflects everything committed, checkpointed or not. Note: connecting to
+    `src` opens it read-write (sqlite3.connect() has no read-only mode
+    without a `file:` URI) and can trigger hot-journal recovery or a
+    close-time WAL checkpoint as a side effect -- harmless for this
+    module's actual callers (both already guard with `src.exists()` and
+    the DB is one this process itself owns), but worth knowing before
+    reusing this helper against a DB you don't control.
+
+    The copy is written to a sibling temp path first and only replaces
+    `dst` (via the same Windows-retry-safe `_replace_with_retry` every
+    other atomic write in this module uses) once it's verified readable --
+    opus-review-caught: an earlier version wrote directly to `dst` and
+    deleted it on any failure, which meant a caller re-backing-up into the
+    same destination on a schedule (cloud_backup.backup_data(), called
+    after every cron cycle) could destroy an earlier GOOD backup at that
+    same path the moment a later attempt failed, whether from a transient
+    copy error or a readability check trip. A pre-existing `dst` this
+    function did not itself just create is now never touched on failure.
+
+    The post-copy check confirms `dst` is openable, has at least one real
+    table, and that every table's data is actually readable (a `LIMIT 1`
+    probe per table -- opus-review-round-2 M2: cheap, touches only each
+    table's own root page, not a full scan) -- opus-review-caught: an
+    earlier version additionally required `PRAGMA integrity_check` to
+    return "ok", which rejects a DB with ANY inconsistency anywhere (e.g.
+    a corrupt index), not just the WAL-omission failure mode this function
+    exists to catch. Verified live against this project's own
+    data/execution_log.db, which has a real (unrelated, pre-existing)
+    `wrong # of entries in index idx_orders_ticker` integrity_check
+    failure despite its `orders` table data being fully intact and
+    queryable -- the integrity_check requirement made this function
+    refuse to keep ANY copy of that file, which is strictly worse than
+    the pre-fix shutil.copy2 behavior for the exact file (the live-order
+    ledger) this batch exists to protect. PRAGMA quick_check has the
+    identical false-positive (confirmed against the same real file), so
+    the check stays scoped to table existence + per-table data
+    readability: it still catches the actual reported bug (backup comes
+    back with "no such table"), any total-copy-failure shape, AND a
+    subtler shape integrity_check would have also caught but table-count-
+    alone would have missed (a table's own root page corrupted while
+    sqlite_master itself stays valid) -- without treating an unrelated,
+    orthogonal integrity issue (like the real execution_log.db's index)
+    as a backup failure.
+
+    Returns True if the copy was made and verified readable, False if the
+    post-copy readability check failed (in which case only the temp copy
+    is removed -- any pre-existing `dst` is left exactly as it was).
+    Propagates any exception raised by the backup() call itself (e.g. `src`
+    is not a valid SQLite DB, disk full) -- callers already wrap their own
+    call sites in exception handling appropriate to their context. The
+    temp copy is removed before re-raising in that case too.
+    """
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp_dst = (
+        dst.parent / f".{dst.name}.backup_tmp_{os.getpid()}_{threading.get_ident()}"
+    )
+
+    def _cleanup_tmp() -> None:
+        try:
+            tmp_dst.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    try:
+        src_con = sqlite3.connect(str(src))
+        try:
+            dst_con = sqlite3.connect(str(tmp_dst))
+            try:
+                src_con.backup(dst_con)
+            finally:
+                dst_con.close()
+        finally:
+            src_con.close()
+
+        readable = False
+        try:
+            check_con = sqlite3.connect(str(tmp_dst))
+            try:
+                table_names = [
+                    row[0]
+                    for row in check_con.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    ).fetchall()
+                ]
+                if table_names:
+                    # opus-review-round-2 M2: table-existence alone (just
+                    # counting sqlite_master rows) accepts a copy whose
+                    # sqlite_master page is intact but a TABLE's own data
+                    # pages are corrupted -- confirmed reproducible: a
+                    # table's root b-tree page can be corrupted while page
+                    # 1 (sqlite_master) stays valid, giving `SELECT name
+                    # FROM sqlite_master` a normal answer while `SELECT
+                    # COUNT(*) FROM that_table` raises "database disk
+                    # image is malformed". A cheap `LIMIT 1` probe per
+                    # table (touches only the root page, not a full scan)
+                    # catches this without reintroducing the H1 regression
+                    # PRAGMA integrity_check caused -- verified the real
+                    # data/execution_log.db's `orders` table (intact data,
+                    # corrupt idx_orders_ticker index) still passes this,
+                    # since the probe never touches the broken index.
+                    for table_name in table_names:
+                        escaped = table_name.replace('"', '""')
+                        check_con.execute(f'SELECT * FROM "{escaped}" LIMIT 1')  # noqa: S608
+                    readable = True
+            finally:
+                check_con.close()
+        except Exception:
+            readable = False
+
+        if not readable:
+            _cleanup_tmp()
+            return False
+
+        _replace_with_retry(str(tmp_dst), dst)
+        return True
+    except Exception:
+        _cleanup_tmp()
+        raise
