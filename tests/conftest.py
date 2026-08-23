@@ -271,8 +271,9 @@ def reset_open_meteo_circuit_breaker():
     """Reset all weather_markets, acis_precip, acis_snow, climatology,
     kalshi_client, AND nws circuit breakers before every test.
 
-    There are six weather_markets CBs (_forecast_cb, _ensemble_cb,
-    _ecmwf_om_cb, _nbm_om_cb, _weatherapi_cb, _pirate_cb), acis_precip's
+    There are seven weather_markets CBs (_forecast_cb, _ensemble_cb,
+    _ensemble_precip_multiday_cb, _ecmwf_om_cb, _nbm_om_cb, _weatherapi_cb,
+    _pirate_cb), acis_precip's
     two (_acis_cb, _om_seasonal_cb), acis_snow's two
     (_acis_snow_cb, _om_seasonal_snow_cb), climatology's one (_clim_cb),
     kalshi_client's two (_kalshi_cb_read, _kalshi_cb_write), and nws's one
@@ -308,6 +309,7 @@ def reset_open_meteo_circuit_breaker():
     for cb in (
         weather_markets._forecast_cb,
         weather_markets._ensemble_cb,
+        weather_markets._ensemble_precip_multiday_cb,
         weather_markets._ecmwf_om_cb,
         weather_markets._nbm_om_cb,
         weather_markets._weatherapi_cb,
@@ -322,6 +324,22 @@ def reset_open_meteo_circuit_breaker():
         nws._nws_cb,
     ):
         cb.record_success()  # clears _failure_count and _opened_at
+        # batch-13 (AUD-0022 test, round-1 opus review): record_success()
+        # deliberately does NOT clear _last_failure_at (only _trip_count/
+        # _current_timeout are preserved across successes, per that
+        # method's own comment) -- without this, a failure recorded by a
+        # PRIOR test lands inside a SUBSEQUENT test's burst_window (up to
+        # 10s for _forecast_cb) and silently absorbs its first
+        # record_failure() call as "the same burst", making failure_count
+        # stay 0 when a test expects it to increment. This same batch's own
+        # new tests (test_rain_markets.py, test_nws.py, test_weather_
+        # markets.py) originally each worked around this individually with
+        # their own explicit `cb._last_failure_at = None` before this fixture
+        # fix existed -- clearing it here for every breaker removes the need
+        # for that repeated per-test workaround going forward (the existing
+        # per-test lines are now redundant no-ops, left in place rather than
+        # churned out for a purely cosmetic cleanup).
+        cb._last_failure_at = None
     yield
 
 

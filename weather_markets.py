@@ -125,6 +125,23 @@ _nbm_om_cb = CircuitBreaker(
     burst_window=2.0,  # open across runs — prevents re-burning 30 s of timeouts
 )  # each run when the endpoint is consistently down
 
+# Separate circuit breaker for _fetch_ensemble_precip_multiday (the
+# shadow-only far-tail monthly-rain blend's multiday fetch) — AUD-0022: this
+# function hit the SAME ENSEMBLE_BASE endpoint as the Tier-1 blend-critical
+# temp-model loop above and shared _ensemble_cb with it, so an all-null
+# response on this shadow-only path (e.g. a request that outruns a model's
+# real per-model horizon — see this function's own docstring) recorded a
+# failure on the exact breaker the live temperature trading blend's prewarm
+# fetch depends on, degrading its real forecast ensemble diversity. Same
+# rationale as _nbm_om_cb/_ecmwf_om_cb above: one consumer's failures must
+# not gate an unrelated consumer sharing the same physical host.
+_ensemble_precip_multiday_cb = CircuitBreaker(
+    name="open_meteo_ensemble_precip_multiday",
+    failure_threshold=3,
+    recovery_timeout=300,
+    burst_window=2.0,
+)
+
 # Separate circuit breaker for the ECMWF deterministic fetch (FORECAST_BASE,
 # models="ecmwf_ifs025") — same rationale as _nbm_om_cb: this hits a
 # different host/endpoint than _ensemble_cb's ENSEMBLE_BASE traffic, so a
@@ -1518,12 +1535,20 @@ def get_weather_forecast(city: str, target_date: date) -> dict | None:
                 raise ValueError(
                     f"model {model} returned all-null daily data (dead model?)"
                 )
+            # AUD-0060: validate_forecast()'s bool return was previously
+            # discarded (a bare statement below, after record_success() had
+            # already run) — moved inside the try/raise so a malformed
+            # response is treated the same as the is_all_null dead-model
+            # case immediately above, not silently accepted as a good fetch.
+            if not validate_forecast(daily, source="open_meteo"):
+                raise ValueError(
+                    f"model {model} returned a malformed forecast response"
+                )
             _forecast_cb.record_success()
         except Exception as _exc:
             _forecast_cb.record_failure()
             _log.info("open_meteo forecast fetch failed: %s", _exc)
             return None
-        validate_forecast(daily, source="open_meteo")
         dates = daily.get("time", [])
         target_str = target_date.isoformat()
         if target_str not in dates:
@@ -8647,8 +8672,8 @@ def _fetch_ensemble_precip_multiday(
     """
     Fetch ensemble precipitation member TOTALS (inches) summed across every
     date in [start_date, end_date] (inclusive) that Open-Meteo's 16-day
-    ensemble forecast actually covers. Same models/weighting/circuit-breaker
-    as _fetch_ensemble_precip (backlog.txt "RAIN MARKETS -- MONTHLY MODEL HAS
+    ensemble forecast actually covers. Same models/weighting as
+    _fetch_ensemble_precip (backlog.txt "RAIN MARKETS -- MONTHLY MODEL HAS
     NO DAY-SPECIFIC FORECAST SIGNAL"), but keeps every day's values instead
     of indexing out one date -- a natural extension of that function's own
     16-day fetch, not new API surface.
@@ -8700,9 +8725,10 @@ def _fetch_ensemble_precip_multiday(
 
     def _fetch_model_totals(model: str) -> list[float]:
         nonlocal date_in_range
-        if _ensemble_cb.is_open():
+        if _ensemble_precip_multiday_cb.is_open():
             _log.debug(
-                "[CircuitBreaker] open_meteo circuit open — skipping multiday ensemble fetch"
+                "[CircuitBreaker] open_meteo_ensemble_precip_multiday circuit open — "
+                "skipping multiday ensemble fetch"
             )
             return []
         try:
@@ -8725,7 +8751,7 @@ def _fetch_ensemble_precip_multiday(
                 if start_date <= date.fromisoformat(t) <= end_date
             ]
             if not in_range_idx:
-                _ensemble_cb.record_success()
+                _ensemble_precip_multiday_cb.record_success()
                 return []
             member_keys = [k for k in daily if k.startswith(prefix)]
             all_vals_in_range = [
@@ -8739,7 +8765,7 @@ def _fetch_ensemble_precip_multiday(
                     f"model {model} returned all-null precip members for "
                     "requested range (dead model?)"
                 )
-            _ensemble_cb.record_success()
+            _ensemble_precip_multiday_cb.record_success()
             totals = []
             for k in member_keys:
                 vals = daily[k]
@@ -8754,10 +8780,10 @@ def _fetch_ensemble_precip_multiday(
                 date_in_range = True
             return totals
         except Exception as _exc:
-            _ensemble_cb.record_failure()
+            _ensemble_precip_multiday_cb.record_failure()
             _log.info(
                 "open_meteo_ensemble_multiday: failure #%d (model=%s) — %s: %s",
-                _ensemble_cb.failure_count,
+                _ensemble_precip_multiday_cb.failure_count,
                 model,
                 type(_exc).__name__,
                 _exc,
@@ -9450,11 +9476,13 @@ def _analyze_monthly_rain_trade(
         #      icon_seamless's own real horizon (~7 days, live-probed) EVERY
         #      model in the requested range would return all-null values --
         #      _fetch_ensemble_precip_multiday's is_all_null check treats
-        #      that as a dead-model FAILURE and records it on the circuit
-        #      breaker SHARED with every other market's ensemble fetch, not
-        #      a benign "0 members" result. 6 days is a conservative,
-        #      explicitly-documented heuristic (Open-Meteo doesn't publish a
-        #      fixed guaranteed per-model horizon), not a precise constant.
+        #      that as a dead-model FAILURE and records it on
+        #      _ensemble_precip_multiday_cb (AUD-0022: its own dedicated
+        #      breaker, no longer shared with the live temp-blend's
+        #      _ensemble_cb), not a benign "0 members" result. 6 days is a
+        #      conservative, explicitly-documented heuristic (Open-Meteo
+        #      doesn't publish a fixed guaranteed per-model horizon), not a
+        #      precise constant.
         if (
             remaining_start_date is not None
             and fetch_end_date is not None
@@ -9474,6 +9502,7 @@ def _analyze_monthly_rain_trade(
                     combined_totals: list[float] | None = member_totals
                     tail_days = 0
                     n_members = len(member_totals)
+                    n_tail_years = 0
                 else:
                     # >16-day case: blend the real near-forecast members with
                     # far-tail climatology.
@@ -9526,6 +9555,16 @@ def _analyze_monthly_rain_trade(
                         ]
                         tail_days = days_in_month - tail_start_day + 1
                         n_members = len(member_totals)
+                        # AUD-0043: the cross-product's raw length
+                        # (n_members * n_tail_years) is not an independent-
+                        # sample count -- each near member is paired with
+                        # every tail year, so the real effective sample size
+                        # for statistical-uncertainty purposes is bounded by
+                        # min(n_members, n_tail_years). Log the tail-year
+                        # count too so a future graduation/calibration
+                        # analysis can't mistake this signal's precision for
+                        # n_members alone.
+                        n_tail_years = len(tail_sums_tilted)
                     else:
                         _log.debug(
                             "_analyze_monthly_rain_trade[%s]: forecast-blend "
@@ -9537,6 +9576,7 @@ def _analyze_monthly_rain_trade(
                         combined_totals = None
                         tail_days = 0
                         n_members = 0
+                        n_tail_years = 0
                 if combined_totals is not None:
                     forecast_blend_prob = sum(
                         1
@@ -9558,6 +9598,12 @@ def _analyze_monthly_rain_trade(
                         # ship before rows accumulate, not after.
                         "rain_forecast_blend_tail_days": tail_days,
                         "rain_forecast_blend_n_members": n_members,
+                        # AUD-0043: distinct from n_members -- the near-only
+                        # case's combined_totals IS member_totals (no tail
+                        # blended in), so n_tail_years is 0 there, not
+                        # n_members. See n_tail_years' own assignment above
+                        # for why this can't just be derived from n_members.
+                        "rain_forecast_blend_n_tail_years": n_tail_years,
                     }
     except Exception as _fb_exc:
         _log.warning(

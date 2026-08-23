@@ -922,6 +922,12 @@ class TestRainForecastBlendSignal:
         assert result_with_blend["signals"][
             "rain_forecast_blend_prob"
         ] == pytest.approx(expected_prob)
+        # AUD-0043: near-only case (<=16-day remaining window) has no tail
+        # blended in at all -- combined_totals IS member_totals unchanged --
+        # so n_tail_years must be 0 here, not accidentally equal to n_members.
+        assert result_with_blend["signals"]["rain_forecast_blend_tail_days"] == 0
+        assert result_with_blend["signals"]["rain_forecast_blend_n_members"] == 30
+        assert result_with_blend["signals"]["rain_forecast_blend_n_tail_years"] == 0
 
         # Same scenario with the ensemble fetch failing (returns None) --
         # forecast_prob/method/ci must match exactly, proving the new
@@ -1018,6 +1024,11 @@ class TestRainForecastBlendSignal:
         )
         assert result["signals"]["rain_forecast_blend_tail_days"] == 17
         assert result["signals"]["rain_forecast_blend_n_members"] == 30
+        # AUD-0043: the cross-product's raw length (n_members * n_tail_years)
+        # is not an independent-sample count; the tail-year count (distinct
+        # from n_members) must be logged too. _mock_acis's default years=20
+        # with uniform history gives 20 usable tail years here.
+        assert result["signals"]["rain_forecast_blend_n_tail_years"] == 20
 
     def test_boundary_just_over_16_days_fetches_near_prefix_blends_tail(
         self, monkeypatch
@@ -1080,6 +1091,7 @@ class TestRainForecastBlendSignal:
         )
         assert result["signals"]["rain_forecast_blend_tail_days"] == 3
         assert result["signals"]["rain_forecast_blend_n_members"] == 30
+        assert result["signals"]["rain_forecast_blend_n_tail_years"] == 20
 
     def test_boundary_exactly_16_day_horizon_does_fetch(self, monkeypatch):
         """Inverse of the above: today=Jul 16 -> (Jul 31 - Jul 16).days == 15,
@@ -1568,6 +1580,7 @@ class TestRainForecastBlendSignal:
         assert result["signals"]["rain_forecast_blend_prob"] == pytest.approx(375 / 600)
         assert result["signals"]["rain_forecast_blend_tail_days"] == 17
         assert result["signals"]["rain_forecast_blend_n_members"] == 30
+        assert result["signals"]["rain_forecast_blend_n_tail_years"] == 20
 
     def test_far_case_before_month_start_gap_beyond_6_days_skips_fetch(
         self, monkeypatch
@@ -1736,7 +1749,7 @@ class TestFetchEnsemblePrecipMultiday:
         import weather_markets as wm
 
         wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
-        wm._ensemble_cb.record_success()
+        wm._ensemble_precip_multiday_cb.record_success()
 
         def _fake_om_request(method, url, **kwargs):
             model = kwargs.get("params", {}).get("models")
@@ -1782,7 +1795,7 @@ class TestFetchEnsemblePrecipMultiday:
         import weather_markets as wm
 
         wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
-        wm._ensemble_cb.record_success()
+        wm._ensemble_precip_multiday_cb.record_success()
 
         def _fake_om_request(method, url, **kwargs):
             model = kwargs.get("params", {}).get("models")
@@ -1823,7 +1836,7 @@ class TestFetchEnsemblePrecipMultiday:
         import weather_markets as wm
 
         wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
-        wm._ensemble_cb.record_success()
+        wm._ensemble_precip_multiday_cb.record_success()
 
         def _fake_om_request(method, url, **kwargs):
             model = kwargs.get("params", {}).get("models")
@@ -1853,8 +1866,8 @@ class TestFetchEnsemblePrecipMultiday:
         """Opus-review-caught gap: the original version only made
         icon_seamless all-null while ecmwf_ifs025 (unconditionally called
         regardless of the ENSEMBLE_MODELS mock) returned an empty range and
-        called record_success() -- which resets _ensemble_cb's failure
-        counter, so the test could never actually observe that icon's
+        called record_success() -- which resets _ensemble_precip_multiday_cb's
+        failure counter, so the test could never actually observe that icon's
         failure had been recorded, only that the final totals were None
         (which an unrelated bug could also produce). Making EVERY model
         respond all-null means the failure count survives to the final
@@ -1864,8 +1877,8 @@ class TestFetchEnsemblePrecipMultiday:
         import weather_markets as wm
 
         wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
-        wm._ensemble_cb.record_success()
-        _before = wm._ensemble_cb.failure_count
+        wm._ensemble_precip_multiday_cb.record_success()
+        _before = wm._ensemble_precip_multiday_cb.failure_count
 
         def _fake_om_request(method, url, **kwargs):
             daily = {
@@ -1885,12 +1898,68 @@ class TestFetchEnsemblePrecipMultiday:
             date(2026, 7, 21),
         )
         assert totals is None  # every model was all-null -> nothing usable
-        assert wm._ensemble_cb.failure_count > _before, (
+        assert wm._ensemble_precip_multiday_cb.failure_count > _before, (
             "all-null response must actually record a circuit-breaker "
             "failure, not just happen to return None for an unrelated reason"
         )
         wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
-        wm._ensemble_cb.record_success()  # leave the shared breaker clean
+        wm._ensemble_precip_multiday_cb.record_success()  # leave the breaker clean for later tests
+
+    def test_all_null_failure_does_not_touch_the_shared_ensemble_cb(self, monkeypatch):
+        """AUD-0022 regression: before this fix, every failure path in this
+        function (all-null response, exception, is_open() check) recorded
+        onto _ensemble_cb -- the SAME breaker the Tier-1 blend-critical live
+        temp-model loop (get_ensemble_consensus et al.) depends on for its
+        own prewarm fetch, degrading its real forecast ensemble diversity
+        for a bounded window on every shadow-only far-tail rain failure.
+        Positive control: _ensemble_precip_multiday_cb.failure_count DOES
+        increase (proving the failure was genuinely reached and recorded
+        somewhere, not silently dropped) while _ensemble_cb.failure_count
+        stays byte-for-byte unchanged."""
+        from datetime import date
+
+        import weather_markets as wm
+
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+        wm._ensemble_precip_multiday_cb.record_success()
+        wm._ensemble_cb.record_success()
+        # Now redundant with conftest.py's autouse reset_open_meteo_circuit_
+        # breaker fixture (which clears _last_failure_at for every breaker
+        # between tests) -- kept explicit anyway since this test's own
+        # assertion below depends on it and shouldn't rely on a fixture
+        # elsewhere in the file for its own correctness to be legible.
+        wm._ensemble_precip_multiday_cb._last_failure_at = None
+        _before_multiday = wm._ensemble_precip_multiday_cb.failure_count
+        _before_shared = wm._ensemble_cb.failure_count
+
+        def _fake_om_request(method, url, **kwargs):
+            daily = {
+                "time": ["2026-07-20", "2026-07-21"],
+                "precipitation_sum_member01": [None, None],
+            }
+            return self._fake_resp(daily)
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+        monkeypatch.setattr(wm, "ENSEMBLE_MODELS", ["icon_seamless"])
+
+        totals = wm._fetch_ensemble_precip_multiday(
+            39.86,
+            -104.67,
+            "America/Denver",
+            date(2026, 7, 20),
+            date(2026, 7, 21),
+        )
+        assert totals is None
+        assert wm._ensemble_precip_multiday_cb.failure_count > _before_multiday, (
+            "positive control: the failure must actually be recorded "
+            "somewhere, not silently dropped"
+        )
+        assert wm._ensemble_cb.failure_count == _before_shared, (
+            "the Tier-1 live temp-blend's _ensemble_cb must be completely "
+            "untouched by this shadow-only signal's own failures"
+        )
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+        wm._ensemble_precip_multiday_cb.record_success()
 
     def test_circuit_open_short_circuits_without_network_call(self, monkeypatch):
         from datetime import date
@@ -1905,7 +1974,7 @@ class TestFetchEnsemblePrecipMultiday:
             raise AssertionError("must not be called while circuit is open")
 
         monkeypatch.setattr(wm, "_om_request", _fake_om_request)
-        monkeypatch.setattr(wm._ensemble_cb, "is_open", lambda: True)
+        monkeypatch.setattr(wm._ensemble_precip_multiday_cb, "is_open", lambda: True)
 
         totals = wm._fetch_ensemble_precip_multiday(
             39.86,
@@ -1917,13 +1986,54 @@ class TestFetchEnsemblePrecipMultiday:
         assert totals is None
         assert called == []
 
+    def test_shared_ensemble_cb_open_does_not_block_this_fetch(self, monkeypatch):
+        """AUD-0022, other half of the decoupling (round-2 opus review): the
+        test above proves the new breaker still gates this function; this
+        proves the OLD shared breaker no longer does -- the Tier-1 live
+        temp-blend's _ensemble_cb being open must not also silently stop
+        this shadow-only signal's own fetch."""
+        from datetime import date
+
+        import weather_markets as wm
+
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+        wm._ensemble_precip_multiday_cb.record_success()
+        monkeypatch.setattr(wm._ensemble_cb, "is_open", lambda: True)
+
+        def _fake_om_request(method, url, **kwargs):
+            model = kwargs.get("params", {}).get("models")
+            if model == "icon_seamless":
+                daily = {
+                    "time": ["2026-07-20", "2026-07-21"],
+                    "precipitation_sum_member01": [1.0, 2.0],
+                }
+            else:
+                daily = {"time": []}
+            return self._fake_resp(daily)
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+        monkeypatch.setattr(wm, "ENSEMBLE_MODELS", ["icon_seamless"])
+
+        totals = wm._fetch_ensemble_precip_multiday(
+            39.86,
+            -104.67,
+            "America/Denver",
+            date(2026, 7, 20),
+            date(2026, 7, 21),
+        )
+        assert totals == pytest.approx([3.0]), (
+            "a real fetch must still happen and succeed even though the "
+            "unrelated _ensemble_cb is open"
+        )
+        wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
+
     def test_no_model_covers_range_returns_none(self, monkeypatch):
         from datetime import date
 
         import weather_markets as wm
 
         wm._PRECIP_ENSEMBLE_MULTIDAY_CACHE.clear()
-        wm._ensemble_cb.record_success()
+        wm._ensemble_precip_multiday_cb.record_success()
 
         def _fake_om_request(method, url, **kwargs):
             # Every model returns dates entirely outside the requested range.
