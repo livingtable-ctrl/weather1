@@ -632,6 +632,112 @@ class TestBTickerParsing:
         assert signals[0]["outcome"] == "yes"
 
 
+class TestCheckCitySettlementDateGuard:
+    """Backlog.txt "METAR above/below same-day lock-in has no per-observation
+    local-date guard" (batch-27 item 1): check_city_settlement had NO
+    per-observation local-date guard on EITHER branch -- a METAR obs_time
+    near local midnight converts to ~11 PM the PRIOR local calendar day, and
+    nothing here checked that before this fix. Its result force-closes paper
+    positions via cron.py's >=0.80 gate, so a stale-obs false lock here is a
+    live-money-adjacent bug, not just a signal-quality one."""
+
+    def _stale_obs_time(self, hour=23, minute=53, tz="America/Chicago"):
+        """OKC's real tz (America/Chicago) -- matches the actual OKC/SATX
+        incident's own CDT-based numbers, not an arbitrary stand-in zone."""
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+
+        yesterday_local = (datetime.now(ZoneInfo(tz)) - timedelta(days=1)).replace(
+            hour=hour, minute=minute, second=0, microsecond=0
+        )
+        return yesterday_local.astimezone(UTC)
+
+    def test_t_ticker_skipped_when_obs_from_prior_local_day(self, caplog):
+        """The literal historical repro: current=85.0, threshold=91.0,
+        direction='above', obs from ~23:53 the PRIOR local day. Before this
+        fix, check_metar_lockout still fired (locked=True, outcome='no')
+        because its own local_time.hour (23) computed from that same
+        prior-day obs_time passes the >=14 gate -- these are the literal
+        OKC/SATX numbers already in backlog.txt."""
+        import logging
+        from unittest.mock import patch
+
+        import settlement_monitor as sm
+
+        fake_obs = {"current_temp_f": 85.0, "obs_time": self._stale_obs_time()}
+        mock_market = {
+            "direction": "above",
+            "threshold": 91.0,
+            "ticker": "KXHIGHOKC-26JUN25-T91",
+        }
+
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            caplog.at_level(logging.INFO, logger="settlement_monitor"),
+        ):
+            signals = sm.check_city_settlement("OKC", [mock_market])
+
+        assert signals == []
+        assert any("prior-day temp cannot confirm" in r.message for r in caplog.records)
+
+    def test_between_ticker_skipped_when_obs_from_prior_local_day(self):
+        """Same stale-obs scenario, routed through the between-bucket path
+        instead -- _check_between_settlement itself has no date-awareness
+        at all, so the guard must live in check_city_settlement before
+        either branch runs.
+
+        Opus-review finding (F9): current_temp_f is kept safely inside the
+        band (not exactly at the YES-lock clearance boundary, which
+        _check_between_settlement would ALSO lock at today, making this
+        test pass for the wrong reason if the date guard were ever removed
+        and the boundary math tightened from >= to >)."""
+        from unittest.mock import patch
+
+        import settlement_monitor as sm
+
+        fake_obs = {"current_temp_f": 86.0, "obs_time": self._stale_obs_time()}
+        mock_market = {
+            "direction": "between",
+            "lower": 85.5,
+            "upper": 87.5,
+            "ticker": "KXHIGHOKC-26JUN25-B86.5",
+            "threshold": None,
+        }
+
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            patch("metar.fetch_metar_daily_extreme", return_value=86.0),
+        ):
+            signals = sm.check_city_settlement("OKC", [mock_market])
+
+        assert signals == []
+
+    def test_same_day_obs_still_produces_a_signal_as_before(self):
+        """Positive control: a genuine same-day obs (datetime.now(UTC), the
+        pattern every other passing test in this file already uses) must
+        not be blocked by the new guard."""
+        from unittest.mock import patch
+
+        import settlement_monitor as sm
+
+        fake_obs = {"current_temp_f": 85.0, "obs_time": datetime.now(UTC)}
+        mock_market = {
+            "direction": "above",
+            "threshold": 91.0,
+            "ticker": "KXHIGHOKC-26JUN25-T91",
+        }
+        fake_lockout = {"locked": True, "outcome": "no", "confidence": 0.9}
+
+        with (
+            patch("metar.fetch_metar", return_value=fake_obs),
+            patch("metar.check_metar_lockout", return_value=fake_lockout),
+        ):
+            signals = sm.check_city_settlement("OKC", [mock_market])
+
+        assert len(signals) == 1
+        assert signals[0]["outcome"] == "no"
+
+
 class TestMetarSettlementCalibration:
     """backlog.txt L4: settlement_monitor.py's T-ticker force-close path
     must apply the same METAR beta-calibration weather_markets.py's

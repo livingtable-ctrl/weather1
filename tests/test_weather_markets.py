@@ -6295,6 +6295,237 @@ class TestMetarLockInCombinesCurrentWithDailyExtreme:
         assert details.get("comp_temp_f") == 30.0
 
 
+# ── TestMetarLockInAboveBelowDateGuard ───────────────────────────────────────
+# Backlog.txt "METAR above/below same-day lock-in has no per-observation
+# local-date guard" (batch-27 item 1, filed 2026-08-21): fetch_metar_daily_
+# extreme() returns None until the first hourly report lands on the local
+# date (~00:00-00:53 local). In that window the above/below branch's
+# fallback was the PREVIOUS local day's ~23:53 reading, and the only time
+# gate (local_time.hour >= 14) was computed from that same prior-day
+# obs_time, which passes -- reproducing the literal OKC/SATX losing trades
+# already documented for the between branch (backlog.txt ~L1077, ~L1188).
+# The between branch already had its own `_obs_local_date != target_date`
+# guard for exactly this reason; the above/below branch never got it until
+# this fix hoisted the check to the top of _metar_lock_in.
+
+
+class TestMetarLockInAboveBelowDateGuard:
+    def _call(
+        self,
+        current_temp_f,
+        daily_extreme,
+        threshold,
+        cond_type,
+        ticker,
+        obs_date=None,
+        local_hour=16,
+        city="NYC",
+    ):
+        """Builds obs_time as a REAL tz-aware datetime (not a MagicMock)
+        so the hoisted guard's actual ZoneInfo(_city_tz_str) argument is
+        genuinely exercised -- a MagicMock's .astimezone() ignores its
+        argument entirely and would return the same canned value no
+        matter which (or how wrong a) tz string the guard resolved,
+        silently hiding a city/tz mismatch (see [[feedback_mock_ignores_tz_argument]]).
+        A real datetime's .astimezone() only reproduces the intended
+        local (date, hour) when called with the SAME tz the value was
+        built against, so this construction fails loudly if the guard
+        ever resolves the wrong city's timezone.
+        """
+        from datetime import datetime
+        from unittest.mock import patch
+        from zoneinfo import ZoneInfo
+
+        import metar as _metar
+        import weather_markets as wm
+
+        city_tz = wm._CITY_TZ.get(city, "America/New_York")
+        today = datetime.now(ZoneInfo(city_tz)).date()
+        obs_date = obs_date if obs_date is not None else today
+        obs_time = datetime(
+            obs_date.year,
+            obs_date.month,
+            obs_date.day,
+            local_hour,
+            53,
+            tzinfo=ZoneInfo(city_tz),
+        ).astimezone(UTC)
+
+        with patch.object(wm, "_metar_station_for_city", return_value="KJFK"):
+            with (
+                patch.object(
+                    _metar,
+                    "fetch_metar",
+                    return_value={
+                        "current_temp_f": current_temp_f,
+                        "obs_time": obs_time,
+                    },
+                ),
+                patch.object(
+                    _metar, "fetch_metar_daily_extreme", return_value=daily_extreme
+                ),
+            ):
+                return wm._metar_lock_in(
+                    city=city,
+                    target_date=today,
+                    condition={"type": cond_type, "threshold": threshold},
+                    ticker=ticker,
+                )
+
+    def test_stale_prior_day_obs_not_locked_reproduces_okc_satx_incident(self):
+        """The literal historical repro: obs local time ~23:53 the PRIOR
+        local day (27 min old, passes METAR's own 90-min staleness gate
+        upstream), current=85.0, threshold=91.0, direction='above' -- before
+        this fix, check_metar_lockout('locked': True, 'outcome': 'no',
+        'confidence': 0.844) fired because local_time.hour (23) computed
+        from that same prior-day obs_time passes the >=14 gate. Those are
+        literally the OKC/SATX numbers (midnight temp ~85F, actual highs
+        91-92F) already in backlog.txt. Must now refuse to lock at all."""
+        from datetime import datetime as _dt
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+
+        yesterday = _dt.now(ZoneInfo("America/New_York")).date() - timedelta(days=1)
+        locked, _prob, details = self._call(
+            current_temp_f=85.0,
+            daily_extreme=None,  # no today obs yet -- the actual bug window
+            threshold=91.0,
+            cond_type="above",
+            ticker="KXHIGHOKC-26JUN25-T91",
+            obs_date=yesterday,
+            local_hour=23,
+        )
+        assert not locked, f"stale prior-day obs must not lock, got {details}"
+        assert "!=" in details["reason"]
+
+    def test_stale_prior_day_obs_not_locked_even_with_a_daily_extreme_present(self):
+        """Same stale-obs scenario, but with a (necessarily also stale,
+        since it's keyed off the same obs window) daily_extreme available --
+        the date guard must reject before ever reaching the combine logic,
+        not rely on the combine to save it."""
+        from datetime import datetime as _dt
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+
+        yesterday = _dt.now(ZoneInfo("America/New_York")).date() - timedelta(days=1)
+        locked, _prob, details = self._call(
+            current_temp_f=85.0,
+            daily_extreme=85.0,
+            threshold=91.0,
+            cond_type="above",
+            ticker="KXHIGHOKC-26JUN25-T91",
+            obs_date=yesterday,
+            local_hour=23,
+        )
+        assert not locked, f"stale prior-day obs must not lock, got {details}"
+        assert "!=" in details["reason"]
+
+    def test_no_daily_extreme_available_does_not_lock_from_current_temp_alone(self):
+        """Same-day obs (passes the date guard), but fetch_metar_daily_
+        extreme() returns None (e.g. no observation has landed on today's
+        local date yet in ITS OWN window, or a station gap). Unlike the
+        between branch, this branch has no per-direction NO/YES split to
+        safely fall back on, so it must refuse to lock from the
+        instantaneous current_temp_f reading alone -- even though 30.0 is
+        deep in NO territory against threshold=91 and would have locked
+        under the pre-fix ternary fallback (`_daily_ext if ... else
+        current_temp_f`)."""
+        locked, _prob, details = self._call(
+            current_temp_f=30.0,
+            daily_extreme=None,
+            threshold=91.0,
+            cond_type="above",
+            ticker="KXHIGHOKC-26JUN25-T91",
+        )
+        assert not locked, f"missing daily extreme must not lock, got {details}"
+        assert "no daily extreme available" in details["reason"]
+
+    def test_no_daily_extreme_available_below_direction_does_not_lock(self):
+        """Opus-review finding (F8): the sibling test above only exercises
+        cond_type='above' -- confirm the refusal also fires for 'below'
+        (narrowing the guard to `if _daily_ext is None and cond_type ==
+        "above"` would pass every other test in this class but miss this
+        one)."""
+        locked, _prob, details = self._call(
+            current_temp_f=95.0,  # deep in NO territory for 'below'
+            daily_extreme=None,
+            threshold=60.0,
+            cond_type="below",
+            ticker="KXHIGHOKC-26JUN25-T60",
+        )
+        assert not locked, f"missing daily extreme must not lock, got {details}"
+        assert "no daily extreme available" in details["reason"]
+
+    def test_no_daily_extreme_available_low_market_does_not_lock_or_crash(self):
+        """Opus-review finding (F8): the sibling tests above only exercise a
+        HIGH-ticker market. A LOW-ticker market takes the `min()` arm of the
+        combine ternary -- confirm it also refuses cleanly (not just avoids
+        crashing into the outer except-and-swallow via `min(x, None)`,
+        which would silently produce the same (False, 0.0, {}) shape for
+        the wrong reason and defeat this test if it only checked `locked`)."""
+        locked, _prob, details = self._call(
+            current_temp_f=30.0,
+            daily_extreme=None,
+            threshold=40.0,
+            cond_type="above",
+            ticker="KXLOWOKC-26JUN25-T40",
+        )
+        assert not locked, f"missing daily extreme must not lock, got {details}"
+        assert "no daily extreme available" in details["reason"], (
+            f"expected the explicit refusal reason, not a swallowed "
+            f"exception's empty {{}} details: {details}"
+        )
+
+    def test_same_day_obs_with_daily_extreme_still_locks_as_before(self):
+        """Positive control: a genuine same-day obs with a real daily
+        extreme available must still lock as before -- the date guard and
+        the daily_extreme-is-None guard must not block the legitimate case,
+        only the two unsafe ones above."""
+        locked, _prob, details = self._call(
+            current_temp_f=95.0,
+            daily_extreme=95.0,
+            threshold=91.0,
+            cond_type="above",
+            ticker="KXHIGHOKC-26JUN25-T91",
+        )
+        assert locked is True
+        assert details.get("outcome") == "yes"
+
+    def test_stale_prior_day_obs_not_locked_for_a_non_eastern_city(self):
+        """Opus-review finding (independent review of this fix): every other
+        test in this class uses a REAL datetime for obs_time specifically so
+        the guard's actual `ZoneInfo(_city_tz_str)` argument is exercised
+        (not a MagicMock, whose .astimezone() ignores its argument entirely
+        and would return the same canned value regardless of which -- or how
+        wrong a -- tz string the guard resolved). This test additionally
+        proves the guard resolves the CORRECT city's tz, not just "some" tz:
+        LA is UTC-7/UTC-8, far enough from America/New_York that a
+        city/tz mix-up (e.g. the guard accidentally resolving the wrong
+        city's zone, or falling back to UTC) would flip which local
+        calendar day a borderline-hour observation falls on -- an obs at
+        21:53 PDT is still "yesterday" in LA but would already be "today"
+        in UTC or NYC's more easterly clock at the same instant."""
+        from datetime import datetime as _dt
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+
+        import weather_markets as wm
+
+        yesterday_la = _dt.now(ZoneInfo(wm._CITY_TZ["LA"])).date() - timedelta(days=1)
+        locked, _prob, details = self._call(
+            current_temp_f=85.0,
+            daily_extreme=None,
+            threshold=91.0,
+            cond_type="above",
+            ticker="KXHIGHLA-26JUN25-T91",
+            city="LA",
+            local_hour=21,
+            obs_date=yesterday_la,
+        )
+        assert not locked, f"stale prior-day obs must not lock, got {details}"
+        assert "!=" in details["reason"]
+
+
 # ── TestMosBlendNoCrossVariableFallback ──────────────────────────────────────
 
 

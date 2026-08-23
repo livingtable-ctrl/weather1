@@ -11007,15 +11007,28 @@ def _metar_lock_in(
 
         _metar_sta = _metar_station_for_city(city)
         _city_tz_str = _CITY_TZ.get(city, "America/New_York")
+        # Resolve ZoneInfo(_city_tz_str) exactly once and reuse it below for
+        # the per-observation guard -- previously each of the two checks
+        # re-resolved it independently, which left the "falling back to UTC
+        # date" warning below describing a recovery that could no longer
+        # actually happen once the per-observation guard was hoisted (opus
+        # review finding, F5): if ZoneInfo(_city_tz_str) fails here, the
+        # hoisted guard a few lines down would just hit the identical
+        # failure and refuse to lock anyway, making the "fall back to UTC
+        # and keep going" framing misleading. _city_zoneinfo is None only
+        # when resolution failed; the guard below checks for that instead
+        # of blindly re-attempting the same resolution.
         try:
             from zoneinfo import ZoneInfo as _ZI
 
-            _local_today = datetime.now(_ZI(_city_tz_str)).date()
+            _city_zoneinfo = _ZI(_city_tz_str)
+            _local_today = datetime.now(_city_zoneinfo).date()
         except Exception:
             _log.warning(
                 "_metar_lock_in: ZoneInfo(%r) unavailable — falling back to UTC date",
                 _city_tz_str,
             )
+            _city_zoneinfo = None
             _local_today = datetime.now(UTC).date()
         if not (_metar_sta and target_date == _local_today):
             return False, 0.0, {}
@@ -11024,7 +11037,60 @@ def _metar_lock_in(
         if not _metar_obs:
             return False, 0.0, {}
 
+        # Per-observation local-date guard (the actual bug that caused the 2
+        # real OKC/SATX losing trades on 2026-06-25, fixed for the between
+        # branch in e395392, lost 4 days later when ceda79d deleted that
+        # whole branch, later restored for between only): a METAR obs_time
+        # near local midnight converts to ~11 PM the PRIOR local calendar
+        # day. The function-level check above only confirms target_date is
+        # TODAY, not that THIS SPECIFIC observation is FROM today. Hoisted
+        # here rather than left as a between-only check -- it's a property
+        # of the observation itself, not of condition_type, and this exact
+        # bug already recurred once from two independent copies of the same
+        # guard drifting apart (between got it twice; above/below never
+        # did). _obs_local is reused below by the between branch for its
+        # own hour-of-day (_lh) reasoning.
+        if _city_zoneinfo is None:
+            return False, 0.0, {}  # ZoneInfo already failed above
+        try:
+            _obs_local = _metar_obs["obs_time"].astimezone(_city_zoneinfo)
+            _obs_local_date = _obs_local.date()
+        except Exception:
+            return False, 0.0, {}  # can't determine local date — skip lock-in
+
+        if _obs_local_date != target_date:
+            return (
+                False,
+                0.0,
+                {
+                    "locked": False,
+                    "outcome": None,
+                    "confidence": 0.0,
+                    "reason": (
+                        f"METAR obs from {_obs_local_date} != target "
+                        f"{target_date} — prior-day temp cannot confirm "
+                        "today's extreme"
+                    ),
+                    # Every other not-locked path through this function
+                    # picks these up via the tail's setdefault() calls; this
+                    # early return skips that tail entirely, so set them
+                    # explicitly here for the same shape (opus review
+                    # finding, F6 -- currently harmless since no caller
+                    # reads either key on a not-locked result, but a silent
+                    # shape difference on an early-return path is a latent
+                    # trap for the next caller that does).
+                    "current_temp_f": _metar_obs["current_temp_f"],
+                    "comp_temp_f": _metar_obs["current_temp_f"],
+                },
+            )
+
         _cond_type = condition.get("type")
+        # Explicit bare-dict annotation (mypy: dict[Any, Any]) avoids mypy
+        # instead inferring a too-narrow union value type from whichever
+        # branch's dict literal it happens to see first (str | float | bool
+        # | None), which then rejects arithmetic on _lockout["confidence"]
+        # near the bottom of this function.
+        _lockout: dict = {}
 
         if _cond_type in ("above", "below") and condition.get("threshold") is not None:
             # Use the observed daily extreme rather than the instantaneous reading.
@@ -11070,48 +11136,86 @@ def _metar_lock_in(
             # hasn't actually reached the decision-relevant zone yet --
             # because there is no interior band here for a fresher reading
             # to be prematurely counted as having entered.
-            _comp_temp = (
-                (
+            #
+            # But when _daily_ext is None outright (no observation has
+            # landed on target_date's local calendar date yet in
+            # fetch_metar_daily_extreme's own window -- the same early-
+            # local-morning gap the date guard above exists for), refuse to
+            # lock rather than fall back to current_temp_f alone: unlike the
+            # between branch below, this branch has no per-direction NO/YES
+            # split to fall back on safely -- a single check_metar_lockout
+            # call can fire either "yes" or "no" from one comparison, and an
+            # unconfirmed instantaneous reading with no daily-extreme
+            # backing is exactly the class of evidence the date guard above
+            # was added to stop this branch from trading on.
+            #
+            # Opus review cross-reference (F13): this branch's blanket
+            # refusal is intentionally MORE conservative than its two
+            # siblings that face the identical "_daily_ext is None" case --
+            # the between branch below still falls back to current_temp_f
+            # for its NO-only conclusions (see its own "_daily_ext is None"
+            # comment), and settlement_monitor._check_between_settlement
+            # does the same. Each is independently justified by its own
+            # branch's specific monotonic-safety argument, not a shared
+            # rule; don't assume they should all match.
+            if _daily_ext is None:
+                _lockout = {
+                    "locked": False,
+                    "outcome": None,
+                    "confidence": 0.0,
+                    "reason": (
+                        "no daily extreme available from this station -- "
+                        "cannot safely lock from the instantaneous reading "
+                        "alone"
+                    ),
+                }
+            else:
+                _comp_temp = (
                     min(_metar_obs["current_temp_f"], _daily_ext)
                     if _is_low_mkt
                     else max(_metar_obs["current_temp_f"], _daily_ext)
                 )
-                if _daily_ext is not None
-                else _metar_obs["current_temp_f"]
-            )
-            _lockout = _metar.check_metar_lockout(
-                current_temp_f=_comp_temp,
-                threshold_f=float(condition["threshold"]),
-                direction=_cond_type,
-                obs_time=_metar_obs["obs_time"],
-                city_tz=_CITY_TZ.get(city, "America/New_York"),
-            )
-            if _is_low_mkt and _lockout.get("locked"):
-                # A running daily-min-so-far can only DECREASE as the day
-                # progresses (radiational cooling / cold fronts routinely set
-                # a new low well after the 2pm gate check_metar_lockout uses).
-                # "min already fell below threshold - margin" is monotone-safe
-                # (it can only stay there or go lower); "min has stayed above
-                # threshold + margin" is NOT safe — evening cooling can still
-                # reverse it. Reject the unsafe direction regardless of which
-                # branch check_metar_lockout took to reach "locked".
-                _margin = 3.0  # matches check_metar_lockout's own default
-                if _comp_temp > float(condition["threshold"]) - _margin:
-                    _lockout = {
-                        "locked": False,
-                        "outcome": None,
-                        "confidence": 0.0,
-                        "reason": (
-                            f"LOW market: running min {_comp_temp:.1f}F not yet "
-                            "confirmed below threshold-margin — day not over"
-                        ),
-                    }
-            # Surface the value that actually decided the lock (the daily
-            # extreme when available) so callers -- analyze_trade's
-            # forecast_temp assignment, the between-bucket station-gap gate
-            # -- don't have to re-derive it from current_temp_f, which is
-            # always the instantaneous reading and can differ.
-            _lockout["comp_temp_f"] = _comp_temp
+                _lockout = _metar.check_metar_lockout(
+                    current_temp_f=_comp_temp,
+                    threshold_f=float(condition["threshold"]),
+                    direction=_cond_type,
+                    obs_time=_metar_obs["obs_time"],
+                    # Reuse the already-resolved _city_tz_str (opus review
+                    # finding, F7) rather than a second independent
+                    # _CITY_TZ.get(city, ...) lookup -- this exact "two
+                    # copies of the same value drift apart" pattern is what
+                    # let this branch's date guard go missing for so long
+                    # in the first place.
+                    city_tz=_city_tz_str,
+                )
+                if _is_low_mkt and _lockout.get("locked"):
+                    # A running daily-min-so-far can only DECREASE as the day
+                    # progresses (radiational cooling / cold fronts routinely
+                    # set a new low well after the 2pm gate check_metar_lockout
+                    # uses). "min already fell below threshold - margin" is
+                    # monotone-safe (it can only stay there or go lower); "min
+                    # has stayed above threshold + margin" is NOT safe —
+                    # evening cooling can still reverse it. Reject the unsafe
+                    # direction regardless of which branch check_metar_lockout
+                    # took to reach "locked".
+                    _margin = 3.0  # matches check_metar_lockout's own default
+                    if _comp_temp > float(condition["threshold"]) - _margin:
+                        _lockout = {
+                            "locked": False,
+                            "outcome": None,
+                            "confidence": 0.0,
+                            "reason": (
+                                f"LOW market: running min {_comp_temp:.1f}F "
+                                "not yet confirmed below threshold-margin — "
+                                "day not over"
+                            ),
+                        }
+                # Surface the value that actually decided the lock (the
+                # daily extreme) so callers -- analyze_trade's forecast_temp
+                # assignment, the between-bucket station-gap gate -- don't
+                # have to re-derive it from current_temp_f, which is always
+                # the instantaneous reading and can differ.
+                _lockout["comp_temp_f"] = _comp_temp
 
         elif _cond_type == "between":
             # Re-enabled (backlog.txt "BETWEEN-BUCKET MARKETS ... METAR LOCK-IN
@@ -11174,23 +11278,15 @@ def _metar_lock_in(
                 else "current reading (no daily extreme available, used as a bound)"
             )
 
-            # Per-observation local-date guard (the actual bug that caused the
-            # 2 real OKC/SATX losing trades on 2026-06-25, fixed same-day in
-            # e395392, then lost when the whole branch was deleted 4 days later
-            # in ceda79d): a METAR obs_time near midnight UTC converts to ~7 PM
-            # the PRIOR local calendar day. The outer function-level check
-            # above only confirms target_date is TODAY, not that this specific
-            # observation is FROM today — restore that guard here.
-            try:
-                import zoneinfo as _zi
-
-                _obs_local = _metar_obs["obs_time"].astimezone(
-                    _zi.ZoneInfo(_CITY_TZ.get(city, "America/New_York"))
-                )
-                _lh = _obs_local.hour
-                _obs_local_date = _obs_local.date()
-            except Exception:
-                return False, 0.0, {}  # can't determine local hour — skip lock-in
+            # Per-observation local-date guard: now hoisted to the top of
+            # this function (applies to every condition_type, not just this
+            # branch) -- reuse its _obs_local for this branch's own
+            # hour-of-day (_lh) reasoning rather than recomputing it. The
+            # explicit `_obs_local_date != target_date` check that used to
+            # live here is now unreachable (the hoisted guard already
+            # returned before this branch could ever run with a mismatched
+            # date) and has been removed rather than kept as dead code.
+            _lh = _obs_local.hour
 
             if _between_var is None:
                 # Ticker doesn't say HIGH or LOW (e.g. a caller that passes
@@ -11209,16 +11305,6 @@ def _metar_lock_in(
                     "reason": (
                         f"cannot determine HIGH/LOW direction from ticker "
                         f"{ticker!r} — refusing to guess"
-                    ),
-                }
-            elif _obs_local_date != target_date:
-                _lockout = {
-                    "locked": False,
-                    "outcome": None,
-                    "confidence": 0.0,
-                    "reason": (
-                        f"METAR obs from {_obs_local_date} != target {target_date}"
-                        " — prior-day temp cannot confirm today's extreme"
                     ),
                 }
             elif _lh < 14:

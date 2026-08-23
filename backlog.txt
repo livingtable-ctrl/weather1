@@ -25083,7 +25083,7 @@ Resolution (2026-08-22):
   on the exact pattern and the reasoning is a direct mirror, not a new
   design.
 
-[OPEN 2026-08-22 -- found by independent opus review (round 2) of this session's own _metar_lock_in current/daily-extreme combine fix, filed for tracking, not yet investigated or fixed this session] weather_markets._metar_lock_in's above/below branch has no per-observation local-date guard, unlike its between-branch sibling -- this session's own combine fix makes the gap more load-bearing than before
+[RESOLVED 2026-08-22 -- see resolution below.] weather_markets._metar_lock_in's above/below branch has no per-observation local-date guard, unlike its between-branch sibling -- this session's own combine fix makes the gap more load-bearing than before
 Priority: LOW (narrow exposure window, no live/paper reproduction run; flagged because the fix landed this session structurally widens what this gap can affect, not because a new defect was introduced)
 Files: weather_markets.py (_metar_lock_in's above/below branch, ~L10896-10945)
 
@@ -25132,6 +25132,87 @@ Problem:
   obs_not_locked (tests/test_phase2_batch_d.py).
   Full record: none (not from the original max-depth audit -- surfaced by
   independent review during this session's own fix).
+
+Resolution (2026-08-22):
+  Reproduced the incident live before touching any code:
+  check_metar_lockout(current=85.0, threshold=91.0, direction='above',
+  obs_time=2026-06-24 23:53 CDT) -> {'locked': True, 'outcome': 'no',
+  'confidence': 0.844} -- exactly the OKC/SATX numbers from this file's own
+  history (midnight temp ~85F, actual highs 91-92F).
+  Per this entry's own Recommendation, hoisted the between branch's
+  `_obs_local_date != target_date` guard to the TOP of _metar_lock_in
+  (right after fetch_metar succeeds), applying to every condition_type
+  instead of leaving it between-only -- this exact bug had already
+  recurred once from two independent copies of the same guard drifting
+  apart (between fixed twice via e395392/its later re-enable; above/below
+  never got either fix), so a single shared check was chosen over a second
+  isolated copy. The between branch's own now-redundant duplicate
+  `elif _obs_local_date != target_date:` clause was removed as dead code
+  (confirmed unreachable) rather than left in place; it now reuses the
+  hoisted _obs_local for its own hour-of-day (_lh) reasoning.
+  Also went further than a literal port: when _daily_ext is None (no
+  today-dated observation yet, the same early-local-morning gap the date
+  guard exists for), the above/below branch now refuses to lock outright
+  instead of falling back to current_temp_f alone -- unlike the between
+  branch, this branch's check_metar_lockout call has no per-direction
+  NO/YES safety split to fall back on safely, so blanket refusal was
+  judged the safer choice (confirmed via AskUserQuestion given the
+  live-trading stakes). This is a real, deliberate coverage trade-off, not
+  a free win: an independent opus review confirmed a concrete same-day
+  scenario (NYC, HIGH market, threshold 91, current_temp_f=96 at 15:30,
+  _daily_ext=None only because of a transient fetch_metar_daily_extreme
+  cache failure) where the old fallback was actually safe and correct, and
+  the new code now withholds that trade until the next scan cycle. Judged
+  acceptable because (a) the withheld window is bounded by the daily-
+  extreme cache's own 900s negative-cache TTL, and (b) the same review
+  found the fallback's OPPOSITE direction was genuinely unsafe with no
+  existing veto (see the new HIGH-market gap entry filed below).
+  Applied the same date guard to settlement_monitor.py's
+  check_city_settlement -- hoisted ONE guard right after its shared `obs`
+  fetch (covering both its T-ticker path, which had NO date guard or
+  daily-extreme combine of any kind, and its between path via
+  _check_between_settlement, which was ALSO entirely date-unaware despite
+  looking otherwise AUD-0016-hardened) rather than two separate copies,
+  since both paths consume the exact same obs object per call.
+  New tests: tests/test_weather_markets.py::TestMetarLockInAboveBelowDateGuard
+  (6 tests -- the literal historical repro, a stale-obs-with-daily-extreme-
+  present variant proving the date guard runs before the combine logic, the
+  new _daily_ext-is-None refusal for above/below/LOW-market/HIGH-market
+  combinations, a positive-control same-day lock, and a non-Eastern-city
+  (LA) case proving the guard's ZoneInfo argument is the CORRECT city's tz,
+  not just "some" tz) and tests/test_settlement_monitor.py::
+  TestCheckCitySettlementDateGuard (3 tests -- T-ticker and between-ticker
+  stale-obs skips plus a positive control). All mutation-tested: reverting
+  each guard (or, for the settlement_monitor test, reinstating the pre-fix
+  ternary fallback) makes the corresponding test fail and reproduces the
+  exact pre-fix confidence/outcome values.
+  Two independent-review rounds: this session's own inline pass, then an
+  opus review (effort=high) that found 13 findings, none blocking. Fixed:
+  the review's own test-quality finding that the ENTIRE suite tested the
+  guard's tz argument via MagicMock (which ignores its argument entirely --
+  see [[feedback_mock_ignores_tz_argument]] in Claude's memory), rewritten
+  to use real tz-aware datetimes plus a new non-Eastern-city case; a
+  duplicate _CITY_TZ.get(city, ...) lookup in the above/below branch
+  (reused the already-resolved _city_tz_str instead); a now-dead "falling
+  back to UTC date" recovery path made unreachable by the hoist (the
+  ZoneInfo resolution is now shared, not re-attempted); an asymmetric
+  not-locked payload shape on the new early-return path (added the same
+  current_temp_f/comp_temp_f keys every other not-locked path gets via the
+  function's tail setdefault() calls, even though no caller currently reads
+  either key on a not-locked result); a boundary-exact settlement_monitor
+  test value; and 2 missing test cases (a LOW-market ticker and a "below"
+  direction case for the new _daily_ext-is-None refusal). Two of the
+  review's findings were judged genuinely separate, larger design efforts
+  and filed as new backlog entries below rather than folded into this fix
+  (both flagged to the user directly, not silently deferred): a pre-
+  existing HIGH-market monotonic-veto gap in this same function, and a
+  pre-existing gap in settlement_monitor.py where no code anywhere checks
+  a market's own event date against the observation date.
+  Lint (ruff) and mypy clean on all 4 changed files (weather_markets.py,
+  settlement_monitor.py, tests/test_weather_markets.py,
+  tests/test_settlement_monitor.py). Full scoped suite (test_weather_
+  markets.py + test_settlement_monitor.py + test_phase2_batch_d.py, 391
+  tests after this session's additions) passes.
 
 [RESOLVED 2026-08-22 -- batch-29 item 1] SEVERAL ENV VARS PARSE SUCCESSFULLY BUT HAVE NO RANGE VALIDATION -- MOST NOTABLY MAX_DAILY_LOSS_PCT, WHICH CAN SILENTLY DISABLE THE DAILY-LOSS CIRCUIT BREAKER
 Priority: MEDIUM
@@ -26384,3 +26465,117 @@ Resolution 2026-08-23 (batch-25 item 4):
   Adjacent fix (opus-review-caught, same kill-switch data flow this item already touches): /api/resume (web_app.py) and cmd_resume (main.py) only checked/cleared .kill_switch, not a kill switch parked at .kill_switch.tmp mid-override -- resuming during an override window silently looked like a no-op and the kill switch re-armed itself the moment the in-flight override cycle's own finally block restored the parked file. Both now also clear the parked copy; verified safe against the cron process concurrently restoring it (main.py's own restore step already catches OSError, including FileNotFoundError from the source disappearing mid-restore, and just logs).
   Also fixed in the same session, found via the same kill-switch/backup investigation (opus-review-caught, cloud_backup.py restore_data() -- the counterpart to item 1's backup_data(), same WAL/sidecar bug class, same file): the pre-restore safety snapshot's shutil.copytree previously passed ignore=shutil.ignore_patterns("*.shm", "*.wal") intending to exclude SQLite's sidecars -- verified via fnmatch that this never actually matched anything (SQLite names them "<name>.db-wal"/"<name>.db-shm", hyphen not dot), so the exclusion was dead code, removed for clarity. Separately, restoring a .db file over a live one left that live file's stale -wal/-shm sidecars in place -- reproduced live (constructed two different SQLite DBs, copied one over the other's live main file, left the other's stale WAL sidecar in place: the restored file's own real table became invisible, "no such table", the OLD database silently came back instead of the restored one). Fixed across two review rounds: copy to a temp path, swap into place via _replace_with_retry, THEN clean stale sidecars (not before) -- round 1 of this sub-fix still had a residual window (if the final replace itself failed after sidecars were already deleted, the live WAL was destroyed with no replacement in place, also reproduced live); reordered so the atomic replace happens before sidecar cleanup, so a failure at that point can only leave a stale sidecar behind (now logged loudly) rather than lose data the restore was supposed to deliver.
   3 rounds of independent opus review (effort=high) before push given this protects the live-order ledger and the emergency kill-switch path -- round 1 (2 HIGH + 6 MEDIUM), round 2 reviewing round 1's fixes (0 HIGH + 4 MEDIUM + 8 LOW, all in what round 1's fixes themselves introduced), round 3 focused on round 2's fixes (0 HIGH + 1 MEDIUM + 6 LOW). Every fix mutation-tested individually (reverted via Edit, confirmed the specific new test fails, restored) rather than trusted from the review's own writeup. Full scoped suite (218 tests across the touched files) passes; ruff+ruff-format+mypy clean via the actual pre-commit hook.
+
+
+[OPEN 2026-08-22 -- found by independent opus review (effort=high) of this
+session's own above/below date-guard fix, while checking whether the new
+`_daily_ext is None` refusal was the safer choice or a hidden regression;
+pre-existing, not introduced by that fix] weather_markets._metar_lock_in's
+above/below branch has no monotonic-safety veto for HIGH markets, unlike
+the existing `_is_low_mkt` veto for LOW markets -- the OKC/SATX incident's
+core shape (a running value well inside "not yet confirmed" territory at
+14:00-15:00, before the day's true extreme has occurred) is still fully
+reachable with entirely legitimate, correctly-dated same-day data
+Priority: HIGH -- same incident class as the entry just resolved above,
+  reachable via a different (non-stale-data) path this session's fix does
+  not close
+Files: weather_markets.py (_metar_lock_in's above/below branch, the
+  `if _is_low_mkt and _lockout.get("locked"):` veto block -- has no HIGH-
+  market equivalent)
+
+Problem:
+  `_is_low_mkt`'s veto block rejects a LOW-market NO lock when the running
+  min has merely stayed above threshold+margin (not monotone-safe: evening
+  cooling can still drive it down later) but allows a LOW-market NO lock
+  when the running min has already fallen below threshold-margin (monotone-
+  safe: a running min cannot rise back up). There is no equivalent veto for
+  HIGH markets: a HIGH-market "below"-direction YES lock (the running max
+  has stayed below threshold-margin, i.e. "day's high will stay below X")
+  is exactly as exposed to a later rise as the LOW-market case the existing
+  veto rejects, but nothing rejects it.
+  Concrete scenario (opus review, not independently re-verified via live
+  reproduction by this session): NYC, KXHIGHNY-...-T91, direction="above",
+  threshold=91.0, 14:05 local. Real same-day running max (_daily_ext) =
+  86.0, current_temp_f = 86.0 -> _comp_temp = 86.0. check_metar_lockout:
+  local hour 14 >= 14 passes; 86.0 <= 91-3 -> locked=True, outcome="no",
+  confidence=0.72. _metar_lock_in returns (True, 0.28, ...), and
+  analyze_trade REPLACES the entire ensemble estimate with p_yes=0.28 off a
+  14:05 running max that is not the day's true high -- mid-latitude US
+  temperature peaks typically land 15:00-17:00. This is structurally the
+  same mechanism as the OKC/SATX incident (a pre-peak reading treated as if
+  it were conclusive), just without any stale/wrong-day data involved --
+  entirely legitimate, correctly-dated same-day data reaches this outcome.
+  Already acknowledged in the code's own comment (see
+  weather_markets.py, above/below branch, ~L10971-10978: "a HIGH market's
+  'below'-direction YES ... is exactly as exposed to further rise as the
+  between branch's at-risk edge ... the pre-existing, out-of-scope gap for
+  HIGH markets noted there") -- this entry makes it a tracked backlog item
+  rather than only a code comment.
+  Recommendation: Mirror the `_is_low_mkt` veto for HIGH markets: reject a
+  "below"-direction YES lock (equivalently, an "above"-direction NO lock --
+  check both directions' HIGH-market mapping carefully against
+  check_metar_lockout's actual branch logic before implementing) when the
+  running max has merely stayed below threshold-margin without yet
+  clearing it in the confirmed direction. Needs its own design pass (which
+  direction/outcome combination is actually unsafe for a HIGH market is not
+  a symmetric mirror of the LOW-market case without re-deriving it against
+  check_metar_lockout's real "above"/"below" outcome mapping) and its own
+  test suite analogous to TestMetarLockInLowMarketAsymmetry
+  (tests/test_weather_markets.py) before shipping, given the live-trading
+  stakes -- not a mechanical port.
+  Full record: none (not from the original max-depth audit -- surfaced by
+  independent opus review of this session's own fix).
+
+[OPEN 2026-08-22 -- found by independent opus review (effort=high) of this
+session's own settlement_monitor.py date-guard fix, while checking whether
+hoisting one guard per check_city_settlement call (rather than per-market)
+was correct; pre-existing, not introduced by that fix] settlement_monitor.
+check_city_settlement never checks a market's own event date against the
+METAR observation date -- only whether the OBSERVATION is from today,
+never whether the MARKET itself is a today-settling market
+Priority: MEDIUM -- live-money-adjacent (cron.py's settlement-lag force-
+  close path), but requires the settlement monitor to actually be scheduled
+  running against markets from more than one date in the same active_
+  tickers list, which this session did not independently verify happens in
+  current production usage
+Files: settlement_monitor.py (check_city_settlement, active_tickers
+  sourced from _run_settlement_monitor_loop's client.get_markets() call --
+  no date filtering anywhere in that chain), cron.py (the >=0.80 force-
+  close gate that consumes check_city_settlement's signals)
+
+Problem:
+  check_city_settlement's new date guard (this session's fix, resolved
+  entry above) confirms the METAR OBSERVATION is from today's local
+  calendar date -- but nothing in this module ever derives or checks which
+  DATE a given active_tickers market entry is actually FOR. kalshi_client.
+  get_markets() (per opus review, not independently re-verified live this
+  session) paginates a series with no date filter beyond status=="open";
+  by the settlement monitor's own 17:00-19:00 local monitoring window,
+  Kalshi's next-day KXHIGH* markets are ordinarily already open and would
+  be included in active_tickers alongside today's.
+  Concrete scenario (opus review, not independently reproduced live this
+  session): Aug 22, 17:30 EDT, NYC's high already 96F. KXHIGHNY-26AUG23-T90
+  (TOMORROW's market) is open and gets parsed into active_tickers. Today's
+  obs passes the (correct, newly-added) date guard since the OBSERVATION
+  really is from today. check_metar_lockout(96.0, 90.0, "above", ...) with
+  _SETTLEMENT_MARGIN_F=1.0 -> locked=True, outcome="yes", confidence >=
+  0.80. build_settlement_signal fires for ticker="KXHIGHNY-26AUG23-T90".
+  cron.py's force-close gate matches by ticker alone against open paper
+  positions and would force-close TOMORROW's position off TODAY's
+  temperature.
+  Root cause: this module was built (and this session's fix scoped) around
+  "is the observation stale," never "does this active ticker's own event
+  date match today" -- a genuinely separate check with its own separate
+  data source (the ticker string's embedded date, not obs_time).
+  Recommendation: Extract each market's date token from its ticker (the
+  `-\d{2}[A-Z]{3}\d{2}-` segment Kalshi's KXHIGH*/KXLOW* tickers carry) and
+  skip any market whose parsed date != today's local date, before either
+  the between or T-ticker path runs -- mirroring the same "don't trust
+  open-status alone" reasoning this session's obs-date guard already
+  applies to the observation side. Verify first (live, not assumed) whether
+  _run_settlement_monitor_loop's caller already filters by date upstream
+  before active_tickers reaches check_city_settlement -- if it does, this
+  may already be a non-issue in practice and this entry should be
+  downgraded/closed rather than fixed.
+  Full record: none (not from the original max-depth audit -- surfaced by
+  independent opus review of this session's own fix).
