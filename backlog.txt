@@ -2792,6 +2792,15 @@ Priority: Medium -- directly explains a real, already-observed Brier
   0.2329 and 0.2804, found 2026-07-31), but no code is broken and no
   action is needed beyond waiting and re-checking.
 
+UPDATE 2026-08-22 (batch-21 handoff session, live re-check per the
+  workflow's own instruction to re-verify against production, not trust
+  this file's cached count): re-ran
+  tracker.count_emos_variance_ready_predictions() against the real
+  data/predictions.db -- 56 rows, up from 48 on 2026-08-16 but still short
+  of the 80-row bar below. No go-live action taken; still a "wait and
+  re-check" item. At the ~8-row/week accrual pace implied by 48->56 over
+  ~6 days, ~80 is still roughly 2-3 weeks out.
+
 UPDATE 2026-08-18 (user's explicit call, raised during the max-depth audit's
   backlog-triage session -- their own risk-tolerance decision, not
   re-derived from anything in this entry): the real go-live bar for EMOS is
@@ -10067,6 +10076,17 @@ payoff within each group.
 Priority: was Medium (new alpha source, mostly existing plumbing) -- now Low
   until the enablement trigger below fires; this is a data-collection phase,
   not an active development item.
+
+UPDATE 2026-08-22 (batch-21 handoff session, live re-check per the
+  workflow's own instruction to re-verify against production, not trust
+  this file's cached count): re-ran this entry's own ENABLEMENT TRIGGER
+  query (predictions JOIN outcomes WHERE run_trend_delta IS NOT NULL AND
+  settled_temp_f IS NOT NULL) against the real data/predictions.db -- 24
+  rows, up from 22 on 2026-08-18, still well short of the 60-row bar
+  below. No blend/sigma wiring done; still log-only. Step 2's accuracy
+  check (does positive run_trend_delta correlate with the settled value
+  coming in above the forecast?) also still hasn't been run -- both gates
+  need to clear before this is wired in, not just the row count.
 
 UPDATE 2026-08-18 (re-verified live during the max-depth audit's backlog-
   triage session, plus the user's own explicit call): this entry's sample-
