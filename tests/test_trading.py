@@ -359,7 +359,7 @@ def test_auto_place_trades_med_tier_uses_20_cap(monkeypatch):
     captured_caps = []
 
     def fake_kelly_quantity(
-        kf, price, min_dollars=1.0, cap=None, method=None, client=None
+        kf, price, min_dollars=1.0, cap=None, method=None, client=None, **_kw
     ):
         captured_caps.append(cap)
         # Return 10 contracts so the trade goes through
@@ -455,7 +455,7 @@ def test_auto_place_trades_none_ci_kelly_falls_back_without_crashing(monkeypatch
     captured_ci_kelly = []
 
     def fake_kelly_quantity(
-        kf, price, min_dollars=1.0, cap=None, method=None, client=None
+        kf, price, min_dollars=1.0, cap=None, method=None, client=None, **_kw
     ):
         return 10
 
@@ -1419,7 +1419,7 @@ def _run_with_captured_kelly(monkeypatch, opps):
         return ci_kelly
 
     def fake_kelly_quantity(
-        kf, price, min_dollars=1.0, cap=None, method=None, client=None
+        kf, price, min_dollars=1.0, cap=None, method=None, client=None, **_kw
     ):
         return 10
 

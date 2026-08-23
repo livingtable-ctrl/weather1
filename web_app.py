@@ -1170,7 +1170,6 @@ setInterval(() => {{
         from paper import kelly_bet_dollars as _kbd
         from paper import kelly_quantity as _kq
         from paper import portfolio_kelly_fraction as _pkf
-        from paper import spread_kelly_multiplier as _skm
 
         # Maker fee (not taker): live/paper entries are always resting midpoint
         # GTC limit orders, which pay $0 on this bot's markets (see
@@ -1196,8 +1195,14 @@ setInterval(() => {{
             try:
                 # Mirror the bot's full Kelly sizing chain:
                 # kelly_fraction → portfolio_kelly_fraction → corr_kelly_scale
-                # → consensus_mult → spread_kelly_multiplier
+                # → consensus_mult
                 # → kelly_bet_dollars (drawdown + streak + Brier cap) → kelly_quantity.
+                # batch-26 item 4: spread_kelly_multiplier removed from this
+                # chain -- see paper.py's git history / order_executor.py's
+                # comment at its former call site for the double-counting
+                # rationale (net_edge is already priced off the ask-side
+                # entry_price, so a second spread/2 deduction double-counted
+                # a cost already priced in, and the units didn't match).
                 fp = (s.get("forecast_prob") or 0) / 100
                 mp = (s.get("market_prob") or 0) / 100
                 side = (s.get("side") or "yes").lower()
@@ -1240,9 +1245,6 @@ setInterval(() => {{
                     kf *= _cks({"city": city, "target_date": target_date}, _open_trades)
                     if not s.get("model_consensus", True):
                         kf *= 0.5
-                    kf *= _skm(
-                        s.get("yes_bid", 0), s.get("yes_ask", 0), s.get("net_edge", 0)
-                    )
                     s["kelly_dollars"] = _kbd(kf)
                     s["kelly_qty"] = _kq(kf, side_price)
                 else:
@@ -2757,8 +2759,31 @@ setInterval(() => {{
 
             _ep_raw = body.get("entry_prob")
             if _ep_raw is not None:
-                _our_prob = max(0.01, min(0.99, float(_ep_raw)))
+                # batch-26 item 1: entry_prob is stored (below, in
+                # place_paper_order/log_prediction) in YES-space, matching
+                # every other consumer's convention (tracker's Brier
+                # scoring, order_executor's model-reversal exit shift,
+                # paper.py's pnl_attribution) -- do NOT flip the entry_prob
+                # variable itself. This Kelly-cap check needs a side-space
+                # probability (kelly_fraction(our_prob, price) requires both
+                # args in the same space as entry_price, which IS side-space
+                # per this route's own contract), so convert to a LOCAL
+                # side-space value here only, mirroring the identical
+                # conversion already used in this file's SignalsTab
+                # Kelly-qty display code (_our_prob = 1.0 - fp for "no").
+                _yes_prob = max(0.01, min(0.99, float(_ep_raw)))
+                _our_prob = (1.0 - _yes_prob) if side == "no" else _yes_prob
                 _kf_val = _kf_cap(_our_prob, entry_price, _fee_cap)
+                # batch-26 item 2 gap (opus-review-caught, same root cause as
+                # the documented /api/live_signals gap below): this cap
+                # can't reach the raised consensus ceiling either -- the
+                # request body (built by buildPaperOrderBody) never sends a
+                # "consensus" flag, and the signals cache dict backing it
+                # only carries "model_consensus" (a different, already-
+                # correct 0.5x model-disagreement penalty), not the raw
+                # `consensus` boolean consensus_fraction_cap needs. Reaching
+                # it would require adding a consensus field to the signals
+                # cache in trade_cycle.py, a different batch's file scope.
                 _max_qty = _kq_cap(_kf_val, entry_price)
                 # WA-cap-skip: previously `if _max_qty > 0` skipped the clamp
                 # entirely when Kelly says stake should be ~0 (no/negative edge) —

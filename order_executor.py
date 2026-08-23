@@ -2933,6 +2933,7 @@ def _auto_place_trades(
     cap: per-trade dollar cap; if None, uses dynamic Brier cap.
     """
     from paper import (
+        consensus_fraction_cap,
         corr_kelly_scale,
         drawdown_scaling_factor,
         get_open_trades,
@@ -2942,7 +2943,6 @@ def _auto_place_trades(
         kelly_quantity,
         liquidity_kelly_scale,
         portfolio_kelly_fraction,
-        spread_kelly_multiplier,
     )
 
     def _shadow_suffix() -> str:
@@ -3539,24 +3539,35 @@ def _auto_place_trades(
             continue
         method = a.get("method")
         consensus_mult = 0.5 if not a.get("model_consensus", True) else 1.0
-        _net_edge_val = float(a.get("net_edge") or a.get("edge") or 0)
-        _spread_mult = spread_kelly_multiplier(
-            _fill_yes_bid, _fill_yes_ask, _net_edge_val
-        )
-        adj_kelly_final = adj_kelly * consensus_mult * _spread_mult
-        if _spread_mult < 0.95:
-            _log.info(
-                "_auto_place_trades: %s spread=%.3f eats %.0f%% of edge → Kelly×%.2f",
-                ticker,
-                _fill_yes_ask - _fill_yes_bid,
-                (1 - _spread_mult) * 100,
-                _spread_mult,
-            )
+        # batch-26 item 4: spread_kelly_multiplier (a second spread/2
+        # deduction from net_edge) removed -- _price_and_size already prices
+        # net_ev/net_edge off the ask-side entry_price (yes_ask for YES,
+        # 1-yes_bid for NO, not the mid), so the spread cost is already
+        # priced in and a second deduction double-counted it. It was also
+        # unit-wrong: net_edge is EV-per-dollar-of-cost (dimensionless)
+        # while spread/2 is a raw price-unit quantity -- not comparable as
+        # constructed. See paper.py's removed spread_kelly_multiplier for
+        # the full removal rationale. Note (opus-round-2-review-caught): the
+        # removed multiplier was also the only sizing input that used the
+        # FRESH (re-fetched, just above) _fill_yes_bid/_fill_yes_ask rather
+        # than the analysis-time book adj_kelly is derived from -- a spread
+        # that widened after analysis no longer shrinks the dollar stake,
+        # only the resulting contract count (via the fresh entry_price
+        # below). Not a defect (the double-counting rationale above still
+        # holds at analysis time), but a real, deliberate loosening of that
+        # one refresh signal, not just a no-op cleanup.
+        adj_kelly_final = adj_kelly * consensus_mult
         if drawdown_scaling_factor() == 0.0:
             _skip_reasons.append(f"{ticker}: drawdown_halt")
             continue
+        _frac_cap = consensus_fraction_cap(a)
         qty = kelly_quantity(
-            adj_kelly_final, entry_price, cap=cap, method=method, client=client
+            adj_kelly_final,
+            entry_price,
+            cap=cap,
+            method=method,
+            client=client,
+            fraction_cap=_frac_cap,
         )
         if qty < 1:
             _skip_reasons.append(
@@ -3668,6 +3679,7 @@ def _auto_place_trades(
                 method=method,
                 client=client,
                 balance_override=_live_balance if _live_balance > 0 else None,
+                fraction_cap=_frac_cap,
             )
 
             # Per-iteration daily cap check for live path — the initial check at the top

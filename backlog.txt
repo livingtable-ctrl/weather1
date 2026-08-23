@@ -24598,3 +24598,251 @@ Resolution (2026-08-22):
   given weather_markets.py was touched): 601 passed, 4 skipped (unchanged
   by the (a)/(c) revisions above -- neither changes runtime behavior).
   ruff/ruff-format/mypy clean via the actual pre-commit hook.
+[RESOLVED 2026-08-22 -- see resolution below.] The React dashboard's "Approve" action sends the YES-side price and probability regardless of the recommended side
+Priority: HIGH -- direct financial-loss mechanism on the manual-approval path (one of the highest-priority items across batches 22-30 per audit/handoff_prompts/batches/INDEX.md)
+Files: frontend/src/App.jsx (~908-917), web_app.py (~2707-3045 api_paper_order), trade_cycle.py (~721-806, proves the signals cache stores YES-space values)
+
+Problem:
+  The signals cache stores forecast_prob/market_prob/yes_bid/yes_ask in
+  YES-space regardless of the recommended side; web_app.py's own display
+  code proves this by explicitly flipping when rendering a NO signal. The
+  dashboard's Approve payload did NOT perform the equivalent flip -- it
+  sent the YES mid/probability unconditionally as entry_price/entry_prob.
+  The server then computed kelly_fraction(P_yes, yes_mid) even for a NO
+  recommendation, where P_yes < market_prob by construction whenever the
+  recommendation is NO -- Kelly was exactly 0.0 every time, producing an
+  HTTP 400 that named four plausible-sounding causes, none of which was the
+  real one. Second-order and more severe: if entry_prob was ever omitted,
+  the server skipped the Kelly cap and passed the YES-space entry_price
+  straight to place_paper_order(side="no", ...) -- but the server's own
+  code comment states the contract explicitly ("entry_price is the price
+  PAID for the requested SIDE"). A NO position would be booked at the
+  wrong price. (Independently verified during this session's fix: a
+  pre-existing WA-security deviation guard, added 2026-07-11, and a
+  pre-existing WA-inversion fix already mitigate the wrong-booking half of
+  this in the common case -- the ALWAYS-REJECTS-every-NO-approval half was
+  the live, reproducible symptom.)
+  Full record: batch-26 item 1 (audit/handoff_prompts/batches/batch-26.md).
+
+Resolution (2026-08-22):
+  Extracted a pure, exported buildPaperOrderBody(opp, qty) function in
+  App.jsx (and a shared sideAwareEntryPrice(opp) helper) that flips
+  entry_price to side-space (NO pays 1-yes_bid, YES pays yes_ask) before
+  POSTing to /api/paper-order, matching place_paper_order's documented
+  contract. entry_prob is deliberately left in YES-space, UNFLIPPED --
+  independent opus review (effort:high) caught that an earlier draft
+  flipping entry_prob too would have corrupted every NO trade's stored
+  calibration data (tracker's Brier/calibration scoring, order_executor's
+  model-reversal exit shift, paper.py's pnl_attribution all read entry_prob
+  as YES-space, matching order_executor.py's own entry_prob=forecast_prob
+  convention). web_app.py's /api/paper-order route now converts YES-space
+  entry_prob to a LOCAL side-space value only for its own Kelly-cap sizing
+  check; the value stored via place_paper_order/log_prediction is the
+  original, unconverted YES-space body value.
+  Also fixed the same defect class (dividing by the raw YES-space
+  market_prob for a NO signal) at three more App.jsx sites the same review
+  round found: handleAction's qty-default, the signals-table qty-input
+  default, the "Kelly contracts" detail-panel stat, and the confirm-dialog
+  displayed price/cost -- all now use the shared sideAwareEntryPrice helper.
+  Rebuilt the git-tracked static/dist/ production bundle.
+  Tests: 9 new in frontend/src/App.test.js (buildPaperOrderBody +
+  sideAwareEntryPrice, vitest, mutation-tested by reverting the fix and
+  confirming 5/6 assertions fail); 2 new in tests/test_web_app.py
+  (TestPaperOrderNoSideEndToEnd, a real /api/paper-order NO-side
+  end-to-end test through the actual Flask route, not mocked at the
+  boundary -- verifies acceptance, correct booking price, AND that
+  entry_prob is stored unflipped). Full suite: vitest 29/29;
+  tests/test_web_app.py 51/51.
+  Two rounds of independent opus review (effort:high) ran before push, per
+  this project's standing "a fix needs its own review too" rule -- round 1
+  found the entry_prob-flip calibration-corruption bug above (fixed);
+  round 2 re-verified that fix closed the hole without opening a new one
+  (traced entry_prob through every consumer, re-ran round 1's own
+  mutations to confirm the storage/Kelly-cap paths genuinely diverge) and
+  found only LOW/INFO findings -- documented below or filed as new backlog
+  entries where genuinely out of this batch's scope.
+
+[RESOLVED 2026-08-22 -- see resolution below.] The consensus-signal Kelly ceiling (intended to raise the cap to ~0.33 per an explicit 2026-07-18 user decision) is unreachable end to end
+Priority: MEDIUM -- conservative direction (under-sizes), but a deliberately-decided, already-documented feature was a complete no-op across its entire intended band
+Files: weather_markets.py (~8426-8428, raises ci_adjusted_kelly's cap when consensus=True, untouched by this fix), paper.py (~941 kelly_bet_dollars, re-clamped at plain KELLY_CAP unconditionally)
+
+Problem:
+  weather_markets.py's _price_and_size correctly raised the Kelly-fraction
+  cap for consensus signals to KELLY_CAP * KELLY_CAP_CONSENSUS_MULT (~0.33
+  at defaults), but every real sizing call site funneled the result
+  through paper.kelly_bet_dollars, which re-clamped at the plain KELLY_CAP
+  unconditionally. Reproduced (E2, $1000 balance): kelly_in=0.30 -> $250.00
+  (should be $300), kelly_in=0.33 -> $250.00 (should reach the full raised
+  ceiling).
+  Full record: batch-26 item 2 (audit/handoff_prompts/batches/batch-26.md).
+
+Resolution (2026-08-22):
+  Added a fraction_cap: float | None = None parameter to kelly_bet_dollars/
+  kelly_quantity (default preserves prior behavior exactly), and a new
+  paper.consensus_fraction_cap(analysis) helper returning the raised
+  ceiling when analysis.get("consensus") is truthy, else None. Threaded
+  fraction_cap=consensus_fraction_cap(analysis) into every real sizing
+  call site: main.py (cmd_market display x2, cmd_today's _pick_display/
+  best-pick/runner-ups, the live maker-order branch in cmd_order, cmd_
+  paper's auto-size) and order_executor.py's _auto_place_trades (both the
+  paper and live kelly_quantity calls in the same loop iteration).
+  Documented (not fixed, genuinely out of this batch's file scope) two
+  gaps in web_app.py's manual quick-buy paths: the /api/live_signals
+  display mirror and /api/paper-order's own Kelly cap check can't reach
+  the raised ceiling either, because the signals-cache dict backing both
+  only carries "model_consensus" (a different, already-correct 0.5x
+  model-disagreement penalty), not the raw "consensus" boolean this fix
+  needs -- reaching those requires adding a consensus field in
+  trade_cycle.py, a different batch's file scope. Both under-size
+  conservatively in the interim, same failure direction as the original bug.
+  Investigated an opus-review MEDIUM finding claiming the raised cap
+  "leaks" onto uncapped fee_adjusted_kelly fallback sizing -- confirmed a
+  false positive: weather_markets.kelly_fraction() (fee_adjusted_kelly's
+  sole producer) already self-clamps its return value at plain KELLY_CAP
+  internally regardless of consensus, so a raised fraction_cap is a
+  structural no-op for any fee_kel-sourced fraction (verified: every
+  fee_adjusted_kelly-setting site sources it from kelly_fraction() or a
+  {..."fee_kel": ...} passthrough of that same call, and all downstream
+  scales -- portfolio_kelly_fraction, corr_kelly_scale, liquidity_kelly_
+  scale, consensus_mult -- are <=1.0).
+  Tests: 5 new leaf-function tests in tests/test_paper.py (kelly_bet_
+  dollars/kelly_quantity fraction_cap propagation incl. the exact audit
+  repro numbers $300/$330 vs $250, consensus_fraction_cap's own contract);
+  2 new integration/wiring tests proving the real call sites actually
+  thread it through, not just the leaf functions (opus-review-caught,
+  round 1: mutation-proved the original test suite didn't catch reverting
+  the wiring) -- tests/test_execution_proof.py::test_auto_place_trades_
+  threads_consensus_fraction_cap_into_kelly_quantity (paper path) and its
+  live-path sibling (opus-review-caught, round 2: the paper-path test
+  alone didn't cover the live kelly_quantity call site). All 7 mutation-
+  tested (revert-fix, confirm failure, re-confirm pass).
+
+[RESOLVED 2026-08-22 -- see resolution below.] cmd_market's displayed contract count for a NO recommendation is computed using the YES price
+Priority: MEDIUM
+Files: main.py (~1312/1330, kelly_quantity(ci_kelly, prices["implied_prob"], ...) used regardless of analysis["recommended_side"]; contrast the side-aware pattern already used correctly at main.py's cmd_today/_pick_display, web_app.py's SignalsTab display, order_executor.py's fill convention)
+
+Problem:
+  implied_prob is always the YES mid, passed unconditionally into
+  kelly_quantity for cmd_market's displayed Kelly sizing. Reproduced (E2):
+  $1000 balance, YES mid 0.30, kelly 0.01 -- shown quantity 33 contracts
+  (÷0.30), correct quantity 14 contracts (÷0.70), a ~2.4x overcount. The
+  dollar figure printed on the same line was correct, so the two numbers
+  directly contradicted each other in the CLI output a user would be
+  following manually.
+  Full record: batch-26 item 3 (audit/handoff_prompts/batches/batch-26.md).
+
+Resolution (2026-08-22):
+  Extracted a module-level _side_aware_entry_price(side, prices) helper in
+  main.py (just above cmd_market), mirroring weather_markets._price_and_
+  size's own entry_price convention (yes_ask for YES, 1-yes_bid for NO,
+  gated on prices["yes_bid"] > 0 specifically -- opus-review-caught round
+  2: an earlier draft gated the NO fallback on the coarser prices["has_
+  quote"] instead, which could return a degenerate 1.0 price when yes_bid
+  was 0 but yes_ask wasn't). Used it for cmd_market's two kelly_quantity
+  calls; the "Mkt P:" YES-probability display line itself was deliberately
+  left unchanged (a legitimate always-YES-space display, not part of this
+  bug).
+  Tests: 7 new leaf-function tests in tests/test_side_aware_entry_price.py
+  (incl. the exact audit repro: 33 vs 14 contracts) plus 1 new integration
+  test driving a real main.cmd_market() call end to end with a spy on
+  paper.kelly_quantity (opus-review-caught, round 1: mutation-proved
+  nothing invoked cmd_market, so reverting the wiring passed the suite
+  silently). All 8 mutation-tested.
+
+[RESOLVED 2026-08-22 -- see resolution below.] spread_kelly_multiplier is both premise-wrong and unit-wrong, leaving it an almost-no-op in practice
+Priority: LOW
+Files: paper.py (removed function, was ~876-898), order_executor.py (~3543-3546, removed caller), web_app.py (~1246-1248, removed second caller in the SignalsTab Kelly-qty display mirror)
+
+Problem:
+  The docstring's premise (entering at ask costs spread/2 beyond what
+  net_ev models) was false -- _price_and_size already prices net_ev off
+  entry_price = yes_ask/1-yes_bid (the ask side), not the mid, so
+  subtracting a spread penalty again double-counted it. Separately,
+  net_edge is EV-per-dollar-of-cost while spread/2 is a raw price-unit
+  quantity -- not comparable as constructed. Reproduced (E2): on a
+  wide-spread contract (bid 0.06/ask 0.14) where a real penalty should
+  matter most, the multiplier returned ~0.965 (essentially none).
+  Full record: batch-26 item 4 (audit/handoff_prompts/batches/batch-26.md).
+
+Resolution (2026-08-22):
+  User explicitly chose removal over fixing the units (AskUserQuestion,
+  "Decide whether a second spread penalty is wanted at all given net_edge
+  is already ask-priced"). Deleted spread_kelly_multiplier entirely from
+  paper.py; removed its call in order_executor.py's _auto_place_trades
+  (was multiplying into adj_kelly_final) and its second call in web_app.py's
+  SignalsTab Kelly-qty display mirror; deleted its dedicated 9-test class
+  in tests/test_paper_metrics.py; fixed 6 test files whose kelly_quantity
+  stub lambdas had fixed positional-or-keyword signatures that broke once
+  fraction_cap (item 2) started being passed as a kwarg.
+  Independently re-verified the removal's premise by reading _price_and_
+  size directly: net_ev/net_edge are genuinely computed off the ask-side
+  entry_price already; found (opus review) the spread is actually priced a
+  THIRD way too for the temperature path specifically (a spread_scale
+  folded into extra_kelly_scales, plus a hard 30%-of-mid spread gate) --
+  precip/snow paths don't have that third layer, so for those two the
+  ask-pricing + gate are now the only remaining spread controls (still
+  non-redundant, not a defect, but noted here since the original comment
+  didn't distinguish by market type).
+  Also noted (opus review, not a defect, a real behavioral loosening worth
+  documenting): the removed multiplier was the only sizing input in
+  order_executor.py's _auto_place_trades that used the FRESHLY re-fetched
+  bid/ask rather than the analysis-time book adj_kelly derives from -- a
+  spread that widens between analysis and placement no longer shrinks the
+  dollar stake, only the resulting contract count via the fresh entry_price.
+
+[OPEN 2026-08-22 -- found investigating an opus-review finding (batch-26 item 3's own "cmd_market" sibling) while fixing batch-26; genuinely separate defect class (mid-vs-ask pricing, not the side-inversion bug batch-26 targets) and needs its own live-quote-refresh design decision, so filed separately rather than folded into that fix] cmd_today's interactive "[P] Place" flow books the actual paper trade at the bid-ask MID, not the realistic ask/no_ask price
+Priority: MEDIUM -- affects a REAL placed paper trade's recorded price/cost/quantity, not just a display value (distinct from and more severe than the display-only mid-vs-ask divergence an opus reviewer initially flagged here as LOW without checking this)
+Files: main.py (~3099 _entry_price1 = _market_prob1 if _side1=="yes" else 1-_market_prob1; ~3277-3298, the actual place_paper_order call using it; ~3010/~3064, the sibling _pick_display's own display-only _entry_price computation, same pattern)
+
+Problem:
+  cmd_today's "#1 Best Pick" flow computes _entry_price1 from the cached
+  bid-ask MID (best_a["market_prob"]), correctly flipped for side but NOT
+  ask-based, then passes it straight to place_paper_order (via _ppo_today)
+  as the trade's booking price when the user presses [P] to place it. This
+  is the exact "using mid understates entry cost by half the spread"
+  pattern the codebase explicitly documents and avoids elsewhere
+  (order_executor.py's own fill-price comment, weather_markets._price_and_
+  size, and this same batch's cmd_market fix) -- but cmd_today's real
+  order-placement path still uses it. A real placed paper trade is booked
+  cheaper than a realistic fill, and the CLI's own printed "cost $X" and
+  "if correct, win $Y" figures (main.py ~3288/3015-3021) are computed from
+  the same understated price, misleading the operator about real economics
+  at the moment of placement.
+  Root cause: _entry_price1 predates this batch's session and was never
+  updated when order_executor.py's real auto-trading engine and (as of
+  this batch) cmd_market's display were both hardened to use the ask side;
+  cmd_today's own interactive placement path was missed.
+  Not independently reproduced with a live/paper trade this session --
+  found by code reading while investigating a related opus-review finding,
+  not a fresh repro run.
+  Recommendation: Decide whether cmd_today should (a) reuse this batch's
+  _side_aware_entry_price(side, prices) helper directly (cheapest, but
+  prices here may be several minutes stale by placement time -- the same
+  staleness concern order_executor.py's own "L1-B: Re-fetch live price
+  before placement" comment addresses for the real auto-trading engine),
+  or (b) re-fetch a fresh quote at placement time via client.get_market
+  before booking, matching order_executor.py's own convention more
+  closely. Needs its own investigation into how stale `prices`/`best_a`
+  typically are by the time a user presses [P] in practice before picking
+  an approach, then real tests (mutation-tested) and independent review
+  given this touches an actual paper-order-placement path.
+
+[OPEN 2026-08-22 -- found by independent opus review (round 1) of batch-26 item 1's fix; genuinely separate file/tree, not built or served by this repo today, so filed rather than fixed inline] weather app site V_3 (3)/src/tabs/SignalsTab.jsx carries the same wrong-side-price bugs batch-26 item 1 just fixed in the real frontend, unfixed
+Priority: LOW -- this tree has no package.json/vite.config.js and nothing in this repo builds it into the git-tracked static/dist/ actually served by web_app.py, so there is no live impact today
+Files: weather app site V_3 (3)/src/tabs/SignalsTab.jsx (~44, 60, 95, 104, 213, 529, 557, 566)
+
+Problem:
+  This is a tabs-split copy of the dashboard, actively maintained (recent
+  real bug-fix commits in this repo's own history, e.g. 7133a40c, d47b59d3)
+  but not the one served in production. It carries all of the sites
+  batch-26 item 1 fixed in frontend/src/App.jsx (entry_price/entry_prob
+  sent unconditionally in YES-space regardless of side) -- plus one this
+  batch's real frontend doesn't have: a handleBulkApprove that posts
+  entry_price: opp.market_prob/100 for every selected signal at once
+  (~95, 104).
+  Recommendation: If this tree is ever adopted (replaces or merges into
+  the real served frontend), port batch-26 item 1's fix (buildPaperOrderBody/
+  sideAwareEntryPrice's exact side-flip logic and entry_prob-stays-YES-space
+  contract) to it first. If it's genuinely dead/abandoned, consider deleting
+  it or marking it explicitly as such to stop future audits/reviews from
+  re-flagging its bugs as live risk.

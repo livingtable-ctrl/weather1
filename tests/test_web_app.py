@@ -1223,6 +1223,163 @@ class TestPaperOrderDaysOutUsesCityLocalToday:
         assert analysis_dict["days_out"] == place_kwargs["days_out"] == 2
 
 
+class TestPaperOrderNoSideEndToEnd:
+    """batch-26 item 1: the dashboard's Approve action (App.jsx's
+    buildPaperOrderBody) sends entry_price flipped to side-space for a NO
+    recommendation (1 - yes_bid) but entry_prob left in YES-space, matching
+    web_app.py's WA-inversion comment's documented contract for entry_price
+    ("the price PAID for the requested SIDE") while preserving entry_prob's
+    existing YES-space storage convention (tracker Brier scoring,
+    order_executor's model-reversal exit shift, paper.py's pnl_attribution
+    all read it that way -- opus review caught an earlier draft of this fix
+    flipping entry_prob too, which would have corrupted calibration data for
+    every NO approval). Before the fix, the frontend sent the raw YES-space
+    market_prob unconditionally for entry_price too: kelly_fraction(P_yes,
+    yes_price) is exactly 0.0 for a genuine NO recommendation (P_yes <
+    market_prob by construction whenever the model recommends NO), so the
+    Kelly cap zeroed the quantity and the server rejected with a misleading
+    "no edge" 400 for every NO approval -- real edge, wrong space. This
+    proves the fixed payload shape now reaches place_paper_order end to
+    end: not rejected, booked at the correct NO-side price, AND with
+    entry_prob stored unflipped (YES-space)."""
+
+    def test_no_side_signal_with_positive_edge_is_accepted_and_priced_correctly(
+        self, client
+    ):
+        """A NO signal with genuine edge, sent with the post-fix payload
+        shape (entry_price side-flipped, entry_prob YES-space), must be
+        accepted (not 400'd by the Kelly cap), reach place_paper_order at
+        the NO-side price (1 - yes_bid, not the YES-side price), AND store
+        entry_prob unflipped (YES-space) -- not the side-space value the
+        Kelly-cap check internally derives from it."""
+        with (
+            patch("cron.KILL_SWITCH_PATH") as mock_ksp,
+            patch("utils.is_trading_paused", return_value=False),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch(
+                "weather_markets.enrich_with_forecast",
+                return_value={"_city": "NYC", "_date": date(2026, 8, 22)},
+            ),
+            patch("paper.check_position_limits", return_value={"ok": True}) as mock_cpl,
+            patch("paper.place_paper_order") as mock_place,
+            patch("tracker.log_prediction") as mock_log_pred,
+        ):
+            mock_ksp.exists.return_value = False
+            # Real market: yes_bid=54c, yes_ask=56c -> NO-side ask (no_ask)
+            # = 1 - 0.54 = 0.46. weather_markets.parse_market_price (NOT
+            # mocked) runs for real on this dict inside the route.
+            mock_kc_cls.return_value.get_market.return_value = {
+                "yes_bid": 54,
+                "yes_ask": 56,
+                "close_time": "2099-01-01T00:00:00Z",
+            }
+            mock_place.return_value = {"id": 1, "cost": 2.30}
+
+            # Model thinks YES is only 30% likely (entry_prob stays
+            # YES-space on the wire, per buildPaperOrderBody's post-review
+            # contract) -> the route's own Kelly-cap check converts this to
+            # NO-space internally (1 - 0.30 = 0.70), well above the 0.46 NO
+            # price: real positive edge, exactly the buildPaperOrderBody
+            # NO-branch output shape.
+            resp = client.post(
+                "/api/paper-order",
+                json={
+                    "ticker": "KXHIGH-26AUG22-T80",
+                    "side": "no",
+                    "quantity": 5,
+                    "entry_price": 0.46,
+                    "entry_prob": 0.30,
+                    "net_edge": 0.25,
+                },
+            )
+
+        assert resp.status_code == 201, (
+            f"NO signal with real edge must be accepted, got {resp.status_code}: "
+            f"{resp.get_json()}"
+        )
+        assert mock_cpl.called
+        assert mock_place.called
+        _, place_kwargs = mock_place.call_args
+        assert place_kwargs["side"] == "no"
+        # Booked at the NO-side price (1 - yes_bid), not the YES-side
+        # market_prob/yes_ask -- the exact wrong-price failure mode this
+        # test guards against.
+        assert place_kwargs["entry_price"] == pytest.approx(0.46)
+        assert place_kwargs["entry_price"] != pytest.approx(0.56)
+        # entry_prob must be stored UNFLIPPED (YES-space, 0.30) -- not the
+        # side-space value (0.70) the Kelly-cap check derives internally.
+        # Storing the flipped value would corrupt tracker's Brier/
+        # calibration scoring for every NO trade (opus-review-caught).
+        assert place_kwargs["entry_prob"] == pytest.approx(0.30)
+        assert place_kwargs["entry_prob"] != pytest.approx(0.70)
+        # log_prediction's forecast_prob must match (same YES-space value,
+        # not independently re-derived or re-flipped).
+        assert mock_log_pred.called
+        log_pred_args, _ = mock_log_pred.call_args
+        assert log_pred_args[3]["forecast_prob"] == pytest.approx(0.30)
+        # Quantity must not have been zeroed by the Kelly cap -- the
+        # as-shipped bug's exact symptom (real edge computing kelly=0.0).
+        # check_position_limits(ticker, quantity, entry_price, ...) --
+        # quantity is the 2nd positional arg.
+        cpl_call_quantity = mock_cpl.call_args.args[1]
+        assert cpl_call_quantity > 0, (
+            "quantity must not be clamped to 0 by the Kelly cap when the "
+            "NO-space edge is genuinely positive"
+        )
+
+    def test_yes_space_payload_for_a_no_order_is_rejected_not_silently_mispriced(
+        self, client
+    ):
+        """Documents the pre-fix failure mode for contrast: if a client
+        (a stale frontend build, a bug regression) sends the raw YES-space
+        market_prob as entry_price for a NO order, the server's existing
+        WA-security deviation guard must reject it rather than booking the
+        wrong-side price -- this is the defense-in-depth this fix does NOT
+        remove or weaken."""
+        with (
+            patch("cron.KILL_SWITCH_PATH") as mock_ksp,
+            patch("utils.is_trading_paused", return_value=False),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch(
+                "weather_markets.enrich_with_forecast",
+                return_value={"_city": "NYC", "_date": date(2026, 8, 22)},
+            ),
+            patch("paper.place_paper_order") as mock_place,
+        ):
+            mock_ksp.exists.return_value = False
+            # A market further from 50/50 (yes_bid=75c/yes_ask=78c) so the
+            # wrong-side price deviates well past the guard's 0.15
+            # threshold: correct NO price is 1-0.75=0.25, but a stale/buggy
+            # client sending the raw YES price (0.77) deviates by 0.52.
+            # (A near-50/50 market's wrong-side price can coincidentally
+            # fall within 0.15 of the correct side-space price and slip
+            # past this guard -- a pre-existing, narrower residual gap in
+            # the deviation guard's own tolerance, not something this
+            # batch's fix introduces or is scoped to close.)
+            mock_kc_cls.return_value.get_market.return_value = {
+                "yes_bid": 75,
+                "yes_ask": 78,
+                "close_time": "2099-01-01T00:00:00Z",
+            }
+
+            resp = client.post(
+                "/api/paper-order",
+                json={
+                    "ticker": "KXHIGH-26AUG22-T80",
+                    "side": "no",
+                    "quantity": 5,
+                    # The as-shipped bug's exact payload: raw YES-space
+                    # market_prob sent unconditionally as entry_price for a
+                    # NO order.
+                    "entry_price": 0.77,
+                    "entry_prob": 0.20,
+                },
+            )
+
+        assert resp.status_code == 400
+        mock_place.assert_not_called()
+
+
 class TestAnomalyStatusMatchesRealCheck:
     """Deep-review followup: /api/anomaly-status used to independently
     rebuild the win-rate window with a stale algorithm (sorted by

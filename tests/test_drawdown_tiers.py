@@ -156,9 +156,6 @@ def test_no_trades_placed_when_drawdown_breached_mid_cycle(monkeypatch):
         lambda kelly, city, date, side="yes", client=None: 0.05,
     )
     monkeypatch.setattr(paper, "corr_kelly_scale", lambda opp, trades: 1.0)
-    monkeypatch.setattr(
-        paper, "spread_kelly_multiplier", lambda yes_bid, yes_ask, edge: 1.0
-    )
     # Bypass the multi-guard validation to keep the test focused on the drawdown gate
     monkeypatch.setattr(
         oe,

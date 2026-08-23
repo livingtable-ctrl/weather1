@@ -170,7 +170,8 @@ def test_real_placement_logs_is_shadow_false(monkeypatch):
     monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.get_open_trades", lambda: [])
     monkeypatch.setattr(
-        "paper.kelly_quantity", lambda kf, p, cap=None, method=None, client=None: 5
+        "paper.kelly_quantity",
+        lambda kf, p, cap=None, method=None, client=None, **_kw: 5,
     )
     monkeypatch.setattr(
         "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None, client=None: kf
@@ -211,7 +212,8 @@ def _place_everything_setup(monkeypatch):
     monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.get_open_trades", lambda: [])
     monkeypatch.setattr(
-        "paper.kelly_quantity", lambda kf, p, cap=None, method=None, client=None: 5
+        "paper.kelly_quantity",
+        lambda kf, p, cap=None, method=None, client=None, **_kw: 5,
     )
     monkeypatch.setattr(
         "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None, client=None: kf

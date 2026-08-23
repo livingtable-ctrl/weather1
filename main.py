@@ -1238,6 +1238,41 @@ def cmd_markets(client: KalshiClient):
 # ── Single market ─────────────────────────────────────────────────────────────
 
 
+def _side_aware_entry_price(side: str, prices: dict) -> float:
+    """Return the ask-side price to PAY for `side` ("YES"/"yes" or "NO"/
+    "no"), for sizing a displayed contract count -- NOT prices["implied_prob"]
+    (always the YES mid) unconditionally, which overcounts a NO
+    recommendation's displayed contract count (batch-26 item 3: dividing by
+    the YES price instead of the higher NO cost understates cost-per-
+    contract, e.g. a ~2.4x overcount at a 0.30 YES mid). Falls back to the
+    mid (or 1-mid for NO) when a real yes_bid/yes_ask quote isn't present.
+    Mirrors weather_markets._price_and_size's own entry_price convention for
+    the ask-side computation itself (opus-review-caught: an earlier draft
+    gated the NO fallback on the coarser prices["has_quote"] -- true
+    whenever yes_ask alone is nonzero -- instead of yes_bid specifically,
+    which could return a degenerate 1.0 price when yes_bid is 0 but yes_ask
+    isn't) -- NO entry is at no_ask = 1 - yes_bid specifically, not derived
+    from whether *some* quote exists. The zero-price fallback differs
+    slightly from _price_and_size's (a defensive 0.01 floor on the NO side
+    here, vs. a bare 1-market_prob there, opus-round-2-review-caught) --
+    both are defensible for a DISPLAY-only sizing estimate; not a byte-for-
+    byte port.
+    """
+    is_yes = side.lower() == "yes"
+    price = (
+        prices["yes_ask"]
+        if is_yes
+        else (1.0 - prices["yes_bid"] if prices["yes_bid"] > 0 else 0.0)
+    )
+    if price <= 0:
+        price = (
+            prices["implied_prob"]
+            if is_yes
+            else max(0.01, 1.0 - prices["implied_prob"])
+        )
+    return price
+
+
 def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
     print(bold(f"\nFetching: {ticker}\n"))
     try:
@@ -1306,6 +1341,10 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
         ci_lo = analysis.get("ci_low", blended)
         ci_hi = analysis.get("ci_high", blended)
         side = analysis["recommended_side"].upper()
+        # batch-26 item 3: kelly_quantity's price arg must be side-aware, not
+        # always prices["implied_prob"] (the YES mid) -- see
+        # _side_aware_entry_price's docstring.
+        _entry_price_ci = _side_aware_entry_price(side, prices)
 
         net_edge = analysis.get("net_edge", edge)
         fee_kelly = analysis.get("fee_adjusted_kelly", kelly)
@@ -1322,10 +1361,15 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
             f"{edge_color(edge)}  {dim('gross')}  →  {edge_color(net_edge)}  {dim('after fees')}",
         )
         if ci_kelly > 0.005:
-            from paper import kelly_bet_dollars, kelly_quantity
+            from paper import consensus_fraction_cap, kelly_bet_dollars, kelly_quantity
 
-            bet_dollars = kelly_bet_dollars(ci_kelly, client=client)
-            bet_qty = kelly_quantity(ci_kelly, prices["implied_prob"], client=client)
+            _frac_cap = consensus_fraction_cap(analysis)
+            bet_dollars = kelly_bet_dollars(
+                ci_kelly, client=client, fraction_cap=_frac_cap
+            )
+            bet_qty = kelly_quantity(
+                ci_kelly, _entry_price_ci, client=client, fraction_cap=_frac_cap
+            )
             if fee_kelly > 0 and ci_kelly < fee_kelly * 0.85:
                 penalty_pct = (fee_kelly - ci_kelly) / fee_kelly
                 kelly_label = (
@@ -1340,10 +1384,15 @@ def cmd_market(client: KalshiClient, ticker: str, verbose: bool = False):
                 f"{kelly_label}  {green(f'→ ${bet_dollars:.2f}  (~{bet_qty} contracts)')}  {dim('fee-adjusted')}",
             )
         elif fee_kelly > 0.005:
-            from paper import kelly_bet_dollars, kelly_quantity
+            from paper import consensus_fraction_cap, kelly_bet_dollars, kelly_quantity
 
-            bet_dollars = kelly_bet_dollars(fee_kelly, client=client)
-            bet_qty = kelly_quantity(fee_kelly, prices["implied_prob"], client=client)
+            _frac_cap = consensus_fraction_cap(analysis)
+            bet_dollars = kelly_bet_dollars(
+                fee_kelly, client=client, fraction_cap=_frac_cap
+            )
+            bet_qty = kelly_quantity(
+                fee_kelly, _entry_price_ci, client=client, fraction_cap=_frac_cap
+            )
             _kv(
                 "Kelly:",
                 f"{bold(f'{fee_kelly * 100:.1f}% of bankroll')}  {green(f'→ ${bet_dollars:.2f}  (~{bet_qty} contracts)')}  {dim('fee-adjusted')}",
@@ -2535,6 +2584,7 @@ def _quick_paper_buy(client: KalshiClient) -> None:
 
             if qty is None:
                 from paper import (
+                    consensus_fraction_cap,
                     kelly_quantity,
                     portfolio_kelly_fraction,
                 )
@@ -2564,7 +2614,12 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                     # is_streak_paused(client) warning above was cosmetic
                     # without this, the exact H1 bug shape at a call site H1
                     # missed.
-                    qty = kelly_quantity(adj_kelly, price, client=client)
+                    qty = kelly_quantity(
+                        adj_kelly,
+                        price,
+                        client=client,
+                        fraction_cap=consensus_fraction_cap(analysis),
+                    )
                 except Exception:
                     qty = 0
 
@@ -2875,7 +2930,7 @@ def _feature_importance_days_out(target_date_str: str | None, city: str | None) 
 
 def cmd_today(client: KalshiClient) -> None:
     """Show a plain-English 'what should I do today?' recommendation."""
-    from paper import get_balance, kelly_bet_dollars
+    from paper import consensus_fraction_cap, get_balance, kelly_bet_dollars
 
     # Maker fee (not taker): live/paper entries are always resting midpoint
     # GTC limit orders, which pay $0 on this bot's markets (see
@@ -2974,7 +3029,9 @@ def cmd_today(client: KalshiClient) -> None:
         )
         _entry_price = _market_prob if _side == "yes" else 1 - _market_prob
 
-        _bet_dollars = kelly_bet_dollars(_ci_kelly, client=client)
+        _bet_dollars = kelly_bet_dollars(
+            _ci_kelly, client=client, fraction_cap=consensus_fraction_cap(analysis)
+        )
         _win_per_dollar = (1 - _entry_price) * (1 - _fee)
         _if_correct = (
             round(_bet_dollars / _entry_price * _win_per_dollar, 2)
@@ -3061,9 +3118,14 @@ def cmd_today(client: KalshiClient) -> None:
     _market_prob1 = best_a["market_prob"]
     _entry_price1 = _market_prob1 if _side1 == "yes" else 1 - _market_prob1
     _ci_kelly1 = best_a.get("ci_adjusted_kelly", best_a.get("fee_adjusted_kelly", 0.0))
-    _bet_dollars1 = kelly_bet_dollars(_ci_kelly1, client=client)
+    _frac_cap1 = consensus_fraction_cap(best_a)
+    _bet_dollars1 = kelly_bet_dollars(
+        _ci_kelly1, client=client, fraction_cap=_frac_cap1
+    )
     _qty1 = (
-        kelly_quantity(_ci_kelly1, _entry_price1, client=client)
+        kelly_quantity(
+            _ci_kelly1, _entry_price1, client=client, fraction_cap=_frac_cap1
+        )
         if _entry_price1 > 0
         else 0
     )
@@ -3310,7 +3372,9 @@ def cmd_today(client: KalshiClient) -> None:
                 else (yellow("MED") if _rtr != "HIGH" else red("HIGH"))
             )
             _rck = ra.get("ci_adjusted_kelly", ra.get("fee_adjusted_kelly", 0.0))
-            _rbet = kelly_bet_dollars(_rck, client=client)
+            _rbet = kelly_bet_dollars(
+                _rck, client=client, fraction_cap=consensus_fraction_cap(ra)
+            )
             _rbet_s = f"${_rbet:.0f}" if _rbet > 0 else "—"
             print(
                 f"  #{rank}  {bold(_rt)}  BUY {_rs.upper()} @ {_rep:.0%}"
@@ -8582,6 +8646,7 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
       paper reset
     """
     from paper import (
+        consensus_fraction_cap,
         get_all_trades,
         get_balance,
         get_open_trades,
@@ -8736,6 +8801,7 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
         # Get current analysis for Kelly sizing and context
         entry_prob, net_edge, fee_kelly = None, None, 0.0
         enriched: dict | None = None
+        analysis: dict | None = None
         if client:
             try:
                 market = client.get_market(ticker)
@@ -8769,8 +8835,13 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                             f"{adj_kelly * 100:.1f}% (existing {city}/{target_date_str} exposure)"
                         )
                     )
-                qty = kelly_quantity(adj_kelly, price, client=client)
-                bet_amt = kelly_bet_dollars(adj_kelly, client=client)
+                _frac_cap = consensus_fraction_cap(analysis)
+                qty = kelly_quantity(
+                    adj_kelly, price, client=client, fraction_cap=_frac_cap
+                )
+                bet_amt = kelly_bet_dollars(
+                    adj_kelly, client=client, fraction_cap=_frac_cap
+                )
                 print(
                     f"\n  {bold('Kelly auto-size:')} {adj_kelly * 100:.1f}% of balance "
                     f"= {green(f'${bet_amt:.2f}')} → {bold(str(qty))} contracts"

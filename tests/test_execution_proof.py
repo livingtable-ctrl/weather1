@@ -6,6 +6,8 @@ _auto_place_trades must return the count of placed trades and log failures.
 import datetime
 import logging
 
+import pytest
+
 
 def _make_opp(ticker="KXTEST", edge=0.30):
     """Minimal flat opportunity dict accepted by _auto_place_trades."""
@@ -34,7 +36,8 @@ def _stub_auto_prereqs(monkeypatch):
     monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.get_open_trades", lambda: [])
     monkeypatch.setattr(
-        "paper.kelly_quantity", lambda kf, p, cap=None, method=None, client=None: 5
+        "paper.kelly_quantity",
+        lambda kf, p, cap=None, method=None, client=None, **_kw: 5,
     )
     monkeypatch.setattr(
         "paper.portfolio_kelly_fraction", lambda kf, c, d, side=None, client=None: kf
@@ -61,6 +64,113 @@ def _stub_auto_prereqs(monkeypatch):
         system_health,
         "check_system_health",
         lambda: system_health.HealthStatus(healthy=True, reason=""),
+    )
+
+
+# ── batch-26 item 2: fraction_cap actually reaches kelly_quantity ────────────
+# (opus-review-caught MEDIUM-2: the leaf-function tests in test_paper.py prove
+# consensus_fraction_cap/fraction_cap work correctly in isolation, but nothing
+# proved order_executor.py's real call site actually threads it through --
+# reverting `fraction_cap=_frac_cap` there passed the full suite silently.)
+
+
+def test_auto_place_trades_threads_consensus_fraction_cap_into_kelly_quantity(
+    monkeypatch, tmp_path
+):
+    """A consensus=True opportunity must reach kelly_quantity with
+    fraction_cap set to the raised ceiling (KELLY_CAP * KELLY_CAP_CONSENSUS_
+    MULT), not left at the default (None -> plain KELLY_CAP)."""
+    import paper
+    from utils import KELLY_CAP, KELLY_CAP_CONSENSUS_MULT
+
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    _stub_auto_prereqs(monkeypatch)
+
+    captured_fraction_caps = []
+
+    def spy_kelly_quantity(kf, p, cap=None, method=None, client=None, **kw):
+        captured_fraction_caps.append(kw.get("fraction_cap"))
+        return 5
+
+    monkeypatch.setattr("paper.kelly_quantity", spy_kelly_quantity)
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda *a, **kw: {"id": 1, "status": "open", "cost": 1.0},
+    )
+
+    import main
+
+    consensus_opp = _make_opp("KXCONSENSUS")
+    consensus_opp["consensus"] = True
+    non_consensus_opp = _make_opp("KXNOCONSENSUS")
+    non_consensus_opp["consensus"] = False
+
+    result = main._auto_place_trades([consensus_opp, non_consensus_opp])
+    assert result == 2
+    assert len(captured_fraction_caps) == 2
+
+    consensus_cap, non_consensus_cap = captured_fraction_caps
+    assert consensus_cap == pytest.approx(KELLY_CAP * KELLY_CAP_CONSENSUS_MULT)
+    assert non_consensus_cap is None
+    assert consensus_cap != non_consensus_cap
+
+
+def test_auto_place_trades_live_path_threads_consensus_fraction_cap(
+    monkeypatch, tmp_path
+):
+    """Same as above, for the LIVE-money branch specifically (opus-review-
+    caught, round 2: the paper-path test above doesn't exercise
+    order_executor.py's second kelly_quantity call site, at the live
+    kelly_qty computation inside `if live and live_config:` -- a future
+    refactor could drop fraction_cap on just that branch, the more
+    money-adjacent of the two, with no test failing)."""
+    import paper
+    from utils import KELLY_CAP, KELLY_CAP_CONSENSUS_MULT
+
+    monkeypatch.setattr(paper, "DATA_PATH", tmp_path / "paper_trades.json")
+    _stub_auto_prereqs(monkeypatch)
+
+    import order_executor as oe
+
+    monkeypatch.setattr(oe, "_resolve_live_balance", lambda client: 1000.0)
+
+    captured_live_fraction_caps = []
+
+    def spy_kelly_quantity(kf, p, cap=None, method=None, client=None, **kw):
+        captured_live_fraction_caps.append(kw.get("fraction_cap"))
+        return 5
+
+    monkeypatch.setattr("paper.kelly_quantity", spy_kelly_quantity)
+
+    def fake_place_live_order(**kwargs):
+        return True, 1.0
+
+    monkeypatch.setattr(oe, "_place_live_order", fake_place_live_order)
+
+    consensus_opp = _make_opp("KXLIVECONSENSUS")
+    consensus_opp["consensus"] = True
+
+    import main
+
+    live_config = {
+        "max_trade_dollars": 50,
+        "daily_loss_limit": 200,
+        "max_open_positions": 10,
+    }
+    placed = main._auto_place_trades(
+        [consensus_opp],
+        client=object(),
+        live=True,
+        live_config=live_config,
+    )
+    assert placed == 1
+    # First call is the paper-path spy; the live branch adds a second call
+    # (see order_executor.py's `if live and live_config:` block) with the
+    # same fraction_cap value threaded through independently.
+    assert len(captured_live_fraction_caps) == 2
+    assert all(
+        c == pytest.approx(KELLY_CAP * KELLY_CAP_CONSENSUS_MULT)
+        for c in captured_live_fraction_caps
     )
 
 

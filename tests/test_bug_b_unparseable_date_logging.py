@@ -44,7 +44,8 @@ class TestOppEventKeyLogsOnUnparseableDate:
         monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
         monkeypatch.setattr("paper.get_open_trades", lambda: [])
         monkeypatch.setattr(
-            "paper.kelly_quantity", lambda kf, p, cap=None, method=None, client=None: 5
+            "paper.kelly_quantity",
+            lambda kf, p, cap=None, method=None, client=None, **_kw: 5,
         )
         monkeypatch.setattr(
             "paper.portfolio_kelly_fraction",

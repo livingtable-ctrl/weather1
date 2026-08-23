@@ -148,7 +148,8 @@ def test_auto_place_trades_skips_already_traded_today(tmp_path, monkeypatch):
     monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.get_open_trades", lambda: [])
     monkeypatch.setattr(
-        "paper.kelly_quantity", lambda kf, p, cap=None, method=None, client=None: 5
+        "paper.kelly_quantity",
+        lambda kf, p, cap=None, method=None, client=None, **_kw: 5,
     )
     monkeypatch.setattr(
         "paper.portfolio_kelly_fraction",
@@ -206,7 +207,8 @@ def test_live_mode_dedup_blocks_already_traded_ticker(tmp_path, monkeypatch):
     monkeypatch.setattr("paper.is_streak_paused", lambda *_a, **_k: False)
     monkeypatch.setattr("paper.get_open_trades", lambda: [])
     monkeypatch.setattr(
-        "paper.kelly_quantity", lambda kf, p, cap=None, method=None, client=None: 5
+        "paper.kelly_quantity",
+        lambda kf, p, cap=None, method=None, client=None, **_kw: 5,
     )
     monkeypatch.setattr(
         "paper.portfolio_kelly_fraction",

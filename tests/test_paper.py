@@ -1179,6 +1179,126 @@ def test_kelly_bet_dollars_method_scaling_reduces_kelly(mock_balance_1000, monke
     assert abs(scaled - base * 0.75) < 0.02
 
 
+# ── batch-26 item 2: fraction_cap / consensus_fraction_cap ───────────────────
+
+
+def test_kelly_bet_dollars_fraction_cap_reaches_raised_consensus_ceiling(
+    mock_balance_1000, monkeypatch
+):
+    """Without fraction_cap, kelly_bet_dollars always re-clamps the fraction
+    at the plain KELLY_CAP (0.25) -- the as-shipped bug that made the
+    consensus signal's raised ceiling (KELLY_CAP * KELLY_CAP_CONSENSUS_MULT,
+    ~0.33 at defaults, a deliberate 2026-07-18 decision) unreachable end to
+    end. Reproduces the exact audit repro numbers: kelly_in=0.30 -> $300
+    (was $250), kelly_in=0.33 -> reaches the raised ceiling (was $250)."""
+    import paper
+    from utils import KELLY_CAP, KELLY_CAP_CONSENSUS_MULT
+
+    monkeypatch.setattr(paper, "DATA_PATH", mock_balance_1000.DATA_PATH)
+    monkeypatch.setattr(paper, "get_balance", lambda: 1000.0)
+    monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
+    monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: False)
+    monkeypatch.setattr(paper, "_dynamic_kelly_cap", lambda: 1000.0)
+
+    raised_cap = KELLY_CAP * KELLY_CAP_CONSENSUS_MULT
+    assert raised_cap == pytest.approx(0.33, abs=0.005)
+
+    # With fraction_cap set to the raised ceiling, both kelly_in values reach
+    # (or nearly reach) their true fraction * balance.
+    result_30 = paper.kelly_bet_dollars(0.30, fraction_cap=raised_cap)
+    result_33 = paper.kelly_bet_dollars(0.33, fraction_cap=raised_cap)
+    assert result_30 == pytest.approx(300.0, abs=0.5)
+    assert result_33 == pytest.approx(raised_cap * 1000, abs=0.5)
+
+    # Without fraction_cap (the default), both clamp at plain KELLY_CAP —
+    # the as-shipped bug's exact symptom (both compute $250, not $300/$330).
+    assert paper.kelly_bet_dollars(0.30) == pytest.approx(KELLY_CAP * 1000, abs=0.5)
+    assert paper.kelly_bet_dollars(0.33) == pytest.approx(KELLY_CAP * 1000, abs=0.5)
+
+
+def test_kelly_bet_dollars_fraction_cap_never_raises_a_non_consensus_trade(
+    mock_balance_1000, monkeypatch
+):
+    """fraction_cap must only raise the ceiling when explicitly passed --
+    a non-consensus caller that never sets it keeps the plain KELLY_CAP,
+    same as before this change (no accidental cap-raise for every trade)."""
+    import paper
+    from utils import KELLY_CAP
+
+    monkeypatch.setattr(paper, "DATA_PATH", mock_balance_1000.DATA_PATH)
+    monkeypatch.setattr(paper, "get_balance", lambda: 1000.0)
+    monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
+    monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: False)
+    monkeypatch.setattr(paper, "_dynamic_kelly_cap", lambda: 1000.0)
+
+    result = paper.kelly_bet_dollars(0.40, fraction_cap=None)
+    assert result == pytest.approx(KELLY_CAP * 1000, abs=0.5)
+
+
+def test_kelly_quantity_propagates_fraction_cap(mock_balance_1000, monkeypatch):
+    """kelly_quantity must pass fraction_cap through to kelly_bet_dollars --
+    a raised fraction_cap must yield more contracts at a fixed price."""
+    import paper
+    from utils import KELLY_CAP, KELLY_CAP_CONSENSUS_MULT
+
+    monkeypatch.setattr(paper, "DATA_PATH", mock_balance_1000.DATA_PATH)
+    # A small balance keeps both quantities well under kelly_quantity's own
+    # hard 100-contract ceiling (L8-B), so that clamp can't mask the
+    # fraction_cap difference this test is checking.
+    monkeypatch.setattr(paper, "get_balance", lambda: 100.0)
+    monkeypatch.setattr(paper, "drawdown_scaling_factor", lambda: 1.0)
+    monkeypatch.setattr(paper, "is_streak_paused", lambda *_a, **_k: False)
+    monkeypatch.setattr(paper, "_dynamic_kelly_cap", lambda: 1000.0)
+
+    price = 0.50
+    raised_cap = KELLY_CAP * KELLY_CAP_CONSENSUS_MULT
+    qty_default = paper.kelly_quantity(0.33, price)
+    qty_raised = paper.kelly_quantity(0.33, price, fraction_cap=raised_cap)
+    assert qty_raised > qty_default
+    assert qty_default == round(KELLY_CAP * 100 / price)
+    assert qty_raised == round(raised_cap * 100 / price)
+
+
+class TestConsensusFractionCap:
+    """consensus_fraction_cap: the helper every real sizing call site
+    threads into kelly_bet_dollars'/kelly_quantity's fraction_cap param."""
+
+    def test_returns_raised_cap_when_consensus_true(self):
+        import paper
+        from utils import KELLY_CAP, KELLY_CAP_CONSENSUS_MULT
+
+        result = paper.consensus_fraction_cap({"consensus": True})
+        assert result == pytest.approx(KELLY_CAP * KELLY_CAP_CONSENSUS_MULT)
+
+    def test_returns_none_when_consensus_false(self):
+        import paper
+
+        assert paper.consensus_fraction_cap({"consensus": False}) is None
+
+    def test_returns_none_when_consensus_key_missing(self):
+        import paper
+
+        assert paper.consensus_fraction_cap({}) is None
+
+    def test_returns_none_when_analysis_is_none(self):
+        import paper
+
+        assert paper.consensus_fraction_cap(None) is None
+
+    def test_truthy_non_bool_consensus_value_also_raises_cap(self):
+        """Defensive check: consensus_fraction_cap must use plain truthiness
+        (not `is True`), so it stays correct even if a future analyze_trade
+        path stores a non-bool truthy value in analysis["consensus"] --
+        correction (opus-review-caught): all 9 current analyze_trade
+        producers store a plain bool; this test guards the function's own
+        contract, not an existing non-bool code path."""
+        import paper
+        from utils import KELLY_CAP, KELLY_CAP_CONSENSUS_MULT
+
+        result = paper.consensus_fraction_cap({"consensus": "3/3 models agree"})
+        assert result == pytest.approx(KELLY_CAP * KELLY_CAP_CONSENSUS_MULT)
+
+
 class TestDynamicKellyCapMinSamples:
     def test_cap_returns_conservative_when_too_few_samples(self, monkeypatch):
         """_dynamic_kelly_cap returns $50 (conservative) when < MIN_BRIER_SAMPLES settled."""

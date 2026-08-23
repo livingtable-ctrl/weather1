@@ -76,6 +76,64 @@ const fmtEdge = (e) => (e >= 1 ? '>100%' : `+${(e * 100).toFixed(1)}%`);
 export const DataContext = createContext(null);
 
 // ---------------------------------------------------------------------------
+// sideAwareEntryPrice — the ask-side price to PAY for opp's recommended
+// side. opp (a signals-cache entry) stores yes_bid/yes_ask/market_prob in
+// YES-space regardless of the recommended side -- web_app.py's own display
+// code proves this by flipping when rendering a NO signal. Returns
+// side-space (NO pays 1 - yes_bid, the no_ask; YES pays yes_ask), matching
+// web_app.py's WA-inversion comment's documented contract: "entry_price is
+// the price PAID for the requested SIDE" -- the same convention
+// order_executor.py's fill logic and web_app.py's own SignalsTab Kelly-qty
+// display already use. Falls back to the market_prob mid (flipped for NO)
+// when a live yes_bid/yes_ask quote isn't present. Exported (pure, no
+// React) so it's unit-testable directly; shared by buildPaperOrderBody and
+// handleAction's default-quantity estimate so both price a NO signal the
+// same way (opus-review-caught: an earlier draft only fixed the former,
+// leaving handleAction's own qty fallback dividing by the YES mid).
+// ---------------------------------------------------------------------------
+export function sideAwareEntryPrice(opp) {
+  const isNo = (opp.side || 'yes').toLowerCase() === 'no';
+  const yesBid = opp.yes_bid != null ? Number(opp.yes_bid) : null;
+  const yesAsk = opp.yes_ask != null ? Number(opp.yes_ask) : null;
+  const askSidePrice = isNo
+    ? (yesBid > 0 ? 1 - yesBid : null)
+    : (yesAsk > 0 ? yesAsk : null);
+  const midFallback = opp.market_prob != null
+    ? (isNo ? 1 - opp.market_prob / 100 : opp.market_prob / 100)
+    : 0.5;
+  return askSidePrice != null && askSidePrice > 0 ? askSidePrice : midFallback;
+}
+
+// ---------------------------------------------------------------------------
+// buildPaperOrderBody — /api/paper-order request body for a signals-tab
+// Approve action. Exported (pure, no React) so it's unit-testable directly.
+//
+// entry_price uses sideAwareEntryPrice (see above).
+//
+// entry_prob is deliberately left in YES-space, UNFLIPPED -- unlike
+// entry_price, every server-side consumer of the stored field (tracker's
+// Brier/calibration scoring, order_executor's model-reversal exit shift,
+// paper.py's pnl_attribution win_prob) treats entry_prob as YES-space, same
+// as the bot's own order_executor.py call sites (entry_prob=a["forecast_prob"]).
+// The /api/paper-order route converts it to side-space internally for its
+// own Kelly-cap check only -- see web_app.py's api_paper_order.
+// ---------------------------------------------------------------------------
+export function buildPaperOrderBody(opp, qty) {
+  const entryPrice = sideAwareEntryPrice(opp);
+  const entryProb = opp.forecast_prob != null ? opp.forecast_prob / 100 : null;
+  return {
+    ticker:      opp.ticker,
+    side:        (opp.side || 'yes').toLowerCase(),
+    quantity:    qty,
+    entry_price: entryPrice,
+    entry_prob:  entryProb,
+    net_edge:    opp.edge_pct != null ? opp.edge_pct / 100 : null,
+    city:        opp.city || null,
+    target_date: opp.target_date || opp.expiry || null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Theme
 // ---------------------------------------------------------------------------
 const THEMES = {
@@ -892,8 +950,12 @@ function SignalsTab() {
       return;
     }
     // approve → show confirmation dialog first
-    const mp = (opp.market_prob || 0) / 100;
-    const qty = parseInt(qtyMap[opp.ticker] ?? (opp.kelly_qty || (opp.kelly_dollars > 0 && mp > 0 ? Math.max(1, Math.floor(opp.kelly_dollars / mp)) : 1)) ?? 1, 10) || 1;
+    // batch-26 item 3 analog (opus-review-caught): sideAwareEntryPrice, not
+    // the raw YES-space market_prob, or a NO signal's fallback qty
+    // overcounts (dividing kelly_dollars by the cheaper YES price instead
+    // of the true NO cost).
+    const sp = sideAwareEntryPrice(opp);
+    const qty = parseInt(qtyMap[opp.ticker] ?? (opp.kelly_qty || (opp.kelly_dollars > 0 && sp > 0 ? Math.max(1, Math.floor(opp.kelly_dollars / sp)) : 1)) ?? 1, 10) || 1;
     setConfirmPending({ opp, qty });
   }
 
@@ -904,16 +966,7 @@ function SignalsTab() {
     fetch('/api/paper-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
-      body: JSON.stringify({
-        ticker:      opp.ticker,
-        side:        (opp.side || 'yes').toLowerCase(),
-        quantity:    qty,
-        entry_price: opp.market_prob != null ? opp.market_prob / 100 : 0.5,
-        entry_prob:  opp.forecast_prob != null ? opp.forecast_prob / 100 : null,
-        net_edge:    opp.edge_pct != null ? opp.edge_pct / 100 : null,
-        city:        opp.city || null,
-        target_date: opp.target_date || opp.expiry || null,
-      }),
+      body: JSON.stringify(buildPaperOrderBody(opp, qty)),
     })
       .then(r => r.json())
       .then(d => {
@@ -1094,10 +1147,10 @@ function SignalsTab() {
                   <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       {(() => {
-                        const mp = (o.market_prob || 0) / 100;
+                        const sp = sideAwareEntryPrice(o);
                         const kellyQty = o.kelly_qty
-                          || (o.kelly_dollars > 0 && mp > 0
-                            ? Math.max(1, Math.floor(o.kelly_dollars / mp))
+                          || (o.kelly_dollars > 0 && sp > 0
+                            ? Math.max(1, Math.floor(o.kelly_dollars / sp))
                             : 1);
                         return (<>
                           <input
@@ -1150,7 +1203,7 @@ function SignalsTab() {
               { label: 'Forecast p',      value: selectedOpp.forecast_prob.toFixed(1) + '%' },
               { label: 'Market p',        value: selectedOpp.market_prob.toFixed(1) + '%' },
               { label: 'Kelly $',         value: selectedOpp.kelly_dollars > 0 ? '$' + selectedOpp.kelly_dollars.toFixed(2) : '—' },
-              { label: 'Kelly contracts', value: (() => { const mp2 = (selectedOpp.market_prob || 0) / 100; const kq = selectedOpp.kelly_qty || (selectedOpp.kelly_dollars > 0 && mp2 > 0 ? Math.max(1, Math.floor(selectedOpp.kelly_dollars / mp2)) : 0); return kq > 0 ? kq + ' cts' : '—'; })() },
+              { label: 'Kelly contracts', value: (() => { const sp2 = sideAwareEntryPrice(selectedOpp); const kq = selectedOpp.kelly_qty || (selectedOpp.kelly_dollars > 0 && sp2 > 0 ? Math.max(1, Math.floor(selectedOpp.kelly_dollars / sp2)) : 0); return kq > 0 ? kq + ' cts' : '—'; })() },
             ].map(item => (
               <div key={item.label}>
                 <div style={{ color: 'var(--text-faint)', fontSize: 11, marginBottom: 4 }}>{item.label}</div>
@@ -1178,7 +1231,13 @@ function SignalsTab() {
           }}>
             <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Confirm trade</h3>
             {(() => {
-              const cost = confirmPending.qty * (confirmPending.opp.market_prob || 0) / 100;
+              // batch-26 item 1 analog (opus-review-caught): show the
+              // actual side-space price/cost the order will book at, not
+              // the raw YES-space market_prob -- for a NO order this dialog
+              // previously displayed the wrong price and cost right before
+              // the user confirms.
+              const entryPrice = sideAwareEntryPrice(confirmPending.opp);
+              const cost = confirmPending.qty * entryPrice;
               const remaining = (M.stats.balance || 0) - M.positions.reduce((a, p) => a + p.cost, 0) - cost;
               return (
                 <p style={{ margin: '0 0 18px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>
@@ -1187,7 +1246,7 @@ function SignalsTab() {
                   <strong style={{ color: confirmPending.opp.side === 'yes' ? '#16a34a' : '#ef4444' }}>
                     {(confirmPending.opp.side || 'YES').toUpperCase()}
                   </strong>{' '}
-                  at <strong>{confirmPending.opp.market_prob?.toFixed(1)}¢</strong>?
+                  at <strong>{(entryPrice * 100).toFixed(1)}¢</strong>?
                   {' '}Cost: <strong>${cost.toFixed(2)}</strong>.
                   <br />
                   <span style={{ fontSize: 12, color: remaining < 10 ? '#ef4444' : 'var(--text-faint)' }}>

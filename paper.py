@@ -46,6 +46,7 @@ from utils import (
     FIXED_BET_PCT,
     KALSHI_MAKER_FEE_RATE,
     KELLY_CAP,
+    KELLY_CAP_CONSENSUS_MULT,
     MAX_CITY_DATE_EXPOSURE,
     METHOD_KELLY_GATE,
     STRATEGY,
@@ -873,29 +874,19 @@ def _city_kelly_multiplier(city: str | None) -> float:
         return 1.0
 
 
-def spread_kelly_multiplier(yes_bid: float, yes_ask: float, net_edge: float) -> float:
-    """Scale Kelly down when the bid-ask spread eats a significant fraction of edge.
+def consensus_fraction_cap(analysis: dict | None) -> float | None:
+    """Return the raised Kelly-fraction ceiling for a consensus signal, or
+    None (meaning: use kelly_bet_dollars'/kelly_quantity's plain KELLY_CAP
+    default) otherwise.
 
-    Entering at ask (not mid) immediately costs spread/2 per contract. If that cost
-    is a large share of net_edge, the real expected value is much lower than modelled.
-    The multiplier is: clamp(effective_edge / net_edge, 0.0, 1.0) where
-    effective_edge = net_edge - spread/2.
-
-    Returns 1.0 when spread data is unavailable or net_edge <= 0 (no penalty).
-
-    #5: was floored at 0.5, not 0.0 — when the spread eats MORE than the full
-    modelled edge (effective_edge < 0, i.e. the trade is negative-EV after
-    crossing the spread), the old floor still sized it at half-Kelly instead
-    of the near-zero size that reflects "this trade shouldn't really be
-    placed." Floor of 0.0 lets kelly_quantity naturally round such a trade
-    down to 0 contracts rather than half-Kelly-sizing a losing bet.
+    Every real sizing call site should pass this as kelly_bet_dollars'/
+    kelly_quantity's `fraction_cap` -- see kelly_bet_dollars' docstring for
+    why the consensus cap-raise is otherwise silently undone (batch-26
+    item 2).
     """
-    spread = yes_ask - yes_bid
-    if spread <= 0 or net_edge <= 0:
-        return 1.0
-    effective_edge = net_edge - spread / 2.0
-    mult = effective_edge / net_edge
-    return round(max(0.0, min(1.0, mult)), 3)
+    if analysis and analysis.get("consensus"):
+        return KELLY_CAP * KELLY_CAP_CONSENSUS_MULT
+    return None
 
 
 def kelly_bet_dollars(
@@ -904,6 +895,7 @@ def kelly_bet_dollars(
     method: str | None = None,
     balance_override: float | None = None,  # CR-4: live path passes live balance
     client=None,  # AUD-0005: live-aware streak check, see is_streak_paused
+    fraction_cap: float | None = None,  # batch-26 item 2, see below
 ) -> float:
     """
     Return the dollar amount to bet.
@@ -913,8 +905,22 @@ def kelly_bet_dollars(
       fixed_dollars: FIXED_BET_DOLLARS flat per trade
     Applies drawdown scaling and streak pause regardless of strategy.
 
-    cap: explicit per-trade ceiling (e.g. 20.0 for MED tier).
+    cap: explicit per-trade DOLLAR ceiling (e.g. 20.0 for MED tier).
          If None, uses _dynamic_kelly_cap() based on current Brier score.
+    fraction_cap: explicit per-trade Kelly-FRACTION ceiling (e.g.
+         KELLY_CAP * KELLY_CAP_CONSENSUS_MULT for a consensus signal).
+         If None, defaults to KELLY_CAP -- distinct from `cap` (a dollar
+         figure) and applied earlier, before the fraction is turned into a
+         dollar amount. Without this, weather_markets._price_and_size's own
+         consensus cap-raise (up to KELLY_CAP * KELLY_CAP_CONSENSUS_MULT,
+         ~0.33 at defaults, a deliberate 2026-07-18 decision) was silently
+         re-clamped back down to plain KELLY_CAP here, making the raised
+         ceiling unreachable end to end for every real sizing call site
+         (batch-26 item 2). Only applies under STRATEGY="kelly" (the
+         default and only strategy this repo actually runs) -- the
+         fixed_pct/fixed_dollars branches below size off FIXED_BET_PCT/
+         FIXED_BET_DOLLARS instead and ignore this parameter entirely, same
+         as they already ignored the plain KELLY_CAP before this change.
     method: analysis method ('ensemble', 'normal_dist'); scales Kelly
             down if that method's Brier performance is poor.
     client: pass through so is_streak_paused() can also see a real live
@@ -938,7 +944,8 @@ def kelly_bet_dollars(
     elif STRATEGY == "fixed_dollars":
         dollars = round(min(FIXED_BET_DOLLARS, balance) * scale, 2)
     else:
-        fraction = max(0.0, min(kelly_fraction * scale, KELLY_CAP))
+        _fraction_cap = fraction_cap if fraction_cap is not None else KELLY_CAP
+        fraction = max(0.0, min(kelly_fraction * scale, _fraction_cap))
         dollars = round(balance * fraction, 2)
 
     if is_streak_paused(client):
@@ -961,6 +968,8 @@ def kelly_quantity(
     method: str | None = None,
     balance_override: float | None = None,  # CR-4: propagate to kelly_bet_dollars
     client=None,  # AUD-0005: propagate to kelly_bet_dollars, see its docstring
+    fraction_cap: float
+    | None = None,  # batch-26 item 2: propagate to kelly_bet_dollars
 ) -> int:
     if price <= 0:
         return 0
@@ -970,6 +979,7 @@ def kelly_quantity(
         method=method,
         balance_override=balance_override,
         client=client,
+        fraction_cap=fraction_cap,
     )
     if dollars < min_dollars:
         return 0
