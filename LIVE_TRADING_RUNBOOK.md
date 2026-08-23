@@ -246,6 +246,57 @@ sed -i '/LIVE_TRADING_ENABLED/d' .env
 
 ---
 
+## Part 5 — Reboot / Power-Loss Recovery
+
+**Current operating mode (as of 2026-08): fully manual.** The operator runs
+`python main.py cron` (or `watch --auto --live`) by hand — nothing restarts
+the bot automatically after a reboot, crash, or power loss. Verify this is
+still true on this machine before relying on it:
+```cmd
+schtasks /Query /FO LIST /V | findstr Kalshi
+```
+`main.py`'s `cmd_schedule_cycles` command makes registering a real cron
+Scheduled Task a one-command operation, so don't assume none exists just
+because this section describes the manual default — confirm on the actual
+machine. This section documents the manual recovery procedure for the
+fully-manual case; actually registering an ONSTART-triggered task (and
+having `cmd_cron` assert that task still exists) is deliberately deferred
+to when the VM move picks a real scheduling mechanism, so both can be
+designed against that mechanism once instead of twice.
+
+### After any reboot, crash, or power loss, before resuming
+
+1. **Check for a stale `data/cron.lock`.** A clean shutdown always deletes
+   it (`_release_cron_lock`); a crash or forced reboot can leave it behind.
+   `_acquire_cron_lock` verifies the recorded PID's own `create_time` (not
+   just `pid_exists()`) before trusting an existing lock, so the next `cron`
+   invocation self-heals automatically once the crashed process's PID is
+   confirmed dead OR reassigned to an unrelated process — no operator
+   intervention needed for the ordinary crash case. (This does NOT cover
+   every case: if the crashed process's exact PID happens to still be
+   running as a genuinely different process by the time you check, the lock
+   stays held until that PID frees up or you clear it manually.) To
+   confirm/clear it manually anyway:
+   ```cmd
+   type data\cron.lock   # inspect; if present, cron.py will validate it on next run
+   del data\cron.lock    # only if you want to force-clear it before running cron
+   ```
+2. **Let `_recover_pending_orders` run.** It's already invoked automatically
+   near the start of every `cron` cycle (`cron.py`, `_cmd_cron_body`, gated
+   on `if client is not None:`) — no separate step needed, just don't skip
+   straight to `watch --auto --live` without having run a `cron` cycle (or
+   an explicit recovery step) since the crash.
+3. **Manually reconcile open positions before resuming live trading.**
+   Compare `python main.py positions` (or the dashboard) against Kalshi's
+   own portfolio view for the account. A crash mid-order can leave an
+   `unknown`-status row in the execution log (see the "Weekly review" table
+   above) — resolve it against Kalshi's order history before trusting it.
+4. **Restart the bot process manually.** There is no automated restart —
+   re-run whichever of `cron`, `watch --auto --live`, or the dashboard
+   backend (`start.bat`) was running before the interruption.
+
+---
+
 ## Appendix — Gate Logic Reference
 
 The `LiveTradingGate.check()` method (in `trading_gates.py`) blocks live orders if **any** of the following are true:

@@ -125,12 +125,13 @@ ENSEMBLE_DISK_CACHE_PATH = _DATA / "ensemble_cache.json"
 # Shared by weather_markets.py (writer) and web_app.py (2 read-only API
 # endpoints) -- previously each constructed its own path independently
 # (weather_markets.py's own was even cwd-relative, not __file__-relative).
-# In the real deployed configuration both cwd and __file__ already resolved
-# to the same place (run_and_sleep.bat cd's to the project root, and
-# web_app.py spawns cron with cwd=Path(__file__).parent), so this was never
-# a production bug -- but it silently broke for a worktree run or any
-# manual invocation from a different cwd, which is exactly this migration's
-# scope.
+# In the real deployed configuration cwd and __file__ both resolved to the
+# same place historically (the operator always launched from the project
+# root -- run_and_sleep.bat, which did this via its own `cd`, has since been
+# removed as dead code (AUD batch-30 item 2); web_app.py still spawns cron
+# with cwd=Path(__file__).parent), so this was never a production bug -- but
+# it silently broke for a worktree run or any manual invocation from a
+# different cwd, which is exactly this migration's scope.
 FORECAST_CACHE_PATH = _DATA / "forecast_cache.json"
 # Shared by cron.py (writer) and web_app.py (2 read-only viewers).
 CRON_LOG_PATH = _DATA / "cron.log"
