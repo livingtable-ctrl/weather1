@@ -61,3 +61,77 @@ class TestNwsProbDaysOutTimezone:
             "materially different probability for this to discriminate "
             "the two implementations"
         )
+
+
+class TestNwsDailyForecastValidation:
+    """AUD-0060: get_nws_daily_forecast's validate_nws_response() call had
+    its bool return discarded, and the comment immediately above it
+    ("validate BEFORE recording success so a malformed-but-HTTP-200
+    response doesn't credit the circuit breaker") documented an intent that
+    wasn't actually wired in -- record_success() ran unconditionally right
+    after regardless of the validation result."""
+
+    def _reset_caches(self):
+        import nws
+
+        nws._forecast_cache.clear()
+        nws._gridpoint_cache.clear()
+
+    def test_malformed_response_records_failure_not_success(self, monkeypatch):
+        import nws
+
+        self._reset_caches()
+        nws._nws_cb.record_success()
+        nws._nws_cb._last_failure_at = (
+            None  # avoid burst-window absorption from a prior test
+        )
+        _before = nws._nws_cb.failure_count
+
+        monkeypatch.setattr(nws, "_get_gridpoint", lambda lat, lon: ("OKX", 33, 35))
+        # Missing "properties" entirely -- fails validate_nws_response's
+        # required-field check (its own type is dict, required).
+        monkeypatch.setattr(
+            nws, "_get", lambda url, params=None: {"not_properties": {}}
+        )
+
+        result = nws.get_nws_daily_forecast("NYC", (40.7, -74.0, "America/New_York"))
+
+        assert result == {}
+        assert nws._nws_cb.failure_count > _before, (
+            "positive control: a malformed response must be recorded as a "
+            "real circuit-breaker failure, not silently absorbed as success"
+        )
+
+    def test_well_formed_response_still_credits_success_and_parses_periods(
+        self, monkeypatch
+    ):
+        """Positive control for the test above: a genuinely valid response
+        must NOT be treated as a failure -- proves the new gate only
+        rejects malformed data, not every response."""
+        import nws
+
+        self._reset_caches()
+        nws._nws_cb.record_success()
+
+        monkeypatch.setattr(nws, "_get_gridpoint", lambda lat, lon: ("OKX", 33, 35))
+        monkeypatch.setattr(
+            nws,
+            "_get",
+            lambda url, params=None: {
+                "properties": {
+                    "periods": [
+                        {
+                            "startTime": "2026-08-10T06:00:00-04:00",
+                            "isDaytime": True,
+                            "temperature": 82,
+                            "temperatureUnit": "F",
+                        }
+                    ]
+                }
+            },
+        )
+
+        result = nws.get_nws_daily_forecast("NYC", (40.7, -74.0, "America/New_York"))
+
+        assert result == {"2026-08-10": {"high": 82.0, "low": None}}
+        assert nws._nws_cb.failure_count == 0

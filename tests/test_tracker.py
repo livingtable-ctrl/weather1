@@ -8496,10 +8496,15 @@ class TestSignalGraduationCounters(unittest.TestCase):
     # ── count_settled_signal_rows: generic signal_values JSON key ──────────
 
     def test_count_settled_signal_rows_json_key_counts_present_key_only(self):
-        self._log_settled("A", signals={"foo": 1.0})
+        # json_key must be a real _SIGNAL_JSON_KEY_ALLOWLIST entry (AUD-0052) —
+        # "bar" stays an arbitrary non-allowlisted string since it's only ever
+        # stored inside signal_values, never passed as the json_key= argument.
+        self._log_settled("A", signals={"rain_forecast_blend_prob": 1.0})
         self._log_settled("B", signals={"bar": 2.0})  # different key present
         self._log_settled("C", signals=None)  # no signals dict at all
-        self.assertEqual(tracker.count_settled_signal_rows(json_key="foo"), 1)
+        self.assertEqual(
+            tracker.count_settled_signal_rows(json_key="rain_forecast_blend_prob"), 1
+        )
 
     def test_count_settled_signal_rows_require_settled_temp_false_counts_rows_without_temp(
         self,
@@ -8532,6 +8537,58 @@ class TestSignalGraduationCounters(unittest.TestCase):
             tracker.count_settled_signal_rows()
         with self.assertRaises(ValueError):
             tracker.count_settled_signal_rows("run_trend_delta", json_key="foo")
+
+    # ── count_settled_signal_rows: AUD-0052 identifier allowlist ────────────
+
+    def test_count_settled_signal_rows_rejects_unlisted_column(self):
+        """column= must be a real _SIGNAL_COLUMN_ALLOWLIST entry — an
+        unrecognized name (typo, or worse, anything derived from external
+        input) must raise before ever reaching the f-string-interpolated
+        SQL, not silently run."""
+        with self.assertRaises(ValueError):
+            tracker.count_settled_signal_rows("not_a_real_column")
+
+    def test_count_settled_signal_rows_rejects_unlisted_json_key(self):
+        """Same allowlist guard for json_key=."""
+        with self.assertRaises(ValueError):
+            tracker.count_settled_signal_rows(json_key="not_a_real_signal")
+
+    def test_count_settled_signal_rows_accepts_every_allowlisted_name(self):
+        """Positive control for the two rejection tests above: every name
+        actually registered in weather_markets.SIGNAL_REGISTRY today must
+        still pass the allowlist and run a real (zero-row) count rather than
+        raising — proves the allowlist doesn't just reject everything."""
+        for col in tracker._SIGNAL_COLUMN_ALLOWLIST:
+            self.assertEqual(tracker.count_settled_signal_rows(col), 0)
+        for key in tracker._SIGNAL_JSON_KEY_ALLOWLIST:
+            self.assertEqual(tracker.count_settled_signal_rows(json_key=key), 0)
+
+    def test_every_signal_registry_entry_passes_tracker_allowlist(self):
+        """Round-2 opus review: the test above only proves each ALLOWLIST
+        entry individually works -- it doesn't prove the allowlist stays in
+        sync with weather_markets.SIGNAL_REGISTRY itself (the actual set of
+        real production callers). Drives every registry entry's real
+        count_fn() -- the exact call get_signal_graduation_report() makes
+        in production -- and confirms none raises. Catches a future
+        SIGNAL_REGISTRY addition whose column/json_key literal was never
+        added to _SIGNAL_COLUMN_ALLOWLIST/_SIGNAL_JSON_KEY_ALLOWLIST, which
+        this test's sibling above cannot: it only ever iterates the
+        allowlist's own contents, so it would still pass even if the
+        allowlist and the registry had silently drifted apart."""
+        import weather_markets as wm
+
+        for entry in wm.SIGNAL_REGISTRY:
+            if entry.count_fn is None:
+                continue
+            result = entry.count_fn()
+            self.assertIsInstance(
+                result,
+                int,
+                f"SIGNAL_REGISTRY entry {entry.key!r}'s count_fn() didn't "
+                "return a plain int -- likely raised and was caught "
+                "elsewhere; check its column/json_key is in tracker.py's "
+                "allowlist",
+            )
 
     def test_count_settled_signal_rows_multiday_excludes_sameday_rows(self):
         # A same-day row can't actually carry run_trend_delta in production

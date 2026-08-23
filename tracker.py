@@ -3079,6 +3079,33 @@ def count_settled_below_predictions() -> int:
     return row[0] if row else 0
 
 
+# AUD-0052: count_settled_signal_rows() interpolates column/json_key
+# straight into its SQL (SQLite has no placeholder syntax for identifiers),
+# so it trusts every caller to only ever pass a fixed literal -- true today
+# (every weather_markets.py SIGNAL_REGISTRY call site and every test call
+# site passes a hardcoded string, not derived/external input), but nothing
+# enforced it. This allowlist is a defense-in-depth check independent of
+# that caller discipline, not a reaction to any actual bad caller found.
+# Whoever adds a new SIGNAL_REGISTRY entry (_count_signal_column/
+# _count_signal_json_key in weather_markets.py) must add its column/
+# json_key name here too, or the new call raises ValueError.
+_SIGNAL_COLUMN_ALLOWLIST = frozenset(
+    {
+        "run_trend_delta",
+        "implied_mean",
+        "gated_edge",
+        "ensemble_spread_f",
+        "nbm_quantile_prob",
+        "ecmwf_consensus_gap_prob",
+    }
+)
+_SIGNAL_JSON_KEY_ALLOWLIST = frozenset(
+    {
+        "rain_forecast_blend_prob",
+    }
+)
+
+
 def count_settled_signal_rows(
     column: str | None = None,
     *,
@@ -3096,9 +3123,13 @@ def count_settled_signal_rows(
     log_prediction(signals=...) with no dedicated migration). Exactly one
     of column/json_key must be given — raises ValueError otherwise, rather
     than silently ignoring whichever one wasn't meant. `column`/`json_key`
-    are always registry-defined literals, never external input — same
-    trust boundary as count_settled_hourly_predictions'/
-    count_settled_rain_predictions' own dynamic WHERE-clause construction.
+    are always registry-defined literals in every real caller today, same
+    as count_settled_hourly_predictions'/count_settled_rain_predictions'
+    own dynamic WHERE-clause construction — but unlike those two, this
+    function additionally enforces that trust boundary itself (AUD-0052:
+    _SIGNAL_COLUMN_ALLOWLIST/_SIGNAL_JSON_KEY_ALLOWLIST below, checked
+    before either name is interpolated into SQL) as defense-in-depth
+    independent of caller discipline, rather than relying on it alone.
 
     Joins outcomes_valid (excludes disputed rows, matching every other
     calibration-adjacent count in this file) and requires a real settled
@@ -3138,8 +3169,20 @@ def count_settled_signal_rows(
         )
     init_db()
     if json_key:
+        if json_key not in _SIGNAL_JSON_KEY_ALLOWLIST:
+            raise ValueError(
+                f"count_settled_signal_rows: json_key={json_key!r} is not in "
+                "_SIGNAL_JSON_KEY_ALLOWLIST -- add it there if this is a real "
+                "new signal, not a typo/derived value"
+            )
         where = f"json_extract(p.signal_values, '$.{json_key}') IS NOT NULL"
     else:
+        if column not in _SIGNAL_COLUMN_ALLOWLIST:
+            raise ValueError(
+                f"count_settled_signal_rows: column={column!r} is not in "
+                "_SIGNAL_COLUMN_ALLOWLIST -- add it there if this is a real "
+                "new signal, not a typo/derived value"
+            )
         where = f"p.{column} IS NOT NULL"
     if require_settled_temp:
         where += " AND o.settled_temp_f IS NOT NULL"

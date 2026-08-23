@@ -1013,6 +1013,522 @@ def test_cron_reads_settlement_signals_with_generous_staleness_window(cron_env):
 
 
 @pytest.mark.cron_integration
+def test_cron_settlement_lag_paper_side_failure_does_not_clobber_live_signals(
+    cron_env,
+):
+    """Round-2 opus review (AUD-0027): _settlement_sigs must survive an
+    exception raised AFTER a successful read_settlement_signals() call but
+    still inside the paper block's own try (e.g. paper.get_open_trades()
+    itself failing) -- the live block below reuses the SAME list, and a
+    stray `_settlement_sigs = []` in the except clause would silently
+    disable live settlement-lag protection for a cycle where a real signal
+    genuinely existed, for a failure that has nothing to do with the live
+    path at all."""
+    tmp_path, client, main, paper = cron_env
+    import order_executor
+
+    fake_signal = {
+        "ticker": "KXHIGH-NYC-26APR17-B70",
+        "outcome": "yes",
+        "confidence": 0.90,
+        "current_temp_f": 75.0,
+        "threshold_f": 70.0,
+    }
+    exit_calls: list = []
+
+    def _fake_exit_live_position(client_arg, position, exit_price, reason, cycle):
+        exit_calls.append((position["ticker"], exit_price, reason))
+        return True
+
+    with (
+        patch(
+            "settlement_monitor.read_settlement_signals",
+            lambda max_age_minutes=120: [fake_signal],
+        ),
+        # paper.get_open_trades() is called AFTER _settlement_sigs is
+        # already set, still inside the paper block's own try -- raising
+        # here exercises exactly the clobber scenario above.
+        patch("paper.get_open_trades", side_effect=RuntimeError("simulated DB error")),
+        patch.object(
+            order_executor, "_check_live_position_exits", lambda *a, **kw: None
+        ),
+        patch.object(order_executor, "_check_live_model_exits", lambda *a, **kw: 0),
+        patch.object(
+            order_executor,
+            "_get_live_open_positions",
+            return_value=[_fake_live_position()],
+        ),
+        patch.object(
+            order_executor, "_exit_live_position", side_effect=_fake_exit_live_position
+        ),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    assert exit_calls == [("KXHIGH-NYC-26APR17-B70", 0.97, "settlement_lag")], (
+        "the live block must still fire using the real _settlement_sigs "
+        "list even though the paper-side handling raised"
+    )
+
+
+# ── AUD-0027: settlement lag also force-closes matching LIVE positions ──────
+
+
+def _fake_live_position(ticker="KXHIGH-NYC-26APR17-B70", side="yes", pos_id=5):
+    return {
+        "id": pos_id,
+        "ticker": ticker,
+        "side": side,
+        "quantity": 10,
+        "entry_price": 0.40,
+        "cost": 4.0,
+        "close_time": None,
+    }
+
+
+@pytest.mark.cron_integration
+def test_cron_settlement_lag_closes_matching_live_position(cron_env):
+    """AUD-0027: before this fix, cron.py's settlement-lag force-close block
+    matched signals against paper.get_open_trades() only -- a live position
+    confirmed by the same METAR-verified signal got zero automated
+    early-close coverage (grepping settlement_signal/read_settlement_signals
+    across order_executor.py/positions.py/main.py returned zero matches).
+    Proves a high-confidence signal on the winning side calls
+    _exit_live_position with the fixed 0.97 limit price and the
+    "settlement_lag" reason, mirroring the paper block's own exit-price
+    convention exactly."""
+    tmp_path, client, main, paper = cron_env
+    import order_executor
+
+    fake_signal = {
+        "ticker": "KXHIGH-NYC-26APR17-B70",
+        "outcome": "yes",
+        "confidence": 0.90,
+        "current_temp_f": 75.0,
+        "threshold_f": 70.0,
+    }
+    exit_calls: list = []
+
+    def _fake_exit_live_position(client_arg, position, exit_price, reason, cycle):
+        exit_calls.append((position["ticker"], exit_price, reason))
+        return True
+
+    with (
+        patch(
+            "settlement_monitor.read_settlement_signals",
+            lambda max_age_minutes=120: [fake_signal],
+        ),
+        # Isolate the settlement-lag block from cron's own EARLIER live
+        # stop-loss/breakeven/model-exit protection calls, which also read
+        # _get_live_open_positions() and would otherwise race to close the
+        # same fake position first via a different reason.
+        patch.object(
+            order_executor, "_check_live_position_exits", lambda *a, **kw: None
+        ),
+        patch.object(order_executor, "_check_live_model_exits", lambda *a, **kw: 0),
+        patch.object(
+            order_executor,
+            "_get_live_open_positions",
+            return_value=[_fake_live_position()],
+        ),
+        patch.object(
+            order_executor, "_exit_live_position", side_effect=_fake_exit_live_position
+        ),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    assert exit_calls == [("KXHIGH-NYC-26APR17-B70", 0.97, "settlement_lag")]
+
+
+@pytest.mark.cron_integration
+def test_cron_settlement_lag_live_losing_side_uses_book_liquidation_price(cron_env):
+    """Round-2 opus review (AUD-0027): the losing side must NOT use a fixed
+    near-zero limit price like the paper block does -- Kalshi's V2 API maps
+    a low-price YES sell to an aggressive order that matches almost any
+    resting bid, and _exit_live_position books realized P&L against the
+    LIMIT price passed in, not the real fill price, so a fixed 0.03 would
+    silently overstate the realized loss whenever the book hasn't fully
+    caught up yet (this signal's whole premise). Must price off the real
+    current book instead, via positions.liquidation_price -- same as
+    order_executor's own stop-loss/breakeven exits. Our position is YES
+    (side="yes"), signal outcome is "no" -- losing side. Book yes_bid=0.22
+    -> liquidation_price for a YES holder is exactly that bid (0.22), not
+    1-ask and not the fixed 0.03."""
+    tmp_path, client, main, paper = cron_env
+    import order_executor
+
+    fake_signal = {
+        "ticker": "KXHIGH-NYC-26APR17-B70",
+        "outcome": "no",  # our position is "yes" -- losing side
+        "confidence": 0.90,
+        "current_temp_f": 60.0,
+        "threshold_f": 70.0,
+    }
+    exit_calls: list = []
+
+    def _fake_exit_live_position(client_arg, position, exit_price, reason, cycle):
+        exit_calls.append((position["ticker"], exit_price, reason))
+        return True
+
+    with (
+        patch(
+            "settlement_monitor.read_settlement_signals",
+            lambda max_age_minutes=120: [fake_signal],
+        ),
+        patch.object(
+            order_executor, "_check_live_position_exits", lambda *a, **kw: None
+        ),
+        patch.object(order_executor, "_check_live_model_exits", lambda *a, **kw: 0),
+        patch.object(
+            order_executor,
+            "_get_live_open_positions",
+            return_value=[_fake_live_position(side="yes")],
+        ),
+        patch.object(
+            order_executor,
+            "_get_current_book",
+            lambda client_arg, ticker: {"yes_bid": 0.22, "yes_ask": 0.28},
+        ),
+        patch.object(
+            order_executor, "_exit_live_position", side_effect=_fake_exit_live_position
+        ),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    assert exit_calls == [("KXHIGH-NYC-26APR17-B70", 0.22, "settlement_lag")]
+
+
+@pytest.mark.cron_integration
+def test_cron_settlement_lag_live_losing_side_falls_back_to_entry_price_no_quote(
+    cron_env,
+):
+    """When the book is genuinely unavailable (no WS cache, get_market()
+    fails), liquidation_price() returns None -- must fall back to the
+    position's own entry_price, matching _check_live_position_exits' exact
+    fallback convention, rather than crashing or passing None as a limit
+    price to a real order."""
+    tmp_path, client, main, paper = cron_env
+    import order_executor
+
+    fake_signal = {
+        "ticker": "KXHIGH-NYC-26APR17-B70",
+        "outcome": "no",
+        "confidence": 0.90,
+        "current_temp_f": 60.0,
+        "threshold_f": 70.0,
+    }
+    exit_calls: list = []
+
+    def _fake_exit_live_position(client_arg, position, exit_price, reason, cycle):
+        exit_calls.append((position["ticker"], exit_price, reason))
+        return True
+
+    with (
+        patch(
+            "settlement_monitor.read_settlement_signals",
+            lambda max_age_minutes=120: [fake_signal],
+        ),
+        patch.object(
+            order_executor, "_check_live_position_exits", lambda *a, **kw: None
+        ),
+        patch.object(order_executor, "_check_live_model_exits", lambda *a, **kw: 0),
+        patch.object(
+            order_executor,
+            "_get_live_open_positions",
+            return_value=[_fake_live_position(side="yes")],
+        ),
+        patch.object(
+            order_executor, "_get_current_book", lambda client_arg, ticker: None
+        ),
+        patch.object(
+            order_executor, "_exit_live_position", side_effect=_fake_exit_live_position
+        ),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    # _fake_live_position()'s entry_price is 0.40 (see its own definition above).
+    assert exit_calls == [("KXHIGH-NYC-26APR17-B70", 0.40, "settlement_lag")]
+
+
+@pytest.mark.cron_integration
+def test_cron_settlement_lag_below_confidence_gate_does_not_close_live(cron_env):
+    """Positive control for the two tests above: a signal below the 0.80
+    confidence gate must NOT trigger a live exit at all -- proves the gate
+    is actually reached and enforced, not that _exit_live_position simply
+    never gets wired up correctly."""
+    tmp_path, client, main, paper = cron_env
+    import order_executor
+
+    fake_signal = {
+        "ticker": "KXHIGH-NYC-26APR17-B70",
+        "outcome": "yes",
+        "confidence": 0.79,  # just under the >=0.80 gate
+        "current_temp_f": 75.0,
+        "threshold_f": 70.0,
+    }
+    exit_calls: list = []
+
+    def _fake_exit_live_position(client_arg, position, exit_price, reason, cycle):
+        exit_calls.append((position["ticker"], exit_price, reason))
+        return True
+
+    with (
+        patch(
+            "settlement_monitor.read_settlement_signals",
+            lambda max_age_minutes=120: [fake_signal],
+        ),
+        patch.object(
+            order_executor, "_check_live_position_exits", lambda *a, **kw: None
+        ),
+        patch.object(order_executor, "_check_live_model_exits", lambda *a, **kw: 0),
+        patch.object(
+            order_executor,
+            "_get_live_open_positions",
+            return_value=[_fake_live_position()],
+        ),
+        patch.object(
+            order_executor, "_exit_live_position", side_effect=_fake_exit_live_position
+        ),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    assert exit_calls == []
+
+
+@pytest.mark.cron_integration
+def test_cron_settlement_lag_live_malformed_outcome_is_skipped_not_liquidated(
+    cron_env,
+):
+    """Round-2 opus review: a high-confidence signal with a missing/
+    malformed outcome (not exactly "yes"/"no") must be skipped entirely,
+    not silently treated as a LOSING match -- for the paper block that
+    shape only ever writes a fake ledger row, but here it would fire a
+    real, marketable liquidation of a live position."""
+    tmp_path, client, main, paper = cron_env
+    import order_executor
+
+    fake_signal = {
+        "ticker": "KXHIGH-NYC-26APR17-B70",
+        "outcome": "",  # malformed -- e.g. a producer bug or partial write
+        "confidence": 0.90,
+        "current_temp_f": 75.0,
+        "threshold_f": 70.0,
+    }
+    exit_calls: list = []
+
+    def _fake_exit_live_position(client_arg, position, exit_price, reason, cycle):
+        exit_calls.append((position["ticker"], exit_price, reason))
+        return True
+
+    with (
+        patch(
+            "settlement_monitor.read_settlement_signals",
+            lambda max_age_minutes=120: [fake_signal],
+        ),
+        patch.object(
+            order_executor, "_check_live_position_exits", lambda *a, **kw: None
+        ),
+        patch.object(order_executor, "_check_live_model_exits", lambda *a, **kw: 0),
+        patch.object(
+            order_executor,
+            "_get_live_open_positions",
+            return_value=[_fake_live_position()],
+        ),
+        patch.object(
+            order_executor, "_exit_live_position", side_effect=_fake_exit_live_position
+        ),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    assert exit_calls == []
+
+
+@pytest.mark.cron_integration
+def test_cron_settlement_lag_live_unfilled_ioc_does_not_crash_cycle(cron_env, caplog):
+    """Round-2 opus review: the "safe no-op on non-fill" claim justifying
+    the winning-side fixed price is the load-bearing argument for this
+    whole design -- it needs its own test. _exit_live_position returning
+    False (the real IOC-did-not-fill outcome, per its own docstring) must
+    not raise, crash the cycle, or log a false "closed" message."""
+    tmp_path, client, main, paper = cron_env
+    import logging
+
+    import order_executor
+
+    caplog.set_level(logging.INFO, logger="main")
+
+    fake_signal = {
+        "ticker": "KXHIGH-NYC-26APR17-B70",
+        "outcome": "yes",
+        "confidence": 0.90,
+        "current_temp_f": 75.0,
+        "threshold_f": 70.0,
+    }
+    exit_calls: list = []
+
+    def _fake_exit_live_position(client_arg, position, exit_price, reason, cycle):
+        exit_calls.append((position["ticker"], exit_price, reason))
+        return False  # real behavior on an unfilled IOC -- see its own docstring
+
+    with (
+        patch(
+            "settlement_monitor.read_settlement_signals",
+            lambda max_age_minutes=120: [fake_signal],
+        ),
+        patch.object(
+            order_executor, "_check_live_position_exits", lambda *a, **kw: None
+        ),
+        patch.object(order_executor, "_check_live_model_exits", lambda *a, **kw: 0),
+        patch.object(
+            order_executor,
+            "_get_live_open_positions",
+            return_value=[_fake_live_position()],
+        ),
+        patch.object(
+            order_executor, "_exit_live_position", side_effect=_fake_exit_live_position
+        ),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    # The call was attempted (proves the gate/match logic reached it -- a
+    # positive control against this test vacuously passing because nothing
+    # ran at all), it just didn't fill; cmd_cron must complete either way.
+    assert exit_calls == [("KXHIGH-NYC-26APR17-B70", 0.97, "settlement_lag")]
+    assert not any("closed LIVE" in rec.message for rec in caplog.records), (
+        "must not log a false 'closed' confirmation for an order that never filled"
+    )
+
+
+@pytest.mark.cron_integration
+def test_cron_settlement_lag_live_no_matching_ticker_is_a_noop(cron_env):
+    """A signal whose ticker matches no currently-open live position must
+    not attempt any exit -- proves the per-ticker lookup, not just the
+    confidence gate, actually gates the call."""
+    tmp_path, client, main, paper = cron_env
+    import order_executor
+
+    fake_signal = {
+        "ticker": "KXHIGH-NYC-26APR17-B70",
+        "outcome": "yes",
+        "confidence": 0.90,
+        "current_temp_f": 75.0,
+        "threshold_f": 70.0,
+    }
+    exit_calls: list = []
+
+    def _fake_exit_live_position(client_arg, position, exit_price, reason, cycle):
+        exit_calls.append((position["ticker"], exit_price, reason))
+        return True
+
+    with (
+        patch(
+            "settlement_monitor.read_settlement_signals",
+            lambda max_age_minutes=120: [fake_signal],
+        ),
+        patch.object(
+            order_executor, "_check_live_position_exits", lambda *a, **kw: None
+        ),
+        patch.object(order_executor, "_check_live_model_exits", lambda *a, **kw: 0),
+        patch.object(
+            order_executor,
+            "_get_live_open_positions",
+            # A different ticker is open live -- no match for the signal above.
+            return_value=[_fake_live_position(ticker="KXHIGH-CHI-26APR17-B60")],
+        ),
+        patch.object(
+            order_executor, "_exit_live_position", side_effect=_fake_exit_live_position
+        ),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(client)
+        except SystemExit:
+            pass
+
+    assert exit_calls == []
+
+
+@pytest.mark.cron_integration
+def test_cron_settlement_lag_no_client_skips_live_block(cron_env):
+    """client=None (e.g. a dry-run/offline cron invocation) must skip the
+    live block entirely rather than raising on the None client -- the
+    paper block above is unaffected by client and still runs."""
+    tmp_path, _client, main, paper = cron_env
+    import order_executor
+
+    fake_signal = {
+        "ticker": "KXHIGH-NYC-26APR17-B70",
+        "outcome": "yes",
+        "confidence": 0.90,
+        "current_temp_f": 75.0,
+        "threshold_f": 70.0,
+    }
+    exit_calls: list = []
+
+    def _fake_exit_live_position(client_arg, position, exit_price, reason, cycle):
+        exit_calls.append((position["ticker"], exit_price, reason))
+        return True
+
+    with (
+        patch(
+            "settlement_monitor.read_settlement_signals",
+            lambda max_age_minutes=120: [fake_signal],
+        ),
+        patch.object(
+            order_executor,
+            "_get_live_open_positions",
+            return_value=[_fake_live_position()],
+        ),
+        patch.object(
+            order_executor, "_exit_live_position", side_effect=_fake_exit_live_position
+        ),
+        patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+        patch("paper.is_paused_drawdown", return_value=False),
+    ):
+        try:
+            main.cmd_cron(None)
+        except SystemExit:
+            pass
+
+    assert exit_calls == []
+
+
+@pytest.mark.cron_integration
 class TestKillSwitchOverrideRenameRace:
     """AUD-0039 regression: cmd_cron's kill-switch override used unguarded
     Path.rename() (raises FileExistsError if the destination already

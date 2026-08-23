@@ -1630,6 +1630,14 @@ def _cmd_cron_body(
 
     # Act on any active settlement lag signals from the settlement monitor (R20).
     # High-confidence signals (\u226580%) trigger early close of the matched paper trade.
+    # Initialized before the try (round-2 opus review, AUD-0027): the live
+    # block below reuses this list, and it must stay whatever it was
+    # actually populated with even if an exception fires AFTER a successful
+    # read_settlement_signals() call (e.g. paper.get_open_trades() itself
+    # raising) -- resetting it to [] inside the except would silently
+    # disable the live force-close for a cycle where real signals existed,
+    # for a failure that has nothing to do with the live path.
+    _settlement_sigs: list[dict] = []
     try:
         from settlement_monitor import read_settlement_signals
 
@@ -1692,6 +1700,142 @@ def _cmd_cron_body(
                         )
     except Exception as _e:
         _log.debug("cmd_cron: read_settlement_signals failed: %s", _e)
+
+    # AUD-0027: live equivalent of the paper-only force-close block above --
+    # that block matches _settlement_sigs against paper.get_open_trades()
+    # only; grepping settlement_signal/read_settlement_signals usage across
+    # order_executor.py/positions.py/main.py previously returned zero
+    # matches, so a live position confirmed by the same METAR-verified
+    # settlement-lag signal got zero automated early-close coverage. Mirrors
+    # _check_live_model_exits' exact pattern (raw dict from
+    # _get_live_open_positions(), _current_forecast_cycle() for the cycle
+    # label, _exit_live_position for the real order) and reuses the SAME
+    # _settlement_sigs list computed above rather than re-calling
+    # read_settlement_signals.
+    #
+    # Exit price (round-2 opus review, AUD-0027): winning side uses the same
+    # fixed 0.97 the paper block uses, as a LIMIT price on the live IOC
+    # order -- genuinely opportunistic: it only fills if a buyer is already
+    # offering close to full payout, and if not, the IOC simply doesn't fill
+    # (see _exit_live_position's own "did not fill" handling), leaving the
+    # position open and still protected by the stop-loss/breakeven/
+    # model-exit scanners above and by real settlement -- a safe no-op, not
+    # a bad fill. The LOSING side is NOT the mirror-image safe order a fixed
+    # 0.03 might suggest: Kalshi's V2 API maps a low-price YES sell to an
+    # aggressive "ask" that matches almost any resting bid (see
+    # kalshi_client._to_v2_side_price), so it fills near-immediately
+    # regardless of where the book actually is -- and _exit_live_position
+    # books realized P&L against the LIMIT price passed in, not the real
+    # exchange fill price, so a stale-but-nonzero book would silently
+    # overstate the realized loss and feed a fabricated number into the
+    # daily-loss-limit gate. Priced off the real current book instead
+    # (positions.liquidation_price, with the same entry_price fallback on a
+    # missing quote), mirroring _check_live_position_exits' own convention
+    # exactly for this side.
+    if client is not None and _settlement_sigs:
+        try:
+            from order_executor import (
+                _current_forecast_cycle,
+                _exit_live_position,
+                _get_current_book,
+                _get_live_open_positions,
+            )
+            from positions import liquidation_price as _liquidation_price
+            from utils import YES_ASK_KEYS, YES_BID_KEYS, coalesce_market_price
+
+            _live_open_by_ticker: dict[str, list[dict]] = {}
+            for _lp in _get_live_open_positions():
+                _live_open_by_ticker.setdefault(_lp["ticker"], []).append(_lp)
+            if _live_open_by_ticker:
+                _live_cycle = _current_forecast_cycle()
+                for sig in _settlement_sigs:
+                    _sig_ticker = sig["ticker"]
+                    _sig_outcome = sig.get("outcome", "")
+                    _sig_conf = sig.get("confidence", 0.0)
+                    if _sig_conf < 0.80:
+                        continue
+                    # round-2 opus review: a signal with a missing/malformed
+                    # outcome (not exactly "yes"/"no") must not silently
+                    # fall through to the LOSING branch below and fire a
+                    # real, marketable liquidation of a live position -- the
+                    # paper block's equivalent shape only ever writes a fake
+                    # ledger row, this one places a real order.
+                    if _sig_outcome not in ("yes", "no"):
+                        _log.warning(
+                            "Settlement signal: skipping LIVE %s -- malformed "
+                            "outcome %r",
+                            _sig_ticker,
+                            _sig_outcome,
+                        )
+                        continue
+                    for _live_pos in _live_open_by_ticker.get(_sig_ticker, []):
+                        # round-2 opus review: the whole per-position attempt
+                        # (price computation included, not just the final
+                        # _exit_live_position call) is now one try/except --
+                        # coalesce_market_price can raise ValueError on a
+                        # malformed book field, and that must only skip THIS
+                        # position, not abort every remaining signal/position
+                        # this cycle (mirrors _check_live_model_exits' own
+                        # per-position try shape).
+                        try:
+                            _side = _live_pos.get("side", "yes")
+                            _is_winning = (
+                                _side == "yes" and _sig_outcome == "yes"
+                            ) or (_side == "no" and _sig_outcome == "no")
+                            _live_exit_price: float
+                            if _is_winning:
+                                _live_exit_price = 0.97
+                            else:
+                                _book = _get_current_book(client, _sig_ticker)
+                                _current_prices = (
+                                    {
+                                        _sig_ticker: {
+                                            "bid": coalesce_market_price(
+                                                _book, *YES_BID_KEYS
+                                            ),
+                                            "ask": coalesce_market_price(
+                                                _book, *YES_ASK_KEYS
+                                            ),
+                                        }
+                                    }
+                                    if _book
+                                    else {}
+                                )
+                                _liq_price = _liquidation_price(
+                                    _current_prices, _sig_ticker, _side
+                                )
+                                _live_exit_price = (
+                                    _liq_price
+                                    if _liq_price is not None
+                                    else _live_pos["entry_price"]
+                                )
+                            if _exit_live_position(
+                                client,
+                                _live_pos,
+                                _live_exit_price,
+                                "settlement_lag",
+                                _live_cycle,
+                            ):
+                                _log.info(
+                                    "Settlement signal: closed LIVE %s early at "
+                                    "%.2f (conf=%.0f%%, outcome=%s)",
+                                    _sig_ticker,
+                                    _live_exit_price,
+                                    _sig_conf * 100,
+                                    _sig_outcome,
+                                )
+                        except Exception as _lce:
+                            _log.warning(
+                                "Settlement signal: failed to close LIVE %s: %s",
+                                _sig_ticker,
+                                _lce,
+                            )
+        except Exception as _le:
+            # round-2 opus review: this guards real live positions -- unlike
+            # the paper block's matching DEBUG above, a systematic failure
+            # here (e.g. every call raising ImportError) must be operator-
+            # visible under default logging, not silently swallowed.
+            _log.warning("cmd_cron: live settlement-lag force-close failed: %s", _le)
 
     # \u2500\u2500 Scan summary line \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     _n_strong = len(strong_opps)

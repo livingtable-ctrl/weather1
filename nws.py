@@ -232,8 +232,17 @@ def get_nws_daily_forecast(city: str, coords: tuple) -> dict[str, dict]:
         return {}
 
     # R30: validate BEFORE recording success so a malformed-but-HTTP-200
-    # response doesn't credit the circuit breaker.
-    validate_nws_response(data)
+    # response doesn't credit the circuit breaker. AUD-0060: this comment
+    # previously stated that intent without actually wiring it in —
+    # validate_nws_response()'s bool return was discarded and record_success()
+    # ran unconditionally right after. Now treated the same as any other
+    # dead-model/malformed-response failure in this codebase (see
+    # weather_markets.py's is_all_null-triggers-record_failure convention):
+    # a validation failure counts as a real fetch failure, not a silent pass.
+    if not validate_nws_response(data):
+        _nws_cb.record_failure()
+        _log.warning("NWS daily forecast malformed response for %s", city)
+        return {}
     _nws_cb.record_success()
     periods = data.get("properties", {}).get("periods", [])
     result: dict[str, dict] = {}

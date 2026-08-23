@@ -15,6 +15,16 @@ Priority: Low -- the affected mechanism (settlement_monitor.py's T-ticker
   line 1444 already notes the 720min staleness default "predates
   settlement_monitor.py ever actually being scheduled to run"). This is a
   design gap to close before the mechanism goes live, not an active bug.
+  UPDATE 2026-08-22 (batch-13, AUD-0027): a SECOND `>=0.80` gate now exists
+  alongside the original paper one -- cron.py's settlement-lag block was
+  extended to also force-close matching LIVE positions, gated by the exact
+  same threshold on the exact same signal, so it inherits this entry's
+  "mathematically unreachable under current calibration" dormancy too.
+  This one gates a real live sell order via order_executor._exit_live_
+  position, not just a paper ledger write, so revisiting this entry's
+  threshold decision (see "What it would look like" below) becomes higher-
+  stakes once live trading is ever enabled -- both gates should be
+  reconsidered together, not just the original paper one.
 
 Problem:
   `metar._dynamic_lock_in_confidence()` is hard-bounded to [0.72, 0.97]
@@ -21823,7 +21833,7 @@ Problem:
   Recommendation: Accumulate shadow-routed (ticker, item) pairs during the per-ticker loop instead of calling _log_shadow_predictions() inline per match; make one call with the full list after the loop (or before placement, preserving the existing ordering guarantee), letting the function's own...
   Full record: audit/AUDIT_REPORT.json (id AUD-0021), audit/AUDIT_REPORT.md.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Shadow-only far-tail rain-blend signal shares the global _ensemble_cb circuit breaker with the live temperature trading blend's prewarm fetch
+[RESOLVED 2026-08-22 -- batch-13, AUD-0022] Shadow-only far-tail rain-blend signal shares the global _ensemble_cb circuit breaker with the live temperature trading blend's prewarm fetch
 Priority: MEDIUM (audit id AUD-0022, status CONFIRMED, confidence HIGH, evidence E1)
 Files: weather_markets.py, circuit_breaker.py, trade_cycle.py
 
@@ -21834,6 +21844,11 @@ Problem:
   Financial risk: Soft degradation of the real live temperature trading blend's forecast ensemble diversity for a bounded window, potentially biasing the probability estimate feeding Kelly-sized live/paper trades.
   Recommendation: Give the far-tail blend's multiday fetch its own dedicated circuit breaker instance, consistent with the commit's own stated design intent.
   Full record: audit/AUDIT_REPORT.json (id AUD-0022), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-22):
+  Added _ensemble_precip_multiday_cb (same failure_threshold=3/recovery_timeout=300/burst_window=2.0 as _ensemble_cb) as its own dedicated CircuitBreaker, mirroring the existing _nbm_om_cb/_ecmwf_om_cb split-out precedent exactly. _fetch_ensemble_precip_multiday's is_open()/record_success()/record_failure() calls all migrated to the new instance -- zero remaining _ensemble_cb references inside that function (verified by bounding the function and grepping). trade_cycle.py's/web_app.py's/cron.py's own "list every OM circuit breaker" monitoring call sites do NOT yet know about the new breaker -- filed as a separate follow-up (see the "trade_cycle.py's pre-scan CB-health check..." entry below) since those files are out of this batch's scope (or, for cron.py, would require also fixing a pre-existing NBM/ECMWF omission in the same dict).
+  Testing: test_rain_markets.py's TestFetchEnsemblePrecipMultiday class updated (all _ensemble_cb references repointed to _ensemble_precip_multiday_cb) plus 2 new tests -- test_all_null_failure_does_not_touch_the_shared_ensemble_cb (positive control: new breaker's failure_count increases; absence assertion: old breaker's stays byte-for-byte unchanged) and test_shared_ensemble_cb_open_does_not_block_this_fetch (the old breaker being open no longer blocks this function). Both mutation-tested by reverting to the shared-breaker behavior and confirming the corresponding assertion fails.
+  Independent opus review (effort=high): confirmed complete, zero findings against this item specifically.
 
 [RESOLVED 2026-08-22 -- batch-10] Accuracy-circuit-breaker admin override has no test proving it actually lifts the LIVE trading gate
 Priority: MEDIUM (audit id AUD-0023, status CONFIRMED, confidence HIGH, evidence E1)
@@ -21900,7 +21915,7 @@ Resolution 2026-08-19: per explicit design decision (AskUserQuestion), took
   file list/counts) pass. ruff + ruff-format + mypy clean via the actual
   pre-commit hook.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Settlement-lag force-close signal is wired to paper positions only, never live
+[RESOLVED 2026-08-22 -- batch-13, AUD-0027] Settlement-lag force-close signal is wired to paper positions only, never live
 Priority: MEDIUM (audit id AUD-0027, status CONFIRMED, confidence VERY HIGH, evidence E1)
 Files: cron.py, settlement_monitor.py
 
@@ -21911,6 +21926,14 @@ Problem:
   Financial risk: Currently low in practice: settlement_monitor.py's own docstring documents the calibrated confidence never reaches cron's own >=0.80 force-close threshold under current production coefficients, so...
   Recommendation: Extend the settlement-lag force-close block (or add a live-specific sibling) to also match against live open positions (execution_log's get_filled_unsettled_live_orders), mirroring how positions.py already unified paper/live for stop-loss/breakeven.
   Full record: audit/AUDIT_REPORT.json (id AUD-0027), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-22):
+  Added a live-specific sibling block right after the paper one, reusing the SAME already-fetched signal list (no re-fetch). Matches live positions via order_executor._get_live_open_positions(), same >=0.80 confidence gate, same "settlement_lag" reason, closes via order_executor._exit_live_position(client, position, exit_price, reason, cycle).
+  Design decision surfaced to the user (AskUserQuestion) rather than assumed: what exit price the live IOC order should use. First proposal (fixed 0.97 winning-side / 0.03 losing-side, mirroring the paper block's own convention) was approved, then an independent opus review (effort=high, specifically targeted at this new live-order path) found a HIGH-severity flaw in that design: a fixed LOW limit price on a SELL is the AGGRESSIVE/marketable order (matches almost any resting bid, per kalshi_client._to_v2_side_price), not a safe no-op like a fixed HIGH price is -- and _exit_live_position books realized P&L against the LIMIT price passed in, not the real exchange fill price, so a stale-but-nonzero book would fabricate an inflated loss feeding the daily-loss-limit gate. Brought back to the user rather than silently corrected; user approved the fix -- losing side now priced via positions.liquidation_price (the same function every other live-exit path in this codebase already uses), winning side keeps the fixed 0.97 (genuinely safe there: only fills if a buyer is already offering near-full-payout). New generalizable memory: feedback_low_limit_price_is_aggressive_not_safe.
+  Also fixed during the two review rounds: _settlement_sigs was being reset to [] inside the paper block's except clause even after being correctly populated, which would have silently disabled the live block for a cycle where real signals existed, for a failure unrelated to the live path -- now initialized before the try, never reassigned in except. The live block's own outer exception handler was logging at DEBUG (invisible under default logging for a path that guards real money) -- raised to WARNING. Added a guard rejecting a signal whose outcome isn't exactly "yes"/"no" (a malformed/missing outcome would otherwise fall through to the losing branch and fire a real liquidation). Moved per-position price computation inside its own try (previously only the final exit call was covered, so one bad book/price computation could have aborted every remaining position's exit this cycle).
+  Testing: 9 new integration tests in tests/test_cron_integration.py -- winning-side match, losing-side liquidation-price match, losing-side entry_price fallback (no book quote), confidence-gate rejection, malformed-outcome rejection, unfilled-IOC non-crash (with a log assertion proving no false "closed" message), ticker-mismatch no-op, client=None skip, and the _settlement_sigs clobber regression. Every mutation-testing claim independently verified via Edit-revert-restore, including on both review rounds' own fixes.
+  Two full independent opus reviews (effort=high), each targeted specifically at this live-order path: round 1 found the HIGH-severity exit-price flaw above plus the DEBUG-logging and _settlement_sigs-clobber MEDIUMs and 2 LOWs (missing non-fill test, missing ticker-mismatch/client=None tests) -- all fixed. Round 2 (reviewing round 1's own fixes) confirmed all 9 findings genuinely resolved, found 4 new LOW/INFO items (the malformed-outcome guard, per-position try widening, a registry/allowlist-sync test gap, plus a stale comment and an understated backlog entry) -- all fixed, mutation-tested where applicable. GO recommendation from round 2.
+  Financial-risk context: this live block is triple-dormant in the current production environment -- LIVE_TRADING_ENABLED is unset (pre_live_trade_check fails closed), settlement_monitor.py's task has never been registered/run (see this file's own "METAR SETTLEMENT-LAG CALIBRATION..." entry, updated same session to note the >=0.80 gate now guards a live order too, not just a paper one), and that entry's calibration ceiling (~0.766 YES / ~0.595 NO) makes the >=0.80 gate mathematically unreachable under current coefficients regardless.
 
 [RESOLVED 2026-08-19 -- fixed as part of batch-03] cmd_order's manual partial live-sell never settles its own execution_log row, reproducing the 'aggregate-only P&L' bug the same day's earlier commit fixed for the automated path
 Priority: MEDIUM (audit id AUD-0028, status CONFIRMED, confidence VERY HIGH, evidence E2)
@@ -22350,7 +22373,7 @@ Resolution 2026-08-19: this finding's own Recommendation ("mirroring
   note above for the full fix/test/verification narrative (same commit,
   same diff hunk).
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] Far-tail rain blend's logged n_members metadata doesn't reflect the deterministic cross-product's true effective sample size
+[RESOLVED 2026-08-22 -- batch-13, AUD-0043] Far-tail rain blend's logged n_members metadata doesn't reflect the deterministic cross-product's true effective sample size
 Priority: LOW (audit id AUD-0043, status CONFIRMED, confidence HIGH, evidence E1)
 Files: weather_markets.py
 
@@ -22362,7 +22385,10 @@ Problem:
   Recommendation: If/when this signal is revisited for graduation, also log the tail-year sample count (len(tail_sums_tilted)) alongside n_members so effective-sample-size can be assessed correctly. Not urgent: this signal is shadow/log-only today and does not affect blended_prob/rec_side/sizing.
   Full record: audit/AUDIT_REPORT.json (id AUD-0043), audit/AUDIT_REPORT.md.
 
-[RESOLVED 2026-08-21 -- batch-07] tracker.py Previous-Runs-API helpers still use UTC-anchored day arithmetic against a city-local target_date, with stale comments asserting the opposite
+Resolution (2026-08-22):
+  Added rain_forecast_blend_n_tail_years to forecast_blend_signal's metadata dict, set to len(tail_sums_tilted) in the far-case-with-enough-tail-years branch (the same list used to build combined_totals, so it can't drift from what the cross-product actually used), 0 in the near-only branch (no tail blended in at all -- combined_totals IS member_totals unchanged) and 0 in the thin-tail-years-skip branch.
+  Testing: 4 test assertions added across existing test_rain_markets.py far-case/near-case tests, pinning the expected value in all 3 branches (0 near-only, 20 for two different far-case fixtures with 20 mocked tail years). Mutation-tested (changed the far-case assignment to n_members instead of len(tail_sums_tilted)) -- 2 of the 3 assertions caught it (the third, near-only, is unaffected by that specific branch's mutation, as expected).
+  Independent opus review (effort=high): confirmed all 3 branches correct, no off-by-one or variable mixup, test assertions match (0/20/20/20). still use UTC-anchored day arithmetic against a city-local target_date, with stale comments asserting the opposite
 Priority: LOW (audit id AUD-0044, status CONFIRMED, confidence HIGH, evidence E1)
 Files: tracker.py
 
@@ -22569,7 +22595,7 @@ Resolution 2026-08-20: Added a lock, reusing the safe_io.CrossProcessLock
   fresh via --collect-only at writing time) passes; ruff+ruff-format+mypy
   clean via the actual pre-commit hooks. Commit: (added post-push).
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] tracker.count_settled_signal_rows() builds SQL via f-string interpolation of column/json_key parameters
+[RESOLVED 2026-08-22 -- batch-13, AUD-0052] tracker.count_settled_signal_rows() builds SQL via f-string interpolation of column/json_key parameters
 Priority: LOW (audit id AUD-0052, status CONFIRMED, confidence HIGH, evidence E1)
 Files: tracker.py:2671-2742
 
@@ -22581,6 +22607,11 @@ Problem:
   Security risk: Latent SQL-injection-shaped pattern; unexploitable today, would become exploitable only if a future caller passed request-derived input.
   Recommendation: Add an allowlist check inside count_settled_signal_rows() before interpolation, independent of current caller discipline.
   Full record: audit/AUDIT_REPORT.json (id AUD-0052), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-22):
+  Added _SIGNAL_COLUMN_ALLOWLIST/_SIGNAL_JSON_KEY_ALLOWLIST frozensets (exact match to weather_markets.SIGNAL_REGISTRY's 6 column names + 1 json_key name) and a membership check before either name is interpolated, raising ValueError on an unrecognized name -- defense-in-depth independent of current caller discipline, per the recommendation.
+  Testing: rejects-unlisted-column/rejects-unlisted-json_key tests (mutation-tested: removing the allowlist checks makes both fail, one with a raw sqlite3.OperationalError instead of the friendly ValueError, confirming the check is genuinely load-bearing). Round-2 opus review found the existing "accepts every allowlisted name" positive-control test only proved the allowlist's own contents work, not that SIGNAL_REGISTRY stays in sync with it -- added test_every_signal_registry_entry_passes_tracker_allowlist, which drives every registry entry's real count_fn() (the exact call get_signal_graduation_report() makes in production) and confirms none raises; mutation-tested by removing one real allowlist entry and confirming this new test (and only this one) catches it.
+  Independent opus review (effort=high) across two rounds: confirmed the allowlist exactly matches every real production call site, no legitimate caller broken, get_signal_graduation_report()'s existing per-entry exception handling means even a future miss degrades to a logged warning rather than a crash.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] web_app.py's /api/trades route loads the entire paper ledger twice in one request, with no caching across the ~7 routes (plus the /api/stream SSE loop) that each independently call get_open_trades()/get_all_trades()
 Priority: LOW (audit id AUD-0053, status CONFIRMED, confidence VERY HIGH, evidence E3)
@@ -22765,7 +22796,7 @@ Resolution (2026-08-22, batch-10):
   Tests: 0 new (pre-existing coverage confirmed sufficient); re-ran tests/test_batch01_live_position_visibility.py -- 48 passed.
   Lint/mypy: N/A, no files changed for this item.
 
-[OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] schema_validator.py's validate_market/validate_forecast/validate_nws_response return values are discarded everywhere they're called
+[PARTIALLY RESOLVED 2026-08-22 -- batch-13, AUD-0060; kalshi_client.py's two call sites remain untouched (a fix was reverted mid-session on discovering kalshi_client.py is out of scope, owned by batches 02/05/09), see Resolution] schema_validator.py's validate_market/validate_forecast/validate_nws_response return values are discarded everywhere they're called
 Priority: LOW (audit id AUD-0060, status CONFIRMED, confidence HIGH, evidence E1)
 Files: schema_validator.py, kalshi_client.py, nws.py, weather_markets.py
 
@@ -22776,6 +22807,12 @@ Problem:
   Financial risk: Low/indirect — downstream consumers generally already use .get() with defaults and None-checks, so this is a missed defense-in-depth layer rather than an active bug path.
   Recommendation: Either wire the boolean into the callers (skip processing malformed records) if that protection is actually wanted, or change the return type/docstring to make clear these are logging-only, to prevent a future caller (or the nws.py circuit-breaker comment's own apparent original intent) from...
   Full record: audit/AUDIT_REPORT.json (id AUD-0060), audit/AUDIT_REPORT.md.
+
+Resolution (2026-08-22):
+  User's explicit decision (AskUserQuestion): wire the booleans in to actually skip/gate processing on failure, rather than the docs-only alternative. Applied at weather_markets.get_weather_forecast's per-model _fetch_one closure (validate_forecast's check moved inside the existing try, raising into the same except that already calls _forecast_cb.record_failure() -- matches the is_all_null dead-model pattern immediately above it) and nws.get_nws_daily_forecast (a malformed response now calls _nws_cb.record_failure() and returns {} instead of _nws_cb.record_success() unconditionally -- this also makes the function's own pre-existing comment, "validate BEFORE recording success so a malformed response doesn't credit the circuit breaker," actually true; previously it stated an intent that wasn't wired in).
+  kalshi_client.py's TWO call sites (get_markets' list-build, get_market() singular) were NOT touched -- CORRECTION: a get_markets() list-filter fix was implemented mid-session, then the ENTIRE file was reverted via `git checkout -- kalshi_client.py` (confirmed zero diff, `git log -1 -- kalshi_client.py` still shows batch-09's commit) after discovering kalshi_client.py is owned by batches 02/05/09 (batch-09 already committed, touching this exact file), genuinely out of batch-13's scope despite AUD-0060's own Files line listing it. This item is therefore only PARTIALLY resolved by this session -- both kalshi_client.py call sites remain exactly as documented in the Problem section above, deferred to whichever batch legitimately next touches that file. (Note: get_market() singular would likely stay deliberately warn-only even then, matching this same class's own _validate() helper's existing stance and the 15+ call sites across the codebase that depend on it always returning a dict -- but that's a decision for whoever picks this up, not pre-made here.)
+  Testing: weather_markets.py: new test_malformed_response_recorded_as_failure_not_used (mutation-tested). nws.py: new test_malformed_response_records_failure_not_success + a positive-control well-formed-response test (both mutation-tested).
+  Independent opus review (effort=high): confirmed both wired call sites (weather_markets.py, nws.py) correct and safe, and independently confirmed kalshi_client.py has zero diff; found only one theoretical (unreproducible against the real Open-Meteo/NWS APIs) false-positive edge case in the wired sites, informational only, no action taken.
 
 [OPEN 2026-08-18 -- found by max-depth forensic audit, filed for tracking, not yet investigated or fixed this session] README.md's environment-variable table omits the 6 shadow-only *_TRADING_ENABLED feature flags, 3 added within this audit's commit window
 Priority: LOW (audit id AUD-0061, status CONFIRMED, confidence HIGH, evidence E1)
@@ -24846,3 +24883,60 @@ Problem:
   contract) to it first. If it's genuinely dead/abandoned, consider deleting
   it or marking it explicitly as such to stop future audits/reviews from
   re-flagging its bugs as live risk.
+
+[OPEN 2026-08-22 -- found while implementing batch-13 (AUD-0022, giving
+_fetch_ensemble_precip_multiday its own dedicated _ensemble_precip_multiday_cb
+circuit breaker instead of sharing _ensemble_cb); corrected 2026-08-22 by
+round-2 opus review, which found the original framing below overstated how
+cleanly this splits by batch -- see the Root cause update] trade_cycle.py's
+pre-scan CB-health check, web_app.py's circuit-breaker status dashboard, AND
+cron.py's own newly-opened-circuit detector don't know about the new
+_ensemble_precip_multiday_cb
+Priority: INFO -- purely a monitoring/observability gap, no trading-behavior
+impact. The new breaker still functions correctly (is_open/record_success/
+record_failure all wired up in weather_markets.py); it's just invisible to
+these three existing "list every OM circuit breaker" call sites.
+Files: trade_cycle.py:997-999 (the _nbm_om_cb/_ensemble_cb/_forecast_cb/
+_ecmwf_om_cb tuple already tracks each sibling breaker split out this way
+before -- this one wasn't added), web_app.py:2235-2257 (same pattern, feeds
+the operator-facing circuit-breaker status dashboard), cron.py:984-1007's
+_pre_scan_cb_states/_scan_cbs (same pattern again, feeds the
+newly-opened-circuit alert at end of cycle -- only tracks 4 of the module's
+7 breakers even before this fix: _forecast_cb/_ensemble_cb/_weatherapi_cb/
+_pirate_cb, never had _nbm_om_cb/_ecmwf_om_cb either)
+
+Problem:
+  When _nbm_om_cb and _ecmwf_om_cb were previously split out from _ensemble_cb
+  as their own dedicated breakers, trade_cycle.py's and web_app.py's monitoring
+  call sites were updated to track the new instances alongside the pre-existing
+  ones -- but cron.py's own separate pre-scan snapshot never was, so this
+  "always update every monitoring site" precedent was already inconsistently
+  applied before this session touched anything. AUD-0022's fix (batch-13)
+  follows the same dedicated-breaker pattern for _fetch_ensemble_precip_
+  multiday's shadow-only far-tail rain fetch, and none of the three
+  monitoring call sites picked up the new breaker.
+  Root cause (corrected 2026-08-22, round-2 opus review): the original framing
+  here claimed this gap was purely a batch-scoping artifact (trade_cycle.py
+  belongs to batch-12, web_app.py to batch-07) -- true for those two, but
+  cron.py IS in batch-13's own scope and WAS modified by this branch (the
+  AUD-0027 live settlement-lag fix, same session), and its pre-scan dict has
+  the identical gap, pre-existing (missing _nbm_om_cb/_ecmwf_om_cb too, not
+  just the new breaker) and not something this fix could have "picked up for
+  free" by being in scope -- fixing cron.py's dict correctly here would mean
+  either fixing the OTHER two pre-existing omissions in the same dict too
+  (a separate, broader monitoring-completeness fix, out of AUD-0022's own
+  scope) or adding just the one new breaker inconsistently. Also note
+  batch-13.md's own AUD-0022 Files line lists trade_cycle.py directly
+  (weather_markets.py, circuit_breaker.py, trade_cycle.py) -- INDEX.md's
+  batch-ownership table is the actual authority per this project's "no two
+  batches share a touched file" rule, and trade_cycle.py belongs to batch-12
+  there, but the handoff prompt's own Files line is inconsistent with that.
+  Recommendation: Add weather_markets._ensemble_precip_multiday_cb to all
+  three tuples/dicts. For trade_cycle.py/web_app.py this is a trivial
+  one-line addition per file, once whichever session next legitimately
+  touches them picks this up. For cron.py, do it together with also adding
+  _nbm_om_cb/_ecmwf_om_cb (the pre-existing gap) rather than just the newest
+  breaker alone, so the fix doesn't leave the dict freshly-inconsistent again.
+  Full record: none (not from the original max-depth audit -- surfaced while
+  implementing batch-13's AUD-0022 fix this session; corrected same session
+  by round-2 opus review of the fix itself).

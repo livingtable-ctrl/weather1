@@ -2973,6 +2973,59 @@ class TestGetWeatherForecastFallbackChain:
         assert result["_source"] == "pirate_weather"
 
 
+class TestGetWeatherForecastValidatesResponse:
+    """AUD-0060: get_weather_forecast's per-model _fetch_one closure
+    previously called validate_forecast() as a bare statement AFTER
+    _forecast_cb.record_success() had already run, discarding its bool
+    return -- a malformed-but-HTTP-200 response (missing the required
+    "time" field, even with real non-null temperature data) was treated
+    as a successful fetch and fed straight into the ensemble average."""
+
+    def test_malformed_response_recorded_as_failure_not_used(self, monkeypatch):
+        from datetime import date
+        from unittest.mock import MagicMock
+
+        import weather_markets as wm
+
+        target = date(2026, 5, 1)
+        wm._forecast_cache.clear()
+        wm._forecast_cb.record_success()
+        wm._forecast_cb._last_failure_at = None  # avoid burst-window absorption
+        _before = wm._forecast_cb.failure_count
+
+        def _fake_om_request(method, url, **kwargs):
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            # "time" missing entirely -- fails validate_forecast's required-
+            # field check even though temperature_2m_max is present and
+            # non-null (so is_all_null's own dead-model check does NOT
+            # trigger here -- this response is malformed in a way only
+            # validate_forecast catches).
+            resp.json.return_value = {
+                "daily": {"temperature_2m_max": [70.0], "temperature_2m_min": [55.0]}
+            }
+            return resp
+
+        monkeypatch.setattr(wm, "_om_request", _fake_om_request)
+        monkeypatch.setattr(wm, "fetch_nbm_forecast", lambda *a, **kw: None)
+        monkeypatch.setattr(wm, "fetch_temperature_weatherapi", lambda *a, **kw: None)
+        monkeypatch.setattr(
+            wm, "fetch_temperature_pirate_weather", lambda *a, **kw: None
+        )
+
+        result = wm.get_weather_forecast("NYC", target)
+
+        assert result is None, (
+            "every OM model's response was malformed and every fallback "
+            "source is mocked to fail -- must not silently use the bad data"
+        )
+        assert wm._forecast_cb.failure_count > _before, (
+            "positive control: the malformed response must actually be "
+            "recorded as a circuit-breaker failure, not silently credited "
+            "as a successful fetch"
+        )
+
+
 class TestCheckEnsembleCircuitHealth:
     """check_ensemble_circuit_health() warns when circuit has been open >24h."""
 
