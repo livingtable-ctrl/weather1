@@ -30,13 +30,19 @@ class TestAcquireCronLockFreshInstall:
         assert lock_path.exists()
 
     def test_lock_file_contains_pid_and_timestamps(self, tmp_path, monkeypatch):
-        """Written lock must be valid JSON with pid, started_at, heartbeat."""
+        """Written lock must be valid JSON with pid, started_at.
+
+        batch-33 L-6a: no longer asserts a "heartbeat" field -- it was
+        written once at acquire time and never refreshed again, so it was
+        a redundant duplicate of started_at rather than a real liveness
+        signal; removed rather than kept as misleading dead weight.
+        """
         acquired, lock_path = _acquire(monkeypatch, tmp_path)
         assert acquired is True
         data = json.loads(lock_path.read_text())
         assert data["pid"] == os.getpid()
         assert "started_at" in data
-        assert "heartbeat" in data
+        assert "heartbeat" not in data
 
 
 class TestAcquireCronLockLivePid:
@@ -617,7 +623,16 @@ class TestReleaseCronLockOwnership:
     fallback), A's delayed `finally: ctx.release_cron_lock()` would delete
     B's fresh lock -- leaving B running completely unprotected and letting
     a THIRD acquirer start concurrently. _release_cron_lock now checks the
-    lock file's own recorded pid against os.getpid() before unlinking."""
+    lock file's own recorded pid against os.getpid() before unlinking.
+
+    batch-33 M-3: the ownership check itself had a fail-OPEN gap in
+    exactly the case it exists to protect -- an unreadable read (torn
+    write, PermissionError, corrupt JSON) defaulted owner_pid=None, and
+    the old `owner_pid is not None and owner_pid != os.getpid()` guard
+    treated None as "nothing to protect" and fell through to unlink()
+    anyway. Fixed to skip the unlink whenever ownership can't be
+    positively confirmed -- see test_skips_unlink_on_unreadable_lock.
+    """
 
     def test_does_not_delete_a_lock_owned_by_a_different_pid(
         self, tmp_path, monkeypatch
@@ -677,23 +692,56 @@ class TestReleaseCronLockOwnership:
 
         assert not lock_path.exists()
 
-    def test_deletes_a_corrupt_unreadable_lock(self, tmp_path, monkeypatch):
-        """A lock file that fails to parse (corrupt / truncated / an old
-        plain-integer-PID format) has no readable pid to protect -- must
-        still be deleted, not left behind forever. Opus-review-caught
-        (round 2, F4): the ownership check's `owner_pid is not None` guard
-        specifically exists for this case -- without it, `None != os.getpid()`
-        is always True and release would ALWAYS no-op, permanently leaking
-        every lock that ever fails to parse. Mutation-tested: changing the
-        guard from `owner_pid is not None and owner_pid != os.getpid()` to
-        bare `owner_pid != os.getpid()` makes this fail (the corrupt lock
-        survives release)."""
+    def test_skips_unlink_on_unreadable_lock(self, tmp_path, monkeypatch):
+        """batch-33 M-3: a lock file that fails to parse (corrupt /
+        truncated / a torn concurrent write / PermissionError) must NOT be
+        deleted by release -- the old behavior here (delete it, reasoning
+        "no readable pid to protect") was exactly the H2 hazard this
+        class's own module docstring describes, one layer deeper: release
+        can't tell an unreadable lock apart from one a DIFFERENT process
+        just wrote a fraction of a second ago (e.g. this same process's
+        own lock got overridden as stale, and the new owner's write is
+        mid-flight) -- unlinking on "can't verify" fails OPEN toward
+        deleting a possibly-live lock, backwards from this whole
+        function's fail-closed intent. The acquire side already has its
+        own explicit self-heal for a genuinely, persistently corrupt lock
+        (_acquire_cron_lock's own `except: lp.unlink(); return False`), so
+        an unreadable lock left behind by release isn't stuck forever --
+        it's cleaned up on the very next acquire attempt instead.
+
+        Mutation-tested: reverting to the old `except Exception: owner_pid
+        = None` + `if owner_pid is not None and owner_pid != os.getpid()`
+        shape makes this fail (the corrupt lock gets deleted again).
+        """
         import cron
 
         lock_path = tmp_path / ".cron_lock"
         monkeypatch.setattr(cron, "LOCK_PATH", lock_path)
         lock_path.write_text("not valid json {{{{")
 
+        cron._release_cron_lock()  # must not raise
+
+        assert lock_path.exists(), (
+            "an unreadable lock must be left in place (fail closed) -- "
+            "release can't positively confirm it isn't a different "
+            "process's fresh lock"
+        )
+        assert lock_path.read_text() == "not valid json {{{{", (
+            "the unreadable file itself must be untouched, not just present"
+        )
+
+    def test_skips_unlink_when_pid_field_is_missing(self, tmp_path, monkeypatch):
+        """batch-33 M-3, positive control distinguishing 'valid JSON with
+        no pid key' from 'unreadable' -- both must skip the unlink (same
+        `owner_pid != os.getpid()` comparison handles both, since a
+        missing key reads as None), but this path exercises the JSON
+        successfully parsing rather than raising."""
+        import cron
+
+        lock_path = tmp_path / ".cron_lock"
+        monkeypatch.setattr(cron, "LOCK_PATH", lock_path)
+        lock_path.write_text(json.dumps({"started_at": time.time()}))
+
         cron._release_cron_lock()
 
-        assert not lock_path.exists()
+        assert lock_path.exists()

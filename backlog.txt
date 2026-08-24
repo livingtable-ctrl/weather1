@@ -28950,3 +28950,320 @@ Why not now: climate_indices.py is batch-36's owned file/design decision,
   instead of just updating a stale fixture. Filed with the full root-cause
   diagnosis already done so whoever picks this up doesn't need to
   re-derive it.
+
+[RESOLVED 2026-08-24 -- batch-33 item 1 (M-1)] batch-24's two fixes defeat each other -- halt-transition edge consumed on delivery failure
+Priority: MEDIUM (skeptic-corrected scope -- see below)
+Files: alerts.py, notify.py, cron.py, order_executor.py, tests/test_batch33_reliability.py, tests/test_cron_integration.py
+
+Problem:
+  check_halt_transition() persists state[halt_type]=active and returns the false->true edge BEFORE any
+  delivery is attempted; send_system_alert()'s own rollback (_system_cooldown_rollback) restores only its
+  OWN cooldown state in a different file/module, never check_halt_transition's flag. A total delivery
+  failure at the instant a halt engages permanently eats that engagement's alert -- the next cycle's
+  observation sees was_active=True and never reports a fresh edge again, silently defeating batch-24's own
+  stated rollback intent. Skeptic scope corrections (kept from the handoff): drawdown/daily_loss have a
+  redundant second observer (cron tracks "{type}_paper", order_executor tracks the unsuffixed name --
+  same cooldown_key means a same-cycle second attempt), only "anomaly" is single-observer, and this
+  deployment currently has zero push channels configured (only the plyer toast can succeed) -- so today's
+  real impact is "drops the one toast retry," not a full alert loss. Still worth fixing before a webhook
+  is ever configured.
+Resolution (2026-08-24):
+  Chose the "give send_system_alert a success return" option over "defer the persist until after
+  delivery" -- the deferred-commit shape would have required reworking check_halt_transition's existing,
+  already-tested write contract; a plain bool return + a new rollback function is a smaller, additive
+  change that mirrors notify.py's own established _system_cooldown_reserve/_system_cooldown_rollback
+  pattern (project convention favors reusing an existing pattern over inventing a new one). Not put through
+  AskUserQuestion -- the existing-convention argument was strong enough to not be a genuine toss-up.
+  send_system_alert() now returns bool: True when delivered on >=1 channel OR when the cooldown suppressed
+  the attempt entirely (nothing left undelivered by THIS call); False only when delivery was actually
+  attempted and every channel failed. New alerts.rollback_halt_transition(halt_type) sets
+  state[halt_type]=False (best-effort, skips the write on an unreadable state file -- same "don't clobber
+  other keys" reasoning check_halt_transition's own read-failure branch already uses) so the NEXT
+  observation reports a fresh edge again. Wired into all 6 halt-alert call sites: cron.py's anomaly halt
+  (both the normal and run_anomaly_check-failed paths) and its daily-loss/drawdown pre-cycle observer
+  (rolling back the "{type}_paper" flag specifically, not the unsuffixed one order_executor.py owns), plus
+  order_executor.py's own cycle-level drawdown/daily-loss checks and its mid-cycle drawdown-breach check.
+  Tests: alerts.py unit tests (rollback resets the flag and the next check reports a fresh edge; rollback
+  doesn't clobber a different halt_type's own flag; rollback is a silent no-op on an unreadable state
+  file), notify.py unit tests for send_system_alert's 3 return-value cases (success / total failure /
+  cooldown-suppressed), and 2 new cron_integration tests (2 cycles of total delivery failure retry the
+  alert both times; a positive control confirms a successfully-delivered alert does NOT re-fire on the
+  next cycle). All mutation-tested (Edit-revert-confirm-restore), including the cron.py wiring itself.
+
+[RESOLVED 2026-08-24 -- batch-33 item 2 (M-3)] _release_cron_lock fails open to unlink() in exactly the case batch-30's check protects against
+Priority: MEDIUM
+Files: cron.py, tests/test_cron_lock.py, tests/test_execution_stability.py
+
+Problem:
+  The release-side ownership check read `owner_pid = json.loads(lp.read_text()).get("pid")`, defaulting
+  owner_pid=None on ANY exception (torn/empty/PermissionError read, or an old plain-integer-PID-format
+  lock, which parses as a bare JSON int with no .get method). The guard `owner_pid is not None and
+  owner_pid != os.getpid()` then treated None as "nothing to protect" and fell through to
+  lp.unlink(missing_ok=True) -- deleting a possibly-FRESH lock a different process just wrote, the exact
+  H2 scenario this whole ownership check exists to prevent. cmd_watch --auto --live also acquires/releases
+  this same lock each cycle, not just cmd_cron.
+Resolution (2026-08-24):
+  Split the read failure into FileNotFoundError (already gone -- nothing to release, safe early return)
+  and any other exception (torn read, PermissionError, legacy int-format lock -- fail closed, skip the
+  unlink, log a warning, return). Simplified the ownership comparison to a plain `owner_pid !=
+  os.getpid()` now that every read-failure path returns before reaching it, so a missing "pid" key on
+  otherwise-valid JSON and an unreadable file both correctly skip the unlink via the same comparison. An
+  unreadable/unverifiable lock left behind by release isn't stuck forever -- _acquire_cron_lock's own
+  existing self-heal (`except: lp.unlink(); return False`) cleans it up on the very next acquire attempt.
+  Two pre-existing tests asserted the OLD (unsafe) behavior as correct -- test_cron_lock.py's
+  test_deletes_a_corrupt_unreadable_lock and test_execution_stability.py's test_release_lock_removes_file
+  (the latter used the legacy bare-int format as its fixture) -- both rewritten to assert the new fail-
+  closed behavior, with the old test's own docstring reasoning ("has no readable pid to protect -- must
+  still be deleted") called out as exactly the wrong reasoning this fix corrects. Added
+  test_skips_unlink_when_pid_field_is_missing (valid JSON, no pid key -- same skip, different code path)
+  and test_release_skips_unowned_legacy_format_lock (positive-control pairing for the legacy-format case)
+  as siblings. All 4 tests mutation-tested against the real fix (reverted to the old owner_pid-is-not-None
+  guard, confirmed both rewritten tests fail, restored).
+
+[RESOLVED 2026-08-24 -- batch-33 item 3 (M-5)] last_full_scan stamped by cycles that never scanned (batch-20 x batch-24 contradiction)
+Priority: MEDIUM
+Files: cron.py, tests/test_cron_integration.py
+
+Problem:
+  The cmd_cron finally block's last_full_scan write keyed off the `sameday_only` ARGUMENT only, ignoring
+  `_full_scan` -- the actual "a full scan completed" outcome computed from `_cmd_cron_body`'s own return
+  value (None on every early-abort path: kill-switch, black-swan, engine-kill; also implicitly False on
+  any cycle that crashed before completing). A kill-switch-aborted (or black-swan-aborted, or crashing)
+  cycle with sameday_only=False (the normal case) still stamped a FRESH last_full_scan timestamp, so all
+  three staleness alarms (main's banner, cron_full_scan_gap, cron_gap) stayed silent no matter how long
+  cron kept failing every cycle.
+Resolution (2026-08-24):
+  Changed the write condition to `if sameday_only or not _full_scan:` -- carries the prior value forward
+  (falling back to _now_iso only on this repo's genuine first-ever cron run) whenever EITHER sameday_only
+  is set OR the cycle didn't actually complete a full scan, mirroring the kill-switch freeze already
+  applied to CRON_LAST_RUN_PATH just above in the same finally block.
+  Tests: new test_kill_switch_aborted_cycle_does_not_advance_last_full_scan (sameday_only=False, kill
+  switch engaged, loop-mode invocation to reach cron.py's own kill-switch check rather than main.py's
+  separate interactive pre-check -- confirms last_full_scan stays frozen), alongside the 2 pre-existing
+  positive controls (sameday-only doesn't advance it; a genuine full scan does). Mutation-tested: reverting
+  to the old `if sameday_only:` condition made the new test fail exactly as expected (last_full_scan
+  advanced to a fresh timestamp despite the abort).
+
+[RESOLVED 2026-08-24 -- batch-33 item 4 (M-6)] --sameday-only inflates the rain-arb shadow-graduation denominator
+Priority: MEDIUM
+Files: trade_cycle.py, tests/test_trade_cycle_engine.py
+
+Problem:
+  --sameday-only reassigns `markets` to only same-day tickers before find_violations() runs.
+  is_sameday_market() returns False for every rain/snow ladder BY CONSTRUCTION (no day-level date on those
+  tickers), so no rain ladder can ever be examined on a sameday cycle -- yet
+  record_shadow_observations(violations) still ran unconditionally afterward, unconditionally incrementing
+  cycles_observed (the documented denominator for the eventual violation-rate graduation decision,
+  backlog.txt "RAIN ARBITRAGE-CHECK SHADOW SIGNAL HAS NO GRADUATION DECISION YET"). Every sameday-only
+  cycle counted as "observed" the rain population it structurally could never have seen, inflating the
+  denominator and understating the true violation rate.
+Resolution (2026-08-24):
+  Skip the record_shadow_observations() call entirely when sameday_only is True (logged at DEBUG); the
+  real (non-shadow) violation check just above it still runs normally against the filtered market set, so
+  temperature-ladder consistency protection is unaffected -- only the shadow-observation bookkeeping is
+  skipped. Kept minimal/surgical rather than skipping the whole consistency-check block, since the
+  find_violations() call still protects real (non-rain) markets on a sameday cycle.
+  Tests: added to test_trade_cycle_engine.py's existing TestShadowArbObservationRecording class (which
+  already owns the engine_env fixture) -- test_sameday_only_does_not_record_shadow_observations and its
+  positive-control sibling test_non_sameday_only_still_records_shadow_observations. Mutation-tested.
+
+[RESOLVED 2026-08-24 -- batch-33 item 5 (M-21)] cloud_backup.backup_data's all_readable return discarded at its only caller, plus two same-file LOWs
+Priority: MEDIUM (main finding) + 2 LOW
+Files: cloud_backup.py, cron.py, tests/test_cron_integration.py, tests/test_batch33_reliability.py
+
+Problem:
+  Batch-25 changed backup_data()'s return specifically so a failed WAL-safe .db copy (e.g.
+  execution_log.db, the live-order ledger) would be visible; cron.py's only caller called `_backup()`
+  bare, discarding it. A permanently failing execution_log.db backup degraded to "one WARNING per cycle,
+  nothing else" -- exactly the silent-backup-failure shape batch-25 exists to eliminate, one layer up.
+  Two same-file LOWs found while in the file: (a) the 30-day prune compared UTC-named directories
+  (today_str = datetime.now(UTC)) against date.today() (LOCAL time), and an uncaught shutil.rmtree OSError
+  during pruning propagated to the outer `except Exception: return False`, flipping an otherwise-fully-
+  successful backup run to a reported failure over an unrelated old directory; (b) restore_data's pre-
+  restore snapshot (data_dir/.pre_restore_<timestamp>) lives INSIDE data_dir, so copying data_dir wholesale
+  also copied every PRIOR .pre_restore_* snapshot into the new one, nesting without bound across repeated
+  restores -- also true of safe_io's own .history/.emergency recovery directories.
+Resolution (2026-08-24):
+  cron.py now consumes the bool: on False, escalates to ERROR and fires send_system_alert(cooldown_key=
+  "cloud_backup_failed") (None -- no sync folder configured -- is left alone, it's not a failure). (a) the
+  prune comparison now uses datetime.now(UTC).date() on both sides; shutil.rmtree wrapped in its own
+  try/except so a prune failure logs and continues instead of flipping the whole run's result. (b)
+  shutil.copytree's ignore= now excludes .pre_restore_*, .history, .emergency, and *.emergency.tmp.
+  Tests: 2 new cron_integration tests (False return fires exactly one cloud_backup_failed alert; None
+  return, positive control, fires none) plus 3 new cloud_backup unit tests (UTC-vs-UTC prune comparison
+  with a same-UTC-day directory that a local-time comparison could have pruned; an injected rmtree OSError
+  during pruning still leaves the overall result True with the old dir left in place; a snapshot with a
+  pre-existing .pre_restore_* and .history dir present confirms neither gets nested into the new snapshot,
+  with a positive control that real live data files are still snapshotted). All mutation-tested.
+
+[RESOLVED 2026-08-24 -- batch-33 item 6 (M-28)] Discord webhook URLs (bearer credentials) logged at WARNING
+Priority: MEDIUM
+Files: notify.py, tests/test_batch33_reliability.py
+
+Problem:
+  _send_discord's exception handler logged `"request to %s failed: %s", url, exc` -- a Discord webhook
+  URL's path IS its bearer token (/api/webhooks/{id}/{token}), and batch-24 rerouted every safety alert
+  through this function while making failures retry every cycle, so an outage accumulates the full secret
+  URL repeatedly in bot.log. No redaction helper existed in the repo. The exception object itself is a
+  second leak vector the handoff's own citation didn't call out: `requests`' own exception text (e.g.
+  ConnectionError) commonly embeds the full request url, including the token, in its str() representation
+  -- redacting only the explicit `url` argument would have left the token reachable via `exc`.
+Resolution (2026-08-24):
+  New notify._redact_webhook_url(url) keeps only scheme + host + a short id-segment prefix
+  ("https://discord.com/.../12345678***"). Applied to both the explicit url AND to the exception's own
+  string representation (via a literal substring replace of the raw url with its redacted form) before
+  either reaches the log call, closing both leak vectors in one fix. Latent today (no webhook configured
+  in this deployment) -- fixed ahead of one ever being set.
+  Tests: unit test on _redact_webhook_url's output shape, plus an integration-style test simulating a
+  requests.ConnectionError whose message embeds the full url (a realistic mock of the real leak vector)
+  and asserting the raw bearer token never appears in the captured log output. Mutation-tested (reverting
+  to the raw `url, exc` log call made the token-in-log assertion fail as expected).
+
+[RESOLVED 2026-08-24 -- batch-33 item 7 (L-4)] NOTIFY_CHANNELS parsed without strip/lower
+Priority: LOW
+Files: notify.py, tests/test_batch33_reliability.py
+
+Problem:
+  `set(os.getenv("NOTIFY_CHANNELS", ...).split(","))` with no per-token normalization -- "discord, email"
+  (a leading space after the comma, easy to type by hand) produced the literal member " email" with a
+  leading space, matching none of the `"email" in _CHANNELS` checks and silently dropping that channel,
+  defeating batch-24's "every configured channel gets a delivery attempt" guarantee. Mixed case ("Discord")
+  had the identical failure mode.
+Resolution (2026-08-24):
+  Each token now goes through .strip().lower() (empty tokens after stripping are dropped). Unrecognized
+  channel names (not in the 5 known channels) are logged at WARNING with the full unrecognized set, so a
+  typo surfaces immediately instead of silently doing nothing.
+  Tests: token normalization (mixed-case, leading/trailing whitespace, on a module reload) and the
+  unknown-channel-name warning. Mutation-tested (reverting to a bare .split(",") made the normalization
+  test fail with the raw unstripped/uppercase tokens surviving as their own set members).
+
+[RESOLVED 2026-08-24 -- batch-33 item 8 (L-5/L-6)] cron-lock bookkeeping honesty: dead heartbeat field, epoch-default started_at, non-atomic write, naive local dates
+Priority: LOW
+Files: cron.py, tests/test_cron_lock.py, tests/test_execution_stability.py, tests/test_batch33_reliability.py
+
+Problem:
+  (a) The lock's "heartbeat" field was written once at acquire time and never refreshed again, so the
+  no-psutil fallback's age check ("lock age") was really reading a second, redundant copy of started_at
+  while calling it heartbeat age -- misleading, not a real liveness signal. (b) started_at (and the old
+  heartbeat) defaulted to 0 on a missing key, so a valid-JSON lock missing that field computed an age of
+  ~56 years -- always "ancient," always overridden by the self-heal backstop, even for a lock some OTHER
+  process wrote moments ago; backwards from this function's fail-closed intent. (c) `lp.write_text(json.
+  dumps(lock_data))` was the one non-atomic write left on the cron-lock path. (d) _check_prod_reminder's 3
+  date.today() calls were the file's only remaining naive-local-time sites.
+Resolution (2026-08-24):
+  (a) Removed the heartbeat field entirely rather than adding real periodic refresh -- investigated
+  refreshing it at the existing per-cycle watchdog.update_heartbeat() checkpoint, but that fires once per
+  cmd_cron_body() invocation (i.e. once per lock hold), which wouldn't distinguish "still working" from
+  "hung" WITHIN a single hold -- the actual gap a real heartbeat would need to close -- so genuine refresh
+  would need a background thread with no natural checkpoint to hook into, disproportionate for a LOW item.
+  Both the acquire-side no-psutil fallback and _is_cron_running's mirrored branch now read started_at
+  directly; confirmed via the existing test suite that no test ever set heartbeat and started_at to
+  DIFFERENT values (the two were always redundant copies in every existing fixture), so this is a pure
+  simplification, not a behavior change for the age-check logic itself. (b) started_at now defaults to
+  _time.time() (fresh) instead of 0 (the epoch) at both call sites. (c) routed through safe_io.
+  atomic_write_json(..., emergency_copy=False) -- same emergency_copy=False reasoning as alerts.
+  check_halt_transition's own small, trivially-reconstructible state file. (d) all 3 date.today() calls
+  replaced with a single utc_today() call, matching this file's own established convention elsewhere
+  (e.g. the Monday-sweep check).
+  Tests: (a) test_lock_file_contains_pid_and_timestamps updated to assert "heartbeat" NOT in the written
+  lock (was asserting it WAS present); the sibling test_execution_stability.py assertion updated the same
+  way. (b) 2 new unit tests (_acquire_cron_lock and _is_cron_running each treat a missing started_at as
+  fresh, not ancient) mutation-tested by reverting the default back to 0 -- both failed as expected. (c)/(d)
+  covered by the existing broader cron-lock/prod-reminder test coverage continuing to pass unchanged (no
+  behavior change to assert on beyond "still works"). Full existing test_cron_lock.py/test_execution_
+  stability.py/test_p0_16_cron_endpoint.py suites re-run clean after all 4 sub-fixes.
+
+[RESOLVED 2026-08-24 -- batch-33 item 9 (L-8)] cron.py log-rotation bare Path.replace(), plus _poll_pending_orders' single caller left cron-only hosts blind to live orders
+Priority: LOW (log rotation) + judgment call (poll wiring, user-directed via AskUserQuestion)
+Files: cron.py, tests/test_bare_os_replace_guard.py, tests/test_cron_integration.py
+
+Problem:
+  cron.py's log-rotation call (`log_path.replace(log_path.with_suffix(".log.1"))`) was a real, unfixed
+  instance of the bare-Path.replace() Windows sharing-violation anti-pattern
+  tests/test_bare_os_replace_guard.py exists to catch, allowlisted there since batch-25 (which found it)
+  didn't own cron.py. Separately: order_executor._poll_pending_orders (GTC cancels, fill polling,
+  settlement recording) had exactly one caller, cmd_watch -- on a cron-only host (no watch --auto --live
+  running), a live pending/filled-unsettled order left behind by an earlier watch session would never get
+  its GTC cancelled, its fill observed, or its settlement recorded, and execution_log's realized-loss data
+  (which watch's own live daily-loss brake reads) would go stale during any stretch only cron ran.
+Resolution (2026-08-24):
+  Log rotation now routes through safe_io._replace_with_retry; removed the now-obsolete cron.py allowlist
+  entry from test_bare_os_replace_guard.py (its own module docstring updated to say "fixed by batch-33"
+  rather than leaving the "known pre-existing gap" framing stale).
+  Poll wiring: presented via AskUserQuestion as "wire a subset into cron now" vs. "file as a VM-move
+  prerequisite in backlog.txt" (per the handoff's own explicit instruction not to leave this undecided).
+  User chose to wire it in now. Added `_poll_pending_orders(client, config=_load_live_config())` to
+  cron.py's existing `if client is not None:` block, between the pre-existing _recover_pending_orders call
+  and the pre-existing _check_live_position_exits/_check_live_model_exits calls -- config resolution
+  mirrors order_executor._resolve_micro_live_config's own established "no live_config in hand -> load the
+  real one directly" pattern. This placement also fixes a real, separate, pre-existing ordering bug as a
+  side effect: _check_live_position_exits' own docstring documents "Must run AFTER _poll_pending_orders in
+  the same cycle so a just-filled order is already visible," but cron.py called the exit check without
+  ever calling poll first -- a live position that filled between watch sessions was invisible to stop-
+  loss/breakeven protection until whichever session happened to run _poll_pending_orders next. Harmless
+  no-op in the current deployment (LIVE_TRADING_ENABLED unset, no pending/unsettled live order exists to
+  find) -- the fix protects a future state, not a current one.
+  Tests: new test_cron_polls_pending_live_orders_every_cycle (confirms exactly one call per cron cycle when
+  a client is present, with the real live_config file isolated via a mock so the test can't touch data/
+  live_config.json). Mutation-tested (removing the call made the test fail as expected).
+
+Opus review (effort=high, per this batch's own safety-adjacent Process note) of all 9 items above: 2 MEDIUM
+  + 7 LOW/informational, all addressed. MEDIUM-1 (real bug this session's own item 8 fix introduced): the
+  started_at fix defaulted to a freshly-called `_time.time()` on EVERY read rather than a value fixed at
+  write time -- so a lock file permanently missing the key reported age ~0 FOREVER, permanently disabling
+  the 24h self-heal backstop for it (reproduced live by the reviewer: "lock held by live PID N (started 0s
+  ago) -- skipping" on every single acquire attempt, no escape). Fixed: default to the lock FILE's own
+  mtime (`lp.stat().st_mtime`) instead -- a real, monotonically-aging signal, same fallback web_app.py's own
+  os.path.getmtime(LOCK_PATH) already uses for this file -- at both _acquire_cron_lock and _is_cron_running.
+  New regression test (old mtime + live/not-reused PID + no started_at key must still self-heal), mutation-
+  tested against the reviewer's own reproduction. MEDIUM-2: item 9's _poll_pending_orders wiring calls
+  main._load_live_config() every cron cycle, and the cron_env integration fixture (tests/test_
+  cron_integration.py) never isolated main._LIVE_CONFIG_PATH -- confirmed by the reviewer that every one of
+  the ~120 cron_env-based tests in that file was reading the REAL data/live_config.json (this worktree's
+  DATA_DIR resolves to the main clone per paths.py's own worktree-detection, so this was genuinely the
+  production file, not a local copy). Fixed: cron_env fixture itself now isolates _LIVE_CONFIG_PATH to
+  tmp_path (removed the redundant per-test patch that only covered the one test written for item 9).
+  Re-ran the full cron_integration.py suite (both marker sets) confirming the real file's mtime is
+  unchanged before/after. LOW-1: _redact_webhook_url's `.replace(url, ...)` would corrupt the log line if
+  ever called with an empty url (str.replace("", x) inserts x between every character) -- not reachable
+  from _send_discord's own already-filtered url list, but added an explicit empty-string guard since the
+  helper is now general-purpose, plus a unit test. LOW-4: consistency.record_shadow_observations' own
+  docstring claimed "called every cycle run_trade_cycle() executes" -- no longer true after item 4's
+  sameday-only skip; docstring corrected. LOW-2: _install_cron_watchdog's own F12 comment (documenting
+  send_system_alert's per-cycle retry cost during an outage) updated to note item 1's rollback adds a
+  second, compounding retry source (the halt-transition edge itself now also retries every cycle, not just
+  the cooldown) -- informational, same acceptance reasoning already applies, no behavior change. LOW-3
+  (unbounded per-cycle retry on a deployment with zero working channels), LOW-5 (_load_live_config's new
+  file-creating side effect on the cron path), LOW-6 (PROD_REMINDER_PATH may hold one stale local-date
+  string across the UTC-conversion transition day), and LOW-7 (M-5's first-run seed fallback also applies
+  to an abort on a fresh install) were all confirmed as deliberate, bounded, or self-healing -- explicitly
+  reasoned and left as documented no-ops rather than changed, per the reviewer's own framing. LOW-8/LOW-9
+  were the reviewer's own "no action needed" findings. 3 of the reviewer's own mutation-testing claims
+  independently re-verified by this session too (not just trusted from the review's writeup): M-3's
+  fail-closed release, M-1's cron anomaly rollback wiring, M-5's sameday_only-or-not-_full_scan condition --
+  all 3 reverted and confirmed failing, then restored. Full re-run after all review fixes: 648 tests
+  (526 default-marker + 58 cron_integration + 64 integration/cron_integration-marked), 0 failures.
+  ruff/ruff-format/mypy clean via the real pre-commit hook.
+
+Batch-33 process notes: full ceremony per the 29-step workflow (alerting/locking is explicitly safety-
+  adjacent per the handoff's own Process section -- opus review at effort=high, no LOW-tier downgrade for
+  the batch despite items 7-9 being individually LOW). Re-verified all 9 items' file:line citations against
+  live code first -- every claim held, with line numbers drifted by roughly 20-90 lines from the handoff's
+  own (written against a slightly earlier master). One AskUserQuestion (item 9's poll-wiring decision, per
+  the handoff's own explicit instruction); a second candidate decision (item 8's heartbeat field: refresh
+  vs. delete) was resolved by direct investigation instead of asking, once grepping every existing test
+  fixture confirmed heartbeat and started_at were always written identically everywhere, with no consumer
+  anywhere depending on them ever diverging.
+  Scoped tests only, per the handoff's own Process section: test_cron_lock.py, test_cron_integration.py
+  (both markers: default/no-marker, -m integration, -m cron_integration), test_notify.py,
+  test_batch24_alerting.py, test_alerts.py, test_cloud_backup.py, test_infrastructure.py,
+  test_bare_os_replace_guard.py, plus test_sameday_only.py/test_rain_arb_shadow_observations.py/
+  test_trade_cycle_engine.py/test_execution_stability.py/test_p0_16_cron_endpoint.py/test_live_execution.py
+  (grepped for other callers of the exact changed behaviors -- sameday_only, record_shadow_observations,
+  cron-lock heartbeat/started_at, order_executor.py's 3 touched call sites -- and found real, relevant
+  coverage in each, matching this project's own "grep for other callers before trusting a scoped test
+  list" lesson). New tests/test_batch33_reliability.py plus additions to test_cron_integration.py/
+  test_trade_cycle_engine.py/test_cron_lock.py/test_execution_stability.py. Every fix's mutation-testing
+  claim independently verified via Edit-revert-confirm-restore, not just asserted in a docstring. ruff/
+  ruff-format/mypy clean via the real pre-commit hook (one ruff-format auto-reformat pass, re-verified with
+  a full re-run of the affected test files afterward). Source: audit/handoff_prompts/batches/batch-33.md.

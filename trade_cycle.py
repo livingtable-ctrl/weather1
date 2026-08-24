@@ -346,12 +346,36 @@ def run_trade_cycle(
             # cycle observational-failure calls (e.g. check_series_drift) --
             # opus-review-caught: DEBUG would let a permanently-broken
             # recorder silently produce nothing for months.
-            try:
-                record_shadow_observations(violations)
-            except Exception as _rec_exc:
-                _log.warning(
-                    "record_shadow_observations failed (non-fatal): %s", _rec_exc
+            # batch-33 M-6: --sameday-only reassigns `markets` (above) to
+            # only same-day tickers before find_violations() runs --
+            # is_sameday_market() returns False for every rain/snow ladder
+            # BY CONSTRUCTION (no day-level date on those tickers), so a
+            # sameday-only cycle structurally cannot see a rain ladder and
+            # `violations` can never contain a shadow (is_shadow=True) hit.
+            # record_shadow_observations() still increments cycles_observed
+            # unconditionally though -- the documented denominator for the
+            # eventual violation-rate graduation decision -- so recording
+            # here would count a cycle that never actually examined the
+            # rain population, inflating that denominator and understating
+            # the real violation rate. Skip the record entirely on a
+            # sameday-only cycle; the real (non-shadow) violation check
+            # just above still ran normally against the filtered market
+            # set, so temperature-ladder consistency protection is unaffected.
+            if sameday_only:
+                _log.debug(
+                    "run_trade_cycle: --sameday-only cycle -- skipping "
+                    "record_shadow_observations (rain/snow ladders are "
+                    "structurally excluded from `markets` this cycle, so "
+                    "counting it toward cycles_observed would inflate the "
+                    "shadow-graduation denominator)"
                 )
+            else:
+                try:
+                    record_shadow_observations(violations)
+                except Exception as _rec_exc:
+                    _log.warning(
+                        "record_shadow_observations failed (non-fatal): %s", _rec_exc
+                    )
             if violations:
                 # backlog.txt "RAIN MARKETS -- CONSISTENCY.PY'S ARBITRAGE
                 # CHECK STILL BLANKET-EXCLUDES KXRAIN*M": rain's ladder

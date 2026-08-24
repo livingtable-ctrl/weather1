@@ -214,7 +214,9 @@ class TestCronLock:
         data = json.loads(lock.read_text())
         assert data["pid"] == os.getpid(), "lock file should contain the process PID"
         assert "started_at" in data
-        assert "heartbeat" in data
+        # batch-33 L-6a: "heartbeat" was a duplicate of started_at,
+        # written once at acquire and never refreshed -- removed.
+        assert "heartbeat" not in data
 
     def test_lock_denied_when_fresh_file_exists(self, tmp_path, monkeypatch):
         """_acquire_cron_lock() returns False when a live PID holds the lock."""
@@ -279,17 +281,38 @@ class TestCronLock:
         )
 
     def test_release_lock_removes_file(self, tmp_path, monkeypatch):
-        """_release_cron_lock() deletes the lock file."""
+        """_release_cron_lock() deletes a lock file this process actually owns."""
+        import json
+
         import cron
 
         main = _import_main()
         lock = tmp_path / ".cron.lock"
-        lock.write_text(str(os.getpid()))
+        lock.write_text(json.dumps({"pid": os.getpid(), "started_at": time.time()}))
         monkeypatch.setattr(cron, "LOCK_PATH", lock)
 
         main._release_cron_lock()
 
         assert not lock.exists(), "lock file should be removed after release"
+
+    def test_release_skips_unowned_legacy_format_lock(self, tmp_path, monkeypatch):
+        """batch-33 M-3: an old plain-integer-PID-format lock (pre-dates the
+        JSON lock format) parses as a bare JSON int, not a dict -- `.get`
+        on it raises, which release now treats as "can't verify ownership"
+        and leaves in place (fail closed), not "no pid to protect, delete
+        it" (the old, unsafe behavior this batch's own M-3 finding fixed;
+        see tests/test_cron_lock.py's TestReleaseCronLockOwnership for the
+        full reasoning)."""
+        import cron
+
+        main = _import_main()
+        lock = tmp_path / ".cron.lock"
+        lock.write_text(str(os.getpid()))  # legacy bare-int format
+        monkeypatch.setattr(cron, "LOCK_PATH", lock)
+
+        main._release_cron_lock()  # must not raise
+
+        assert lock.exists(), "an unverifiable-format lock must be left in place"
 
     def test_release_missing_lock_is_noop(self, tmp_path, monkeypatch):
         """_release_cron_lock() must not raise when lock file does not exist."""

@@ -106,6 +106,61 @@ def check_halt_transition(halt_type: str, active: bool) -> bool:
         return active and not was_active
 
 
+def rollback_halt_transition(halt_type: str) -> None:
+    """Undo a check_halt_transition() false->true edge persistence after the
+    resulting alert failed to deliver on every channel.
+
+    batch-33 M-1: batch-24's two fixes otherwise defeat each other --
+    check_halt_transition() persists `active=True` and reports the edge
+    BEFORE any delivery is attempted; send_system_alert()'s own rollback
+    (notify.py's _system_cooldown_rollback) only restores its OWN cooldown
+    state in a different file/module, never this one. A total delivery
+    failure at the instant a halt engages permanently ate that engagement's
+    alert -- the next cycle's check_halt_transition() call already sees
+    `was_active=True` and never reports a fresh edge again, even though
+    nothing was ever actually delivered.
+
+    Call this when send_system_alert() returns False for the alert this
+    edge triggered, so the NEXT cycle's observation is treated as a fresh
+    transition again instead of being silently absorbed by the
+    already-persisted flag. Sets `state[halt_type] = False` (not "delete
+    the key") so the next observation is unambiguously treated as "was
+    inactive" -- matching check_halt_transition's own fail-open default for
+    a missing key.
+
+    Best-effort and silent on a read failure -- same "don't clobber other
+    keys with a blank overwrite" reasoning check_halt_transition's own
+    read-failure branch already uses for this file. Never raises.
+    """
+    with _HALT_TRANSITION_LOCK:
+        try:
+            state = (
+                json.loads(_HALT_TRANSITION_PATH.read_text())
+                if _HALT_TRANSITION_PATH.exists()
+                else {}
+            )
+            if not isinstance(state, dict):
+                raise ValueError(
+                    f"halt transition state must be a dict, got {type(state).__name__}"
+                )
+        except Exception as exc:
+            _log.warning(
+                "rollback_halt_transition: failed to load persisted state "
+                "(skipping rollback): %s",
+                exc,
+            )
+            return
+        state[halt_type] = False
+        try:
+            safe_io.atomic_write_json(
+                state, _HALT_TRANSITION_PATH, emergency_copy=False
+            )
+        except Exception as exc:
+            _log.warning(
+                "rollback_halt_transition: failed to persist rollback: %s", exc
+            )
+
+
 def _load() -> dict:
     if _DATA_PATH.exists():
         try:

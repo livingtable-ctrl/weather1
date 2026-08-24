@@ -372,6 +372,62 @@ class TestShadowArbObservationRecording:
         assert result.placed_strong == 1
         assert placed, "placement must proceed normally despite the recorder failing"
 
+    def test_sameday_only_does_not_record_shadow_observations(self, engine_env):
+        """batch-33 M-6: weather_markets.is_sameday_market() excludes every
+        rain/snow ladder BY CONSTRUCTION (no day-level date on those
+        tickers) -- a --sameday-only cycle's `markets` list can therefore
+        never contain a shadow (is_shadow=True) violation. Recording
+        anyway would still increment cycles_observed (the documented
+        violation-rate denominator this class's sibling tests above cover)
+        for a cycle that structurally could never have examined the rain
+        population, inflating that denominator.
+
+        Mutation-relevant: removing the `if sameday_only:` skip in
+        trade_cycle.py (recording unconditionally again) makes this fail.
+        """
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        recorded = []
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[]),
+            patch("consistency.find_violations", return_value=[]),
+            patch(
+                "consistency.record_shadow_observations",
+                side_effect=lambda v: recorded.append(v),
+            ),
+        ):
+            ctx2 = main._build_cron_context()
+            trade_cycle.run_trade_cycle(ctx2, client, sameday_only=True)
+
+        assert recorded == [], (
+            f"record_shadow_observations must not be called on a "
+            f"--sameday-only cycle, got {len(recorded)} call(s)"
+        )
+
+    def test_non_sameday_only_still_records_shadow_observations(self, engine_env):
+        """Positive control pairing the test above: sameday_only=False (the
+        default, every pre-existing caller) must be completely unaffected
+        -- proves the skip is specific to sameday_only, not a general
+        regression that silently dropped the call entirely."""
+        tmp_path, client, main, paper, cron, trade_cycle, ctx = engine_env
+        recorded = []
+
+        with (
+            patch.object(main, "get_weather_markets", return_value=[]),
+            patch("consistency.find_violations", return_value=[]),
+            patch(
+                "consistency.record_shadow_observations",
+                side_effect=lambda v: recorded.append(v),
+            ),
+        ):
+            ctx2 = main._build_cron_context()
+            trade_cycle.run_trade_cycle(ctx2, client, sameday_only=False)
+
+        assert len(recorded) == 1, (
+            f"a normal (non-sameday-only) cycle must still call "
+            f"record_shadow_observations exactly once, got {len(recorded)}"
+        )
+
 
 class TestTierAndCapUnification:
     """The strong/med tier split with dynamic-Kelly-cap vs. $20-flat-cap

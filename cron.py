@@ -331,14 +331,32 @@ def _acquire_cron_lock() -> bool:
             # CR-1: safe defaults so `if pid` at line below never raises NameError
             # when the inner try block exits via the except path.
             pid = None
-            started_at = 0
-            heartbeat = 0
+            # batch-33 L-6b: default to the lock FILE's own mtime, not 0
+            # (the epoch, ~56 years old) and not a fresh _time.time() call
+            # (opus-review-caught: that recomputes "now" on every read, so
+            # a file permanently missing started_at would report age ~0
+            # FOREVER -- the 24h self-heal backstop could then never fire
+            # for it, a permanent lockout with no escape, reproduced live:
+            # "lock held by live PID N (started 0s ago) -- skipping" on
+            # every single acquire attempt). A valid-JSON lock file missing
+            # the started_at key (old format, hand-edited) used to default
+            # to 0 and let the 24h self-heal backstop override even a LIVE,
+            # confirmed-not-reused holder -- mtime is a real, monotonically
+            # aging signal instead: fresh for a lock another process just
+            # wrote (fail closed, matching the original intent), but still
+            # eventually crosses the backstop threshold for a genuinely
+            # stuck/abandoned one. Same fallback web_app.py's own
+            # os.path.getmtime(LOCK_PATH) already uses for this exact file.
+            try:
+                _default_started = lp.stat().st_mtime
+            except OSError:
+                _default_started = _time.time()
+            started_at = _default_started
             lock_create_time = None
             try:
                 existing = json.loads(lp.read_text())
                 pid = existing.get("pid")
-                started_at = existing.get("started_at", 0)
-                heartbeat = existing.get("heartbeat", started_at)
+                started_at = existing.get("started_at", _default_started)
                 lock_create_time = existing.get("create_time")
             except Exception as parse_err:
                 # Fail closed: corrupt / unreadable lock means we cannot verify whether
@@ -391,8 +409,19 @@ def _acquire_cron_lock() -> bool:
                         pid,
                     )
             else:
-                # psutil unavailable — use conservative heartbeat age.
-                age = _time.time() - heartbeat
+                # psutil unavailable — use conservative lock age.
+                # batch-33 L-6a: this used to read a `heartbeat` field that
+                # was written ONCE at acquire time and never refreshed
+                # again -- a heartbeat implies periodic liveness, but this
+                # was really just a second copy of started_at. Genuinely
+                # refreshing it mid-hold would need a background thread
+                # (there's no natural sub-cycle checkpoint deep inside a
+                # single hung network call to hook a real refresh off of),
+                # disproportionate machinery for what this field actually
+                # needs to answer -- "how old is this lock" -- so the field
+                # is removed and this reads started_at directly instead of
+                # keeping a redundant, misleadingly-named duplicate.
+                age = _time.time() - started_at
                 if age < _STALE_LOCK_AGE_SECS:
                     _log.warning(
                         "cmd_cron: lock age %.0fs < %ds; refusing to override without psutil",
@@ -406,10 +435,13 @@ def _acquire_cron_lock() -> bool:
                 )
 
         lp.parent.mkdir(exist_ok=True)
+        # batch-33 L-6a: no "heartbeat" field -- it duplicated started_at
+        # at write time and was never refreshed again, so it never carried
+        # any information started_at didn't already have (see the
+        # no-psutil fallback's own comment above).
         lock_data = {
             "pid": os.getpid(),
             "started_at": _time.time(),
-            "heartbeat": _time.time(),
         }
         if _PSUTIL_AVAILABLE:
             try:
@@ -423,7 +455,17 @@ def _acquire_cron_lock() -> bool:
             except Exception:
                 pass  # best-effort — an old-format lock without this field
                 # still gets the pre-existing pid_exists()-only protection.
-        lp.write_text(json.dumps(lock_data))
+        # batch-33 L-6c: route through safe_io's atomic write (temp file +
+        # fsync + Windows-retry-safe rename) instead of a bare write_text()
+        # -- this was the one non-atomic write left on the cron-lock path.
+        # emergency_copy=False: a lock file is trivially reconstructible
+        # (worst case, a fresh acquire just writes a new one) and not worth
+        # the .emergency/ monitor re-alerting on, same reasoning
+        # alerts.check_halt_transition already uses for its own small,
+        # disposable state file.
+        from safe_io import atomic_write_json
+
+        atomic_write_json(lock_data, lp, emergency_copy=False)
         return True
 
     except Exception as exc:
@@ -466,11 +508,28 @@ def _release_cron_lock() -> None:
     try:
         try:
             owner_pid = json.loads(lp.read_text()).get("pid")
-        except Exception:
-            owner_pid = None  # missing/unreadable -- nothing of ours to protect
-        if owner_pid is not None and owner_pid != os.getpid():
+        except FileNotFoundError:
+            return  # already gone -- nothing to release
+        except Exception as _read_exc:
+            # batch-33 M-3: a torn/empty/PermissionError read used to
+            # default owner_pid=None, which the OLD `owner_pid is not None
+            # and owner_pid != os.getpid()` guard treated as "no owner to
+            # protect" and fell through to unlink() -- deleting a possibly
+            # FRESH lock another process just wrote, the exact H2 scenario
+            # this whole ownership check exists to prevent. Fail closed
+            # instead: skip the unlink whenever ownership can't be
+            # positively verified, matching batch-30's own acquire-side
+            # "can't confirm -> don't act" reasoning.
             _log.warning(
-                "cmd_cron: not releasing lock -- currently held by PID %d, "
+                "cmd_cron: could not verify lock ownership before release "
+                "(%s) -- skipping unlink (fail closed) rather than risk "
+                "deleting a lock another process just wrote",
+                _read_exc,
+            )
+            return
+        if owner_pid != os.getpid():
+            _log.warning(
+                "cmd_cron: not releasing lock -- currently held by PID %s, "
                 "not this process (%d); an earlier acquire must have "
                 "already overridden it as stale",
                 owner_pid,
@@ -516,8 +575,16 @@ def _is_cron_running() -> bool:
     try:
         existing = json.loads(lp.read_text())
         pid = existing.get("pid")
-        started_at = existing.get("started_at", 0)
-        heartbeat = existing.get("heartbeat", started_at)
+        # batch-33 L-6b: default to the lock FILE's own mtime, not 0 (the
+        # epoch) and not a fresh _time.time() call -- see
+        # _acquire_cron_lock's identical fix/comment for why a
+        # recompute-every-read default would permanently pin this at
+        # age-0 instead of actually aging.
+        try:
+            _default_started = lp.stat().st_mtime
+        except OSError:
+            _default_started = _time.time()
+        started_at = existing.get("started_at", _default_started)
         lock_create_time = existing.get("create_time")
     except Exception:
         return False  # unreadable lock — treat as not running
@@ -547,13 +614,15 @@ def _is_cron_running() -> bool:
     # this branch reports "running" for up to _STALE_LOCK_AGE_SECS (1800s)
     # past the crash, which would suppress cmd_cron's stale-.tmp self-heal
     # for that same window. This is safe ONLY because _acquire_cron_lock
-    # (this file, ~line 394) uses the SAME `heartbeat` field and the SAME
-    # 1800s constant to decide staleness -- cron can't actually run in that
-    # window either, so the temporarily-"lost" kill switch can't let a trade
-    # through. If either threshold/field is ever changed independently of
-    # the other, this pairing breaks silently. psutil is a hard requirement
-    # (requirements.txt) so this whole branch is rare in practice.
-    return (_time.time() - heartbeat) < _STALE_LOCK_AGE_SECS
+    # (this file, no-psutil branch) uses the SAME `started_at` field (was
+    # `heartbeat` before batch-33 L-6a removed that redundant duplicate
+    # field) and the SAME 1800s constant to decide staleness -- cron can't
+    # actually run in that window either, so the temporarily-"lost" kill
+    # switch can't let a trade through. If either threshold/field is ever
+    # changed independently of the other, this pairing breaks silently.
+    # psutil is a hard requirement (requirements.txt) so this whole branch
+    # is rare in practice.
+    return (_time.time() - started_at) < _STALE_LOCK_AGE_SECS
 
 
 def _check_graduation_gate() -> None:
@@ -685,12 +754,21 @@ def _check_prod_reminder() -> None:
     """Log a deferred-items checklist once per day after _PROD_REMINDER_DATE in prod mode."""
     if os.getenv("KALSHI_ENV", "demo").lower() != "prod":
         return
-    if _dt.date.today() < _PROD_REMINDER_DATE:
+    # batch-33 L-6d: this function's 3 date.today() calls were the only
+    # naive-local-time sites left in this file -- every other date
+    # comparison in cron.py already goes through utils.utc_today() (see
+    # e.g. the Monday-sweep check above). A local date can disagree with
+    # UTC around midnight in either direction, letting the "once per day"
+    # gate fire twice (or skip a day) right at the boundary.
+    from utils import utc_today as _utc_today
+
+    _today = _utc_today()
+    if _today < _PROD_REMINDER_DATE:
         return
     try:
         if PROD_REMINDER_PATH.exists():
             last = PROD_REMINDER_PATH.read_text().strip()
-            if last == str(_dt.date.today()):
+            if last == str(_today):
                 return
         _log.warning(_PROD_REMINDER_CHECKLIST)
         try:
@@ -712,7 +790,7 @@ def _check_prod_reminder() -> None:
             )
         except Exception as _ntfy_exc:
             _log.debug("prod reminder ntfy failed: %s", _ntfy_exc)
-        PROD_REMINDER_PATH.write_text(str(_dt.date.today()))
+        PROD_REMINDER_PATH.write_text(str(_today))
     except Exception as _exc:
         _log.debug("_check_prod_reminder failed: %s", _exc)
 
@@ -1295,6 +1373,44 @@ def _cmd_cron_body(
         except Exception as _rpo_exc:
             _log.warning("cmd_cron: _recover_pending_orders failed: %s", _rpo_exc)
 
+        # batch-33 L-8: cron never OPENS a live order itself (see the
+        # exit-check comment just below), but a prior `watch --auto --live`
+        # session can leave one PENDING (a resting GTC order, not yet
+        # filled) or FILLED-but-unsettled when that session stops.
+        # _poll_pending_orders was the ONE place that observed fills,
+        # auto-cancelled stale/pre-close GTC orders, and recorded
+        # settlement outcomes into execution_log -- its only caller was
+        # cmd_watch, so a cron-only host (no watch --auto --live running)
+        # never ran any of that. It also keeps execution_log's realized-
+        # loss data current for whenever watch --auto --live's own live
+        # daily-loss brake (_place_live_order's execution_log.get_today_
+        # live_loss() check) next runs, so wiring this in here restores
+        # that brake's accuracy too, not just GTC/settlement.
+        #
+        # Also fixes a real, separate ordering bug as a side effect:
+        # _check_live_position_exits's own docstring documents "Must run
+        # AFTER _poll_pending_orders in the same cycle so a just-filled
+        # order is already visible" -- cron.py called that exit check
+        # below without ever calling this first, so a live position that
+        # filled between watch sessions was invisible to stop-loss/
+        # breakeven protection until whichever session happened to run
+        # _poll_pending_orders next. Config resolution mirrors order_
+        # executor.py's own _resolve_micro_live_config: cron never has a
+        # cmd_watch-style live_config in hand, so load the real one
+        # directly instead of passing None (which would silently fall
+        # back to this function's built-in gtc_cancel_hours=24 default
+        # rather than whatever data/live_config.json actually says).
+        # Harmless no-op today (no pending/unsettled live order exists to
+        # find) -- mirrors _recover_pending_orders' own "nothing to do"
+        # framing above.
+        try:
+            from main import _load_live_config
+            from order_executor import _poll_pending_orders
+
+            _poll_pending_orders(client, config=_load_live_config())
+        except Exception as _ppo_exc:
+            _log.warning("cmd_cron: _poll_pending_orders failed: %s", _ppo_exc)
+
         # Protect any live position still open from an earlier watch/live
         # session -- cron.py itself never OPENS a new live position (see
         # backlog.txt's [RESTING EXIT ORDERS + OCO...] entry), but it can
@@ -1380,11 +1496,20 @@ def _cmd_cron_body(
             if _check_halt_transition("anomaly", _should_halt):
                 from notify import send_system_alert as _anom_alert
 
-                _anom_alert(
+                # batch-33 M-1: roll the persisted edge back on total
+                # delivery failure so the NEXT cycle's observation is
+                # treated as a fresh transition and retries the alert,
+                # instead of the edge being silently consumed here with
+                # nothing actually delivered (see
+                # alerts.rollback_halt_transition's own docstring).
+                if not _anom_alert(
                     "Kalshi anomaly halt engaged",
                     f"Anomaly halt triggered: {'; '.join(_detected_anomalies)}",
                     cooldown_key="halt_anomaly",
-                )
+                ):
+                    from alerts import rollback_halt_transition as _rb_anom
+
+                    _rb_anom("anomaly")
         except Exception as _anom_alert_exc:
             _log.debug(
                 "cmd_cron: anomaly halt transition/alert failed: %s", _anom_alert_exc
@@ -1466,11 +1591,16 @@ def _cmd_cron_body(
             if _check_halt_transition_err("anomaly", True):
                 from notify import send_system_alert as _anom_alert_err
 
-                _anom_alert_err(
+                # batch-33 M-1: same rollback as the primary anomaly-halt
+                # alert above.
+                if not _anom_alert_err(
                     "Kalshi anomaly halt engaged",
                     f"run_anomaly_check failed — failing closed: {_e}",
                     cooldown_key="halt_anomaly",
-                )
+                ):
+                    from alerts import rollback_halt_transition as _rb_anom_err
+
+                    _rb_anom_err("anomaly")
         except Exception:
             pass
 
@@ -1584,11 +1714,17 @@ def _cmd_cron_body(
             if _check_risk_halt_transition(f"{_halt_type}_paper", _halt_active):
                 from notify import send_system_alert as _risk_halt_alert
 
-                _risk_halt_alert(
+                # batch-33 M-1: roll back the "<type>_paper" edge (not the
+                # un-suffixed one order_executor.py owns) on total delivery
+                # failure -- see rollback_halt_transition's own docstring.
+                if not _risk_halt_alert(
                     _halt_title,
                     f"{_halt_note} — auto-trade placement is skipped while active.",
                     cooldown_key=f"halt_{_halt_type}",
-                )
+                ):
+                    from alerts import rollback_halt_transition as _rb_risk
+
+                    _rb_risk(f"{_halt_type}_paper")
         except Exception as _e:
             _log.debug("cmd_cron: %s halt transition/alert failed: %s", _halt_type, _e)
 
@@ -1850,7 +1986,17 @@ def _cmd_cron_body(
     log_path.parent.mkdir(exist_ok=True)
     if log_path.exists() and log_path.stat().st_size > 5 * 1024 * 1024:
         try:
-            log_path.replace(log_path.with_suffix(".log.1"))
+            # batch-33 L-8: route through safe_io's Windows-retry-safe
+            # rename instead of a bare Path.replace() -- this log file has
+            # a GUARANTEED concurrent reader (whatever's tailing bot.log),
+            # the exact sharing-violation shape
+            # tests/test_bare_os_replace_guard.py's whole guard exists to
+            # catch. Previously allowlisted there as a known gap belonging
+            # to a different batch's file ownership; this batch owns
+            # cron.py, so it's fixed here and the allowlist entry removed.
+            from safe_io import _replace_with_retry
+
+            _replace_with_retry(str(log_path), log_path.with_suffix(".log.1"))
         except OSError:
             pass
 
@@ -3040,7 +3186,29 @@ def _cmd_cron_body(
     try:
         from cloud_backup import backup_data as _backup
 
-        _backup()
+        # batch-33 M-21: backup_data()'s bool return was discarded here --
+        # batch-25 changed it to specifically surface a failed WAL-safe
+        # .db copy (e.g. execution_log.db, the live-order ledger), but with
+        # nothing consuming it a permanently-failing backup degraded to
+        # "one WARNING per cycle, nothing else" -- the exact silent-
+        # backup-failure shape batch-25 exists to eliminate, one layer up.
+        # `None` means no sync folder configured at all (not a failure --
+        # nothing to alert on); only `False` is a real failure.
+        _backup_ok = _backup()
+        if _backup_ok is False:
+            _log.error(
+                "cmd_cron: cloud backup completed with failures this "
+                "cycle (see prior WARNING line(s) for which file)"
+            )
+            from notify import send_system_alert as _backup_alert
+
+            _backup_alert(
+                "Kalshi cloud backup failing",
+                "cloud_backup.backup_data() returned False this cycle -- "
+                "at least one file failed its post-copy readability check "
+                "and was not retained. Check bot.log for which file.",
+                cooldown_key="cloud_backup_failed",
+            )
     except Exception as _backup_exc:
         # Was a bare `except: pass` — a persistent backup failure could go
         # unnoticed for months with zero trace anywhere. Never crash the
@@ -3153,6 +3321,19 @@ def _install_cron_watchdog(timeout_secs: int = 720) -> threading.Event:
     default 8 minutes for the realistic number of simultaneously-active
     alert keys, and the alternative (silently losing an alert during
     exactly the outage that most needs one, batch-24 item 3) is worse.
+
+    batch-33 M-1 adds a second, compounding retry source on top of the
+    above: alerts.check_halt_transition's own false->true edge is now ALSO
+    rolled back on total delivery failure (previously the halt flag stayed
+    persisted regardless, so a repeat cycle's observation stopped
+    reporting a fresh edge at all and never re-attempted delivery). During
+    a sustained outage with multiple halts simultaneously engaged
+    (anomaly, drawdown/drawdown_paper, daily_loss/daily_loss_paper), each
+    now retries its own full channel-timeout delivery attempt every single
+    cycle, not just once. Same acceptance reasoning as above still
+    applies -- bounded by the same realistic key count, and correct alert
+    delivery outweighs the added latency -- but the two retry sources now
+    stack, worth knowing if this watchdog's timeout is ever tuned down.
     """
     _wdog_secs = int(os.getenv("CRON_WATCHDOG_SECS", str(timeout_secs)))
     _done_event = threading.Event()
@@ -3270,7 +3451,21 @@ def cmd_cron(
                 # run ever) so main._check_cron_staleness()'s full-scan
                 # warning stays meaningful across a run of sameday-only
                 # cycles instead of being silently refreshed by them.
-                if sameday_only:
+                #
+                # batch-33 M-5: this used to key ONLY off the `sameday_only`
+                # ARGUMENT, ignoring `_full_scan` -- the actual "a full scan
+                # completed" outcome computed above. A kill-switch abort,
+                # black-swan abort, engine-kill, or a cycle that crashed
+                # inside _cmd_cron_body all leave `_full_scan` False (see
+                # its own early-return sites, all `return None`), but with
+                # sameday_only=False (the normal case) this block still
+                # stamped a FRESH last_full_scan anyway -- so all three
+                # staleness alarms (main's banner, cron_full_scan_gap,
+                # cron_gap) stayed silent no matter how long cron kept
+                # failing every cycle. Key off `_full_scan` instead --
+                # mirrors the kill-switch freeze already applied to
+                # CRON_LAST_RUN_PATH just above.
+                if sameday_only or not _full_scan:
                     _last_full_scan = _hb_prev.get("last_full_scan", _now_iso)
                 else:
                     _last_full_scan = _now_iso

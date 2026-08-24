@@ -494,9 +494,14 @@ def record_shadow_observations(all_violations: list[Violation]) -> None:
     when it's empty.
 
     Called every cycle run_trade_cycle() executes (cron AND interactive
-    `watch`, since both share that engine) — cycles_observed is the
-    denominator for a future violation-rate calculation, so it must count
-    every cycle checked, not just cycles where a violation actually fired.
+    `watch`, since both share that engine) EXCEPT a --sameday-only cycle
+    (batch-33 M-6: is_sameday_market() structurally excludes every rain/
+    snow ladder, so a sameday-only cycle can never have examined the
+    population this function tracks -- the caller skips calling this
+    entirely for those cycles rather than counting one toward
+    cycles_observed for nothing). cycles_observed is the denominator for a
+    future violation-rate calculation, so it must count every cycle that
+    COULD have checked, not just cycles where a violation actually fired.
     Keyed by (buy_ticker, sell_ticker) rather than logging one row per
     occurrence: a persistent violation is seen again on every subsequent
     cycle it lasts, and rain's tickers already roll over monthly, so this

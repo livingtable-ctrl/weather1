@@ -240,8 +240,16 @@ def backup_data(data_dir: Path | None = None) -> bool:
                 copied += 1
         _log.info("cloud_backup: synced %d file(s) to %s", copied, dest)
 
-        # Prune backup directories older than 30 days
+        # Prune backup directories older than 30 days.
+        # batch-33 M-21 LOW(a): directory names are stamped with
+        # datetime.now(UTC) (`today_str` above) but this compared them
+        # against date.today() -- LOCAL system time. Near local midnight
+        # (either side of UTC midnight, depending on timezone) that
+        # mismatch makes today's own just-created directory look 1 day
+        # old, or lets a 30-day-old directory look fresh for up to another
+        # day, purely from the local/UTC gap. Compare UTC-to-UTC instead.
         backup_root = sync_root / "KalshiBot" / "data"
+        _today_utc = datetime.now(UTC).date()
         for old_dir in backup_root.iterdir():
             if not old_dir.is_dir():
                 continue
@@ -249,11 +257,27 @@ def backup_data(data_dir: Path | None = None) -> bool:
                 from datetime import date
 
                 dir_date = date.fromisoformat(old_dir.name)
-                if (date.today() - dir_date).days > 30:
-                    shutil.rmtree(old_dir)
-                    _log.debug("cloud_backup: pruned old backup %s", old_dir.name)
             except ValueError:
-                pass  # not a date-named directory
+                continue  # not a date-named directory
+            if (_today_utc - dir_date).days <= 30:
+                continue
+            try:
+                shutil.rmtree(old_dir)
+                _log.debug("cloud_backup: pruned old backup %s", old_dir.name)
+            except OSError as _prune_exc:
+                # batch-33 M-21 LOW(a): an rmtree failure (e.g. a file
+                # still open, permission denied) used to be uncaught here,
+                # propagating past this whole try block to the outer
+                # `except Exception: return False` -- turning a backup
+                # run that copied every file successfully (all_readable
+                # still True) into a reported FAILURE just because an
+                # unrelated old directory couldn't be deleted. Isolate it:
+                # log and keep pruning/reporting the real backup result.
+                _log.warning(
+                    "cloud_backup: failed to prune old backup %s: %s",
+                    old_dir.name,
+                    _prune_exc,
+                )
         return all_readable
     except Exception as exc:
         _log.warning("cloud_backup: sync failed: %s", exc)
@@ -315,7 +339,24 @@ def restore_data(data_dir: Path | None = None, confirm: bool = False) -> bool:
         # that LOOKS like it's protecting the pre-restore safety net from
         # this batch's WAL-omission bug (item 1) but silently does nothing
         # is worse than no logic at all for the next person reading it.
-        shutil.copytree(data_dir, snapshot_dir)
+        #
+        # batch-33 M-21 LOW(b): snapshot_dir lives INSIDE data_dir itself,
+        # so copying data_dir wholesale also copies every PRIOR
+        # `.pre_restore_*` snapshot still sitting there into the new one --
+        # each successive restore nests the last, growing without bound
+        # (a snapshot-of-a-snapshot-of-a-snapshot...). safe_io's own
+        # `.history`/`.emergency` state directories are the same shape:
+        # they're recovery/audit copies in their own right, not live data
+        # worth re-snapshotting inside another snapshot. Exclude all three
+        # (directories and any sidecar files matching their naming, e.g. a
+        # stray `*.emergency.tmp`) from the copy.
+        shutil.copytree(
+            data_dir,
+            snapshot_dir,
+            ignore=shutil.ignore_patterns(
+                ".pre_restore_*", ".history", ".emergency", "*.emergency.tmp"
+            ),
+        )
         print(f"  Current data/ snapshotted to {snapshot_dir.name}")
 
     data_dir.mkdir(parents=True, exist_ok=True)

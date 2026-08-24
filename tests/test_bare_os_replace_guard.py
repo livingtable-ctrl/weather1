@@ -50,10 +50,13 @@ call `log_path.replace(log_path.with_suffix(".log.1"))` is a real
 Path.replace() rename on a file with guaranteed concurrent readers (a log
 file) -- the exact shape this guard exists to catch -- and it slipped past
 the tmp-name heuristic entirely, since neither operand is named with
-"tmp". `cron.py` belongs to a different batch's file ownership (this
-batch owns cloud_backup.py/main.py/web_app.py/safe_io.py only), so it's
-allowlisted below as a known, pre-existing gap rather than fixed here --
-but the guard itself needed to actually detect it, not stay blind to it.
+"tmp". `cron.py` belonged to a different batch's file ownership at the
+time (this batch owned cloud_backup.py/main.py/web_app.py/safe_io.py
+only), so it was allowlisted below as a known, pre-existing gap rather
+than fixed here -- but the guard itself needed to actually detect it, not
+stay blind to it. Fixed by batch-33 (which does own cron.py): the call now
+routes through `safe_io._replace_with_retry`, and the allowlist entry
+below was removed since the guard no longer finds anything to allow.
 
 The scan is now an AST check instead of a naming-convention regex:
 `str.replace(old, new[, count])` always takes >= 2 positional arguments,
@@ -166,19 +169,6 @@ _ALLOWLIST: dict[str, tuple[int, int, str]] = {
         "AUD-0039 fix (which routes through safe_io._replace_with_retry, "
         "not a bare call) by naming the old Path.rename()/os.replace() "
         "semantics gap it closed -- text mentions, not calls.",
-    ),
-    "cron.py": (
-        0,
-        1,
-        "AUD batch-25 item 4 (opus review): log-rotation call "
-        "`log_path.replace(log_path.with_suffix('.log.1'))` is a real, "
-        "unfixed instance of this exact anti-pattern on a file with "
-        "guaranteed concurrent readers -- found only once this guard's "
-        "method-form scan was broadened to catch it. Left allowlisted "
-        "rather than fixed here: cron.py belongs to a different batch's "
-        "file ownership (this batch owns cloud_backup.py/main.py/"
-        "web_app.py/safe_io.py only) -- filed as a follow-up instead of "
-        "expanding this batch's scope.",
     ),
 }
 

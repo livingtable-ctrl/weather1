@@ -3619,11 +3619,16 @@ def _auto_place_trades(
 
         # (F10: a True return already implies _dd_active is True)
         if _check_dd_cycle_transition("drawdown", _dd_active):
-            _dd_cycle_alert(
+            # batch-33 M-1: roll the edge back on total delivery failure --
+            # see alerts.rollback_halt_transition's own docstring.
+            if not _dd_cycle_alert(
                 "Kalshi drawdown halt engaged",
                 "Drawdown guard active — no auto-trades placed.",
                 cooldown_key="halt_drawdown",
-            )
+            ):
+                from alerts import rollback_halt_transition as _rb_dd
+
+                _rb_dd("drawdown")
     except Exception as _dd_exc:
         _log.debug("auto_place_trades: drawdown transition alert failed: %s", _dd_exc)
     if _dd_active:
@@ -3641,11 +3646,16 @@ def _auto_place_trades(
 
         # (F10: a True return already implies _dl_active is True)
         if _check_dl_cycle_transition("daily_loss", _dl_active):
-            _dl_cycle_alert(
+            # batch-33 M-1: roll the edge back on total delivery failure --
+            # see alerts.rollback_halt_transition's own docstring.
+            if not _dl_cycle_alert(
                 "Kalshi daily loss halt engaged",
                 "Daily loss limit reached — no auto-trades placed.",
                 cooldown_key="halt_daily_loss",
-            )
+            ):
+                from alerts import rollback_halt_transition as _rb_dl
+
+                _rb_dl("daily_loss")
     except Exception as _dl_exc:
         _log.debug("auto_place_trades: daily-loss transition alert failed: %s", _dl_exc)
     if _dl_active:
@@ -4371,12 +4381,18 @@ def _auto_place_trades(
                 from notify import send_system_alert as _dd_alert
 
                 if _check_dd_transition("drawdown", True):
-                    _dd_alert(
+                    # batch-33 M-1: roll the edge back on total delivery
+                    # failure -- see alerts.rollback_halt_transition's own
+                    # docstring.
+                    if not _dd_alert(
                         "Kalshi drawdown halt engaged",
                         f"Drawdown floor breached mid-cycle after {placed} "
                         "placement(s) — remaining candidates this cycle skipped.",
                         cooldown_key="halt_drawdown",
-                    )
+                    ):
+                        from alerts import rollback_halt_transition as _rb_dd_mid
+
+                        _rb_dd_mid("drawdown")
             except Exception as _dd_exc:
                 _log.debug(
                     "auto_place_trades: drawdown transition alert failed: %s", _dd_exc

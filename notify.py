@@ -38,9 +38,29 @@ _log = logging.getLogger(__name__)
 
 # #123: allow selective enable/disable of notification channels
 # Set NOTIFY_CHANNELS=discord,email to only use those two, etc.
-_CHANNELS = set(
-    os.getenv("NOTIFY_CHANNELS", "desktop,pushover,ntfy,discord,email").split(",")
-)
+# batch-33 L-4: strip/lower each token -- "discord, email" (a leading space
+# after the comma, easy to type by hand) previously produced the literal
+# member " email" with a leading space, which matches none of the `in
+# _CHANNELS` checks below and silently dropped the channel entirely,
+# defeating batch-24's "all configured channels get a delivery attempt"
+# guarantee. Also warn on an unrecognized name so a typo doesn't silently
+# do nothing either.
+_KNOWN_CHANNELS = {"desktop", "pushover", "ntfy", "discord", "email"}
+_CHANNELS = {
+    c.strip().lower()
+    for c in os.getenv("NOTIFY_CHANNELS", "desktop,pushover,ntfy,discord,email").split(
+        ","
+    )
+    if c.strip()
+}
+_unknown_channels = _CHANNELS - _KNOWN_CHANNELS
+if _unknown_channels:
+    _log.warning(
+        "notify: NOTIFY_CHANNELS contains unrecognized channel name(s) %s "
+        "-- known channels are %s",
+        sorted(_unknown_channels),
+        sorted(_KNOWN_CHANNELS),
+    )
 
 # #94: load custom templates from data/notify_templates.json if present.
 # Keys: "strong_signal_title", "strong_signal_body" (Python format strings).
@@ -292,6 +312,39 @@ def _send_ntfy(topic: str, title: str, message: str) -> bool:
         return False
 
 
+def _redact_webhook_url(url: str) -> str:
+    """Redact a webhook URL's bearer credential before it ever reaches a log
+    line -- a Discord webhook URL's path IS its bearer token
+    (/api/webhooks/{id}/{token}), so logging the raw url (or an exception
+    whose message embeds it, e.g. requests' own ConnectionError text) at
+    WARNING accumulates a fully usable secret in bot.log on every failed
+    delivery. batch-33 M-28: batch-24 rerouted every safety alert through
+    this function and made failures retry every cycle, so an outage
+    previously logged the complete secret URL repeatedly. Keeps only the
+    scheme, host, and a short id prefix -- enough to tell webhooks apart in
+    the log without exposing anything an attacker could replay.
+    """
+    if not url:
+        # opus-review-caught: an empty string is falsy but not an error --
+        # without this guard, the caller's `str(exc).replace(url, ...)`
+        # would replace "" with the redacted marker between every single
+        # character of the exception message (str.replace's documented
+        # behavior for an empty old value). _send_discord's own url list
+        # is already filtered to non-empty strings before this is ever
+        # called, so this is a defensive guard for this helper's future
+        # reuse, not a fix to an observed live bug.
+        return "<redacted>"
+    try:
+        from urllib.parse import urlsplit
+
+        parts = urlsplit(url)
+        segments = [p for p in parts.path.split("/") if p]
+        id_prefix = segments[-2][:8] if len(segments) >= 2 else "***"
+        return f"{parts.scheme}://{parts.netloc}/.../{id_prefix}***"
+    except Exception:
+        return "<redacted>"
+
+
 def _send_discord(title: str, message: str, color: int = 0x3FB950) -> bool:
     """
     #92: Send to all configured Discord webhooks (comma-separated DISCORD_WEBHOOK_URLS
@@ -319,7 +372,17 @@ def _send_discord(title: str, message: str, color: int = 0x3FB950) -> bool:
             if resp.status_code in (200, 204):
                 any_ok = True
         except Exception as exc:
-            _log.warning("_send_discord: request to %s failed: %s", url, exc)
+            # Redact both the explicit url AND any occurrence of the raw
+            # url string inside the exception's own message -- `requests`
+            # exceptions (e.g. ConnectionError) commonly embed the full
+            # request url, including the bearer token in its path, in
+            # their str() representation.
+            _redacted_url = _redact_webhook_url(url)
+            _log.warning(
+                "_send_discord: request to %s failed: %s",
+                _redacted_url,
+                str(exc).replace(url, _redacted_url),
+            )
     return any_ok
 
 
@@ -452,7 +515,7 @@ def send_system_alert(
     message: str,
     cooldown_key: str = "__system__",
     discord_color: int = 0xE3B341,
-) -> None:
+) -> bool:
     """
     Send a system-level alert (not trade-specific) through all configured backends.
     Used for operational events like the dead-man's-switch 48h cron gap.
@@ -480,6 +543,16 @@ def send_system_alert(
     (F13): routing everything through this function's old fixed orange lost
     black-swan's/circuit-open's red (0xF85149), which was real signal for
     an operator visually scanning Discord for severity.
+
+    Returns True if the alert was either delivered on >=1 channel or
+    suppressed by an already-elapsed-and-successful cooldown (nothing new
+    needed sending this call); False only when delivery was actually
+    attempted and every configured channel failed (batch-33 M-1: a caller
+    tracking its own edge-triggered state, e.g.
+    alerts.check_halt_transition, can use a False return to know THIS
+    alert never actually reached anyone and roll that state back so the
+    next cycle retries instead of silently treating a failed delivery as
+    done).
     Never raises.
     """
     _SYSTEM_COOLDOWN_SECS = 21_600  # 6 hours between system alerts
@@ -488,7 +561,12 @@ def send_system_alert(
         cooldown_key, now, _SYSTEM_COOLDOWN_SECS
     )
     if not reserved:
-        return
+        # Cooldown still active -- either a previous call for this exact
+        # key already delivered successfully within the window, or (much
+        # rarer) a concurrent thread is mid-delivery right now. Either way
+        # nothing was left undelivered BY THIS CALL, so this isn't a
+        # failure any caller should roll anything back over.
+        return True
 
     successes: list[bool] = []
 
@@ -549,3 +627,5 @@ def send_system_alert(
         # roll the reservation back so the next call (e.g. the following
         # cron cycle) can retry instead of waiting out the full 6h window.
         _system_cooldown_rollback(cooldown_key, now, previous_value)
+        return False
+    return True

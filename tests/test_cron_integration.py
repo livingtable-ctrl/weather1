@@ -79,6 +79,12 @@ def cron_env(tmp_path, monkeypatch):
     monkeypatch.setattr(cron, "RUNNING_FLAG_PATH", tmp_path / ".cron_running")
     monkeypatch.setattr(cron, "KILL_SWITCH_PATH", tmp_path / ".kill_switch")
     monkeypatch.setattr(cron, "LOCK_PATH", tmp_path / ".cron_lock")
+    # batch-33 opus-review-caught: cron.py's new _poll_pending_orders wiring
+    # (item L-8) calls main._load_live_config() unconditionally every
+    # cycle -- without this, every cron_env-based test in this file reads
+    # (and, on a fresh checkout with no file yet, WRITES) the real
+    # data/live_config.json instead of an isolated fixture path.
+    monkeypatch.setattr(main, "_LIVE_CONFIG_PATH", tmp_path / "live_config.json")
     monkeypatch.setattr(main, "get_weather_markets", lambda client: [])
     monkeypatch.setattr(main, "check_ensemble_circuit_health", lambda: None)
     monkeypatch.setattr(main, "_check_startup_orders", lambda: None)
@@ -1025,6 +1031,213 @@ def test_cron_anomaly_alert_failure_does_not_falsely_halt_placement(cron_env):
         "a failure in the anomaly ALERTING path must not falsely block "
         "placement on an otherwise-healthy cycle"
     )
+
+
+@pytest.mark.integration
+def test_cron_anomaly_halt_edge_retries_after_total_alert_delivery_failure(cron_env):
+    """batch-33 M-1: check_halt_transition() persists the false->true edge
+    (and reports it) BEFORE the alert is actually delivered. If every
+    delivery channel then fails, the old behavior left that persisted
+    flag in place -- the NEXT cycle's observation (halt still active) no
+    longer sees an edge (was_active is already True), so the alert for
+    this engagement is permanently lost even though nothing was ever
+    delivered. The fix rolls the persisted flag back to False on total
+    delivery failure so the next cycle retries.
+
+    Mutation-relevant: removing the `if not _anom_alert(...): rollback(...)`
+    wiring at cron.py's anomaly-halt call site makes this fail -- a SECOND
+    cmd_cron() run would see `alerts.check_halt_transition("anomaly", True)`
+    return False (no fresh edge), so total_alert_attempts would stay at 1
+    instead of 2.
+    """
+    tmp_path, client, main, paper = cron_env
+    import alerts
+    import notify
+
+    monkeypatch_transitions = tmp_path / "halt_transitions.json"
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+
+    alert_attempts: list = []
+
+    def _fail_delivery(*args, **kwargs):
+        if kwargs.get("cooldown_key") == "halt_anomaly":
+            alert_attempts.append(1)
+        return False  # every channel failed this call
+
+    with patch.object(alerts, "_HALT_TRANSITION_PATH", monkeypatch_transitions):
+        with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+            with patch.object(alerts, "run_anomaly_check", lambda **kw: (["x"], True)):
+                with patch.object(notify, "send_system_alert", _fail_delivery):
+                    with (
+                        patch.object(main, "get_weather_markets", return_value=[]),
+                        patch(
+                            "tracker.detect_brier_drift",
+                            return_value={"drifting": False},
+                        ),
+                        patch("paper.is_paused_drawdown", return_value=False),
+                    ):
+                        for _ in range(2):
+                            try:
+                                main.cmd_cron(client)
+                            except SystemExit:
+                                pass
+
+    assert len(alert_attempts) == 2, (
+        "the anomaly-halt alert must be retried every cycle while total "
+        f"delivery keeps failing, got {len(alert_attempts)} attempt(s)"
+    )
+
+
+@pytest.mark.integration
+def test_cron_anomaly_halt_edge_does_not_retry_after_successful_delivery(cron_env):
+    """Positive control for the rollback test above: when delivery
+    SUCCEEDS on the first cycle, the second cycle's still-active
+    observation must NOT re-alert -- proves the rollback-and-retry
+    behavior is specific to total delivery failure, not a general
+    "always re-fire" regression of check_halt_transition's own
+    fire-once-per-engagement contract."""
+    tmp_path, client, main, paper = cron_env
+    import alerts
+    import notify
+
+    monkeypatch_transitions = tmp_path / "halt_transitions.json"
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+
+    alert_attempts: list = []
+
+    def _succeed_delivery(*args, **kwargs):
+        if kwargs.get("cooldown_key") == "halt_anomaly":
+            alert_attempts.append(1)
+        return True
+
+    with patch.object(alerts, "_HALT_TRANSITION_PATH", monkeypatch_transitions):
+        with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+            with patch.object(alerts, "run_anomaly_check", lambda **kw: (["x"], True)):
+                with patch.object(notify, "send_system_alert", _succeed_delivery):
+                    with (
+                        patch.object(main, "get_weather_markets", return_value=[]),
+                        patch(
+                            "tracker.detect_brier_drift",
+                            return_value={"drifting": False},
+                        ),
+                        patch("paper.is_paused_drawdown", return_value=False),
+                    ):
+                        for _ in range(2):
+                            try:
+                                main.cmd_cron(client)
+                            except SystemExit:
+                                pass
+
+    assert len(alert_attempts) == 1, (
+        f"a successfully-delivered alert must not re-fire on the next "
+        f"cycle's still-active observation, got {len(alert_attempts)} attempt(s)"
+    )
+
+
+@pytest.mark.integration
+def test_cron_cloud_backup_failure_fires_system_alert(cron_env):
+    """batch-33 M-21: cloud_backup.backup_data()'s bool return used to be
+    discarded at cron.py's only call site (`_backup()` with nothing
+    consuming the result) -- batch-25 changed the return specifically so a
+    persistently-failing WAL-safe .db copy (e.g. execution_log.db, the
+    live-order ledger) would be visible, but with the return ignored one
+    layer up it degraded back to "one WARNING per cycle, nothing else" --
+    the exact silent-backup-failure shape batch-25 exists to eliminate.
+    False (a real failure) must now escalate to send_system_alert.
+    """
+    tmp_path, client, main, paper = cron_env
+    import notify
+
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+    with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+        with patch("cloud_backup.backup_data", return_value=False):
+            with patch.object(main, "get_weather_markets", return_value=[]):
+                with (
+                    patch(
+                        "tracker.detect_brier_drift", return_value={"drifting": False}
+                    ),
+                    patch("paper.is_paused_drawdown", return_value=False),
+                ):
+                    with patch.object(notify, "send_system_alert") as mock_alert:
+                        try:
+                            main.cmd_cron(client)
+                        except SystemExit:
+                            pass
+
+    backup_calls = [
+        c
+        for c in mock_alert.call_args_list
+        if c.kwargs.get("cooldown_key") == "cloud_backup_failed"
+    ]
+    assert len(backup_calls) == 1, (
+        f"expected exactly one cloud_backup_failed alert on a False "
+        f"return, got: {mock_alert.call_args_list}"
+    )
+
+
+@pytest.mark.integration
+def test_cron_cloud_backup_no_sync_folder_does_not_alert(cron_env):
+    """Positive control: backup_data() returning None (no sync folder
+    configured -- not a failure, nothing to back up to) must NOT fire the
+    failure alert. Proves the alert is specific to a real False failure,
+    not any falsy/non-True return."""
+    tmp_path, client, main, paper = cron_env
+    import notify
+
+    monkeypatch_cooldown = tmp_path / "notify_cooldowns.json"
+    with patch.object(notify, "NOTIFY_COOLDOWN_STATE_PATH", monkeypatch_cooldown):
+        with patch("cloud_backup.backup_data", return_value=None):
+            with patch.object(main, "get_weather_markets", return_value=[]):
+                with (
+                    patch(
+                        "tracker.detect_brier_drift", return_value={"drifting": False}
+                    ),
+                    patch("paper.is_paused_drawdown", return_value=False),
+                ):
+                    with patch.object(notify, "send_system_alert") as mock_alert:
+                        try:
+                            main.cmd_cron(client)
+                        except SystemExit:
+                            pass
+
+    backup_calls = [
+        c
+        for c in mock_alert.call_args_list
+        if c.kwargs.get("cooldown_key") == "cloud_backup_failed"
+    ]
+    assert len(backup_calls) == 0
+
+
+@pytest.mark.integration
+def test_cron_polls_pending_live_orders_every_cycle(cron_env):
+    """batch-33 L-8: cron never OPENS a live order itself, but a prior
+    `watch --auto --live` session can leave a pending/unsettled live order
+    behind, and _poll_pending_orders was previously reachable only from
+    cmd_watch. cmd_cron must now call it too (client is not None) so a
+    cron-only host still runs GTC cancels / fill polling / settlement.
+    """
+    tmp_path, client, main, paper = cron_env
+
+    # cron_env already isolates main._LIVE_CONFIG_PATH to tmp_path, so
+    # cron's new call site resolving its own live config (the same way
+    # order_executor._resolve_micro_live_config already does) can't touch
+    # the real data/live_config.json.
+    with patch("order_executor._poll_pending_orders") as mock_poll:
+        with patch.object(main, "get_weather_markets", return_value=[]):
+            with (
+                patch("tracker.detect_brier_drift", return_value={"drifting": False}),
+                patch("paper.is_paused_drawdown", return_value=False),
+            ):
+                try:
+                    main.cmd_cron(client)
+                except SystemExit:
+                    pass
+
+    assert mock_poll.call_count == 1, (
+        f"expected _poll_pending_orders to be called once per cron cycle "
+        f"when a client is present, got {mock_poll.call_count} call(s)"
+    )
+    assert mock_poll.call_args.args[0] is client
 
 
 @pytest.mark.integration
@@ -2631,6 +2844,49 @@ class TestSamedayOnlyFullScanStaleness:
 
         hb = json.loads(cron.CRON_HEARTBEAT_PATH.read_text())
         assert hb["last_full_scan"] != old_iso
+
+    def test_kill_switch_aborted_cycle_does_not_advance_last_full_scan(self, cron_env):
+        """batch-33 M-5: a kill-switch-aborted cycle (sameday_only=False,
+        the normal case) never reaches the real scan -- _cmd_cron_body
+        returns None early, so _full_scan is False -- but the OLD write
+        logic keyed ONLY off the sameday_only ARGUMENT, so it stamped a
+        fresh last_full_scan anyway even though nothing was scanned. That
+        silenced every staleness alarm (main's banner, cron_full_scan_gap,
+        cron_gap) for as long as the kill switch stayed engaged. Mutation-
+        relevant: reverting the fix (`if sameday_only:` instead of `if
+        sameday_only or not _full_scan:`) makes this fail -- last_full_scan
+        would advance to a fresh timestamp despite the abort.
+        """
+        tmp_path, client, main, paper = cron_env
+        import json
+
+        import cron
+
+        old_iso = "2020-01-01T00:00:00+00:00"
+        cron.CRON_HEARTBEAT_PATH.write_text(
+            json.dumps(
+                {"last_run": old_iso, "cycle_count": 5, "last_full_scan": old_iso}
+            )
+        )
+        cron.KILL_SWITCH_PATH.write_text('{"reason":"test"}')
+
+        # Loop mode: bypasses main.cmd_cron's OWN separate interactive
+        # kill-switch pre-check (which would otherwise intercept before
+        # ever reaching cron.cmd_cron()/_cmd_cron_body() at all, leaving
+        # CRON_HEARTBEAT_PATH untouched and this test vacuously "passing"
+        # regardless of the fix under test) so this actually exercises
+        # cron.py's OWN kill-switch check and its finally-block write.
+        main.cmd_cron._called_from_loop = True
+        try:
+            self._run(main, client, sameday_only=False)
+        finally:
+            main.cmd_cron._called_from_loop = False
+
+        hb = json.loads(cron.CRON_HEARTBEAT_PATH.read_text())
+        assert hb["last_full_scan"] == old_iso, (
+            "a kill-switch-aborted cycle must not advance last_full_scan -- "
+            "no scan actually happened"
+        )
 
     def test_first_ever_run_seeds_last_full_scan_even_when_sameday_only(self, cron_env):
         """No prior heartbeat at all (this repo's very first cron run) must
