@@ -119,7 +119,7 @@ class CrossProcessLock:
             fh.close()
 
 
-def _replace_with_retry(src: str, dst: Path, deadline_secs: float = 0.5) -> None:
+def _replace_with_retry(src: str, dst: Path, deadline_secs: float = 1.0) -> None:
     """os.replace(src, dst), retrying briefly on PermissionError.
 
     Self-caught (2026-08-08) while mutation-testing an unrelated regression
@@ -143,23 +143,35 @@ def _replace_with_retry(src: str, dst: Path, deadline_secs: float = 0.5) -> None
     Worst-case latency (opus-review-caught, 2nd review round, 2026-08-08):
     this adds up to `deadline_secs` per outer attempt on top of the
     existing 1s inter-attempt backoff -- at the default retries=3 and
-    deadline_secs=0.5, worst case is 3*0.5 + 2*1.0 = 3.5s for the primary
-    write (was 2.0s before this function existed), plus up to 0.1s per
-    emergency-copy candidate (that call site deliberately passes a shorter
-    deadline_secs=0.1 -- read contention on a data/.emergency/ or system-
-    temp destination isn't the expected failure mode there) if the primary
-    write exhausts all retries. paper.py's own cross-process lock
-    (_acquire_file_lock) gives up after a fixed 30s budget (AUD-0030,
-    extended from 10s) -- callers that
-    hold that lock across an atomic_write_json/atomic_write_text call
-    should account for this function's contribution to worst-case latency,
-    not just the write itself. paper.py's _save() (the paper-trades ledger,
-    held across that same 30s-budget lock on every call) is exactly such a
-    caller -- it raises both retries (6) and deadline_secs (1.0, via
-    atomic_write_json's replace_deadline_secs) to 6*1.0 + 5*1.0 = 11s worst
-    case (AUD batch-30 item 4b), specifically bounded well under 30s rather
-    than raised further, so a slow write can't itself exhaust the lock
-    budget it's running inside of.
+    deadline_secs=1.0 (raised from the original 0.5 default -- batch-38
+    item M-23d: the 3*0.5s budget was measured insufficient under real
+    concurrent-writer contention, `tests/test_safe_io.py`'s own
+    concurrent-writers test failed on a checkout under load with all 3
+    attempts exhausted), worst case is 3*1.0 + 2*1.0 = 5.0s for the
+    primary write (was 3.5s at the original 0.5 default, 2.0s before this
+    function existed), plus up to 0.1s per emergency-copy candidate (that
+    call site deliberately passes a shorter deadline_secs=0.1 -- read
+    contention on a data/.emergency/ or system-temp destination isn't the
+    expected failure mode there) if the primary write exhausts all
+    retries. paper.py's own cross-process lock (_acquire_file_lock) gives
+    up after a fixed 30s budget (AUD-0030, extended from 10s) -- callers
+    that hold that lock across an atomic_write_json/atomic_write_text
+    call should account for this function's contribution to worst-case
+    latency, not just the write itself. paper.py's _save() (the
+    paper-trades ledger, held across that same 30s-budget lock on every
+    call) is exactly such a caller -- it raises both retries (6) and
+    deadline_secs (1.0, via atomic_write_json's replace_deadline_secs,
+    now the same value as the general default above) to 6*1.0 + 5*1.0 =
+    11s worst case (AUD batch-30 item 4b), specifically bounded well
+    under 30s rather than raised further, so a slow write can't itself
+    exhaust the lock budget it's running inside of. The other irreplaceable-
+    state callers this function's default now protects (tracker's
+    strategy_pins/retired_strategies, learned_weights.json,
+    live_config.json, alerts.json) don't hold that same 30s lock, so their
+    retries stays at the general default of 3 rather than paper.py's 6 --
+    only the per-attempt deadline needed raising for the general case,
+    reusing paper.py's own already-vetted 1.0s value rather than
+    introducing a third untested number (batch-38 item M-23d).
     """
     start = time.monotonic()
     while True:
@@ -210,7 +222,7 @@ def atomic_write_json(
     fallback_dir: Path | None = None,
     *,
     emergency_copy: bool = True,
-    replace_deadline_secs: float = 0.5,
+    replace_deadline_secs: float = 1.0,
 ) -> None:
     """
     Write data to path atomically (write temp → fsync → rename).
@@ -232,9 +244,11 @@ def atomic_write_json(
     trivially-refetchable cache shouldn't trigger).
 
     `replace_deadline_secs` is the per-attempt PermissionError retry window
-    passed to _replace_with_retry -- raise it (e.g. paper.py's ledger save)
-    when the destination is an irreplaceable file that real-world Defender/
-    OneDrive scan pressure has been observed contending for; see
+    passed to _replace_with_retry -- the default (1.0s) already covers
+    real-world Defender/OneDrive scan pressure for ordinary irreplaceable
+    files (batch-38 item M-23d); raise it further still (e.g. paper.py's
+    ledger save, which also raises `retries`) only when the destination
+    sits behind its own additional lock budget worth protecting; see
     _replace_with_retry's own docstring for the worst-case latency formula.
     """
     path = Path(path)
@@ -258,7 +272,7 @@ def atomic_write_text(
     fallback_dir: Path | None = None,
     *,
     emergency_copy: bool = True,
-    replace_deadline_secs: float = 0.5,
+    replace_deadline_secs: float = 1.0,
 ) -> None:
     """
     Write raw text to path atomically -- same write-temp/fsync/rename,
@@ -305,7 +319,7 @@ def _atomic_write_payload(
     emergency_copy: bool = True,
     *,
     caller_name: str,
-    replace_deadline_secs: float = 0.5,
+    replace_deadline_secs: float = 1.0,
 ) -> None:
     """Shared write-temp/fsync/rename/retry/emergency-copy core for
     atomic_write_json and atomic_write_text -- both public functions only
@@ -450,7 +464,7 @@ def _atomic_write_payload(
                             _fsync_err,
                         )
                 # Shorter deadline than the primary write's default (0.1s
-                # vs. 0.5s) -- emergency-copy destinations (data/.emergency/,
+                # vs. 1.0s) -- emergency-copy destinations (data/.emergency/,
                 # system temp) aren't read by anything else in this codebase,
                 # so sustained reader contention isn't the expected failure
                 # mode here; keeping this bounded caps the worst-case total

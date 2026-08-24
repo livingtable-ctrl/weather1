@@ -61,12 +61,14 @@ def test_save_uses_raised_retry_budget_for_the_ledger_write(tmp_path, monkeypatc
     """AUD (batch-30 item 4b): paper_trades.json is the entire paper-ledger
     source of truth and is written alongside ~55-57 other data/ files during
     cloud_backup's own end-of-cycle sync pass, exactly when Defender/OneDrive
-    scan pressure peaks -- the default retries=3/deadline_secs=0.5 (~3.5s
-    worst case) budget can be exhausted by that contention. _save() must
-    pass a raised retries/replace_deadline_secs to atomic_write_json rather
-    than relying on the library default. Mutation-tested: reverting _save's
-    call back to plain `retries=3` (no replace_deadline_secs) makes this
-    fail."""
+    scan pressure peaks -- even the general default (raised to retries=3/
+    deadline_secs=1.0, ~5.0s worst case, by batch-38 item M-23d) isn't
+    enough headroom for this specific caller, which holds a 30s cross-
+    process lock across the write and can afford a much larger budget.
+    _save() must pass a raised retries/replace_deadline_secs to
+    atomic_write_json rather than relying on the library default (even the
+    current, already-raised one). Mutation-tested: reverting _save's call
+    back to plain `retries=3` (no replace_deadline_secs) makes this fail."""
     import paper
 
     captured = {}
@@ -295,6 +297,54 @@ def test_replace_with_retry_does_not_retry_other_exceptions(tmp_path):
             safe_io._replace_with_retry(str(src), dst)
 
     assert calls["n"] == 1
+
+
+def test_replace_with_retry_default_deadline_survives_sub_second_contention(
+    tmp_path,
+):
+    """Batch-38 item M-23d: the DEFAULT replace_deadline_secs (raised from
+    0.5 to 1.0) must be long enough to retry through a sustained ~0.7s
+    stretch of PermissionErrors -- the shape test_safe_io.py's own
+    concurrent-writers test observed failing under real Defender/OneDrive-
+    style read contention when the default was still 0.5.
+
+    Mutation check: reverting safe_io._replace_with_retry's own default
+    parameter back to 0.5 makes this fail (0.5s deadline can't outlast a
+    0.7s stretch of failures), proving this test actually exercises the
+    DEFAULT rather than an explicitly-passed deadline_secs."""
+    import inspect
+    import os
+    import time
+    from unittest.mock import patch
+
+    import safe_io
+
+    default_deadline = (
+        inspect.signature(safe_io._replace_with_retry)
+        .parameters["deadline_secs"]
+        .default
+    )
+    assert default_deadline == 1.0, (
+        "test assumes the current default -- update the 0.7s contention "
+        "window below if the default legitimately changes again"
+    )
+
+    src = tmp_path / "src.tmp"
+    dst = tmp_path / "dst.txt"
+    src.write_text("content")
+
+    start = time.monotonic()
+    _real_replace = os.replace
+
+    def flaky_replace(s, d):
+        if time.monotonic() - start < 0.7:
+            raise PermissionError("simulated sustained WinError 5")
+        _real_replace(s, d)
+
+    with patch.object(os, "replace", flaky_replace):
+        safe_io._replace_with_retry(str(src), dst)  # must not raise
+
+    assert dst.read_text(encoding="utf-8") == "content"
 
 
 def test_atomic_write_json_threads_replace_deadline_secs_to_retry(tmp_path):

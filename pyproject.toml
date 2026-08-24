@@ -12,7 +12,6 @@ omit = [
     "backtest.py",
     "param_sweep.py",
     "feature_importance.py",
-    "pdf_report.py",
     "tests/*",
 ]
 

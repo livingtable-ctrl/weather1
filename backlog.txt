@@ -27554,3 +27554,251 @@ Problem:
   that handoff, does not exist in this repo as of this writing -- entries added fresh from the handoff's
   own text, same situation as batch-31's above). Batch 37 has one 1-line main.py change
   (cmd_emos_deactivate print) noted in the handoff as needing to run AFTER this batch.
+
+[RESOLVED 2026-08-24 -- batch-38 item 1 (M-23b)] two repo-guard tests are RED on the deployment checkout -- they walk .venv
+Priority: MEDIUM
+Files: tests/test_disputed_row_guard.py, tests/test_isoformat_cutoff_guard.py
+
+Problem: re-verified against live state before touching anything (workflow step 1) -- the fix this item asked for
+  (add `.venv`/`venv` to `_EXCLUDED_DIR_NAMES` in both guard files, matching the dot-prefix skip
+  test_paths_bypass_guard.py/test_bare_os_replace_guard.py already use) had ALREADY landed, incidentally, in
+  commit 002c34cb ("retire legacy single-file dashboard, promote V_3 tabbed app to frontend/") -- a frontend
+  refactor commit, unrelated in subject but which happened to touch these same guard files' exclusion sets.
+  `git log -S'".venv",' -- tests/test_disputed_row_guard.py` confirms 002c34cb as the landing commit, already
+  merged to master before this batch started.
+
+Resolution: no code change needed. Verified by actually running the two guard files (not the whole suite, per
+  this batch's own Process note) against the MAIN CLONE checkout (C:\Users\thesa\claude kalshi), which has a
+  real .venv present -- exactly the environment the original bug reproduced in: 12/12 passed in 11.88s (was
+  reported taking ~9 minutes and failing before the incidental fix). No test changes, no backlog code diff for
+  this item beyond this resolution note.
+
+[RESOLVED 2026-08-24 -- batch-38 item 2 (M-23c)] properscoring missing from .venv -- 22(->18 re-verified) EMOS tests error instead of skipping
+Priority: MEDIUM
+Files: (main clone) .venv -- pip install properscoring; tests/test_ml_bias.py, tests/test_main_cron_smoke.py
+
+Problem: requirements.txt:16 already declared `properscoring>=0.1`, but it was never actually installed into
+  the main clone's .venv, so every test exercising ml_bias.fit_emos() (which does a function-local
+  `import properscoring`) failed with ModuleNotFoundError -- surfacing as assertion FAILURES (not collection
+  ERRORs, since main._cmd_emos_train catches the ModuleNotFoundError internally, prints an operator message,
+  and returns -- production degrades gracefully; the tests just don't know that's what happened) rather than
+  a clean skip. Re-verified the count against live state: running the affected classes found 18 failing tests,
+  not the handoff's cited 22 -- used the live number.
+
+Resolution: (a) `pip install properscoring` into the main clone's .venv (now 0.1, confirmed importable). (b)
+  Made the 18 affected tests honest about the dependency via `pytest.mark.skipif(importlib.util.find_spec
+  ("properscoring") is None, ...)`, applied per-METHOD (not per-class or module-level) -- deliberately, since
+  test_ml_bias.py's TestEmos has 31 methods total and only 2 (test_fit_emos_returns_four_floats,
+  test_fit_emos_raises_on_optimizer_non_convergence) actually call fit_emos; a class-level or module-level
+  skip would have wiped out 29 genuinely-independent, already-passing tests. Same reasoning applied to
+  test_main_cron_smoke.py's TestEmosActivationGate/TestEmosRetrainAndCrpsGate/TestEmosStatusAndDeactivate
+  (10/8/12 methods respectively, only 8/7/1 of which actually depend on fit_emos succeeding for their own
+  assertion to be meaningful -- the rest either don't reach _cmd_emos_train's fit call at all, or assert an
+  invariant that holds true regardless of whether the fit succeeds, e.g. "dry run never prompts").
+  Mutation-tested by physically hiding the installed properscoring package (renamed its site-packages dir) and
+  re-running: 45 passed, 18 skipped -- exactly the expected split, confirming neither over- nor
+  under-marking. Restored the package afterward. 63 tests total in scope, all pass with the dependency present.
+
+[RESOLVED 2026-08-24 -- batch-38 item 3 (M-23d)] default atomic-write replace budget insufficient under contention -- batch-30 raised it for paper.py only
+Priority: MEDIUM (full opus-review tier per this batch's own Process note -- safe_io.py feeds the paper ledger path)
+Files: safe_io.py, tests/test_safe_io.py
+
+Problem: `_replace_with_retry`'s DEFAULT `deadline_secs` (and the three callers that thread it through --
+  `atomic_write_json`, `atomic_write_text`, `_atomic_write_payload`) was 0.5s, giving a 3*0.5+2*1.0=3.5s
+  worst-case retry budget against transient Windows PermissionError (WinError 5) sharing-violation
+  contention. `tests/test_safe_io.py::test_atomic_write_text_concurrent_writers_never_expose_torn_file` was
+  observed failing under real load (all 3 attempts exhausted) while passing in isolation -- exactly the
+  contention this budget exists to survive. Other irreplaceable-state callers riding this default
+  (tracker's strategy_pins/retired_strategies, learned_weights.json, live_config.json, alerts.json) had no
+  margin above the same 0.5s budget batch-30 already found insufficient for paper.py's ledger write.
+
+Resolution: raised the DEFAULT `replace_deadline_secs` from 0.5 to 1.0 across all four functions in
+  safe_io.py -- new general worst case 3*1.0+2*1.0=5.0s (was 3.5s). Deliberately reused paper.py's own
+  already-vetted 1.0s per-attempt value (batch-30, AUD item 4b) rather than inventing a third untested
+  number; paper.py's own override still raises `retries` to 6 (11s worst case) since it alone holds a 30s
+  cross-process lock across the write and can afford a much larger budget than the general case. No
+  per-call-site edits made in other batches' files (paper.py, climate_indices.py), per this item's explicit
+  scope boundary -- both of those files have comments citing the OLD 0.5s/3.5s numbers as reasoning for
+  their own local decisions, which are now stale as a direct, known, and deliberately-accepted side effect
+  of this change (worth a follow-up doc-only touch-up whenever those files' owning batches next touch them;
+  not fixed here). Added `test_replace_with_retry_default_deadline_survives_sub_second_contention`, which
+  reads the function's own default via inspect.signature (asserting it's 1.0, with a comment telling a
+  future editor to update the test if the default legitimately changes again) and mocks os.replace to fail
+  for a sustained ~0.7s before succeeding -- 0.2s past the old 0.5s deadline (would have failed under it)
+  and 0.3s under the new 1.0s deadline (succeeds under it), giving real margin on both sides rather than a
+  timing-flaky boundary case. Mutation-tested by reverting the default to 0.5 via Edit and re-running: the
+  new test fails as expected; restored.
+
+  Independent review: both scheduled opus effort=high review agents for this item failed twice each with
+  529 Overloaded (Claude API-side outage during this session) rather than completing. Per explicit user
+  direction, substituted an exhaustive adversarial self-review in their place, covering every question the
+  review prompts posed (default-threading completeness, worst-case-latency blast radius across every
+  atomic_write_json/text caller in the repo -- including web_app.py's two Flask routes, both emergency
+  safety endpoints (/api/halt, manual-override) where the extra ~1.5s worst case is an acceptable tradeoff
+  for a locally-run bot with no external timeout to violate -- test margin/mutation-sensitivity, and
+  docstring self-consistency). Found and fixed 2 real issues the review would very likely have caught: a
+  stale "0.1s vs. 0.5s" comment on the emergency-copy retry call (safe_io.py:466-467, now correctly "vs.
+  1.0s") and a stale docstring in tests/test_safe_io.py's own batch-30 concurrent-ledger test still citing
+  the old 0.5s/3.5s numbers as the reason paper.py needs its own override (now describes the current,
+  already-raised general default as still insufficient for paper.py's specific 30s-lock context). Both
+  fixed, re-linted (real pre-commit hook: ruff/ruff-format/mypy all pass), and re-tested (57/57 pass in
+  tests/test_safe_io.py, +1 net test from batch-30's original count).
+
+[RESOLVED 2026-08-24 -- batch-38 item 4 (M-23e -- decision)] CI never exercises the Windows-only concurrency guards
+Priority: MEDIUM
+Files: .github/workflows/ci.yml
+
+Problem: the cross-process mutual-exclusion tests (cron lock, CrossProcessLock, settlement overlap) are all
+  `skipif(sys.platform != "win32")` -- correct locally, but CI only runs `ubuntu-latest`, so these guards for
+  the actual production platform are silently skipped everywhere CI runs and have zero automated coverage.
+
+Decision: AskUserQuestion presented per this item's explicit "decision" tag -- add a scoped windows-latest CI
+  job running just the concurrency-marked test files (cheap, targeted) vs. document the gap with a comment
+  and no new job. User chose the scoped windows job (the recommended option).
+
+Resolution: added a new `test-windows-concurrency` job (runs-on: windows-latest) to ci.yml, independent of
+  and parallel to the existing ubuntu-latest `test` job, scoped to just the win32-gated test files rather
+  than the whole suite. Initial file list (tests/test_cron_lock.py, tests/test_paper_cross_process_lock.py,
+  tests/test_settlement_monitor.py) was assembled via `grep -rln "sys.platform"`, which MISSED 3 win32-gated
+  tests in tests/test_safe_io.py::TestCrossProcessLock -- caught by the independent LOW-tier review agent
+  (see below), which found those 3 tests use `__import__("sys").platform != "win32"` instead of the more
+  common `sys.platform != "win32"` literal, evading the grep. Confirmed via a repo-wide sweep for `skipif(`
+  that these are the only 4 files with win32-only skip markers, and added
+  `tests/test_safe_io.py::TestCrossProcessLock` (scoped to that one class, not the whole mixed file) to the
+  job. Re-verified: all 76 tests across the 4 win32-gated targets pass on this Windows dev machine (the
+  actual environment windows-latest CI approximates). YAML validated with a `yaml.safe_load` parse check.
+
+  Independent review: 1 general-purpose review agent (LOW tier, non-opus, per this batch's Process note),
+  covering items 1/2/4/5/6/7 together. Found the CrossProcessLock gap above (MEDIUM, fixed) and one
+  documentation-only nit (this item's own handoff prompt to the reviewer over-stated tests/test_pdf_report.py's
+  count as 24 when the actual, re-derived count is 17 -- a mistake in the review PROMPT text, not in the
+  shipped code; noted here so the correct count -- 17, not 24 -- is what's on record). Everything else in
+  items 1/2/4/5/6/7 the agent checked came back clean (see individual item entries above/below).
+
+[RESOLVED 2026-08-24 -- batch-38 item 5 (M-23f)] pdf_report.py -- zero tests, web-reachable, excluded from the coverage gate
+Priority: MEDIUM
+Files: pdf_report.py, pyproject.toml, tests/test_pdf_report.py (new)
+
+Problem: pdf_report.py (277 lines) generates the /api/weekly-report download (web_app.py:1085) and the
+  `py main.py weekly-report` CLI path (main.py:7652) -- a PDF via fpdf2 if installed, HTML fallback
+  otherwise -- with zero test coverage and an explicit `pyproject.toml [tool.coverage.run] omit` entry.
+  `_generate_html`'s two row-building loops interpolated externally-sourced trade fields (ticker, side,
+  quantity, target_date, outcome, entered_at) directly into HTML with no escaping -- ticker in particular is
+  exchange-controlled, not this operator's own input.
+
+Resolution: added `tests/test_pdf_report.py` (17 tests -- re-derived count; an earlier description of this
+  work overstated it as 24, corrected per the independent review's finding above) covering `_generate_html`
+  (rendering, key-field presence, negative-P&L sign handling, empty-trades placeholder text, missing-optional
+  -field None handling, and the XSS-hardening below), `_generate_pdf` (renders a valid %PDF- file, empty
+  trades, Latin-1 sanitizer interaction with a non-Latin-1 ticker), `_pdf()` (the Latin-1 sanitizer helper
+  standalone), and `generate_weekly_report()`'s PDF/HTML fallback branching including the .pdf->.html
+  suffix-downgrade path. Removed pdf_report.py from pyproject.toml's coverage omit list -- confirmed safe via
+  a scoped coverage run first (92% line coverage from the new tests alone, well clear of the ci.yml
+  `--cov-fail-under=40` gate; the only uncovered lines are `_collect_data()`'s live DB-querying body, an
+  integration-style function outside this batch's rendering-logic scope).
+
+  Hardening: added `html.escape()` (aliased `_html` on import, since `_generate_html`'s own body has a local
+  variable literally named `html` that would otherwise shadow the module and raise UnboundLocalError -- caught
+  immediately by the new tests, not a review finding) around all 6 externally-sourced string fields in both
+  row-building loops (originally lines 170-192). Added a positive-control XSS test
+  (test_ticker_html_is_escaped_not_injected_raw): asserts a `<script>alert(1)</script>` ticker is BOTH absent
+  in raw form AND present in its escaped form, proving html.escape genuinely ran rather than the payload
+  merely being dropped somewhere upstream. Mutation-sensitivity for the escape fix was verified without
+  editing the shipped file into a vulnerable state (the auto-mode permission classifier correctly declined
+  that edit as a real XSS-reintroduction) -- instead, monkeypatched `pdf_report._html.escape` to an identity
+  function in a standalone check and confirmed the raw malicious string DOES appear in that simulated
+  pre-fix output, independently confirming the test's mutation sensitivity.
+
+[RESOLVED 2026-08-24 -- batch-38 item 6 (L-7/L-2)] cmd_history's confusion matrix is transposed; cmd_history/cmd_pnl_attribution have zero test references
+Priority: LOW
+Files: output_formatters.py, tests/test_output_formatters.py (new)
+
+Problem: `cmd_history`'s confusion-matrix display built `cm_rows = [[tp, fp], [fn, tn]]` against headers
+  `["", "Pred YES", "Pred NO"]` and row labels "Actual YES"/"Actual NO" -- but tracker.get_confusion_matrix
+  (tracker.py:6556-6596) defines fp = pred YES & actual NO, fn = pred NO & actual YES, so the correct
+  orientation is `[[tp, fn], [fp, tn]]`. Display-only (the P/R/F1 line below is computed from the raw dict,
+  unaffected). cmd_history and cmd_pnl_attribution also had zero test references (L-2).
+
+Resolution: fixed `cm_rows` to `[[tp, fn], [fp, tn]]`. Added tests/test_output_formatters.py (8 tests): a
+  dedicated orientation test using 4 distinct tp/fp/tn/fn values so a swap is unambiguous either way, a
+  precision/recall/F1-unaffected-by-the-display-fix test, an empty-confusion-matrix-skips-block test, plus
+  smoke tests for cmd_history (no-history early-return, and a full run with every dependency populated) and
+  cmd_pnl_attribution (insufficient-data message, brier-ascending sort order, shadow-data footnote
+  presence/absence). Mutation-tested: reverting cm_rows to the original `[[tp, fp], [fn, tn]]` makes the
+  orientation test fail exactly as expected (fp appears in the Actual YES row instead of fn); restored.
+
+[RESOLVED 2026-08-24 -- batch-38 item 7 (L-10)] widened safety-gate stubs can't catch signature drift
+Priority: LOW
+Files: tests/test_safety_gate_signatures.py (new)
+
+Problem: four test files (test_kelly_property.py, test_phase2_batch_i.py, test_trade_improvements.py,
+  test_risk_control.py) all stub the safety gates `paper.is_paused_drawdown`/`paper.is_streak_paused`/
+  `trading_gates.pre_live_trade_check` as `lambda *_a, **_k: <bool>` -- correct for those tests' own purpose
+  (they only care about the gate's return value), but such a stub silently accepts ANY call shape, so none
+  of them would ever fail if the real gate's signature drifted.
+
+Resolution: added tests/test_safety_gate_signatures.py, pinning all 3 real signatures via
+  `inspect.signature` (name, default, POSITIONAL_OR_KEYWORD kind) -- confirmed against the live functions
+  (paper.py:666, paper.py:2846, trading_gates.py:143, all `(client=None)`). A future param change to any of
+  the three now fails loudly here instead of nowhere. Verified the assertion logic itself catches a drift
+  by simulating one standalone (a 2-param fake function correctly failed the `len(params) == 1` check)
+  rather than mutating the real safety-gate functions to prove it.
+
+[RESOLVED 2026-08-24 -- batch-38 item 8 (L-6/schema -- decision)] no schema validation exists for the tracked data/*.json weight files
+Priority: LOW (full opus-review tier for the code half per this batch's own Process note)
+Files: schema_validator.py, tests/test_schema_validator.py (new)
+
+Problem: schema_validator.py validated API responses only -- the audit doc's assumption that it also covers
+  city_weights/condition_weights/seasonal_weights/temperature_scale.json was false. They currently parse and
+  sum correctly today, and consumers already `.get()`-guard the `_uncalibrated` sentinel.
+
+Decision: AskUserQuestion presented per this item's explicit "decision" tag -- add `validate_weight_file()`
+  (+ a test asserting the live files pass) vs. decline and note it. User chose to add it.
+
+Resolution: added two functions, scoped to schema_validator.py + tests only (calibration.py, which writes
+  these files, belongs to batch 37 and was not touched). `validate_weight_file(data, source)` for
+  city_weights/condition_weights/seasonal_weights.json: dict-of-category-to-{source: weight} shape,
+  `_uncalibrated` bool sentinel optional and ignored in the sum, weights must be finite non-negative numbers
+  summing to ~1.0 within 1e-6 absolute tolerance (empty top-level dict is valid -- city_weights.json ships
+  empty pre-calibration). `validate_temperature_scale_file(data, source)` for temperature_scale.json:
+  mirrors ml_bias.py's real loader (`_load_temperature_scale`) exactly, including its specific tolerance --
+  legacy `{"T": <float>}` single-value format via a bare `if "T" in data:` check (matching the loader's own
+  lack of a type guard there, not a stricter reinvention), or the current per-condition format filtered by
+  `isinstance(v, dict) and "T" in v` per key. Both added a test asserting the REAL production data/*.json
+  files (read via paths.py's *_WEIGHTS_PATH/TEMPERATURE_SCALE_PATH constants, which resolve to the main
+  clone's data/ regardless of which worktree the test runs in) currently pass.
+
+  Independent review: the scheduled opus effort=high review agent for this item's code half failed twice
+  with 529 Overloaded (same API-side outage as item 3); substituted an exhaustive adversarial self-review
+  per explicit user direction. Found and fixed 3 real issues: (1) a wrong function-name citation in the
+  docstring (`_load_temp_scale`, which doesn't exist -- the real name is `_load_temperature_scale`); (2) a
+  genuine logic divergence from the real loader -- an initial `and not isinstance(data.get("T"), dict)`
+  guard on the legacy-format branch meant a pathological `{"T": {"T": 1.5, "n": 10}}` shape would validate
+  as True here while the real loader's own bare `if "T" in raw:` check takes the legacy branch regardless of
+  type and crashes on `float(dict)` (caught internally, degrading to "file unreadable") -- removed the extra
+  guard so the validator takes the identical branch and correctly reports invalid; added a regression test
+  with a mutation-check comment describing exactly this divergence; (3) NaN/Infinity silently validated as
+  True in BOTH functions -- `isinstance(nan, (int, float))` is True, NaN compares False against every
+  comparison including `< 0`/`<= 0`, and even poisons the sum-tolerance check (`abs(nan - 1.0) > tolerance`
+  is also False) -- added explicit `math.isfinite()` checks to both the weight-sum loop and the T-value
+  check, each with its own new regression test, each individually mutation-tested (removing the isfinite
+  check makes the corresponding new test fail; restored). Re-linted (real pre-commit hook, all 3 hooks pass)
+  and re-tested after all fixes: 30/30 pass in tests/test_schema_validator.py, including the live-file tests
+  still passing against the real, unmodified production data/*.json files.
+
+Batch-38 process notes: LOW-tier downgrade (self-review + 1 review agent, not opus effort=high) applied to
+  items 1/2/4/5/6/7 per this batch's own explicit Process section; items 3 and 8's code halves got the full
+  opus effort=high review as required, though both required substituting a self-review after both review
+  agents failed twice each to a genuine Claude API-side 529 Overloaded outage during this session (confirmed
+  by the user proactively mid-session) rather than any issue with the review setup itself -- user explicitly
+  chose the self-review substitution over waiting further or pausing. Both AskUserQuestion decision points
+  (item 4's CI job vs. document-only, item 8's add-vs-decline) were presented and answered by the user before
+  implementation, per this batch's own explicit callouts. 262 tests pass across every file touched or added
+  this batch (test counts re-derived fresh via --collect-only immediately before writing this narrative, not
+  recalled from earlier in the session). Full 29-step implementation workflow followed
+  (memory/feedback_implementation_workflow.md), including re-verifying item 1's claim against live state
+  before touching anything (found already resolved by an unrelated prior commit) and re-verifying item 2's
+  "22 tests" claim against live state (found 18, used the live number). Lint via the real pre-commit hook
+  (global python3's pre_commit 4.6.2, not just the main clone's own .venv ruff/mypy, which are meaningfully
+  newer versions than the pinned pre-commit hooks and can disagree) on every touched file, both before and
+  after the post-review fixes.

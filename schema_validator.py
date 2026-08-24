@@ -7,6 +7,7 @@ the bot uses them. Logs warnings on violations rather than crashing.
 from __future__ import annotations
 
 import logging
+import math
 
 from utils import YES_ASK_KEYS, YES_BID_KEYS, coalesce_market_price
 
@@ -193,4 +194,202 @@ def validate_nws_response(data: dict) -> bool:
                 else str(expected_type),
             )
             ok = False
+    return ok
+
+
+_WEIGHT_SUM_TOLERANCE = 1e-6
+
+
+def validate_weight_file(data: dict, source: str = "weights") -> bool:
+    """
+    Validate a source-blend weight file (city_weights.json,
+    condition_weights.json, seasonal_weights.json): a dict mapping a
+    category name (city, condition, or season) to a dict of source-name ->
+    fractional weight, optionally with an `_uncalibrated` bool sentinel
+    (already `.get()`-guarded by every real consumer of these files).
+
+    An empty top-level dict is valid -- city_weights.json ships empty
+    until calibration.py has enough per-city data to populate it, which is
+    a legitimate "not yet calibrated" state, not corruption.
+
+    Returns True if valid, False if any category's weights fail to parse
+    as non-negative numbers summing to ~1.0. Logs a WARNING per violation.
+    """
+    if not isinstance(data, dict):
+        _log.warning(
+            "schema_validator[%s]: expected a dict at top level, got %s",
+            source,
+            type(data).__name__,
+        )
+        return False
+
+    ok = True
+    for category, entry in data.items():
+        if not isinstance(entry, dict):
+            _log.warning(
+                "schema_validator[%s]: category %r value has type %s, expected dict",
+                source,
+                category,
+                type(entry).__name__,
+            )
+            ok = False
+            continue
+
+        uncalibrated = entry.get("_uncalibrated")
+        if uncalibrated is not None and not isinstance(uncalibrated, bool):
+            _log.warning(
+                "schema_validator[%s]: category %r _uncalibrated has type %s, "
+                "expected bool",
+                source,
+                category,
+                type(uncalibrated).__name__,
+            )
+            ok = False
+
+        weight_keys = [k for k in entry if not k.startswith("_")]
+        if not weight_keys:
+            _log.warning(
+                "schema_validator[%s]: category %r has no weight keys", source, category
+            )
+            ok = False
+            continue
+
+        total = 0.0
+        for key in weight_keys:
+            val = entry[key]
+            if isinstance(val, bool) or not isinstance(val, int | float):
+                _log.warning(
+                    "schema_validator[%s]: category %r weight %r has type %s, "
+                    "expected a number",
+                    source,
+                    category,
+                    key,
+                    type(val).__name__,
+                )
+                ok = False
+                continue
+            if not math.isfinite(val):
+                # NaN/inf both satisfy isinstance(val, (int, float)) and
+                # neither `< 0` nor a later `abs(total - 1.0) > tolerance`
+                # sum check catches them -- NaN compares False against
+                # everything (including itself), and inf added into a
+                # running sum makes every subsequent comparison involving
+                # it also NaN/inf-poisoned, silently passing as "valid"
+                # without this explicit check.
+                _log.warning(
+                    "schema_validator[%s]: category %r weight %r is %s, "
+                    "expected a finite number",
+                    source,
+                    category,
+                    key,
+                    val,
+                )
+                ok = False
+                continue
+            if val < 0:
+                _log.warning(
+                    "schema_validator[%s]: category %r weight %r is negative (%s)",
+                    source,
+                    category,
+                    key,
+                    val,
+                )
+                ok = False
+                continue
+            total += val
+
+        if abs(total - 1.0) > _WEIGHT_SUM_TOLERANCE:
+            _log.warning(
+                "schema_validator[%s]: category %r weights sum to %s, expected ~1.0",
+                source,
+                category,
+                total,
+            )
+            ok = False
+
+    return ok
+
+
+def validate_temperature_scale_file(
+    data: dict, source: str = "temperature_scale"
+) -> bool:
+    """
+    Validate temperature_scale.json: either the legacy single-value format
+    ({"T": <float>}) or the current per-condition format ({condition:
+    {"T": <float>, "n": <int>}, ...}) that ml_bias.py's own loader (see
+    `_load_temperature_scale`) already parses -- this mirrors that loader's exact
+    tolerance (any top-level key whose value is a dict with a numeric "T"
+    is treated as a condition entry; other keys are ignored, matching the
+    loader's own `if isinstance(v, dict) and "T" in v` filter) rather than
+    inventing a stricter shape the loader doesn't actually require.
+
+    Returns True if valid, False if a "T" value is present but not a
+    positive number, or a present "n" isn't a non-negative int. Logs a
+    WARNING per violation.
+    """
+    if not isinstance(data, dict):
+        _log.warning(
+            "schema_validator[%s]: expected a dict at top level, got %s",
+            source,
+            type(data).__name__,
+        )
+        return False
+
+    ok = True
+
+    def _check_t(label: str, t_val: object) -> bool:
+        if isinstance(t_val, bool) or not isinstance(t_val, int | float):
+            _log.warning(
+                "schema_validator[%s]: %s T has type %s, expected a number",
+                source,
+                label,
+                type(t_val).__name__,
+            )
+            return False
+        # NaN/inf both satisfy isinstance(t_val, (int, float)) and NaN
+        # compares False against everything including `<= 0` -- without
+        # this explicit check a NaN or infinite T silently passes.
+        if not math.isfinite(t_val):
+            _log.warning(
+                "schema_validator[%s]: %s T is %s, expected a finite number",
+                source,
+                label,
+                t_val,
+            )
+            return False
+        if t_val <= 0:
+            _log.warning(
+                "schema_validator[%s]: %s T is %s, expected > 0", source, label, t_val
+            )
+            return False
+        return True
+
+    if "T" in data:
+        # Legacy single-value format -- matches the real loader's own
+        # `if "T" in raw:` check exactly (no type guard): a top-level "T"
+        # key of ANY shape takes this branch there too, and a non-numeric
+        # value (e.g. a dict) crashes the loader's `float(raw["T"])`
+        # (caught by its own try/except, degrading to "file unreadable").
+        # _check_t below reports that same shape mismatch as a validator
+        # warning instead of a swallowed exception.
+        ok = _check_t("legacy top-level", data["T"])
+        return ok
+
+    for condition, entry in data.items():
+        if not isinstance(entry, dict) or "T" not in entry:
+            continue  # matches ml_bias.py's own loader tolerance for stray keys
+        if not _check_t(f"condition {condition!r}", entry["T"]):
+            ok = False
+        n_val = entry.get("n")
+        if n_val is not None and (
+            isinstance(n_val, bool) or not isinstance(n_val, int) or n_val < 0
+        ):
+            _log.warning(
+                "schema_validator[%s]: condition %r n is %r, expected a non-negative int",
+                source,
+                condition,
+                n_val,
+            )
+            ok = False
+
     return ok

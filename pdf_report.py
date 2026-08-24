@@ -9,6 +9,7 @@ Usage:
 
 from __future__ import annotations
 
+import html as _html
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -170,12 +171,12 @@ def _generate_html(data: dict, output_path: Path) -> None:
     open_rows = ""
     for t in data["open_trades"]:
         open_rows += (
-            f"<tr><td>{t.get('ticker', '')[:28]}</td>"
-            f"<td>{t.get('side', '').upper()}</td>"
-            f"<td>{t.get('quantity', '')}</td>"
+            f"<tr><td>{_html.escape(str(t.get('ticker', ''))[:28])}</td>"
+            f"<td>{_html.escape(str(t.get('side', '')).upper())}</td>"
+            f"<td>{_html.escape(str(t.get('quantity', '')))}</td>"
             f"<td>${t.get('entry_price', 0):.3f}</td>"
             f"<td>${t.get('cost', 0):.2f}</td>"
-            f"<td>{t.get('target_date', '')}</td></tr>"
+            f"<td>{_html.escape(str(t.get('target_date', '')))}</td></tr>"
         )
 
     settled_rows = ""
@@ -184,11 +185,11 @@ def _generate_html(data: dict, output_path: Path) -> None:
         p_cls = "pos" if p >= 0 else "neg"
         p_str = f"+${p:.2f}" if p >= 0 else f"-${abs(p):.2f}"
         settled_rows += (
-            f"<tr><td>{t.get('ticker', '')[:28]}</td>"
-            f"<td>{t.get('side', '').upper()}</td>"
-            f"<td>{(t.get('outcome') or '—').upper()}</td>"
+            f"<tr><td>{_html.escape(str(t.get('ticker', ''))[:28])}</td>"
+            f"<td>{_html.escape(str(t.get('side', '')).upper())}</td>"
+            f"<td>{_html.escape(str(t.get('outcome') or '—').upper())}</td>"
             f"<td class='{p_cls}'>{p_str}</td>"
-            f"<td>{(t.get('entered_at') or '')[:10]}</td></tr>"
+            f"<td>{_html.escape(str(t.get('entered_at') or '')[:10])}</td></tr>"
         )
 
     html = f"""<!DOCTYPE html>

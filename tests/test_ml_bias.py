@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -9,6 +10,11 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+_requires_properscoring = pytest.mark.skipif(
+    importlib.util.find_spec("properscoring") is None,
+    reason="properscoring not installed (production degrades gracefully via main.py's own guard)",
+)
 
 
 class TestMLBias:
@@ -1176,6 +1182,7 @@ class TestTrainAllTemperatureScalingHourlyPool:
 
 
 class TestEmos:
+    @_requires_properscoring
     def test_fit_emos_returns_four_floats(self):
         from ml_bias import fit_emos
 
@@ -1188,6 +1195,7 @@ class TestEmos:
         assert c >= 0.0, f"c={c} must be non-negative"
         assert d >= 0.0, f"d={d} must be non-negative"
 
+    @_requires_properscoring
     def test_fit_emos_raises_on_optimizer_non_convergence(self, monkeypatch):
         """Audit batch-28 item 3: fit_emos must not silently return an
         unconverged fit -- mirrors _fit_platt's own res.success check.

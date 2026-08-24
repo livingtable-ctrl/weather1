@@ -340,8 +340,8 @@ def cmd_history(client: KalshiClient) -> None:  # noqa: PLR0912, PLR0915
                 else 0.0
             )
             cm_rows = [
-                ["Actual YES", tp, fp],
-                ["Actual NO", fn, tn],
+                ["Actual YES", tp, fn],
+                ["Actual NO", fp, tn],
             ]
             print(
                 tabulate(

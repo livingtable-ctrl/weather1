@@ -4,9 +4,15 @@ Tests the guards (kill switch, accuracy halt) at the entry point level.
 All external I/O is mocked.
 """
 
+import importlib.util
 from unittest.mock import MagicMock
 
 import pytest
+
+_requires_properscoring = pytest.mark.skipif(
+    importlib.util.find_spec("properscoring") is None,
+    reason="properscoring not installed (production degrades gracefully via main.py's own guard)",
+)
 
 
 @pytest.fixture()
@@ -687,6 +693,7 @@ class TestEmosActivationGate:
     above/below/between predictions onto EMOS -- with no separate go-live
     step, exactly the incident recorded in backlog.txt's EMOS entry."""
 
+    @_requires_properscoring
     def test_dry_run_does_not_write_params_file(
         self, isolated_emos_paths, emos_training_rows, capsys
     ):
@@ -713,6 +720,7 @@ class TestEmosActivationGate:
         main._cmd_emos_train(activate=False)  # must not raise
         assert not (isolated_emos_paths / "emos_params.json").exists()
 
+    @_requires_properscoring
     def test_activate_confirmed_writes_params_and_resets_temperature_scale(
         self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
     ):
@@ -753,6 +761,7 @@ class TestEmosActivationGate:
         out = capsys.readouterr().out
         assert "LIVE" in out
 
+    @_requires_properscoring
     def test_activate_declined_writes_nothing(
         self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
     ):
@@ -780,6 +789,7 @@ class TestEmosActivationGate:
 
         assert not (isolated_emos_paths / "emos_params.json").exists()
 
+    @_requires_properscoring
     def test_activate_refuses_below_variance_floor(
         self, isolated_emos_paths, emos_training_rows_thin, monkeypatch, capsys
     ):
@@ -798,6 +808,7 @@ class TestEmosActivationGate:
         out = capsys.readouterr().out
         assert "REFUSING" in out
 
+    @_requires_properscoring
     def test_activate_force_overrides_variance_floor(
         self, isolated_emos_paths, emos_training_rows_thin, monkeypatch
     ):
@@ -810,6 +821,7 @@ class TestEmosActivationGate:
 
         assert (isolated_emos_paths / "emos_params.json").exists()
 
+    @_requires_properscoring
     def test_activate_refuses_while_cron_is_running(
         self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
     ):
@@ -829,6 +841,7 @@ class TestEmosActivationGate:
         out = capsys.readouterr().out
         assert "cron cycle is currently running" in out
 
+    @_requires_properscoring
     def test_activate_refuses_if_cron_starts_during_confirmation_wait(
         self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
     ):
@@ -858,6 +871,7 @@ class TestEmosActivationGate:
         out = capsys.readouterr().out
         assert "cron cycle started while waiting" in out
 
+    @_requires_properscoring
     def test_activate_rolls_back_if_temperature_reset_fails(
         self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
     ):
@@ -891,6 +905,7 @@ class TestEmosRetrainAndCrpsGate:
     re-snapshot temperature_scale.json (item 2), and a structurally-broken
     or held-out-CRPS-losing fit must not reach save_emos_params (item 3)."""
 
+    @_requires_properscoring
     def test_retrain_of_already_active_emos_skips_temperature_scale_reset(
         self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
     ):
@@ -970,6 +985,7 @@ class TestEmosRetrainAndCrpsGate:
         out = capsys.readouterr().out
         assert "RETRAIN" in out
 
+    @_requires_properscoring
     def test_diverged_t_pin_triggers_full_reset_instead_of_skip(
         self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
     ):
@@ -1024,6 +1040,7 @@ class TestEmosRetrainAndCrpsGate:
             "divergence must be fully resolved after this retrain"
         )
 
+    @_requires_properscoring
     def test_invalid_ab_fit_refused_even_with_force(
         self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
     ):
@@ -1050,6 +1067,7 @@ class TestEmosRetrainAndCrpsGate:
         out = capsys.readouterr().out
         assert "INVALID FIT" in out
 
+    @_requires_properscoring
     def test_held_out_crps_gate_refuses_worse_than_baseline_fit(
         self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
     ):
@@ -1082,6 +1100,7 @@ class TestEmosRetrainAndCrpsGate:
         assert "REFUSING to activate" in out
         assert "held-out data" in out
 
+    @_requires_properscoring
     def test_held_out_crps_gate_force_overrides(
         self, isolated_emos_paths, emos_training_rows, monkeypatch
     ):
@@ -1118,6 +1137,7 @@ class TestEmosRetrainAndCrpsGate:
 
         assert not (isolated_emos_paths / "emos_params.json").exists()
 
+    @_requires_properscoring
     def test_held_out_rows_are_never_used_in_fitting(
         self, isolated_emos_paths, monkeypatch, capsys
     ):
@@ -1157,6 +1177,7 @@ class TestEmosRetrainAndCrpsGate:
             "have influenced stage-1 fitting"
         )
 
+    @_requires_properscoring
     def test_held_out_crps_gate_beaten_by_incumbent_refuses_retrain(
         self, isolated_emos_paths, emos_training_rows, monkeypatch, capsys
     ):
@@ -1296,6 +1317,7 @@ class TestEmosStatusAndDeactivate:
         out = capsys.readouterr().out
         assert "cron cycle started while waiting" in out
 
+    @_requires_properscoring
     def test_deactivate_restores_pre_activation_temperature_scale(
         self, isolated_emos_paths, emos_training_rows, monkeypatch
     ):

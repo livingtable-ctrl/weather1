@@ -39,3 +39,37 @@ jobs:
 
       - name: Run tests with coverage
         run: pytest -v --cov=. --cov-report=term-missing --cov-fail-under=40
+
+  test-windows-concurrency:
+    # Batch-38 item M-23e: the cross-process mutual-exclusion guards (cron
+    # lock, CrossProcessLock, settlement overlap) are all skipif(win32-only)
+    # -- correct, since they exercise msvcrt locking that has no POSIX
+    # equivalent -- but that also means the ubuntu-latest job above never
+    # runs a single line of them, even though win32 is the production
+    # platform they protect. Scoped to just the win32-gated tests rather
+    # than the whole suite (test_safe_io.py::TestCrossProcessLock is a
+    # single class within an otherwise-mixed, mostly-non-Windows-specific
+    # file, hence the ::TestCrossProcessLock scoping rather than the whole
+    # file): this job exists to exercise the concurrency guards
+    # specifically, not to duplicate the ubuntu job's full coverage run on
+    # a slower/costlier runner.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run Windows concurrency guard tests
+        run: pytest -v tests/test_cron_lock.py tests/test_paper_cross_process_lock.py tests/test_settlement_monitor.py tests/test_safe_io.py::TestCrossProcessLock
