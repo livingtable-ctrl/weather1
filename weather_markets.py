@@ -1206,6 +1206,60 @@ def _storm_order_gates_active() -> bool:
         return False
 
 
+# batch-40 "Between-bracket calibration design", Decision 2 (shadow-only
+# until validated): unlike rain/snow/hourly/hurricane above, between-bracket
+# trades are NOT a new market family -- KXHIGH*/KXLOW* between-buckets are
+# the same tickers as above/below, fully live today. This gate governs only
+# the interim risk posture while _dynamic_lock_in_confidence's between usage
+# (metar._between_dynamic_lock_in_confidence, see its own docstring) has
+# never been validated against outcomes: real exposure was ~0 when this
+# landed (1 shadow prediction since 2026-08-09, 0 real trades), so leaving
+# BETWEEN_TRADING_ENABLED unset makes shadow-only the default from this
+# deploy forward, same as every other family's rollout. Mirrors
+# _storm_order_gates_active()'s exact shape; count_settled_between_
+# predictions() is scoped to condition_type='between' AND
+# method='metar_lockout' (the only way a between trade is ever priced --
+# see is_between_bracket_ticker's own docstring), not a ticker-prefix count
+# like the other families use, since between shares its tickers with
+# above/below.
+_BETWEEN_GATE_MIN_SAMPLES: int = 20
+
+
+def _between_metar_gates_active() -> bool:
+    """Return True only when BETWEEN_TRADING_ENABLED=1 AND >= 20 settled
+    between-bracket METAR-lock predictions. Mirrors
+    _storm_order_gates_active()'s exact shape. Until both hold, between
+    opportunities are still fully analyzed and logged (is_shadow=True,
+    order_executor._auto_place_trades' per-opportunity routing) so real
+    calibration data accumulates risk-free (tracker.get_sameday_calibration's
+    by_condition_type breakout); no real order (paper or live) is ever
+    placed for a between-bracket ticker before this is True.
+
+    Deliberately independent of tracker._ALWAYS_EXCLUDED_CONDITION_TYPES /
+    _excluded_brier_condition_types(): that mechanism controls whether
+    'between' rows count toward the SHARED aggregate Brier score used for
+    overall model quality (permanently excluded there, by design, because
+    between's calibration gap is a structurally different scale from
+    above/below's -- see that constant's own docstring), which is a
+    different question from whether a between trade is allowed to use real
+    capital at all. This gate answers the second question; it does not
+    touch, and should not be coupled to, the first."""
+    import os
+
+    if os.getenv("BETWEEN_TRADING_ENABLED", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return False
+    try:
+        from tracker import count_settled_between_predictions
+
+        return count_settled_between_predictions() >= _BETWEEN_GATE_MIN_SAMPLES
+    except Exception:
+        return False
+
+
 def _load_platt_models() -> dict[str, tuple[float, float]]:
     """Load platt_models.json, reloading whenever the file's mtime changes.
 
@@ -5349,6 +5403,39 @@ def is_storm_order_ticker(ticker: str) -> bool:
     shape. Series-ticker-exact, not substring."""
     series = ticker.upper().split("-")[0]
     return series in _STORM_ORDER_SERIES
+
+
+def is_between_bracket_ticker(ticker: str) -> bool:
+    """True for a KXHIGH*/KXLOW* between-bucket ticker (Kalshi's "-B<val>"
+    suffix, e.g. "...-B67.5") -- batch-40 "Between-bracket calibration
+    design", single source of truth for _between_metar_gates_active()'s
+    shadow-only routing (order_executor._auto_place_trades,
+    paper.check_position_limits, main.cmd_order/_quick_paper_buy/cmd_paper),
+    so those call sites can't independently drift out of sync with each
+    other or with _parse_market_condition()'s own "B" branch, which this
+    mirrors exactly (`-([TB])(\\d+(?:\\.\\d+)?)$`, kind == "B").
+
+    Unlike rain/snow/hourly/hurricane, between-bracket trades share their
+    ticker family with above/below (same KXHIGH*/KXLOW* series) -- the "-T"
+    vs "-B" suffix, not a series/city prefix, is what identifies a between
+    ticker, and that suffix is a static property of which specific bracket
+    the ticker names, not something that varies with the current
+    temperature reading -- so this is exactly as cheap and reliable a
+    classifier for between as ticker-prefix matching is for the other
+    families, unlike attempting to derive between-ness from a live METAR
+    read (which check_metar_lockout's confidence math needs, but ticker
+    identity does not).
+
+    A between-bracket ticker's confidence is ALWAYS priced by
+    metar._between_dynamic_lock_in_confidence() (_metar_lock_in's "between"
+    branch is the only place a between condition_type is ever scored --
+    there is no forecast/ensemble path for it), so gating on ticker
+    identity alone, without also checking whether the METAR lock actually
+    fired, is not over-broad: a between ticker that never locks never
+    reaches analyze_trade's tradeable-edge gate regardless of this
+    function's answer.
+    """
+    return bool(re.search(r"-B\d+(?:\.\d+)?$", ticker.upper()))
 
 
 # Atlantic tropical-storm/hurricane name list, in NHC's own fixed
@@ -11469,7 +11556,10 @@ def _metar_lock_in(
                 _lockout = {
                     "locked": True,
                     "outcome": "no",
-                    "confidence": _metar._dynamic_lock_in_confidence(
+                    # batch-40 Decision 3: between-specific fork, not the
+                    # above/below-owned _dynamic_lock_in_confidence -- see
+                    # _between_dynamic_lock_in_confidence's own docstring.
+                    "confidence": _metar._between_dynamic_lock_in_confidence(
                         _clearance, _lh, _margin
                     ),
                     "reason": (
@@ -11487,7 +11577,10 @@ def _metar_lock_in(
                 _lockout = {
                     "locked": True,
                     "outcome": "no",
-                    "confidence": _metar._dynamic_lock_in_confidence(
+                    # batch-40 Decision 3: between-specific fork, not the
+                    # above/below-owned _dynamic_lock_in_confidence -- see
+                    # _between_dynamic_lock_in_confidence's own docstring.
+                    "confidence": _metar._between_dynamic_lock_in_confidence(
                         _clearance, _lh, _margin
                     ),
                     "reason": (
@@ -11585,7 +11678,10 @@ def _metar_lock_in(
                     _lockout = {
                         "locked": True,
                         "outcome": "yes",
-                        "confidence": _metar._dynamic_lock_in_confidence(
+                        # batch-40 Decision 3: between-specific fork, not the
+                        # above/below-owned _dynamic_lock_in_confidence -- see
+                        # _between_dynamic_lock_in_confidence's own docstring.
+                        "confidence": _metar._between_dynamic_lock_in_confidence(
                             _risk_clearance, _lh, _yes_inband_margin
                         ),
                         "reason": (

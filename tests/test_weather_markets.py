@@ -7940,3 +7940,185 @@ class TestComputePersistenceProbLocalDateGuard:
             days_out=0,
         )
         assert captured["current_temp"] == pytest.approx(91.0)
+
+
+# ── batch-40 "Between-bracket calibration design" ────────────────────────────
+
+
+class TestIsBetweenBracketTicker:
+    """weather_markets.is_between_bracket_ticker() -- single source of
+    truth for between-shadow-routing, mirroring _parse_market_condition's
+    own "-B<val>" suffix detection."""
+
+    def test_between_bucket_ticker_is_true(self):
+        import weather_markets as wm
+
+        assert wm.is_between_bracket_ticker("KXHIGHNY-26AUG24-B67.5") is True
+
+    def test_above_below_ticker_is_false(self):
+        import weather_markets as wm
+
+        assert wm.is_between_bracket_ticker("KXHIGHNY-26AUG24-T70") is False
+        assert wm.is_between_bracket_ticker("KXLOWNY-26AUG24-T40") is False
+
+    def test_low_market_between_ticker_is_true(self):
+        """Between-buckets exist for both daily-high and daily-low series."""
+        import weather_markets as wm
+
+        assert wm.is_between_bracket_ticker("KXLOWCHI-26AUG24-B32.5") is True
+
+    def test_lowercase_ticker_still_matches(self):
+        import weather_markets as wm
+
+        assert wm.is_between_bracket_ticker("kxhighny-26aug24-b67.5") is True
+
+    def test_unrelated_ticker_is_false(self):
+        import weather_markets as wm
+
+        assert wm.is_between_bracket_ticker("KXRAINDENM-26JUL-7") is False
+
+    def test_integer_bucket_value_matches(self):
+        """-B<val> doesn't require a decimal point."""
+        import weather_markets as wm
+
+        assert wm.is_between_bracket_ticker("KXHIGHNY-26AUG24-B68") is True
+
+
+class TestBetweenMetarGatesActive:
+    """_between_metar_gates_active() mirrors _storm_order_gates_active()'s
+    exact shape -- env var AND a settled-sample floor, both required."""
+
+    def test_false_when_env_var_unset(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.delenv("BETWEEN_TRADING_ENABLED", raising=False)
+        monkeypatch.setattr("tracker.count_settled_between_predictions", lambda: 999)
+        assert wm._between_metar_gates_active() is False
+
+    def test_false_when_env_var_set_but_below_sample_floor(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setenv("BETWEEN_TRADING_ENABLED", "1")
+        monkeypatch.setattr("tracker.count_settled_between_predictions", lambda: 19)
+        assert wm._between_metar_gates_active() is False
+
+    def test_true_when_env_var_set_and_sample_floor_met(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setenv("BETWEEN_TRADING_ENABLED", "1")
+        monkeypatch.setattr("tracker.count_settled_between_predictions", lambda: 20)
+        assert wm._between_metar_gates_active() is True
+
+    def test_false_when_sample_floor_met_but_env_var_unset(self, monkeypatch):
+        """Both conditions are required -- neither alone suffices."""
+        import weather_markets as wm
+
+        monkeypatch.delenv("BETWEEN_TRADING_ENABLED", raising=False)
+        monkeypatch.setattr("tracker.count_settled_between_predictions", lambda: 500)
+        assert wm._between_metar_gates_active() is False
+
+    def test_never_raises_on_count_failure(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setenv("BETWEEN_TRADING_ENABLED", "1")
+
+        def _boom():
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr("tracker.count_settled_between_predictions", _boom)
+        assert wm._between_metar_gates_active() is False
+
+
+class TestMetarLockInUsesBetweenSpecificFork:
+    """Decision 3 ("fork a between-specific variant"): _metar_lock_in's
+    between branch must call metar._between_dynamic_lock_in_confidence, NOT
+    the shared metar._dynamic_lock_in_confidence above/below uses -- proven
+    by mutation, not just numeric-output equality (the two are
+    byte-identical today, so a numeric comparison alone couldn't tell them
+    apart; that's exactly why TestBetweenLockInDynamicConfidence in
+    test_phase2_batch_d.py still passes unchanged after this fork)."""
+
+    def _call(self, ticker="KXHIGHNY-26AUG24-B71.0", local_hour=16):
+        from datetime import datetime
+        from unittest.mock import MagicMock, patch
+        from zoneinfo import ZoneInfo
+
+        import metar as _metar
+        import weather_markets as wm
+
+        today = datetime.now(ZoneInfo("America/New_York")).date()
+        fake_obs_time = MagicMock()
+        fake_obs_local = MagicMock(hour=local_hour)
+        fake_obs_local.date.return_value = today
+        fake_obs_time.astimezone.return_value = fake_obs_local
+
+        # Inside a 2F-wide bucket [70.0, 72.0], comp_temp=71.0 -> a YES lock
+        # (risk_clearance = 1.0 = yes_inband_margin exactly).
+        obs = {"current_temp_f": 71.0, "obs_time": fake_obs_time}
+
+        with patch.object(wm, "_metar_station_for_city", return_value="KJFK"):
+            with (
+                patch.object(_metar, "fetch_metar", return_value=obs),
+                patch.object(
+                    _metar,
+                    "fetch_metar_daily_extreme",
+                    return_value=71.0,
+                ),
+            ):
+                return wm._metar_lock_in(
+                    city="NYC",
+                    target_date=today,
+                    condition={"type": "between", "lower": 70.0, "upper": 72.0},
+                    ticker=ticker,
+                )
+
+    def test_yes_lock_calls_between_specific_fork_not_shared_function(
+        self, monkeypatch
+    ):
+        import metar as _metar
+
+        shared_calls = []
+        fork_calls = []
+        monkeypatch.setattr(
+            _metar,
+            "_dynamic_lock_in_confidence",
+            lambda *a, **k: shared_calls.append((a, k)) or 0.5,
+        )
+        monkeypatch.setattr(
+            _metar,
+            "_between_dynamic_lock_in_confidence",
+            lambda *a, **k: fork_calls.append((a, k)) or 0.66,
+        )
+
+        locked, _prob, details = self._call()
+
+        assert locked is True
+        assert details["outcome"] == "yes"
+        assert details["confidence"] == 0.66
+        assert len(fork_calls) == 1, "between branch must call the fork"
+        assert shared_calls == [], "between branch must NOT call the shared function"
+
+    def test_forked_function_is_a_distinct_object_from_the_shared_one(self):
+        import metar as _metar
+
+        assert (
+            _metar._between_dynamic_lock_in_confidence
+            is not _metar._dynamic_lock_in_confidence
+        )
+
+    def test_fork_and_shared_produce_identical_values_today(self):
+        """The fork is a code-ownership boundary, not a recalibration --
+        today's math must still match exactly (batch-40's decision text is
+        explicit: don't redesign the formula in this batch)."""
+        import metar as _metar
+
+        for clearance, hour, margin in [
+            (0.0, 14, 3.0),
+            (3.0, 14, 3.0),
+            (6.0, 17, 3.0),
+            (1.0, 16, 1.0),
+            (13.0, 20, 3.0),
+        ]:
+            assert _metar._between_dynamic_lock_in_confidence(
+                clearance, hour, margin
+            ) == _metar._dynamic_lock_in_confidence(clearance, hour, margin)

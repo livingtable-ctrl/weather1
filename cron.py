@@ -1881,6 +1881,22 @@ def _cmd_cron_body(
     except Exception as _e:
         _log.debug("cmd_cron: check_condition_type_weakness failed: %s", _e)
 
+    # Same-day condition-type weakness check (log-only, non-blocking -- see
+    # tracker.check_sameday_condition_type_weakness's own docstring). Same
+    # shape as the multi-day check just above, but the multi-day one reads
+    # multiday_predictions (days_out>=1) and can never see a between row --
+    # this is where batch-40's between-specific visibility actually surfaces
+    # operationally, not just in the dashboard.
+    try:
+        from tracker import (
+            check_sameday_condition_type_weakness as _check_sameday_cond_weak,
+        )
+
+        for _sameday_cond_alert in _check_sameday_cond_weak():
+            _log.warning("cmd_cron: %s", _sameday_cond_alert)
+    except Exception as _e:
+        _log.debug("cmd_cron: check_sameday_condition_type_weakness failed: %s", _e)
+
     # Auto-extend ensemble pin when it is within 48 h of expiry and directional
     # accuracy is still healthy. The pin prevents auto-retirement of a method whose
     # Brier is high due to stop-loss exits rather than bad direction. Without this,

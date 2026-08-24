@@ -45,6 +45,7 @@ from weather_markets import (
     _KXRAIN_MONTHLY_CITY,
     _KXSNOW_MONTHLY_CITY,
     _KXTEMP_HOURLY_CITY,
+    _between_metar_gates_active,
     _hourly_gates_active,
     _hurricane_count_gates_active,
     _hurricane_next_event_gates_active,
@@ -55,6 +56,7 @@ from weather_markets import (
     analyze_trade,
     enrich_with_forecast,
     get_weather_markets,
+    is_between_bracket_ticker,
     is_hurricane_count_ticker,
     is_hurricane_next_event_ticker,
     is_storm_order_ticker,
@@ -3948,6 +3950,7 @@ def _auto_place_trades(
     _hurricane_count_gate_active = _hurricane_count_gates_active()
     _hurricane_next_event_gate_active = _hurricane_next_event_gates_active()
     _storm_order_gate_active = _storm_order_gates_active()
+    _between_gate_active = _between_metar_gates_active()
 
     for item in opps:
         # Per-signal kill switch check — a mid-batch activation (user writes the file
@@ -4023,6 +4026,20 @@ def _auto_place_trades(
         if is_storm_order_ticker(ticker) and not _storm_order_gate_active:
             _shadow_batch.append(item)
             _shadow_batch_labels.append((ticker, "storm_order_shadow_only"))
+            continue
+
+        # batch-40 "Between-bracket calibration design", Decision 2:
+        # between-bracket trades share their ticker family with above/below
+        # (same KXHIGH*/KXLOW* series), so is_between_bracket_ticker()
+        # identifies them by the "-B<val>" suffix rather than a series
+        # prefix -- see that function's own docstring. Unlike the other
+        # shadow families above, this gate defaults to shadow-only from this
+        # deploy forward (BETWEEN_TRADING_ENABLED unset), not "was already
+        # live and stays live" -- real exposure was ~0 (1 shadow prediction,
+        # 0 real trades) when this landed.
+        if is_between_bracket_ticker(ticker) and not _between_gate_active:
+            _shadow_batch.append(item)
+            _shadow_batch_labels.append((ticker, "between_metar_shadow_only"))
             continue
 
         # Merge ticker from market dict so tuple-format callers aren't penalised.

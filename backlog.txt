@@ -26813,6 +26813,27 @@ Problem:
   Full record: none (not from the original max-depth audit -- surfaced by
   independent opus review of this session's own fix).
 
+Update 2026-08-24 (batch-40 "Between-bracket calibration design", M-14 /
+  WM2-F2): new supporting evidence for this entry's NO-lock asymmetry, from
+  a skeptic review of METAR-lockout confidence calibration generally.
+  Independently measured against the live DB: NO-locks (same METAR-lockout
+  confidence formula this entry's own HIGH-market gap concerns) predicted
+  ~93.0% NO-confidence on average but settled at only a 50.0% actual NO
+  rate (n=6) -- i.e. the formula is confidently wrong on NO-locks roughly
+  as often as it's right, the same class of overconfidence this entry's
+  own YES-lock evidence (0.7661 max calibrated YES vs 0.5954 max calibrated
+  NO, both below cron.py's 0.80 force-close gate) already documents. Not a
+  new entry -- appended here per this batch's own instruction not to
+  re-file it. Does not itself change this entry's Priority or
+  recommendation; it's additional confirmation the underlying NO-lock
+  confidence is unreliable, from a different investigation than the one
+  that originally filed this entry. (Between-bracket trades specifically --
+  this update's original context -- are now shadow-only pending their own
+  calibration evidence: weather_markets._between_metar_gates_active(),
+  tracker.get_sameday_calibration's new by_condition_type breakout. This
+  entry's own HIGH-market above/below gap is unaffected by that gate and
+  remains open.)
+
 [OPEN 2026-08-22 -- found by independent opus review (effort=high) of this
 session's own settlement_monitor.py date-guard fix, while checking whether
 hoisting one guard per check_city_settlement call (rather than per-market)
@@ -29350,3 +29371,120 @@ Resolution notes:
   this batch ran -- harmless before item (d)'s fix, but item (d) would now reject them with 400. Bumped
   to year-2099 sentinel dates (matching the file's own "2099-01-01" far-future convention elsewhere),
   since none of those four tests exercise days_out and the exact date value wasn't otherwise asserted on.
+
+[RESOLVED 2026-08-24 -- batch-40 (M-14/WM2-F2, skeptic-verified)] between-bracket METAR-lock trades priced off a never-validated confidence formula, invisible to every measurement/calibration surface, with the Brier score feeding the Kelly cap structurally unable to see them
+Priority: HIGH (trade-entry pricing) -- exposure was LOW at landing time (1 shadow prediction since 2026-08-09, 0 real trades)
+Files: metar.py (new _between_dynamic_lock_in_confidence), weather_markets.py (new is_between_bracket_ticker,
+  _between_metar_gates_active; _metar_lock_in's between branch's 3 confidence call sites redirected to the
+  fork), tracker.py (new count_settled_between_predictions, check_sameday_condition_type_weakness;
+  get_sameday_calibration's new by_condition_type breakout; _ALWAYS_EXCLUDED_CONDITION_TYPES docstring
+  clarified), cron.py (wires check_sameday_condition_type_weakness into cmd_cron), order_executor.py
+  (_auto_place_trades shadow-routes between), paper.py (check_position_limits backstop), main.py (cmd_order/
+  _quick_paper_buy/cmd_paper refuse-outright guards), tests/test_weather_markets.py,
+  tests/test_tracker.py, new tests/test_between_bracket_shadow.py
+
+Problem:
+  100% of between-bracket trades exist only via _metar_lock_in, pricing off metar._dynamic_lock_in_confidence
+  -- a hardcoded 0.72 + 0.18*clearance_factor + 0.07*hour_factor the code's own comment already flagged as
+  never validated against outcomes. Every correction stage (beta calibration, GBM, Platt, sameday T-scaling)
+  and every measurement stage (get_metar_lockout_calibration_data, brier_by_condition_type_rolling/
+  check_condition_type_weakness, the sameday T fit, the settlement calibrator) excludes 'between' -- and
+  tracker.brier_score(), which feeds paper._dynamic_kelly_cap(), excludes both days_out=0 and 'between', so
+  the Kelly cap governing between trades was set by a Brier score that structurally cannot see them. The
+  formula's only calibration evidence is its above/below sibling on the same METAR-lockout code path:
+  predicted 89.6% vs actual 70.4% on YES-locks (n=27), 93.0% vs 50.0% on NO-locks (n=6) -- that evidence does
+  NOT directly transfer numerically (between-YES carries a hazard above/below lacks: an in-band extreme can
+  still exit the band on either side), but the dominant error source (observation-vs-settlement mismatch) is
+  condition-type-agnostic, so it's directionally informative that the same raw formula is unreliable.
+  Design batch, not a mechanical fix -- required a user go/no-go before any code (see Resolution).
+  Related, already tracked, not re-filed: the HIGH-market non-monotone NO-lock gap (backlog.txt ~L26761,
+  "weather_markets._metar_lock_in's above/below branch has no monotonic-safety veto for HIGH markets") --
+  this finding's NO-lock evidence (93.0% predicted -> 50.0% actual, n=6) was appended there as new
+  supporting evidence 2026-08-24, not duplicated as a separate entry.
+
+Resolution (2026-08-24):
+  Dependency verified first: batches 35/36/37 (all landed in origin/master, confirmed via
+  `git log --oneline origin/master` before this batch's worktree was even created) all touch
+  weather_markets.py/tracker.py/metar.py, which this batch also touches.
+  3 decisions put to the user via AskUserQuestion, each with a recommendation grounded in re-verified
+  live-code findings (not just the handoff's own framing) -- user accepted all 3 recommendations:
+  (1) Measurement first: YES, build it. (2) Interim risk posture: shadow-only until validated (mirrors the
+  repo's existing graduation/shadow convention -- rain/snow/hourly/hurricane all ship this way; near-zero
+  opportunity cost given ~0 real exposure at landing). (3) Formula ownership: fork a between-specific
+  variant rather than share with above/below (decouples between from batch-37's above/below calibration
+  refit loop, especially now that between sits under a different gate).
+  Decision 1 (measurement): tracker.count_settled_between_predictions() (condition_type='between' AND
+  method='metar_lockout' AND days_out=0 -- the exact population get_metar_lockout_calibration_data() already
+  selects; between shares its ticker family with above/below, so no ticker-prefix filter is possible here
+  the way count_settled_rain_predictions() etc. use). get_sameday_calibration()'s new by_condition_type
+  breakout (same n/brier/mean_prob/mean_actual/bias shape as its existing by_time_of_day breakdown, grouped
+  in Python from the same query -- NULL condition_type rows grouped as "unspecified", not dropped) makes
+  between visible on the dashboard (/api/sameday-calibration) where it was previously silently pooled with
+  every other condition type. New check_sameday_condition_type_weakness() (warn-only, |bias|>0.15 default
+  floor, min_samples=5) wired into cmd_cron right next to the existing multi-day
+  check_condition_type_weakness -- proven by test to catch exactly the rows the multi-day check structurally
+  cannot see (multiday_predictions excludes days_out=0).
+  Decision 2 (shadow-only): new weather_markets.is_between_bracket_ticker(ticker) (single source of truth,
+  matches _parse_market_condition's own "-B<val>" suffix detection -- unlike every other shadow family here,
+  between shares its ticker family with above/below, so ticker-PREFIX matching doesn't work; the "-T" vs "-B"
+  suffix does, and is a static per-ticker property, not something that varies with the live temperature
+  reading) and new _between_metar_gates_active() (env var BETWEEN_TRADING_ENABLED + >=20 settled samples,
+  mirrors _storm_order_gates_active()'s exact shape). Wired at all 4 enforcement points the existing shadow
+  families use: order_executor._auto_place_trades' per-opportunity shadow routing, paper.check_position_
+  limits' shared backstop (cmd_order/cmd_paper/web_app's /api/paper-order all route through it), and explicit
+  refuse-outright guards in main.cmd_order/_quick_paper_buy/cmd_paper (fail-closed even if
+  check_position_limits' own exception path fails open). Since BETWEEN_TRADING_ENABLED is unset by default,
+  this makes between shadow-only starting from this deploy, not merely "was already live and stays live" the
+  way the pre-existing families' gates read. Deliberately did NOT touch tracker._ALWAYS_EXCLUDED_CONDITION_
+  TYPES/_GATE_COUPLED_EXCLUDED_CONDITION_TYPES (that mechanism answers "does a between row belong in the
+  shared aggregate Brier score" -- permanently no, by design, a scale-mismatch reason unrelated to trading
+  status -- a different question from "may a between trade use real capital right now", which this new gate
+  answers); clarified _ALWAYS_EXCLUDED_CONDITION_TYPES's own docstring to say so explicitly, so a future
+  reader doesn't couple the two. Confirmed no duplicate exclusion-list source of truth: calibration.py's own
+  batch-37 _LOAD_ROWS_EXCLUDED_TYPES/_SHADOW_CONDITION_TYPES is a separate, deliberately-scoped list for a
+  different consumer (seasonal/city blend-weight calibration) that already coordinates with tracker.py's list
+  rather than duplicating it (verified before building on top of, not assumed).
+  Decision 3 (formula fork): metar._between_dynamic_lock_in_confidence() -- byte-identical math to
+  _dynamic_lock_in_confidence() today (this batch's decision text is explicit: don't redesign the formula
+  here, that's batch-37's above/below calibration loop's job). _metar_lock_in's between branch's 3 confidence
+  call sites (both NO-lock directions, the YES-lock) redirected to the fork; check_metar_lockout's own 4
+  above/below call sites (metar.py) untouched -- confirmed via grep this is the complete and only place a
+  between condition_type is ever scored (there is no forecast/ensemble path for it).
+  Tests: TestIsBetweenBracketTicker (6), TestBetweenMetarGatesActive (5, mirrors TestRainGatesActive's
+  exact shape), TestMetarLockInUsesBetweenSpecificFork (3, incl. a mutation-style test proving the between
+  branch calls the fork and NOT the shared function, plus a numeric-equivalence test proving today's values
+  still match) in tests/test_weather_markets.py. TestCountSettledBetweenPredictions (5),
+  TestCheckSamedayConditionTypeWeakness (5, incl. a structural test proving the same between rows are
+  invisible to the pre-existing multi-day check), 2 new tests extending the existing
+  TestCliCalibrationSplit.test_get_sameday_calibration_still_includes_between (by_condition_type splits
+  between from above/below; NULL groups as "unspecified") in tests/test_tracker.py. New
+  tests/test_between_bracket_shadow.py (order_executor.py/paper.py/main.py aren't in the batch's 2 scoped
+  test files, so kept isolated there per the batch's own test-scoping instruction): shadow-routing (3),
+  check_position_limits conditional incl. an above/below-unaffected regression control (3), and all 3
+  manual-placement-path guards incl. active-gate non-refusal controls (6).
+  Full scoped run: tests/test_weather_markets.py + tests/test_tracker.py + tests/test_phase2_batch_d.py
+  (existing file directly exercising the between branch this batch modified, added to the run despite not
+  being one of the 2 pre-named scoped files, per "grep for other callers before trusting a scoped test
+  list") + tests/test_between_bracket_shadow.py: 873 passed, 3 skipped (pre-existing, unrelated), 10
+  subtests passed, 0 failures. Confirmed test_phase2_batch_d.py's existing TestBetweenLockInDynamicConfidence
+  tests still pass unchanged after the fork (they compare numeric output values, not function identity, and
+  the fork is byte-identical today).
+  Mutation-tested the highest-risk piece (Decision 3's fork wiring): reverted the YES-lock call site back to
+  the shared function, confirmed TestMetarLockInUsesBetweenSpecificFork's mutation test failed as expected
+  (0.5 != 0.66), restored, re-confirmed passing. A second planned mutation (order_executor.py's shadow-
+  routing condition) was blocked by the session's own auto-mode permission classifier (caution around
+  editing a live-trading safety gate, even transiently) -- not worked around; this pattern is identical in
+  shape to 5 already-proven, already-shipped families in the same function, and the equivalent Decision-3
+  mutation was independently proven.
+  Appended new NO-lock evidence (93.0%->50.0%, n=6) to the pre-existing HIGH-market non-monotone NO-lock
+  backlog entry (backlog.txt ~L26761) rather than re-filing, per this batch's own instruction -- located it
+  by content search since the handoff's own "BACKLOG_OPEN L26470" line-number citation was stale (this
+  repo's well-established citation-drift pattern).
+  ruff/ruff-format/mypy clean via the real pre-commit hook (one ruff-format auto-reformat pass on 2 files;
+  per this session's own "don't re-run tests after a change that can't affect behavior" lesson, the full
+  scoped suite was NOT re-run after that purely cosmetic pass -- pre-commit's own clean second pass was
+  sufficient confirmation).
+  Independent review: performed by the implementing session itself rather than a separate opus agent --
+  Claude's hosted infrastructure was reported overloaded at review time by the user, who explicitly
+  instructed the session to self-review rather than attempt the usual opus effort=high dispatch.
+  Source: audit/handoff_prompts/batches/batch-40.md.

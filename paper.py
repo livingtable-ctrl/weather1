@@ -3952,12 +3952,14 @@ def check_position_limits(
         _KXRAIN_MONTHLY_CITY,
         _KXSNOW_MONTHLY_CITY,
         _KXTEMP_HOURLY_CITY,
+        _between_metar_gates_active,
         _hourly_gates_active,
         _hurricane_count_gates_active,
         _hurricane_next_event_gates_active,
         _rain_gates_active,
         _snow_gates_active,
         _storm_order_gates_active,
+        is_between_bracket_ticker,
         is_hurricane_count_ticker,
         is_hurricane_next_event_ticker,
         is_hurricane_ticker,
@@ -4083,6 +4085,26 @@ def check_position_limits(
         return {
             "ok": False,
             "reason": "hurricane markets are not supported yet",
+            "existing_cost": 0.0,
+            "limit": max_cost_per_market,
+        }
+
+    # batch-40 "Between-bracket calibration design", Decision 2: same
+    # shared-enforcement-point treatment as every block above -- cmd_order,
+    # cmd_paper, and web_app's /api/paper-order all route through this
+    # function, so this is the one place that catches all of them even if a
+    # caller-side direct guard is missing or its own exception path fails
+    # open. Ticker-suffix classified (is_between_bracket_ticker), not
+    # prefix-classified like the blocks above, since between shares its
+    # ticker family with above/below -- see that function's own docstring.
+    if is_between_bracket_ticker(ticker) and not _between_metar_gates_active():
+        return {
+            "ok": False,
+            "reason": (
+                "between-bracket markets: shadow-only until "
+                "BETWEEN_TRADING_ENABLED=1 and >=20 settled between-bracket "
+                "predictions exist"
+            ),
             "existing_cost": 0.0,
             "limit": max_cost_per_market,
         }

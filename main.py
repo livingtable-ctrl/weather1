@@ -133,6 +133,7 @@ from weather_markets import (
     _KXSNOW_MONTHLY_CITY,
     _KXTEMP_HOURLY_CITY,
     CITY_COORDS,
+    _between_metar_gates_active,
     _feels_like,
     _hourly_gates_active,
     _hurricane_count_gates_active,
@@ -152,6 +153,7 @@ from weather_markets import (
     flush_forecast_disk_cache,
     get_weather_forecast,
     get_weather_markets,
+    is_between_bracket_ticker,
     is_hurricane_count_ticker,
     is_hurricane_next_event_ticker,
     is_hurricane_ticker,
@@ -2827,6 +2829,21 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                 )
             )
             return
+        # batch-40 "Between-bracket calibration design", Decision 2: same
+        # explicit refuse-outright treatment as the families above, keeping
+        # this path fail-closed even if check_position_limits' own call
+        # raises rather than returning ok=False. is_between_bracket_ticker
+        # classifies by the "-B<val>" suffix, not a prefix, since between
+        # shares its ticker family with above/below.
+        if is_between_bracket_ticker(ticker) and not _between_metar_gates_active():
+            print(
+                red(
+                    f"  {ticker}: between-bracket markets are shadow-only until "
+                    "BETWEEN_TRADING_ENABLED=1 and >=20 settled between-bracket "
+                    "predictions exist — refusing to place this order."
+                )
+            )
+            return
         while True:
             side = (
                 input(dim(f"  Side for {ticker} (yes/no, q to cancel): "))
@@ -5407,6 +5424,22 @@ def cmd_order(client: KalshiClient, action: str, args: list):
                 f"  {ticker}: hourly-directional temperature markets are shadow-only "
                 "until HOURLY_TRADING_ENABLED=1 and >=20 settled hourly predictions "
                 "exist — refusing to place this order."
+            )
+        )
+        return
+
+    # batch-40 "Between-bracket calibration design", Decision 2: same
+    # fail-closed direct guard as the families above -- this function places
+    # a real order unconditionally even when analysis fails, so relying
+    # solely on check_position_limits() below is not enough.
+    # is_between_bracket_ticker classifies by the "-B<val>" ticker suffix,
+    # not a prefix, since between shares its ticker family with above/below.
+    if is_between_bracket_ticker(ticker) and not _between_metar_gates_active():
+        print(
+            red(
+                f"  {ticker}: between-bracket markets are shadow-only until "
+                "BETWEEN_TRADING_ENABLED=1 and >=20 settled between-bracket "
+                "predictions exist — refusing to place this order."
             )
         )
         return
@@ -9953,6 +9986,22 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                     f"  {ticker}: hourly-directional temperature markets are shadow-only "
                     "until HOURLY_TRADING_ENABLED=1 and >=20 settled hourly predictions "
                     "exist — refusing to place this order."
+                )
+            )
+            return
+        # batch-40 "Between-bracket calibration design", Decision 2: same
+        # explicit refuse-outright treatment as the families above --
+        # check_position_limits()'s own exception path fails open, so this
+        # direct guard is not redundant even though this path only ever
+        # places a paper order. is_between_bracket_ticker classifies by the
+        # "-B<val>" ticker suffix, not a prefix, since between shares its
+        # ticker family with above/below.
+        if is_between_bracket_ticker(ticker) and not _between_metar_gates_active():
+            print(
+                red(
+                    f"  {ticker}: between-bracket markets are shadow-only until "
+                    "BETWEEN_TRADING_ENABLED=1 and >=20 settled between-bracket "
+                    "predictions exist — refusing to place this order."
                 )
             )
             return

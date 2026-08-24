@@ -83,6 +83,48 @@ def _dynamic_lock_in_confidence(
     return round(min(0.97, max(0.72, conf)), 3)
 
 
+def _between_dynamic_lock_in_confidence(
+    clearance_f: float,
+    local_hour: int,
+    margin_f: float = 3.0,
+) -> float:
+    """Between-bracket variant of _dynamic_lock_in_confidence() -- deliberate
+    fork, not a duplicate to be merged back (batch-40 "Between-bracket
+    calibration design", Decision 3: keep between's formula ownership
+    separate from above/below's).
+
+    Byte-identical math to _dynamic_lock_in_confidence() today -- this fork
+    is purely a code-ownership boundary, not a recalibration (the batch's
+    own decision text is explicit: "Don't redesign the above/below side
+    here -- its calibration loop exists and batch 37 refits it"). The
+    formula's only calibration evidence to date is above/below's own
+    METAR-lockout calibration loop (predicted 89.6% vs actual 70.4% on
+    YES-locks, n=27; 93.0% vs 50.0% on NO-locks, n=6 -- see backlog.txt's
+    HIGH-market non-monotone NO-lock gap entry, which this evidence was
+    appended to), and that evidence does NOT directly transfer to between:
+    a between-YES lock carries a hazard above/below lacks (an in-band
+    extreme can still rise/fall OUT of the band, not just fail to confirm
+    an above/below threshold), and margin_f differs structurally (3.0 for
+    above/below's outside-the-band clearance vs as little as 1.0 for a
+    between-YES lock's inside-the-band clearance to the at-risk edge --
+    see weather_markets._metar_lock_in's between branch,
+    `_yes_inband_margin = (_hi - _lo) / 2.0`). Sharing one function risked a
+    future above/below calibration refit (batch 37 owns that loop) silently
+    changing between's behavior too, or vice versa, especially now that
+    between is gated separately (weather_markets._between_metar_gates_active())
+    while above/below is not. Forking removes that coupling; if/when between
+    accumulates its own calibration evidence
+    (tracker.get_sameday_calibration's by_condition_type breakout +
+    count_settled_between_predictions()), this function's own constants are
+    the place to change, independent of above/below's.
+    """
+    extra_f = max(0.0, clearance_f - margin_f)
+    c_factor = min(1.0, extra_f / 10.0)
+    h_factor = max(0.0, min(1.0, (local_hour - _LOCK_IN_HOUR) / 6.0))
+    conf = 0.72 + 0.18 * c_factor + 0.07 * h_factor
+    return round(min(0.97, max(0.72, conf)), 3)
+
+
 _session = requests.Session()
 _session.mount(
     "https://",

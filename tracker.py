@@ -2074,6 +2074,51 @@ def check_condition_type_weakness(
     return alerts_out
 
 
+def check_sameday_condition_type_weakness(
+    min_samples: int = 5, bias_floor: float = 0.15
+) -> list[str]:
+    """Warn (never halt) when a same-day (days_out=0) condition_type's
+    predicted-vs-actual bias exceeds bias_floor -- batch-40 "Between-bracket
+    calibration design", Decision 1's alert half.
+
+    check_condition_type_weakness() above is this function's multi-day
+    counterpart but cannot see same-day rows at all (it reads
+    multiday_predictions, days_out>=1 by construction) -- and a between
+    condition_type only ever produces a days_out=0 row (see
+    weather_markets.is_between_bracket_ticker's docstring: a between
+    condition is only ever scored via _metar_lock_in), so between weakness
+    was structurally invisible to every existing alert before this. Reads
+    get_sameday_calibration()'s new by_condition_type breakdown rather than
+    a separate query, so this always alerts on exactly what the dashboard
+    (/api/sameday-calibration) shows.
+
+    Uses |bias| (mean_prob - mean_actual), not directional_accuracy, since
+    that is what get_sameday_calibration()'s breakdown already computes and
+    what the file's own skeptic-verified evidence is expressed in (between
+    YES-locks: 89.6% predicted vs 70.4% actual, bias +0.192, n=27;
+    NO-locks: 93.0% vs 50.0%, bias +0.430, n=6 -- both would already trip a
+    0.15 floor). min_samples defaults lower than check_condition_type_weakness's
+    8 (between's settled sample accrues far slower -- 1 shadow prediction
+    total as of this batch landing -- so a higher floor would likely never
+    fire in practice for a long time). Intentionally warn-only, same
+    reasoning as check_condition_type_weakness: a single condition_type
+    same-day slice is too small/noisy a sample to auto-halt on.
+    """
+    breakdown = get_sameday_calibration().get("by_condition_type", {})
+    alerts_out: list[str] = []
+    for cond_type, stats in breakdown.items():
+        if stats["n"] < min_samples:
+            continue
+        if abs(stats["bias"]) > bias_floor:
+            alerts_out.append(
+                f"SAMEDAY CONDITION-TYPE WEAKNESS: condition_type={cond_type} "
+                f"bias={stats['bias']:+.3f} (predicted={stats['mean_prob']:.3f} "
+                f"actual={stats['mean_actual']:.3f}, n={stats['n']}, "
+                f"floor={bias_floor:.2f}) brier={stats['brier']:.4f}"
+            )
+    return alerts_out
+
+
 def brier_score_probation_rolling(
     method: str, window: int = 20, min_samples: int = 15
 ) -> float | None:
@@ -2220,15 +2265,22 @@ def _excluded_brier_condition_types() -> frozenset[str]:
     silent-freeze bug once did.
 
     'between' is NOT gate-coupled and is always excluded unconditionally --
-    unlike the 5 types above, it isn't shadow-only (KXHIGH*/KXLOW*
-    between-brackets are fully live today, same as above/below). It's
+    unlike the 5 types above, this exclusion isn't about shadow status. It's
     excluded because it has a genuinely different, structurally larger
     calibration gap than above/below (T~=6.8 temperature-scaling factor vs.
     global/above/below's much smaller correction -- see backlog.txt's EMOS
     confirm-gate opus-review finding #4) that would distort a shared
-    aggregate Brier score meant to represent overall model quality. There is
-    no "_between_gates_active()" to couple to, and none should be added --
-    this exclusion is permanent by design, not a graduation-pending status.
+    aggregate Brier score meant to represent overall model quality. This
+    exclusion is permanent by design, not a graduation-pending status --
+    even once weather_markets._between_metar_gates_active() (added batch-40
+    "Between-bracket calibration design") lets between trade with real
+    capital again, its rows must NOT be added back into this shared-
+    aggregate exclusion set, since the scale-mismatch reason above is
+    independent of trading status. That gate function answers a different
+    question than this one (may a between trade use real capital right
+    now?, not does a between row belong in the shared aggregate?) and must
+    stay uncoupled from _GATE_COUPLED_EXCLUDED_CONDITION_TYPES for that
+    reason -- see _between_metar_gates_active()'s own docstring.
 
     Deliberate no-fix decisions from opus review (documented per-finding,
     not silently dropped):
@@ -3050,6 +3102,40 @@ def count_settled_snow_predictions() -> int:
             continue
         events.add((prefix, parsed[0], parsed[1]))
     return len(events)
+
+
+def count_settled_between_predictions() -> int:
+    """Count settled between-bracket METAR-lock predictions -- batch-40
+    "Between-bracket calibration design", Decision 1/2's sample-floor
+    counter for weather_markets._between_metar_gates_active().
+
+    Unlike count_settled_rain_predictions()/count_settled_snow_predictions()
+    (ticker-prefix filtered), between shares its ticker family with
+    above/below (same KXHIGH*/KXLOW* series -- see
+    weather_markets.is_between_bracket_ticker's own docstring for why a
+    ticker-prefix filter can't distinguish them), so this filters by
+    condition_type='between' AND method='metar_lockout' AND days_out=0
+    instead -- the exact same WHERE clause get_metar_lockout_calibration_data()
+    already uses to SELECT between-eligible METAR-lock rows (that function
+    excludes 'between' via _ALWAYS_EXCLUDED_CONDITION_TYPES; this counts the
+    complementary population). No raw-row-vs-distinct-event inflation risk
+    here the way count_settled_snow_predictions() had to fix for: each
+    settled between ticker is its own distinct market/outcome (unlike a
+    monthly ladder's shared sibling brackets), so a raw-row count is already
+    a real per-market count.
+    """
+    init_db()
+    with _conn() as con:
+        row = con.execute(
+            """
+            SELECT COUNT(*) FROM predictions p
+            JOIN outcomes_valid o ON p.ticker = o.ticker
+            WHERE p.condition_type = 'between'
+              AND p.method = 'metar_lockout'
+              AND p.days_out = 0
+            """
+        ).fetchone()
+    return row[0] if row else 0
 
 
 def count_settled_hurricane_predictions() -> int:
@@ -4025,12 +4111,27 @@ def get_sameday_calibration() -> dict:
       by_time_of_day — {morning, afternoon, evening} each with
                     {n, brier, mean_prob, mean_actual, bias}
                     bias = mean_prob - mean_actual (positive = model overestimates)
+      by_condition_type — {condition_type: {n, brier, mean_prob, mean_actual, bias}}
+                    batch-40 "Between-bracket calibration design", Decision 1:
+                    same-shape breakdown as by_time_of_day, but split by
+                    p.condition_type instead of local_hour. Added because this
+                    was previously the one surface with between rows that
+                    pooled every condition_type together with no split --
+                    invisible the same way brier_by_condition_type_rolling()
+                    is invisible to between (that function reads
+                    multiday_predictions, which excludes days_out=0 entirely,
+                    so it never sees a between row at all; a between trade
+                    only ever exists via a same-day METAR lock -- see
+                    weather_markets.is_between_bracket_ticker's docstring).
+                    NULL condition_type rows (pre-dating that column, or a
+                    logging path that never set it) are grouped under the key
+                    "unspecified" rather than silently dropped.
     """
     init_db()
     with _conn() as con:
         rows = con.execute(
             """
-            SELECT p.our_prob, o.settled_yes, p.local_hour
+            SELECT p.our_prob, o.settled_yes, p.local_hour, p.condition_type
             FROM predictions p
             JOIN outcomes_valid o ON p.ticker = o.ticker
             WHERE p.our_prob IS NOT NULL
@@ -4082,10 +4183,37 @@ def get_sameday_calibration() -> dict:
             "bias": round(mean_prob - mean_actual, 4),
         }
 
+    # batch-40 Decision 1: condition_type breakdown, same shape as by_tod
+    # above. Grouped in Python (not SQL GROUP BY) to reuse the same `rows`
+    # fetch and the same n/brier/mean/bias arithmetic as by_tod, rather than
+    # a second query.
+    by_cond: dict[str, dict] = {}
+    cond_members: dict[str, list[tuple[float, int]]] = {}
+    for r in rows:
+        key = r["condition_type"] or "unspecified"
+        cond_members.setdefault(key, []).append(
+            (float(r["our_prob"]), int(r["settled_yes"]))
+        )
+    for cond_type, members in cond_members.items():
+        n = len(members)
+        probs = [p for p, _ in members]
+        actuals = [a for _, a in members]
+        brier = sum((p - a) ** 2 for p, a in members) / n
+        mean_prob = sum(probs) / n
+        mean_actual = sum(actuals) / n
+        by_cond[cond_type] = {
+            "n": n,
+            "brier": round(brier, 4),
+            "mean_prob": round(mean_prob, 4),
+            "mean_actual": round(mean_actual, 4),
+            "bias": round(mean_prob - mean_actual, 4),
+        }
+
     return {
         **curve,
         "t_sameday": t_sameday,
         "by_time_of_day": by_tod,
+        "by_condition_type": by_cond,
     }
 
 

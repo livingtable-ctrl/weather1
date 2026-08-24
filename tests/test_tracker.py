@@ -1691,6 +1691,93 @@ class TestCheckConditionTypeWeakness(unittest.TestCase):
         self.assertIn("method=ensemble", alerts[0])
 
 
+class TestCheckSamedayConditionTypeWeakness(unittest.TestCase):
+    """Tests for tracker.check_sameday_condition_type_weakness() -- batch-40
+    "Between-bracket calibration design", Decision 1's alert half. Mirrors
+    TestCheckConditionTypeWeakness above, but for the same-day (days_out=0)
+    population check_condition_type_weakness cannot see at all (it reads
+    multiday_predictions, days_out>=1 by construction)."""
+
+    def setUp(self):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_sameday_cond_weak.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _insert(self, ticker, our_prob, settled_yes, condition_type="above"):
+        analysis = {
+            "condition": {"type": condition_type, "threshold": 70.0},
+            "forecast_prob": our_prob,
+            "market_prob": 0.50,
+            "edge": our_prob - 0.50,
+            "method": "metar_lockout",
+            "n_members": 1,
+            "days_out": 0,
+        }
+        tracker.log_prediction(ticker, "NYC", date(2026, 4, 1), analysis)
+        tracker.log_outcome(ticker, settled_yes)
+
+    def test_warns_when_bias_exceeds_floor(self):
+        """5 between YES-locks predicted 0.90, settled 0.0 (NO) -> bias
+        +0.90, well past the 0.15 default floor."""
+        for i in range(5):
+            self._insert(f"BAD-{i}", 0.90, False, condition_type="between")
+        alerts = tracker.check_sameday_condition_type_weakness()
+        self.assertEqual(len(alerts), 1)
+        self.assertIn("condition_type=between", alerts[0])
+        self.assertIn("bias=", alerts[0])
+
+    def test_no_alert_when_well_calibrated(self):
+        for i in range(5):
+            self._insert(
+                f"GOOD-{i}", 0.90, i < 4, condition_type="between"
+            )  # 4/5 yes, mean_actual=0.8, close to mean_prob=0.90 -> bias 0.10
+        alerts = tracker.check_sameday_condition_type_weakness(bias_floor=0.15)
+        self.assertEqual(alerts, [])
+
+    def test_no_alert_below_min_samples(self):
+        for i in range(3):
+            self._insert(f"THIN-{i}", 0.90, False, condition_type="between")
+        alerts = tracker.check_sameday_condition_type_weakness(
+            min_samples=5, bias_floor=0.15
+        )
+        self.assertEqual(alerts, [])
+
+    def test_checks_each_condition_type_independently(self):
+        for i in range(5):
+            self._insert(f"B-BAD-{i}", 0.90, False, condition_type="between")
+        for i in range(5):
+            self._insert(f"A-GOOD-{i}", 0.90, True, condition_type="above")
+        alerts = tracker.check_sameday_condition_type_weakness()
+        self.assertEqual(len(alerts), 1)
+        self.assertIn("condition_type=between", alerts[0])
+
+    def test_multiday_check_condition_type_weakness_cannot_see_these_rows(self):
+        """Structural proof this alert is filling a real gap, not a
+        redundant duplicate: the SAME between rows that trip
+        check_sameday_condition_type_weakness must be invisible to
+        check_condition_type_weakness (multiday_predictions excludes
+        days_out=0 by construction)."""
+        for i in range(8):
+            self._insert(f"BAD-{i}", 0.90, False, condition_type="between")
+        sameday_alerts = tracker.check_sameday_condition_type_weakness()
+        multiday_alerts = tracker.check_condition_type_weakness(
+            window=20, min_samples=8, directional_floor=0.40
+        )
+        self.assertEqual(len(sameday_alerts), 1)
+        self.assertEqual(multiday_alerts, [])
+
+
 class TestGetBias(unittest.TestCase):
     """Focused tests for tracker.get_bias() (#111)."""
 
@@ -2059,6 +2146,71 @@ class TestCliCalibrationSplit(_Phase3Base):
         )
         dashboard = tracker.get_sameday_calibration()
         self.assertEqual(dashboard["n"], 2)
+
+    def test_get_sameday_calibration_by_condition_type_splits_between(self):
+        """batch-40 "Between-bracket calibration design", Decision 1: the
+        new by_condition_type breakout must isolate 'between' from
+        'above'/'below' rather than pooling them the way this function's
+        overall n/brier already do (see test_get_sameday_calibration_still_
+        includes_between just above -- that pooled behavior is unchanged;
+        this only adds a split ON TOP of it)."""
+        self._add(
+            "TKCAL-BYCOND-ABOVE",
+            "NYC",
+            0.30,
+            0.50,
+            False,
+            condition_type="above",
+            days_out=0,
+        )
+        self._add(
+            "TKCAL-BYCOND-BETWEEN-1",
+            "NYC",
+            0.90,
+            0.50,
+            True,
+            condition_type="between",
+            days_out=0,
+        )
+        self._add(
+            "TKCAL-BYCOND-BETWEEN-2",
+            "NYC",
+            0.80,
+            0.50,
+            False,
+            condition_type="between",
+            days_out=0,
+        )
+        dashboard = tracker.get_sameday_calibration()
+        by_cond = dashboard["by_condition_type"]
+        self.assertEqual(by_cond["above"]["n"], 1)
+        self.assertAlmostEqual(by_cond["above"]["mean_prob"], 0.30, places=4)
+        self.assertEqual(by_cond["between"]["n"], 2)
+        self.assertAlmostEqual(by_cond["between"]["mean_prob"], 0.85, places=4)
+        self.assertAlmostEqual(by_cond["between"]["mean_actual"], 0.50, places=4)
+        # predicted 0.85 avg vs actual 0.50 avg -> model overestimates -> positive bias
+        self.assertAlmostEqual(by_cond["between"]["bias"], 0.35, places=4)
+        # dashboard's own overall n must still be the pooled total (unchanged
+        # by adding this breakout).
+        self.assertEqual(dashboard["n"], 3)
+
+    def test_get_sameday_calibration_by_condition_type_groups_null_as_unspecified(
+        self,
+    ):
+        """A row with no condition_type at all (NULL) must be grouped under
+        "unspecified", not silently dropped from the breakout."""
+        self._add(
+            "TKCAL-BYCOND-NULL",
+            "NYC",
+            0.40,
+            0.50,
+            True,
+            condition_type=None,
+            days_out=0,
+        )
+        dashboard = tracker.get_sameday_calibration()
+        self.assertIn("unspecified", dashboard["by_condition_type"])
+        self.assertEqual(dashboard["by_condition_type"]["unspecified"]["n"], 1)
 
     def test_multiday_calibration_cli_bucket_grouping(self):
         """Rows land in the correct 0.2-wide probability buckets."""
@@ -7314,6 +7466,96 @@ class TestLiveTradingGateConditionTypeFilter(unittest.TestCase):
         )
         after, after_n = tracker.get_rolling_win_rate(window=100)
         self.assertEqual(before_n, after_n)
+        self.assertEqual(before, after)
+
+
+class TestCountSettledBetweenPredictions(unittest.TestCase):
+    """Tests for tracker.count_settled_between_predictions() -- batch-40
+    "Between-bracket calibration design", Decision 1/2's sample-floor
+    counter for weather_markets._between_metar_gates_active(). Unlike
+    count_settled_rain_predictions()/count_settled_snow_predictions()
+    (ticker-prefix filtered), between shares its ticker family with
+    above/below, so this filters by condition_type='between' AND
+    method='metar_lockout' AND days_out=0 -- the same population
+    get_metar_lockout_calibration_data() selects."""
+
+    def setUp(self):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig = tracker.DB_PATH
+        tracker.DB_PATH = Path(self._tmpdir) / "test_count_between.db"
+        tracker._db_initialized = False
+        tracker.init_db()
+
+    def tearDown(self):
+        tracker.DB_PATH = self._orig
+        tracker._db_initialized = False
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _log_settled(
+        self,
+        ticker,
+        settled_yes,
+        condition_type="between",
+        method="metar_lockout",
+        days_out=0,
+    ):
+        analysis = {
+            "condition": {"type": condition_type, "lower": 66.5, "upper": 68.5},
+            "forecast_prob": 0.75,
+            "market_prob": 0.50,
+            "edge": 0.25,
+            "method": method,
+            "n_members": 1,
+            "days_out": days_out,
+        }
+        tracker.log_prediction(ticker, "NYC", date(2026, 4, 1), analysis)
+        tracker.log_outcome(ticker, settled_yes)
+
+    def test_counts_between_metar_lockout_sameday_rows(self):
+        before = tracker.count_settled_between_predictions()
+        self._log_settled("KXHIGHNY-26APR01-B67.5-1", True)
+        self._log_settled("KXHIGHNY-26APR01-B67.5-2", False)
+        after = tracker.count_settled_between_predictions()
+        self.assertEqual(after, before + 2)
+
+    def test_excludes_above_below(self):
+        """The same tickers/method, but condition_type='above' -- must not
+        be counted (this is what a ticker-prefix filter couldn't tell
+        apart, since between shares KXHIGH*/KXLOW* with above/below)."""
+        before = tracker.count_settled_between_predictions()
+        self._log_settled("KXHIGHNY-26APR01-T70", True, condition_type="above")
+        after = tracker.count_settled_between_predictions()
+        self.assertEqual(after, before)
+
+    def test_excludes_multiday_between_rows(self):
+        """A between row with days_out != 0 must not count -- a between
+        condition is only ever priced via the same-day METAR lock, so a
+        days_out>=1 between row (if one somehow existed) is not real
+        METAR-lock-eligible evidence for this gate."""
+        before = tracker.count_settled_between_predictions()
+        self._log_settled("KXHIGHNY-26APR01-B67.5-MD", True, days_out=1)
+        after = tracker.count_settled_between_predictions()
+        self.assertEqual(after, before)
+
+    def test_excludes_non_metar_lockout_method(self):
+        """A between row logged by any method other than metar_lockout
+        must not count -- between's only real pricing path is the METAR
+        lock, so a row tagged otherwise (e.g. a test fixture or future
+        code path) shouldn't inflate the sample floor."""
+        before = tracker.count_settled_between_predictions()
+        self._log_settled("KXHIGHNY-26APR01-B67.5-ENS", True, method="ensemble")
+        after = tracker.count_settled_between_predictions()
+        self.assertEqual(after, before)
+
+    def test_excludes_disputed(self):
+        before = tracker.count_settled_between_predictions()
+        self._log_settled("KXHIGHNY-26APR01-B67.5-DISP", True)
+        tracker.mark_outcome_disputed("KXHIGHNY-26APR01-B67.5-DISP")
+        after = tracker.count_settled_between_predictions()
         self.assertEqual(before, after)
 
 
