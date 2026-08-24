@@ -28910,3 +28910,43 @@ Batch-37 process notes: full ceremony per the 29-step workflow (calibration
   branch/PR flow, same as how seasonal/city/condition_weights.json already
   get committed) -- this branch was rebased onto that commit before any
   code work began, so there is no ordering hazard.
+
+[OPEN -- filed 2026-08-24, found incidentally re-running batch-37's widened test sweep after rebasing onto batch-36] tests/test_phase2_batch_c.py::TestClimateIndicesTTL::test_cache_served_within_ttl fails on master right now -- stale fixture vs. batch-36's own get_indices() caching-gate change
+Priority: Low -- test-only, no live behavior affected (climate_indices.py's
+  actual caching logic is doing exactly what batch-36 intended; this is a
+  test that predates that intent).
+Files: tests/test_phase2_batch_c.py, climate_indices.py (read-only
+  reference -- batch-36 owns this file, not fixed here).
+
+Problem:
+  Confirmed failing on a clean `git worktree add --detach origin/master`
+  checkout (commit 05308761, batch-36's own commit) -- not caused by
+  batch-37's branch or rebase. test_cache_served_within_ttl mocks
+  `_fetch_enso` to `return_value={}` (an incidental "don't care about enso
+  for this TTL test" shortcut) and asserts a second get_indices() call
+  within TTL serves from cache. But climate_indices.py's own docstring
+  (line ~183) documents that `_fetch_enso`/`_fetch_monthly_index` return
+  `{}` specifically to SIGNAL a fetch failure -- and batch-36's M-18d fix
+  (per this project's memory) intentionally changed get_indices' cache
+  gate from "is the combined result all-zero" to "did any individual
+  source fail" (get_indices: "at least one NOAA fetch failed this cycle...
+  NOT caching a partial result"). The test's enso={} mock, which used to be
+  a harmless "we don't care about this value" shortcut under the OLD
+  all-zero gate (ao/nao still provided real data, so the combined result
+  wasn't all-zero and cached fine), now trips the NEW per-source-failure
+  gate and correctly refuses to cache -- so the second call re-fetches
+  (call_count 2 -> 4), and the test (written for the old semantics) fails.
+
+What it would look like: Give the mocked `_fetch_enso` a non-empty return
+  value (e.g. `{(year, month): 0.0}` for the relevant month) so the test
+  exercises TTL caching specifically, without incidentally tripping the
+  newer partial-failure gate it was never meant to test. The sibling test
+  test_cache_refreshes_after_ttl (same class) may need the identical fix --
+  not verified here, out of scope for this incidental discovery.
+
+Why not now: climate_indices.py is batch-36's owned file/design decision,
+  not batch-37's (calibration/analytics) -- fixing the test without
+  understanding batch-36's full M-18d intent risks masking a real bug
+  instead of just updating a stale fixture. Filed with the full root-cause
+  diagnosis already done so whoever picks this up doesn't need to
+  re-derive it.
