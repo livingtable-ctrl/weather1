@@ -28,6 +28,32 @@ _METAR_URL = "https://aviationweather.gov/api/data/metar"
 _LOCK_IN_HOUR = 14  # 2 PM local — earliest lock-in time
 
 
+def _parse_iso_utc(raw: str) -> datetime | None:
+    """Parse an ISO-8601 METAR timestamp string into an AWARE UTC datetime.
+
+    M-18b(a)/(b): aviationweather.gov's real payload shape for both obsTime
+    (as a string, rarely seen live) and reportTime is a bare
+    "2026-08-23 14:53:00" -- no "Z", no UTC offset at all. datetime.
+    fromisoformat() happily parses that into a NAIVE datetime; the
+    `.replace("Z", "+00:00")` guard below only helps when a "Z" is actually
+    present. A naive result is dangerous two different ways depending on the
+    caller: fetch_metar()'s `datetime.now(UTC) - obs_time` raises TypeError
+    (naive - aware) instead of degrading gracefully, and
+    _extract_obs_time()'s callers pass the naive result straight into
+    `.astimezone(tz)`, which Python interprets as SYSTEM-LOCAL time --
+    silently misdating the observation. The API's timestamps are documented
+    UTC, so a naive result here always means "this was UTC without the
+    marker" -- attach it rather than leaving it ambiguous.
+    """
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
+
+
 def _dynamic_lock_in_confidence(
     clearance_f: float,
     local_hour: int,
@@ -119,6 +145,13 @@ def fetch_metar(station: str) -> dict | None:
     if temp_f is None:
         temp_c = obs.get("temp")
         if temp_c is None:
+            # M-18b(c)/L-2: negative-cache this failure too -- the two
+            # siblings below (staleness gate, plausibility gate) both do,
+            # and without it a station reporting no usable temp field
+            # re-issues the ~21s HTTP call on every scan instead of being
+            # absorbed by the 15-min TTL like every other fetch_metar
+            # failure path.
+            _METAR_CACHE.set(key, None)
             return None
         temp_f = float(temp_c) * 9 / 5 + 32
     else:
@@ -131,6 +164,8 @@ def fetch_metar(station: str) -> dict | None:
             station,
             temp_f,
         )
+        # M-18b(c)/L-2: same negative-cache gap as the missing-temp branch above.
+        _METAR_CACHE.set(key, None)
         return None
 
     # P1-2: staleness gate — never fabricate a timestamp for a missing obsTime.
@@ -145,19 +180,11 @@ def fetch_metar(station: str) -> dict | None:
         except Exception:
             pass
     elif isinstance(raw_obs_time, str) and raw_obs_time:
-        try:
-            obs_time = datetime.fromisoformat(raw_obs_time.replace("Z", "+00:00"))
-        except Exception:
-            pass
+        obs_time = _parse_iso_utc(raw_obs_time)
     if obs_time is None:
         report_time_str = obs.get("reportTime") or ""
         if report_time_str:
-            try:
-                obs_time = datetime.fromisoformat(
-                    report_time_str.replace("Z", "+00:00")
-                )
-            except Exception:
-                pass
+            obs_time = _parse_iso_utc(report_time_str)
     if obs_time is None:
         _log.warning(
             "%s: METAR obsTime missing or unparseable — refusing to use stale data",
@@ -300,10 +327,7 @@ def _extract_obs_time(obs: dict) -> datetime | None:
         except Exception:
             return None
     if isinstance(raw, str) and raw:
-        try:
-            return datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        except Exception:
-            return None
+        return _parse_iso_utc(raw)
     return None
 
 
@@ -450,7 +474,17 @@ def check_metar_lockout(
 
         local_time = obs_time.astimezone(ZoneInfo(city_tz))
     except Exception:
-        local_time = obs_time  # fallback to UTC
+        # M-18b(d): fail CLOSED on a bad city_tz, not open. Falling back to
+        # obs_time as-is (UTC) would pass the "local hour >= 14" gate at
+        # e.g. ~09:00 real-local for any city west of UTC -- the same
+        # premature-lock-in risk _fetch_daily_temps_f's own bad-tz fallback
+        # already fails closed on (mos.py mirrors this too). Never actually
+        # reachable for any of this bot's 20 traded cities (all real IANA
+        # names, pinned tzdata) -- defense in depth, not a live gap.
+        return {
+            **NOT_LOCKED,
+            "reason": f"could not resolve local time for tz={city_tz!r} — fail closed",
+        }
     if local_time.hour < _LOCK_IN_HOUR:
         return {
             **NOT_LOCKED,

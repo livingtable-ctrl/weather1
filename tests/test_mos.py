@@ -220,6 +220,97 @@ class TestFetchMos:
             f"days_out was computed from UTC (days_out=1, tries NAM first)"
         )
 
+    # ── M-18c: ftime UTC vs. city-local target date row filter ──────────────
+
+    def test_row_filter_includes_utc_evening_row_still_local_afternoon(self):
+        """M-18c: ftime is UTC; a row timestamped in the UTC evening can
+        still be the CITY-LOCAL afternoon for a west-of-UTC station. KLAX is
+        UTC-7 (PDT): 2026-08-11 06:00 UTC == 2026-08-10 23:00 PDT (previous
+        LA-local day) is NOT the target date, but 2026-08-11 20:00 UTC ==
+        2026-08-11 13:00 PDT IS still the target date -- the old raw
+        string-prefix filter (`ftime.startswith(date_str)`) wrongly excluded
+        this second row because its UTC date string ("2026-08-11") happens
+        to match by coincidence here at 20:00z, but at 06:00z (the KLAX
+        style overnight boundary) it silently EXCLUDES real same-day
+        afternoon/evening PDT readings whose ftime has already rolled to the
+        NEXT UTC day. Use a row at 2026-08-12 06:00 UTC (still 2026-08-11
+        23:00 PDT, i.e. the LAST hour of the LA-local target date) -- the
+        old filter's string-prefix check would exclude this ("2026-08-12"
+        != "2026-08-11") even though it truly belongs to the target date."""
+        import mos
+
+        response = {
+            "data": [
+                {"ftime": "2026-08-12 06:00", "tmp": 80},  # 2026-08-11 23:00 PDT
+            ]
+        }
+        with patch.object(mos, "_session") as mock_sess:
+            mock_sess.get.return_value.json.return_value = response
+            mock_sess.get.return_value.raise_for_status.return_value = None
+            result = mos.fetch_mos(
+                "KLAX",
+                target_date=date(2026, 8, 11),
+                model="GFS",
+                tz="America/Los_Angeles",
+            )
+
+        assert result is not None, (
+            "a UTC ftime that's already rolled to the next UTC calendar "
+            "day must still be included when it's still the target LOCAL "
+            "date -- the old UTC-string-prefix filter silently dropped it"
+        )
+        assert result["max_temp_f"] == 80
+
+    def test_row_filter_excludes_utc_morning_row_actually_prior_local_day(self):
+        """M-18c's other direction: a row whose UTC date string matches
+        date_str can actually belong to the PRIOR local day. KLAX
+        (UTC-7/PDT): 2026-08-11 05:00 UTC == 2026-08-10 22:00 PDT -- the old
+        filter's `ftime.startswith("2026-08-11")` wrongly INCLUDED this row
+        for target_date=2026-08-11, even though it's really the previous
+        LA-local day's evening reading."""
+        import mos
+
+        response = {
+            "data": [
+                {"ftime": "2026-08-11 05:00", "tmp": 60},  # 2026-08-10 22:00 PDT
+            ]
+        }
+        with patch.object(mos, "_session") as mock_sess:
+            mock_sess.get.return_value.json.return_value = response
+            mock_sess.get.return_value.raise_for_status.return_value = None
+            result = mos.fetch_mos(
+                "KLAX",
+                target_date=date(2026, 8, 11),
+                model="GFS",
+                tz="America/Los_Angeles",
+            )
+
+        assert result is None, (
+            "a UTC ftime that STRING-matches the target date but is "
+            "actually the prior LOCAL day (KLAX is UTC-7) must be excluded "
+            "-- the old filter wrongly included it"
+        )
+
+    def test_row_filter_no_tz_falls_back_to_utc_string_comparison(self):
+        """Backward-compat control: when tz is None (unknown caller/city,
+        same fallback _local_or_utc_today already documents), the filter
+        must fall back to the OLD raw UTC-string comparison rather than
+        erroring or silently returning zero rows -- matches every existing
+        tz=None test in this file (e.g. test_returns_dict_on_success above),
+        none of which pass tz."""
+        import mos
+
+        response = {
+            "data": [{"ftime": "2026-04-17 15:00", "tmp": 68}],
+        }
+        with patch.object(mos, "_session") as mock_sess:
+            mock_sess.get.return_value.json.return_value = response
+            mock_sess.get.return_value.raise_for_status.return_value = None
+            result = mos.fetch_mos("KNYC", target_date=date(2026, 4, 17))
+
+        assert result is not None
+        assert result["max_temp_f"] == 68
+
 
 class TestMosIntegration:
     def test_analyze_trade_includes_mos_field(self):

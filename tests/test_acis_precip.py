@@ -327,10 +327,11 @@ class TestFetchSeasonalPrecipMeanMm:
     def test_parses_matching_month(self):
         fake_resp = MagicMock()
         fake_resp.json.return_value = {
+            "monthly_units": {"time": "iso8601", "precipitation_mean": "mm"},
             "monthly": {
                 "time": ["2026-06-30", "2026-07-31", "2026-08-31"],
                 "precipitation_mean": [30.0, 42.6, 53.0],
-            }
+            },
         }
         fake_resp.raise_for_status.return_value = None
         with patch.object(acis_precip._session, "get", return_value=fake_resp):
@@ -342,10 +343,11 @@ class TestFetchSeasonalPrecipMeanMm:
     def test_month_outside_window_returns_none(self):
         fake_resp = MagicMock()
         fake_resp.json.return_value = {
+            "monthly_units": {"time": "iso8601", "precipitation_mean": "mm"},
             "monthly": {
                 "time": ["2026-06-30", "2026-07-31"],
                 "precipitation_mean": [30.0, 42.6],
-            }
+            },
         }
         fake_resp.raise_for_status.return_value = None
         with patch.object(acis_precip._session, "get", return_value=fake_resp):
@@ -410,10 +412,11 @@ class TestFetchSeasonalPrecipMeanMm:
         return the cached value without a second HTTP request."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {
+            "monthly_units": {"time": "iso8601", "precipitation_mean": "mm"},
             "monthly": {
                 "time": ["2026-06-30", "2026-07-31", "2026-08-31"],
                 "precipitation_mean": [30.0, 42.6, 53.0],
-            }
+            },
         }
         fake_resp.raise_for_status.return_value = None
         with patch.object(
@@ -442,10 +445,11 @@ class TestFetchSeasonalPrecipMeanMm:
         would silently serve July's mean for August too."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {
+            "monthly_units": {"time": "iso8601", "precipitation_mean": "mm"},
             "monthly": {
                 "time": ["2026-06-30", "2026-07-31", "2026-08-31"],
                 "precipitation_mean": [30.0, 42.6, 53.0],
-            }
+            },
         }
         fake_resp.raise_for_status.return_value = None
         with patch.object(
@@ -480,10 +484,11 @@ class TestFetchSeasonalPrecipMeanMm:
         call across all of them."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {
+            "monthly_units": {"time": "iso8601", "precipitation_mean": "mm"},
             "monthly": {
                 "time": ["2026-06-30", "2026-07-31", "2026-08-31"],
                 "precipitation_mean": [30.0, 42.6, 53.0],
-            }
+            },
         }
         fake_resp.raise_for_status.return_value = None
         with patch.object(
@@ -537,10 +542,11 @@ class TestFetchSeasonalPrecipMeanMm:
         record_failure()) that a narrower fix could easily miss."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {
+            "monthly_units": {"time": "iso8601", "precipitation_mean": "mm"},
             "monthly": {
                 "time": ["2026-06-30", "2026-07-31"],
                 "precipitation_mean": [30.0, 42.6],
-            }
+            },
         }
         fake_resp.raise_for_status.return_value = None
         with patch.object(
@@ -562,10 +568,11 @@ class TestFetchSeasonalPrecipMeanMm:
         (weather_markets.py), documented in this function's own docstring."""
         fake_resp = MagicMock()
         fake_resp.json.return_value = {
+            "monthly_units": {"time": "iso8601", "precipitation_mean": "mm"},
             "monthly": {
                 "time": ["2026-07-31"],
                 "precipitation_mean": [42.6],
-            }
+            },
         }
         fake_resp.raise_for_status.return_value = None
         with patch.object(acis_precip._session, "get", return_value=fake_resp):
@@ -620,3 +627,89 @@ class TestFetchHistoricalDailyEmptyResponse:
         on_disk = _json.loads(cache_path.read_text())
         assert on_disk == {"2020": {"101": 1.5}}
         assert acis_precip._MEM_CACHE.get(sid) != {}
+
+
+class TestStaleFallbackDoesNotPinMemCacheForProcessLifetime:
+    """L-1: _MEM_CACHE is a plain dict with NO TTL, checked before the
+    disk-staleness gate at the top of fetch_historical_daily. Before this
+    fix, _load_stale_cache_or_none() wrote its result into _MEM_CACHE just
+    like the happy path does -- so one transient ACIS failure at the first
+    call for a sid served that stale fallback FOREVER: the very next call
+    would short-circuit on `sid in _MEM_CACHE` and never reach the circuit
+    breaker or a fresh network attempt again, even long after ACIS
+    recovered. Fixed by leaving _MEM_CACHE unset on the stale-fallback path,
+    so each subsequent call re-evaluates the circuit breaker/network path
+    normally."""
+
+    def test_stale_fallback_does_not_populate_mem_cache(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(acis_precip, "DATA_DIR", tmp_path)
+        monkeypatch.setattr(acis_precip, "_MEM_CACHE", {})
+        sid = "TESTSTALEPIN"
+        cache_path = tmp_path / f"acis_pcpn_{sid}.json"
+        cache_path.write_text('{"2020": {"101": 1.5}}')
+        import os
+        import time as _time
+
+        old_time = _time.time() - acis_precip.CACHE_MAX_AGE - 1
+        os.utime(cache_path, (old_time, old_time))
+
+        with patch.object(
+            acis_precip._session, "post", side_effect=Exception("simulated ACIS outage")
+        ):
+            result = acis_precip.fetch_historical_daily(sid, years=5, force=True)
+
+        assert result == {2020: {101: 1.5}}, (
+            "a fetch failure with an existing stale disk cache must still "
+            "serve that stale data"
+        )
+        assert sid not in acis_precip._MEM_CACHE, (
+            "the stale-fallback result must NOT be written into _MEM_CACHE "
+            "-- doing so would pin it for the rest of the process's "
+            "lifetime instead of letting the next call retry once ACIS "
+            "recovers"
+        )
+
+    def test_recovery_after_stale_fallback_retries_network_not_mem_cache(
+        self, tmp_path, monkeypatch
+    ):
+        """Positive-path proof: after a stale-fallback call, the VERY NEXT
+        call must actually attempt the network again (not silently reuse
+        _MEM_CACHE), and get the fresh result once ACIS recovers."""
+        monkeypatch.setattr(acis_precip, "DATA_DIR", tmp_path)
+        monkeypatch.setattr(acis_precip, "_MEM_CACHE", {})
+        sid = "TESTRECOVER"
+        cache_path = tmp_path / f"acis_pcpn_{sid}.json"
+        cache_path.write_text('{"2020": {"101": 1.5}}')
+        import os
+        import time as _time
+
+        old_time = _time.time() - acis_precip.CACHE_MAX_AGE - 1
+        os.utime(cache_path, (old_time, old_time))
+
+        with patch.object(
+            acis_precip._session, "post", side_effect=Exception("simulated ACIS outage")
+        ):
+            first = acis_precip.fetch_historical_daily(sid, years=5, force=True)
+        assert first == {2020: {101: 1.5}}
+
+        fresh_resp = MagicMock()
+        fresh_resp.json.return_value = {"data": [["2026-01-01", "2.5"]]}
+        fresh_resp.raise_for_status.return_value = None
+        # force=False here (unlike the first call) is the actual point of
+        # this test: a real caller doesn't pass force=True on every call --
+        # if the stale fallback had pinned _MEM_CACHE (the bug), THIS call
+        # would short-circuit at the top on `sid in _MEM_CACHE` and never
+        # even reach the network-attempt code below.
+        with patch.object(
+            acis_precip._session, "post", return_value=fresh_resp
+        ) as mock_post:
+            second = acis_precip.fetch_historical_daily(sid, years=5, force=False)
+
+        assert mock_post.call_count == 1, (
+            "the second call must actually re-attempt the network fetch, "
+            "not short-circuit on a permanently-pinned _MEM_CACHE entry"
+        )
+        assert second == {2026: {101: 2.5}}, (
+            "once ACIS recovers, the fresh real data must win over the "
+            "earlier stale fallback"
+        )

@@ -15,8 +15,21 @@ from safe_io import atomic_write_json
 
 class ForecastCache[T]:
     """
-    Thread-safe dict-based cache with per-entry TTL and LRU eviction.
+    Thread-safe dict-based cache with per-entry TTL and FIFO eviction.
     Keys are arbitrary hashable objects; values are typed by the T parameter.
+
+    L-10/L-3: was documented as "LRU eviction" -- _evict_oldest() below
+    picks by each entry's INSERTION timestamp (set once in set()/
+    set_with_ttl()/set_at()/set_at_with_ttl() and never touched by get()/
+    get_with_ts()), so this is FIFO (oldest-inserted-first), not LRU
+    (least-recently-USED). Fixing the docstring rather than implementing
+    real LRU (touch-on-get): get()/get_with_ts() derive TTL expiry from that
+    same insertion timestamp (`time.monotonic() - ts > ttl`) -- updating ts
+    on every read would silently extend a negative-cached (or any TTL'd)
+    entry's life past its intended TTL every time it's read, which is a
+    real behavior change with its own trading-signal implications
+    (fetch_metar's negative METAR cache, in particular, exists specifically
+    to expire on a fixed schedule), not a safe drop-in for a doc typo.
     """
 
     def __init__(self, ttl_secs: float = 4 * 3600, max_size: int = 500) -> None:
@@ -220,7 +233,7 @@ class PersistentForecastCache[T](ForecastCache[T]):
         calls still evict normally -- only the load itself is unbounded."""
         if not path.exists():
             return
-        raw = json.loads(path.read_text())
+        raw = json.loads(path.read_text(encoding="utf-8"))
         now = time.monotonic()
         with self._lock:
             for k_str, value in raw.items():

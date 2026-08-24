@@ -290,6 +290,99 @@ class TestFetchMetar:
             f"dew_point_f not parsed from dewp (Celsius): got {result['dew_point_f']!r}"
         )
 
+    # ── M-18b(a): naive reportTime fallback ─────────────────────────────────
+
+    def test_reportTime_fallback_naive_no_z_does_not_crash(self):
+        """M-18b(a): the real aviationweather.gov reportTime payload shape is
+        "2026-08-23 14:53:00" -- no "Z", no offset. Before the fix,
+        datetime.fromisoformat() parsed that into a NAIVE datetime, and
+        `datetime.now(UTC) - obs_time` (naive - aware) raised TypeError,
+        propagating out of fetch_metar uncaught -- exactly the case this
+        fallback exists to handle gracefully (obsTime missing entirely).
+        Mutation-tested: reverting _parse_iso_utc's tzinfo.replace(UTC) step
+        (i.e. returning the naive fromisoformat result as-is) reproduces the
+        TypeError on this exact input."""
+        import metar
+
+        recent = (datetime.now(UTC) - timedelta(minutes=10)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        response = [{"icaoId": "KNYC", "tmpf": 72.0, "reportTime": recent}]
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            result = metar.fetch_metar("KNYC")  # must not raise
+
+        assert result is not None
+        assert result["obs_time"].tzinfo is not None, (
+            "reportTime fallback must produce an AWARE (UTC) datetime"
+        )
+        assert result["current_temp_f"] == pytest.approx(72.0)
+
+    def test_reportTime_fallback_naive_stale_still_rejected(self):
+        """Positive control for the fix above: a genuinely stale naive
+        reportTime must still be rejected by the 90-min staleness gate, not
+        just avoid crashing -- proves the fix didn't accidentally disable
+        staleness checking for this fallback path."""
+        import metar
+
+        stale = (datetime.now(UTC) - timedelta(minutes=150)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        response = [{"icaoId": "KNYC", "tmpf": 72.0, "reportTime": stale}]
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            result = metar.fetch_metar("KNYC")
+
+        assert result is None
+
+    # ── M-18b(c)/L-2: negative-cache gaps ────────────────────────────────────
+
+    def test_missing_temp_fields_negative_caches(self):
+        """M-18b(c)/L-2: a response with neither tmpf nor temp must
+        negative-cache the same as every other fetch_metar failure path --
+        without it, a station reporting no usable temp field re-issues the
+        ~21s HTTP call on every scan instead of being absorbed by the TTL."""
+        import metar
+
+        response = [{"icaoId": "KNYC", "obsTime": _fresh_obs_time()}]
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            first = metar.fetch_metar("KNYC")
+            assert first is None
+            assert mock.get.call_count == 1
+
+            second = metar.fetch_metar("KNYC")
+            assert second is None
+            assert mock.get.call_count == 1, (
+                "missing-temp failure must be negative-cached like the "
+                "other fetch_metar failure paths"
+            )
+
+    def test_implausible_temp_negative_caches(self):
+        """M-18b(c)/L-2: same negative-cache gap for the plausibility-range
+        rejection path (already covered functionally by
+        test_returns_none_for_implausible_high_temp above; this adds the
+        missing cache-hit assertion)."""
+        import metar
+
+        response = [{"icaoId": "KNYC", "obsTime": _fresh_obs_time(), "tmpf": 999.0}]
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            first = metar.fetch_metar("KNYC")
+            assert first is None
+            assert mock.get.call_count == 1
+
+            second = metar.fetch_metar("KNYC")
+            assert second is None
+            assert mock.get.call_count == 1, (
+                "implausible-temp failure must be negative-cached like the "
+                "other fetch_metar failure paths"
+            )
+
 
 class TestFetchMetarDailyExtreme:
     """Tests for fetch_metar_daily_extreme / _fetch_daily_temps_f — the
@@ -636,6 +729,58 @@ class TestFetchMetarDailyExtreme:
 
         assert result == pytest.approx(77.0)
 
+    def test_extract_obs_time_naive_no_z_string_is_utc_aware(self):
+        """M-18b(b): _extract_obs_time's ISO-string branch had the identical
+        naive-datetime gap as fetch_metar()'s reportTime fallback --
+        aviationweather.gov's real string shape has no "Z"/offset, so
+        fromisoformat() alone produced a NAIVE datetime. A naive result then
+        hits `.astimezone(tz)` at its only call site (_fetch_daily_temps_f
+        below), which Python interprets as SYSTEM-LOCAL time -- silently
+        misdating the observation's city-local date on any machine whose
+        system tz isn't UTC. Direct unit test (not routed through
+        astimezone) so this doesn't depend on the test runner's own system
+        timezone: the fix must produce an AWARE UTC datetime whose wall-
+        clock fields match the naive string exactly (i.e. attach UTC, don't
+        convert)."""
+        import metar
+
+        result = metar._extract_obs_time({"obsTime": "2026-08-23 14:53:00"})
+        assert result is not None
+        assert result.tzinfo is not None
+        assert result == datetime(2026, 8, 23, 14, 53, 0, tzinfo=UTC)
+
+    def test_fetch_daily_temps_f_naive_obstime_lands_on_correct_local_date(self):
+        """Integration-level proof for the same fix, through the real
+        astimezone() call site: a naive-string obsTime for a station in a
+        UTC-behind timezone must bucket to the correct EARLIER local date,
+        not misdate via a naive-as-system-local interpretation. Explicit
+        America/Los_Angeles (not the test runner's own system tz) --
+        2026-08-10 06:00 UTC is still 2026-08-09 23:00 in Los Angeles."""
+        import metar
+
+        response = [
+            {
+                "icaoId": "KLAX",
+                "obsTime": "2026-08-10 06:00:00",  # naive, no Z
+                "tmpf": 65.0,
+            }
+        ]
+        target_date = datetime(
+            2026, 8, 9
+        ).date()  # LA-local date this reading belongs to
+        with patch.object(metar, "_session") as mock:
+            mock.get.return_value.json.return_value = response
+            mock.get.return_value.raise_for_status.return_value = None
+            temps = metar._fetch_daily_temps_f(
+                "KLAX", "America/Los_Angeles", target_date
+            )
+
+        assert temps == [65.0], (
+            "a naive obsTime must be treated as UTC before converting to "
+            "the station's local tz -- misinterpreting it as system-local "
+            "would silently drop this reading from the wrong target_date"
+        )
+
     def test_invalid_extreme_argument_raises(self):
         """extreme must be exactly 'max' or 'min' — a typo like 'MAX' must
         raise loudly, not silently fall through to 'min' semantics."""
@@ -721,6 +866,54 @@ class TestCheckMetarLockout:
         )
 
         assert result["locked"] is False
+
+    def test_bad_city_tz_fails_closed_not_open(self):
+        """M-18b(d): an unresolvable city_tz used to fall back to treating
+        obs_time (UTC) AS IF it were already local -- at 21:00 UTC (5 PM
+        ET), that UTC hour (21) still clears the >=14 lock-in gate, so a bad
+        tz for a WEST-of-UTC city would falsely pass the "local time >= 2pm"
+        check at an hour that's actually still morning there (e.g. ~13:00
+        PT is 21:00 UTC in summer -- comfortably past 2pm PT too, but for a
+        city further west or at a different UTC offset the gap can cross
+        the boundary the wrong way). Must fail closed (not locked) instead
+        of silently trusting UTC-as-local. Mutation-tested: reverting the
+        fix (falling back to `local_time = obs_time` on the ZoneInfo
+        exception, so the old "too early" hour-check runs against a
+        made-up tz) makes this test fail."""
+        import metar
+
+        obs_time = datetime(2026, 4, 17, 21, 0, tzinfo=UTC)  # 9 PM UTC
+        result = metar.check_metar_lockout(
+            current_temp_f=80.0,
+            threshold_f=65.0,
+            direction="above",
+            obs_time=obs_time,
+            city_tz="Not/A_Real_Timezone",
+            margin_f=3.0,
+        )
+
+        assert result["locked"] is False
+        assert "fail closed" in result["reason"]
+
+    def test_good_city_tz_still_locks_control(self):
+        """Positive control for the fail-closed fix above: a VALID city_tz
+        (the exact same inputs as test_locked_above_threshold_after_2pm)
+        must still resolve normally and lock in -- proves the fix only
+        changes behavior on a genuinely bad tz, not every call."""
+        import metar
+
+        obs_time = datetime(2026, 4, 17, 21, 0, tzinfo=UTC)
+        result = metar.check_metar_lockout(
+            current_temp_f=80.0,
+            threshold_f=65.0,
+            direction="above",
+            obs_time=obs_time,
+            city_tz="America/New_York",
+            margin_f=3.0,
+        )
+
+        assert result["locked"] is True
+        assert result["outcome"] == "yes"
 
 
 # ── L6-D regression: dynamic lock-in confidence ──────────────────────────────

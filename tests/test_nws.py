@@ -135,3 +135,180 @@ class TestNwsDailyForecastValidation:
 
         assert result == {"2026-08-10": {"high": 82.0, "low": None}}
         assert nws._nws_cb.failure_count == 0
+
+    def test_empty_periods_records_failure_and_does_not_cache(self, monkeypatch):
+        """M-18a: `{"properties": {}}` used to pass validate_nws_response()
+        (only "properties" is a dict was checked), credit record_success(),
+        and cache {} for the full 3600s TTL -- a city silently loses its NWS
+        forecast for an hour with the breaker showing healthy. An absent OR
+        empty `periods` list must now be treated as a real fetch failure:
+        record_failure(), and -- the positive control below proves this
+        half specifically -- no 3600s cache write of the empty result."""
+        import nws
+
+        self._reset_caches()
+        nws._nws_cb.record_success()
+        nws._nws_cb._last_failure_at = None
+        _before = nws._nws_cb.failure_count
+
+        monkeypatch.setattr(nws, "_get_gridpoint", lambda lat, lon: ("OKX", 33, 35))
+        _call_count = {"n": 0}
+
+        def _fake_get(url, params=None):
+            _call_count["n"] += 1
+            return {"properties": {}}
+
+        monkeypatch.setattr(nws, "_get", _fake_get)
+
+        result = nws.get_nws_daily_forecast("NYC", (40.7, -74.0, "America/New_York"))
+        assert result == {}
+        assert nws._nws_cb.failure_count > _before, (
+            "an empty periods list must record a real circuit-breaker failure"
+        )
+
+        # Positive control: the cache must NOT have been written -- a second
+        # call must re-invoke _get, not silently serve the cached {} for the
+        # rest of the 3600s TTL.
+        result2 = nws.get_nws_daily_forecast("NYC", (40.7, -74.0, "America/New_York"))
+        assert result2 == {}
+        assert _call_count["n"] == 2, (
+            "an empty/malformed response must not be cached -- the second "
+            "call should re-fetch, not hit a poisoned {} cache entry"
+        )
+
+    def test_periods_present_but_all_unparseable_records_failure(self, monkeypatch):
+        """M-18a's second half: a response can pass the new periods-
+        non-empty check yet still yield an empty `result` dict if every
+        period fails its own per-period parse/unit gate (e.g. every period
+        has a non-'F' temperatureUnit). That must ALSO be treated as a real
+        failure -- not just the periods-missing/empty case above."""
+        import nws
+
+        self._reset_caches()
+        nws._nws_cb.record_success()
+        nws._nws_cb._last_failure_at = None
+        _before = nws._nws_cb.failure_count
+
+        monkeypatch.setattr(nws, "_get_gridpoint", lambda lat, lon: ("OKX", 33, 35))
+        monkeypatch.setattr(
+            nws,
+            "_get",
+            lambda url, params=None: {
+                "properties": {
+                    "periods": [
+                        {
+                            "startTime": "2026-08-10T06:00:00-04:00",
+                            "isDaytime": True,
+                            "temperature": 28,
+                            "temperatureUnit": "C",  # every real caller uses F
+                        }
+                    ]
+                }
+            },
+        )
+
+        result = nws.get_nws_daily_forecast("NYC", (40.7, -74.0, "America/New_York"))
+
+        assert result == {}
+        assert nws._nws_cb.failure_count > _before
+
+
+class TestValidateNwsResponsePeriods:
+    """M-18a: schema_validator.validate_nws_response() unit tests, direct
+    (not routed through get_nws_daily_forecast) -- get_nws_daily_forecast
+    has its own independent empty-result guard after the parse loop (see
+    TestNwsDailyForecastValidation.test_empty_periods_records_failure_and_
+    does_not_cache above), which would mask a regression in
+    validate_nws_response() alone for the "periods present but empty" case
+    specifically, since a return of {} from an empty periods list gets
+    caught by that second guard either way. These tests isolate
+    validate_nws_response()'s own contribution."""
+
+    def test_missing_periods_key_is_invalid(self):
+        from schema_validator import validate_nws_response
+
+        assert validate_nws_response({"properties": {}}) is False
+
+    def test_empty_periods_list_is_invalid(self):
+        from schema_validator import validate_nws_response
+
+        assert validate_nws_response({"properties": {"periods": []}}) is False
+
+    def test_non_list_periods_is_invalid(self):
+        from schema_validator import validate_nws_response
+
+        assert validate_nws_response({"properties": {"periods": "oops"}}) is False
+
+    def test_non_empty_periods_is_valid_control(self):
+        """Positive control: a real, non-empty periods list must still validate."""
+        from schema_validator import validate_nws_response
+
+        assert (
+            validate_nws_response({"properties": {"periods": [{"temperature": 70}]}})
+            is True
+        )
+
+
+class TestGetObsPoolSaturation:
+    """L-1(nws): _get_obs abandons the submitted future on a wall-clock
+    timeout -- ThreadPoolExecutor has no cancellation for already-started
+    work, so an abandoned task keeps occupying a worker until it finishes on
+    its own. Sustained hangs can permanently consume all _OBS_POOL_WORKERS
+    workers; every new submission after that queues and times out too, but
+    that looks identical to a normal single-request timeout in the logs
+    without a distinct signal. These tests exercise the in-flight counter
+    directly (deterministic) rather than real concurrent hangs (racy/slow)."""
+
+    def setup_method(self):
+        import nws
+
+        nws._obs_inflight = 0
+
+    def test_not_saturated_does_not_log(self, caplog):
+        import logging
+
+        import nws
+
+        with patch.object(nws, "_get", return_value={"ok": True}):
+            with caplog.at_level(logging.WARNING):
+                result = nws._get_obs("http://example.test/obs")
+
+        assert result == {"ok": True}
+        assert not any("pool saturated" in r.message for r in caplog.records)
+
+    def test_saturated_logs_distinct_warning(self, caplog):
+        """Simulates _OBS_POOL_WORKERS already-in-flight tasks (e.g. from
+        prior abandoned timeouts) -- the next submission must detect and log
+        saturation. Mutation-tested: removing the `_inflight_now >
+        _OBS_POOL_WORKERS` check (never logging) makes this fail."""
+        import logging
+
+        import nws
+
+        nws._obs_inflight = nws._OBS_POOL_WORKERS
+        with patch.object(nws, "_get", return_value={"ok": True}):
+            with caplog.at_level(logging.WARNING):
+                nws._get_obs("http://example.test/obs")
+
+        assert any("pool saturated" in r.message for r in caplog.records), (
+            "a submission arriving when already at/above worker capacity "
+            "must log a distinct saturation warning"
+        )
+
+    def test_inflight_counter_decrements_after_completion(self):
+        """The counter must return to its pre-call baseline once the
+        underlying task actually finishes (via add_done_callback), not stay
+        incremented forever -- otherwise every real call would eventually
+        look permanently saturated even with a healthy pool."""
+        import time
+
+        import nws
+
+        with patch.object(nws, "_get", return_value={"ok": True}):
+            nws._get_obs("http://example.test/obs")
+
+        for _ in range(50):
+            if nws._obs_inflight == 0:
+                break
+            time.sleep(0.01)
+        assert nws._obs_inflight == 0

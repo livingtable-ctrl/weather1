@@ -79,7 +79,29 @@ _obs_locks_mu = threading.Lock()
 # Hard wall-clock timeout for obs HTTP calls — Windows SSL can hang past
 # socket-level timeouts; a thread pool future gives a reliable deadline.
 _OBS_WALL_SECS = 7.0
-_obs_fetch_pool = _TPE(max_workers=4, thread_name_prefix="nws-obs")
+_OBS_POOL_WORKERS = 4
+_obs_fetch_pool = _TPE(max_workers=_OBS_POOL_WORKERS, thread_name_prefix="nws-obs")
+# L-1(nws): a wall-clock timeout in _get_obs abandons the submitted future --
+# it keeps running (and occupying a worker) until the underlying request
+# itself eventually completes or errors, since ThreadPoolExecutor has no
+# cancellation for already-started work. Sustained Windows SSL hangs (this
+# pool's own raison d'être, see _OBS_WALL_SECS above) can permanently
+# consume all _OBS_POOL_WORKERS workers this way, after which every new
+# submission just queues behind them and times out too -- but that failure
+# looks identical to a normal single-request timeout in the logs. This
+# counter (incremented on submit, decremented via add_done_callback once the
+# task ACTUALLY finishes, independent of whether _get_obs's own caller gave
+# up on it) gives _get_obs a distinct signal to log when the pool is
+# saturated rather than merely slow.
+_obs_inflight = 0
+_obs_inflight_lock = threading.Lock()
+
+
+def _obs_inflight_done(_future) -> None:
+    global _obs_inflight
+    with _obs_inflight_lock:
+        _obs_inflight -= 1
+
 
 # Persistent station-ID cache: station→coord mappings never change, so we can
 # avoid the NWS /observationStations round-trip on subsequent process starts.
@@ -145,8 +167,23 @@ def _get_obs(url: str) -> dict:
     to a thread pool and calling .result(timeout=N) gives a reliable deadline
     regardless of OS-level SSL stalls.
     """
+    global _obs_inflight
+    with _obs_inflight_lock:
+        _obs_inflight += 1
+        _inflight_now = _obs_inflight
+    if _inflight_now > _OBS_POOL_WORKERS:
+        _log.warning(
+            "NWS obs pool saturated: %d requests in flight against a "
+            "%d-worker pool — a prior timed-out call is likely still "
+            "occupying a worker for %s",
+            _inflight_now,
+            _OBS_POOL_WORKERS,
+            url,
+        )
+    future = _obs_fetch_pool.submit(_get, url)
+    future.add_done_callback(_obs_inflight_done)
     try:
-        return _obs_fetch_pool.submit(_get, url).result(timeout=_OBS_WALL_SECS)
+        return future.result(timeout=_OBS_WALL_SECS)
     except _FutureTimeout:
         _log.warning("NWS obs wall-clock timeout (%.0fs) for %s", _OBS_WALL_SECS, url)
         raise TimeoutError(f"wall-clock timeout on {url}")
@@ -243,7 +280,6 @@ def get_nws_daily_forecast(city: str, coords: tuple) -> dict[str, dict]:
         _nws_cb.record_failure()
         _log.warning("NWS daily forecast malformed response for %s", city)
         return {}
-    _nws_cb.record_success()
     periods = data.get("properties", {}).get("periods", [])
     result: dict[str, dict] = {}
 
@@ -272,6 +308,21 @@ def get_nws_daily_forecast(city: str, coords: tuple) -> dict[str, dict]:
         except Exception:
             continue
 
+    # M-18a: a response that passed validate_nws_response() (real, non-empty
+    # periods) can still yield an empty result here if every period fails
+    # the per-period parse/unit checks above -- treat that the same as a
+    # malformed response (real failure, no 3600s cache write of {}) rather
+    # than crediting record_success() for a forecast the city never actually
+    # got.
+    if not result:
+        _nws_cb.record_failure()
+        _log.warning(
+            "NWS daily forecast validated but produced no usable periods for %s",
+            city,
+        )
+        return result
+
+    _nws_cb.record_success()
     _forecast_cache.set(city, result)
     return result
 

@@ -193,7 +193,7 @@ def fetch_historical_daily(
     cache = _cache_path(sid)
     if cache.exists() and not force and not _cache_is_stale(cache):
         try:
-            with open(cache) as f:
+            with open(cache, encoding="utf-8") as f:
                 raw = json.load(f)
             parsed = {
                 int(y): {int(d): v for d, v in days.items()} for y, days in raw.items()
@@ -274,19 +274,29 @@ def fetch_historical_daily(
 def _load_stale_cache_or_none(
     cache: Path, sid: str
 ) -> dict[int, dict[int, float | None]] | None:
+    """L-1: deliberately does NOT write into _MEM_CACHE (unlike the happy
+    path in fetch_historical_daily, which does). _MEM_CACHE is a plain dict
+    with NO TTL -- checked before the disk-staleness gate at the top of
+    fetch_historical_daily. Caching a stale-fallback result here would pin
+    it as the answer for `sid` for the rest of the process's lifetime: the
+    very next call would short-circuit on `sid in _MEM_CACHE` and never
+    reach the circuit-breaker check or a fresh network attempt again, even
+    long after ACIS recovers (and would freeze end_year across a New Year
+    boundary too, since a fresh fetch is what recomputes it). Leaving
+    _MEM_CACHE unset means each subsequent call re-evaluates the circuit
+    breaker/network path normally -- effectively "retry when the breaker
+    recovers" for free, since a closed breaker will attempt the real fetch
+    again on the very next call.
+    """
     if not cache.exists():
         _log.warning(
             "fetch_historical_daily: API failed for sid=%s and no cache exists", sid
         )
         return None
     try:
-        with open(cache) as f:
+        with open(cache, encoding="utf-8") as f:
             raw = json.load(f)
-        parsed = {
-            int(y): {int(d): v for d, v in days.items()} for y, days in raw.items()
-        }
-        _MEM_CACHE[sid] = parsed
-        return parsed
+        return {int(y): {int(d): v for d, v in days.items()} for y, days in raw.items()}
     except Exception as exc:
         _log.warning(
             "fetch_historical_daily: stale cache read failed for sid=%s: %s", sid, exc
@@ -361,8 +371,14 @@ def fetch_seasonal_precip_mean_mm(
     # directly, mirroring acis_snow.py's identical fix, so a future
     # Open-Meteo unit change fails loudly instead of silently mis-tilting
     # the bootstrap by 10x.
+    # L-1: `is not None and !=` failed OPEN when monthly_units was absent
+    # entirely (treated a missing key the same as a confirmed-correct "mm")
+    # -- exactly the silent-10x-mis-tilt scenario this guard exists to
+    # prevent, just reached via a missing field instead of a changed one.
+    # `is None or !=` fails CLOSED instead: an unconfirmed unit (missing OR
+    # wrong) is refused, not assumed correct.
     _unit = body.get("monthly_units", {}).get("precipitation_mean")
-    if _unit is not None and _unit != "mm":
+    if _unit is None or _unit != "mm":
         _log.warning(
             "fetch_seasonal_precip_mean_mm: expected unit 'mm', API reported %r "
             "-- refusing to use this value (would mis-tilt the bootstrap)",

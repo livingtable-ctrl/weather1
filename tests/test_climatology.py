@@ -270,6 +270,126 @@ class TestFetchHistoricalCaching:
 
         assert result is None
 
+    # ── M-18e: unguarded json.load on the per-city climate cache ────────────
+
+    def test_corrupt_fresh_disk_cache_falls_through_to_network_refetch(
+        self, tmp_path, monkeypatch
+    ):
+        """M-18e: a corrupt/truncated climate_{city}.json used to raise
+        straight out of fetch_historical() -- and since load_all_sigmas()
+        calls fetch_historical() (via compute_sigma_from_climate()) while
+        holding its own _sigma_lock, that raise would propagate out of
+        load_all_sigmas() entirely, dropping the lock mid-loop and aborting
+        every OTHER city's sigma compute in the same call, not just this
+        one. Must degrade to a real refetch instead, mirroring
+        _load_sigma_cache_file's own corrupt-file guarding."""
+        disk_path = tmp_path / "climate_NYC.json"
+        disk_path.write_text("{not valid json")  # fresh mtime, corrupt content
+
+        with self._mock_network() as mock_get:
+            result = climatology.fetch_historical(
+                "NYC", (40.7, -74.0, "America/New_York")
+            )
+
+        assert result is not None
+        assert result["highs"] == [70.0, 71.0, 72.0], (
+            "a corrupt fresh disk cache must not raise -- it must fall "
+            "through to a real network refetch"
+        )
+        assert mock_get.call_count == 1
+
+    def test_corrupt_stale_fallback_cache_returns_none_not_raise(
+        self, tmp_path, monkeypatch
+    ):
+        """M-18e's second gap: the except-handler's stale-cache-read copy
+        (reached when the network call itself fails) has the identical
+        unguarded json.load -- and sits inside an `except Exception as exc`
+        block, so an unguarded raise there would mask the original network
+        error behind an unrelated JSONDecodeError while still propagating
+        out of load_all_sigmas(). Must return None gracefully instead."""
+        import os
+
+        disk_path = tmp_path / "climate_NYC.json"
+        disk_path.write_text("{not valid json")
+        stale_time = time.time() - climatology.CACHE_MAX_AGE - 3600
+        os.utime(disk_path, (stale_time, stale_time))  # force the network attempt
+
+        with self._mock_network_failure():
+            result = climatology.fetch_historical(
+                "NYC", (40.7, -74.0, "America/New_York")
+            )
+
+        assert result is None, (
+            "a network failure falling back to a corrupt stale disk cache "
+            "must return None (not raise, and not mask the original "
+            "network error with a JSONDecodeError)"
+        )
+
+    def test_load_all_sigmas_survives_corrupt_climate_cache_for_other_cities(
+        self, tmp_path, monkeypatch
+    ):
+        """Integration-level proof: a corrupt climate_{city}.json for ONE
+        city must not abort load_all_sigmas()'s loop for every OTHER city
+        -- the exact failure mode M-18e's docstring describes (an unguarded
+        raise inside the _sigma_lock-held loop). Exercises the REAL
+        fetch_historical() end to end (not a mock standing in for it) --
+        an earlier version of this test replaced fetch_historical entirely,
+        which meant it could not actually detect a regression in the
+        json.load guard it claims to prove; this version writes a genuinely
+        corrupt file to disk and lets compute_sigma_from_climate() ->
+        fetch_historical() read it for real. Network is mocked to also fail
+        for BAD (compute_sigma_from_climate() doesn't thread load_all_
+        sigmas()'s own `force` through to fetch_historical() at all -- so a
+        FRESH-mtime corrupt file always exercises the first guarded
+        json.load branch, and a failed network attempt then exercises the
+        second guarded (stale-cache-fallback) branch reading the same
+        corrupt file again) -- proving BOTH of climatology.py's M-18e fixes
+        survive in the same call, not just the first one."""
+        import os
+
+        import climatology as clim
+
+        monkeypatch.setattr(clim, "DATA_DIR", tmp_path)
+        monkeypatch.setattr(clim, "_SIGMA_CACHE_PATH", tmp_path / "forecast_sigma.json")
+        clim._sigma_mem_cache.clear()
+        clim._MEM_CACHE.clear()
+
+        bad_path = tmp_path / "climate_BAD.json"
+        bad_path.write_text("{not valid json")
+        now = time.time()
+        os.utime(bad_path, (now, now))  # fresh mtime -- not stale
+
+        good_path = tmp_path / "climate_GOOD.json"
+        good_data = _synthetic_climate_data()
+        good_path.write_text(json.dumps(good_data))
+        os.utime(good_path, (now, now))
+
+        with patch.object(
+            clim._session, "get", side_effect=clim.requests.ConnectionError("down")
+        ) as mock_get:
+            result = clim.load_all_sigmas(
+                {"BAD": (0.0, 0.0, "UTC"), "GOOD": (0.0, 0.0, "UTC")}, force=True
+            )
+
+        assert mock_get.call_count == 2, (
+            "expected exactly 2 network attempts (BAD's corrupt-fresh-cache "
+            "falls through to a real refetch attempt, once per var -- "
+            "compute_sigma_from_climate() calls fetch_historical() once for "
+            "max and once for min, and neither corrupt-file failure path "
+            "populates _MEM_CACHE, so each var independently repeats the "
+            "same guarded-read + network-attempt sequence); GOOD's own "
+            "fresh, valid on-disk cache must be served without ever "
+            "touching the network at all"
+        )
+        assert "GOOD" in result and result["GOOD"]["max"], (
+            "GOOD city's sigma must still be computed even though BAD's "
+            "climate cache was corrupt/unfetchable"
+        )
+        assert result["BAD"] == {"max": {}, "min": {}}, (
+            "BAD's corrupt cache (both guarded read attempts exhausted, "
+            "network also down) must degrade to an empty entry, not raise"
+        )
+
 
 class TestClimatologicalNormal:
     """M-31: climatological_normal() is a new function -- regime.py's
@@ -687,6 +807,65 @@ class TestLoadAllSigmasMerge:
             for city, coords in cities.items():
                 result = climatology.load_all_sigmas({city: coords}, force=True)
         assert set(result.keys()) == set(cities.keys())
+
+    def test_partial_var_failure_does_not_clobber_the_other_vars_good_table(
+        self, tmp_path, monkeypatch
+    ):
+        """L-5: the old guard (`if not (max_sigma or min_sigma) and
+        _sigma_entry_has_data(...): continue`) only skipped the write when
+        BOTH vars came back empty. A PARTIAL failure -- max succeeds, min
+        comes back empty from a transient glitch -- made `max_sigma or
+        min_sigma` truthy, so it fell through and wrote {"max": <good>,
+        "min": {}}, clobbering NYC's existing GOOD min table. Must preserve
+        each var independently."""
+        cache_path = tmp_path / "sigma.json"
+        cache_path.write_text(
+            json.dumps(
+                {"NYC": {"max": {"1": 1.1}, "min": {"1": 2.2}}}  # both real
+            )
+        )
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+
+        def fake_compute(city, coords, var="max"):
+            if var == "max":
+                return {1: 9.9}  # fresh, successful recompute
+            return {}  # min compute failed this round (transient)
+
+        with patch.object(
+            climatology, "compute_sigma_from_climate", side_effect=fake_compute
+        ):
+            result = climatology.load_all_sigmas(
+                {"NYC": (40.7, -74.0, "America/New_York")}, force=True
+            )
+
+        assert result["NYC"]["max"]["1"] == 9.9, "max must reflect the fresh recompute"
+        assert result["NYC"]["min"]["1"] == 2.2, (
+            "min's existing good table must survive a partial (min-only) "
+            "compute failure, not be clobbered with an empty dict"
+        )
+
+    def test_partial_var_failure_min_survives_on_disk_too(self, tmp_path, monkeypatch):
+        """Positive-path control for the fix above, checked at the disk-
+        write level too, not just the in-memory return value."""
+        cache_path = tmp_path / "sigma.json"
+        cache_path.write_text(
+            json.dumps({"NYC": {"max": {"1": 1.1}, "min": {"1": 2.2}}})
+        )
+        monkeypatch.setattr(climatology, "_SIGMA_CACHE_PATH", cache_path)
+
+        def fake_compute(city, coords, var="max"):
+            return {1: 9.9} if var == "max" else {}
+
+        with patch.object(
+            climatology, "compute_sigma_from_climate", side_effect=fake_compute
+        ):
+            climatology.load_all_sigmas(
+                {"NYC": (40.7, -74.0, "America/New_York")}, force=True
+            )
+
+        on_disk = json.loads(cache_path.read_text())
+        assert on_disk["NYC"]["min"]["1"] == 2.2
+        assert on_disk["NYC"]["max"]["1"] == 9.9
 
 
 class TestPreloadAllSigmaGate:

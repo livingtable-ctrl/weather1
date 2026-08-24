@@ -187,8 +187,32 @@ def fetch_mos(
         _MOS_CACHE.set(_cache_key, None)
         return None
 
-    # Filter to rows on the target date (ftime starts with date_str)
-    day_rows = [r for r in rows if str(r.get("ftime", "")).startswith(date_str)]
+    # M-18c: ftime is UTC (live-verified, same "%Y-%m-%d %H:%M" no-seconds
+    # format _fetch_nbs_daily_extremes below parses explicitly), but
+    # target_date/date_str is CITY-LOCAL -- a raw UTC-string-prefix
+    # comparison misaligns by the city's UTC offset in both directions
+    # (e.g. 7-8h for KLAX: an evening-UTC row that's still target_date's
+    # afternoon in Los Angeles gets excluded, while an early-UTC row that's
+    # already the PRIOR local day gets wrongly included). Convert each row's
+    # ftime to city_tz before comparing dates when tz is known; fall back to
+    # the old UTC-string comparison when tz is unavailable (mirrors
+    # _local_or_utc_today's own None/bad-tz fallback) rather than silently
+    # returning zero rows.
+    def _row_is_target_local_date(ftime_raw) -> bool:
+        ftime_str = str(ftime_raw or "")
+        if tz is not None:
+            try:
+                from zoneinfo import ZoneInfo
+
+                ftime_utc = datetime.strptime(ftime_str, "%Y-%m-%d %H:%M").replace(
+                    tzinfo=UTC
+                )
+                return ftime_utc.astimezone(ZoneInfo(tz)).date() == target_date
+            except Exception:
+                pass
+        return ftime_str.startswith(date_str)
+
+    day_rows = [r for r in rows if _row_is_target_local_date(r.get("ftime", ""))]
     if not day_rows:
         _MOS_CACHE.set(_cache_key, None)
         return None

@@ -1568,6 +1568,36 @@ class TestPDOPNA:
         correction = apply_pdo_pna_correction("LA", forecast_temp_f=65.0, month=1)
         assert correction <= 3.0
 
+    def test_apply_pdo_pna_correction_threads_month_through_to_get_pdo_pna(
+        self, monkeypatch
+    ):
+        """M-18d: apply_pdo_pna_correction's own `season` is derived from
+        the caller's `month` argument, but get_pdo_pna() used to be called
+        with NO arguments at all -- defaulting to the CURRENT UTC month's
+        index lookback regardless of what `month` was, mixing a target
+        month's seasonal coefficient with a different month's index value
+        (the same defect class get_indices() was already fixed for). The
+        three tests above all use `lambda **kw: {...}` mocks that accept
+        and silently ignore any kwargs, so none of them could actually
+        prove `month` was threaded through -- this one captures the real
+        call args instead. Mutation-tested: reverting the fix (calling
+        `get_pdo_pna()` with no args) makes this fail."""
+        import climate_indices as ci
+
+        captured = {}
+
+        def _fake_get_pdo_pna(**kwargs):
+            captured.update(kwargs)
+            return {"pdo": 1.0, "pna": 0.0}
+
+        monkeypatch.setattr(ci, "get_pdo_pna", _fake_get_pdo_pna)
+        ci.apply_pdo_pna_correction("LA", forecast_temp_f=65.0, month=1)
+
+        assert captured.get("month") == 1, (
+            f"expected get_pdo_pna to be called with month=1 (the caller's "
+            f"own target month), got kwargs={captured!r}"
+        )
+
     def test_fetch_pdo_pna_parses_csv(self, monkeypatch, tmp_path):
         """fetch_pdo_pna correctly parses NOAA CSV and writes pdo_pna.json."""
         import climate_indices as ci

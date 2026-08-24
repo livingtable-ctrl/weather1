@@ -314,3 +314,63 @@ class TestRegressionFittedOriginalTen:
         # spring/other: ao=0.5 (default) + nao=0.4 (default) + enso=-1.0 (fitted, negative) = -0.1
         assert self._adjustment("Denver", month=4) == pytest.approx(-0.1)
         assert self._adjustment("Denver", month=7) == pytest.approx(-0.1)
+
+
+class TestGetIndicesPartialFailureCaching:
+    """L-6: the H-17 zero-result cache guard only fired when ALL THREE
+    fetches returned empty -- a PARTIAL outage (e.g. AO fails, NAO/ENSO
+    succeed) still cached the combined result (AO's spurious 0.0 included)
+    for the full 24h TTL, since not every index was 0.0. Fixed to skip the
+    cache write whenever ANY raw fetch dict came back empty (the only way
+    _fetch_monthly_index/_fetch_enso return {}), not just when the combined
+    RESULT happens to be all-zero."""
+
+    def _mock_fetches(self, monkeypatch, ao, nao, enso):
+        # "daily_ao_index" (AO) vs "pna/norm.nao" (NAO) -- distinguish on
+        # the AO-specific path segment, not a bare "ao" substring, since
+        # "norm.nao..." itself contains "ao" and would otherwise collide.
+        def _fake_fetch_monthly_index(url):
+            return ao if "ao_index" in url else nao
+
+        monkeypatch.setattr(ci, "_fetch_monthly_index", _fake_fetch_monthly_index)
+        monkeypatch.setattr(ci, "_fetch_enso", lambda: enso)
+
+    def test_all_three_succeed_caches(self, monkeypatch):
+        self._mock_fetches(
+            monkeypatch,
+            ao={(2026, 1): 0.5},
+            nao={(2026, 1): 0.3},
+            enso={(2026, 1): -0.2},
+        )
+        result = ci.get_indices(target_month=1, target_year=2026)
+        assert result == {"ao": 0.5, "nao": 0.3, "enso": -0.2, "year": 2026, "month": 1}
+        assert ci._indices_cache.get((2026, 1)) == result
+
+    def test_one_of_three_fails_does_not_cache(self, monkeypatch):
+        """The core L-6 regression: AO's raw fetch failed ({}), NAO/ENSO
+        succeeded with real non-zero values -- the OLD guard only checked
+        whether the combined result was all-zero, which it isn't here (nao/
+        enso are nonzero), so it cached anyway, freezing AO's failure (as a
+        spurious 0.0) into the shared (year, month) slot for 24h even after
+        AO recovered. Mutation-tested below by reverting to the old
+        all-zero-only check."""
+        self._mock_fetches(
+            monkeypatch,
+            ao={},  # simulates a failed AO fetch (_fetch_monthly_index's own except-clause return)
+            nao={(2026, 1): 0.3},
+            enso={(2026, 1): -0.2},
+        )
+        result = ci.get_indices(target_month=1, target_year=2026)
+        assert result == {"ao": 0.0, "nao": 0.3, "enso": -0.2, "year": 2026, "month": 1}
+        assert ci._indices_cache.get((2026, 1)) is None, (
+            "a partial fetch failure (AO empty, NAO/ENSO real) must NOT be "
+            "cached -- the next call must retry AO instead of being frozen "
+            "at 0.0 for the full 24h TTL"
+        )
+
+    def test_all_three_fail_does_not_cache_control(self, monkeypatch):
+        """Positive control matching the original H-17 all-zero case."""
+        self._mock_fetches(monkeypatch, ao={}, nao={}, enso={})
+        result = ci.get_indices(target_month=1, target_year=2026)
+        assert result == {"ao": 0.0, "nao": 0.0, "enso": 0.0, "year": 2026, "month": 1}
+        assert ci._indices_cache.get((2026, 1)) is None

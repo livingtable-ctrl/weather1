@@ -29,6 +29,7 @@ from pathlib import Path
 import requests
 
 import safe_io
+from circuit_breaker import CircuitBreaker
 from paths import DATA_DIR
 
 _log = logging.getLogger(__name__)
@@ -39,6 +40,17 @@ _session = requests.Session()
 # year (each January/February, adding the just-finished season). If NOAA
 # rotates the filename again, these two need a manual refresh -- confirmed
 # live 2026-08-03, both current through the 2025 season.
+#
+# L-8: exact rotation pattern (both files share it), so a future refresh
+# doesn't have to be reverse-engineered from the URL alone:
+#   hurdat2-<start_year>-<end_year>-<release_MMDDYYYY>.txt        (ATL)
+#   hurdat2-nepac-<start_year>-<end_year>-<release_MMDDYYYY>.txt  (PAC)
+# <start_year> is fixed (1851 ATL / 1949 PAC, the start of each record).
+# <end_year> is the most recently FINALIZED season and increments by 1 each
+# Jan/Feb when NOAA republishes with that season appended. <release_MMDDYYYY>
+# is NOAA's own publication date for that specific file, not derivable from
+# <end_year> alone -- check https://www.nhc.noaa.gov/data/hurdat/ for the
+# current filename rather than guessing the release-date suffix.
 HURDAT2_URLS = {
     "ATL": "https://www.nhc.noaa.gov/data/hurdat/hurdat2-1851-2025-02272026.txt",
     "PAC": "https://www.nhc.noaa.gov/data/hurdat/hurdat2-nepac-1949-2025-02272026.txt",
@@ -94,6 +106,27 @@ HISTORY_WINDOW_YEARS = 30  # most recent 30 COMPLETE seasons -- matches this
 
 _MEM_CACHE: dict[str, list[dict]] = {}
 
+# L-8: back off the dead URL instead of re-attempting it on every call. Only
+# reached when there's no fresh (<30-day) disk cache to short-circuit the
+# network entirely, so this specifically protects the "no usable disk cache
+# at all" case (fresh install, or the cache has aged past CACHE_MAX_AGE)
+# from hammering a URL that 404s every time after NOAA's yearly filename
+# rotation -- see HURDAT2_URLS's own comment for the rotation pattern. One
+# breaker per file_key: ATL and PAC are independent endpoints, so one
+# rotating doesn't mean the other has too. recovery_timeout is generous
+# (1 day, not the 180-300s other modules use) since this data only changes
+# once a year -- there's no benefit to probing more often than that, and it
+# avoids needlessly reopening the breaker on every scan cycle while the URL
+# is still broken.
+_hurdat2_cb: dict[str, CircuitBreaker] = {
+    "ATL": CircuitBreaker(
+        name="hurdat2_atl", failure_threshold=2, recovery_timeout=86400
+    ),
+    "PAC": CircuitBreaker(
+        name="hurdat2_pac", failure_threshold=2, recovery_timeout=86400
+    ),
+}
+
 
 def _cache_path(file_key: str) -> Path:
     return DATA_DIR / f"hurdat2_{file_key}.txt"
@@ -125,12 +158,27 @@ def fetch_hurdat2_raw(file_key: str, force: bool = False) -> str | None:
                 "fetch_hurdat2_raw: cache read failed for %s: %s", file_key, exc
             )
 
+    cb = _hurdat2_cb[file_key]
+    if not force and cb.is_open():
+        # L-8: back off the dead URL -- once this file_key's breaker has
+        # opened (repeated 404s/failures), skip straight to the stale-cache
+        # fallback instead of re-attempting the same known-dead URL on
+        # every call. force=True (an explicit manual refresh) bypasses this,
+        # same as it bypasses the disk-staleness gate above.
+        _log.info(
+            "[CircuitBreaker] hurdat2_%s circuit open — skipping fetch for %s",
+            file_key.lower(),
+            file_key,
+        )
+        return _load_stale_cache_or_none(cache, file_key)
+
     url = HURDAT2_URLS[file_key]
     try:
         resp = _session.get(url, timeout=30)
         resp.raise_for_status()
         text = resp.text
     except Exception as exc:
+        cb.record_failure()
         _log.warning(
             "fetch_hurdat2_raw: fetch failed for %s (%s): %s", file_key, url, exc
         )
@@ -140,12 +188,15 @@ def fetch_hurdat2_raw(file_key: str, force: bool = False) -> str | None:
     # error page instead of 404ing -- refuse to cache/parse anything that
     # doesn't look like real HURDAT2 storm-header data.
     if not text or not any(f"{p}0" in text for p in ("AL", "EP", "CP")):
+        cb.record_failure()
         _log.warning(
             "fetch_hurdat2_raw: response for %s doesn't look like HURDAT2 data "
             "-- refusing to cache",
             file_key,
         )
         return _load_stale_cache_or_none(cache, file_key)
+
+    cb.record_success()
 
     try:
         # emergency_copy=False: this is a disposable, trivially re-fetchable
@@ -334,17 +385,29 @@ def _warn_if_stale(all_storms: list[dict], file_key: str) -> None:
     and should always contain the last 1-2 complete seasons somewhere in it.
     Warns only -- never blocks trading, matching this module's fail-open
     convention elsewhere (acis_precip.py's identical "log loudly, keep
-    going" pattern)."""
+    going" pattern).
+
+    L-8: threshold is current_year - 1, not current_year - 2. The module's
+    own docstring says the just-finished season is added "roughly the
+    following April" -- by any point in a given year after that, the file
+    SHOULD already contain last year's season, so newest < current_year - 1
+    is the earliest point a one-season staleness (e.g. NOAA's Jan/Feb
+    filename rotation making HURDAT2_URLS 404 silently absorbed by the
+    stale-cache fallback) becomes visible. The old current_year - 2
+    threshold couldn't see a staleness that fresh -- it only fired a full
+    season LATER than that.
+    """
     years = [s["year"] for s in all_storms if s["year"] is not None]
     if not years:
         return
     newest = max(years)
     current_year = datetime.now(UTC).date().year
-    if newest < current_year - 2:
+    if newest < current_year - 1:
         _log.warning(
             "hurricane_climatology: %s's newest storm year is %d, more than "
-            "2 years behind %d -- HURDAT2 data may be stale or the cached "
-            "file may be truncated",
+            "1 year behind %d -- HURDAT2 data may be stale, the cached file "
+            "may be truncated, or NOAA's yearly filename rotation (see "
+            "HURDAT2_URLS's own comment) may have broken the live URL",
             file_key,
             newest,
             current_year,

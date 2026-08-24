@@ -172,7 +172,17 @@ def is_all_null(values: list | None) -> bool:
 
 
 def validate_nws_response(data: dict) -> bool:
-    """Validate NWS API point forecast response."""
+    """Validate NWS API point forecast response.
+
+    M-18a: checking only that `properties` is a dict let a well-formed-but-
+    empty response (`{"properties": {}}`) pass -- the real payload's daily
+    high/low periods live at `properties.periods`, so a response missing
+    that key (or shipping an empty list) has no usable forecast data at all
+    despite structurally validating. Require `periods` to be a non-empty
+    list too, so a malformed/empty response is treated as a real fetch
+    failure (record_failure(), no cache write) rather than a silent
+    hour-long cache of {}.
+    """
     required: dict[str, type | tuple[type, ...]] = {
         "properties": dict,
     }
@@ -192,6 +202,15 @@ def validate_nws_response(data: dict) -> bool:
                 expected_type.__name__
                 if isinstance(expected_type, type)
                 else str(expected_type),
+            )
+            ok = False
+    if ok:
+        periods = data["properties"].get("periods")
+        if not isinstance(periods, list) or not periods:
+            _log.warning(
+                "schema_validator[nws]: properties.periods missing or empty "
+                "(got %r) -- treating as a malformed response",
+                type(periods).__name__ if periods is not None else None,
             )
             ok = False
     return ok

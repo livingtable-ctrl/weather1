@@ -204,7 +204,7 @@ def fetch_historical_daily_snow(
     cache = _cache_path(sid)
     if cache.exists() and not force and not _cache_is_stale(cache):
         try:
-            with open(cache) as f:
+            with open(cache, encoding="utf-8") as f:
                 raw = json.load(f)
             parsed = {
                 int(y): {int(d): v for d, v in days.items()} for y, days in raw.items()
@@ -288,6 +288,13 @@ def fetch_historical_daily_snow(
 def _load_stale_cache_or_none(
     cache: Path, sid: str
 ) -> dict[int, dict[int, float | None]] | None:
+    """L-1: deliberately does NOT write into _MEM_CACHE -- see
+    acis_precip._load_stale_cache_or_none's identical fix/docstring for the
+    full rationale (this is the cloned copy). _MEM_CACHE is a plain dict
+    with no TTL; caching a stale-fallback result here would pin it for the
+    rest of the process's lifetime instead of letting the next call retry
+    the circuit breaker/network path once ACIS recovers.
+    """
     if not cache.exists():
         _log.warning(
             "fetch_historical_daily_snow: API failed for sid=%s and no cache exists",
@@ -295,13 +302,9 @@ def _load_stale_cache_or_none(
         )
         return None
     try:
-        with open(cache) as f:
+        with open(cache, encoding="utf-8") as f:
             raw = json.load(f)
-        parsed = {
-            int(y): {int(d): v for d, v in days.items()} for y, days in raw.items()
-        }
-        _MEM_CACHE[sid] = parsed
-        return parsed
+        return {int(y): {int(d): v for d, v in days.items()} for y, days in raw.items()}
     except Exception as exc:
         _log.warning(
             "fetch_historical_daily_snow: stale cache read failed for sid=%s: %s",
@@ -358,8 +361,12 @@ def fetch_seasonal_snow_mean_cm(
     # directly so a future Open-Meteo unit change fails loudly instead of
     # silently mis-tilting the bootstrap by 10x (this value feeds a x10
     # cm-to-mm conversion at the _analyze_monthly_snow_trade call site).
+    # L-1: fail CLOSED (missing OR wrong unit refused), not open -- see
+    # acis_precip.fetch_seasonal_precip_mean_mm's identical fix for the
+    # rationale. `is not None and !=` used to treat an absent monthly_units
+    # key the same as a confirmed "cm", defeating this guard's own purpose.
     _unit = body.get("monthly_units", {}).get("snowfall_mean")
-    if _unit is not None and _unit != "cm":
+    if _unit is None or _unit != "cm":
         _log.warning(
             "fetch_seasonal_snow_mean_cm: expected unit 'cm', API reported %r "
             "-- refusing to use this value (would mis-tilt the bootstrap)",

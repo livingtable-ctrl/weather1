@@ -178,16 +178,31 @@ def get_indices(
             "year": year,
             "month": month,
         }
-        # H-17: only cache when at least one index was successfully fetched.
-        # A full-zero result from a network outage must not lock in zero adjustments
-        # for the next 24 hours — skip the _indices_cache.set() call below so the
-        # next call retries immediately instead of hitting a frozen zero result.
-        if result["ao"] == 0.0 and result["nao"] == 0.0 and result["enso"] == 0.0:
+        # H-17 + L-6: don't cache when ANY of the three raw fetches came back
+        # empty, not just when the combined result happens to be all-zero.
+        # Both _fetch_monthly_index and _fetch_enso return {} whenever that
+        # source has NO usable data this cycle -- a request exception (their
+        # own except clauses), or a 200 response whose body simply parsed to
+        # zero valid rows. A non-empty dict that just has no entry for this
+        # specific (year, month) is different: it still yields 0.0 via
+        # latest()'s own default, so checking the RESULT's zero-ness
+        # conflated "this source has nothing at all" with "this source's
+        # real recent value happens to be near zero". The original all-zero
+        # check missed
+        # a partial outage entirely: e.g. AO fails (0.0, spurious) while NAO/
+        # ENSO succeed -- not all three are 0.0, so the old guard cached the
+        # combined result anyway, freezing AO's failure into the shared
+        # (year, month) slot for the full 24h TTL even after AO recovered.
+        if not ao_data or not nao_data or not enso_data:
             _log.warning(
-                "climate_indices: all three NOAA fetches returned empty — "
-                "NOT caching zero result; will retry on next call"
+                "climate_indices: at least one NOAA fetch failed this cycle "
+                "(ao=%s nao=%s enso=%s) — NOT caching a partial result; will "
+                "retry on next call",
+                bool(ao_data),
+                bool(nao_data),
+                bool(enso_data),
             )
-            return result  # return zeros for this call but don't update the timestamp
+            return result  # return what we have for this call but don't cache it
 
         _indices_cache.set(cache_key, result)
         return result
@@ -539,7 +554,7 @@ def get_pdo_pna(year: int | None = None, month: int | None = None) -> dict[str, 
     data = None
     if _PDO_PNA_PATH.exists():
         try:
-            data = json.loads(_PDO_PNA_PATH.read_text())
+            data = json.loads(_PDO_PNA_PATH.read_text(encoding="utf-8"))
             fetched_at = datetime.fromisoformat(data["fetched_at"])
             if (now - fetched_at).days >= _PDO_PNA_TTL_DAYS:
                 data = None  # stale — refetch below
@@ -616,6 +631,21 @@ def apply_pdo_pna_correction(city: str, forecast_temp_f: float, month: int) -> f
     Returns 0.0 for cities not in coefficient tables.
     Caller adds the result: forecast_temp_f += apply_pdo_pna_correction(...)
     Clamped to +-3 degrees F to prevent over-correction from extreme index values.
+
+    M-18d: `season` below is derived from the caller's own target `month`,
+    but get_pdo_pna() previously ran with no arguments -- defaulting to the
+    CURRENT UTC month's index lookback regardless of what `month` actually
+    was. That mixes a target month's seasonal coefficient with a
+    potentially different month's index value, the exact defect class
+    get_indices() was already fixed for (see its own docstring) and that
+    temperature_adjustment() above already avoids by passing target_date's
+    own month/year through. Thread `month` through to get_pdo_pna(month=...)
+    so the coefficient and the index lookback agree on which month they're
+    both about. Year is deliberately NOT threaded through the same way: the
+    sole production caller (weather_markets.py, out of scope for this
+    module) only ever passes `month`, not a year -- get_pdo_pna() keeps
+    resolving the current year by its own existing default, same as before
+    this fix.
     """
     season = _month_to_season(month)
     pdo_coeff = _PDO_TEMP_COEFF.get(city, {}).get(season, 0.0)
@@ -624,6 +654,6 @@ def apply_pdo_pna_correction(city: str, forecast_temp_f: float, month: int) -> f
     if pdo_coeff == 0.0 and pna_coeff == 0.0:
         return 0.0
 
-    indices = get_pdo_pna()
+    indices = get_pdo_pna(month=month)
     correction = pdo_coeff * indices["pdo"] + pna_coeff * indices["pna"]
     return round(max(-3.0, min(3.0, correction)), 2)

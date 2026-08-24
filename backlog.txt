@@ -28040,3 +28040,289 @@ Test/lint summary for the whole batch (final, after the item-1 self-review corre
   self-review, mutation-tested and confirmed). Treating this self-review as the review-gate substitute for
   this batch, consistent with batch-38's precedent the same day, not as a placeholder pending a later
   opus run.
+
+[RESOLVED 2026-08-24 -- batch-36 item 1 (M-18a)] validate_nws_response is too shallow to deliver batch-13's fail-closed intent
+Priority: MEDIUM -- live trade-entry pricing surface (NWS daily forecast)
+Files: schema_validator.py (validate_nws_response), nws.py (get_nws_daily_forecast), tests/test_nws.py
+
+Problem:
+  The AUD-0060 wiring (batch-13, 53fb26e7) correctly moved record_success() to after
+  validate_nws_response(), but the validator itself only checked that `properties` is a dict --
+  `{"properties": {}}` passed, credited _nws_cb.record_success(), and get_nws_daily_forecast cached the
+  resulting {} for the full 3600s _FORECAST_CACHE_TTL (the early-return-on-cache-hit check only tests
+  `cached is not None`, and {} is not None). A city silently lost its NWS forecast for an hour with the
+  circuit breaker showing healthy the whole time.
+Resolution (2026-08-24): validate_nws_response now also requires properties.periods to be a real,
+  non-empty list -- a missing/empty/wrong-type periods field fails validation (record_failure(), no cache
+  write), matching AUD-0060's own "malformed response == real fetch failure" convention. Second layer in
+  get_nws_daily_forecast itself: even a response that passes validation (periods present, non-empty) can
+  still yield an empty `result` dict if every period fails its own per-period parse/unit gate (e.g. every
+  period reports a non-'F' temperatureUnit) -- that path now also record_failure()s and skips the cache
+  write, rather than crediting success for a forecast the city never actually got.
+  Tests (tests/test_nws.py): TestNwsDailyForecastValidation gained
+  test_empty_periods_records_failure_and_does_not_cache (with a positive control confirming the second
+  call re-fetches instead of hitting a poisoned {} cache entry) and
+  test_periods_present_but_all_unparseable_records_failure. New TestValidateNwsResponsePeriods class unit-
+  tests validate_nws_response() directly (missing/empty/non-list periods invalid, non-empty periods valid
+  control) -- isolated from get_nws_daily_forecast's own redundant empty-result guard, which would
+  otherwise mask a regression in the validator alone. All mutation-tested (reverting each fix
+  independently via Edit, confirming its own specific test fails, restoring).
+
+[RESOLVED 2026-08-24 -- batch-36 item 2 (M-18b)] metar.py's two naive-datetime parsing gaps
+Priority: MEDIUM -- live METAR lock-in pricing surface
+Files: metar.py (fetch_metar, _extract_obs_time, check_metar_lockout), tests/test_metar.py
+
+Problem:
+  (a) fetch_metar's reportTime staleness fallback parsed the real aviationweather.gov payload shape
+    ("2026-08-23 14:53:00" -- no "Z", no offset) via bare datetime.fromisoformat() into a NAIVE datetime.
+    The subsequent `datetime.now(UTC) - obs_time` (naive - aware) raised TypeError uncaught, propagating
+    out of fetch_metar -- exactly the case this fallback exists to handle gracefully (obsTime missing
+    entirely). The crash landed between the two negative-cache writes, so every market re-issued the
+    ~21s HTTP call on every scan instead of being absorbed by the 15-min TTL.
+  (b) _extract_obs_time had the identical gap but failed silently WRONG instead of crashing: a naive
+    result hits `.astimezone(tz)` at its only call site (_fetch_daily_temps_f), which Python interprets
+    as SYSTEM-LOCAL time -- silently misdating the observation's city-local date, feeding
+    fetch_metar_daily_extreme -> _metar_lock_in's YES-lock and _compute_persistence_prob. Latent in
+    production (the live obsTime field is an epoch int, not this string fallback) but on the wrong-trade
+    path if ever hit.
+  (c) L-2: two fetch_metar failure paths (missing-temp-field, implausible-temp-range) skipped the
+    negative cache that every other failure path in the function already had, re-issuing the network
+    call on every scan for a station stuck on either failure mode.
+  (d) check_metar_lockout's ZoneInfo(city_tz) exception handler fell back to `local_time = obs_time`
+    (UTC) -- passing the ">=2pm local" lock-in gate at whatever hour it happened to be in UTC, which for
+    a west-of-UTC city could be well before that city's real local 2pm. Never reachable in production
+    (all 20 traded cities use real, pinned IANA tz names) but fails open rather than closed on a bad tz.
+Resolution (2026-08-24): New shared helper metar._parse_iso_utc() parses an ISO string via
+  fromisoformat(), then attaches UTC (`.replace(tzinfo=UTC)`) if the result came back naive -- used at
+  all three parse sites (fetch_metar's obsTime-string branch, fetch_metar's reportTime fallback,
+  _extract_obs_time's string branch). (c): both failure paths now call `_METAR_CACHE.set(key, None)`
+  before returning, matching every sibling failure path. (d): the ZoneInfo exception handler now returns
+  NOT_LOCKED with a "fail closed" reason instead of falling through to the UTC-as-local hour check.
+  Tests (tests/test_metar.py): test_reportTime_fallback_naive_no_z_does_not_crash (+ a stale-still-
+  rejected positive control), test_missing_temp_fields_negative_caches,
+  test_implausible_temp_negative_caches, test_extract_obs_time_naive_no_z_string_is_utc_aware (direct
+  unit test, platform-independent), test_fetch_daily_temps_f_naive_obstime_lands_on_correct_local_date
+  (integration-level, discriminates on this dev machine's non-UTC system tz -- see its own docstring for
+  why it can't discriminate on a UTC-system-tz CI runner and why the direct unit test is the portable
+  regression guard), test_bad_city_tz_fails_closed_not_open (+ a good-tz positive control). All 6
+  mutation-tested individually.
+
+[RESOLVED 2026-08-24 -- batch-36 item 3 (M-18c)] fetch_mos filters UTC ftime rows by the city-local target date
+Priority: MEDIUM -- live MOS daily max/min pricing surface
+Files: mos.py (fetch_mos), tests/test_mos.py
+
+Problem:
+  fetch_mos's row filter (`ftime.startswith(date_str)`) compared each row's raw UTC ftime string against
+  the CITY-LOCAL target_date's own ISO string -- a mismatch of up to the city's full UTC offset (7-8h for
+  KLAX) in BOTH directions: a UTC-evening row that's still the target date's local afternoon got wrongly
+  EXCLUDED, while a UTC-morning row that's actually the prior local day got wrongly INCLUDED. This is
+  distinct from the tz threading fix already shipped for the days_out/sigma lookup in the same function --
+  that fix left this row filter untouched. Known but never independently filed: recorded only inside
+  another entry's "Known residual" note (backlog.txt, NBM PROBABILISTIC QUANTILES entry above, "fetch_mos
+  ... a latent timezone bug distinct from this entry's txn/n_x issue, not touched here") and absent from
+  BACKLOG_OPEN.md as its own tracked item -- filed here per that note's own "worth its own backlog entry
+  if revisited" and this batch's explicit instruction to file it either way.
+Resolution (2026-08-24): The row filter now converts each row's ftime to the city's own tz (via ZoneInfo,
+  parsing the live "%Y-%m-%d %H:%M" UTC format explicitly) and compares LOCAL dates when `tz` is known,
+  falling back to the original UTC-string comparison when tz is None (mirrors _local_or_utc_today's own
+  None/bad-tz fallback) -- no behavior change for any existing tz=None caller/test.
+  Tests (tests/test_mos.py): test_row_filter_includes_utc_evening_row_still_local_afternoon and
+  test_row_filter_excludes_utc_morning_row_actually_prior_local_day (KLAX/America_Los_Angeles, both
+  directions of the misalignment), test_row_filter_no_tz_falls_back_to_utc_string_comparison (backward-
+  compat control). All mutation-tested (reverting to the bare string-prefix filter fails both discriminating
+  tests, passes the fallback control).
+
+[RESOLVED 2026-08-24 -- batch-36 item 4 (M-18d)] apply_pdo_pna_correction drops the caller's target month
+Priority: MEDIUM -- dormant until threshold met, but live model-input path once active
+Files: climate_indices.py (apply_pdo_pna_correction, get_indices), tests/test_forecasting.py
+
+Problem:
+  apply_pdo_pna_correction's own `season` is derived from the caller's `month` argument, but it called
+  get_pdo_pna() with NO arguments -- defaulting to the CURRENT UTC month's index lookback regardless of
+  what `month` actually was, mixing a target month's seasonal coefficient with a possibly different
+  month's index value. Same defect class the module already fixed once for get_indices() (see that
+  function's own docstring). Out of scope to fix at the weather_markets.py:12424 call site (owned by
+  batch-35, running in parallel) -- fixed entirely within this module's own signature/behavior instead.
+  Also L-6: get_indices()'s H-17 zero-result cache guard only fired when ALL THREE of AO/NAO/ENSO were
+  0.0 -- a PARTIAL outage (e.g. AO's raw fetch fails while NAO/ENSO succeed with real nonzero values)
+  still cached the combined result (AO's spurious 0.0 included) for the full 24h TTL, since the combined
+  result wasn't all-zero. The old check conflated "every source failed" with "every source's real recent
+  value happens to be near zero."
+Resolution (2026-08-24): apply_pdo_pna_correction now calls get_pdo_pna(month=month), threading the
+  caller's own target month through to the index lookback (year is deliberately left at get_pdo_pna's own
+  current-year default -- the sole production caller only ever passes `month`, not a year, per this
+  batch's own preferred-fix guidance). get_indices' cache guard changed from checking the combined
+  RESULT's zero-ness to checking each raw fetch dict directly (`not ao_data or not nao_data or not
+  enso_data` -- both _fetch_monthly_index and _fetch_enso return {} whenever that source has no usable
+  data this cycle at all -- a request exception or a 200 response that parsed to zero valid rows -- so an
+  empty dict unambiguously means that source failed, unlike a 0.0 latest() value which can also mean "no
+  entry for this specific (year, month) yet, real data is elsewhere").
+  Tests (tests/test_forecasting.py::TestPDOPNA): test_apply_pdo_pna_correction_threads_month_through_to_
+  get_pdo_pna_via_captured_kwargs -- the three pre-existing PDO/PNA tests all mock get_pdo_pna with
+  `lambda **kw: {...}`, which silently accepts and ignores any kwargs and so could never have proven
+  `month` was threaded through; this one captures the real call kwargs instead.
+  Tests (tests/test_climate_indices.py::TestGetIndicesPartialFailureCaching): test_all_three_succeed_
+  caches, test_one_of_three_fails_does_not_cache (the core L-6 regression), test_all_three_fail_does_not_
+  cache_control. All 4 mutation-tested.
+
+[RESOLVED 2026-08-24 -- batch-36 item 5 (M-18e)] unguarded json.load on the per-city climate cache
+Priority: MEDIUM -- can abort load_all_sigmas() for every other city in the same call
+Files: climatology.py (fetch_historical, load_all_sigmas, _load_sigma_cache_file), tests/test_climatology.py
+
+Problem:
+  fetch_historical()'s two json.load(f) call sites (fresh-disk-cache read, stale-cache-fallback read in
+  the network-exception handler) had no guard -- a corrupt/truncated data/climate_{city}.json raised
+  straight out of the function. load_all_sigmas() calls fetch_historical() (via
+  compute_sigma_from_climate()) while holding its own _sigma_lock across a loop over every requested
+  city, so an unguarded raise for ONE city's corrupt cache would propagate out of load_all_sigmas()
+  entirely, dropping the lock mid-loop and aborting every OTHER city's sigma compute in the same call --
+  not just the corrupt one. The stale-cache-fallback copy additionally sat inside an
+  `except Exception as exc` block, so its own unguarded raise would mask the original network error
+  (already logged) behind an unrelated JSONDecodeError.
+  Also L-5: load_all_sigmas()'s empty-compute merge guard (`if not (max_sigma or min_sigma) and
+  _sigma_entry_has_data(...): continue`) only skipped the write when BOTH max and min came back empty --
+  a PARTIAL failure (e.g. max succeeds, min comes back empty from a transient glitch) made
+  `max_sigma or min_sigma` truthy, falling through to `result[city] = {"max": max_sigma, "min":
+  min_sigma}` and clobbering an existing GOOD min table with an empty one.
+  Also L-11/L-12 (comment-level only, per this batch's scope): _climatological_prob_inner's tm_yday
+  window comparison shifts by 1 day across a leap-year boundary between target_date's year and a given
+  historical d's year; and the mismatched-list-length warning log doesn't itself fix the zip()-truncation
+  it's warning about.
+Resolution (2026-08-24): Both fetch_historical() json.load sites wrapped in try/except, mirroring
+  _load_sigma_cache_file's own corrupt-file guarding -- fresh-cache path falls through to a real refetch
+  on a read/parse failure (logged at WARNING); stale-fallback path returns None (logged, not masking the
+  original network exception). L-5: the merge guard now preserves each var (max/min) independently --
+  an empty new compute keeps whatever that city's existing entry had for that specific var, rather than
+  an all-or-nothing check. L-11/L-12: explanatory comments added at both sites documenting the known
+  simplification (no functional change, per this batch's "comment-level fixes at most" scope). encoding=
+  "utf-8" also added to all `open()`/`read_text()` calls in this file (see item 8's entry below for the
+  cross-file encoding sweep).
+  Tests (tests/test_climatology.py::TestFetchHistoricalCaching): test_corrupt_fresh_disk_cache_falls_
+  through_to_network_refetch, test_corrupt_stale_fallback_cache_returns_none_not_raise,
+  test_load_all_sigmas_survives_corrupt_climate_cache_for_other_cities (self-review caught and fixed a
+  real test-quality gap here before this landed: the first version replaced fetch_historical() entirely
+  with a mock, so it could never have detected a regression in either json.load guard it claimed to
+  prove -- rewritten to write a genuinely corrupt file to disk with a fresh mtime and let
+  compute_sigma_from_climate() -> fetch_historical() read it for real, network mocked to fail too so
+  BOTH guarded read paths -- fresh-cache and stale-fallback -- get exercised in the same call;
+  mutation-tested each guard independently by temporarily reverting it and confirming this one test
+  alone catches both).
+  Tests (tests/test_climatology.py::TestLoadAllSigmasMerge): test_partial_var_failure_does_not_clobber_
+  the_other_vars_good_table, test_partial_var_failure_min_survives_on_disk_too. All 5 mutation-tested.
+
+[RESOLVED 2026-08-24 -- batch-36 item 6 (L-1)] ACIS mem-cache pins the stale fallback for the process lifetime
+Priority: LOW
+Files: acis_precip.py, acis_snow.py (_load_stale_cache_or_none, fetch_seasonal_precip_mean_mm/
+  fetch_seasonal_snow_mean_cm), tests/test_acis_precip.py, tests/test_acis_snow.py (new)
+
+Problem:
+  _MEM_CACHE in both modules is a plain dict with NO TTL, checked before the disk-staleness gate at the
+  top of fetch_historical_daily[_snow]. _load_stale_cache_or_none() used to write its result into
+  _MEM_CACHE just like the happy (fresh-fetch) path does -- so one transient ACIS failure at the FIRST
+  call for a sid (no usable disk cache yet, or disk cache already past CACHE_MAX_AGE) served that stale
+  fallback FOREVER: the very next call short-circuited on `sid in _MEM_CACHE` and never reached the
+  circuit breaker check or a fresh network attempt again, even long after ACIS recovered (and froze
+  end_year across a New Year boundary too, since a fresh fetch is what recomputes it).
+  Also: the seasonal-fetch unit guards (`_unit is not None and _unit != "mm"/"cm"`) failed OPEN when
+  monthly_units was absent from the response entirely -- a missing key was treated the same as a
+  confirmed-correct unit, exactly the 10x-mis-tilt scenario these guards were added to prevent.
+Resolution (2026-08-24): _load_stale_cache_or_none() no longer writes into _MEM_CACHE -- each subsequent
+  call re-evaluates the circuit breaker/network path normally, which is "retry when the breaker recovers"
+  for free (a closed breaker attempts the real fetch again on the very next call). The happy-path
+  _MEM_CACHE.set() calls are unchanged. Unit guards changed from `is not None and !=` to `is None or !=`
+  -- missing OR wrong unit is now refused, not just wrong.
+  Tests (tests/test_acis_precip.py::TestStaleFallbackDoesNotPinMemCacheForProcessLifetime):
+  test_stale_fallback_does_not_populate_mem_cache, test_recovery_after_stale_fallback_retries_network_
+  not_mem_cache (force=False on the second call specifically, matching a real caller's shape). 5 existing
+  TestFetchSeasonalPrecipMeanMm tests updated to include a realistic monthly_units block in their mocked
+  responses (they previously omitted it entirely, which the new fail-closed guard would otherwise refuse).
+  New tests/test_acis_snow.py (no prior dedicated test file existed for this module) mirrors both fix
+  classes for the cloned acis_snow.py code: TestStaleFallbackDoesNotPinMemCacheForProcessLifetime (2
+  tests) and TestFetchSeasonalSnowMeanCmUnitGuard (3 tests, missing/wrong/correct-unit cases). All 4
+  behavioral claims mutation-tested (both modules).
+
+[RESOLVED 2026-08-24 -- batch-36 item 7 (L-8)] hurricane_climatology.py dated HURDAT2 URLs rotate yearly and degrade silently
+Priority: LOW
+Files: hurricane_climatology.py (_warn_if_stale, fetch_hurdat2_raw), tests/test_hurricane_climatology.py,
+  tests/conftest.py
+
+Problem:
+  On NOAA's Jan/Feb filename rotation, fetch_hurdat2_raw's fetch 404s, the stale cache serves with no age
+  signal, and the dead URL was re-attempted on every call with no usable disk cache to fall back on.
+  _warn_if_stale's `newest < current_year - 2` threshold couldn't see one-season staleness: the module's
+  own docstring says the just-finished season's data typically lands by ~April of the following year, so
+  newest == current_year - 1 is the NORMAL steady state most of the year -- the old threshold required
+  newest == current_year - 3 (three seasons behind the normal state) before it would ever fire, silently
+  absorbing a URL that had already been broken for a full extra year past the point staleness should have
+  been visible.
+Resolution (2026-08-24): Threshold changed to `newest < current_year - 1`, so it now fires as soon as the
+  file is stuck ONE season further behind the normal steady state (newest == current_year - 2) instead of
+  two further seasons behind. Added a per-file_key CircuitBreaker (hurdat2_atl/hurdat2_pac, independent --
+  one basin's URL rotating doesn't mean the other has too; failure_threshold=2, recovery_timeout=86400s
+  since this data only changes yearly) gating the network attempt in fetch_hurdat2_raw, mirroring every
+  other fetch module's is_open()-gated shape in this codebase. Added an explicit comment documenting
+  HURDAT2's exact filename rotation pattern (start_year/end_year/release-date-suffix breakdown) so a
+  future manual refresh doesn't have to reverse-engineer it from the URL alone.
+  tests/conftest.py's reset_open_meteo_circuit_breaker fixture (resets every other module's circuit
+  breakers before each test) extended to also reset hurricane_climatology._hurdat2_cb's two new
+  singletons -- same missed-until-added gap every prior module in that fixture's own history hit.
+  Tests (tests/test_hurricane_climatology.py::TestWarnIfStaleThreshold): current-year/one-year-behind (no
+  warn, the normal steady state)/two-years-behind (the actual regression, now warns)/three-years-behind
+  (positive control, already worked pre-fix)/no-years-present (no crash) -- 5 tests.
+  Tests (tests/test_hurricane_climatology.py::TestFetchHurdat2RawBacksOffDeadUrl):
+  test_repeated_failures_open_the_breaker_and_stop_hitting_network, test_pac_breaker_independent_of_atl,
+  test_success_records_success_and_keeps_breaker_closed -- 3 tests. All mutation-tested.
+
+[RESOLVED 2026-08-24 -- batch-36 item 8 (L-10/L-3)] encoding + docstring consistency across the batch-36 files
+Priority: LOW
+Files: forecast_cache.py, climatology.py, climate_indices.py, acis_precip.py, acis_snow.py,
+  tests/test_forecast_cache.py
+
+Problem:
+  forecast_cache.py's PersistentForecastCache.load_from_disk() called path.read_text() without
+  encoding="utf-8" -- safe_io.atomic_write_json (which dump_to_disk itself uses) always writes UTF-8, so
+  a read relying on a different platform default codec could silently mis-decode a non-ASCII station
+  identifier or future key. Same gap at climatology.py's two fetch_historical() open() calls plus
+  _load_sigma_cache_file(), and acis_precip.py/acis_snow.py's four open(cache) calls, and climate_
+  indices.py's PDO/PNA cache read.
+  Also: ForecastCache's class docstring claimed "LRU eviction," but _evict_oldest() picks by each entry's
+  INSERTION timestamp (set once in set()/set_with_ttl()/set_at()/set_at_with_ttl(), never touched by
+  get()/get_with_ts()) -- this is FIFO (oldest-inserted-first), not LRU (least-recently-used).
+Resolution (2026-08-24): encoding="utf-8" added to all `open()`/`read_text()` calls listed above
+  (hurricane_climatology.py's two read_text() calls already had it, used as the reference pattern).
+  Docstring fixed to say "FIFO eviction" rather than implementing real LRU (touch-on-get): get()/
+  get_with_ts() derive TTL expiry from that same insertion timestamp
+  (`time.monotonic() - ts > ttl`) -- updating ts on every read would silently extend a negative-cached (or
+  any TTL'd) entry's life past its intended TTL on every read, a real behavior change with its own
+  trading-signal implications (fetch_metar's negative METAR cache exists specifically to expire on a
+  fixed schedule) -- not a safe drop-in for what was originally just a doc-accuracy fix.
+  Tests (tests/test_forecast_cache.py): test_load_from_disk_reads_file_written_with_explicit_utf8 --
+  non-ASCII round-trip regression guard; per its own docstring, does not itself discriminate the
+  encoding="utf-8" keyword on this dev machine (mutation-tested and confirmed non-discriminating here,
+  since this interpreter's platform default already resolves to UTF-8 per PEP 686) but is kept as real
+  behavioral coverage for platforms where the default differs. The other encoding= additions are
+  mechanical/ASCII-only in every existing test fixture and so aren't independently discriminated by any
+  new test -- covered only by the full scoped suite continuing to pass.
+
+[RESOLVED 2026-08-24 -- batch-36 item 9 (L-1(nws))] _get_obs abandons timed-out futures
+Priority: LOW -- fails closed, but obscures a real failure signal
+Files: nws.py (_get_obs), tests/test_nws.py
+
+Problem:
+  _get_obs submits to a 4-worker ThreadPoolExecutor and calls .result(timeout=_OBS_WALL_SECS) for a
+  reliable wall-clock deadline (Windows SSL can hang past socket-level timeouts). On timeout, the
+  submitted future is abandoned -- it keeps running (and occupying a worker) until the underlying request
+  itself eventually completes or errors on its own, since ThreadPoolExecutor has no cancellation for
+  already-started work. Sustained hangs can permanently consume all 4 workers; every new submission after
+  that queues behind them and times out too, but that failure looks identical in the logs to a normal
+  single-request timeout -- no distinct signal that the pool itself is the bottleneck.
+Resolution (2026-08-24): Added an in-flight counter (_obs_inflight, incremented on submit, decremented via
+  future.add_done_callback() once the underlying task ACTUALLY finishes -- independent of whether the
+  caller gave up on it at the wall-clock deadline). _get_obs logs a distinct "pool saturated" warning when
+  a new submission arrives with the counter already at or above _OBS_POOL_WORKERS. Deliberately minimal
+  (per this item's own LOW severity and "at minimum log pool saturation distinctly" framing) -- no per-
+  call executor or cancellation added.
+  Tests (tests/test_nws.py::TestGetObsPoolSaturation): test_not_saturated_does_not_log,
+  test_saturated_logs_distinct_warning (counter manipulated directly for determinism, not real concurrent
+  hangs), test_inflight_counter_decrements_after_completion (proves the counter returns to baseline once
+  the task finishes, not stuck incremented forever). All 3 mutation-tested.

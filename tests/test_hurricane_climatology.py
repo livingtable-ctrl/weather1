@@ -837,3 +837,160 @@ class TestFetchHurdat2RawCacheWrite:
     # test_atomic_write_text_concurrent_writers_never_expose_torn_file for
     # the corrected version with real multi-megabyte payloads and a live
     # polling reader thread).
+
+
+class TestWarnIfStaleThreshold:
+    """L-8: threshold changed from current_year - 2 to current_year - 1.
+    The module's own docstring says the just-finished season is added
+    "roughly the following April" -- by any point after that in a given
+    year, the file SHOULD already contain last year's season (newest ==
+    current_year - 1 is the normal, expected steady state most of the
+    year), so `newest < current_year - 1` fires as soon as the file is
+    STUCK one season further behind than that -- newest == current_year - 2
+    -- rather than requiring newest == current_year - 3 (three seasons
+    behind) the way the old `newest < current_year - 2` threshold did. That
+    old threshold could never see a Jan/Feb URL-rotation 404 (absorbed by
+    the stale-cache fallback with no other signal) until it had already
+    been broken for TWO further years past the expected steady state. Uses
+    datetime.now(UTC) directly (not a frozen clock) since _warn_if_stale
+    itself does -- the threshold is relative, not tied to a specific date."""
+
+    def _storms(self, year):
+        return [{"year": year}]
+
+    def test_current_year_data_present_does_not_warn(self, caplog):
+        import logging
+        from datetime import UTC, datetime
+
+        current_year = datetime.now(UTC).date().year
+        with caplog.at_level(logging.WARNING):
+            hc._warn_if_stale(self._storms(current_year), "ATL")
+        assert not any("newest storm year" in r.message for r in caplog.records)
+
+    def test_one_year_behind_is_the_normal_steady_state_no_warn(self, caplog):
+        """newest == current_year - 1 is the module's own documented normal
+        state most of the year (this year's season isn't added until ~April
+        of the following year) -- must NOT warn."""
+        import logging
+        from datetime import UTC, datetime
+
+        current_year = datetime.now(UTC).date().year
+        with caplog.at_level(logging.WARNING):
+            hc._warn_if_stale(self._storms(current_year - 1), "ATL")
+        assert not any("newest storm year" in r.message for r in caplog.records)
+
+    def test_two_years_behind_now_warns(self, caplog):
+        """The actual M-18/L-8 regression: newest == current_year - 2 (one
+        season further behind than the normal steady state) must warn now
+        -- the old current_year - 2 threshold required newest ==
+        current_year - 3 (two further seasons behind) before it would ever
+        fire, silently absorbing exactly this one-extra-season staleness."""
+        import logging
+        from datetime import UTC, datetime
+
+        current_year = datetime.now(UTC).date().year
+        with caplog.at_level(logging.WARNING):
+            hc._warn_if_stale(self._storms(current_year - 2), "ATL")
+        assert any("newest storm year" in r.message for r in caplog.records), (
+            "newest == current_year - 2 must warn under the fixed "
+            "current_year - 1 threshold"
+        )
+
+    def test_three_years_behind_still_warns_control(self, caplog):
+        """Positive control matching the pre-fix behavior: three-season
+        staleness must obviously still warn (this is the case the OLD
+        threshold already caught)."""
+        import logging
+        from datetime import UTC, datetime
+
+        current_year = datetime.now(UTC).date().year
+        with caplog.at_level(logging.WARNING):
+            hc._warn_if_stale(self._storms(current_year - 3), "ATL")
+        assert any("newest storm year" in r.message for r in caplog.records)
+
+    def test_no_years_present_does_not_warn_or_crash(self, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            hc._warn_if_stale([{"year": None}], "ATL")
+        assert not any("newest storm year" in r.message for r in caplog.records)
+
+
+class TestFetchHurdat2RawBacksOffDeadUrl:
+    """L-8: on NOAA's Jan/Feb filename rotation, the fetch 404s and the
+    dead URL used to be re-attempted on EVERY call with no usable cache to
+    fall back on -- now backed off via a per-file_key CircuitBreaker,
+    mirroring every other module's is_open()-gated fetch in this codebase."""
+
+    def _valid_hurdat2_response(self):
+        from unittest.mock import MagicMock
+
+        fake_resp = MagicMock()
+        fake_resp.text = _FIXTURE
+        fake_resp.raise_for_status.return_value = None
+        return fake_resp
+
+    def test_repeated_failures_open_the_breaker_and_stop_hitting_network(
+        self, tmp_path, monkeypatch
+    ):
+        from unittest.mock import patch
+
+        monkeypatch.setattr(hc, "DATA_DIR", tmp_path)
+
+        with patch.object(
+            hc._session, "get", side_effect=Exception("simulated dead URL")
+        ) as mock_get:
+            for _ in range(hc._hurdat2_cb["ATL"].failure_threshold):
+                result = hc.fetch_hurdat2_raw("ATL")
+                assert result is None  # no cache to fall back to yet
+
+        assert mock_get.call_count == hc._hurdat2_cb["ATL"].failure_threshold
+        assert hc._hurdat2_cb["ATL"].is_open(), (
+            "the breaker must be open after failure_threshold consecutive failures"
+        )
+
+        with patch.object(
+            hc._session, "get", side_effect=Exception("simulated dead URL")
+        ) as mock_get2:
+            hc.fetch_hurdat2_raw("ATL")
+
+        assert mock_get2.call_count == 0, (
+            "once the breaker is open, fetch_hurdat2_raw must skip straight "
+            "to the stale-cache fallback instead of re-hitting the dead URL"
+        )
+
+    def test_pac_breaker_independent_of_atl(self, tmp_path, monkeypatch):
+        """One file_key's breaker opening must not affect the other -- ATL
+        and PAC are independent endpoints, so one rotating doesn't mean the
+        other has too."""
+        from unittest.mock import patch
+
+        monkeypatch.setattr(hc, "DATA_DIR", tmp_path)
+
+        with patch.object(hc._session, "get", side_effect=Exception("dead")):
+            for _ in range(hc._hurdat2_cb["ATL"].failure_threshold):
+                hc.fetch_hurdat2_raw("ATL")
+
+        assert hc._hurdat2_cb["ATL"].is_open()
+        assert not hc._hurdat2_cb["PAC"].is_open()
+
+        with patch.object(
+            hc._session, "get", return_value=self._valid_hurdat2_response()
+        ) as mock_get:
+            result = hc.fetch_hurdat2_raw("PAC")
+
+        assert result == _FIXTURE
+        assert mock_get.call_count == 1
+
+    def test_success_records_success_and_keeps_breaker_closed(
+        self, tmp_path, monkeypatch
+    ):
+        from unittest.mock import patch
+
+        monkeypatch.setattr(hc, "DATA_DIR", tmp_path)
+        with patch.object(
+            hc._session, "get", return_value=self._valid_hurdat2_response()
+        ):
+            hc.fetch_hurdat2_raw("ATL")
+
+        assert not hc._hurdat2_cb["ATL"].is_open()

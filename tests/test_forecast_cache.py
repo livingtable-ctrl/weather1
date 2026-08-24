@@ -264,6 +264,29 @@ def test_dump_then_load_round_trips_values(tmp_path):
     assert c2.get((41.8781, -87.6298)) == "KORD"
 
 
+def test_load_from_disk_reads_file_written_with_explicit_utf8(tmp_path):
+    """L-10/L-3: load_from_disk's path.read_text() used to omit
+    encoding="utf-8" -- safe_io.atomic_write_json (which dump_to_disk
+    itself uses) always writes UTF-8, so a read relying on a different
+    platform default codec (e.g. cp1252 on a non-English-locale Windows, or
+    any Python below the 3.15 UTF-8-mode-by-default PEP 686 change) could
+    silently mis-decode any non-ASCII byte a station identifier or future
+    key ever contained. This locks in correct non-ASCII round-tripping as a
+    regression guard; it does not itself discriminate the `encoding="utf-8"`
+    keyword on THIS machine, since this interpreter's own platform default
+    already resolves to UTF-8 (mutation-tested and confirmed non-
+    discriminating here -- kept anyway as real behavioral coverage for
+    platforms where the default differs)."""
+    import json
+
+    path = tmp_path / "cache.json"
+    path.write_text(json.dumps({"40.0,-75.0": "Zürich-é"}), encoding="utf-8")
+
+    c = PersistentForecastCache(ttl_secs=float("inf"))
+    c.load_from_disk(path, _tuple_str_to_key)
+    assert c.get((40.0, -75.0)) == "Zürich-é"
+
+
 def test_load_from_disk_is_a_noop_when_file_does_not_exist(tmp_path):
     """First-ever process start (no prior dump) must not raise -- matches
     nws.py's _load_station_cache try/except-and-log convention expecting a

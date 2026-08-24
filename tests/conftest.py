@@ -302,6 +302,7 @@ def reset_open_meteo_circuit_breaker():
     import acis_precip
     import acis_snow
     import climatology
+    import hurricane_climatology
     import kalshi_client
     import nws
     import weather_markets
@@ -322,6 +323,11 @@ def reset_open_meteo_circuit_breaker():
         kalshi_client._kalshi_cb_read,
         kalshi_client._kalshi_cb_write,
         nws._nws_cb,
+        # M-18/L-8 (batch-36): hurricane_climatology's two hurdat2_cb
+        # breakers (ATL/PAC) are new module-level singletons -- same
+        # missed-until-added gap as every other module in this loop's own
+        # history above.
+        *hurricane_climatology._hurdat2_cb.values(),
     ):
         cb.record_success()  # clears _failure_count and _opened_at
         # batch-13 (AUD-0022 test, round-1 opus review): record_success()

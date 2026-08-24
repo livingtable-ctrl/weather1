@@ -86,10 +86,28 @@ def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | No
 
     cache = _cache_path(city)
     if cache.exists() and not force and not _cache_is_stale(cache):
-        with open(cache) as f:
-            data = json.load(f)
-        _MEM_CACHE.set(city, data)
-        return data
+        # M-18e: a corrupt/truncated climate_{city}.json must not raise out
+        # of this function -- load_all_sigmas() calls fetch_historical()
+        # (via compute_sigma_from_climate()) while holding its own
+        # _sigma_lock, so an unguarded raise here would propagate out of
+        # load_all_sigmas() entirely, dropping the lock mid-loop and
+        # aborting every OTHER city's sigma compute in the same call, not
+        # just this one. Mirrors _load_sigma_cache_file's guarding: treat a
+        # bad file as a cache miss and fall through to a real refetch below,
+        # rather than crashing or masking the eventual network exception
+        # with an unrelated JSONDecodeError.
+        try:
+            with open(cache, encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as exc:
+            _log.warning(
+                "fetch_historical: existing cache for %s unreadable (%s) — refetching",
+                city,
+                exc,
+            )
+        else:
+            _MEM_CACHE.set(city, data)
+            return data
 
     from utils import utc_today as _utc_today
 
@@ -130,8 +148,23 @@ def fetch_historical(city: str, coords: tuple, force: bool = False) -> dict | No
                     city,
                     cache_age_days,
                 )
-            with open(cache) as f:
-                data = json.load(f)
+            # M-18e: same unguarded json.load gap as the fresh-cache path
+            # above, but here it sits inside this except handler -- an
+            # unguarded raise would mask the original network error (exc,
+            # already logged above) behind a JSONDecodeError from the fake
+            # follow-on read, and still propagate out of load_all_sigmas()
+            # while holding _sigma_lock.
+            try:
+                with open(cache, encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception as read_exc:
+                _log.warning(
+                    "fetch_historical: stale cache for %s also unreadable "
+                    "(%s) — returning None",
+                    city,
+                    read_exc,
+                )
+                return None
             _MEM_CACHE.set(city, data)
             return data
         _log.warning(
@@ -188,6 +221,15 @@ def _window_temps(
         SHOULDER_WINDOW_DAYS if target_date.month in SHOULDER_MONTHS else WINDOW_DAYS
     )
 
+    # L-11: comparing raw tm_yday integers across different calendar years is
+    # off by 1 day for any date after Feb 29 whenever exactly one of
+    # target_date's year and a given historical d's year is a leap year
+    # (hurricane_climatology.parse_hurdat2's own docstring documents this
+    # same class of bug and fixes it there via (month, day) tuples instead).
+    # Not fixed here: window is ±WINDOW_DAYS/SHOULDER_WINDOW_DAYS (14-21)
+    # calendar days, so a 1-day leap-year misalignment shifts the ~30+ point
+    # sample by at most one day's worth of history at the window's edge --
+    # comment-level fix only, per this batch's scope.
     target_doy = target_date.timetuple().tm_yday
     temps: list[float] = []
 
@@ -204,6 +246,11 @@ def _window_temps(
             city,
         )
 
+    # L-12: the warning above is informational only -- zip() truncates to
+    # the shortest list silently regardless, so a length mismatch already
+    # drops whichever list's tail is longest without raising or being
+    # otherwise recoverable here. Comment-level fix only: this at least
+    # makes the truncation visible in logs instead of being fully silent.
     for date_str, high, low in zip(data["dates"], data["highs"], data["lows"]):
         if high is None or low is None:
             continue
@@ -371,7 +418,7 @@ def _load_sigma_cache_file() -> dict:
     if not _SIGMA_CACHE_PATH.exists():
         return {}
     try:
-        with open(_SIGMA_CACHE_PATH) as f:
+        with open(_SIGMA_CACHE_PATH, encoding="utf-8") as f:
             loaded = json.load(f)
     except Exception as e:
         _log.warning("Could not read existing forecast_sigma.json: %s", e)
@@ -443,10 +490,12 @@ def load_all_sigmas(city_coords: dict, force: bool = False) -> dict:
     (e.g. main.py's setup wizard, which calls preload_all() once per city so
     it can report per-city progress) only recomputes entries for the cities
     it actually passed -- every other city's existing entry in the file is
-    preserved rather than being dropped from the table. A city whose compute
-    comes back empty for both max and min (no data yet -- see
-    _sigma_entry_has_data()) does NOT overwrite a real existing entry for
-    that city, so a transient failure can't clobber previously-good data.
+    preserved rather than being dropped from the table. Guarded PER-VAR (L-5
+    fix): a city whose compute comes back empty for max, min, or both (no
+    data yet -- see _sigma_entry_has_data()) does NOT overwrite that
+    specific var's real existing entry for that city, so a transient
+    failure -- whether total or partial -- can't clobber previously-good
+    data for either variable.
 
     The force=False "fresh cache" fast path also checks whether every
     requested city actually has real data in the cached file (opus-review-
@@ -527,13 +576,28 @@ def load_all_sigmas(city_coords: dict, force: bool = False) -> dict:
                 str(k): v
                 for k, v in compute_sigma_from_climate(city, coords, var="min").items()
             }
-            if not (max_sigma or min_sigma) and _sigma_entry_has_data(result.get(city)):
-                # Compute came back empty (e.g. no climate archive yet, or a
-                # transient fetch failure) but the merge base already has
-                # real data for this city -- keep it rather than clobbering
-                # good data with an empty entry.
-                continue
-            result[city] = {"max": max_sigma, "min": min_sigma}
+            # L-5: guard PER-VAR, not just on total (both-empty) failure --
+            # the old `not (max_sigma or min_sigma)` check only skipped the
+            # write when BOTH vars came back empty. A partial failure (e.g.
+            # max succeeds, min comes back empty from a transient glitch)
+            # made `max_sigma or min_sigma` truthy, so it fell through to
+            # `result[city] = {"max": max_sigma, "min": min_sigma}` below
+            # and clobbered an existing GOOD min table with an empty one.
+            # Preserve each var independently: an empty new compute keeps
+            # whatever this city already had for that var (itself possibly
+            # empty, if there was never a prior successful compute -- same
+            # net effect as before for a genuinely first-ever failure).
+            _existing = result.get(city)
+            _existing_max = (
+                _existing.get("max", {}) if isinstance(_existing, dict) else {}
+            )
+            _existing_min = (
+                _existing.get("min", {}) if isinstance(_existing, dict) else {}
+            )
+            result[city] = {
+                "max": max_sigma if max_sigma else _existing_max,
+                "min": min_sigma if min_sigma else _existing_min,
+            }
 
         try:
             safe_io.atomic_write_json(result, _SIGMA_CACHE_PATH)
