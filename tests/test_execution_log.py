@@ -305,6 +305,66 @@ class TestLiveSettlement:
         assert row["pnl"] == pytest.approx(0.837)
         assert row["settled_at"] is not None
 
+    def test_record_live_settlement_returns_true_when_it_wins(self):
+        """Batch-31 M-2: the first settlement write on an open row must
+        report that it actually landed."""
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        assert (
+            execution_log.record_live_settlement(row_id, outcome_yes=True, pnl=0.837)
+            is True
+        )
+
+    def test_record_live_settlement_guards_settled_at_is_null(self):
+        """Batch-31 M-2/M-23a: record_live_settlement previously did an
+        unconditional UPDATE with no settled_at IS NULL guard, unlike every
+        sibling settlement writer (record_live_early_exit at
+        execution_log.py:~1013, update_live_peak_profit) -- mutation-tested
+        by removing the guard: 281 tests across test_execution_log.py,
+        test_dedup.py, test_live_execution.py, and
+        test_batch01_live_position_visibility.py passed with the guard gone
+        (M-23a). A winning position credited twice would make the live
+        daily-loss brake read looser than reality; an unconditional
+        overwrite also silently replaces an earlier early-exit's realized
+        pnl with the natural-settlement figure, corrupting the tax
+        CSV/get_live_pnl_summary/settlement-streak history for that row.
+
+        This test kills that mutation directly: settle a row via
+        record_live_early_exit (an earlier protective exit -- the row is
+        no longer open), then call record_live_settlement again as if a
+        concurrent natural-settlement writer raced in -- the second call
+        must report it lost the race, and the row's fields must be exactly
+        what the FIRST writer (the early exit) left, not overwritten."""
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="filled",
+            live=True,
+        )
+        execution_log.record_live_early_exit(row_id, 0.60, "stop_loss", 0.05)
+
+        won = execution_log.record_live_settlement(row_id, outcome_yes=True, pnl=99.0)
+
+        assert won is False
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT outcome_yes, pnl, exit_reason FROM orders WHERE id = ?",
+                (row_id,),
+            ).fetchone()
+        # The early exit's own values survive untouched -- not overwritten
+        # by the "won" natural-settlement pnl/outcome_yes.
+        assert row["outcome_yes"] is None
+        assert row["pnl"] == pytest.approx(0.05)
+        assert row["exit_reason"] == "stop_loss"
+
     def test_get_filled_unsettled_excludes_settled_orders(self):
         id1 = execution_log.log_order(
             ticker="KXHIGH-25MAY15-T75",
@@ -745,6 +805,122 @@ class TestLiveSettlement:
         # Both rows genuinely settled -- the placeholder's UNKNOWN P&L must
         # not make it disappear from the settled count entirely.
         assert summary["settled_count"] == 2
+
+
+class TestExitClaim:
+    """Batch-31 M-4: claim_position_for_exit()/release_exit_claim() -- the
+    atomic CAS closing the double-sell window between cron's and watch's
+    unserialized exit scanners. Independent review (F1) flagged that these
+    two functions had zero direct tests of their own (only indirect
+    coverage through _exit_live_position in test_live_execution.py, which
+    never advances the TTL boundary) -- this class exercises them directly,
+    including the TTL self-heal that's the entire reason the claim is
+    time-bounded rather than permanent."""
+
+    def setup_method(self):
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        execution_log.DB_PATH = Path(self._tmp.name)
+        execution_log._initialized = False
+
+    def teardown_method(self):
+        import gc
+
+        execution_log._initialized = False
+        self._tmp.close()
+        gc.collect()
+        Path(self._tmp.name).unlink(missing_ok=True)
+
+    def _open_position(self):
+        return execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+
+    def test_claim_returns_a_token_and_second_claim_fails(self):
+        row_id = self._open_position()
+        token = execution_log.claim_position_for_exit(row_id)
+        assert token is not None and isinstance(token, str)
+        assert execution_log.claim_position_for_exit(row_id) is None
+
+    def test_settled_row_can_never_be_claimed(self):
+        row_id = self._open_position()
+        execution_log.record_live_early_exit(row_id, 0.55, "stop_loss", 1.0)
+        assert execution_log.claim_position_for_exit(row_id) is None
+
+    def test_ttl_self_heals_a_stale_claim(self):
+        """The entire reason this claim is TTL-bounded rather than
+        permanent (per its own docstring): a crash between winning it and
+        place_order() completing must not strand the position unprotected
+        forever. Backdates exit_claimed_at directly (mirroring
+        TestWasOrderedRecentlyTimestampBoundary's pattern) rather than
+        waiting a real 10 minutes."""
+        from datetime import UTC, datetime, timedelta
+
+        row_id = self._open_position()
+        stale = (datetime.now(UTC) - timedelta(minutes=11)).isoformat()
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET exit_claimed_at = ? WHERE id = ?",
+                (stale, row_id),
+            )
+        assert execution_log.claim_position_for_exit(row_id, ttl_minutes=10) is not None
+
+    def test_claim_within_ttl_is_not_released_early(self):
+        """The boundary case the TTL-heal test above doesn't cover on its
+        own: a claim only 1 minute old must still block, not just one 11
+        minutes old succeed -- proves the comparison direction, not just
+        that SOME comparison exists."""
+        from datetime import UTC, datetime, timedelta
+
+        row_id = self._open_position()
+        recent = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET exit_claimed_at = ? WHERE id = ?",
+                (recent, row_id),
+            )
+        assert execution_log.claim_position_for_exit(row_id, ttl_minutes=10) is None
+
+    def test_release_clears_the_claim_for_the_owning_token(self):
+        row_id = self._open_position()
+        token = execution_log.claim_position_for_exit(row_id)
+        execution_log.release_exit_claim(row_id, token)
+        assert execution_log.claim_position_for_exit(row_id) is not None
+
+    def test_release_with_a_stale_token_does_not_clear_a_newer_claim(self):
+        """Independent review (batch-31 F5): a slow claimant releasing with
+        its OWN (now-expired) token must not wipe out a DIFFERENT, later
+        claimant's still-active claim on the same position -- that would
+        reopen the exact double-sell window this claim exists to close.
+        Simulates: A claims, A's token goes stale past the TTL, B claims
+        (a fresh token), A finally gets around to releasing with its own
+        stale token -- B's claim must survive untouched."""
+        from datetime import UTC, datetime, timedelta
+
+        row_id = self._open_position()
+        stale_token = (datetime.now(UTC) - timedelta(minutes=11)).isoformat()
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET exit_claimed_at = ? WHERE id = ?",
+                (stale_token, row_id),
+            )
+        b_token = execution_log.claim_position_for_exit(row_id, ttl_minutes=10)
+        assert b_token is not None and b_token != stale_token
+
+        # A (holding the stale token) now releases -- must be a no-op.
+        execution_log.release_exit_claim(row_id, stale_token)
+
+        # B's claim must still be in effect: a third claimant is blocked.
+        assert execution_log.claim_position_for_exit(row_id) is None
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT exit_claimed_at FROM orders WHERE id = ?", (row_id,)
+            ).fetchone()
+        assert row["exit_claimed_at"] == b_token
 
 
 class TestKalshiTakerFee:

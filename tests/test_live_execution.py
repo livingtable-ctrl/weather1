@@ -261,6 +261,50 @@ class TestPlaceLiveOrder:
         call_args = mock_client.place_order.call_args
         assert call_args.kwargs["price"] == pytest.approx(0.55)
 
+    def test_missing_max_trade_dollars_refuses_rather_than_crashes(self):
+        """Batch-31 L-10(b): steps 1/1b/2 all defensively .get() this same
+        hand-editable config dict, but the size-computation step used a bare
+        config["max_trade_dollars"] subscript -- an uncaught KeyError instead
+        of a clean skip if the key were ever missing. Must fail closed (skip
+        the trade, quantity capped to 0) rather than falling back to an
+        unbounded/large default that would size the trade unbounded."""
+        from unittest.mock import MagicMock, patch
+
+        import main
+        import order_executor
+
+        mock_client = MagicMock()
+        config = {
+            # max_trade_dollars deliberately omitted.
+            "daily_loss_limit": 200,
+            "max_open_positions": 10,
+            "gtc_cancel_hours": 24,
+        }
+        analysis = {
+            "kelly_quantity": 10,
+            "implied_prob": 0.55,
+            "market": {"yes_bid": 50, "yes_ask": 60},
+            "edge": 0.25,
+        }
+
+        with (
+            patch("trading_gates.LiveTradingGate.check", return_value=(True, "ok")),
+            patch("execution_log.was_ordered_this_cycle", return_value=False),
+            patch.object(order_executor, "_count_open_live_orders", return_value=0),
+        ):
+            placed, cost = main._place_live_order(
+                ticker="KXHIGH-25MAY15-T75",
+                side="yes",
+                analysis=analysis,
+                config=config,
+                client=mock_client,
+                cycle="12z",
+            )
+
+        assert placed is False
+        assert cost == 0.0
+        mock_client.place_order.assert_not_called()
+
     def test_order_status_unknown_logs_unknown_not_failed(self):
         """AUD-0007: when place_order() raises OrderStatusUnknownError (POST
         failed AND reconciliation itself couldn't confirm either way), the
@@ -983,6 +1027,114 @@ class TestRecoverUnknownOrders:
         orders = execution_log.get_recent_orders(limit=10)
         row = next(o for o in orders if o["id"] == row_id)
         assert row["status"] == "failed"
+
+    def test_confirmed_not_found_exit_order_releases_the_position_claim(self):
+        """Independent review (batch-31 F4): a confirmed-failed 'unknown'
+        row that was a protective EXIT attempt (closes_position_id set)
+        definitively means that SELL never landed -- the same
+        confirmed-not-landed condition _exit_live_position's own generic-
+        Exception branch already releases the exit claim for. Without this,
+        the position would sit exit-claim-blocked until the TTL expires
+        despite being provably unprotected right now."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        position_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        claim_token = execution_log.claim_position_for_exit(position_id)
+        assert claim_token is not None
+
+        execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.20,
+            status="unknown",
+            live=True,
+            closes_position_id=position_id,
+            response={"client_order_id": "coid_exit_recheck"},
+        )
+
+        mock_client = MagicMock()
+        mock_client._find_order_by_client_id.return_value = (None, False)
+
+        _recover_pending_orders(mock_client)
+
+        # The claim must be gone -- a fresh claim attempt now succeeds.
+        assert execution_log.claim_position_for_exit(position_id) is not None
+
+    def test_confirmed_not_found_exit_order_does_not_release_a_newer_claim(self):
+        """Positive control / F5-style guard for the fix above: if the
+        ORIGINAL exit attempt this recovery pass is resolving is old enough
+        that its own claim could plausibly have expired and been replaced,
+        and a DIFFERENT scanner has in fact since won a fresh claim on the
+        same position, recovery must not wipe that active, newer claim out
+        from under it. Timeline matters here -- both the original exit
+        row's placed_at AND the original claim must be backdated together
+        (mirroring a real ~11-minutes-ago attempt), otherwise the fix's own
+        recency heuristic can't distinguish this from the position's normal
+        very-first claim in the test above."""
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _recover_pending_orders
+
+        position_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        eleven_min_ago = (datetime.now(UTC) - timedelta(minutes=11)).isoformat()
+        execution_log.claim_position_for_exit(position_id)
+        exit_row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.20,
+            status="unknown",
+            live=True,
+            closes_position_id=position_id,
+            response={"client_order_id": "coid_exit_recheck_2"},
+        )
+        # Backdate both the original claim and this exit row's own placed_at
+        # to the same ~11-minutes-ago moment, matching a real attempt whose
+        # claim has since gone TTL-eligible.
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET exit_claimed_at = ? WHERE id = ?",
+                (eleven_min_ago, position_id),
+            )
+            con.execute(
+                "UPDATE orders SET placed_at = ? WHERE id = ?",
+                (eleven_min_ago, exit_row_id),
+            )
+        # A different scanner now wins a fresh claim on the same position.
+        new_token = execution_log.claim_position_for_exit(position_id, ttl_minutes=10)
+        assert new_token is not None
+
+        mock_client = MagicMock()
+        mock_client._find_order_by_client_id.return_value = (None, False)
+
+        _recover_pending_orders(mock_client)
+
+        # The NEW claimant's still-active claim must survive untouched.
+        with execution_log._conn() as con:
+            row = con.execute(
+                "SELECT exit_claimed_at FROM orders WHERE id = ?", (position_id,)
+            ).fetchone()
+        assert row["exit_claimed_at"] == new_token
 
     def test_still_uncertain_stays_unknown(self):
         """Positive control for the two tests above: if reconciliation is
@@ -2105,6 +2257,65 @@ class TestPollPendingOrdersExtended:
         # see utils.KALSHI_MAKER_FEE_RATE. pnl = 2 * 0.45 * 1.0 = 0.90
         assert order["pnl"] == pytest.approx(0.90, rel=1e-3)
 
+    def test_settlement_race_loss_skips_add_live_loss(self):
+        """Batch-31 M-2: record_live_settlement now reports whether it won
+        the settled_at race (guarded on settled_at IS NULL) -- the caller
+        here must skip add_live_loss() when it lost, or a concurrent
+        writer's already-accounted pnl gets double-applied to the daily
+        loss counter. Simulates the race by settling the row (via a
+        protective early exit, same shape as a concurrent cron/watch writer)
+        from inside record_live_settlement's own call, so the loop's
+        settlement query still finds an unsettled row at query time but the
+        UPDATE loses the race when it actually runs."""
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        import main
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=2,
+            price=0.55,
+            status="filled",
+            live=True,
+            fill_quantity=2,
+        )
+
+        real_record_live_settlement = execution_log.record_live_settlement
+
+        def _settle_concurrently_then_call(*args, **kwargs):
+            execution_log.record_live_early_exit(row_id, 0.60, "stop_loss", 0.05)
+            return real_record_live_settlement(*args, **kwargs)
+
+        close_time = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+        mock_client = MagicMock()
+        mock_client.get_market.return_value = {
+            "status": "finalized",
+            "result": "yes",
+            "close_time": close_time,
+        }
+
+        loss_before = execution_log.get_today_live_loss()
+        with patch.object(
+            execution_log,
+            "record_live_settlement",
+            side_effect=_settle_concurrently_then_call,
+        ):
+            main._poll_pending_orders(mock_client, config={})
+
+        # The early exit's own pnl (0.05) must survive untouched -- not
+        # overwritten by the natural-settlement branch's pnl.
+        order = execution_log.get_order_by_id(row_id)
+        assert order["pnl"] == pytest.approx(0.05)
+        assert order["exit_reason"] == "stop_loss"
+        # add_live_loss must NOT have been called for the lost race's pnl --
+        # the daily loss counter is unchanged from before this settlement
+        # attempt (the early exit's own pnl was a gain, not a loss, so it
+        # never touches add_live_loss either).
+        assert execution_log.get_today_live_loss() == pytest.approx(loss_before)
+
     def test_no_side_settlement_yes_wins(self):
         """NO bet loses when YES wins: pnl = -qty * price (NO contract cost)."""
         from datetime import UTC, datetime, timedelta
@@ -2501,6 +2712,43 @@ class TestFinalizeCancelReturnValue:
         assert fill_count == 0
         assert raw_api_status == "canceled"
 
+    def test_successful_verification_writes_response(self):
+        """Independent review (batch-31 F8): the success branch used to
+        omit response= from log_order_result, unconditionally nulling this
+        row's response (order_id) the same way the exception branch used to
+        before this batch's L-10(a) fix -- the two branches of this one
+        function shouldn't disagree about preserving it."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _finalize_cancel
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=5,
+            price=0.55,
+            status="pending",
+            live=True,
+        )
+        mock_client = MagicMock()
+        mock_client.get_order.return_value = {
+            "status": "canceled",
+            "fill_count_fp": "0.00",
+            "order_id": "ord_verified",
+        }
+
+        _finalize_cancel(mock_client, "ord_verified", row_id)
+
+        row = execution_log.get_order_by_id(row_id)
+        import json
+
+        assert json.loads(row["response"]) == {
+            "status": "canceled",
+            "fill_count_fp": "0.00",
+            "order_id": "ord_verified",
+        }
+
     def test_returns_filled_with_count_on_partial_fill(self):
         from unittest.mock import MagicMock
 
@@ -2553,6 +2801,91 @@ class TestFinalizeCancelReturnValue:
         assert status == "canceled"
         assert fill_count == -1
         assert raw_api_status is None
+
+    def test_verification_failure_preserves_prior_fill_quantity_and_response(self):
+        """Batch-31 L-10(a): the exception fallback used to call
+        log_order_result(row_id, status="canceled") bare -- fill_quantity
+        and response are non-COALESCE columns (log_order_result's UPDATE is
+        unconditional), so that nulled out whatever this row already had
+        recorded: a genuine partial fill from an earlier poll, and the
+        response carrying order_id/client_order_id. A partially-filled
+        position could then go fully untracked. This test seeds the row
+        with a real prior fill_quantity and response BEFORE the
+        verification query fails, and proves both survive unchanged."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _finalize_cancel
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=5,
+            price=0.55,
+            status="pending",
+            live=True,
+            response={"order_id": "ord_prior", "client_order_id": "cid_prior"},
+        )
+        # Simulate an earlier poll having already observed a partial fill on
+        # this same pending row before this cancel attempt.
+        execution_log.log_order_result(
+            row_id,
+            status="pending",
+            fill_quantity=3,
+            response={"order_id": "ord_prior", "client_order_id": "cid_prior"},
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_order.side_effect = ConnectionError("network blip")
+
+        _finalize_cancel(mock_client, "ord_prior", row_id)
+
+        row = execution_log.get_order_by_id(row_id)
+        assert row["fill_quantity"] == 3
+        import json
+
+        assert json.loads(row["response"]) == {
+            "order_id": "ord_prior",
+            "client_order_id": "cid_prior",
+        }
+
+    def test_malformed_stored_response_does_not_crash_the_fallback(self):
+        """Independent review (batch-31 F10): the exception fallback's own
+        best-effort json.loads of the prior response must not itself raise
+        out of an already-handling except block on a malformed/corrupted
+        response column -- unreachable in normal operation (the column is
+        only ever json.dumps-written) but a crash on defensive preservation
+        would be worse than just losing the field."""
+        from unittest.mock import MagicMock
+
+        import execution_log
+        from order_executor import _finalize_cancel
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=5,
+            price=0.55,
+            status="pending",
+            live=True,
+        )
+        with execution_log._conn() as con:
+            con.execute(
+                "UPDATE orders SET response = ? WHERE id = ?",
+                ("{not valid json", row_id),
+            )
+
+        mock_client = MagicMock()
+        mock_client.get_order.side_effect = ConnectionError("network blip")
+
+        status, fill_count, raw_api_status = _finalize_cancel(
+            mock_client, "ord_corrupt", row_id
+        )
+
+        assert status == "canceled"
+        assert fill_count == -1
+        row = execution_log.get_order_by_id(row_id)
+        assert row["response"] is None
 
     def test_raw_api_status_preserved_when_still_resting(self):
         """A cancel that hasn't propagated yet (Kalshi still reports
@@ -3066,6 +3399,65 @@ class TestReplaceLiveOrder:
             second_cycle = mock_client.place_order.call_args.kwargs["cycle"]
 
         assert first_cycle != second_cycle
+
+    def test_prelogged_client_order_id_matches_wire_cid(self):
+        """Batch-31 CR-1: the pre-logged client_order_id must be
+        byte-identical to the one place_order() actually sends. Previously
+        the pre-log computation used the BARE cycle while place_order()
+        itself derived its key from the replace-scoped cycle
+        (f"{cycle}:replace:{replaces_order_id}") -- a crash in the window
+        between the pre-log write and log_order_result recording the real
+        outcome (the live-order watchdog's os._exit(1) can land exactly
+        there) then made crash recovery re-check the WRONG id, get a
+        confirmed negative, and mark a REAL live BUY 'failed', leaving an
+        untracked live position with no protective exits.
+
+        Spies on log_order's own response= kwarg at pre-log time (not the
+        final row state, which place_order's mocked return value would
+        overwrite) and independently re-derives the expected id from the
+        cycle/time_in_force place_order() actually received, rather than
+        trusting _replace_live_order's own internal computation for both
+        sides of the comparison."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from kalshi_client import compute_client_order_id
+        from order_executor import _replace_live_order
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {"order_id": "ord_cid_check"}
+
+        real_log_order = execution_log.log_order
+        prelog_calls = []
+
+        def _spy_log_order(*args, **kwargs):
+            prelog_calls.append(kwargs)
+            return real_log_order(*args, **kwargs)
+
+        with (
+            patch.object(execution_log, "log_order", side_effect=_spy_log_order),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            _replace_live_order(
+                "KXHIGH-25MAY15-T75",
+                "yes",
+                5,
+                0.52,
+                "good_till_canceled",
+                mock_client,
+                "2026-05-15_12z",
+                99,
+                None,
+            )
+
+        posted_cycle = mock_client.place_order.call_args.kwargs["cycle"]
+        posted_tif = mock_client.place_order.call_args.kwargs["time_in_force"]
+        expected_cid = compute_client_order_id(
+            "KXHIGH-25MAY15-T75", "yes", "buy", 5, 0.52, posted_tif, posted_cycle
+        )
+
+        assert len(prelog_calls) == 1
+        assert prelog_calls[0]["response"]["client_order_id"] == expected_cid
 
 
 class TestFillInstrumentation:
@@ -4282,16 +4674,28 @@ class TestExitLivePosition(_LiveDBTestBase):
 
     def test_full_exit_race_loss_does_not_crash_the_caller(self):
         """Opus review (2026-08-17), NEW-H2: execution_log.record_live_exit_fill
-        now raises RuntimeError when it loses a settled_at/quantity race to a
-        concurrent writer -- main.cmd_order's manual sell can race this
-        automated exit scanner against the same position for the first time
-        since that fix shipped. Left uncaught, that RuntimeError would climb
-        out of _exit_live_position, through LivePositionStore.exit(), into
-        _check_live_position_exits' caller in the watch/cron loop, which has
-        no generic exception handler -- crashing the ENTIRE process and
-        leaving every OTHER live position unprotected from a race on just
-        ONE. Must be caught here and treated as "lost the race, skip" (same
-        as an unfilled/illiquid IOC), not propagate."""
+        raises RuntimeError when it loses a settled_at/quantity race to a
+        concurrent writer -- main.cmd_order's manual sell (which does NOT go
+        through claim_position_for_exit -- only the automated scanners do,
+        batch-31 M-4) can still race this automated exit scanner against the
+        SAME position, landing in the window after this attempt's own claim
+        succeeds but before its own bookkeeping call. Left uncaught, that
+        RuntimeError would climb out of _exit_live_position, through
+        LivePositionStore.exit(), into _check_live_position_exits' caller in
+        the watch/cron loop, which has no generic exception handler --
+        crashing the ENTIRE process and leaving every OTHER live position
+        unprotected from a race on just ONE. Must be caught here and treated
+        as "lost the race, skip" (same as an unfilled/illiquid IOC), not
+        propagate.
+
+        Batch-31 M-4: the concurrent settlement is now injected via a
+        record_live_exit_fill side effect (fires AFTER this attempt's own
+        claim_position_for_exit call already succeeded), not by pre-settling
+        the row before calling _exit_live_position at all -- pre-settling
+        would now be caught by the claim itself (a real improvement: no live
+        sell is even attempted against an already-closed position), which is
+        a different scenario from this test's actual target: a race landing
+        during this attempt's own execution."""
         from unittest.mock import MagicMock, patch
 
         import execution_log
@@ -4310,13 +4714,25 @@ class TestExitLivePosition(_LiveDBTestBase):
             status="filled",
             live=True,
         )
-        # Simulate a concurrent writer (e.g. a manual cmd_order sell) already
-        # having closed this exact position before this exit attempt's own
-        # bookkeeping call lands.
-        execution_log.record_live_early_exit(row_id, 0.55, "manual_close", 1.395)
+
+        real_record_live_exit_fill = execution_log.record_live_exit_fill
+
+        def _settle_concurrently_then_call(*args, **kwargs):
+            # Simulate a concurrent writer (e.g. a manual cmd_order sell)
+            # closing this exact position in the instant between this
+            # attempt's own successful claim and its own bookkeeping call.
+            execution_log.record_live_early_exit(row_id, 0.55, "manual_close", 1.395)
+            return real_record_live_exit_fill(*args, **kwargs)
 
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with (
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+            patch.object(
+                execution_log,
+                "record_live_exit_fill",
+                side_effect=_settle_concurrently_then_call,
+            ),
+        ):
             result = _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
@@ -4331,6 +4747,7 @@ class TestExitLivePosition(_LiveDBTestBase):
         # the concurrent writer's -- cosmetic only there too, since the DB
         # row below is unaffected and belongs to whoever actually won.
         assert result is True
+        mock_client.place_order.assert_called_once()
         # The concurrent writer's real settlement must survive untouched.
         row = execution_log.get_order_by_id(row_id)
         assert row["exit_price"] == pytest.approx(0.55)
@@ -4339,7 +4756,8 @@ class TestExitLivePosition(_LiveDBTestBase):
 
     def test_partial_exit_race_loss_does_not_crash_the_caller(self):
         """Mirrors the full-exit race test above for the partial-fill
-        branch."""
+        branch -- see that test's batch-31 M-4 note on why the concurrent
+        settlement is injected mid-call rather than before it."""
         from unittest.mock import MagicMock, patch
 
         import execution_log
@@ -4358,20 +4776,101 @@ class TestExitLivePosition(_LiveDBTestBase):
             status="filled",
             live=True,
         )
-        execution_log.record_live_early_exit(row_id, 0.55, "manual_close", 1.395)
+
+        real_record_live_exit_fill = execution_log.record_live_exit_fill
+
+        def _settle_concurrently_then_call(*args, **kwargs):
+            execution_log.record_live_early_exit(row_id, 0.55, "manual_close", 1.395)
+            return real_record_live_exit_fill(*args, **kwargs)
 
         position = self._position(id=row_id)
-        with patch("trading_gates.pre_live_trade_check", return_value=None):
+        with (
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+            patch.object(
+                execution_log,
+                "record_live_exit_fill",
+                side_effect=_settle_concurrently_then_call,
+            ),
+        ):
             result = _exit_live_position(
                 mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
             )
 
         assert result is False
+        mock_client.place_order.assert_called_once()
         row = execution_log.get_order_by_id(row_id)
         # The concurrent writer's settlement (and this row's fill_quantity,
         # never explicitly set here so it's still NULL) must survive
         # untouched -- not decremented by the losing writer.
         assert row["fill_quantity"] is None
+
+    def test_partial_exit_quantity_race_loss_releases_claim_for_retry(self):
+        """Independent review (batch-31 F2/F3): record_live_partial_exit's
+        guard raises RuntimeError for a SECOND, distinct reason besides
+        settled_at being set -- a concurrent writer shrinking the tracked
+        size below what THIS attempt's own fill_count needs to subtract
+        (COALESCE(fill_quantity, quantity) < filled_count). settled_at
+        stays NULL in that case: the position is genuinely still open, just
+        smaller than this attempt's stale snapshot expected. The prior test
+        above only exercised the settled_at-set cause (via
+        record_live_early_exit), which independent review proved does NOT
+        kill a mutation removing this branch's release_exit_claim call --
+        settled_at alone already blocks re-claiming in that case, so the
+        release is a no-op there and the mutation survives undetected. This
+        test reproduces the OTHER cause, where the release is actually
+        load-bearing: it must both not crash AND leave the position
+        re-claimable for an immediate retry against its real, now-smaller
+        size."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "4.00",  # only 4 of 10 requested
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+
+        real_record_live_exit_fill = execution_log.record_live_exit_fill
+
+        def _shrink_below_delta_then_call(*args, **kwargs):
+            # Concurrent writer sells 8 of the 10 first, leaving only 2
+            # tracked -- less than the 4 this attempt is about to subtract.
+            # settled_at is untouched by record_live_partial_exit.
+            execution_log.record_live_partial_exit(row_id, 8)
+            return real_record_live_exit_fill(*args, **kwargs)
+
+        position = self._position(id=row_id)
+        with (
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+            patch.object(
+                execution_log,
+                "record_live_exit_fill",
+                side_effect=_shrink_below_delta_then_call,
+            ),
+        ):
+            result = _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        assert result is False
+        mock_client.place_order.assert_called_once()
+        row = execution_log.get_order_by_id(row_id)
+        assert row["settled_at"] is None
+        assert row["fill_quantity"] == 2
+        # The load-bearing assertion: claim released despite the RuntimeError,
+        # so the next scan can immediately retry against the real remaining
+        # size instead of waiting out the full TTL.
+        assert execution_log.claim_position_for_exit(row_id) is not None
 
     def test_gate_blocked_returns_false_and_places_nothing(self):
         from unittest.mock import MagicMock, patch
@@ -4466,6 +4965,217 @@ class TestExitLivePosition(_LiveDBTestBase):
         second_cycle = mock_client.place_order.call_args.kwargs["cycle"]
 
         assert first_cycle != second_cycle
+
+    def test_prelogged_client_order_id_matches_wire_cid(self):
+        """Batch-31 CR-1: the pre-logged client_order_id must be
+        byte-identical to the one place_order() actually sends. Previously
+        the pre-log computation used the BARE cycle while place_order()
+        itself derived its key from the exit-scoped cycle
+        (f"{cycle}:exit:{log_id}") -- a crash in the window between the
+        pre-log write and log_order_result recording the real outcome (the
+        live-order watchdog's os._exit(1) can land exactly there) then made
+        crash recovery re-check the WRONG id, get a confirmed negative, and
+        mark a REAL protective SELL 'failed'. Because settled_at stayed NULL
+        forever, the exit scanner then placed a fresh real SELL every cycle
+        against an already-sold position, permanently consuming a
+        max_open_positions slot.
+
+        Unlike _replace_live_order's single-step pre-log, _exit_live_position
+        needs the row's own log_id (unknown before the row exists) to build
+        the scoped cycle -- so the pre-log is two calls: log_order() then
+        log_order_result() writing the real cid. Spies on log_order_result
+        and captures its FIRST call's response= kwarg (the pre-wire write --
+        a second log_order_result call happens later with the wire response,
+        which would overwrite it), and independently re-derives the expected
+        id from the cycle/time_in_force place_order() actually received."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from kalshi_client import compute_client_order_id
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_cid_check",
+            "fill_count_fp": "10.00",
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+
+        real_log_order_result = execution_log.log_order_result
+        result_calls = []
+
+        def _spy_log_order_result(*args, **kwargs):
+            result_calls.append(kwargs)
+            return real_log_order_result(*args, **kwargs)
+
+        position = self._position(id=row_id)
+        with (
+            patch.object(
+                execution_log,
+                "log_order_result",
+                side_effect=_spy_log_order_result,
+            ),
+            patch("trading_gates.pre_live_trade_check", return_value=None),
+        ):
+            _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        posted_cycle = mock_client.place_order.call_args.kwargs["cycle"]
+        posted_tif = mock_client.place_order.call_args.kwargs["time_in_force"]
+        expected_cid = compute_client_order_id(
+            "KXHIGH-25MAY15-T75", "yes", "sell", 10, 0.20, posted_tif, posted_cycle
+        )
+
+        prelog_calls = [c for c in result_calls if c.get("response") is not None]
+        assert len(prelog_calls) >= 1, "no log_order_result call carried a response"
+        assert prelog_calls[0]["response"]["client_order_id"] == expected_cid
+
+    def test_claim_blocks_a_concurrent_scanner_on_the_same_position(self):
+        """Batch-31 M-4: cron's and watch's exit scanners are deliberately
+        NOT serialized (AUD-0013) and each independently derives the
+        identical exit decision for the same position -- without a claim,
+        both could call place_order() and both real SELLs could land. The
+        loser must skip the position entirely (return False, place_order
+        never called), not race into it."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        # Simulate a concurrent scanner having already won the claim for
+        # this position (e.g. cron's cycle claimed it a moment before
+        # watch's own standalone call reached the same position).
+        assert execution_log.claim_position_for_exit(row_id) is not None
+
+        mock_client = MagicMock()
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        assert result is False
+        mock_client.place_order.assert_not_called()
+
+    def test_claim_released_after_unfilled_ioc_allows_immediate_retry(self):
+        """An illiquid-market no-fill must not block the SAME scanner's own
+        next-cycle retry for claim_position_for_exit's full TTL -- the claim
+        is released as soon as this attempt confirms it didn't close
+        anything, matching the existing dedup-key test's expectation that
+        two sequential no-fill attempts on the same position both actually
+        reach place_order()."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.return_value = {
+            "order_id": "ord_exit",
+            "fill_count_fp": "0.00",
+        }
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+        # Positive control (independent review, batch-31 F7): the claim
+        # actually being taken and released this run, not e.g. the row
+        # never having been claimed in the first place because some earlier
+        # return path short-circuited before reaching claim_position_for_exit.
+        mock_client.place_order.assert_called_once()
+        # Claim must be gone -- a fresh claim attempt now succeeds.
+        assert execution_log.claim_position_for_exit(row_id) is not None
+
+    def test_claim_retained_after_order_status_unknown(self):
+        """Batch-31 M-4: an OrderStatusUnknownError outcome's true fate is
+        unconfirmed (AUD-0007) -- releasing the claim here would reopen the
+        exact double-sell window the claim exists to close, so unlike the
+        no-fill/failed cases, the claim must stay held (a second immediate
+        attempt is blocked) until the TTL expires or the row settles."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from kalshi_client import OrderStatusUnknownError
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.side_effect = OrderStatusUnknownError(
+            "some-cid", ConnectionError("timeout")
+        )
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        assert result is False
+        # Positive control (independent review, batch-31 F7): the attempt
+        # actually reached place_order() and hit the unknown-outcome path,
+        # not some earlier return that happens to also leave the claim held.
+        mock_client.place_order.assert_called_once()
+        # Claim must still be held -- an immediate re-claim attempt fails.
+        assert execution_log.claim_position_for_exit(row_id) is None
+
+    def test_claim_released_after_confirmed_placement_failure(self):
+        """A confirmed-not-landed placement failure (place_order raises a
+        plain Exception, not OrderStatusUnknownError) is safe to release
+        immediately for a retry next scan."""
+        from unittest.mock import MagicMock, patch
+
+        import execution_log
+        from order_executor import _exit_live_position
+
+        mock_client = MagicMock()
+        mock_client.place_order.side_effect = ConnectionError("confirmed down")
+        row_id = execution_log.log_order(
+            ticker="KXHIGH-25MAY15-T75",
+            side="yes",
+            quantity=10,
+            price=0.40,
+            status="filled",
+            live=True,
+        )
+        position = self._position(id=row_id)
+        with patch("trading_gates.pre_live_trade_check", return_value=None):
+            result = _exit_live_position(
+                mock_client, position, 0.20, "stop_loss", "2026-05-15_12z"
+            )
+
+        assert result is False
+        assert execution_log.claim_position_for_exit(row_id) is not None
 
     def test_full_fill_records_fee_adjusted_pnl(self):
         from unittest.mock import MagicMock, patch

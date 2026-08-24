@@ -51,7 +51,7 @@ _append_lock = _el_threading.Lock()  # WA-9: serialize concurrent JSONL appends
 # only has the columns that predate this list; every column added since is
 # expressed as its own migration, matching tracker.py's convention of never
 # touching the base CREATE TABLE again once versioning exists.
-_SCHEMA_VERSION = 17  # increment when _MIGRATIONS list grows
+_SCHEMA_VERSION = 18  # increment when _MIGRATIONS list grows
 
 _MIGRATIONS = [
     "ALTER TABLE orders ADD COLUMN fill_quantity INTEGER",  # v1
@@ -71,6 +71,7 @@ _MIGRATIONS = [
     "ALTER TABLE orders ADD COLUMN exit_price REAL",  # v15
     "ALTER TABLE orders ADD COLUMN entry_prob REAL",  # v16
     "ALTER TABLE orders ADD COLUMN closes_position_id INTEGER",  # v17
+    "ALTER TABLE orders ADD COLUMN exit_claimed_at TEXT",  # v18
 ]
 
 
@@ -321,6 +322,77 @@ def claim_unknown_order(row_id: int) -> bool:
             (row_id,),
         )
     return cur.rowcount > 0
+
+
+def claim_position_for_exit(position_id: int, ttl_minutes: int = 10) -> str | None:
+    """Atomically claim an open live position row for a protective-exit
+    attempt, mirroring claim_unknown_order's CAS pattern. Only the winner
+    of this claim may proceed to call place_order() for this position; the
+    loser must skip it entirely this pass.
+
+    Batch-31 M-4: cron's and watch's exit scanners are deliberately NOT
+    serialized (AUD-0013), and each independently derives the identical
+    exit decision for the same position -- without a claim, both could call
+    place_order() and both real SELLs could land. TTL-bounded (not a
+    permanent claim) specifically because the window between winning this
+    claim and place_order() actually completing is exactly where the live-
+    order watchdog's os._exit(1) can land (CR-1) -- a permanent claim would
+    leave the position unprotected forever after a crash in that window;
+    this one self-heals after ttl_minutes with no settlement.
+
+    Also guarded on settled_at IS NULL: a position already fully closed
+    (by this claim's own eventual caller, or a concurrent writer) must
+    never be re-claimed.
+
+    Returns the claim token (the exit_claimed_at timestamp THIS call wrote)
+    on success, None if the claim was lost. Independent review (batch-31):
+    a caller must pass this exact token back to release_exit_claim(), not
+    just the position_id -- otherwise a slow claimant (e.g. place_order()
+    stalling past the TTL on its own internal reconciliation retries) could
+    release a LATER claimant's still-active claim on the same return path,
+    reopening the double-sell window a third scanner could then win.
+    """
+    init_log()
+    token = datetime.now(UTC).isoformat()
+    with _conn() as con:
+        cur = con.execute(
+            f"""
+            UPDATE orders SET exit_claimed_at = ?
+            WHERE id = ? AND settled_at IS NULL
+              AND (exit_claimed_at IS NULL
+                   OR {sql_normalize_iso_column("exit_claimed_at")} < datetime('now', ?))
+            """,
+            (token, position_id, f"-{ttl_minutes} minutes"),
+        )
+    return token if cur.rowcount > 0 else None
+
+
+def release_exit_claim(position_id: int, claim_token: str) -> None:
+    """Clear a position's exit claim after an attempt that did NOT close it
+    (no fill, a genuine partial fill leaving the position open at a smaller
+    size, or a confirmed-failed placement) -- so the next scan can retry
+    immediately instead of waiting out claim_position_for_exit's TTL.
+
+    claim_token must be the exact value claim_position_for_exit() returned
+    to this same caller -- the UPDATE only clears the claim if it still
+    matches, so a caller whose own attempt ran long enough for the TTL to
+    expire and a NEW claimant to win can never wipe that newer claim out
+    from under it (independent review, batch-31 F5).
+
+    Deliberately NOT called after an OrderStatusUnknownError outcome: the
+    sell attempt's true fate is unconfirmed (AUD-0007), so an early release
+    here would reopen the exact double-sell window this claim exists to
+    close. Leaving the claim in place until the TTL expires (or the row
+    settles, which makes the claim moot) is the load-bearing protection for
+    that case.
+    """
+    init_log()
+    with _conn() as con:
+        con.execute(
+            "UPDATE orders SET exit_claimed_at = NULL "
+            "WHERE id = ? AND exit_claimed_at = ?",
+            (position_id, claim_token),
+        )
 
 
 def was_recently_ordered(ticker: str, side: str, within_minutes: int = 10) -> bool:
@@ -915,22 +987,39 @@ def get_filled_unsettled_live_orders() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def record_live_settlement(order_id: int, outcome_yes: bool, pnl: float) -> None:
-    """Write settlement outcome to an order row.
+def record_live_settlement(order_id: int, outcome_yes: bool, pnl: float) -> bool:
+    """Write natural-market-settlement outcome to an order row.
 
     outcome_yes=True means the YES side won (the market resolved 'yes').
     pnl is net P&L after Kalshi fee, in dollars.
+
+    Batch-31 M-3: guarded on settled_at IS NULL, like every sibling
+    settlement writer (record_live_early_exit, update_live_peak_profit) --
+    previously an unconditional UPDATE. cron's _settle_recovered_exit_order
+    and watch's own settlement poll can race on the same row (a stale
+    get_filled_unsettled_live_orders() snapshot read before a concurrent
+    writer already settled it), and two concurrent watch processes are a
+    second route to the same race. The danger direction is real even though
+    narrower than originally scoped (cron never calls _poll_pending_orders;
+    an exit IOC fill on an already-finalized market is impossible): a
+    winning position credited twice would make the live daily-loss brake
+    read looser than reality, and an unconditional overwrite would also
+    silently replace an earlier early-exit's realized pnl with this
+    natural-settlement figure, corrupting the tax CSV / get_live_pnl_summary
+    / settlement-streak history for that row. Returns whether THIS call
+    won the race so the caller can skip add_live_loss on a loss.
     """
     init_log()
     with _conn() as con:
-        con.execute(
+        cur = con.execute(
             """
             UPDATE orders
             SET settled_at = ?, outcome_yes = ?, pnl = ?
-            WHERE id = ?
+            WHERE id = ? AND settled_at IS NULL
             """,
             (datetime.now(UTC).isoformat(), int(outcome_yes), pnl, order_id),
         )
+    return cur.rowcount > 0
 
 
 def update_live_peak_profit(order_id: int, peak_profit_pct: float) -> None:
@@ -1579,7 +1668,7 @@ def get_recent_orders(limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_order_by_id(order_id: str) -> dict | None:
+def get_order_by_id(order_id: int | str) -> dict | None:
     """Fetch a single order record by id from execution_log.db."""
     init_log()
     try:

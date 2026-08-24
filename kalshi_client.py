@@ -782,10 +782,12 @@ class KalshiClient:
         # nothing in this repo references event_positions today, and the
         # current single production consumer (output_formatters.py) is
         # display-only, so this is strictly no worse than the prior
-        # single-page behavior even in the worst case. Flag for the
-        # DEMO_BASE smoke test batch-23 already recommends running after
-        # this batch lands, before AUD-0025's live-position reconciliation
-        # is built on top of this.
+        # single-page behavior even in the worst case. Batch-31 L-12: the
+        # DEMO_BASE smoke test flagged here has not been re-confirmed run,
+        # and AUD-0025's live-position reconciliation
+        # (order_executor._reconcile_live_positions) IS now built on top of
+        # this -- see that function's own KNOWN LIMITATION docstring, which
+        # this comment's risk assessment still applies to.
         return self._paginate_get("/portfolio/positions", "market_positions")
 
     def _get_orders_by_status(self, status: str) -> list[dict]:

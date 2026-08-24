@@ -847,6 +847,59 @@ def _recover_pending_orders(client) -> None:
                     error="confirmed not found on unknown-order re-check",
                     response=response,
                 )
+                # Independent review (batch-31 F4): a confirmed-failed EXIT
+                # order (closes_position_id set) means this SELL attempt
+                # definitively never landed -- the same confirmed-not-landed
+                # condition _exit_live_position's own generic-Exception
+                # branch already releases the claim for. Without this, the
+                # position stays exit-claim-blocked until
+                # claim_position_for_exit's TTL expires even though it's
+                # provably still unprotected right now.
+                #
+                # This row's own claim token was never persisted anywhere
+                # (release_exit_claim's ownership check needs the EXACT
+                # token _exit_live_position received from
+                # claim_position_for_exit, which this recovery pass never
+                # saw), so blindly reading the position's CURRENT
+                # exit_claimed_at and releasing with that as the token does
+                # NOT prove it's still THIS attempt's own claim -- a
+                # same-process read-then-release has no gap for a
+                # concurrent writer to land in, so it would just as
+                # "successfully" wipe a genuinely NEWER claimant's claim,
+                # reopening the double-sell window (verified: an earlier
+                # version of this fix did exactly that, caught by its own
+                # test). The TTL invariant gives a safe substitute: a
+                # legitimate new claim can only exist if at least
+                # ttl_minutes has passed since the ORIGINAL claim, which was
+                # taken a moment before this row's own placed_at -- so only
+                # release when the position's current exit_claimed_at is
+                # within a small buffer of THIS row's placed_at, i.e.
+                # clearly still the original claim, not a plausible
+                # TTL-expired-and-replaced one.
+                _closes_position_id = order.get("closes_position_id")
+                if _closes_position_id is not None:
+                    _position_row = execution_log.get_order_by_id(_closes_position_id)
+                    _current_claim = (
+                        _position_row.get("exit_claimed_at") if _position_row else None
+                    )
+                    _this_row_placed_at = order.get("placed_at")
+                    if _current_claim and _this_row_placed_at:
+                        try:
+                            _claim_dt = datetime.fromisoformat(
+                                _current_claim.replace("Z", "+00:00")
+                            )
+                            _placed_dt = datetime.fromisoformat(
+                                _this_row_placed_at.replace("Z", "+00:00")
+                            )
+                            _still_original = (
+                                abs((_claim_dt - _placed_dt).total_seconds()) < 60
+                            )
+                        except (ValueError, TypeError):
+                            _still_original = False
+                        if _still_original:
+                            execution_log.release_exit_claim(
+                                _closes_position_id, _current_claim
+                            )
                 _log.info(
                     "[Recovery] %s row %d: unknown → confirmed not found → failed",
                     ticker,
@@ -888,15 +941,20 @@ def _reconcile_live_positions(client) -> None:
     try/except (trade_cycle.py) is deliberately left in place too, matching
     _recover_pending_orders' belt-and-suspenders convention.
 
-    KNOWN LIMITATION (opus review, round 1, deliberately not fixed here --
-    kalshi_client.py belongs to a different batch): client.get_positions()
-    is a single unpaginated GET, unlike _get_orders_by_status's cursor loop
-    (hardened for the same class of gap under AUD-0007). Once the account
-    holds more than one page of market positions, positions on page 2+
-    would show up in missing_from_kalshi and warn every cycle -- log-only,
-    so no money risk, but it degrades the signal to noise once the account
-    grows. Follow-up: paginate kalshi_client.get_positions() the same way
-    _get_orders_by_status already was.
+    KNOWN LIMITATION (batch-31 L-12: stale as of batch-23, which already
+    paginated client.get_positions() via _paginate_get -- corrected here).
+    The residual gap per kalshi_client.get_positions()'s own docstring:
+    Kalshi's /portfolio/positions response may return TWO parallel lists
+    (event_positions and market_positions) advanced by a single shared
+    cursor, and a page with zero market_positions but a non-empty
+    event_positions plus a valid cursor would make _paginate_get's `not
+    page` guard stop one page early -- unverified without live API access,
+    and this function (get_filled_unsettled_live_orders vs.
+    get_positions()'s market_positions) is the AUD-0025 consumer that
+    docstring flagged as not yet built when it was written. Positions on a
+    silently-truncated later page would show up in missing_from_kalshi and
+    warn every cycle -- log-only, so no money risk, but it degrades the
+    signal to noise once the account grows past one page.
     """
     try:
         tracked_tickers = {
@@ -968,8 +1026,17 @@ def _finalize_cancel(
             _kalshi_status_to_internal(raw_api_status or "canceled", fill_count)
             or "canceled"
         )
+        # Independent review (batch-31 F8): mirrors the except branch below
+        # -- response= carries order_id/client_order_id, and
+        # log_order_result's UPDATE is unconditional (no COALESCE), so
+        # omitting it here would null out this row's response the same way
+        # the except branch used to. Harmless today (a row reaching
+        # 'filled'/'canceled' via this path is never re-checked by
+        # client_order_id again), but the two branches of this one function
+        # disagreeing about whether to preserve response was itself worth
+        # closing rather than leaving as a trap for a future caller.
         execution_log.log_order_result(
-            row_id=row_id, status=status, fill_quantity=fill_count
+            row_id=row_id, status=status, fill_quantity=fill_count, response=result
         )
         return status, fill_count, raw_api_status
     except Exception as exc:
@@ -979,7 +1046,35 @@ def _finalize_cancel(
             order_id,
             exc,
         )
-        execution_log.log_order_result(row_id=row_id, status="canceled")
+        # Batch-31 L-10(a): log_order_result's UPDATE is unconditional (no
+        # COALESCE) on fill_quantity/response -- calling it bare here would
+        # null out whatever this row already had recorded (a genuine partial
+        # fill from an earlier poll, and the order_id-carrying response),
+        # making a partially-filled position go fully untracked. Re-read the
+        # row's own current values and pass them through unchanged instead
+        # of omitting them.
+        _prior = execution_log.get_order_by_id(row_id)
+        _prior_response = _prior.get("response") if _prior else None
+        if isinstance(_prior_response, str):
+            try:
+                _prior_response = json.loads(_prior_response)
+            except (json.JSONDecodeError, TypeError):
+                # Independent review (batch-31 F10): this runs inside an
+                # except block already handling the get_order() failure --
+                # an unguarded raise here would propagate past this
+                # function's own except entirely (a second exception inside
+                # an except is not caught by that same except). The
+                # response column is only ever written via json.dumps, so a
+                # malformed value should never occur in practice, but a
+                # crash on defensive best-effort preservation would be
+                # worse than losing this one field.
+                _prior_response = None
+        execution_log.log_order_result(
+            row_id=row_id,
+            status="canceled",
+            fill_quantity=_prior.get("fill_quantity") if _prior else None,
+            response=_prior_response,
+        )
         # Fill state genuinely unknown here (the query that would tell us
         # failed) -- treat as "don't know it's safe" rather than assuming
         # fill_count=0, so callers deciding whether to place a replacement
@@ -1188,8 +1283,17 @@ def _poll_pending_orders(client, config: dict | None = None) -> None:
             else:  # not outcome_yes, side == "no" — NO wins
                 gross_pnl = qty * (1 - price)  # won NO: profit = 1-cost
             pnl = round(gross_pnl - _fee_dollars, 4)
-            execution_log.record_live_settlement(order["id"], outcome_yes, pnl)
-            execution_log.add_live_loss(-pnl)  # negative pnl = loss adds to counter
+            # Batch-31 M-3: record_live_settlement now guards on settled_at
+            # IS NULL and reports whether it won the race -- a concurrent
+            # writer (cron vs watch, or two watch processes) may have
+            # already settled this row first. Skip add_live_loss on a lost
+            # race: the winner's own call already accounted for this
+            # position exactly once, and double-applying pnl here would
+            # both double-count it in the daily-loss counter and (on a
+            # winning position) make the live daily-loss brake read looser
+            # than reality.
+            if execution_log.record_live_settlement(order["id"], outcome_yes, pnl):
+                execution_log.add_live_loss(-pnl)  # negative pnl = loss adds to counter
         except Exception as exc:
             _log.warning(
                 "[LIVE] settlement check failed for order %s: %s", order.get("id"), exc
@@ -1344,8 +1448,25 @@ def _replace_live_order(
     # crashes before log_order_result records the real outcome, recovery can
     # still re-check this specific client_order_id against Kalshi. See
     # kalshi_client.compute_client_order_id's own docstring.
+    #
+    # Batch-31 CR-1: must use the SAME scoped cycle
+    # (f"{cycle}:replace:{replaces_order_id}") passed to place_order() below,
+    # not the bare cycle -- batch-23 scoped place_order's own key to avoid a
+    # same-priced taker-cross colliding with the original entry order, but
+    # left this pre-log call on the bare cycle, so the pre-logged id never
+    # matched the wire id. A crash in the pre-log-to-log_order_result window
+    # (the live-order watchdog's os._exit(1) can land exactly here) then made
+    # recovery re-check the WRONG id, get a confirmed negative, and mark a
+    # REAL live order 'failed' -- an untracked live position with no
+    # protective exits.
     _cid = compute_client_order_id(
-        ticker, side, "buy", quantity, price, time_in_force, cycle
+        ticker,
+        side,
+        "buy",
+        quantity,
+        price,
+        time_in_force,
+        f"{cycle}:replace:{replaces_order_id}",
     )
     log_id = execution_log.log_order(
         ticker=ticker,
@@ -2067,6 +2188,14 @@ def _exit_live_position(
     indistinguishable from a genuine new entry fill and misidentified as a
     brand-new open position by the next get_filled_unsettled_live_orders()
     call. See execution_log.log_order's closes_position_id docstring.
+
+    Batch-31 M-4: claims position["id"] via execution_log.
+    claim_position_for_exit() before doing anything else -- cron's and
+    watch's exit scanners are deliberately NOT serialized (AUD-0013) and
+    each independently derives the identical exit decision for the same
+    position, so without this claim both could reach place_order() and
+    both real SELLs could land. The loser skips the position entirely this
+    pass (returns False, same as an unfilled IOC) rather than racing.
     """
     from trading_gates import pre_live_trade_check
 
@@ -2080,10 +2209,46 @@ def _exit_live_position(
         _log.warning("[LiveExit] Gate blocked exit for %s: %s", ticker, _gate_err)
         return False
 
-    # Batch-22 item 2: see _replace_live_order's matching comment.
-    _cid = compute_client_order_id(
-        ticker, side, "sell", qty, exit_price, "immediate_or_cancel", cycle
-    )
+    _claim_token = execution_log.claim_position_for_exit(position["id"])
+    if _claim_token is None:
+        _log.info(
+            "[LiveExit] %s: exit already claimed by a concurrent scanner or "
+            "a recent attempt -- skipping this pass",
+            ticker,
+        )
+        return False
+
+    # Batch-31 CR-1: two-step pre-log, unlike _replace_live_order's
+    # single-step one -- the scoped cycle place_order() below actually uses
+    # (f"{cycle}:exit:{log_id}") needs log_id, which doesn't exist until
+    # this row is created. log_order() first (response left unset), THEN
+    # compute the client_order_id from that same scoped cycle and write it
+    # into the row via log_order_result() BEFORE calling place_order(),
+    # so the pre-logged id and the wire id are guaranteed byte-identical.
+    # Previously this pre-logged a cid derived from the BARE cycle while
+    # place_order() itself derived one from the scoped cycle -- recovery
+    # re-checking the wrong id after a mid-window crash (the live-order
+    # watchdog's os._exit(1) can land exactly here) got a confirmed
+    # negative and marked a REAL protective SELL 'failed', leaving
+    # settled_at NULL forever so the exit scanner placed a fresh real SELL
+    # every cycle against an already-sold position.
+    #
+    # A crash between this log_order() and the log_order_result() just
+    # below leaves a response=NULL 'pending' row -- safe (no wire call has
+    # happened yet), but not fully self-resolving: _recover_pending_orders
+    # reads ALL pending rows unconditionally (unlike _poll_pending_orders/
+    # _reprice_or_cancel_pending_orders, which skip rows with no response),
+    # sees no order_id, and marks it 'sent'. Independent review (batch-31
+    # F6): unlike every OTHER live pre-log site (whose whole point, per
+    # compute_client_order_id's docstring, is that the cid exists before
+    # ANY wire call), this row can never leave 'sent' -- the promotion loop
+    # requires a stored client_order_id to advance it to 'unknown', and this
+    # row has none. Low impact (closes_position_id already excludes it from
+    # _count_open_live_orders/get_today_live_spend/export_live_tax_csv), and
+    # a retry is in fact correct here (no dedup guard blocks one -- only the
+    # exit claim's own TTL bounds how soon the next scan tries again), just
+    # an orphaned audit-trail row. Left as a documented, accepted gap rather
+    # than special-casing recovery for this one two-local-write window.
     log_id = execution_log.log_order(
         ticker=ticker,
         side=side,
@@ -2091,11 +2256,17 @@ def _exit_live_position(
         price=exit_price,
         order_type="market",
         status="pending",
-        response={"client_order_id": _cid},
         forecast_cycle=cycle,
         live=True,
         close_time=position.get("close_time"),
         closes_position_id=position["id"],
+    )
+    _exit_cycle = f"{cycle}:exit:{log_id}"
+    _cid = compute_client_order_id(
+        ticker, side, "sell", qty, exit_price, "immediate_or_cancel", _exit_cycle
+    )
+    execution_log.log_order_result(
+        log_id, status="pending", response={"client_order_id": _cid}
     )
     try:
         response = client.place_order(
@@ -2111,7 +2282,9 @@ def _exit_live_position(
             # no-op attempt just because the book (and so exit_price) hasn't
             # moved within the same 12h window. log_id (this attempt's own
             # pre-log row id, just created above) is monotonic per real
-            # attempt, guaranteeing every exit try gets a fresh key.
+            # attempt, guaranteeing every exit try gets a fresh key. Must be
+            # the SAME string as the pre-log computation above (_exit_cycle)
+            # -- see the batch-31 CR-1 comment above.
             #
             # Opus review (2026-08-22), accepted trade-off: this also means
             # a genuine cross-cycle retry of the SAME conceptual exit no
@@ -2130,12 +2303,17 @@ def _exit_live_position(
             # cycle) is the exact bug this fix closes, and would reliably
             # (not just on double reconciliation failure) block a real
             # illiquid-market retry.
-            cycle=f"{cycle}:exit:{log_id}",
+            cycle=_exit_cycle,
         )
     except OrderStatusUnknownError as _unk_exc:
         # AUD-0007: see _place_live_order's matching handler -- reconciliation
         # itself couldn't confirm either way, so this exit attempt must not be
         # marked 'failed' (which dedup guards would treat as never-sent).
+        # Batch-31 M-4: the exit claim is deliberately NOT released here --
+        # this outcome's true fate is unconfirmed, so releasing early would
+        # reopen the double-sell window the claim exists to close. It stays
+        # claimed until claim_position_for_exit's TTL expires or the row
+        # settles (which makes the claim moot either way).
         execution_log.log_order_result(
             log_id,
             status="unknown",
@@ -2146,6 +2324,11 @@ def _exit_live_position(
         return False
     except Exception as exc:
         execution_log.log_order_result(log_id, status="failed", error=str(exc))
+        # Confirmed not landed (place_order only raises a plain Exception,
+        # not OrderStatusUnknownError, when reconciliation positively found
+        # no matching order) -- safe to release the claim for an immediate
+        # retry next scan.
+        execution_log.release_exit_claim(position["id"], _claim_token)
         _log.warning("[LiveExit] Exit order failed for %s: %s", ticker, exc)
         return False
 
@@ -2158,6 +2341,9 @@ def _exit_live_position(
 
     if not fill_count:
         execution_log.log_order_result(log_id, status="canceled", response=response)
+        # Confirmed via the IOC fill count itself, not reconciliation
+        # ambiguity -- safe to release for an immediate retry next scan.
+        execution_log.release_exit_claim(position["id"], _claim_token)
         _log.warning(
             "[LiveExit] %s: IOC exit order did not fill (illiquid market?) — "
             "position remains open, will retry next cycle",
@@ -2190,6 +2376,22 @@ def _exit_live_position(
                 position, fill_count, exit_price, reason=reason
             )
         except RuntimeError as _race_err:
+            # Independent review (batch-31 F3): record_live_partial_exit's
+            # guard (execution_log.py's settled_at/quantity CAS) can raise
+            # this for TWO distinct reasons, not just "already settled" --
+            # it also fires when COALESCE(fill_quantity, quantity) is
+            # already SMALLER than this attempt's own fill_count (a
+            # concurrent partial exit shrank the tracked size first, e.g.
+            # our snapshot said qty=10, we filled 4, but a concurrent writer
+            # already reduced tracked size to 3 before this call runs).
+            # settled_at is NOT set in that second case -- the position is
+            # genuinely still open, just at a size this attempt's own delta
+            # no longer fits. Releasing here is load-bearing in that case
+            # (not mere clarity/consistency): without it, the position
+            # would sit claim-blocked for the full TTL despite being a
+            # legitimate immediate retry target once the next scan re-reads
+            # its real current size.
+            execution_log.release_exit_claim(position["id"], _claim_token)
             _log.warning(
                 "[LiveExit] %s: partial-exit bookkeeping lost a race (%s) — "
                 "position already settled by a concurrent writer, skipping",
@@ -2197,6 +2399,11 @@ def _exit_live_position(
                 _race_err,
             )
             return False
+        # The position stays open at its reduced size (see docstring) -- a
+        # legitimate immediate retry target for the next scan, not a
+        # confirmed-closed row, so release the claim rather than leaving it
+        # blocked for the TTL.
+        execution_log.release_exit_claim(position["id"], _claim_token)
         remaining_qty = qty - fill_count
         # Settle the EXIT ORDER's own row (not the position row -- that one
         # must stay open, see the docstring above) so this sold lot gets its
@@ -2243,6 +2450,20 @@ def _exit_live_position(
             position, fill_count, exit_price, reason=reason
         )
     except RuntimeError as _race_err:
+        # Independent review (batch-31 F3): record_live_early_exit's own
+        # error message covers TWO distinct causes -- "already settled OR
+        # partially reduced" -- and only the first actually means the
+        # position is closed. In the second (a concurrent partial exit
+        # shrank the tracked size between this call's snapshot and its own
+        # UPDATE), settled_at is still NULL: the position is genuinely open
+        # at a smaller size than this full-close attempt expected, and
+        # WITHOUT releasing here it would sit claim-blocked for the full TTL
+        # despite being a legitimate immediate retry target. Release either
+        # way -- if it's actually the settled case, settled_at IS NULL in
+        # claim_position_for_exit's own WHERE clause already makes the
+        # release a no-op (no future claim was ever possible on that row
+        # again regardless).
+        execution_log.release_exit_claim(position["id"], _claim_token)
         _log.warning(
             "[LiveExit] %s: full-exit bookkeeping lost a race (%s) — the "
             "order filled on the exchange but a concurrent writer already "
@@ -2538,7 +2759,13 @@ def _place_live_order(
     price = _midpoint_price(market, side)
     if price <= 0:
         return False, 0.0
-    max_qty = math.floor(config["max_trade_dollars"] / price)
+    # Batch-31 L-10(b): steps 1/1b/2 above all defensively .get() this same
+    # hand-editable config dict -- this bare subscript was the one exception,
+    # raising an uncaught KeyError instead of skipping the trade cleanly if
+    # the key were ever missing. Default of 0.0 (not a large/unlimited
+    # fallback) fails closed: max_qty becomes 0, so quantity <= 0 below
+    # refuses the trade rather than sizing it unbounded.
+    max_qty = math.floor(config.get("max_trade_dollars", 0.0) / price)
     quantity = min(kelly_qty, max_qty)
     if quantity <= 0:
         return False, 0.0
@@ -4400,14 +4627,28 @@ def _auto_place_trades(
                     and not os.getenv("PYTEST_CURRENT_TEST")
                 ):
                     # Safety guards — micro-live must respect the same limits as full live.
+                    # Batch-31 L-10(c): mirrors _place_live_order's step 1
+                    # daily-loss check exactly (config.get(..., float("inf"))
+                    # plus a bare >= comparison, no separate ">0" gate). The
+                    # prior `_micro_daily_limit > 0 and ...` structure failed
+                    # OPEN in two ways: an unset limit (default 0.0 made
+                    # `> 0` False) skipped the loss check entirely regardless
+                    # of how large the actual loss was, including the case
+                    # where get_today_live_loss() itself errored and
+                    # fail-closed to inf -- the `> 0` short-circuit discarded
+                    # that inf loss without ever comparing it. It also failed
+                    # open for an operator explicitly setting
+                    # `daily_loss_limit: 0` to mean "zero loss tolerance"
+                    # (`0 > 0` is False, so it never blocked). Defaulting to
+                    # inf instead of 0.0 and dropping the ">0" gate restores
+                    # both: an unconfigured limit still means "no cap" (as
+                    # intended), and any inf on either side of the plain >=
+                    # now reliably blocks, matching the full-live path.
                     _micro_daily_loss = execution_log.get_today_live_loss()
                     _micro_daily_limit = _resolve_micro_live_config(live_config).get(
-                        "daily_loss_limit", 0.0
+                        "daily_loss_limit", float("inf")
                     )
-                    if (
-                        _micro_daily_limit > 0
-                        and _micro_daily_loss >= _micro_daily_limit
-                    ):
+                    if _micro_daily_loss >= _micro_daily_limit:
                         _log.warning(
                             "[MicroLive] daily loss limit reached — skipping %s", ticker
                         )

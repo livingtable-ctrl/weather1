@@ -26888,3 +26888,274 @@ Resolution 2026-08-22: Part (a) -- per user's explicit choice (AskUserQuestion),
   _replace_with_retry and that _save() actually passes the raised budget -- mutation-tested.
   Full record: audit/handoff_prompts/batches/batch-30.md item 4 (untracked in this repo as of
   2026-08-22 -- see Note above).
+
+[RESOLVED 2026-08-23 -- batch-31 item 1 (CR-1)] batch-22×batch-23 collision -- pre-logged idempotency key != wire key in _replace_live_order and _exit_live_position, so crash recovery marks REAL live orders 'failed'
+Priority: CRITICAL -- gates live enablement; adversarially verified with an executed repro against both sites
+Files: order_executor.py (_replace_live_order, _exit_live_position), tests/test_live_execution.py
+
+Problem:
+  Batch-23 scoped place_order's own idempotency key to f"{cycle}:replace:{replaces_order_id}" /
+  f"{cycle}:exit:{log_id}" but left the PRE-LOG compute_client_order_id(...) calls at both sites on the
+  bare cycle -- verified by executing the real function: the pre-logged client_order_id never matched
+  the wire id place_order() actually derived. A crash in the pre-log-to-log_order_result window (the
+  live-order watchdog's os._exit(1), cron.py, lands exactly there by design) then made crash recovery
+  re-check the WRONG id, get a confirmed negative via _find_order_by_client_id, and write status='failed'
+  onto a REAL live order. Replace: an untracked live position (no protective exits, no settlement
+  accounting). Exit: settled_at stays NULL forever, so the exit scanner places a fresh real SELL every
+  cycle against an already-sold position, permanently consuming a max_open_positions slot.
+Resolution (2026-08-23):
+  _replace_live_order: single-line fix -- the pre-log compute_client_order_id call now passes the same
+  f"{cycle}:replace:{replaces_order_id}" string place_order() already receives.
+  _exit_live_position: needed a two-step pre-log (confirmed via AskUserQuestion over an explicit
+  client_order_id kalshi_client.place_order parameter and a position-id-keyed key -- the latter would
+  have re-broken batch-23's per-attempt retry semantics for an illiquid no-fill IOC). The scoped cycle
+  needs log_id, which doesn't exist until the row is created: log_order() now runs first (response left
+  unset), then the client_order_id is computed from f"{cycle}:exit:{log_id}" and written via
+  log_order_result() BEFORE place_order() is called, so the pre-logged and wire ids are byte-identical by
+  construction. A crash between those two local writes leaves a response=NULL 'pending' row -- safe,
+  since no wire call has happened yet; _recover_pending_orders reads ALL pending rows unconditionally
+  (unlike _poll_pending_orders/_reprice_or_cancel_pending_orders, which skip rows with no response) and
+  marks it 'sent' to block a duplicate retry.
+  Tests: test_prelogged_client_order_id_matches_wire_cid added to both TestReplaceLiveOrder and
+  TestExitLivePosition (test_live_execution.py) -- each independently re-derives the expected id from the
+  cycle/time_in_force place_order() actually received and compares against the pre-log write captured via
+  a spy (log_order for replace; log_order_result's first response-carrying call for exit, since a second
+  call later overwrites it with the wire response). Both mutation-tested (reverted the fix via Edit,
+  confirmed each test fails with a concrete id mismatch, restored).
+
+[RESOLVED 2026-08-23 -- batch-31 item 2 (M-4)] no atomic position-row claim in _exit_live_position -- cron's and watch's exit scanners (deliberately unserialized, AUD-0013) can both derive the identical exit decision and both sell the same position
+Priority: MEDIUM -- also closes CR-1's exit half and M-2's residual settlement race as a side effect of removing the double-attempt path
+Files: execution_log.py (claim_position_for_exit, release_exit_claim, v18 migration), order_executor.py (_exit_live_position), tests/test_live_execution.py
+
+Problem:
+  Batch-23's per-attempt exit key removed the only (accidental, price-equality-dependent) server-side
+  dedup against two scanners selling the same position. LivePositionStore.exit() had no row claim;
+  record_live_exit_fill's settled_at guard only fires AFTER the second real SELL has already executed on
+  the exchange. Pre-existing hazard (reported as defense-in-depth, not batch-23-introduced).
+Resolution (2026-08-23):
+  Confirmed via AskUserQuestion (TTL-bounded claim over a permanent claim or fully serializing the
+  scanners): execution_log gained a v18 schema column (exit_claimed_at) plus
+  claim_position_for_exit(position_id, ttl_minutes=10) -- an atomic CAS UPDATE mirroring
+  claim_unknown_order's pattern, guarded on settled_at IS NULL, self-healing after the TTL so a crash
+  between a successful claim and place_order() actually completing (the exact CR-1 watchdog window) never
+  strands a position unprotected forever. _exit_live_position claims the position before doing anything
+  else; the loser returns False without ever calling place_order(). release_exit_claim() clears the claim
+  early for a legitimate immediate retry (no-fill/illiquid IOC, a genuine partial fill leaving the
+  position open smaller, a confirmed-not-landed placement failure) but is deliberately NOT called on an
+  OrderStatusUnknownError outcome (AUD-0007) -- releasing there would reopen the exact double-sell window
+  the claim exists to close; it stays held until the TTL expires or the row settles.
+  Adjacency: two existing race-loss tests (test_full_exit_race_loss_does_not_crash_the_caller,
+  test_partial_exit_race_loss_does_not_crash_the_caller) pre-settled the position row BEFORE calling
+  _exit_live_position -- with the new claim, that scenario is now caught earlier (correctly refusing to
+  even attempt a duplicate live sell), which is a real improvement but no longer exercises the intended
+  bookkeeping-race branch. Restructured both to inject the concurrent settlement via a
+  record_live_exit_fill side effect that fires AFTER this attempt's own claim succeeds -- reproducing the
+  race that genuinely still exists (a manual cmd_order sell, which does not go through
+  claim_position_for_exit at all).
+  Tests: 5 new tests (claim blocks a concurrent scanner; released after unfilled IOC allows immediate
+  retry; retained after OrderStatusUnknownError; released after confirmed placement failure; the two
+  restructured race-loss tests above), all mutation-tested (claim check removed, each release call
+  removed individually, a wrong release added to the OrderStatusUnknownError branch).
+  Correction (independent review round 2, batch-31 F2): this line originally claimed "every mutation
+  killed by a specific test" -- false. The reviewer executed the mutation removing release_exit_claim()
+  from the partial-fill RuntimeError branch and got 22/22 passing; the restructured race-loss test above
+  only exercised the settled_at-already-set cause of that RuntimeError (via record_live_early_exit), under
+  which settled_at alone already blocks re-claiming regardless of exit_claimed_at, making the release a
+  no-op there and the mutation undetectable. See item 2's round-2 addendum below for the fix (a second,
+  distinct test covering the OTHER cause) and item 2's own claim/release design correction (F5).
+
+Independent review round 2 (2026-08-23, opus effort=high) found 10 findings against the round-1 fixes
+  above -- all addressed. Full findings text preserved in this session's transcript; summarized here per
+  finding:
+  F1 (MEDIUM, claim_position_for_exit/release_exit_claim had zero direct tests -- the TTL self-heal, the
+  ENTIRE reason the claim is time-bounded rather than permanent, was untested): added
+  tests.TestExitClaim (test_execution_log.py) with 6 direct tests, including backdating exit_claimed_at
+  to simulate TTL expiry (mirroring TestWasOrderedRecentlyTimestampBoundary's pattern) rather than
+  waiting a real 10 minutes. Mutation-tested: removed the sql_normalize_iso_column() wrapper from the
+  TTL comparison (the exact H-20/H-21/H-22 mixed-ISO-format bug class this repo has hit 3 times before) --
+  both the self-heal test and the ownership test below failed as expected; restored.
+  F2 (see correction on item 2's own Tests line above): added
+  test_partial_exit_quantity_race_loss_releases_claim_for_retry (test_live_execution.py), which
+  reproduces the OTHER cause of record_live_partial_exit's RuntimeError -- a concurrent writer shrinking
+  tracked size below what this attempt's own fill_count needs to subtract, leaving settled_at NULL --
+  where the release IS load-bearing. Mutation-tested (removed the release call): this new test fails
+  while the original settled_at-cause test still passes, confirming the two tests together now cover
+  both causes; restored.
+  F3 (comment reasoning was factually wrong on both partial- and full-exit RuntimeError branches -- both
+  claimed "settled either way" when record_live_partial_exit/record_live_early_exit's own guards can
+  also fail on a quantity mismatch with settled_at still NULL): corrected both comments to describe the
+  real two-cause ambiguity; the full-exit branch (previously did not release at all) now also releases,
+  since not releasing left a genuinely-still-open, quantity-reduced position claim-blocked for the full
+  TTL under the same wrong premise.
+  F4 (recovery confirming an EXIT order never landed did not release the position's exit claim, leaving
+  a provably-unprotected position blocked until the TTL expires): fixed in _recover_pending_orders'
+  confirmed-not-found branch. This needed real care -- the first attempt (read the position's CURRENT
+  exit_claimed_at, release with that value as the CAS token) LOOKED safe but was proven wrong by its own
+  positive-control test: a same-process read-then-release has no gap for a concurrent writer to race
+  into, so it "successfully" released a genuinely NEWER claimant's claim just as easily as the original
+  one, reopening the double-sell window. Fixed instead via the TTL invariant: only release when the
+  position's current exit_claimed_at is within 60 seconds of THIS exit row's own placed_at (a legitimate
+  new claim can only exist if at least ttl_minutes has passed since the original claim, which was taken
+  a moment before this row was created) -- verified this correctly protects a genuinely newer claim via
+  a test with a realistic ~11-minutes-ago timeline (both the original claim AND this row's placed_at
+  backdated together; an earlier version of the test that created the exit row AFTER the new claim
+  couldn't distinguish the two, and passed even with the broken first-attempt fix). Both directions
+  mutation-tested.
+  F5 (release_exit_claim had no ownership check -- an unconditional UPDATE, unlike every other CAS in
+  execution_log.py; a slow claimant releasing after its own TTL expired could wipe a DIFFERENT, later
+  claimant's active claim): claim_position_for_exit now returns the claim token (the exit_claimed_at
+  value it wrote) instead of a bool; release_exit_claim requires that exact token and only clears when
+  it still matches (`WHERE id = ? AND exit_claimed_at = ?`). _exit_live_position threads the token
+  (_claim_token) through every call site. Mutation-tested (dropped the ownership clause): a dedicated
+  test (A holds a stale token past the TTL, B wins a fresh claim, A releases with its stale token, B's
+  claim must survive) failed as expected; restored.
+  F6 (the two-step pre-log's comment claimed recovery "marks it 'sent' to block a duplicate retry" for a
+  crash between log_order() and the cid-write log_order_result() -- inaccurate on two counts: no dedup
+  guard is actually consulted for an exit retry, and the 'sent' row this specific crash window produces
+  can in fact never leave 'sent' since it has no client_order_id for the promotion loop to advance on):
+  reworded the comment to state the real (small, bounded, cosmetic-audit-trail-only) gap honestly rather
+  than re-engineering recovery for a two-local-write race window, per the reviewer's own "reword rather
+  than re-engineer" framing.
+  F7 (two claim tests asserted only the post-hoc claim state with no positive control proving the
+  attempt actually reached the relevant code path): added mock_client.place_order.assert_called_once()
+  to both, matching the pattern already used in the restructured race-loss tests.
+  F8 (the same bug class L-10(a) fixed survives at two adjacent sites): _finalize_cancel's own SUCCESS
+  branch (not just the exception fallback this batch already fixed) also omitted response=, disagreeing
+  with its sibling branch in the same function -- fixed inline (same function, same file, in scope) with
+  a new test, mutation-tested. _amend_live_order's separate bare log_order_result(status="amended") call
+  (order_executor.py, nulling the OLD row's response/fill_quantity) is a genuinely different function/
+  code path per the implementation workflow's step-27 same-payload test -- filed as its own new backlog
+  entry below rather than stretched into this batch.
+  F9: this backlog file's own line-number citations for item 3's "sibling settlement writer" comparison
+  were already stale at time of writing (drift risk inherent to citing line numbers at all) and
+  update_live_peak_profit was mislabeled a "settlement writer" -- corrected on item 3's Resolution above
+  to name functions instead of lines.
+  F10 (the new L-10(a) fix's json.loads(_prior_response) could raise INSIDE an already-executing except
+  block, which would propagate past _finalize_cancel entirely rather than being caught by that same
+  except -- unreachable in practice since the response column is only ever json.dumps-written, but a
+  crash on defensive best-effort preservation would be worse than losing one field): wrapped in
+  try/except with a None fallback, new test seeding a corrupted response column directly via SQL,
+  mutation-tested.
+  Fresh test count at time of writing (test_idempotency.py + test_live_execution.py +
+  test_execution_log.py + test_trading_gates.py + test_dedup.py): 325 passed. Also re-ran the wider
+  regression sweep (test_batch01_live_position_visibility.py, test_prelog.py, test_cron_integration.py):
+  124 passed, unchanged. ruff/ruff-format/mypy clean via the real pre-commit hook.
+
+[RESOLVED 2026-08-23 -- batch-31 item 3 (M-2)] record_live_settlement has no settled_at IS NULL guard
+Priority: MEDIUM -- skeptic-corrected scope: the originally-claimed cron-vs-watch race is unreachable, but narrower races survive and the danger direction (double-crediting a win) is real
+Files: execution_log.py (record_live_settlement), order_executor.py (natural-settlement loop), kalshi_client.py (get_positions comment), tests/test_execution_log.py, tests/test_live_execution.py
+
+Problem:
+  Unconditional UPDATE orders SET settled_at=?, outcome_yes=?, pnl=? WHERE id=?, unlike every sibling
+  settlement writer. A winning position credited twice loosens the live daily-loss brake; an unconditional
+  overwrite also silently replaces an earlier early-exit's realized pnl, corrupting the tax CSV /
+  get_live_pnl_summary / settlement-streak history for that row.
+Resolution (2026-08-23):
+  record_live_settlement now guards on settled_at IS NULL (matching execution_log.py's record_live_
+  early_exit and update_live_peak_profit siblings) and returns whether the write landed;
+  order_executor.py's natural-settlement loop skips add_live_loss() when it lost the race.
+  Correction (independent review, batch-31 F9): the resolution originally cited fixed pre-diff line
+  numbers (:1013/:1028/:1283) that drift as the file changes -- naming the functions instead. Also
+  corrected: update_live_peak_profit is a peak-profit writer that happens to share the settled_at guard,
+  not itself a "settlement writer."
+  Adjacency (L-12, same functions): fixed the stale docstring on order_executor._reconcile_live_positions
+  claiming client.get_positions() is "a single unpaginated GET" -- batch-23 already paginated it via
+  _paginate_get; corrected to describe the real residual gap (the event_positions/market_positions
+  dual-cursor question kalshi_client.get_positions()'s own comment already flags). Updated that
+  kalshi_client.py comment in turn -- it claimed AUD-0025's live-position-reconciliation consumer "doesn't
+  exist yet"; _reconcile_live_positions is that consumer and is already built.
+  Tests (M-23a): test_record_live_settlement_guards_settled_at_is_null directly kills the mutation the
+  batch's own mutation-testing pass found (removing the guard let 281 existing tests across
+  test_execution_log.py/test_dedup.py/test_live_execution.py/test_batch01_live_position_visibility.py
+  pass) -- settles a row via record_live_early_exit, then calls record_live_settlement as a simulated
+  concurrent writer, asserts it reports the lost race and the row's fields are untouched.
+  test_settlement_race_loss_skips_add_live_loss covers the caller side: injects the concurrent settlement
+  via a record_live_settlement side effect mid-_poll_pending_orders call, asserts get_today_live_loss()
+  is unchanged. Both mutation-tested (guard removed; caller's `if` reverted to unconditional) -- both
+  mutations killed, both reverted after confirming.
+
+[RESOLVED 2026-08-23 -- batch-31 item 5 (L-10)] three order_executor.py hardening nits, swept while touching the same file for items 1-3
+Priority: LOW
+Files: order_executor.py (_finalize_cancel, _place_live_order, micro-live block), tests/test_live_execution.py
+
+Problem/Resolution, three independent nits:
+  (a) _finalize_cancel's exception fallback called log_order_result(row_id, status="canceled") bare --
+  fill_quantity and response are non-COALESCE columns (the UPDATE is unconditional), so a genuine prior
+  partial fill and the order_id-carrying response were nulled out, able to make a partially-filled
+  position go fully untracked. Now re-reads the row's own current values via
+  execution_log.get_order_by_id() (its order_id parameter's type annotation corrected from `str` to
+  `int | str` to match how it's actually called -- both real int row ids and explicit str()-cast ones
+  elsewhere) and passes them through unchanged. Test:
+  test_verification_failure_preserves_prior_fill_quantity_and_response, mutation-tested (reverted to the
+  bare call, confirmed the preserved values come back None, restored).
+  (b) A bare config["max_trade_dollars"] subscript in _place_live_order's step 3 sizing, while steps
+  1/1b/2 immediately above all defensively .get() the same hand-editable dict -- an uncaught KeyError
+  instead of a clean skip if the key were ever missing. Now .get("max_trade_dollars", 0.0) -- 0.0 (not a
+  large/unlimited fallback) fails closed: max_qty becomes 0, so the existing `quantity <= 0: return False`
+  check refuses the trade rather than sizing it unbounded. Test:
+  test_missing_max_trade_dollars_refuses_rather_than_crashes, mutation-tested (reverted to the bare
+  subscript, confirmed an uncaught KeyError propagates, restored).
+  (c) Micro-live's daily-loss check used `.get("daily_loss_limit", 0.0)` plus `if _micro_daily_limit > 0
+  and ...` -- failed OPEN when the limit was unset (default 0.0 made `> 0` False, skipping the loss check
+  regardless of how large the actual loss was, including get_today_live_loss()'s own fail-closed inf
+  sentinel on a query error) and also failed open for an operator-configured `daily_loss_limit: 0` (meant
+  as zero tolerance; `0 > 0` is False). Restructured to mirror _place_live_order's step-1 shape exactly:
+  `.get("daily_loss_limit", float("inf"))` plus a bare `>=` comparison, no separate ">0" gate. No test
+  added -- micro-live is hard-disabled by the source literal utils.py:410 (ENABLE_MICRO_LIVE = False,
+  scoped by that line's own comment to a future re-implementation) AND the containing block's own
+  `not os.getenv("PYTEST_CURRENT_TEST")` guard makes it genuinely unreachable inside any pytest run
+  without patching os.getenv to defeat a deliberate test-safety mechanism; verified by code inspection
+  and structural equivalence to the already-tested _place_live_order pattern instead. Explicit,
+  reasoned no-test decision per the implementation workflow's step 13, not a silent drop.
+
+Independent review round 2 (2026-08-23, opus effort=high) additions to (a) -- see item 2's own round-2
+  addendum above for the full F1-F10 list:
+  F8: _finalize_cancel's SUCCESS branch (not just the exception fallback (a) already fixed) also omitted
+  response=, disagreeing with its own sibling branch about preserving it -- fixed inline with a new test
+  (test_successful_verification_writes_response), mutation-tested.
+  F10: the exception fallback's own json.loads(_prior_response) could raise INSIDE an already-executing
+  except block (propagating past _finalize_cancel entirely instead of being caught) on a malformed
+  response column -- unreachable in practice (json.dumps-written always) but wrapped in try/except with
+  a None fallback anyway; new test (test_malformed_stored_response_does_not_crash_the_fallback) seeds a
+  corrupted response column directly via SQL, mutation-tested.
+
+[OPEN -- filed 2026-08-23 by independent review round 2, batch-31 F8] _amend_live_order's log_order_result(row_id=replaces_order_id, status="amended") call is bare, same bug class as L-10(a)
+Priority: LOW -- same reasoning as L-10(a) but a genuinely separate function/code path (implementation
+  workflow step 27's same-payload test: different call chain, different row lifecycle -- amend, not
+  cancel), so filed as its own entry rather than folded into batch-31 item 5
+Files: order_executor.py (_amend_live_order)
+
+Problem:
+  order_executor.py's _amend_live_order (reprice via Kalshi's atomic amend endpoint, not cancel+replace)
+  marks the OLD (pre-amend) row settled via `execution_log.log_order_result(row_id=replaces_order_id,
+  status="amended")` with no fill_quantity= or response= -- log_order_result's UPDATE is unconditional
+  (no COALESCE), so this nulls out whatever the old row's response (order_id/client_order_id) and
+  fill_quantity already held, identical in shape to the bug L-10(a) fixed for _finalize_cancel's
+  exception fallback.
+  Scope note (why not folded into L-10(a)): rows reaching this branch are 'pending' with fill_quantity
+  NULL in the common case (the OLD row's own status transitions straight from pending to amended, never
+  passing through a fill-count-aware branch first) and 'amended' status is excluded from
+  get_today_live_spend/max_open_positions counting, so today's practical impact is narrower than
+  L-10(a)'s -- but the underlying pattern is the same and worth fixing with the same care (preserve via
+  execution_log.get_order_by_id(), not a blind pass-through) and its own test.
+Resolution: not yet fixed -- filed for a future batch/session per the same-payload-vs-new-entry test in
+  the implementation workflow's step 27 (a genuinely separate consumer needing its own surgery/testing,
+  not stretched into batch-31's scope).
+
+Batch-31 process notes: full ceremony per the 29-step workflow (money path, no LOW-tier downgrade for
+  steps 11-12 despite item 5 being LOW individually -- items 1-3 are CRITICAL/MEDIUM live-order-path).
+  Independent opus review (effort=high) ran twice: round 1 confirmed the CR-1/M-2/L-10(b)/(c) fixes and
+  the migration correct, found nothing wrong with them; round 2 (after round 1's own F1-F10 findings were
+  addressed) is this session's final state. Fresh test count at time of writing (round 2, after all
+  fixes): test_idempotency.py + test_live_execution.py + test_execution_log.py + test_trading_gates.py +
+  test_dedup.py = 325 passed (up from round 1's 314, reflecting the new tests added addressing F1-F10).
+  Widened regression sweep re-run unchanged: test_batch01_live_position_visibility.py + test_prelog.py +
+  test_cron_integration.py = 124 passed. ruff/ruff-format/mypy clean via the real pre-commit hook (caught
+  the get_order_by_id type mismatch in (a) in round 1; a pure ruff-format whitespace pass in round 2, no
+  behavior change). graphify-out/ refresh deliberately skipped: its manifest.json's cache keys are tied
+  to a DIFFERENT worktree (frosty-leakey-c41696, not this session's gracious-haslett-d288a2), the
+  documented worktree-cache-key gotcha -- attempting a refresh here would trigger a full-repo rebuild
+  rather than a scoped one; noted rather than attempted, per this repo's established practice for that
+  failure mode. Source: audit/handoff_prompts/batches/batch-31.md (audit/POST_MERGE_REVIEW.md, cited as
+  the finding source in that handoff, does not exist in this repo as of this writing -- these entries are
+  added fresh from the handoff's own text, same situation as batch-30's items above).
