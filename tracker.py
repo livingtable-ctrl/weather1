@@ -3342,6 +3342,77 @@ def count_settled_storm_order_predictions() -> int:
     return sum(1 for row in rows if row["ticker"].upper().split("-")[0] in prefixes)
 
 
+def count_settled_holiday_temp_predictions() -> int:
+    """Count DISTINCT settled holiday-temp EVENTS (city, target_date), NOT
+    raw ticker rows -- batch-51 item 2's own dedicated shadow-only rollout
+    gate (2026-08-24).
+
+    Opus-review-caught: the original version of this function counted
+    distinct TICKERS, on the mistaken assumption (corrected 2026-08-24,
+    after the review) that KXHOLIDAYTMAX/TMIN are single-binary-threshold
+    markets with no ladder. Live-re-verified: KXHOLIDAYTMIN genuinely is
+    (1 ticker/city/holiday), but KXHOLIDAYTMAX is NOT -- it has 3 sibling
+    threshold brackets per city per holiday (confirmed live: SFO's Jul 4
+    2026 event alone has KXHOLIDAYTMAX-260704100-SFO/-26070475-SFO/
+    -26070485-SFO, all settling from the SAME real max-temp observation).
+    Counting raw tickers would let 3 correlated siblings inflate the count
+    3x for one real observation -- exactly the same failure mode already
+    fixed once in this file for count_settled_snow_predictions() (Denver's
+    7-bracket KXDENSNOWM ladder) and count_settled_hurricane_predictions()
+    (7 sibling season-count strikes) -- see either docstring for the fuller
+    "as few as ~3 real observations could clear a 20-sample floor" framing,
+    which applies here identically. Given the episodic ~2x/year listing
+    cadence, this matters more than usual: without the fix, a single Labor
+    Day listing across 20 cities x up to 3 TMAX brackets could clear the
+    entire 20-sample floor off ONE calendar date's weather, exactly the
+    kind of non-independent-observation gate-clearing the floor exists to
+    prevent.
+
+    Event key is (series-without-threshold via weather_markets.
+    parse_city_date, city, target_date) -- reuses the same positional
+    ticker parser item 2's own implementation already established, rather
+    than a second independent parser that could drift out of sync with it.
+    Ticker-prefix membership (via is_holiday_temp_ticker, not
+    condition_type) is still what isolates this family's rows from the
+    already-graduated daily-temp population sharing the same "above"/
+    "below" condition_type -- that part of the original design was correct
+    and is unchanged."""
+    init_db()
+    try:
+        from weather_markets import _KXHOLIDAY_TEMP_SUFFIX_SERIES, parse_city_date
+
+        prefixes = list(_KXHOLIDAY_TEMP_SUFFIX_SERIES)
+    except Exception:
+        return 0
+    if not prefixes:
+        return 0
+    where_sql = " OR ".join(["p.ticker LIKE ?"] * len(prefixes))
+    params = tuple(f"{p}%" for p in prefixes)
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT DISTINCT p.ticker FROM predictions p "
+            "JOIN outcomes_valid o ON p.ticker = o.ticker "
+            f"WHERE ({where_sql})",
+            params,
+        ).fetchall()
+    events: set[tuple[str, str, str]] = set()
+    for row in rows:
+        ticker = row["ticker"]
+        series = ticker.upper().split("-")[0]
+        if series not in prefixes:
+            continue
+        city, target_date = parse_city_date({"ticker": ticker})
+        if city is None or target_date is None:
+            _log.warning(
+                "count_settled_holiday_temp_predictions: could not parse "
+                "city/date from settled ticker %r -- excluded from the count",
+                ticker,
+            )
+            continue
+        events.add((series, city, target_date.isoformat()))
+    return len(events)
+
+
 def count_emos_ready_predictions() -> int:
     """Count multi-day predictions that are actually trainable EMOS rows —
     ens_mean AND settled_temp_f both populated, matching get_emos_training_data's

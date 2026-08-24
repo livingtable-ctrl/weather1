@@ -3362,8 +3362,14 @@ class TestCityDetection:
         assert self._city("KXRAIN-LA-26APR25-2IN") == "LA"
 
     def test_la_title_detected(self):
-        """'los angeles' in title → city == 'LA' even with generic ticker."""
-        assert self._city("KXRAIN-26APR25-2IN", "los angeles rain > 2 inches") == "LA"
+        """'los angeles' in title → city == 'LA' even with generic ticker.
+        4-segment ticker (opus-review-caught, batch-51): a real KXRAIN
+        daily ticker is always exactly 3 segments (series-date-city) and
+        now fails closed on an unrecognized suffix rather than falling
+        through to title text -- this test's own "generic ticker" premise
+        needs a shape no real KXRAIN ticker has, to keep testing the
+        fallback chain's title logic rather than the new suffix guard."""
+        assert self._city("KXRAIN-X-26APR25-2IN", "los angeles rain > 2 inches") == "LA"
 
     # ── Substring-false-positive cities must NOT be misdetected as LA ────────
 
@@ -3426,9 +3432,13 @@ class TestCityDetection:
         assert self._city("KXLOWTLV-26JUL04-T77") == "LasVegas"
 
     def test_las_vegas_title_detected(self):
-        """'las vegas' in title → LasVegas even with a generic ticker."""
+        """'las vegas' in title → LasVegas even with a generic ticker.
+        4-segment (opus-review-caught, batch-51): see test_la_title_
+        detected's own comment for why a real 3-segment KXRAIN shape no
+        longer falls through to title text."""
         assert (
-            self._city("KXRAIN-26JUL04-2IN", "las vegas rain > 2 inches") == "LasVegas"
+            self._city("KXRAIN-X-26JUL04-2IN", "las vegas rain > 2 inches")
+            == "LasVegas"
         )
 
     def test_new_orleans_high_ticker_detected(self):
@@ -3440,9 +3450,12 @@ class TestCityDetection:
         assert self._city("KXLOWTNOLA-26JUL04-T79") == "NewOrleans"
 
     def test_new_orleans_title_detected(self):
-        """'new orleans' in title → NewOrleans even with a generic ticker."""
+        """'new orleans' in title → NewOrleans even with a generic ticker.
+        4-segment (opus-review-caught, batch-51): see test_la_title_
+        detected's own comment for why a real 3-segment KXRAIN shape no
+        longer falls through to title text."""
         assert (
-            self._city("KXRAIN-26JUL04-2IN", "new orleans rain > 2 inches")
+            self._city("KXRAIN-X-26JUL04-2IN", "new orleans rain > 2 inches")
             == "NewOrleans"
         )
 

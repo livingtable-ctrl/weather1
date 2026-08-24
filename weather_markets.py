@@ -36,6 +36,7 @@ from forecast_cache import ForecastCache
 from kalshi_client import KalshiClient, _request_with_retry
 from nws import fetch_nbm_forecast, get_live_observation, nws_prob, obs_prob
 from paths import (
+    CATALOG_DRIFT_PATH,
     CITIES_JSON_PATH,
     CITY_REGISTRY_REPORT_PATH,
     DATA_DIR,
@@ -1230,6 +1231,69 @@ def _storm_order_gates_active() -> bool:
         from tracker import count_settled_storm_order_predictions
 
         return count_settled_storm_order_predictions() >= _STORM_ORDER_GATE_MIN_SAMPLES
+    except Exception:
+        return False
+
+
+# batch-51 item 2: KXHOLIDAYTMAX/TMIN own dedicated shadow-only gate. Own env
+# var/gate/counter despite reusing the EXISTING daily TMAX/TMIN analysis path
+# and sharing its "above"/"below" condition_type -- matches this codebase's
+# one-flag-per-shape precedent (rain/snow/hourly/hurricane-count/next-event/
+# storm-order each got their own gate). AskUserQuestion decision (2026-08-24,
+# user chose the dedicated-lane option over riding the already-graduated
+# daily-temp state): holiday markets have never been validated on their own
+# real settlement/threshold shape (episodic listing, different thresholds
+# than regular daily brackets), so letting an already-graduated counter
+# instantly vouch for them would skip that validation. Deliberately NOT
+# added to tracker._GATE_COUPLED_EXCLUDED_CONDITION_TYPES -- that mechanism
+# is condition_type-keyed, and holiday-temp has no distinct condition_type
+# of its own to hook into it (unlike every OTHER shadow-gated family this
+# codebase has onboarded, including batch-40's between-bracket trades,
+# which DOES get excluded from the shared pool via a separate mechanism --
+# tracker._ALWAYS_EXCLUDED_CONDITION_TYPES's "between" entry -- despite
+# also sharing "above"/"below"; that's a corrected note, not a precedent
+# for leaving holiday-temp unexcluded, opus-review-caught: an earlier draft
+# of this comment cited between-bracket backwards, as if its own exclusion
+# were an example of NOT needing one). The real, honest tradeoff being
+# accepted here: while HOLIDAY_TEMP_TRADING_ENABLED is unset, this
+# family's ~60-80 settled rows per holiday (correlated -- one synoptic
+# pattern, one calendar date, across 20 cities) DO flow unexcluded into
+# the shared daily-temp Brier/calibration/get_sameday_calibration/ML-
+# training pool, since no ticker-based (only condition_type-based)
+# exclusion mechanism exists in this codebase today. Judged acceptable for
+# now given the relative volume (a large, long-accumulated daily-temp
+# population vs. a small, twice-a-year addition) rather than mechanically
+# excluded, since building a genuine ticker-based exclusion would mean
+# extending a mechanism this file's own history describes as previously
+# duplicated across 7 functions here plus 5 more in calibration.py/
+# ml_bias.py/main.py -- out of this batch's scope to redesign under review-
+# fix pressure. Filed as its own backlog follow-up for reconsideration.
+_HOLIDAY_TEMP_GATE_MIN_SAMPLES: int = 20
+
+
+def _holiday_temp_gates_active() -> bool:
+    """Return True only when HOLIDAY_TEMP_TRADING_ENABLED=1 AND >= 20 settled
+    KXHOLIDAYTMAX/KXHOLIDAYTMIN predictions (distinct tickers, combined
+    across both series -- see tracker.count_settled_holiday_temp_predictions's
+    own docstring). Mirrors _hurricane_next_event_gates_active()'s exact
+    shape. Until both hold, these opportunities are still fully analyzed and
+    logged (is_shadow=True) so real calibration data accumulates risk-free;
+    no real order (paper or live) is ever placed for one of these tickers
+    before this is True."""
+    import os
+
+    if os.getenv("HOLIDAY_TEMP_TRADING_ENABLED", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return False
+    try:
+        from tracker import count_settled_holiday_temp_predictions
+
+        return (
+            count_settled_holiday_temp_predictions() >= _HOLIDAY_TEMP_GATE_MIN_SAMPLES
+        )
     except Exception:
         return False
 
@@ -4865,10 +4929,15 @@ KNOWN_WEATHER_SERIES = [
     "KXDENSNOWM",
     # KXTEMPxxxH — hourly-directional temperature markets (backlog.txt
     # "HOURLY-DIRECTIONAL TEMPERATURE MARKETS"). Only the 5 cities confirmed
-    # live/liquid for ~60 days as of 2026-07-20 are listed; KXTEMPMIAH/
-    # KXTEMPBOSH exist as series names but have near-zero markets ever
-    # listed (genuinely unlaunched, not just quiet) -- re-check before
-    # adding. analyze_trade() returns None for all of these today (Step 1
+    # live/liquid for ~60 days as of 2026-07-20 are listed. batch-51 item 4
+    # re-verified 2026-08-24: KXTEMPMIAH has since LAUNCHED (10 open / 2230
+    # settled) -- the "genuinely unlaunched" note below was correct when
+    # written but is now stale for Miami specifically; KXTEMPBOSH is still
+    # genuinely dead (0 open, 0 settled), so that half still holds. Not
+    # onboarded this batch (out of batch-51's explicit item scope -- would
+    # need its own _KXTEMP_HOURLY_CITY/dispatch wiring, not just a registry
+    # entry); filed as its own backlog follow-up. analyze_trade() returns
+    # None for all of these today (Step 1
     # of the backlog item — discovery/schema only, no probability model
     # yet); they are also excluded from compute_market_implied_distributions
     # (cron.py) since that groups by (city, target_date) independently of
@@ -4910,6 +4979,68 @@ KNOWN_WEATHER_SERIES = [
     # _storm_order_gates_active(). Same exact-series-ticker matching in
     # check_series_drift() below as the 2 series above.
     "KXFIRSTHURRICANE",
+    # batch-51 item 1: KXRAIN relaunched as a real daily product (one YES/NO
+    # market per city per day, "total precipitation ... strictly greater
+    # than 0 inches", trace/missing counts as 0) -- live-verified 2026-08-24
+    # at 40 open / 700 settled across all 20 tracked cities, ticker shape
+    # "KXRAIN-26AUG24-SFO" (city SUFFIX, not the KXRAIN*M monthly-ladder
+    # prefix dicts above). The 2026-07-20 "dead placeholder, 0 open markets,
+    # ever" note two screens up is now STALE for this bare series -- it
+    # described the OLD, pre-relaunch KXRAIN correctly at the time but no
+    # longer applies; left in place on KNOWN_UNTRACKED_RAIN_SERIES's own
+    # comment below only as history, not as current fact. KXRAINWKND is the
+    # same product over a Sat-Sun window ("any day within <Sat> through
+    # <Sun> ... greater than 0 inches"), same city/suffix shape, 20 open /
+    # 20 settled. batch-51's own go/no-go backtest (real
+    # _analyze_precip_trade fallback-path formula, ~24h-lead previous-run
+    # forecasts vs each market's own ~24h-pre-close price) came back NO-GO
+    # (2/20 cities beat market Brier, need >=50%; overall Brier 0.129 vs
+    # 0.097) -- both series are TRACK-ONLY here: registered so
+    # check_series_drift() stops warning and the generic tracker.
+    # sync_outcomes() result-field settlement path (no code changes needed)
+    # records real outcomes for a future model-improvement pass, but
+    # analyze_trade() explicitly gates them out before any probability is
+    # computed (see is_rain_daily_ticker()/is_rain_weekend_ticker() and the
+    # "rain_daily_track_only_no_model" gate below) -- WITHOUT shadow-trade
+    # predictions, per the go/no-go's own documented failure path. Excluded
+    # from compute_market_implied_distributions()/consistency._group_markets
+    # like every other no-ladder single-binary-market family. See
+    # backlog.txt "KXRAIN DAILY/WEEKEND TRACK-ONLY -- GO/NO-GO FAILED" for
+    # the full backtest and the model-improvement follow-up.
+    "KXRAIN",
+    "KXRAINWKND",
+    # batch-51 item 2 (THE Labor Day deadline item): KXHOLIDAYTMAX/TMIN --
+    # above/below-threshold temperature markets per city per holiday,
+    # packed ticker "KXHOLIDAYTMAX-260704100-SFO" (YYMMDD + 3-digit
+    # threshold + city suffix, no delimiter) / "KXHOLIDAYTMIN-26070450-SFO"
+    # (YYMMDD + 2-digit threshold). Live-re-verified 2026-08-24 (opus-
+    # review-caught: an earlier pass here wrongly generalized from a single
+    # sampled market that TMAX was also single-threshold): KXHOLIDAYTMIN
+    # genuinely is one threshold per city per holiday (20 settled = 20
+    # cities x 1), but KXHOLIDAYTMAX is a real 3-bracket ladder per city
+    # (60 settled = 20 cities x 3 thresholds, e.g. SFO's Jul 4 2026 event
+    # has -100/-75/-85 as three separate tickers) -- tracker.
+    # count_settled_holiday_temp_predictions() counts distinct (city, date)
+    # EVENTS, not raw tickers, specifically because of this. 0 currently
+    # open (these list EPISODICALLY around holidays -- do not assume a
+    # standing daily
+    # cadence; the item-4 drift watcher below is what notices the next
+    # listing). Routes into the EXISTING daily TMAX/TMIN analysis path in
+    # analyze_trade() completely unchanged (same "above"/"below" condition
+    # shape via floor_strike/cap_strike, see _parse_market_condition's
+    # holiday branch) -- only the registry/ticker-parsing layer is new.
+    # go/no-go backtest (real _forecast_probability + get_historical_sigma
+    # formula, replayed against the ~80 finalized Jul 4 markets) came back
+    # GO (overall Brier 0.030 model vs 0.048 market, 12/20 cities). Ships
+    # shadow-only behind its OWN dedicated gate
+    # (_holiday_temp_gates_active(), HOLIDAY_TEMP_TRADING_ENABLED + own
+    # 20-settled counter) rather than riding the already-graduated daily-
+    # temp state -- matches this codebase's one-flag-per-shape precedent
+    # (hurricane-count/next-event/storm-order each got their own gate) since
+    # this family has never been validated on its own real settlement/
+    # threshold shape.
+    "KXHOLIDAYTMAX",
+    "KXHOLIDAYTMIN",
 ]
 
 # Legacy/placeholder KXHIGH/KXLOW series Kalshi's /series endpoint still lists
@@ -4942,10 +5073,27 @@ KNOWN_DEAD_WEATHER_SERIES = {
 # client.get_series_list(category="Climate and Weather"), filtered to
 # KXRAIN*, minus the 10 series in KNOWN_WEATHER_SERIES:
 KNOWN_UNTRACKED_RAIN_SERIES = {
-    "KXRAIN",  # the old dead placeholder itself -- 0 open markets, ever
+    # "KXRAIN" itself moved to KNOWN_WEATHER_SERIES 2026-08-24 (batch-51 item
+    # 1) -- it relaunched as a real daily product and is no longer the dead
+    # placeholder this comment described when written 2026-07-20. That
+    # 2026-07-20 finding was correct AT THE TIME; it just went stale once
+    # Kalshi relisted the series. Left here only as a reminder that "0 open
+    # markets, ever" claims in this file need periodic live re-verification,
+    # not as current fact about KXRAIN.
     "KXRAIND",  # "Rain Daily" -- 0 open markets (product not currently listed)
     "KXRAINDNYC",  # "Daily Rain - NYC" -- 0 open markets
-    "KXRAINHOLIDAY",  # "Where will it rain on holidays?" -- 0 open markets
+    # "Where will it rain on holidays?" -- re-verified 2026-08-24: 0 open but
+    # 20 SETTLED (Jul 4 2026 event, same 20 cities/>0in rule as KXRAIN
+    # above), so "0 open markets" was stale too -- it's a real, episodically-
+    # listed holiday analog of KXRAIN, not dead. Deliberately NOT onboarded
+    # this batch (only KXRAIN/KXRAINWKND and KXHOLIDAYTMAX/TMIN were in
+    # batch-51's scope) -- would need its own ticker/city-suffix wiring and
+    # would inherit KXRAIN's own failed go/no-go (same precip model), so
+    # there's no case for onboarding it as a live signal without first
+    # improving that model. Stays untracked; check_series_drift() will
+    # re-surface it if volume ever grows. See backlog.txt follow-up filed
+    # alongside the KXRAIN track-only entry.
+    "KXRAINHOLIDAY",
     "KXRAINNYC",  # "NYC rain" (distinct from tracked KXRAINNYCM) -- 0 open markets
     "KXRAINSEA",  # "Seattle rain" (distinct from tracked KXRAINSEAM) -- 0 open markets
     # KXRAINSTPM (St. Petersburg) moved to KNOWN_WEATHER_SERIES 2026-07-26 --
@@ -5130,6 +5278,15 @@ def check_series_drift(client: KalshiClient) -> None:
                 _HURRICANE_COUNT_SERIES
                 | _HURRICANE_NEXT_EVENT_SERIES
                 | _STORM_ORDER_SERIES
+                # batch-51 item 4: KXHOLIDAYTMAX/TMIN don't start with
+                # KXHIGH/KXLOW/KXRAIN (they're "KXHOLIDAYTMAX"/"KXHOLIDAYTMIN"
+                # literally) and aren't a SNOW substring either -- without
+                # this exact-membership union, item 2's own registration
+                # would have ZERO drift-watch coverage: live_weather would
+                # never contain them, so the missing-days loop below and the
+                # unknown-series diff would both silently ignore them
+                # forever, exactly the gap this item exists to close.
+                | _KXHOLIDAY_TEMP_SUFFIX_SERIES
             )
         )
 
@@ -5167,6 +5324,7 @@ def check_series_drift(client: KalshiClient) -> None:
                 or ticker in _HURRICANE_COUNT_SERIES
                 or ticker in _HURRICANE_NEXT_EVENT_SERIES
                 or ticker in _STORM_ORDER_SERIES
+                or ticker in _KXHOLIDAY_TEMP_SUFFIX_SERIES
             ):
                 continue
             if ticker in live_weather:
@@ -5200,6 +5358,193 @@ def check_series_drift(client: KalshiClient) -> None:
         )
     except Exception as _exc:
         _log.debug("check_series_drift failed (non-fatal): %s", _exc)
+
+
+def check_catalog_and_settlement_drift(client: KalshiClient) -> None:
+    """Weekly (batch-51 item 4, extension of check_series_drift() above --
+    a separate function/state file/cadence, not folded into that one, since
+    this makes real live API calls per series rather than one bulk
+    get_series_list() diff):
+
+    1. Alert when any series in KNOWN_UNTRACKED_RAIN_SERIES /
+       KNOWN_UNTRACKED_SNOW_SERIES / KNOWN_DEAD_WEATHER_SERIES grows real
+       open-market volume -- the exact stale-comment failure this batch
+       corrects (KXRAIN sat in KNOWN_UNTRACKED_RAIN_SERIES for roughly a
+       month after Kalshi relaunched it with real daily volume, unnoticed
+       until this batch's own live re-verification). Also covers the snow
+       re-scout (KXBOSSNOWM etc. growing real markets) and the
+       KXDENSNOWMB-vs-KXDENSNOWM rename watch the dossier's A1 rider asks
+       for -- both are just entries in KNOWN_UNTRACKED_SNOW_SERIES, so no
+       separate code path is needed for either.
+    2. Record each TRACKED series' Events API settlement_sources array and
+       alert when it changes for a series that already had a prior
+       snapshot -- catches a settlement-source migration (e.g. a future
+       Miami Weather-Company -> Synoptic-style move) the week it happens
+       instead of by accident, the exec-summary gap this item exists to
+       close. Live-confirmed 2026-08-24 the Events API really does carry
+       this field (`{"name": "The Weather Company", "url": "..."}`).
+
+    A brand-new weather-category series ticker that no list contains at all
+    is ALREADY covered by check_series_drift()'s own `unknown` diff above
+    (daily cadence, stricter than this function's weekly one) -- not
+    duplicated here.
+
+    Opus-review-caught performance fix: get_events() is unfiltered by
+    default and paginates through a series' ENTIRE event history (measured
+    live: KXHIGHNY alone returns 1842 events across ~10 pages) even though
+    only the newest event's settlement_sources is ever read -- across
+    KNOWN_WEATHER_SERIES's ~70 entries that's several hundred to several
+    thousand HTTP requests for one weekly check. Fixed by passing
+    status="open" (confirmed live: cuts KXHIGHNY's own result from 1842
+    events/0.6s down to 2 events/0.3s, effectively one page) -- an explicit
+    documented tradeoff, not a free lunch: an EPISODIC series with 0
+    currently open markets (KXHOLIDAYTMAX/TMIN most of the year) returns
+    zero events under this filter and simply doesn't get a fresh settlement
+    snapshot while dormant. Accepted deliberately: a settlement-source
+    migration only matters while a series is actively trading -- a dormant
+    series has no live risk to catch, and it's swept again automatically
+    the next time it's genuinely open near this function's weekly cadence.
+
+    Opus-review-caught reliability fix: `last_run_date` (the once-per-week
+    gate) is now written IMMEDIATELY after the gate check, in its own small
+    atomic write, before the potentially-slow per-series loop runs -- not
+    only at the very end. Previously, a hard kill mid-sweep (e.g. cron.py's
+    own watchdog, which os._exit(1)s without running any finally block)
+    left the gate file unwritten, so the NEXT cron cycle would re-attempt
+    the full untracked-series + settlement-source sweep from scratch rather
+    than waiting a week -- turning one slow cycle into a persistent one.
+    The heavier settlement_sources dict is still written once at the end
+    (losing a since-cutoff kill's own delta is an acceptable, bounded cost;
+    re-running the WHOLE sweep every cycle was not). A corrupt/malformed
+    state file is now treated as "no prior state" (fresh start) rather than
+    propagating into the outer catch-all, which previously left the gate
+    permanently stuck (silently, at DEBUG level) since the file was never
+    rewritten once `json.loads` started raising on it.
+
+    Never raises, never blocks trading -- same fail-open discipline as
+    check_series_drift(); every per-series API call is individually
+    try/excepted so one failing series can't abort the whole weekly sweep.
+    """
+    try:
+        today = datetime.now(UTC).date().isoformat()
+        state: dict = {}
+        if CATALOG_DRIFT_PATH.exists():
+            try:
+                state = json.loads(CATALOG_DRIFT_PATH.read_text())
+                if not isinstance(state, dict):
+                    state = {}
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+                _log.warning(
+                    "check_catalog_and_settlement_drift: %s unreadable/corrupt "
+                    "-- treating as no prior state",
+                    CATALOG_DRIFT_PATH,
+                )
+                state = {}
+            last_run = state.get("last_run_date")
+            if last_run:
+                try:
+                    days_since = (
+                        date.fromisoformat(today) - date.fromisoformat(last_run)
+                    ).days
+                except ValueError:
+                    days_since = 999
+                if days_since < 7:
+                    return  # ran within the last week
+
+        # Write the gate FIRST, before the slow per-series loop, so a hard
+        # kill mid-sweep doesn't leave next cycle re-running the whole
+        # thing (see docstring). settlement_sources carried forward as-is
+        # for now -- overwritten with fresh values below if the loop
+        # completes.
+        _safe_io.atomic_write_json(
+            {
+                "last_run_date": today,
+                "settlement_sources": state.get("settlement_sources", {}),
+            },
+            CATALOG_DRIFT_PATH,
+        )
+
+        untracked_dead = (
+            KNOWN_UNTRACKED_RAIN_SERIES
+            | KNOWN_UNTRACKED_SNOW_SERIES
+            | KNOWN_DEAD_WEATHER_SERIES
+        )
+        for series in sorted(untracked_dead):
+            try:
+                open_markets = client.get_markets(series_ticker=series, status="open")
+            except Exception as exc:
+                _log.debug(
+                    "check_catalog_and_settlement_drift: %s open-market fetch "
+                    "failed: %s",
+                    series,
+                    exc,
+                )
+                continue
+            total_volume = sum(
+                float(m.get("volume_fp") or m.get("volume") or 0) for m in open_markets
+            )
+            if open_markets and total_volume > 0:
+                _log.warning(
+                    "check_catalog_and_settlement_drift: untracked/dead series "
+                    "%s now has %d open market(s), %.0f total volume -- was "
+                    "assumed dead/deliberately untracked; re-verify live and "
+                    "consider onboarding",
+                    series,
+                    len(open_markets),
+                    total_volume,
+                )
+
+        prev_sources: dict = state.get("settlement_sources", {})
+        # Pruned to KNOWN_WEATHER_SERIES's current membership rather than
+        # carrying forward every series ever seen -- opus-review-caught:
+        # without this the file grows monotonically as tracked series get
+        # renamed/retired over time.
+        new_sources: dict = {}
+        for series in KNOWN_WEATHER_SERIES:
+            try:
+                events = client.get_events(series_ticker=series, status="open")
+            except Exception as exc:
+                _log.debug(
+                    "check_catalog_and_settlement_drift: get_events(%s) failed: %s",
+                    series,
+                    exc,
+                )
+                # Keep whatever snapshot we already had rather than losing
+                # it on a transient fetch failure this cycle.
+                if series in prev_sources:
+                    new_sources[series] = prev_sources[series]
+                continue
+            if not events:
+                if series in prev_sources:
+                    new_sources[series] = prev_sources[series]
+                continue
+            sources = events[0].get("settlement_sources")
+            if not sources:
+                if series in prev_sources:
+                    new_sources[series] = prev_sources[series]
+                continue
+            sources_key = sorted(
+                s.get("name", "") for s in sources if isinstance(s, dict)
+            )
+            prev = prev_sources.get(series)
+            if prev is not None and prev != sources_key:
+                _log.warning(
+                    "check_catalog_and_settlement_drift: settlement_sources "
+                    "changed for %s: %s -> %s -- possible settlement-source "
+                    "migration, re-verify any settlement logic that assumed "
+                    "the old source",
+                    series,
+                    prev,
+                    sources_key,
+                )
+            new_sources[series] = sources_key
+
+        _safe_io.atomic_write_json(
+            {"last_run_date": today, "settlement_sources": new_sources},
+            CATALOG_DRIFT_PATH,
+        )
+    except Exception as _exc:
+        _log.debug("check_catalog_and_settlement_drift failed (non-fatal): %s", _exc)
 
 
 def refresh_hourly_target_hours(client: KalshiClient) -> None:
@@ -5871,6 +6216,140 @@ _KXSNOW_MONTHLY_CITY = {
     "KXDENSNOWM": "Denver",
 }
 
+# batch-51: KXRAIN/KXRAINWKND/KXHOLIDAYTMAX/KXHOLIDAYTMIN all share an
+# IDENTICAL city-SUFFIX ticker shape ("KXRAIN-26AUG24-SFO",
+# "KXHOLIDAYTMAX-260704100-SFO") -- city is the LAST hyphen-delimited
+# segment, unlike every dict above (which match a per-city SERIES PREFIX).
+# Deliberately a separate lookup keyed by suffix, not folded into the
+# prefix dicts above -- a startswith() check would never match these
+# tickers regardless of city. Built from LIVE tickers across all 4 series
+# 2026-08-24 (client.get_markets, all 20 bot cities, identical suffix set
+# on every series) -- do NOT reuse the temp-series fallback chain's
+# "T"+abbrev substrings below (e.g. "TDC","TSATX","TLV") -- confirmed live
+# these rain/holiday suffixes differ (bare "DC"/"SATX"/"LV"/"NOLA"/"PHIL"/
+# "MIN", no leading "T").
+_KXRAIN_DAILY_CITY_SUFFIX = {
+    "ATL": "Atlanta",
+    "AUS": "Austin",
+    "BOS": "Boston",
+    "CHI": "Chicago",
+    "DAL": "Dallas",
+    "DC": "Washington",
+    "DEN": "Denver",
+    "HOU": "Houston",
+    "LAX": "LA",
+    "LV": "LasVegas",
+    "MIA": "Miami",
+    "MIN": "Minneapolis",
+    "NOLA": "NewOrleans",
+    "NYC": "NYC",
+    "OKC": "OklahomaCity",
+    "PHIL": "Philadelphia",
+    "PHX": "Phoenix",
+    "SATX": "SanAntonio",
+    "SEA": "Seattle",
+    "SFO": "SanFrancisco",
+}
+# Exact series-ticker membership for the 4 batch-51 daily/holiday families --
+# checked by suffix, not prefix, so callers can't reuse the startswith()
+# dicts above by mistake for these.
+_KXRAIN_DAILY_SUFFIX_SERIES: frozenset[str] = frozenset({"KXRAIN", "KXRAINWKND"})
+_KXHOLIDAY_TEMP_SUFFIX_SERIES: frozenset[str] = frozenset(
+    {"KXHOLIDAYTMAX", "KXHOLIDAYTMIN"}
+)
+
+
+def _is_suffix_keyed_series(ticker: str) -> bool:
+    """True when ticker's series (first segment) belongs to one of the
+    batch-51 suffix-keyed families (KXRAIN, KXRAINWKND, KXHOLIDAYTMAX,
+    KXHOLIDAYTMIN) AND has the real 3-segment shape those families always
+    use (series-date-city, e.g. "KXRAIN-26AUG24-SFO") -- used by
+    _parse_city_from_ticker to decide whether an unrecognized SUFFIX
+    should fail closed (return None) rather than fall through to the
+    legacy substring chain below, which is opus-review-caught to silently
+    mis-resolve an unknown suffix on these series (e.g. a hypothetical
+    new/renamed KXHOLIDAYTMIN city whose suffix isn't in
+    _KXRAIN_DAILY_CITY_SUFFIX yet) via an unrelated coincidental substring
+    match -- "KXHOLIDAYTMIN" itself contains "TMIN", which the fallback
+    chain's `"TMIN" in ticker_up: return "Minneapolis"` check would match
+    regardless of the real suffix, fabricating a real-but-wrong city rather
+    than correctly returning None for an unrecognized one.
+
+    The 3-segment requirement (opus-review-caught regression, added after
+    the fix above): pre-existing tests in tests/test_weather_markets.py's
+    TestCityDetection use fictitious 4-segment tickers like
+    "KXRAIN-LA-26APR25-2IN" purely as a generic placeholder prefix to test
+    the LA/Dallas/Atlanta/Philadelphia substring-collision fallback logic
+    -- a shape no real Kalshi KXRAIN ticker ever has (real ones are always
+    exactly 3 segments). Without this length check, those tests' 4-segment
+    tickers matched series="KXRAIN" and failed closed too, breaking
+    legitimate pre-existing coverage for a ticker shape this fix was never
+    meant to affect -- the real production risk this function guards
+    against is specifically an unrecognized suffix on an otherwise well-
+    formed 3-segment ticker (a new/renamed city), not a malformed segment
+    count, which was never the concern and has no established production
+    occurrence."""
+    parts = ticker.upper().split("-")
+    if len(parts) != 3:
+        return False
+    series = parts[0]
+    return (
+        series in _KXRAIN_DAILY_SUFFIX_SERIES or series in _KXHOLIDAY_TEMP_SUFFIX_SERIES
+    )
+
+
+def _city_from_suffix_series(ticker: str) -> str | None:
+    """City lookup for the batch-51 suffix-keyed families -- ticker's
+    series (first segment) must be an exact member, then the LAST segment
+    is the city code. Returns None both when the series doesn't match (see
+    _is_suffix_keyed_series, checked separately by the caller so it can
+    distinguish "not this family, fall through" from "this family, but an
+    unrecognized suffix -- fail closed") and when the series matches but
+    the suffix isn't in the map."""
+    if not _is_suffix_keyed_series(ticker):
+        return None
+    parts = ticker.upper().split("-")
+    return _KXRAIN_DAILY_CITY_SUFFIX.get(parts[-1])
+
+
+def is_rain_daily_ticker(ticker: str) -> bool:
+    """True only for KXRAIN (daily) -- batch-51 item 1, TRACK-ONLY (failed
+    go/no-go, see KNOWN_WEATHER_SERIES's own comment). Series-ticker-exact,
+    mirrors is_hurricane_count_ticker()'s own shape."""
+    return ticker.upper().split("-")[0] == "KXRAIN"
+
+
+def is_rain_weekend_ticker(ticker: str) -> bool:
+    """True only for KXRAINWKND -- batch-51 item 1, TRACK-ONLY (failed
+    go/no-go). Series-ticker-exact."""
+    return ticker.upper().split("-")[0] == "KXRAINWKND"
+
+
+def is_rain_holiday_ticker(ticker: str) -> bool:
+    """True only for KXRAINHOLIDAY -- opus-review-caught (batch-51):
+    real and live (0 open / 20 settled from Jul 4 2026, see
+    KNOWN_UNTRACKED_RAIN_SERIES's own comment), same >0in/20-city rule as
+    KXRAIN, deliberately not onboarded this batch (would need its own
+    ticker/city wiring and inherits KXRAIN's own failed go/no-go). NOT
+    registered in KNOWN_WEATHER_SERIES, so get_weather_markets() never
+    fetches it and it can never reach analyze_trade() through the normal
+    scan path -- but main.py's cmd_order/_quick_paper_buy/cmd_paper and
+    paper.check_position_limits() all accept a raw ticker string typed
+    directly by a human operator, bypassing that scope limitation
+    entirely. Given the same "there's no model to ever graduate here"
+    reasoning as is_rain_daily_ticker()/is_rain_weekend_ticker() applies
+    equally to this series, it gets the same unconditional refusal at
+    those same manual-placement call sites."""
+    return ticker.upper().split("-")[0] == "KXRAINHOLIDAY"
+
+
+def is_holiday_temp_ticker(ticker: str) -> bool:
+    """True only for KXHOLIDAYTMAX/KXHOLIDAYTMIN -- batch-51 item 2, real
+    shadow-trade model routed into the existing daily TMAX/TMIN analysis
+    path. Series-ticker-exact, mirrors is_hurricane_next_event_ticker()'s
+    own shape."""
+    return ticker.upper().split("-")[0] in _KXHOLIDAY_TEMP_SUFFIX_SERIES
+
 
 def _parse_city_from_ticker(ticker: str, title: str = "") -> str | None:
     """
@@ -5880,6 +6359,15 @@ def _parse_city_from_ticker(ticker: str, title: str = "") -> str | None:
     """
     ticker_up = ticker.upper()
     title_lo = title.lower()
+    if _is_suffix_keyed_series(ticker_up):
+        # Opus-review-caught: must fail closed here (return None outright
+        # on an unrecognized suffix), NOT fall through to the legacy
+        # substring chain below -- see _is_suffix_keyed_series's own
+        # docstring for the concrete misattribution this prevents
+        # (KXHOLIDAYTMIN's own series name contains "TMIN", which the
+        # fallback chain would otherwise match to Minneapolis regardless
+        # of the ticker's real, unrecognized suffix).
+        return _city_from_suffix_series(ticker_up)
     for _series_prefix, _city in _KXTEMP_HOURLY_CITY.items():
         if ticker_up.startswith(_series_prefix):
             return _city
@@ -6228,6 +6716,29 @@ def parse_city_date(market: dict) -> tuple[str | None, date | None]:
 
     city = _parse_city_from_ticker(ticker, title)
 
+    # batch-51 item 2: KXHOLIDAYTMAX/TMIN pack date+threshold with NO
+    # delimiter and no 3-letter month abbreviation ("KXHOLIDAYTMAX-
+    # 260704100-SFO" -- date "260704" + threshold "100" run together), so
+    # neither regex below can ever match this family (both require a
+    # [A-Z]{3} month token). Real date is genuinely knowable here (unlike
+    # hurricane-next-event above), so extract it positionally rather than
+    # returning None -- downstream consumers (tracker.log_prediction,
+    # order_executor.py, main.py) need a real target_date/days_out for this
+    # family exactly like any other daily temperature market.
+    if is_holiday_temp_ticker(ticker_up):
+        parts = ticker_up.split("-")
+        if len(parts) == 3 and len(parts[1]) >= 6 and parts[1][:6].isdecimal():
+            try:
+                hol_yy, hol_mm, hol_dd = (
+                    int(parts[1][0:2]),
+                    int(parts[1][2:4]),
+                    int(parts[1][4:6]),
+                )
+                return city, date(2000 + hol_yy, hol_mm, hol_dd)
+            except ValueError:
+                return city, None
+        return city, None
+
     target_date = None
     hourly_match = re.search(r"(\d{2})([A-Z]{3})(\d{2})(\d{2})", ticker_up)
     daily_match = re.search(r"(\d{2})([A-Z]{3})(\d{2})(?!\d)", ticker_up)
@@ -6338,26 +6849,78 @@ def enrich_with_forecast(market: dict, fetch_forecast: bool = True) -> dict:
     target_date = None
     hour = None
 
-    hourly_match = re.search(r"(\d{2})([A-Z]{3})(\d{2})(\d{2})", ticker_up)
-    daily_match = re.search(r"(\d{2})([A-Z]{3})(\d{2})(?!\d)", ticker_up)
+    # batch-51 item 3 diagnosis: this function has its own separate date
+    # regex from parse_city_date()'s (R24 city-detection is shared, but date
+    # parsing here was never consolidated) -- parse_city_date() already
+    # special-cases _HURRICANE_NEXT_EVENT_SERIES to deliberately return
+    # target_date=None (backlog.txt "[RESOLVED 2026-08-07] HURRICANE
+    # MARKETS -- TIME-TO-NEXT-EVENT MODEL SHIPPED SHADOW-ONLY": the generic
+    # regex greedily matches "KXNEXTHURDATE-26DEC01-26SEP15"'s FIRST
+    # date-like segment, "26DEC01" -- a season-reference suffix shared by
+    # every "before <date>" sibling, NOT the real threshold date in the
+    # second segment), but this function's own copy of that regex was never
+    # given the same guard. Live-confirmed during the item-3 diagnosis:
+    # enriched["_date"] came back as the wrong-but-non-None 2026-12-01 for
+    # every real KXNEXTHURDATE/KXNEXTCAT5HURDATE ticker. Currently harmless
+    # -- city stays None for this family (no _parse_city_from_ticker match),
+    # and every downstream consumer already gates on "city and target_date"
+    # (this function's own forecast-fetch guard right below, plus
+    # analyze_trade's _is_hurricane_next_event bypass and
+    # resolve_market_implied_for_analysis) -- but left unfixed it's the
+    # exact latent landmine parse_city_date's own fix exists to prevent,
+    # just in a sibling function nobody extended the guard to.
+    # batch-51 item 2 (opus-review-caught, BLOCKER): KXHOLIDAYTMAX/TMIN pack
+    # date+threshold with NO delimiter and no 3-letter month token
+    # ("KXHOLIDAYTMAX-260704100-SFO"), so neither regex below can ever match
+    # this family -- both require a [A-Z]{3} month abbreviation. Without
+    # this branch, target_date stayed None here even though
+    # parse_city_date() (which got the equivalent fix during item 2's own
+    # implementation) correctly resolves it -- the mismatch meant
+    # enrich_with_forecast's own `if city and target_date` guard just below
+    # never fired, forecast was never fetched, and analyze_trade() gated
+    # every holiday-temp market out on "no_forecast" before it could ever
+    # produce a shadow prediction. Item 2's own go/no-go validation and its
+    # "GO" result are unaffected (that backtest called the real
+    # _forecast_probability/get_historical_sigma formula directly against
+    # real settled markets, never through this function), but the shipped
+    # signal was completely inert in production until this fix. Mirrors
+    # parse_city_date()'s own positional YY/MM/DD extraction exactly.
+    if is_holiday_temp_ticker(ticker_up):
+        _hol_parts = ticker_up.split("-")
+        if (
+            len(_hol_parts) == 3
+            and len(_hol_parts[1]) >= 6
+            and _hol_parts[1][:6].isdecimal()
+        ):
+            try:
+                target_date = date(
+                    2000 + int(_hol_parts[1][0:2]),
+                    int(_hol_parts[1][2:4]),
+                    int(_hol_parts[1][4:6]),
+                )
+            except ValueError:
+                pass
+    elif ticker_up.split("-")[0] not in _HURRICANE_NEXT_EVENT_SERIES:
+        hourly_match = re.search(r"(\d{2})([A-Z]{3})(\d{2})(\d{2})", ticker_up)
+        daily_match = re.search(r"(\d{2})([A-Z]{3})(\d{2})(?!\d)", ticker_up)
 
-    if hourly_match:
-        yy, mon_str, dd, hh = hourly_match.groups()
-        month = MONTH_MAP.get(mon_str)
-        if month:
-            try:
-                target_date = date(2000 + int(yy), month, int(dd))
-                hour = int(hh)
-            except ValueError:
-                pass
-    elif daily_match:
-        yy, mon_str, dd = daily_match.groups()
-        month = MONTH_MAP.get(mon_str)
-        if month:
-            try:
-                target_date = date(2000 + int(yy), month, int(dd))
-            except ValueError:
-                pass
+        if hourly_match:
+            yy, mon_str, dd, hh = hourly_match.groups()
+            month = MONTH_MAP.get(mon_str)
+            if month:
+                try:
+                    target_date = date(2000 + int(yy), month, int(dd))
+                    hour = int(hh)
+                except ValueError:
+                    pass
+        elif daily_match:
+            yy, mon_str, dd = daily_match.groups()
+            month = MONTH_MAP.get(mon_str)
+            if month:
+                try:
+                    target_date = date(2000 + int(yy), month, int(dd))
+                except ValueError:
+                    pass
 
     forecast = None
     if city and target_date and fetch_forecast:
@@ -6616,6 +7179,82 @@ def _parse_market_condition(market: dict) -> dict | None:
             )
             return None
         return {"type": "snow_month_total", "threshold": threshold}
+
+    # ── Holiday temperature markets (KXHOLIDAYTMAX/TMIN, batch-51 item 2) ───
+    # Must run before the generic "above"/"below" text-keyword detection
+    # further below: live-confirmed 2026-08-24 these markets' yes_sub_title
+    # is just the city name ("San Francisco"), no "above"/"below" keyword at
+    # all, so the generic branch would fail closed (return None, logging a
+    # warning) for every single one. Same reasoning as the monthly-rain/snow
+    # branches above -- read the real direction from Kalshi's own
+    # floor_strike/cap_strike/strike_type fields instead of guessing from
+    # text. Live-confirmed shape: TMAX uses strike_type="greater" +
+    # floor_strike (cap_strike=None); TMIN uses strike_type="less" +
+    # cap_strike (floor_strike=None) -- opposite of the monthly-rain/snow
+    # ladders above, which are always "greater". Produces the exact same
+    # "above"/"below" condition shape ordinary daily KXHIGH*/KXLOW* markets
+    # get, so it flows into analyze_trade()'s EXISTING daily-temperature
+    # path completely unchanged past this point.
+    if is_holiday_temp_ticker(ticker_up):
+        strike_type = market.get("strike_type")
+        if strike_type == "greater":
+            raw_strike = market.get("floor_strike")
+            cond_type, prob_offset = "above", 0.5
+        elif strike_type == "less":
+            raw_strike = market.get("cap_strike")
+            cond_type, prob_offset = "below", -0.5
+        else:
+            _log.warning(
+                "_parse_market_condition[%s]: unexpected holiday-temp "
+                "strike_type=%r (expected 'greater' or 'less') — refusing "
+                "to guess direction",
+                ticker,
+                strike_type,
+            )
+            return None
+        if raw_strike is None:
+            _log.warning(
+                "_parse_market_condition[%s]: holiday-temp missing the "
+                "%s_strike field for strike_type=%r",
+                ticker,
+                "floor" if cond_type == "above" else "cap",
+                strike_type,
+            )
+            return None
+        try:
+            threshold = float(raw_strike)
+        except (TypeError, ValueError):
+            _log.warning(
+                "_parse_market_condition[%s]: non-numeric holiday-temp strike=%r",
+                ticker,
+                raw_strike,
+            )
+            return None
+        return {
+            "type": cond_type,
+            "threshold": threshold,
+            "prob_threshold": threshold + prob_offset,
+        }
+
+    # ── Daily rain/weekend-rain markets (KXRAIN, KXRAINWKND -- batch-51 item
+    # 1, TRACK-ONLY per the go/no-go's own NO-GO result) ─────────────────────
+    # Explicit branch rather than relying on the generic precip fallback
+    # below (which WOULD already reach {"type": "precip_any"} by accident,
+    # since "KXRAIN" substring-matches PRECIP_SERIES and neither ticker
+    # carries a -P<n> suffix nor "inch" title text) -- made explicit per the
+    # batch spec's own instruction to verify, not assume, which shapes the
+    # parser handles. Both series settle "total precipitation ... strictly
+    # greater than 0 inches" (trace/missing counts as 0, per Kalshi's own
+    # rules_primary text, live-confirmed 2026-08-24) -- a single any-precip
+    # threshold, same condition type analyze_trade() already understands for
+    # KXSNOW's generic branch below. This condition dict is still produced
+    # (for consistency.py exclusion checks and any future model-improvement
+    # pass) even though analyze_trade() itself gates these two series out
+    # before ever reaching a probability computation -- see
+    # is_rain_daily_ticker()/is_rain_weekend_ticker() and the
+    # "rain_daily_track_only_no_model" gate in analyze_trade().
+    if is_rain_daily_ticker(ticker_up) or is_rain_weekend_ticker(ticker_up):
+        return {"type": "precip_any"}
 
     # ── Season-total hurricane/tropical-storm-count markets (backlog.txt
     # "HURRICANE MARKETS" -- season-count model, 2026-08-03) ─────────────────
@@ -7362,6 +8001,24 @@ def compute_market_implied_distributions(
     ever changing the ticker format to include a day, and against
     _KXSNOW_MONTHLY_CITY diverging from what parse_city_date() actually
     parses).
+
+    Also excludes KXHOLIDAYTMAX/TMIN (batch-51 item 2), and KXRAIN/
+    KXRAINWKND (batch-51 item 1, track-only). Unlike the hourly/snow
+    exclusions above, this one is NOT redundant with the generic (city,
+    target_date) grouping -- parse_city_date() DOES resolve a real date for
+    holiday-temp tickers, so without this exclusion a holiday market would
+    silently pool into the SAME temp_by_event group as that city's ordinary
+    KXHIGH*/KXLOW* ladder for the identical calendar date, feeding an
+    unverified cross-market assumption (shared settlement source/definition
+    of "the day's max/min") into the market-implied-distribution signal
+    that ALREADY feeds live daily-temp analysis -- deliberately not taken
+    without its own validation, matching this batch's "own dedicated shadow
+    lane, nothing rides the already-graduated state" decision. Daily/
+    weekend rain is excluded for the same "no ladder structure, single
+    binary market" reason precip_month_total's own KXRAIN*M branch below
+    exists for the OPPOSITE case (it needs its own dedicated key, not a
+    skip) -- daily rain never reaches a fit either way since it's
+    track-only, but excluded explicitly rather than relying on that.
     """
     temp_by_event: dict[tuple[str, str], list[dict]] = {}
     rain_by_event: dict[tuple[str, str, int, int], list[dict]] = {}
@@ -7371,6 +8028,10 @@ def compute_market_implied_distributions(
         if _m_tkr_up.startswith(tuple(_KXTEMP_HOURLY_CITY)):
             continue
         if _m_tkr_up.startswith(tuple(_KXSNOW_MONTHLY_CITY)):
+            continue
+        if is_holiday_temp_ticker(_m_tkr_up):
+            continue
+        if is_rain_daily_ticker(_m_tkr_up) or is_rain_weekend_ticker(_m_tkr_up):
             continue
         if _m_tkr_up.startswith(tuple(_KXRAIN_MONTHLY_CITY)):
             rain_key = market_implied_rain_event_key(ticker)
@@ -7429,7 +8090,23 @@ def resolve_market_implied_for_analysis(
     applies or the event key has no computed result -- exactly matching
     dict.get()'s existing behavior, so callers can keep assigning the
     return value straight onto `analysis["market_implied"]` unconditionally.
+
+    Opus-review-caught (batch-51): is_holiday_temp_ticker() is excluded
+    here too, symmetric with compute_market_implied_distributions()'s own
+    exclusion on the PRODUCE side. That exclusion alone only guarantees no
+    (city, date) entry is ever POPULATED from a holiday-temp market's own
+    threshold; it does nothing to stop a holiday-temp ticker from
+    CONSUMING an entry that regular KXHIGH*/KXLOW* markets populated for
+    the identical (city, date) key (holiday markets share their calendar
+    date with an ordinary daily ladder that also exists that day) -- this
+    lookup is exactly that consume side, and without this guard it would
+    silently hand a holiday-temp market the ordinary daily ladder's fitted
+    distribution, the exact cross-market pooling assumption
+    compute_market_implied_distributions's own docstring says was
+    deliberately not taken without validation.
     """
+    if is_holiday_temp_ticker(ticker):
+        return None
     if ev_city and ev_date:
         ev_date_iso = ev_date.isoformat() if hasattr(ev_date, "isoformat") else ev_date
         return market_implied_by_event.get((ev_city, ev_date_iso))
@@ -12029,6 +12706,27 @@ def analyze_trade(
         _is_hurricane_count or _is_hurricane_next_event or _is_storm_order
     ):
         _count_gate("hurricane_not_supported")
+        return None
+    # batch-51 item 1: KXRAIN (daily)/KXRAINWKND are TRACK-ONLY -- the
+    # go/no-go backtest (real _analyze_precip_trade fallback-path formula
+    # replayed against ~80 finalized markets, market price sampled at
+    # decision time via candlesticks) came back NO-GO (2/20 cities beat
+    # market Brier, need >=50%). Gated out here, BEFORE any probability is
+    # computed, so ZERO predictions.db rows are ever written for these two
+    # series -- "track-only logging WITHOUT shadow-trade predictions" per
+    # the go/no-go's own documented failure path (KNOWN_WEATHER_SERIES's
+    # own comment above has the full backtest numbers). Registration alone
+    # (this batch moved KXRAIN out of KNOWN_UNTRACKED_RAIN_SERIES) already
+    # gets these into get_weather_markets()'s fetch scope and
+    # tracker.sync_outcomes()'s generic result-field settlement path (no
+    # code changes needed there) -- that's the "track" half; this guard is
+    # what keeps it from also being the "trade" half. Checked as its own
+    # explicit branch, not folded into is_hurricane_ticker() above -- these
+    # are a genuinely different family with their own real (if
+    # underperforming) model, not "no model exists at all" like the
+    # hurricane blanket guard's targets.
+    if is_rain_daily_ticker(_tkr_up) or is_rain_weekend_ticker(_tkr_up):
+        _count_gate("rain_daily_track_only_no_model")
         return None
     _is_hourly = any(_tkr_up.startswith(_p) for _p in _KXTEMP_HOURLY_CITY)
     _hourly_var_role: str | None = None

@@ -3953,6 +3953,7 @@ def check_position_limits(
         _KXSNOW_MONTHLY_CITY,
         _KXTEMP_HOURLY_CITY,
         _between_metar_gates_active,
+        _holiday_temp_gates_active,
         _hourly_gates_active,
         _hurricane_count_gates_active,
         _hurricane_next_event_gates_active,
@@ -3960,9 +3961,13 @@ def check_position_limits(
         _snow_gates_active,
         _storm_order_gates_active,
         is_between_bracket_ticker,
+        is_holiday_temp_ticker,
         is_hurricane_count_ticker,
         is_hurricane_next_event_ticker,
         is_hurricane_ticker,
+        is_rain_daily_ticker,
+        is_rain_holiday_ticker,
+        is_rain_weekend_ticker,
         is_storm_order_ticker,
     )
 
@@ -4072,6 +4077,41 @@ def check_position_limits(
                 "hurricane storm-order markets: shadow-only until "
                 "STORM_ORDER_TRADING_ENABLED=1 and >=20 settled predictions "
                 "exist"
+            ),
+            "existing_cost": 0.0,
+            "limit": max_cost_per_market,
+        }
+    # batch-51 item 2: KXHOLIDAYTMAX/TMIN own dedicated shadow-only gate,
+    # same treatment as the blocks above -- shares its "above"/"below"
+    # condition_type with regular daily temp, so is_holiday_temp_ticker()
+    # (series-exact) is what distinguishes it here, not condition_type.
+    if is_holiday_temp_ticker(ticker) and not _holiday_temp_gates_active():
+        return {
+            "ok": False,
+            "reason": (
+                "holiday temperature markets: shadow-only until "
+                "HOLIDAY_TEMP_TRADING_ENABLED=1 and >=20 settled predictions "
+                "exist"
+            ),
+            "existing_cost": 0.0,
+            "limit": max_cost_per_market,
+        }
+    # batch-51 item 1: KXRAIN/KXRAINWKND are TRACK-ONLY (go/no-go failed) --
+    # unconditional block, no env var, same shape as the unsupported-
+    # hurricane block below (analyze_trade() never computes a probability
+    # for these tickers either, so there's nothing to eventually graduate).
+    # KXRAINHOLIDAY (opus-review-caught) gets the same treatment -- real
+    # and live but deliberately not onboarded, same reasoning.
+    if (
+        is_rain_daily_ticker(ticker)
+        or is_rain_weekend_ticker(ticker)
+        or is_rain_holiday_ticker(ticker)
+    ):
+        return {
+            "ok": False,
+            "reason": (
+                "daily/weekend/holiday rain markets are track-only — no "
+                "probability model is ever computed for these tickers"
             ),
             "existing_cost": 0.0,
             "limit": max_cost_per_market,

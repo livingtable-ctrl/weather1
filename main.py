@@ -135,6 +135,7 @@ from weather_markets import (
     CITY_COORDS,
     _between_metar_gates_active,
     _feels_like,
+    _holiday_temp_gates_active,
     _hourly_gates_active,
     _hurricane_count_gates_active,
     _hurricane_next_event_gates_active,
@@ -154,10 +155,14 @@ from weather_markets import (
     get_weather_forecast,
     get_weather_markets,
     is_between_bracket_ticker,
+    is_holiday_temp_ticker,
     is_hurricane_count_ticker,
     is_hurricane_next_event_ticker,
     is_hurricane_ticker,
     is_liquid,
+    is_rain_daily_ticker,
+    is_rain_holiday_ticker,
+    is_rain_weekend_ticker,
     is_storm_order_ticker,
     parse_city_date,
     parse_market_price,
@@ -2774,6 +2779,28 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                 )
             )
             return
+        if is_holiday_temp_ticker(ticker) and not _holiday_temp_gates_active():
+            print(
+                red(
+                    f"  {ticker}: holiday temperature markets are shadow-only until "
+                    "HOLIDAY_TEMP_TRADING_ENABLED=1 and >=20 settled predictions "
+                    "exist — refusing to place this order."
+                )
+            )
+            return
+        if (
+            is_rain_daily_ticker(ticker)
+            or is_rain_weekend_ticker(ticker)
+            or is_rain_holiday_ticker(ticker)
+        ):
+            print(
+                red(
+                    f"  {ticker}: daily/weekend/holiday rain markets are "
+                    "track-only — no probability model is ever computed for "
+                    "these tickers — refusing to place this order."
+                )
+            )
+            return
         if is_storm_order_ticker(ticker) and not _storm_order_gates_active():
             print(
                 red(
@@ -3647,6 +3674,26 @@ def cmd_today(client: KalshiClient) -> None:
                     f"  {_ticker1}: hurricane time-to-next-event markets are "
                     "shadow-only until HURRICANE_NEXT_EVENT_TRADING_ENABLED=1 and "
                     ">=20 settled predictions exist — refusing to place this order."
+                )
+            )
+        elif is_holiday_temp_ticker(_ticker1) and not _holiday_temp_gates_active():
+            print(
+                red(
+                    f"  {_ticker1}: holiday temperature markets are shadow-only "
+                    "until HOLIDAY_TEMP_TRADING_ENABLED=1 and >=20 settled "
+                    "predictions exist — refusing to place this order."
+                )
+            )
+        elif (
+            is_rain_daily_ticker(_ticker1)
+            or is_rain_weekend_ticker(_ticker1)
+            or is_rain_holiday_ticker(_ticker1)
+        ):
+            print(
+                red(
+                    f"  {_ticker1}: daily/weekend/holiday rain markets are "
+                    "track-only — no probability model is ever computed for "
+                    "these tickers — refusing to place this order."
                 )
             )
         elif is_storm_order_ticker(_ticker1) and not _storm_order_gates_active():
@@ -5338,6 +5385,28 @@ def cmd_order(client: KalshiClient, action: str, args: list):
                 f"  {ticker}: hurricane time-to-next-event markets are shadow-only "
                 "until HURRICANE_NEXT_EVENT_TRADING_ENABLED=1 and >=20 settled "
                 "predictions exist — refusing to place this order."
+            )
+        )
+        return
+    if is_holiday_temp_ticker(ticker) and not _holiday_temp_gates_active():
+        print(
+            red(
+                f"  {ticker}: holiday temperature markets are shadow-only until "
+                "HOLIDAY_TEMP_TRADING_ENABLED=1 and >=20 settled predictions "
+                "exist — refusing to place this order."
+            )
+        )
+        return
+    if (
+        is_rain_daily_ticker(ticker)
+        or is_rain_weekend_ticker(ticker)
+        or is_rain_holiday_ticker(ticker)
+    ):
+        print(
+            red(
+                f"  {ticker}: daily/weekend/holiday rain markets are "
+                "track-only — no probability model is ever computed for "
+                "these tickers — refusing to place this order."
             )
         )
         return
@@ -9931,6 +10000,28 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                     f"  {ticker}: hurricane time-to-next-event markets are shadow-only "
                     "until HURRICANE_NEXT_EVENT_TRADING_ENABLED=1 and >=20 settled "
                     "predictions exist — refusing to place this order."
+                )
+            )
+            return
+        if is_holiday_temp_ticker(ticker) and not _holiday_temp_gates_active():
+            print(
+                red(
+                    f"  {ticker}: holiday temperature markets are shadow-only until "
+                    "HOLIDAY_TEMP_TRADING_ENABLED=1 and >=20 settled predictions "
+                    "exist — refusing to place this order."
+                )
+            )
+            return
+        if (
+            is_rain_daily_ticker(ticker)
+            or is_rain_weekend_ticker(ticker)
+            or is_rain_holiday_ticker(ticker)
+        ):
+            print(
+                red(
+                    f"  {ticker}: daily/weekend/holiday rain markets are "
+                    "track-only — no probability model is ever computed for "
+                    "these tickers — refusing to place this order."
                 )
             )
             return

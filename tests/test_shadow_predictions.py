@@ -767,6 +767,86 @@ def test_sibling_hurricane_gate_state_does_not_affect_storm_order_routing(monkey
     assert len(rows) == 1 and rows[0]["is_shadow"] == 1
 
 
+# ── batch-51 item 2: KXHOLIDAYTMAX/TMIN own dedicated shadow gate. Mirrors
+# the hurricane-next-event tests above exactly -- shares its "above"/
+# "below" condition_type with regular daily temp, so routing must key off
+# is_holiday_temp_ticker() (series-exact), not condition_type. ─────────────
+
+
+def test_holiday_temp_ticker_shadow_only_when_gate_inactive(monkeypatch):
+    """A holiday-temp (KXHOLIDAYTMAX) opp must be shadow-logged, not
+    placed, when _holiday_temp_gates_active() is False."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._holiday_temp_gates_active", lambda: False)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda *a, **k: placed_calls.append((a, k))
+        or {"id": 1, "status": "open", "cost": 1.0},
+    )
+    opp = _make_flat_opp("KXHOLIDAYTMAX-260704100-SFO", city="SanFrancisco")
+
+    result = order_executor._auto_place_trades([opp], client=None)
+
+    assert result == 0
+    assert placed_calls == [], (
+        "must never place a real order for a gated holiday-temp ticker"
+    )
+    rows = _fetch("KXHOLIDAYTMAX-260704100-SFO")
+    assert len(rows) == 1
+    assert rows[0]["is_shadow"] == 1
+
+
+def test_holiday_temp_ticker_places_normally_when_gate_active(monkeypatch):
+    """Once _holiday_temp_gates_active() is True, a holiday-temp opp places
+    exactly like any other ticker -- no special-casing beyond the gate
+    check."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._holiday_temp_gates_active", lambda: True)
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda ticker, side, qty, price, **kwargs: {
+            "id": 1,
+            "status": "open",
+            "cost": price * qty,
+        },
+    )
+    opp = _make_flat_opp("KXHOLIDAYTMIN-26070450-SFO", city="SanFrancisco")
+
+    order_executor._auto_place_trades([opp], client=None)
+
+    rows = _fetch("KXHOLIDAYTMIN-26070450-SFO")
+    assert len(rows) == 1
+    assert rows[0]["is_shadow"] == 0
+
+
+def test_ordinary_daily_temp_gate_state_does_not_affect_holiday_temp_routing(
+    monkeypatch,
+):
+    """Holiday-temp shares condition_type with regular daily temp, which
+    has no per-ticker gate of its own (it's already graduated) -- confirms
+    the holiday-temp gate is checked independently and can't be
+    accidentally bypassed just because ordinary daily-temp tickers never
+    hit any shadow-routing branch at all."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._holiday_temp_gates_active", lambda: False)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda *a, **k: placed_calls.append((a, k))
+        or {"id": 1, "status": "open", "cost": 1.0},
+    )
+    ordinary_opp = _make_flat_opp("KXHIGHSFO-26AUG24-T75", city="SanFrancisco")
+    holiday_opp = _make_flat_opp("KXHOLIDAYTMAX-260704100-SFO", city="SanFrancisco")
+
+    order_executor._auto_place_trades([ordinary_opp, holiday_opp], client=None)
+
+    ordinary_rows = _fetch("KXHIGHSFO-26AUG24-T75")
+    holiday_rows = _fetch("KXHOLIDAYTMAX-260704100-SFO")
+    assert len(ordinary_rows) == 1 and ordinary_rows[0]["is_shadow"] == 0
+    assert len(holiday_rows) == 1 and holiday_rows[0]["is_shadow"] == 1
+
+
 # ── AUD-0021: shadow logging must batch across the WHOLE per-ticker loop,
 # not call _log_shadow_predictions once per shadow-routed ticker -- each
 # call independently reopens a tracker connection and re-reads the paper

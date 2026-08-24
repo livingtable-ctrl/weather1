@@ -3501,6 +3501,21 @@ def _cmd_cron_body(
     except Exception as _fee_task_exc:
         _log.warning("fee-change monitor task failed: %s", _fee_task_exc)
 
+    # batch-51 item 4: weekly catalog/settlement-source drift watcher --
+    # same placement rationale as check_series_drift above (after everything
+    # trading-critical), but its own function/cadence since it makes a real
+    # API call per known series rather than one bulk diff.
+    try:
+        from weather_markets import (
+            check_catalog_and_settlement_drift as _check_catalog_drift,
+        )
+
+        _check_catalog_drift(client)
+    except Exception as _catalog_drift_exc:
+        _log.warning(
+            "check_catalog_and_settlement_drift call failed: %s", _catalog_drift_exc
+        )
+
     # Hourly-directional target-hour cache refresh — once per city per day,
     # same placement/isolation rationale as check_series_drift above
     # (backlog.txt "HOURLY-DIRECTIONAL TEMPERATURE MARKETS" Step 2). Feeds

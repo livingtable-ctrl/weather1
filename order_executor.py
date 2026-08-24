@@ -46,6 +46,7 @@ from weather_markets import (
     _KXSNOW_MONTHLY_CITY,
     _KXTEMP_HOURLY_CITY,
     _between_metar_gates_active,
+    _holiday_temp_gates_active,
     _hourly_gates_active,
     _hurricane_count_gates_active,
     _hurricane_next_event_gates_active,
@@ -57,6 +58,7 @@ from weather_markets import (
     enrich_with_forecast,
     get_weather_markets,
     is_between_bracket_ticker,
+    is_holiday_temp_ticker,
     is_hurricane_count_ticker,
     is_hurricane_next_event_ticker,
     is_storm_order_ticker,
@@ -4039,8 +4041,11 @@ def _auto_place_trades(
     # strong-tier and med-tier calls in trade_cycle.py) or under concurrent
     # settlement writes, which contradicts each gate's own docstring
     # guarantee ("no real order is ever placed... before this is True").
-    # Hoisting makes that guarantee airtight for a single call and cuts 5
-    # redundant lookups down to 5 total instead of 5-per-ticker.
+    # Hoisting makes that guarantee airtight for a single call and cuts 8
+    # redundant lookups down to 8 total instead of 8-per-ticker (opus-
+    # review-caught: this count has gone stale twice now as new families
+    # were added -- re-derive it from the assignments just below rather
+    # than trusting this comment's own number next time).
     _hourly_gate_active = _hourly_gates_active()
     _rain_gate_active = _rain_gates_active()
     _snow_gate_active = _snow_gates_active()
@@ -4048,6 +4053,7 @@ def _auto_place_trades(
     _hurricane_next_event_gate_active = _hurricane_next_event_gates_active()
     _storm_order_gate_active = _storm_order_gates_active()
     _between_gate_active = _between_metar_gates_active()
+    _holiday_temp_gate_active = _holiday_temp_gates_active()
 
     for item in opps:
         # Per-signal kill switch check — a mid-batch activation (user writes the file
@@ -4123,6 +4129,16 @@ def _auto_place_trades(
         if is_storm_order_ticker(ticker) and not _storm_order_gate_active:
             _shadow_batch.append(item)
             _shadow_batch_labels.append((ticker, "storm_order_shadow_only"))
+            continue
+
+        # batch-51 item 2: KXHOLIDAYTMAX/TMIN own dedicated shadow gate,
+        # same per-ticker-family routing precedent as every family above --
+        # shares its ticker's "above"/"below" condition_type with regular
+        # daily temp, so is_holiday_temp_ticker() (series-exact) is what
+        # distinguishes it, not condition_type.
+        if is_holiday_temp_ticker(ticker) and not _holiday_temp_gate_active:
+            _shadow_batch.append(item)
+            _shadow_batch_labels.append((ticker, "holiday_temp_shadow_only"))
             continue
 
         # batch-40 "Between-bracket calibration design", Decision 2:

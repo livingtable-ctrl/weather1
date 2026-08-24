@@ -28,8 +28,11 @@ from weather_markets import (
     _KXRAIN_MONTHLY_CITY,
     _KXSNOW_MONTHLY_CITY,
     _KXTEMP_HOURLY_CITY,
+    is_holiday_temp_ticker,
     is_hurricane_count_ticker,
     is_hurricane_next_event_ticker,
+    is_rain_daily_ticker,
+    is_rain_weekend_ticker,
     is_storm_order_ticker,
     market_implied_rain_event_key,
     parse_market_price,
@@ -214,6 +217,41 @@ def _group_markets(markets: list[dict]) -> dict:
         # storm-order series (backlog.txt "HURRICANE MARKETS" -- storm-order
         # model, 2026-08-07).
         if is_storm_order_ticker(ticker):
+            continue
+        # batch-51 item 1: KXRAIN (daily)/KXRAINWKND -- no ladder structure
+        # (KXRAINWKND is a single any-precip market per city per weekend;
+        # KXRAIN is one per city per day), same reason KXRAIN*M (monthly)
+        # gets its OWN dedicated branch below rather than the generic path.
+        # Unlike monthly rain, daily rain didn't get its own branch here at
+        # all -- it's track-only (batch-51 go/no-go failed), so there's no
+        # is_shadow=True consumer to build one for. These tickers DO match
+        # the generic branch's date_str regex (e.g. "KXRAIN-26AUG24-SFO"
+        # contains a real "26AUG24") and DO share a city-less series string
+        # ("KXRAIN" alone) across all 20 cities, so this family is actually
+        # the closer of the two batch-51 additions to a real cross-city
+        # collision risk in principle -- it's headed off downstream by
+        # `_parse_threshold()`'s own `-T`/`-B`-suffix requirement (a
+        # "-SFO"-suffixed ticker never matches), not by this exclusion
+        # alone. Excluded explicitly anyway rather than relying on that.
+        if is_rain_daily_ticker(ticker) or is_rain_weekend_ticker(ticker):
+            continue
+        # batch-51 item 2: KXHOLIDAYTMAX/TMIN. Opus-review-corrected: an
+        # earlier version of this comment claimed the exclusion prevents a
+        # cross-city group COLLISION (all 20 cities collapsing into one
+        # group under ("KXHOLIDAYTMAX", "")) -- that specific claim is
+        # FALSE. `date_str`'s regex genuinely can't match this ticker's
+        # packed numeric date segment (confirmed: resolves to ""), but the
+        # generic branch's own pre-existing `if not series or not date_str:
+        # continue` guard (further down) already drops the market before
+        # any group is ever formed -- a colliding group is unreachable, not
+        # merely handled. What this exclusion actually buys: it suppresses
+        # that guard's own WARNING log line ("could not extract date from
+        # ticker") firing once per holiday-temp market per cycle (up to 80
+        # when a holiday event is open) -- a real, worth-having reduction
+        # in cron-log noise, just not a correctness fix. Kept anyway for
+        # the same "explicit rather than relying on incidental behavior
+        # elsewhere" reasoning as the rain exclusion above.
+        if is_holiday_temp_ticker(ticker):
             continue
 
         if ticker.upper().startswith(tuple(_KXRAIN_MONTHLY_CITY)):

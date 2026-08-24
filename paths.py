@@ -64,6 +64,11 @@ SERIES_DRIFT_PATH = _DATA / "series_drift_check.json"
 # best-effort kalshi.com/fee-schedule page watch (fee_schedule_scrape_check.json).
 FEE_CHECK_PATH = _DATA / "fee_change_check.json"
 FEE_SCHEDULE_SCRAPE_PATH = _DATA / "fee_schedule_scrape_check.json"
+# batch-51 item 4: weekly-cadence catalog/settlement-source drift watcher
+# state (untracked/dead-listed series volume growth + per-tracked-series
+# Events API settlement_sources snapshot) -- deliberately its own file, own
+# cadence gate, separate from SERIES_DRIFT_PATH's daily existence-only check.
+CATALOG_DRIFT_PATH = _DATA / "catalog_settlement_drift_check.json"
 CITY_REGISTRY_REPORT_PATH = _DATA / "city_registry_report.json"
 RETIREMENT_PROBATION_PATH = _DATA / "retirement_probation_check.json"
 HOURLY_TARGET_HOURS_PATH = _DATA / "hourly_target_hours.json"
