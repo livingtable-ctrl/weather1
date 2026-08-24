@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, kalshiMarketUrl, sideAwareEntryPrice, buildPaperOrderBody, summarizeBulkResults, effectiveSelection } from '../shared.jsx';
+import { normCity, kalshiMarketUrl, sideAwareEntryPrice, buildPaperOrderBody, summarizeBulkResults, effectiveSelection, fmtSigned } from '../shared.jsx';
 
 export default function SignalsTab() {
   const M = useContext(DataContext);
@@ -211,7 +211,7 @@ export default function SignalsTab() {
   // Defined inside the component so it closes over state (expandedId, selectedIds, etc.)
   // without needing to thread them as props.
   function renderRows(opps) {
-    return opps.map((o, i) => {
+    return opps.map((o) => {
       const side = o.side.toLowerCase();
       const stars = o.stars || '★';
       const starColor = stars.length >= 2 ? '#16a34a' : stars.length === 1 ? '#ca8a04' : 'var(--text-faint)';
@@ -219,8 +219,9 @@ export default function SignalsTab() {
       const placed = placedSet.has(`${o.ticker}|${o.target_date || o.expiry || ''}`);
       const isExpanded = expandedId === o.ticker;
       const belowThreshold = o.passes_threshold === false || (o.passes_threshold === undefined && o.edge_pct < minEdge);
+      const edgeFmt = fmtSigned(o.edge_pct, 1);
       return (
-        <React.Fragment key={i}>
+        <React.Fragment key={o.ticker}>
           <tr onClick={() => !placed && setExpandedId(isExpanded ? null : o.ticker)} style={{
             borderBottom: isExpanded ? 'none' : '1px solid var(--bg-muted)',
             cursor: placed ? 'default' : 'pointer',
@@ -259,7 +260,7 @@ export default function SignalsTab() {
             </td>
             <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>{o.forecast_prob.toFixed(1)}%</td>
             <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>{o.market_prob.toFixed(1)}%</td>
-            <td style={{ padding: '12px 16px', textAlign: 'right', color: '#16a34a', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>+{o.edge_pct.toFixed(1)}%</td>
+            <td style={{ padding: '12px 16px', textAlign: 'right', color: edgeFmt.color, fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>{edgeFmt.text}</td>
             <td style={{ padding: '12px 16px' }}>
               <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 600, background: o.time_risk === 'LOW' ? 'rgba(34,197,94,0.12)' : o.time_risk === 'MEDIUM' ? 'rgba(234,179,8,0.12)' : 'rgba(239,68,68,0.12)', color: o.time_risk === 'LOW' ? '#16a34a' : o.time_risk === 'MEDIUM' ? '#ca8a04' : '#ef4444' }}>{o.time_risk}</span>
             </td>
@@ -317,8 +318,8 @@ export default function SignalsTab() {
                   </div>
                   <div>
                     <div style={{ color: 'var(--text-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Edge</div>
-                    <div style={{ fontWeight: 700, fontSize: 14, fontFamily: 'ui-monospace, monospace', color: o.edge_pct >= 0 ? '#16a34a' : '#ef4444' }}>
-                      {o.edge_pct >= 0 ? '+' : ''}{o.edge_pct.toFixed(1)}%
+                    <div style={{ fontWeight: 700, fontSize: 14, fontFamily: 'ui-monospace, monospace', color: edgeFmt.color }}>
+                      {edgeFmt.text}
                     </div>
                   </div>
                   {o.kelly_dollars > 0 && (
@@ -605,7 +606,7 @@ export default function SignalsTab() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 16 }}>
             {[
-              { label: 'Edge',            value: '+' + selectedOpp.edge_pct.toFixed(1) + '%' },
+              { label: 'Edge',            ...(() => { const f = fmtSigned(selectedOpp.edge_pct, 1); return { value: f.text, color: f.color }; })() },
               { label: 'Forecast p',      value: selectedOpp.forecast_prob.toFixed(1) + '%' },
               { label: 'Market p',        value: selectedOpp.market_prob.toFixed(1) + '%' },
               { label: 'Kelly $',         value: selectedOpp.kelly_dollars > 0 ? '$' + selectedOpp.kelly_dollars.toFixed(2) : '—' },
@@ -613,7 +614,7 @@ export default function SignalsTab() {
             ].map(item => (
               <div key={item.label}>
                 <div style={{ color: 'var(--text-faint)', fontSize: 11, marginBottom: 4 }}>{item.label}</div>
-                <div style={{ fontWeight: 600, fontSize: 15, fontFamily: 'ui-monospace, monospace' }}>{item.value}</div>
+                <div style={{ fontWeight: 600, fontSize: 15, fontFamily: 'ui-monospace, monospace', color: item.color || 'inherit' }}>{item.value}</div>
               </div>
             ))}
           </div>

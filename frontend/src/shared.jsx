@@ -17,6 +17,18 @@ export const normCity = (c) => CITY_NAMES[c] || c;
 // net_edge is stored as a ratio and can exceed 1.0, so cap display at ">100%".
 export const fmtEdge = (e) => (e >= 1 ? '>100%' : `+${(e * 100).toFixed(1)}%`);
 
+// fmtSigned — sign + colour for any signed value already in display units
+// (percent points, dollars, etc). Unlike fmtEdge (which assumes its input is
+// always >= 0), this derives BOTH the leading sign and the colour from the
+// value's actual magnitude, so a negative value never renders with a
+// hardcoded '+' and green -- the exact H-4 bug (batch-42).
+export function fmtSigned(value, decimals = 1, suffix = '%') {
+  return {
+    text: `${value >= 0 ? '+' : ''}${value.toFixed(decimals)}${suffix}`,
+    color: value >= 0 ? '#16a34a' : '#ef4444',
+  };
+}
+
 // Build a direct Kalshi market URL so users can jump to the market page.
 // The series is the ticker prefix before the first hyphen (e.g. kxhighny from KXHIGHNY-26JUL04-T72).
 export function kalshiMarketUrl(ticker) {

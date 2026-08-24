@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, kalshiMarketUrl, summarizeBulkResults, effectiveSelection } from '../shared.jsx';
+import { normCity, kalshiMarketUrl, summarizeBulkResults, effectiveSelection, fmtSigned } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
 // WeatherAlertBanner — NWS active alerts for cities with open positions
@@ -389,11 +389,12 @@ export default function PositionsTab() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((p, i) => {
+            {filtered.map((p) => {
               const hasAlert = alerts.some(a => a.ticker === p.ticker);
               const upnl = (p.mark - p.cost / p.qty) * p.qty;
               const upnlColor = !p.markIsLive ? 'var(--text-faint)' : upnl >= 0 ? '#16a34a' : '#ef4444';
               const upnlLabel = (upnl >= 0 ? '+' : '-') + '$' + Math.abs(upnl).toFixed(2);
+              const edgeFmt = fmtSigned(p.edge * 100, 1);
               const today = new Date().toISOString().slice(0, 10);
               const overdue = p.expiry && today > p.expiry;
               const daysOut = p.expiry ? Math.ceil((new Date(p.expiry) - new Date(new Date().toDateString())) / 86400000) : 0;
@@ -408,7 +409,7 @@ export default function PositionsTab() {
                 : hoursLeft >= 1 ? `${hoursLeft}h`
                 : `${Math.round(msLeft / 60000)}m`;
               return (
-                <tr key={i} onClick={() => setSelectedId(selectedId === rowKey(p) ? null : rowKey(p))} style={{
+                <tr key={rowKey(p)} onClick={() => setSelectedId(selectedId === rowKey(p) ? null : rowKey(p))} style={{
                   borderBottom: '1px solid var(--bg-muted)', cursor: 'pointer',
                   background: selectedId === rowKey(p) ? 'var(--bg-subtle)' : 'transparent',
                 }}>
@@ -454,7 +455,7 @@ export default function PositionsTab() {
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{p.qty}</td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>{(p.mark * 100).toFixed(0)}c</td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{(p.fcst * 100).toFixed(0)}c</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', color: '#16a34a', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>+{(p.edge * 100).toFixed(1)}%</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', color: edgeFmt.color, fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>{edgeFmt.text}</td>
                   <td title={!p.markIsLive ? 'Mark price not live — showing entry price' : undefined}
                     style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: 11, fontWeight: 600, color: upnlColor }}>
                     {upnlLabel}

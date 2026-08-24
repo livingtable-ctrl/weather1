@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus } from './shared.jsx';
+import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned } from './shared.jsx';
 
 // batch-26 item 1: the signals cache (and this opp object) stores
 // yes_bid/yes_ask/forecast_prob/market_prob in YES-space regardless of the
@@ -289,6 +289,46 @@ describe('effectiveSelection', () => {
   it('empty selection or empty visible set both yield an empty result', () => {
     expect(effectiveSelection(new Set(), ['a', 'b']).size).toBe(0);
     expect(effectiveSelection(new Set(['a', 'b']), []).size).toBe(0);
+  });
+});
+
+// -----------------------------------------------------------------------
+// fmtSigned — batch-42 H-4: a negative edge (or any signed value) used to
+// render as a hardcoded '+3.2%' painted green regardless of sign at three
+// call sites. These tests prove the sign AND colour both derive from the
+// actual value, not a call-site constant.
+// -----------------------------------------------------------------------
+describe('fmtSigned', () => {
+  it('positive value: leading + and green', () => {
+    const { text, color } = fmtSigned(3.2);
+    expect(text).toBe('+3.2%');
+    expect(color).toBe('#16a34a');
+  });
+
+  it('negative value: no leading +, and red -- the exact H-4 bug this guards', () => {
+    // Positive control for the original bug: a hardcoded '+' + green would
+    // render '+-3.2%' in green here. Confirm neither happens.
+    const { text, color } = fmtSigned(-3.2);
+    expect(text).toBe('-3.2%');
+    expect(text).not.toContain('+-');
+    expect(color).toBe('#ef4444');
+    expect(color).not.toBe('#16a34a');
+  });
+
+  it('zero counts as non-negative: leading + and green', () => {
+    const { text, color } = fmtSigned(0);
+    expect(text).toBe('+0.0%');
+    expect(color).toBe('#16a34a');
+  });
+
+  it('respects a custom decimals argument', () => {
+    expect(fmtSigned(3.14159, 3).text).toBe('+3.142%');
+    expect(fmtSigned(-3.14159, 3).text).toBe('-3.142%');
+  });
+
+  it('respects a custom suffix argument (e.g. dollars, not percent)', () => {
+    expect(fmtSigned(12.5, 2, '').text).toBe('+12.50');
+    expect(fmtSigned(-4.4, 1, ' pts').text).toBe('-4.4 pts');
   });
 });
 

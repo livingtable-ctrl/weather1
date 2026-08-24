@@ -434,6 +434,17 @@ export default function App() {
         e.preventDefault();
         setCommandPaletteOpen(true);
       }
+      // Only the bare-digit tab-navigation shortcut needs to back off of a
+      // field the operator is actively typing into (order qty, close-price,
+      // alert threshold, override duration, log search, ...) -- Escape and
+      // Cmd+K above stay live everywhere (including the command palette's
+      // own autoFocused search input, which has no other Escape handler of
+      // its own -- opus review batch-42 H-3: an earlier version of this
+      // guard sat above both those branches and silently broke the
+      // palette's own "Esc Close" hint).
+      const t = e.target;
+      const tag = t?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || t?.isContentEditable) return;
       if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         const tabs = ['Overview', 'Positions', 'Signals', 'Forecast', 'Analytics', 'Activity', 'Risk', 'Trades'];
         const num = parseInt(e.key, 10);

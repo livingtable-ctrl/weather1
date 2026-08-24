@@ -132,6 +132,15 @@ export default function ActivityTab() {
         ) : events.map((ev, i) => {
           const cfg = LEVEL[ev.level] || LEVEL.info;
           const isError = ev.level === 'error';
+          // batch-42 H-1: unlike PositionsTab/SignalsTab, index-as-key is
+          // NOT the bug here (opus review) -- this file has no per-row React
+          // state (no checkbox, no controlled input) for a key mismatch to
+          // mis-bind, the backend already returns events pre-sorted by ts
+          // descending (web_app.py's api_system_events), and the level/
+          // search filters only narrow the array, never reorder it. A
+          // composite key (ts+level+text) would add a real, if small,
+          // collision risk -- two textually-identical events silently
+          // dropping a row -- for zero corresponding benefit. Keeping `i`.
           return (
             <div key={i} style={{
               display: 'grid',
