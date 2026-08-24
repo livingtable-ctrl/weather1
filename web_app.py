@@ -379,6 +379,13 @@ def _build_app(client):
                 try:
                     data = _build_stream_data()
                     yield f"data: {json.dumps(data)}\n\n"
+                except GeneratorExit:
+                    # AUD batch-34 item 7e (L-17): explicit break on client
+                    # disconnect (Werkzeug throws GeneratorExit into the
+                    # generator at this yield when a write to the closed
+                    # socket fails) so a closed tab doesn't pin this loop's
+                    # worker thread alive until process exit.
+                    break
                 except Exception as _stream_exc:
                     # WA-observability: log and flag the payload instead of silently
                     # emitting {} forever — a persistently broken data layer (corrupt
@@ -410,6 +417,10 @@ def _build_app(client):
                         "ts": datetime.now(UTC).isoformat(),
                     }
                     yield f"data: {json.dumps(payload)}\n\n"
+                except GeneratorExit:
+                    # AUD batch-34 item 7e (L-17): see /api/stream's identical
+                    # fix above.
+                    break
                 except Exception as _stream_exc:
                     # WA-observability: see /api/stream's identical fix above.
                     _log.warning(
@@ -1489,8 +1500,16 @@ setInterval(() => {{
             ticker = t.get("ticker", "")
             live = live_quotes.get(ticker)
             snap = snapshot.get(ticker, {})
-            t["current_yes_bid"] = live["yes_bid"] if live else snap.get("yes_bid")
-            t["current_yes_ask"] = live["yes_ask"] if live else snap.get("yes_ask")
+            # AUD batch-34 item 7f (L-17): _safe_market_price degrades a
+            # malformed price field to 0 (documented "=no quote" sentinel),
+            # but `live["yes_bid"]` was used verbatim even when 0 -- a
+            # degraded field never fell back to the snapshot cache, contrary
+            # to this block's own comment. Treat a degraded-to-0 field the
+            # same as "ticker missing from the batch" (falsy -> fall back).
+            _live_bid = live.get("yes_bid") if live else None
+            _live_ask = live.get("yes_ask") if live else None
+            t["current_yes_bid"] = _live_bid if _live_bid else snap.get("yes_bid")
+            t["current_yes_ask"] = _live_ask if _live_ask else snap.get("yes_ask")
             # Pass through needs_manual_settle flag so the UI can badge it
             t.setdefault("needs_manual_settle", bool(t.get("needs_manual_settle")))
 
@@ -2103,7 +2122,15 @@ setInterval(() => {{
         """Remove kill-switch file to allow cron to resume."""
         existed = _KS_PATH.exists()
         if existed:
-            _KS_PATH.unlink()
+            # AUD batch-34 item 2 (M-7): a bare unlink() here re-opens batch-25's
+            # own M5 race -- if main.py's cmd_cron override flow (below) parks
+            # the kill switch (renames it away) between the exists() check above
+            # and this unlink() call, the file is already gone and unlink()
+            # raises FileNotFoundError -> unhandled 500 -> the parked-copy
+            # cleanup below never runs -> the kill switch silently re-arms when
+            # the override window ends, even though the operator just resumed.
+            # missing_ok=True matches the sibling parked-unlink below.
+            _KS_PATH.unlink(missing_ok=True)
         # AUD batch-25 opus-review M5: during a main.py cmd_cron manual
         # override window, the kill switch is temporarily parked at
         # `_KS_PATH` + ".tmp" (main.py's `_kill_tmp`) and restored once
@@ -2515,7 +2542,16 @@ setInterval(() => {{
 
         existed = _ov_path.exists()
         if existed:
-            _ov_path.unlink()
+            # AUD batch-34 item 2 (M-7): same exists()/unlink() race as
+            # api_resume above, racing cron's own expiry auto-clear of the
+            # same file. missing_ok=True closes the TOCTOU gap; the try/except
+            # still returns this route's own JSON error shape (rather than
+            # Flask's raw HTML 500) for any other OSError, e.g. a permission
+            # failure, matching every other route in this file.
+            try:
+                _ov_path.unlink(missing_ok=True)
+            except OSError as exc:
+                return jsonify({"error": str(exc)}), 500
         return jsonify({"cleared": True, "was_active": existed})
 
     @app.route("/api/backup-status")
@@ -2778,9 +2814,12 @@ setInterval(() => {{
         from the request body) so the exposure caps and the saved trade
         record can't be bypassed or corrupted by a client-supplied value.
         """
-        from cron import KILL_SWITCH_PATH as _ksp
-
-        if _ksp.exists():
+        # AUD batch-34 item 7b (L-17): was `from cron import KILL_SWITCH_PATH`
+        # while every sibling route in this file reads the module-level
+        # _KS_PATH -- a monkeypatch blind spot (a test/tool patching one
+        # doesn't affect the other, since both are separate bindings of the
+        # same underlying paths.KILL_SWITCH_PATH). Unify on _KS_PATH.
+        if _KS_PATH.exists():
             return jsonify({"error": "kill switch active — trading paused"}), 503
         from utils import is_trading_paused as _is_trading_paused
 
@@ -2800,7 +2839,14 @@ setInterval(() => {{
             entry_price = float(body["entry_price"])
         except (KeyError, TypeError, ValueError):
             return jsonify({"error": "entry_price required"}), 400
-        quantity = int(body.get("quantity", 1)) or 1
+        try:
+            quantity = int(body.get("quantity", 1)) or 1
+        except (TypeError, ValueError):
+            # WA-input-validation: was outside any try -- a non-numeric
+            # quantity raised an unhandled ValueError, returning Flask's raw
+            # HTML 500 page instead of this route's usual JSON error shape
+            # (matches /history and api_override_set's identical fix).
+            quantity = 1
         # Cap quantity at Kelly limit so the dashboard cannot oversize a trade
         try:
             from paper import kelly_quantity as _kq_cap
@@ -2965,10 +3011,15 @@ setInterval(() => {{
                 if side == "yes"
                 else max(0.0, round(1.0 - _mkt_prices_dash["yes_bid"], 4))
             )
-            if (
-                _expected_side_price > 0
-                and abs(entry_price - _expected_side_price) > 0.15
-            ):
+            # AUD batch-34 item 7c (L-17): the old `_expected_side_price > 0`
+            # guard was meant to skip the check when has_quote's underlying
+            # price is degraded/missing, but has_quote already gates on real
+            # quote data being present -- so an expected price of exactly 0 is
+            # a legitimate boundary (e.g. a NO order on a yes_bid==1.0
+            # market), not missing data. The old guard let a NO order at ANY
+            # entry_price sail through unchecked on that boundary. Run the
+            # deviation check unconditionally within the has_quote branch.
+            if abs(entry_price - _expected_side_price) > 0.15:
                 return jsonify(
                     {
                         "error": (
@@ -3050,7 +3101,23 @@ setInterval(() => {{
                     city,
                 )
                 _today_dash = _utc_today_dash()
-            _days_out = max(0, (_tdate_dash - _today_dash).days)
+            _raw_days_out_dash = (_tdate_dash - _today_dash).days
+            # AUD batch-34 item 7d (L-17): a negative raw value (target_date
+            # already in the past -- a stale/expired market or ticker-parse
+            # mismatch) used to be clamped to 0, mislabeling a stale
+            # multi-day market as same-day and dodging the
+            # MAX_POSITIONS_PER_DATE multi-day slot cap this derivation
+            # exists to feed. Reject instead of silently clamping.
+            if _raw_days_out_dash < 0:
+                return jsonify(
+                    {
+                        "error": (
+                            f"target_date {target_date} for {ticker} is "
+                            "already in the past — refusing to place order"
+                        )
+                    }
+                ), 400
+            _days_out = _raw_days_out_dash
         # close_time so the 24h settlement gate works on manually placed
         # trades the same way it does on bot-placed trades — reuses the
         # market dict already fetched above for city/date derivation.

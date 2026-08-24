@@ -29267,3 +29267,86 @@ Batch-33 process notes: full ceremony per the 29-step workflow (alerting/locking
   claim independently verified via Edit-revert-confirm-restore, not just asserted in a docstring. ruff/
   ruff-format/mypy clean via the real pre-commit hook (one ruff-format auto-reformat pass, re-verified with
   a full re-run of the affected test files afterward). Source: audit/handoff_prompts/batches/batch-33.md.
+
+[RESOLVED 2026-08-24 -- batch-34 item 2 (M-7)] api_resume's and api_override_clear's unlink() lack missing_ok, re-opening batch-25's own M5 race
+Priority: MEDIUM -- kill-switch/override safety-adjacent (dashboard can toggle the kill switch)
+Files: web_app.py (api_resume, api_override_clear), tests/test_web_app.py
+
+Problem:
+  Both routes read `existed = _path.exists()` then, if True, called a bare `_path.unlink()` -- a
+  TOCTOU race against a concurrent writer removing the file between the two calls. The api_resume case
+  is the dangerous one: main.py's cmd_cron manual-override flow parks (renames away) the live kill
+  switch at `.kill_switch.tmp` for the duration of a one-shot override. If that rename lands between
+  api_resume's exists() check and its unlink() call, unlink() raises FileNotFoundError -> unhandled
+  500 -> the parked-copy cleanup 15 lines below (which already had missing_ok=True, from batch-25's own
+  M5 fix) never runs -> the kill switch silently re-arms itself once the override window ends, even
+  though the operator explicitly resumed. api_override_clear has the identical pattern racing cron's
+  own expiry auto-clear of the same manual-override file.
+Resolution (2026-08-24):
+  Both unlink() calls now pass missing_ok=True. api_override_clear's unlink is additionally wrapped in
+  try/except OSError, returning this route's own JSON error shape (matching every other route in this
+  file) instead of Flask's raw HTML 500 for any OTHER OSError (e.g. a permission failure) -- api_resume
+  was left unwrapped, matching the batch item's literal scope (only api_override_clear's wrap was
+  called for).
+  Tests: TestKillSwitchAPI.test_resume_survives_kill_switch_removed_between_exists_and_unlink and
+  TestOverrideClearRaceAndErrorHandling (two tests: the race-survival case and a genuinely different
+  OSError getting the JSON 500 shape) added to tests/test_web_app.py. Each race test uses a small fake
+  Path stand-in whose exists() always reports True while unlink() raises FileNotFoundError unless
+  missing_ok=True -- deterministic, not dependent on real filesystem TOCTOU timing. Mutation-tested:
+  reverted each fix via Edit (dropped missing_ok=True, and separately removed api_override_clear's
+  try/except entirely), confirmed each corresponding test fails (FileNotFoundError propagates
+  unhandled for api_resume's test; 500 instead of 200, or an unhandled PermissionError, for
+  api_override_clear's two tests), restored.
+
+[RESOLVED 2026-08-24 -- batch-34 item 7 (L-17, web_app.py-only parts a-f)] same-file low-severity sweep of web_app.py
+Priority: LOW
+Files: web_app.py (api_paper_order, /api/stream, /api/stream/markets, /api/trades), tests/test_web_app.py
+
+Problem / Resolution per sub-item:
+  (a) `quantity = int(body.get("quantity", 1)) or 1` sat outside any try -- a non-numeric quantity
+  raised an unhandled ValueError (Flask HTML 500) instead of this route's usual JSON error shape.
+  Wrapped in try/except (TypeError, ValueError), falling back to the documented default of 1, matching
+  the file's own WA-input-validation pattern (e.g. /history's ?n=abc coercion).
+  (b) api_paper_order read the kill switch via `from cron import KILL_SWITCH_PATH` while every sibling
+  route in this file reads the module-level `_KS_PATH` -- a monkeypatch blind spot (a test or tool
+  patching one binding doesn't affect the other, even though both start out as the same underlying
+  paths.KILL_SWITCH_PATH object). Unified on `_KS_PATH`. Five existing tests that patched
+  `cron.KILL_SWITCH_PATH` (always to `.exists.return_value = False`, i.e. they never actually exercised
+  the engaged-switch path through this binding) were updated to `monkeypatch.setattr(web_app, "_KS_PATH",
+  ...)` instead, matching the rest of the file's convention -- otherwise they'd have silently stopped
+  patching anything meaningful post-fix, passing only because a real kill-switch file happens not to
+  exist in the test environment.
+  (c) The deviation-check guard `_expected_side_price > 0 and abs(entry_price - _expected_side_price) >
+  0.15` skipped the check entirely when the expected side price is exactly 0 -- a legitimate boundary
+  (a NO order on a yes_bid==1.0 market has expected NO price = 1-1.0 = 0), not the "degraded/missing
+  quote" case the guard seems to have been meant for (already excluded by the outer `has_quote` gate).
+  Removed the `> 0` guard; the check now runs unconditionally within the has_quote branch.
+  (d) `_days_out = max(0, (_tdate_dash - _today_dash).days)` clamped a negative raw value (server-derived
+  target_date already in the past -- a stale/expired market or ticker-parse mismatch) to 0, mislabeling
+  a stale multi-day market as same-day and dodging the MAX_POSITIONS_PER_DATE multi-day slot cap this
+  derivation feeds. Now rejects with 400 instead of clamping.
+  (e) Both /api/stream and /api/stream/markets SSE generators added an explicit `except GeneratorExit:
+  break`. Verified on inspection this is a no-op relative to prior behavior -- GeneratorExit isn't an
+  Exception subclass, so it was never caught by the existing `except Exception` clause and already
+  propagated correctly on client disconnect, cleanly terminating the generator via normal Python
+  semantics. Kept as explicit documentation/defense-in-depth per the batch item's literal request (no
+  live bug found here, so no mutation test was written for it -- there is no code-level difference to
+  detect).
+  (f) `_get_live_market_snapshot()`-fallback enrichment in /api/trades used `live["yes_bid"]`/
+  `live["yes_ask"]` verbatim even when `_safe_market_price` had degraded a malformed field to 0 (its
+  documented "=no quote" sentinel) -- a degraded field never fell back to the snapshot cache, contrary
+  to the surrounding comment's documented intent ("falling back ... if the live call failed entirely or
+  a specific ticker wasn't returned"). Now treats a degraded-to-0 field the same as "ticker missing from
+  the batch" (falsy check -> fall back to snapshot).
+Resolution notes:
+  Tests: TestPaperOrderWebSweepL17 (four new tests covering a/b/c/d) and
+  TestApiTradesLiveQuoteEnrichment.test_degraded_live_price_falls_back_to_snapshot_cache (f) added to
+  tests/test_web_app.py; the pre-existing test_malformed_live_price_degrades_to_no_quote_not_a_crash
+  was updated in place (its old assertion of a literal 0 enshrined the pre-fix bug -- now asserts None,
+  since the snapshot cache is empty in that scenario too). All mutation-tested individually via Edit
+  revert-confirm-restore except (e), for the reason given above. Four pre-existing tests
+  (TestPaperOrderCityDateServerDerived x2, TestPaperOrderNoSideEndToEnd x2) used hardcoded
+  server-derived dates that had drifted into the past relative to the real system clock by the time
+  this batch ran -- harmless before item (d)'s fix, but item (d) would now reject them with 400. Bumped
+  to year-2099 sentinel dates (matching the file's own "2099-01-01" far-future convention elsewhere),
+  since none of those four tests exercise days_out and the exact date value wasn't otherwise asserted on.

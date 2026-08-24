@@ -541,8 +541,9 @@ class TestApiTradesLiveQuoteEnrichment:
         self, client_and_kalshi_mock
     ):
         """A live market with an unparseable price field must not 500 the
-        whole endpoint -- degrades that one field via _safe_market_price,
-        matching the SSE cache's own established handling."""
+        whole endpoint -- degrades that one field via _safe_market_price to
+        0 (="no quote"), which then falls back to the (here, empty) snapshot
+        cache rather than being reported as a misleading real price of 0."""
         c, mock_kalshi = client_and_kalshi_mock
         with (
             patch("paper.get_all_trades", return_value=[self._open_trade("T1")]),
@@ -554,8 +555,40 @@ class TestApiTradesLiveQuoteEnrichment:
             r = c.get("/api/trades")
             assert r.status_code == 200
             d = r.get_json()
-            assert d["open"][0]["current_yes_bid"] == 0
+            assert d["open"][0]["current_yes_bid"] is None
             assert d["open"][0]["current_yes_ask"] == pytest.approx(0.65)
+
+    def test_degraded_live_price_falls_back_to_snapshot_cache(
+        self, client_and_kalshi_mock
+    ):
+        """batch-34 item 7f: a live quote field degraded to 0 (the
+        _safe_market_price "no quote" sentinel) must fall back to the SSE
+        snapshot cache for that field, the same as if the ticker were
+        missing from the batch response entirely -- not pass the misleading
+        0 straight through, contradicting this endpoint's own fallback
+        comment."""
+        c, mock_kalshi = client_and_kalshi_mock
+        with (
+            patch("paper.get_all_trades", return_value=[self._open_trade("T1")]),
+            patch(
+                "web_app._get_live_market_snapshot",
+                return_value=[{"ticker": "T1", "yes_bid": 0.42, "yes_ask": 0.47}],
+            ),
+        ):
+            mock_kalshi.get_markets.return_value = [
+                {"ticker": "T1", "yes_bid": "not-a-number", "yes_ask": 65}
+            ]
+            r = c.get("/api/trades")
+            assert r.status_code == 200
+            d = r.get_json()
+            assert d["open"][0]["current_yes_bid"] == pytest.approx(0.42), (
+                "degraded live yes_bid (0) must fall back to the snapshot "
+                "cache's real value, not be reported as a literal 0 price"
+            )
+            assert d["open"][0]["current_yes_ask"] == pytest.approx(0.65), (
+                "a genuinely present live yes_ask must NOT be overridden by "
+                "the snapshot cache"
+            )
 
 
 def test_signals_route_returns_200_with_title(client):
@@ -1201,6 +1234,66 @@ class TestKillSwitchAPI:
             "re-arms itself when the override cycle finishes"
         )
 
+    def test_resume_survives_kill_switch_removed_between_exists_and_unlink(
+        self, tmp_path, monkeypatch
+    ):
+        """batch-34 item 2 (M-7): if the kill-switch file disappears between
+        api_resume's `exists()` check and its `unlink()` call -- e.g.
+        main.py's cmd_cron manual-override flow parking (renaming away) the
+        file mid-request -- the bare unlink() used to raise an unhandled
+        FileNotFoundError, crashing the request BEFORE the parked-copy
+        cleanup below ran. That let the kill switch silently re-arm once
+        the override window ended even though the operator explicitly
+        resumed -- reopening exactly the race batch-25's own M5 fix (the
+        parked-unlink 15 lines below, which already has missing_ok=True)
+        was written to prevent.
+
+        Simulates the race with a fake Path whose exists() always reports
+        True (matching the check having already passed) while unlink()
+        raises FileNotFoundError unless missing_ok=True -- deterministic,
+        without depending on real filesystem timing.
+
+        Mutation check: reverting api_resume's unlink() to drop
+        missing_ok=True makes this test fail (an unhandled FileNotFoundError
+        propagates instead of a clean 200).
+        """
+        import web_app
+
+        real_ks_path = tmp_path / ".kill_switch"
+
+        class _RaceSimPath:
+            name = real_ks_path.name
+
+            def exists(self):
+                return True
+
+            def unlink(self, missing_ok=False):
+                if not missing_ok:
+                    raise FileNotFoundError(
+                        "simulated race: file removed before unlink()"
+                    )
+
+            def with_name(self, name):
+                # The parked-copy path genuinely doesn't exist in this test
+                # -- only the primary kill-switch unlink is under test here.
+                return real_ks_path.with_name(name)
+
+        monkeypatch.setattr(web_app, "_KS_PATH", _RaceSimPath())
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            resp = c.post("/api/resume")
+
+        assert resp.status_code == 200, (
+            f"unlink() race must not crash the request: {resp.status_code} "
+            f"{resp.get_data(as_text=True)[:300]}"
+        )
+        data = resp.get_json()
+        assert data["resumed"] is True
+        assert data["was_halted"] is True
+
     def test_status_includes_kill_switch_active(self, tmp_path, monkeypatch):
         """GET /api/status includes kill_switch_active field (False when no file)."""
         import web_app
@@ -1304,6 +1397,86 @@ class TestManualOverrideAPIWriteReliability:
         assert not ov_path.exists()
 
 
+class TestOverrideClearRaceAndErrorHandling:
+    """batch-34 item 2 (M-7): api_override_clear had the identical bare
+    exists()/unlink() TOCTOU pattern as api_resume, racing cron's own
+    expiry auto-clear of the same file (main.py's manual-override poll)."""
+
+    def test_clear_survives_override_file_removed_between_exists_and_unlink(
+        self, monkeypatch
+    ):
+        """If the manual-override file disappears between the exists()
+        check and unlink() -- e.g. cron's own expiry auto-clear winning the
+        race -- the request must still succeed, not raise an unhandled
+        FileNotFoundError.
+
+        Mutation check: reverting api_override_clear's unlink() to drop
+        missing_ok=True makes this test fail (500, not 200)."""
+        import paths
+        import web_app
+
+        class _RaceSimPath:
+            def exists(self):
+                return True
+
+            def unlink(self, missing_ok=False):
+                if not missing_ok:
+                    raise FileNotFoundError(
+                        "simulated race: file removed before unlink()"
+                    )
+
+        # api_override_clear does `from paths import MANUAL_OVERRIDE_PATH`
+        # fresh on every call, so patching the paths module attribute (not
+        # web_app) is what actually takes effect -- unlike _KS_PATH, which
+        # web_app binds once at import time.
+        monkeypatch.setattr(paths, "MANUAL_OVERRIDE_PATH", _RaceSimPath())
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            resp = c.delete("/api/override")
+
+        assert resp.status_code == 200, (
+            f"unlink() race must not crash the request: {resp.status_code} "
+            f"{resp.get_data(as_text=True)[:300]}"
+        )
+        data = resp.get_json()
+        assert data["cleared"] is True
+        assert data["was_active"] is True
+
+    def test_clear_returns_json_500_on_unexpected_unlink_error(self, monkeypatch):
+        """A non-race OSError (e.g. a permission failure) during unlink()
+        must return this route's own JSON error shape, not propagate as
+        Flask's raw HTML 500 page -- matches every other route in this
+        file.
+
+        Mutation check: reverting api_override_clear to a bare
+        `_ov_path.unlink()` with no try/except makes this test fail (the
+        response is Flask's default HTML error page, not JSON with an
+        "error" key)."""
+        import paths
+        import web_app
+
+        class _PermissionFailPath:
+            def exists(self):
+                return True
+
+            def unlink(self, missing_ok=False):
+                raise PermissionError("simulated permission denied")
+
+        monkeypatch.setattr(paths, "MANUAL_OVERRIDE_PATH", _PermissionFailPath())
+
+        app = web_app._build_app(client=None)
+        app.config["TESTING"] = True
+
+        with app.test_client() as c:
+            resp = c.delete("/api/override")
+
+        assert resp.status_code == 500
+        assert "error" in resp.get_json()
+
+
 def test_status_includes_brier_drift(tmp_path, monkeypatch):
     """GET /api/status includes brier_drift key with drifting field."""
     import web_app
@@ -1339,21 +1512,27 @@ class TestPaperOrderCityDateServerDerived:
     whatever the client sent. Both must now come from the ticker via a
     server-side market lookup instead."""
 
-    def test_exposure_cap_still_enforced_when_body_omits_city_and_date(self, client):
+    def test_exposure_cap_still_enforced_when_body_omits_city_and_date(
+        self, client, tmp_path, monkeypatch
+    ):
         """Omitting city/target_date from the request body must NOT bypass
         the exposure caps -- they're derived server-side regardless."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
         with (
-            patch("cron.KILL_SWITCH_PATH") as mock_ksp,
             patch("utils.is_trading_paused", return_value=False),
             patch("kalshi_client.KalshiClient") as mock_kc_cls,
             patch(
                 "weather_markets.enrich_with_forecast",
-                return_value={"_city": "NYC", "_date": date(2026, 6, 1)},
+                # A future date -- batch-34 item 7d now rejects orders whose
+                # server-derived target_date is already in the past, so this
+                # (unrelated to days_out) test must stay clear of "today".
+                return_value={"_city": "NYC", "_date": date(2099, 6, 1)},
             ),
             patch("paper.check_position_limits") as mock_cpl,
             patch("paper.place_paper_order") as mock_place,
         ):
-            mock_ksp.exists.return_value = False
             mock_kc_cls.return_value.get_market.return_value = {
                 "close_time": "2099-01-01T00:00:00Z"
             }
@@ -1379,23 +1558,27 @@ class TestPaperOrderCityDateServerDerived:
         _, cpl_kwargs = mock_cpl.call_args
         assert cpl_kwargs["city"] == "NYC"
 
-    def test_client_supplied_city_is_ignored_server_value_used(self, client):
+    def test_client_supplied_city_is_ignored_server_value_used(
+        self, client, tmp_path, monkeypatch
+    ):
         """A client-supplied city/target_date that disagrees with the
         ticker's real city must be ignored, not trusted -- both the
         exposure check and the saved trade record must use the
         server-derived value."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
         with (
-            patch("cron.KILL_SWITCH_PATH") as mock_ksp,
             patch("utils.is_trading_paused", return_value=False),
             patch("kalshi_client.KalshiClient") as mock_kc_cls,
             patch(
                 "weather_markets.enrich_with_forecast",
-                return_value={"_city": "Chicago", "_date": date(2026, 6, 1)},
+                # See the future-date comment on the sibling test above.
+                return_value={"_city": "Chicago", "_date": date(2099, 6, 1)},
             ),
             patch("paper.check_position_limits", return_value={"ok": True}) as mock_cpl,
             patch("paper.place_paper_order") as mock_place,
         ):
-            mock_ksp.exists.return_value = False
             mock_kc_cls.return_value.get_market.return_value = {
                 "close_time": "2099-01-01T00:00:00Z"
             }
@@ -1430,7 +1613,9 @@ class TestPaperOrderDaysOutUsesCityLocalToday:
     Fixed to compute city-local today via ZoneInfo, matching the rest of this
     fix chain."""
 
-    def test_days_out_computed_from_city_local_today_not_utc(self, client):
+    def test_days_out_computed_from_city_local_today_not_utc(
+        self, client, tmp_path, monkeypatch
+    ):
         """At 2026-07-10 05:00 UTC, NYC (EDT) has already rolled to 07-10 but
         LA (PDT) is still 07-09. For an LA market with target_date 07-11:
         UTC-anchored days_out would be (07-11 - UTC-today 07-10).days = 1;
@@ -1447,6 +1632,8 @@ class TestPaperOrderDaysOutUsesCityLocalToday:
         (incorrectly) documented here."""
         from datetime import UTC, date, datetime
 
+        import web_app
+
         fixed_instant = datetime(2026, 7, 10, 5, 0, tzinfo=UTC)
 
         class _FixedDatetime(datetime):
@@ -1456,8 +1643,8 @@ class TestPaperOrderDaysOutUsesCityLocalToday:
                     return fixed_instant.replace(tzinfo=None)
                 return fixed_instant.astimezone(tz)
 
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
         with (
-            patch("cron.KILL_SWITCH_PATH") as mock_ksp,
             patch("utils.is_trading_paused", return_value=False),
             patch("kalshi_client.KalshiClient") as mock_kc_cls,
             patch(
@@ -1470,7 +1657,6 @@ class TestPaperOrderDaysOutUsesCityLocalToday:
             patch("web_app.datetime", _FixedDatetime),
             patch("utils.utc_today", return_value=date(2026, 7, 10)),
         ):
-            mock_ksp.exists.return_value = False
             mock_kc_cls.return_value.get_market.return_value = {
                 "close_time": "2099-01-01T00:00:00Z"
             }
@@ -1522,7 +1708,7 @@ class TestPaperOrderNoSideEndToEnd:
     entry_prob stored unflipped (YES-space)."""
 
     def test_no_side_signal_with_positive_edge_is_accepted_and_priced_correctly(
-        self, client
+        self, client, tmp_path, monkeypatch
     ):
         """A NO signal with genuine edge, sent with the post-fix payload
         shape (entry_price side-flipped, entry_prob YES-space), must be
@@ -1530,19 +1716,22 @@ class TestPaperOrderNoSideEndToEnd:
         the NO-side price (1 - yes_bid, not the YES-side price), AND store
         entry_prob unflipped (YES-space) -- not the side-space value the
         Kelly-cap check internally derives from it."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
         with (
-            patch("cron.KILL_SWITCH_PATH") as mock_ksp,
             patch("utils.is_trading_paused", return_value=False),
             patch("kalshi_client.KalshiClient") as mock_kc_cls,
             patch(
                 "weather_markets.enrich_with_forecast",
-                return_value={"_city": "NYC", "_date": date(2026, 8, 22)},
+                # A future date -- batch-34 item 7d now rejects orders whose
+                # server-derived target_date is already in the past.
+                return_value={"_city": "NYC", "_date": date(2099, 8, 22)},
             ),
             patch("paper.check_position_limits", return_value={"ok": True}) as mock_cpl,
             patch("paper.place_paper_order") as mock_place,
             patch("tracker.log_prediction") as mock_log_pred,
         ):
-            mock_ksp.exists.return_value = False
             # Real market: yes_bid=54c, yes_ask=56c -> NO-side ask (no_ask)
             # = 1 - 0.54 = 0.46. weather_markets.parse_market_price (NOT
             # mocked) runs for real on this dict inside the route.
@@ -1606,7 +1795,7 @@ class TestPaperOrderNoSideEndToEnd:
         )
 
     def test_yes_space_payload_for_a_no_order_is_rejected_not_silently_mispriced(
-        self, client
+        self, client, tmp_path, monkeypatch
     ):
         """Documents the pre-fix failure mode for contrast: if a client
         (a stale frontend build, a bug regression) sends the raw YES-space
@@ -1614,17 +1803,21 @@ class TestPaperOrderNoSideEndToEnd:
         WA-security deviation guard must reject it rather than booking the
         wrong-side price -- this is the defense-in-depth this fix does NOT
         remove or weaken."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
         with (
-            patch("cron.KILL_SWITCH_PATH") as mock_ksp,
             patch("utils.is_trading_paused", return_value=False),
             patch("kalshi_client.KalshiClient") as mock_kc_cls,
             patch(
                 "weather_markets.enrich_with_forecast",
-                return_value={"_city": "NYC", "_date": date(2026, 8, 22)},
+                # A future date -- must be rejected by the price-deviation
+                # guard this test targets, not batch-34 item 7d's separate
+                # past-target_date guard.
+                return_value={"_city": "NYC", "_date": date(2099, 8, 22)},
             ),
             patch("paper.place_paper_order") as mock_place,
         ):
-            mock_ksp.exists.return_value = False
             # A market further from 50/50 (yes_bid=75c/yes_ask=78c) so the
             # wrong-side price deviates well past the guard's 0.15
             # threshold: correct NO price is 1-0.75=0.25, but a stale/buggy
@@ -1655,6 +1848,178 @@ class TestPaperOrderNoSideEndToEnd:
             )
 
         assert resp.status_code == 400
+        mock_place.assert_not_called()
+
+
+class TestPaperOrderWebSweepL17:
+    """batch-34 item 7 (L-17): same-file low-severity sweep of
+    /api/paper-order alongside items 2/7b-d's shared route."""
+
+    def test_kill_switch_check_reads_the_unified_ks_path(
+        self, client, tmp_path, monkeypatch
+    ):
+        """item 7b: was `from cron import KILL_SWITCH_PATH` while every
+        sibling route reads the module-level _KS_PATH -- a monkeypatch
+        blind spot (a test/tool patching one binding doesn't affect the
+        other, even though both start out as the same underlying
+        paths.KILL_SWITCH_PATH object). Engage the switch via _KS_PATH (the
+        unified reference every other route already uses) and confirm this
+        route actually honors it.
+
+        Mutation check: reverting to `from cron import KILL_SWITCH_PATH`
+        makes this test fail -- the route would instead check the real
+        production kill-switch path (untouched by this test's monkeypatch,
+        and normally absent in a test environment), so the order would
+        proceed past the kill-switch check instead of getting a 503."""
+        import web_app
+
+        ks_path = tmp_path / ".kill_switch"
+        ks_path.write_text('{"reason": "engaged"}')
+        monkeypatch.setattr(web_app, "_KS_PATH", ks_path)
+
+        resp = client.post(
+            "/api/paper-order",
+            json={
+                "ticker": "KXHIGH-99JAN01-T70",
+                "side": "yes",
+                "quantity": 1,
+                "entry_price": 0.50,
+            },
+        )
+        assert resp.status_code == 503
+        assert "kill switch" in resp.get_json()["error"].lower()
+
+    def test_non_numeric_quantity_does_not_500(self, client, tmp_path, monkeypatch):
+        """item 7a: `quantity = int(body.get("quantity", 1)) or 1` used to
+        sit outside any try -- a non-numeric quantity raised an unhandled
+        ValueError, returning Flask's raw HTML 500 page instead of this
+        route's usual JSON error shape (matches the file's own
+        WA-input-validation pattern, e.g. /history's ?n=abc coercion).
+
+        Mutation check: reverting to the bare (un-try'd) int() cast makes
+        this test fail -- Flask's TESTING mode propagates the unhandled
+        ValueError instead of a clean response."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch(
+                "weather_markets.enrich_with_forecast",
+                return_value={"_city": "NYC", "_date": date(2099, 1, 1)},
+            ),
+            patch("paper.check_position_limits", return_value={"ok": True}),
+            patch("paper.place_paper_order") as mock_place,
+        ):
+            mock_kc_cls.return_value.get_market.return_value = {
+                "close_time": "2099-01-01T00:00:00Z"
+            }
+            mock_place.return_value = {"id": 1}
+            resp = client.post(
+                "/api/paper-order",
+                json={
+                    "ticker": "KXHIGH-99JAN01-T70",
+                    "side": "yes",
+                    "quantity": "not-a-number",
+                    "entry_price": 0.50,
+                },
+            )
+        assert resp.status_code in (200, 201), (
+            f"non-numeric quantity must not crash the request: "
+            f"{resp.status_code} {resp.get_data(as_text=True)[:300]}"
+        )
+        # Falls back to the documented default (1), same as an omitted
+        # quantity -- not silently dropped or left unbounded.
+        _, place_kwargs = mock_place.call_args
+        assert place_kwargs["quantity"] == 1
+
+    def test_no_side_order_rejected_at_yes_bid_one_boundary(
+        self, client, tmp_path, monkeypatch
+    ):
+        """item 7c: a NO order on a yes_bid==1.0 market has an expected
+        NO-side price of exactly 0.0 (`max(0.0, round(1.0 - 1.0, 4))`) --
+        the old `_expected_side_price > 0` guard skipped the deviation
+        check entirely at this boundary, letting a NO order at ANY
+        entry_price sail through unchecked (the guard was meant to skip a
+        degraded/missing quote, but has_quote already gates on real quote
+        data being present, so an expected price of exactly 0 here is a
+        legitimate boundary, not missing data).
+
+        Mutation check: restoring the `_expected_side_price > 0 and` guard
+        makes this test fail (order accepted instead of rejected)."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch(
+                "weather_markets.enrich_with_forecast",
+                return_value={"_city": "NYC", "_date": date(2099, 1, 1)},
+            ),
+            patch("paper.place_paper_order") as mock_place,
+        ):
+            # yes_bid=yes_ask=100c=$1.00 -> NO-side expected price
+            # = 1 - 1.00 = 0.0 exactly.
+            mock_kc_cls.return_value.get_market.return_value = {
+                "yes_bid": 100,
+                "yes_ask": 100,
+                "close_time": "2099-01-01T00:00:00Z",
+            }
+            resp = client.post(
+                "/api/paper-order",
+                json={
+                    "ticker": "KXHIGH-99JAN01-T70",
+                    "side": "no",
+                    "quantity": 1,
+                    "entry_price": 0.99,
+                },
+            )
+        assert resp.status_code == 400
+        mock_place.assert_not_called()
+
+    def test_past_target_date_rejected_not_clamped_to_same_day(
+        self, client, tmp_path, monkeypatch
+    ):
+        """item 7d: a server-derived target_date already in the past (a
+        stale/expired market, or a ticker-parse mismatch) used to have its
+        negative raw days_out clamped to 0 via `max(0, ...)`, mislabeling a
+        stale multi-day market as same-day and dodging the
+        MAX_POSITIONS_PER_DATE multi-day slot cap this derivation feeds.
+        Must reject instead.
+
+        Mutation check: restoring `max(0, (_tdate_dash - _today_dash).days)`
+        makes this test fail (order accepted with days_out=0 instead of
+        rejected)."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch(
+                "weather_markets.enrich_with_forecast",
+                # Far in the past relative to any plausible real clock.
+                return_value={"_city": "NYC", "_date": date(2000, 1, 1)},
+            ),
+            patch("paper.check_position_limits", return_value={"ok": True}),
+            patch("paper.place_paper_order") as mock_place,
+        ):
+            mock_kc_cls.return_value.get_market.return_value = {
+                "close_time": "2099-01-01T00:00:00Z"
+            }
+            resp = client.post(
+                "/api/paper-order",
+                json={
+                    "ticker": "KXHIGH-99JAN01-T70",
+                    "side": "yes",
+                    "quantity": 1,
+                    "entry_price": 0.50,
+                },
+            )
+        assert resp.status_code == 400
+        assert "past" in resp.get_json()["error"].lower()
         mock_place.assert_not_called()
 
 
