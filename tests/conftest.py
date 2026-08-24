@@ -109,6 +109,28 @@ def clear_paper_min_edge_cache():
 
 
 @pytest.fixture(autouse=True)
+def isolate_walk_forward_params_dir(tmp_path, monkeypatch):
+    """Redirect backtest.DATA_DIR to a per-test temp dir.
+
+    save_walk_forward_params()'s default path (backtest.py) is
+    ``DATA_DIR / "walk_forward_params.json"`` when called with no explicit
+    ``path`` -- and walk_forward_backtest() calls it that way whenever a
+    backtest produces >=2 folds. Without this, any test that calls
+    walk_forward_backtest()/run_paper_walk_forward() directly (several in
+    tests/test_walk_forward.py generate >=2 folds from synthetic trades)
+    silently writes real walk-forward results into the main clone's
+    data/walk_forward_params.json -- confirmed as the actual source of a
+    live incident: a test run's n_folds=6/optimal_min_edge=0.04 fixture
+    output was found feeding config._paper_min_edge_default() (batch-37
+    item M-20), the exact [[feedback_manual_scripts_bypass_test_db_isolation]]
+    failure mode applied to a JSON file instead of the DB.
+    """
+    import backtest
+
+    monkeypatch.setattr(backtest, "DATA_DIR", tmp_path)
+
+
+@pytest.fixture(autouse=True)
 def clear_metar_cache():
     """Clear the in-process METAR cache(s) before every test.
 

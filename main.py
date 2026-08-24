@@ -8532,8 +8532,22 @@ def cmd_emos_deactivate(reason: str = "manual deactivation") -> None:
     except Exception:
         pass  # fail open on an inability to check, matching _is_cron_running's own default
 
-    deactivate_emos()
-    _log.info("cmd_emos_deactivate: EMOS deactivated (reason: %s)", reason)
+    _, restored = deactivate_emos()
+    _log.info(
+        "cmd_emos_deactivate: EMOS deactivated (reason: %s, restored=%s)",
+        reason,
+        restored,
+    )
+    if not restored:
+        print(
+            red(
+                "  EMOS deactivated, but restoring the pre-activation T values "
+                "FAILED -- above/below/between remain pinned at the 1.0 "
+                "placeholder until the next scheduled retrain. Re-run "
+                "'py main.py emos-status' to check t_pinned, or retry."
+            )
+        )
+        return
     print(
         green(
             "  EMOS deactivated — reverted to ensemble/climatology blend + T-scaling."

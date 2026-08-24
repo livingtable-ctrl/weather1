@@ -1357,15 +1357,23 @@ def get_emos_status() -> dict:
     ..., "t_pinned": bool} describing whether EMOS is currently the live
     probability method for multi-day above/below/between predictions.
 
-    Returns {"active": False} when emos_params.json doesn't exist (including
-    when a concurrent deactivate_emos() call unlinks it between this
-    function's own exists() check and read -- a lost race, not corruption,
-    and NOT computed against t_pinned either since there's no active EMOS
-    to cross-check), or {"active": False, "corrupt": True, "error": ...}
-    when the file exists and was actually read but fails to parse --
-    distinct from "doesn't exist" so a caller (e.g. cmd_emos_deactivate)
-    can still offer to remove a corrupt file instead of reporting nothing
-    to do.
+    Returns {"active": False, "t_pinned": bool} when emos_params.json
+    doesn't exist (including when a concurrent deactivate_emos() call
+    unlinks it between this function's own exists() check and read -- a
+    lost race, not corruption), or {"active": False, "corrupt": True,
+    "error": ..., "t_pinned": bool} when the file exists and was actually
+    read but fails to parse -- distinct from "doesn't exist" so a caller
+    (e.g. cmd_emos_deactivate) can still offer to remove a corrupt file
+    instead of reporting nothing to do.
+
+    batch-37 item 4: t_pinned IS computed and returned in the inactive case
+    too (an earlier version skipped it here, reasoning there was "no active
+    EMOS to cross-check") -- inactive-with-t_pinned-True is exactly the
+    state a FAILED deactivate_emos() restore leaves behind (emos_params.json
+    is gone, so active correctly reports False, but temperature_scale.json's
+    reset_for_emos placeholders never got restored), and that's precisely
+    the state a caller checking status right after deactivation most needs
+    to see.
 
     "t_pinned" (audit batch-28 item 3) cross-checks "active per params
     file" against "T actually reset in temperature_scale.json" -- these are
@@ -1397,9 +1405,6 @@ def get_emos_status() -> dict:
     field exists to surface, and the one state the pre-fix version of this
     check didn't cover at all.
     """
-    if not _EMOS_PARAMS_PATH.exists():
-        return {"active": False}
-
     t_pinned = False
     try:
         temp_data = json.loads(_TEMP_PATH.read_text()) if _TEMP_PATH.exists() else {}
@@ -1410,6 +1415,9 @@ def get_emos_status() -> dict:
         )
     except Exception:
         t_pinned = False
+
+    if not _EMOS_PARAMS_PATH.exists():
+        return {"active": False, "t_pinned": t_pinned}
 
     try:
         data = json.loads(_EMOS_PARAMS_PATH.read_text())
@@ -1427,7 +1435,7 @@ def get_emos_status() -> dict:
     except FileNotFoundError:
         # deactivate_emos() unlinked the file between the exists() check
         # above and this read (TOCTOU) -- a lost race, not corruption.
-        return {"active": False}
+        return {"active": False, "t_pinned": t_pinned}
     except Exception as exc:
         return {
             "active": False,
@@ -1613,14 +1621,24 @@ def restore_temperature_scale_from_emos_snapshot() -> bool:
         return False
 
 
-def deactivate_emos() -> bool:
+def deactivate_emos() -> tuple[bool, bool]:
     """Remove emos_params.json, reverting multi-day above/below/between
     predictions to the ensemble/climatology blend + temperature scaling,
     and immediately restore temperature_scale.json's pre-activation T
     values (see restore_temperature_scale_from_emos_snapshot). Safe to call
-    whether or not EMOS is currently active. Returns True only if it was
+    whether or not EMOS is currently active.
+
+    Returns (was_active, restored): was_active is True only if it was
     actually active (a file existed), matching
-    paper.clear_accuracy_halt_override()'s same-shape return convention.
+    paper.clear_accuracy_halt_override()'s True-only-if-was-active
+    convention (previously this function's sole return value). restored is
+    whatever restore_temperature_scale_from_emos_snapshot() reported for
+    this call -- False can mean either "no snapshot existed" (benign no-op)
+    or "the restore attempt raised" (a real problem: T stays pinned at the
+    1.0 placeholder for global/above/below/between until the next scheduled
+    retrain) -- callers that reached here via the confirm-gated CLI path
+    (where was_active is already known True) should treat a False restored
+    as worth surfacing, since a real snapshot should exist in that case.
 
     Archives the current emos_params.json content to data/.history/ before
     removing it, even on a corrupt/unparseable file (raw text copy, no JSON
@@ -1654,7 +1672,7 @@ def deactivate_emos() -> bool:
     _EMOS_PARAMS_PATH.unlink(missing_ok=True)
     _EMOS_CACHE = None
     _EMOS_CACHE_MTIME = None
-    restore_temperature_scale_from_emos_snapshot()
+    restored = restore_temperature_scale_from_emos_snapshot()
     if was_active:
         _log.info("deactivate_emos: emos_params.json removed, EMOS no longer live")
-    return was_active
+    return was_active, restored

@@ -162,6 +162,189 @@ def test_preserve_does_not_touch_between(tmp_path):
     assert "_uncalibrated" not in result.get("between", {})
 
 
+def test_preserve_does_not_resurrect_a_key_absent_from_a_complete_condition_result(
+    tmp_path,
+):
+    """Regression guard for the _preserve_hand_tuned_weights refactor: unlike
+    city (calibrate_city_weights legitimately omits a below-floor city
+    entirely), calibrate_condition_weights' result is meant to be the full
+    canonical key set (above/below/between, always present via the _neutral
+    prefill) -- a key on disk but ABSENT from a fresh result (e.g. a shadow
+    condition type that leaked in before the M-13(c) exclusion fix shipped)
+    must NOT be silently resurrected into the written file, or the M-13(c)
+    exclusion fix would be defeated forever by any pre-existing
+    contamination.
+
+    Mutation-tested: passing allow_missing=True for the condition call site
+    (matching city's) makes this fail (the stray key comes back) --
+    confirmed via Edit revert.
+    """
+    import calibration
+
+    db = tmp_path / "pred.db"
+    _make_db(db, n_above=5, n_below=5, n_between=5)
+
+    existing = {
+        "above": {"ensemble": 0.6, "climatology": 0.05, "nws": 0.35},
+        "hurricane_count": {"ensemble": 0.5, "climatology": 0.3, "nws": 0.2},
+    }
+    cond_path = tmp_path / "condition_weights.json"
+    cond_path.write_text(json.dumps(existing))
+
+    # calibrate_condition_weights' real return never includes a shadow type
+    # key at all (M-13(c) excludes it at the query level) -- simulate that
+    # exact shape directly rather than depending on the DB fixture.
+    fresh_condition = {
+        "above": {"ensemble": 0.6, "climatology": 0.05, "nws": 0.35},
+        "below": {
+            "ensemble": 0.333,
+            "climatology": 0.333,
+            "nws": 0.333,
+            "_uncalibrated": True,
+        },
+        "between": {"ensemble": 0.09, "climatology": 0.004, "nws": 0.906},
+    }
+    with (
+        patch("calibration.calibrate_seasonal_weights", return_value={}),
+        patch("calibration.calibrate_city_weights", return_value={}),
+        patch("calibration.calibrate_condition_weights", return_value=fresh_condition),
+    ):
+        calibration.calibrate_and_save(db_path=db, data_dir=tmp_path)
+
+    result = json.loads(cond_path.read_text())
+    assert "hurricane_count" not in result, (
+        "a key absent from a complete calibrate_condition_weights result "
+        "must not be resurrected from disk"
+    )
+
+
+def test_preserve_hand_tuned_city_dropped_below_floor(tmp_path):
+    """M-13(b): calibrate_city_weights OMITS a city key entirely (not a
+    neutral placeholder like seasonal/condition) when it doesn't clear
+    _CITY_MIN -- without preservation, a hand-tuned city below the floor
+    would be silently dropped from the file, not just overwritten."""
+    import calibration
+
+    db = tmp_path / "pred.db"
+    _make_db(db, n_above=5, n_below=5, n_between=5)  # all below _CITY_MIN
+
+    existing_city = {
+        "NYC": {"ensemble": 0.10, "climatology": 0.70, "nws": 0.20},
+    }
+    city_path = tmp_path / "city_weights.json"
+    city_path.write_text(json.dumps(existing_city))
+
+    with (
+        patch("calibration.calibrate_seasonal_weights", return_value={}),
+        patch("calibration.calibrate_city_weights", return_value={}),
+    ):
+        calibration.calibrate_and_save(db_path=db, data_dir=tmp_path)
+
+    result = json.loads(city_path.read_text())
+    assert "NYC" in result, "hand-tuned city was dropped, not preserved"
+    assert result["NYC"]["climatology"] == pytest.approx(0.70)
+
+
+def test_preserve_hand_tuned_seasonal_when_uncalibrated(tmp_path):
+    """M-13(b): seasonal preservation must mirror condition's existing
+    pattern -- a hand-tuned season overwritten by a fresh _uncalibrated
+    (insufficient-data) result is restored."""
+    import calibration
+
+    db = tmp_path / "pred.db"
+    _make_db(db, n_above=5, n_below=5, n_between=5)
+
+    existing_seasonal = {
+        "summer": {"ensemble": 0.88, "climatology": 0.002, "nws": 0.118},
+    }
+    seasonal_path = tmp_path / "seasonal_weights.json"
+    seasonal_path.write_text(json.dumps(existing_seasonal))
+
+    fresh_seasonal = {
+        "summer": {
+            "ensemble": 0.333,
+            "climatology": 0.333,
+            "nws": 0.333,
+            "_uncalibrated": True,
+        }
+    }
+    with (
+        patch("calibration.calibrate_seasonal_weights", return_value=fresh_seasonal),
+        patch("calibration.calibrate_city_weights", return_value={}),
+    ):
+        calibration.calibrate_and_save(db_path=db, data_dir=tmp_path)
+
+    result = json.loads(seasonal_path.read_text())
+    assert result["summer"]["ensemble"] == pytest.approx(0.88)
+    assert "_uncalibrated" not in result["summer"]
+
+
+def test_calibrate_blend_weights_flags_brier_gate_rejection_uncalibrated(tmp_path):
+    """M-13(a): the improvement-gate rejection path (val_baseline -
+    val_calibrated <= _BRIER_IMPROVEMENT_GATE) must carry _uncalibrated,
+    same as the _MIN_VAL_ROWS path -- otherwise _blend_weights treats
+    coincidentally-equal weights as a real fit and never falls through to
+    the hardcoded days-out schedule.
+
+    Mutation-tested: reverting the fix (dropping the "_uncalibrated": True
+    key from that return) makes this fail -- confirmed via Edit revert.
+    """
+    import calibration
+
+    db = tmp_path / "pred.db"
+    # Random/uncorrelated ep/cp/np vs y (same shape as
+    # test_calibrate_condition_weights_returns_per_type_dict) -- val Brier
+    # improvement never clears the 0.005 gate.
+    import random
+
+    random.seed(1)
+    con = sqlite3.connect(str(db))
+    con.execute(
+        """CREATE TABLE multiday_predictions (
+            ticker TEXT PRIMARY KEY, city TEXT, market_date TEXT,
+            condition_type TEXT, ensemble_prob REAL, nws_prob REAL,
+            clim_prob REAL
+        )"""
+    )
+    con.execute(
+        """CREATE TABLE outcomes (
+            ticker TEXT PRIMARY KEY, settled_yes INTEGER, disputed INTEGER DEFAULT 0
+        )"""
+    )
+    con.execute(
+        """CREATE VIEW outcomes_valid AS
+            SELECT * FROM outcomes WHERE disputed IS NULL OR disputed = 0"""
+    )
+    for i in range(60):
+        ticker = f"t{i:03d}"
+        month = (i % 12) + 1
+        date_str = f"2025-{month:02d}-{(i % 28) + 1:02d}"
+        con.execute(
+            "INSERT INTO multiday_predictions VALUES (?,?,?,?,?,?,?)",
+            (
+                ticker,
+                "NYC",
+                date_str,
+                "above",
+                random.uniform(0.3, 0.8),
+                random.uniform(0.3, 0.7),
+                random.uniform(0.3, 0.7),
+            ),
+        )
+        con.execute(
+            "INSERT INTO outcomes (ticker, settled_yes) VALUES (?,?)",
+            (ticker, random.randint(0, 1)),
+        )
+    con.commit()
+    con.close()
+
+    weights = calibration.calibrate_city_weights(db)
+    assert "NYC" in weights
+    assert weights["NYC"].get("_uncalibrated") is True, (
+        "brier-improvement-gate rejection must flag _uncalibrated"
+    )
+
+
 # ---------------------------------------------------------------------------
 # _blend_weights routing tests
 # ---------------------------------------------------------------------------

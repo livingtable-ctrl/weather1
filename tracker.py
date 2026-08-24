@@ -4714,10 +4714,17 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
             if actual_value is None:
                 return False
             with _conn() as con:
-                con.execute(
+                cur = con.execute(
                     "UPDATE outcomes SET settled_value = ?, settled_var = ? WHERE ticker = ?",
                     (round(actual_value, 1), hourly_var, ticker),
                 )
+            if cur.rowcount < 1:
+                _log.warning(
+                    "audit_settlement[%s]: no matching outcomes row -- "
+                    "settled_value not actually written",
+                    ticker,
+                )
+                return False
             return True
 
         # Prefer condition stored in predictions DB — it was recorded with the real
@@ -6099,7 +6106,7 @@ def get_member_accuracy(days_back: int = 60) -> dict:
     Returns {model: {mae: float, n: int, std: float, city_breakdown: {city: mae},
     city_n_breakdown: {city: n}}}
 
-    std is the population stdev of the per-observation absolute errors --
+    std is the sample stdev (ddof=1) of the per-observation absolute errors --
     used by weather_markets.scan_member_quarantine() to compute the standard
     error of a model's own MAE estimate (std / sqrt(n)) for its peer-relative
     drift check.

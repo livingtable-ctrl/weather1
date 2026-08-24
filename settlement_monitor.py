@@ -633,9 +633,14 @@ def _run_settlement_monitor_loop(client, duration_minutes: int) -> None:
     _log.info("Settlement lag monitor starting (duration=%dmin)", duration_minutes)
     end_time = datetime.now(UTC) + timedelta(minutes=duration_minutes)
 
-    # P3-2: seed in-memory state from the signals file so a restart during the
-    # settlement window doesn't re-fire signals that were already written.
-    existing_signals = read_settlement_signals(max_age_minutes=120)
+    # P3-2/M-22: seed in-memory state from the signals file so a restart
+    # during the settlement window doesn't re-fire signals that were already
+    # written. Must match cron.py's own read window (720min, cron.py:2092) --
+    # this loop overwrites the whole file every cycle (write_settlement_
+    # signals below), so a restart more than 120min into the window used to
+    # silently drop any signal older than that from the rewrite, even though
+    # cron would still have honored it for another 600 minutes.
+    existing_signals = read_settlement_signals(max_age_minutes=720)
     all_signals: list[dict] = list(existing_signals)
     signalled_tickers: set[str] = {s["ticker"] for s in existing_signals}
     if signalled_tickers:

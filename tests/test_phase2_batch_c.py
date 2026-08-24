@@ -122,6 +122,48 @@ class TestValidateWeightFiles:
             "Must log error when spring weights sum to 1.5 not 1.0"
         )
 
+    def test_errors_when_city_weights_dont_sum_to_1(self, caplog):
+        """M-13: city weights were never validated at all before this fix."""
+        import logging
+
+        from calibration import validate_weight_files
+
+        bad_city = {"NYC": {"ensemble": 0.60, "climatology": 0.60, "nws": 0.60}}
+        with caplog.at_level(logging.ERROR, logger="calibration"):
+            validate_weight_files(seasonal={}, city=bad_city, condition={})
+
+        assert any(
+            "NYC" in r.message and "sum" in r.message.lower() for r in caplog.records
+        ), "Must log error when NYC city weights sum to 1.8 not 1.0"
+
+    def test_no_error_when_city_weights_valid(self, caplog):
+        """Positive control: a valid city entry must NOT trigger the sum error."""
+        import logging
+
+        from calibration import validate_weight_files
+
+        good_city = {"NYC": {"ensemble": 0.40, "climatology": 0.35, "nws": 0.25}}
+        with caplog.at_level(logging.ERROR, logger="calibration"):
+            validate_weight_files(seasonal={}, city=good_city, condition={})
+
+        assert not any("NYC" in r.message for r in caplog.records)
+
+    def test_errors_when_condition_weights_contain_negative_value(self, caplog):
+        """L-9: the condition loop only checked sum-to-1, never negative
+        weights, unlike seasonal's already-existing check."""
+        import logging
+
+        from calibration import validate_weight_files
+
+        bad_condition = {"above": {"ensemble": 1.30, "climatology": -0.30, "nws": 0.0}}
+        with caplog.at_level(logging.ERROR, logger="calibration"):
+            validate_weight_files(seasonal={}, city={}, condition=bad_condition)
+
+        assert any(
+            "above" in r.message and "negative" in r.message.lower()
+            for r in caplog.records
+        ), "Must log error when above condition weights contain a negative value"
+
 
 # ── P2-10: Minneapolis reset from 0.97 climatology artifact ──────────────────
 

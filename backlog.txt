@@ -251,6 +251,41 @@ Priority: Low -- the affected mechanism (settlement_monitor.py's T-ticker
   calibration is loadable. Needs an AskUserQuestion before implementing
   either -- not resolved by this note.
 
+RESOLUTION 2026-08-24 (batch-37 items 3/7): AskUserQuestion asked (git-track
+  vs fail-closed vs both). User chose git-track only. `data/metar_lockout_
+  calibration.json` force-added to git (`git add -f`, matching the other
+  calibration artifacts -- seasonal/city/condition_weights.json and
+  temperature_scale.json are already tracked the same way despite data/
+  being gitignored) and committed directly to master (main-clone commit
+  1faf7b58, pushed to origin -- this is a data-artifact commit outside the
+  normal branch/PR flow, same as this project's convention for the other
+  tracked calibration files). `_calibrate_metar_settlement_confidence`'s
+  fail-open behavior on a missing calibration was NOT changed -- the user
+  declined that option, so the mislabeled "fails closed" docstring wording
+  (item 3c's finding: it actually fails OPEN to raw confidence) is still
+  live and worth a future doc fix, just not resolved here.
+  Also triggered a REAL refit via `ml_bias.fit_and_save_metar_calibration()`
+  against the live DB (read-only query + file write, not a manual tracker.py
+  script touching the DB) rather than just committing the stale 08-20 fit:
+  got a=b=0.2261958294541918, c=0.40007576061723593, n=33 -- essentially
+  identical to the prior (contaminated-population) fit's a=b=0.22619580826,
+  c=0.40007585 (n also 33), meaning no new METAR-locked same-day outcomes
+  have settled since 08-20; this refit is the same population but computed
+  under the 08-22 contamination-fix query rather than predating it.
+  Re-derived this entry's own "gate is unreachable" claim (item 7's re-check
+  request) against these fresh coefficients rather than assuming the old
+  numbers still apply: computed via ml_bias.apply_metar_calibration directly
+  (same formula this docstring's "Problem" section below describes) --
+  yes_ceiling=0.7660884869913979, no_ceiling=0.5953683796913031, both still
+  < 0.80. Materially unchanged from the documented 0.7661/0.5954 -- NO
+  escalation of this entry's Priority: Low needed; the T-ticker force-close
+  path remains dormant under current data. Separately verified
+  data/temperature_scale.json's unrelated "below" T=1.0 placeholder issue
+  (item 4's second investigation) does NOT interact with this entry -- that
+  key feeds apply_temperature_scaling (multi-day ensemble blend
+  calibration), a different code path from apply_metar_calibration (METAR
+  same-day lock-in), so no cross-contamination between the two fixes.
+
 Problem:
   `metar._dynamic_lock_in_confidence()` is hard-bounded to [0.72, 0.97]
   (its own docstring states this range explicitly). Run through the real
@@ -28326,3 +28361,552 @@ Resolution (2026-08-24): Added an in-flight counter (_obs_inflight, incremented 
   test_saturated_logs_distinct_warning (counter manipulated directly for determinism, not real concurrent
   hangs), test_inflight_counter_decrements_after_completion (proves the counter returns to baseline once
   the task finishes, not stuck incremented forever). All 3 mutation-tested.
+
+[RESOLVED 2026-08-24 -- batch-37 item 1 (M-20)] data/walk_forward_params.json was test-fixture output leaked into the real data dir, live-feeding PAPER_MIN_EDGE
+Priority: Medium -- live-gating surface (config._paper_min_edge_default's soft-override chain).
+Files: backtest.py, tests/conftest.py, tests/test_walk_forward.py
+
+Problem:
+  data/walk_forward_params.json (main-clone, untracked) held n_folds=6,
+  optimal_min_edge=0.04, saved_at matching a recent local test run -- but
+  the real trade corpus can only produce 0 folds today (3 distinct trade
+  months < the 4 required by walk_forward_split's default train_months=6/
+  test_months=1). Root cause: save_walk_forward_params(results, path=None)
+  defaults to DATA_DIR / "walk_forward_params.json" (the real main-clone
+  path, since paths.DATA_DIR always resolves there regardless of worktree),
+  and walk_forward_backtest() calls it that way (no explicit path=) whenever
+  a backtest produces >=2 folds. tests/test_walk_forward.py's
+  TestWalkForwardBacktest class calls walk_forward_backtest() directly with
+  synthetic trades that produce >=2 folds (6 folds for 12 months of data at
+  the default train_months=6) with NO isolation of backtest.DATA_DIR --
+  confirmed by hand-computing the fixture's own optimal_min_edge: edge=0.15
+  for every synthetic trade, so every threshold in [0.04..0.10] ties on win
+  rate and the first (0.04) wins, matching the file's saved value exactly.
+  config._compute_paper_min_edge_from_files reads this file FIRST (before
+  falling back to param_sweep results, then the hardcoded 0.05 default) and
+  clamps to [0.03, 0.15] -- 0.04 passed that clamp, so this fixture-sourced
+  value was actually live-feeding PAPER_MIN_EDGE.
+
+Resolution:
+  (a) Deleted data/walk_forward_params.json (untracked, pure local delete
+  -- no git action needed). PAPER_MIN_EDGE falls back to param_sweep
+  results (absent) then the hardcoded 0.05 default.
+  (b) Added an autouse conftest.py fixture (isolate_walk_forward_params_dir)
+  that monkeypatches backtest.DATA_DIR to tmp_path for every test -- fixes
+  the isolation gap at its root (backtest.py's own default-path
+  construction), not just the specific tests that happened to trigger it
+  this time, so any future test calling walk_forward_backtest()/
+  run_paper_walk_forward() directly with >=2-fold-producing synthetic data
+  can't recur this leak.
+  Tests: no new test added for (b) itself -- it's a pytest fixture, and its
+  effect (the real data dir staying untouched) is implicitly exercised by
+  every existing test_walk_forward.py test that produces >=2 folds
+  (TestWalkForwardBacktest's 4 tests) continuing to pass without writing to
+  data/walk_forward_params.json.
+
+[RESOLVED 2026-08-24 -- batch-37 item 2 (L-14)] _find_optimal_min_edge scored the YES-settlement rate, not a win rate -- inverted for NO-side trades
+Priority: Low (fix while touching the file) -- currently harmless per the
+  skeptic materiality check in the batch handoff (all 198 real settled
+  trades have edge >=0.15, so every threshold in [0.04..0.10] ties and picks
+  0.04 regardless of scoring method; also gated off entirely today since the
+  real corpus produces 0 folds, see item 1 above) -- but a real bug once
+  either condition changes.
+Files: backtest.py, tests/test_walk_forward.py
+
+Problem:
+  _find_optimal_min_edge scored win rate as
+  `sum(1 for t in subset if t.get("settled_yes")) / len(subset)` --
+  settled_yes is `outcome == "yes"`, the YES-SETTLEMENT rate, not a win
+  rate. paper.py's own convention (get_edge_realization_rate, paper.py:2491)
+  is `win = outcome == side` -- 125/198 real settled trades are NO-side, and
+  for a NO-side trade, settled_yes=True (outcome=="yes") means a LOSS, not a
+  win. run_paper_walk_forward's trade-dict mapping dropped "side" entirely,
+  so this metric was structurally inverted for the majority of real trades.
+
+Resolution:
+  Added a small _is_win(trade) helper: `outcome == side` when the trade
+  carries a "side" key (reconstructing outcome as "yes" if settled_yes else
+  "no", a faithful round-trip of how run_paper_walk_forward derived
+  settled_yes in the first place), falling back to plain settled_yes when
+  side is absent (older callers/test fixtures that predate side-tracking).
+  _find_optimal_min_edge now sums _is_win(t) instead of t.get("settled_yes").
+  run_paper_walk_forward's trade mapping now carries "side": t.get("side")
+  through to the mapped dict.
+  Tests: tests/test_walk_forward.py::TestIsWin (3 unit tests) and
+  TestFindOptimalMinEdgeSideAware::test_scores_side_aware_win_rate_not_yes_
+  settlement_rate -- a constructed scenario where 10 NO-side losses (edge
+  0.04, outcome=yes) and 10 YES-side wins (edge 0.05, outcome=yes) make the
+  old code pick threshold 0.04 (ties at 100% "win rate" including the
+  losses) and the fixed code correctly pick 0.05 (50% vs 100%, excluding
+  the lossy NO-side pool). Mutation-tested (reverted _is_win(t) back to
+  t.get("settled_yes") via Edit, confirmed the test fails with result=0.04
+  instead of 0.05, restored).
+
+  Also investigated param_sweep.py's L-17 (run_sweep sweeps PAPER_MIN_EDGE
+  candidates [0.15..0.40] but load_swept_min_edge clamps to [0.03, 0.15] --
+  only 0.15 can ever load) per the same batch item, but the fix turned out
+  deeper than the handoff scoped -- see the new entry immediately below
+  ("PAPER_MIN_EDGE'S ENTIRE SOFT-OVERRIDE SCALE...") rather than a
+  same-file one-line patch here. Confirmed with the user (AskUserQuestion)
+  to defer rather than ship either narrow direction.
+
+[OPEN -- filed 2026-08-24 by batch-37 item 2 investigation (L-17 turned out deeper than scoped)] PAPER_MIN_EDGE's entire soft-override scale (config.py + param_sweep.py + backtest.py's walk-forward thresholds) may be set below net_edge's real operating floor, making the edge gate a near no-op
+Priority: Medium -- live paper-trading gate, but currently a no-op in the
+  SAFE direction (nothing is being wrongly filtered) rather than the unsafe
+  one, so not urgent.
+Files (would need to change together, none owned by batch-37): config.py
+  (_compute_paper_min_edge_from_files's [0.03, 0.15] walk-forward clamp),
+  param_sweep.py (run_sweep's [0.15..0.40] candidates vs
+  load_swept_min_edge's [0.03, 0.15] clamp), backtest.py
+  (_find_optimal_min_edge's [0.04..0.10] threshold list), order_executor.py
+  (read-only reference: the actual live gate).
+
+Problem:
+  Measured real data/paper_trades.json: net_edge is ALWAYS >= 0.15 (n=244,
+  min=0.1504, max=0.8721, mean=0.4164). order_executor.py:3221-3260
+  (_validate_trade_opportunity) sets `edge = opp.get("net_edge")` and gates
+  `if edge < min_edge: return False, ...` where min_edge =
+  get_paper_min_edge() -- the SAME net_edge field param_sweep.py's own
+  docstring already documents as "0.15-0.87 scale." But PAPER_MIN_EDGE's
+  entire soft-override chain is capped at 0.15 or below: config.py's
+  walk-forward path only accepts optimal_min_edge in [0.03, 0.15];
+  backtest.py's own _find_optimal_min_edge only ever searches thresholds in
+  [0.04, 0.10]; param_sweep.py's load_swept_min_edge clamps to [0.03, 0.15].
+  Since every real net_edge is >= 0.15 and PAPER_MIN_EDGE can never exceed
+  0.15, `edge < min_edge` is essentially never true for any real trade --
+  this whole edge-check gate is currently a near no-op regardless of which
+  narrow, single-file fix gets applied to param_sweep.py's L-17 range
+  mismatch (item 2 above investigated this and deliberately did NOT ship
+  either direction -- widening load_swept_min_edge's clamp to match
+  run_sweep's real [0.15, 0.40] candidates would be internally consistent
+  with param_sweep.py alone, but leaves config.py's walk-forward clamp and
+  backtest.py's threshold list still on the old, mismatched small scale;
+  narrowing run_sweep's candidates to match the small scale instead would
+  make param_sweep.py's OWN sweep never discriminate between thresholds
+  either, since every real net_edge would then clear every candidate).
+
+What it would look like:
+  A holistic pass across all three files (plus verifying order_executor.py's
+  other "edge" concept -- get_min_edge_for_confidence's confidence-tiered
+  threshold, which fires INSTEAD of PAPER_MIN_EDGE whenever
+  opp["ensemble_spread"] is present -- to understand how much of the live
+  gate's real filtering already happens through that path instead) rather
+  than a piecemeal one-file patch. Needs a real decision on what
+  PAPER_MIN_EDGE is semantically supposed to represent (a net_edge-scale
+  threshold, matching the field it's actually compared against; or a
+  different, currently-unused "raw edge" concept the walk-forward/param-
+  sweep search machinery was actually designed around) before touching any
+  of the three files' ranges.
+
+Why not now:
+  Genuinely spans 3 files, none of which batch-37 owns, and touches a live
+  paper-trading gate's real filtering behavior -- widening the range
+  unilaterally (in either direction) is a real behavior change, not a
+  no-op cleanup, and deserves its own scoped investigation/AskUserQuestion
+  rather than being folded into an L-17 "one-line fix" that turned out not
+  to be one.
+
+[RESOLVED 2026-08-24 -- batch-37 item 4 (L-15)] deactivate_emos discarded the restore result; get_emos_status returned no t_pinned when the params file was absent -- exactly the post-deactivate state
+Priority: Low-Medium
+Files: ml_bias.py, main.py (cmd_emos_deactivate), tests/test_ml_bias.py
+
+Problem:
+  ml_bias.deactivate_emos() called restore_temperature_scale_from_emos_
+  snapshot() and discarded its bool return entirely, returning only
+  was_active (whether emos_params.json existed). main.py's
+  cmd_emos_deactivate (found at ~line 8535, NOT the handoff's stale
+  main.py:8221 citation -- batch-32's merge shifted main.py's line numbers
+  throughout the file) then printed an unconditional green "EMOS
+  deactivated" success message regardless of whether the T-scaling restore
+  actually succeeded. Separately, get_emos_status() returned bare
+  {"active": False} with no t_pinned key whenever emos_params.json was
+  absent -- exactly the state right after a (possibly failed) deactivate,
+  the one moment a caller would most want to check whether
+  temperature_scale.json's reset_for_emos placeholders got cleared.
+
+Resolution:
+  deactivate_emos() now returns (was_active, restored) instead of a bare
+  bool -- was_active keeps its original True-only-if-was-active meaning
+  (still matches paper.clear_accuracy_halt_override()'s convention);
+  restored is whatever restore_temperature_scale_from_emos_snapshot()
+  reported. main.py's cmd_emos_deactivate unpacks the tuple and now prints
+  a red warning ("restoring the pre-activation T values FAILED... re-run to
+  retry") instead of claiming success when restored is False. The two other
+  call sites (cmd_emos_train's rollback path, the corrupt-params removal
+  path) discard the return value and needed no change.
+  get_emos_status() now computes t_pinned BEFORE the emos_params.json
+  exists() check (previously only computed once the file was confirmed to
+  exist) and includes it in the {"active": False} and {"active": False,
+  "corrupt": True, ...} returns, not just the {"active": True} one.
+  Tests: tests/test_ml_bias.py::TestEmos -- updated
+  test_deactivate_emos_removes_file_and_returns_true_when_active and
+  test_deactivate_emos_noop_when_already_inactive to unpack the tuple; new
+  test_deactivate_emos_propagates_successful_restore (positive control:
+  restored=True on a genuine successful restore, mutation-tested by
+  reverting to `return was_active` and confirming a TypeError on unpack);
+  updated test_get_emos_status_inactive_when_file_missing and
+  test_get_emos_status_toctou_delete_race_is_not_reported_as_corrupt to
+  isolate _TEMP_PATH (both newly touch it post-fix, where they didn't
+  before) and expect the new t_pinned key; new
+  test_get_emos_status_surfaces_t_pinned_when_inactive_after_failed_restore
+  proving the exact post-deactivate-with-failed-restore scenario is now
+  visible (mutation-tested via Edit revert to the early return, confirmed
+  KeyError on status["t_pinned"]).
+
+  Separately investigated live data/temperature_scale.json's "below" key
+  (frozen at T=1.0/n=14, a shape the current code cannot write) -- see the
+  new entry immediately below.
+
+[RESOLVED 2026-08-24 -- batch-37 item 4 (second investigation)] data/temperature_scale.json's "below" key was a June-27 EMOS-deployment relic, permanently stuck (not from insufficient data) because ml_bias._fit_T keeps hitting its T-upper-bound on "below" specifically
+Priority: Medium -- live calibration gap (below-condition predictions were
+  running with zero T-scaling correction).
+Files: data/temperature_scale.json (data-only fix, no code change)
+
+Problem/Investigation:
+  Traced via `git log -p --follow -- data/temperature_scale.json`: the
+  "below" key has been frozen at exactly {"T": 1.0, "n": 14} since commit
+  ae1d5bae (2026-06-27, "feat(emos): deploy EMOS calibration, disable
+  T-scaling") -- a direct hand-edit alongside that commit's code changes,
+  predating the reset_for_emos/reset_at marker convention entirely (that's
+  why the live key carries neither marker, which is what made it "a shape
+  the current code cannot write": reset_temperature_scale_for_emos() always
+  writes both markers, and ml_bias._fit_T's minimize_scalar-based optimizer
+  essentially never lands on exactly T=1.0). Every subsequent commit through
+  fa183f65 (2026-08-10) refit above/global/sameday with growing sample
+  counts (23->26->32->44, 41->46->53->68, 45->61->71->102) while "below"
+  never moved at all.
+  Confirmed via a read-only copy of predictions.db (copied to scratchpad,
+  queried with plain sqlite3 -- NOT via tracker.py, per this project's
+  never-run-manual-tracker-scripts rule) that this is NOT a sample-size
+  problem: 33 real settled "below" rows exist today, well above
+  train_all_temperature_scaling's min_samples_condition=15 floor. The real
+  cause: train_all_temperature_scaling's per-condition loop (ml_bias.py)
+  only writes `existing[ctype] = {...}` when _fit_T returns non-None --
+  when _fit_T's minimize_scalar hits its T upper bound (8.0, meaning
+  DIRECTIONAL bias the T-scaling squash can't fix, not just overconfidence)
+  it returns None and the loop silently leaves the OLD entry untouched.
+  "below" has apparently hit this upper-bound case on every weekly retrain
+  since 06-27, so the placeholder never got overwritten even as real data
+  accumulated well past the sample floor.
+  Live consequence: apply_temperature_scaling's `if T is None or
+  abs(T - 1.0) < 0.01: return prob` treats T=1.0 as a no-op identity scale
+  -- below-condition predictions have been running with ZERO T-scaling
+  calibration correction this entire time (EMOS itself is not currently
+  active -- no data/emos_params.json on this host -- so T-scaling, not
+  EMOS, is the live path for below/above/global/sameday right now).
+
+Resolution: AskUserQuestion asked (delete the key now vs leave as-is +
+  backlog only). User chose delete now. Deleted the "below" key from
+  data/temperature_scale.json (main-clone commit 1faf7b58, same commit as
+  item 3's METAR git-tracking, pushed to origin). apply_temperature_scaling
+  now falls through to the real GLOBAL T (4.601267428939456 as of this
+  writing) for below-condition predictions instead of the T=1.0 no-op --
+  imperfect (not condition-specific) but a real, non-trivial calibration
+  correction instead of none, and takes effect immediately (no code change
+  needed, config._blend_weights-style fallback chain already exists in
+  apply_temperature_scaling for exactly this case).
+
+  Root cause (below-condition raw probabilities showing directional bias
+  strong enough to repeatedly hit _fit_T's T-upper-bound) is NOT fixed here
+  -- filed as its own follow-up below, since a correct fix needs
+  understanding WHY below is directionally biased (a model issue, not a
+  data-volume one), not just re-triggering the fit.
+
+[OPEN -- filed 2026-08-24 by batch-37 item 4's investigation] "below" condition-type predictions show directional bias strong enough to repeatedly hit ml_bias._fit_T's T-upper-bound, blocking any T-scaling refit
+Priority: Low-Medium -- below-condition predictions currently get the
+  GLOBAL T as an imperfect substitute (see the resolved entry immediately
+  above), not zero calibration, so this is a quality gap, not a total gap.
+Files: ml_bias.py (train_all_temperature_scaling, _fit_T) -- investigation
+  only, no code change proposed yet.
+
+Problem:
+  ml_bias._fit_T's NLL-minimization (minimize_scalar, bounds=(0.5, 8.0))
+  has hit the 8.0 upper bound on the "below" condition-type pool on every
+  weekly retrain since at least 2026-06-27 (see the resolved entry above for
+  the full trace), despite the pool growing from presumably near-zero to 33
+  real settled rows over that period. Per _fit_T's own docstring, hitting
+  the upper bound means the mean predicted probability and mean actual
+  outcome disagree in DIRECTION, not just confidence -- T-scaling (a single
+  monotonic squash toward 0.5) structurally cannot fix directional bias, so
+  no amount of additional "below" data will make this refit succeed as-is.
+
+What it would look like:
+  Needs someone to actually pull the below-condition prediction/outcome
+  pairs and look at the mean_pred vs mean_actual _fit_T's own warning log
+  already computes (train_all_temperature_scaling: %s T=%.4f hit upper
+  bound... mean_pred=%.4f mean_actual=%.4f) to characterize the bias's
+  direction and magnitude, then decide whether it's a real model issue in
+  the below-condition ensemble/blend path (worth fixing upstream) or a
+  data-quality issue (e.g. a systematic mislabeling of below outcomes) --
+  out of scope for a data-file fix.
+
+Why not now: Needs its own investigation session; the immediate live gap
+  (zero calibration on "below") is already mitigated by the resolved entry
+  above's global-T fallback.
+
+[RESOLVED 2026-08-24 -- batch-37 item 5 (M-13)] calibration.py trio: brier-gate rejection missing _uncalibrated flag, hand-tune preservation only covered condition weights, condition weights missing the shadow-type exclusion _load_rows already had; plus LOW nits
+Priority: Medium
+Files: calibration.py, tests/test_calibration.py, tests/test_phase2_batch_p.py, tests/test_phase2_batch_c.py
+
+Problem/Resolution, three main findings plus LOWs, all in calibration.py:
+  (a) _best_weights' brier-improvement-gate rejection path (val_baseline -
+  val_calibrated <= _BRIER_IMPROVEMENT_GATE) returned equal weights WITHOUT
+  the _uncalibrated flag the _MIN_VAL_ROWS path above it already carries --
+  the SAME "not actually calibrated" case, just reached a different way.
+  data/seasonal_weights.json's "summer" entry was exactly 1/3-1/3-1/3 with
+  no flag at the time the batch was written (self-healed to a real
+  calibrated fit by the time this session ran, per live re-verification --
+  no data repair needed, only the code fix). Now returns
+  {"ensemble"/"climatology"/"nws": equal weights, "_uncalibrated": True}.
+  Test: test_calibrate_blend_weights_flags_brier_gate_rejection_uncalibrated
+  (random/uncorrelated synthetic data that never clears the gate),
+  mutation-tested via Edit revert. Also fixed a pre-existing test
+  (test_calibrate_condition_weights_returns_per_type_dict) that summed ALL
+  dict values including the new _uncalibrated boolean (Python sums True as
+  1), which broke once this path started actually setting the flag on that
+  test's random/uncorrelated fixture data -- updated to exclude
+  "_"-prefixed keys from the sum, matching validate_weight_files' own
+  existing convention.
+  (b) Hand-tune preservation (calibrate_and_save) existed only for
+  condition_weights.json -- calibrate_city_weights' city_weights.json
+  (currently {} on disk) and calibrate_seasonal_weights' seasonal
+  _neutral placeholders overwrote unconditionally. Factored the inline
+  condition-only preservation block into a shared
+  _preserve_hand_tuned_weights(fresh, disk_path, label) helper, applied to
+  all three files. Covers two cases: a key present but flagged
+  _uncalibrated (the original condition case), and a key ABSENT from fresh
+  entirely -- calibrate_city_weights (unlike seasonal/condition) omits a
+  city's key outright when it's below _CITY_MIN rather than writing a
+  neutral placeholder, so a hand-tuned city below the floor would otherwise
+  be silently dropped from the file, not just overwritten. Tests:
+  test_preserve_hand_tuned_city_dropped_below_floor,
+  test_preserve_hand_tuned_seasonal_when_uncalibrated (both new, mirroring
+  the existing condition preservation tests in test_phase2_batch_p.py);
+  existing condition preservation tests re-run unchanged to confirm the
+  refactor didn't alter that behavior.
+  SELF-REVIEW CATCH (2026-08-24, found re-deriving the diff with fresh eyes
+  after the independent opus review agent hit repeated 529/server-overload
+  failures and couldn't complete -- self-reviewed instead of shipping
+  unreviewed): the initial (b) refactor's "key absent from fresh -> restore"
+  branch had no allow_missing guard, so it applied to ALL THREE callers, not
+  just city -- for seasonal/condition (whose results are meant to be the
+  complete canonical key set), a stray on-disk key absent from a fresh
+  result (e.g. a shadow condition type that leaked into condition_weights.
+  json before the (c) exclusion fix below ever shipped) would be silently
+  RESURRECTED into the written file forever, permanently defeating (c) for
+  any pre-existing contamination. Not an active bug today (verified the real
+  data/condition_weights.json currently holds only the 3 canonical keys),
+  but a real latent regression. Fixed: _preserve_hand_tuned_weights gained
+  an `allow_missing: bool = False` parameter; only city's call site passes
+  allow_missing=True. Test:
+  test_preserve_does_not_resurrect_a_key_absent_from_a_complete_condition_result,
+  mutation-tested (passed allow_missing=True for condition too via Edit,
+  confirmed the stray key comes back, restored).
+  (c) calibrate_condition_weights' SQL query lacked _load_rows' shadow-
+  condition-type exclusion (precip_month_total, snow_month_total,
+  hurricane_count, hurricane_next_event, storm_order) -- a shadow family
+  reaching 60 settled rows (min_samples default) would silently gain a live
+  blend-weight entry it was never meant to have. Added a module-level
+  _SHADOW_CONDITION_TYPES constant (single source of truth) --
+  _load_rows' exclusion tuple is now ("between", *_SHADOW_CONDITION_TYPES)
+  ("between" excluded there since seasonal/city calibration is above/
+  below-only), calibrate_condition_weights' query now excludes
+  _SHADOW_CONDITION_TYPES alone (no "between" exclusion -- it's a real
+  condition_weights.json key). Test:
+  test_calibrate_condition_weights_excludes_shadow_condition_types
+  (hurricane_count reaching 80 rows must not appear in the result),
+  mutation-tested via Edit revert.
+  LOWs: `date.today()` -> `utils.utc_today()` in _compute_recency_weight
+  (UTC-consistent with the rest of the codebase); the _MIN_VAL_ROWS
+  comment's "0.001" corrected to match the actual _BRIER_IMPROVEMENT_GATE
+  = 0.005; validate_weight_files gained a city-weights validation loop
+  (previously validated seasonal + condition only, never city at all --
+  no fixed expected-key list for cities, so it only validates whatever
+  entries ARE present) and a negative-weight check for the condition loop
+  (previously only checked sum-to-1, unlike seasonal's existing negative
+  check). Tests: test_errors_when_city_weights_dont_sum_to_1,
+  test_no_error_when_city_weights_valid (positive control),
+  test_errors_when_condition_weights_contain_negative_value -- all in
+  tests/test_phase2_batch_c.py::TestValidateWeightFiles.
+
+[RESOLVED 2026-08-24 -- batch-37 item 6 (M-22)] settlement-monitor restart re-seeded with a 120min window but cron reads with 720min -- a restart >2h into the window silently dropped still-valid signals on the next rewrite
+Priority: Medium
+Files: settlement_monitor.py, tests/test_settlement_monitor.py
+
+Problem:
+  _run_settlement_monitor_loop seeds in-memory state from disk via
+  read_settlement_signals(max_age_minutes=120) (P3-2, so a restart doesn't
+  re-fire already-written signals), then full-file-overwrites via
+  write_settlement_signals(all_signals) every loop pass. cron.py:2092 (the
+  consumer) reads with max_age_minutes=720. A restart more than 120 minutes
+  into the monitoring window would seed from disk missing any signal
+  between 120-720 minutes old (still valid to cron) -- the next
+  write_settlement_signals call (triggered by ANY new signal from ANY
+  city, not necessarily the same one) would then overwrite the file with
+  that signal silently excluded.
+
+Resolution: Changed the seed's max_age_minutes from 120 to 720 to match
+  cron's own consumer window. Test:
+  test_restart_seed_survives_a_full_rewrite_past_120min -- seeds a signal
+  timestamped 300 minutes old (past the old 120min window, within cron's
+  720min one), mocks check_city_settlement to return one fresh NEW signal
+  (forcing a real rewrite -- write_settlement_signals only fires when
+  all_signals is non-empty, so an all-old seed with no new signal would
+  leave the file untouched and not actually exercise the drop), and asserts
+  both signals survive the rewrite. Mutation-tested (reverted to 120 via
+  Edit, confirmed the old signal is dropped from the rewritten file while
+  the new one is present, restored) -- caught a real gap in the test's
+  first draft too: an all-old seed with the bug reproduced faithfully never
+  triggers a rewrite at all (0+0 signals never clears the `if all_signals`
+  guard), so the file is left untouched rather than actually losing data --
+  the mocked new signal was added specifically to force the write and make
+  the test meaningful.
+
+[RESOLVED 2026-08-24 -- batch-37 item 8 (M-30)] simulate_portfolio's correlated draws are side-blind (documentation only); plus L-9 nits: cross-call _DEFAULT_CORRELATIONS mutation, n_simulations=0 IndexError, inconsistent prob_positive defaults
+Priority: Medium (documentation) + Low (L-9 code fixes)
+Files: monte_carlo.py, tests/test_monte_carlo.py (new file)
+
+Problem/Resolution:
+  (a) monte_carlo.py:487ish correlates WIN indicators via the Cholesky
+  step, not weather itself -- mixed YES/NO cross-city positions on
+  correlated weather get modeled as positively correlated wins/losses when
+  the true relationship is anti-correlated (conservative for that pairing,
+  per run_stress_test's own KNOWN LIMITATION note for the analogous
+  side-blind gap in that function). Added an equivalent KNOWN LIMITATION
+  docstring note to simulate_portfolio (the function feeding the live
+  pre-trade VaR gate) and a one-line cross-reference from portfolio_var.
+  A real side-aware fix is out of scope (documented, not filed as a
+  separate backlog item -- the batch handoff already scoped this as
+  documentation-only).
+  (b) L-9: _DEFAULT_CORRELATIONS (module-level) was mutated in place by
+  every simulate_portfolio call that had >=3 dynamic city-pair samples --
+  permanently overwriting the static seed with whatever that call's live
+  data computed, with no way for a stale sample to age back out, and risk
+  of one test's fake correlation data leaking into the next call in the
+  same process. Now builds a local `active_correlations = dict(
+  _DEFAULT_CORRELATIONS)` copy each call and mutates/reads that instead of
+  the module global (3 downstream reference sites updated). Test:
+  test_seed_dict_unchanged_after_a_call_with_dynamic_override (asserts the
+  module dict is byte-identical after a call with dynamic overrides applied)
+  plus a positive control (test_dynamic_override_still_applied_within_the_
+  same_call, spies on _cholesky's input matrix to confirm the override was
+  actually used for THAT call). Mutation-tested via Edit revert -- also
+  discovered the mutated module dict persists across tests within the same
+  pytest PROCESS (not just the same call), a live demonstration of exactly
+  the contamination risk this fix closes.
+  (c) L-9: n_simulations=0 raised IndexError (`sim_pnls[(n-1)//2]` on an
+  empty list; `n-1 == -1`, Python's negative indexing then hits an
+  out-of-range empty list). Added an explicit `if not sim_pnls:` guard
+  before the percentile/median math, returning the same "zero simulated
+  forward risk" shape as the other degenerate-input early returns. Test:
+  test_n_simulations_zero_does_not_raise, mutation-tested via Edit revert.
+  (d) L-9: prob_positive defaulted to 0.5 on the no-open-trades early
+  return but 0.0 on the all-trades-past-date early return -- both represent
+  the same "zero simulated forward risk" state (every sim's P&L is exactly
+  0.0), and the real simulation loop's own convention (`p > 0`) treats a
+  flat 0.0 as NOT positive, so 0.0 is the consistent value; changed the
+  no-open-trades case from 0.5 to 0.0 (also applied to the new
+  n_simulations=0 guard in (c) for the same reason). Test:
+  test_no_open_trades_matches_all_past_date_default, mutation-tested via
+  Edit revert.
+  No existing tests/test_monte_carlo.py file existed prior to this batch
+  (simulate_portfolio/portfolio_var/run_stress_test were previously only
+  covered incidentally from other test files, e.g.
+  tests/test_phase3_batch_d.py's PSD-repair tests) -- created one for these
+  4 new tests; ran the pre-existing cross-file coverage
+  (test_live_execution.py/test_p9_p10.py/test_phase2_batch_f.py/
+  test_phase2_batch_h.py/test_phase3_batch_a.py/test_regression.py/
+  test_signal_quality.py, filtered to monte_carlo/simulate_portfolio/
+  portfolio_var/stress_test/correlat* keywords) alongside it to confirm no
+  regression: 22 passed.
+
+[RESOLVED 2026-08-24 -- batch-37 item 9 (L-6/tracker)] audit_settlement's hourly branch returned True without a rowcount check, unlike its rain/snow/daily siblings; plus an INFO docstring fix
+Priority: Low
+Files: tracker.py, tests/test_tracker.py
+
+Problem/Resolution:
+  audit_settlement's KXTEMPxxxH (hourly) branch executed its UPDATE and
+  unconditionally returned True, while the rain, snow, and daily branches
+  all capture the cursor and check `cur.rowcount < 1` (logging a warning
+  and returning False when the UPDATE matched no outcomes row) -- a caller
+  looping over many tickers (e.g. a backfill) using this function's
+  documented True/False contract (per its own docstring: "False... means
+  the row's prior value... was left completely untouched") would silently
+  over-count successful settlements for hourly tickers whose outcomes row
+  didn't exist. Mirrored the sibling branches' pattern exactly. Test:
+  test_audit_settlement_hourly_returns_false_when_no_matching_outcomes_row
+  (logs a prediction via tracker.log_prediction but never calls
+  log_outcome, so no matching outcomes row exists; asserts the fetch-
+  succeeds-but-UPDATE-matches-nothing case returns False), mutation-tested
+  via Edit revert.
+  INFO: get_member_accuracy's docstring claimed "std is the population
+  stdev" while the code (and its own inline comment) explicitly compute
+  sample stdev (statistics.stdev, ddof=1) -- "the conventional choice for
+  a standard-error calculation downstream." Code was correct and
+  intentional; docstring corrected to match.
+
+Batch-37 process notes: full ceremony per the 29-step workflow (calibration
+  feeds live gating per the batch's own Process note -- no LOW-tier
+  downgrade for steps 11-12 despite items 2/7/9 being LOW individually).
+  Two AskUserQuestion rounds: (1) item 3c's git-track-vs-fail-closed METAR
+  calibration decision and item 4's below-key delete-vs-leave decision,
+  asked together with the two operator quick-actions (delete data/
+  walk_forward_params.json, trigger a real METAR refit) -- user chose
+  git-track-only, delete-now, and approved both operator actions; (2) item
+  2's param_sweep.py L-17 range mismatch, which turned out to span 3 files
+  none of this batch owns (config.py/param_sweep.py/backtest.py) once
+  re-derived against real net_edge data -- user chose to defer to a new
+  backlog entry rather than ship a narrow one-file patch that wouldn't
+  actually change behavior either direction.
+
+  Independent opus review (effort=high) could not complete: 4 consecutive
+  spawn attempts all failed with API Error 529 (server overload,
+  user-confirmed independently mid-session), each a genuine retry with a
+  backed-off delay, not a single flaky call. Per the user's explicit
+  instruction ("can you do it your self memory has the president[ent]") to
+  self-review rather than keep retrying against sustained infrastructure
+  overload, did a full fresh-eyes self-review of the entire staged diff
+  instead (git diff --cached, file by file) using the same rubric prepared
+  for the agent (7 specific risk areas: the calibration.py preservation
+  refactor's regression risk, _is_win's fallback correctness, deactivate_
+  emos' full caller list via a repo-wide grep, get_emos_status' reordered
+  computation on a fresh-install/no-data-dir path, all 3 monte_carlo.py
+  active_correlations reference sites, settlement_monitor's 120->720 change
+  for hidden consequences, and test isolation from real production data).
+  This caught one real, previously-unreviewed regression: item 5(b)'s
+  _preserve_hand_tuned_weights refactor's "key absent from fresh -> restore"
+  branch applied to ALL THREE callers instead of just city, which would
+  have let a stray on-disk key (e.g. a shadow condition type) get silently
+  resurrected forever in seasonal_weights.json/condition_weights.json,
+  defeating item 5(c)'s exclusion fix for any pre-existing contamination --
+  fixed with an allow_missing parameter (see item 5's own resolution entry
+  above for the full detail), mutation-tested, verified not an active bug
+  today (real data/condition_weights.json holds only its 3 canonical keys).
+  No other issues found across the 7 risk areas; every mutation-testing
+  claim in the resolution entries above was independently re-confirmed
+  during this same self-review pass by re-running each cited Edit-revert.
+
+  Fresh test count at time of writing (re-derived via --collect-only
+  immediately before this sentence, not recalled from earlier in the
+  session): tests/test_calibration.py + test_phase2_batch_c.py +
+  test_phase2_batch_p.py + test_walk_forward.py + test_backtest.py +
+  test_settlement_monitor.py + test_monte_carlo.py + test_paper_metrics.py
+  + test_config_validation.py + test_ml_bias.py + test_tracker.py = 749
+  passed, 10 subtests passed (test_tracker.py), 0 failed. ruff/ruff-format/
+  mypy clean via the real pre-commit hook (python -m pre_commit run
+  --files, invoked directly since a plain `pre-commit` isn't on PATH in
+  this environment). graphify-out/ refresh deliberately skipped: same
+  worktree-cache-key mismatch batch-31/batch-32 both hit (manifest.json's
+  keys are tied to worktree frosty-leakey-c41696, not this session's
+  sibling checkout at C:\Users\thesa\batch-37-calibration-analytics-
+  integrity) -- noted rather than attempted, consistent with both prior
+  batches' precedent for the identical situation.
+
+  Two data-file operator actions (git-tracking the METAR calibration refit,
+  deleting temperature_scale.json's stuck "below" key) were committed
+  directly to the main clone's master (commit 1faf7b58) and pushed to
+  origin BEFORE this branch's code changes, per this project's existing
+  convention for calibration-artifact data commits (outside the normal
+  branch/PR flow, same as how seasonal/city/condition_weights.json already
+  get committed) -- this branch was rebased onto that commit before any
+  code work began, so there is no ordering hazard.

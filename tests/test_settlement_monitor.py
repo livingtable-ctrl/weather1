@@ -909,6 +909,105 @@ class TestMetarSettlementCalibration:
         assert signals[0]["confidence"] == pytest.approx(0.88)
 
 
+class TestSettlementMonitorRestartSeeding:
+    """M-22: a restart during the settlement window re-seeds all_signals
+    from disk (P3-2) but then full-file-overwrites via write_settlement_
+    signals every loop pass -- the seed window must match cron.py's own
+    consumer read window (720min, cron.py:2092), or a restart more than
+    120min into the window silently drops any older-but-still-cron-valid
+    signal from the rewrite.
+    """
+
+    @staticmethod
+    def _isolate_single_city(monkeypatch, sm):
+        monkeypatch.setattr(
+            sm,
+            "_MONITOR_CITIES",
+            {"NYC": {"station": "KNYC", "tz": "America/New_York"}},
+        )
+        monkeypatch.setattr(sm, "_CITY_SERIES_TICKER", {"NYC": "KXHIGHNY"})
+        monkeypatch.setattr(sm, "_MONITOR_START_HOUR", 0)
+        monkeypatch.setattr(sm, "_MONITOR_END_HOUR", 24)
+
+    @staticmethod
+    def _stop_after_one_pass(monkeypatch, sm):
+        class _StopLoop(Exception):
+            pass
+
+        def _stop(*_a, **_kw):
+            raise _StopLoop
+
+        monkeypatch.setattr(sm.time, "sleep", _stop)
+        return _StopLoop
+
+    def test_restart_seed_survives_a_full_rewrite_past_120min(
+        self, tmp_path, monkeypatch
+    ):
+        """A signal written 300 minutes ago (past the old 120min seed
+        window, still within cron's 720min consumer window) must survive
+        the very first write_settlement_signals() rewrite after a restart.
+
+        write_settlement_signals only fires when all_signals is non-empty
+        (settlement_monitor.py's `if all_signals:` guard), so a fresh NEW
+        signal is mocked in to force a real rewrite this pass -- otherwise
+        an all-old seed would leave the file untouched rather than actually
+        exercising the drop this test targets.
+
+        Mutation-tested: reverting the seed's max_age_minutes back to 120
+        makes this fail (the old signal is silently dropped on rewrite) --
+        confirmed via Edit revert.
+        """
+        from datetime import UTC, datetime, timedelta
+
+        import settlement_monitor as sm
+
+        self._isolate_single_city(monkeypatch, sm)
+        stop_loop = self._stop_after_one_pass(monkeypatch, sm)
+
+        signals_path = tmp_path / "settlement_signals.json"
+        monkeypatch.setattr(sm, "_SIGNALS_PATH", signals_path)
+
+        old_time = (datetime.now(UTC) - timedelta(minutes=300)).isoformat()
+        signals_path.write_text(
+            json.dumps(
+                {
+                    "signals": [
+                        {
+                            "ticker": "OLD-SIGNAL",
+                            "created_at": old_time,
+                            "outcome": "yes",
+                        }
+                    ]
+                }
+            )
+        )
+
+        def _one_new_signal(_city, _active_tickers):
+            return [
+                sm.build_settlement_signal("NEW-SIGNAL", _city, "yes", 0.85, 80.0, 72.0)
+            ]
+
+        monkeypatch.setattr(sm, "check_city_settlement", _one_new_signal)
+
+        class _FakeClient:
+            def get_markets(self, **_kwargs):
+                return []
+
+        with pytest.raises(stop_loop):
+            sm._run_settlement_monitor_loop(_FakeClient(), duration_minutes=120)
+
+        result = json.loads(signals_path.read_text())
+        tickers = [s["ticker"] for s in result["signals"]]
+        assert "NEW-SIGNAL" in tickers, (
+            "sanity check: the mocked new signal must actually be in the "
+            "rewritten file (proves the write really happened)"
+        )
+        assert "OLD-SIGNAL" in tickers, (
+            "a 300-minute-old signal (within cron's 720min consumer window) "
+            "must survive the restart-triggered rewrite"
+        )
+
+
 @pytest.mark.skipif(
     sys.platform != "win32", reason="cross-process lock uses msvcrt (Windows-only)"
 )

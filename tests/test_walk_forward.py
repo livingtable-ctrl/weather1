@@ -9,9 +9,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-def _make_trade(date_str: str, our_prob: float, settled_yes: bool) -> dict:
+def _make_trade(
+    date_str: str, our_prob: float, settled_yes: bool, side: str | None = None
+) -> dict:
     """Make a minimal trade record for backtesting."""
-    return {
+    trade = {
         "market_date": date_str,
         "our_prob": our_prob,
         "settled_yes": settled_yes,
@@ -19,6 +21,67 @@ def _make_trade(date_str: str, our_prob: float, settled_yes: bool) -> dict:
         "method": "ensemble",
         "edge": abs(our_prob - 0.5),
     }
+    if side is not None:
+        trade["side"] = side
+    return trade
+
+
+class TestIsWin:
+    def test_true_when_outcome_matches_side(self):
+        from backtest import _is_win
+
+        assert _is_win({"side": "yes", "settled_yes": True}) is True
+        assert _is_win({"side": "no", "settled_yes": False}) is True
+
+    def test_false_when_outcome_diverges_from_side(self):
+        """Positive control for the regression test below: a NO-side trade
+        that settled YES is a LOSS, even though settled_yes=True."""
+        from backtest import _is_win
+
+        assert _is_win({"side": "no", "settled_yes": True}) is False
+        assert _is_win({"side": "yes", "settled_yes": False}) is False
+
+    def test_falls_back_to_settled_yes_when_side_absent(self):
+        from backtest import _is_win
+
+        assert _is_win({"settled_yes": True}) is True
+        assert _is_win({"settled_yes": False}) is False
+
+
+class TestFindOptimalMinEdgeSideAware:
+    def test_scores_side_aware_win_rate_not_yes_settlement_rate(self):
+        """L-14: settled_yes alone is the YES-settlement rate, not a win
+        rate -- inverted for NO-side trades. 10 NO-side LOSSES (outcome=yes,
+        so settled_yes=True) only clear the 0.04 threshold; 10 YES-side WINS
+        clear both 0.04 and 0.05.
+
+        Scoring settled_yes directly (the bug) rates threshold 0.04 at 100%
+        ("wins") and ties threshold 0.05 at 100% too, picking 0.04 (first
+        threshold wins ties). Scoring outcome==side (the fix) rates 0.04 at
+        50% (the NO-side losses correctly count as losses) and 0.05 at
+        100%, correctly picking the higher threshold that excludes the
+        lossy pool.
+
+        Mutation-tested: reverting _find_optimal_min_edge's win sum from
+        _is_win(t) to t.get("settled_yes") makes this fail (returns 0.04
+        instead of 0.05) -- confirmed via Edit revert.
+        """
+        from backtest import _find_optimal_min_edge
+
+        no_side_losses = [
+            _make_trade(f"2025-01-{i:02d}", 0.54, True, side="no") for i in range(1, 11)
+        ]  # edge = |0.54-0.5| = 0.04; side=no, outcome=yes -> loss
+        yes_side_wins = [
+            _make_trade(f"2025-02-{i:02d}", 0.55, True, side="yes")
+            for i in range(1, 11)
+        ]  # edge = |0.55-0.5| = 0.05; side=yes, outcome=yes -> win
+
+        result = _find_optimal_min_edge(no_side_losses + yes_side_wins)
+
+        assert result == 0.05, (
+            f"expected the side-aware fix to pick 0.05 (excludes the lossy "
+            f"NO-side pool); got {result}"
+        )
 
 
 class TestWalkForwardSplit:

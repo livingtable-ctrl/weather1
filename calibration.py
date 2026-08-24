@@ -17,6 +17,7 @@ from pathlib import Path
 from paths import CITY_WEIGHTS_PATH as _CITY_WEIGHTS_PATH
 from paths import CONDITION_WEIGHTS_PATH, DATA_DIR
 from paths import SEASONAL_WEIGHTS_PATH as _SEASONAL_WEIGHTS_PATH
+from utils import utc_today as _utc_today
 
 _log = logging.getLogger(__name__)
 
@@ -28,13 +29,29 @@ _N_RANDOM_SEARCH = 200  # P3-7: random search replaces exhaustive 5,151-triple g
 _BRIER_IMPROVEMENT_GATE = 0.005  # min val-set improvement to accept calibrated weights
 _RECENCY_HALFLIFE_DAYS = 90  # exponential decay: trade 90 days old gets ~37% weight
 
+# M-13(c): shadow condition-type families (not real above/below/between
+# temperature conditions) that must never silently accumulate a live
+# blend-weight entry just by crossing a row-count floor -- single source of
+# truth for the exclusion list _load_rows (seasonal/city) and
+# calibrate_condition_weights both need. 'between' is a real value for
+# calibrate_condition_weights (it's one of the three condition types that
+# function calibrates) but not for _load_rows's multiday_predictions pool
+# (seasonal/city calibration is above/below-only, 'between' has its own
+# separate condition-weight model) -- callers add it to this list
+# themselves where it needs excluding, rather than baking it in here.
+_SHADOW_CONDITION_TYPES = (
+    "precip_month_total",
+    "snow_month_total",
+    "hurricane_count",
+    "hurricane_next_event",
+    "storm_order",
+)
+
 
 def _compute_recency_weight(date_str: str) -> float:
     """Exponential decay weight so recent settled trades count more in calibration."""
     try:
-        days_ago = (
-            _date_type.today() - _date_type.fromisoformat(str(date_str)[:10])
-        ).days
+        days_ago = (_utc_today() - _date_type.fromisoformat(str(date_str)[:10])).days
         return _math.exp(-max(0, days_ago) / _RECENCY_HALFLIFE_DAYS)
     except Exception:
         return 1.0
@@ -109,7 +126,7 @@ def _best_weights(
             best = (we, wc, wn)
 
     # M-19: refuse to return in-sample weights when validation set is too small.
-    # With < 10 val rows the _BRIER_IMPROVEMENT_GATE (0.001) is noise — a single
+    # With < 10 val rows the _BRIER_IMPROVEMENT_GATE (0.005) is noise — a single
     # lucky prediction can clear it and let overfitted weights enter production.
     _MIN_VAL_ROWS = 10
     if len(val_rows) < _MIN_VAL_ROWS:
@@ -129,16 +146,30 @@ def _best_weights(
     val_baseline = _brier(val_rows, *equal)
     val_calibrated = _brier(val_rows, *best)
     if val_baseline - val_calibrated <= _BRIER_IMPROVEMENT_GATE:
-        return {"ensemble": equal[0], "climatology": equal[1], "nws": equal[2]}
+        # M-13: this rejection is the SAME "not actually calibrated, equal
+        # weights returned" case as the _MIN_VAL_ROWS path above -- must
+        # carry the same _uncalibrated flag so _blend_weights falls through
+        # to the hardcoded days-out schedule instead of treating these as a
+        # real (if coincidentally equal) fit.
+        return {
+            "ensemble": equal[0],
+            "climatology": equal[1],
+            "nws": equal[2],
+            "_uncalibrated": True,
+        }
 
     return {"ensemble": best[0], "climatology": best[1], "nws": best[2]}
+
+
+_LOAD_ROWS_EXCLUDED_TYPES = ("between", *_SHADOW_CONDITION_TYPES)
+_LOAD_ROWS_EXCLUDE_SQL = ", ".join(f"'{t}'" for t in _LOAD_ROWS_EXCLUDED_TYPES)
 
 
 def _load_rows(db_path: Path) -> list[sqlite3.Row]:
     with sqlite3.connect(str(db_path)) as con:
         con.row_factory = sqlite3.Row
         return con.execute(
-            """
+            f"""
             SELECT p.city, p.market_date, p.condition_type,
                    p.ensemble_prob, p.nws_prob, p.clim_prob,
                    o.settled_yes
@@ -150,7 +181,7 @@ def _load_rows(db_path: Path) -> list[sqlite3.Row]:
               AND o.settled_yes IS NOT NULL
               AND (p.condition_type IS NULL
                    OR p.condition_type NOT IN
-                      ('between', 'precip_month_total', 'snow_month_total', 'hurricane_count', 'hurricane_next_event', 'storm_order'))
+                      ({_LOAD_ROWS_EXCLUDE_SQL}))
             """
         ).fetchall()
 
@@ -308,7 +339,7 @@ def calibrate_condition_weights(
     try:
         con.row_factory = sqlite3.Row
         raw_rows = con.execute(
-            """
+            f"""
             SELECT p.condition_type, p.market_date,
                    p.ensemble_prob, p.clim_prob, p.nws_prob,
                    o.settled_yes
@@ -319,6 +350,9 @@ def calibrate_condition_weights(
               AND p.nws_prob IS NOT NULL
               AND o.settled_yes IS NOT NULL
               AND (p.days_out IS NULL OR p.days_out >= 1)
+              AND (p.condition_type IS NULL
+                   OR p.condition_type NOT IN
+                      ({", ".join(f"'{t}'" for t in _SHADOW_CONDITION_TYPES)}))
             """
         ).fetchall()
     finally:
@@ -381,6 +415,54 @@ def load_condition_weights(
         return {}
 
 
+def _preserve_hand_tuned_weights(
+    fresh: dict, disk_path: Path, label: str, *, allow_missing: bool = False
+) -> None:
+    """Preserve manually-set weights auto-calibration would otherwise drop
+    or overwrite with a neutral/uncalibrated placeholder (M-13b).
+
+    Two cases: a key present in `fresh` but flagged _uncalibrated
+    (insufficient val rows, or no brier improvement — _best_weights'
+    fallback), and (only when allow_missing=True) a key ABSENT from `fresh`
+    entirely. The absent case is City-only: calibrate_city_weights (unlike
+    calibrate_seasonal_weights/calibrate_condition_weights, which always
+    emit every season/condition-type key with a _neutral placeholder) omits
+    the key outright for a city that doesn't clear _CITY_MIN — without this,
+    a hand-tuned city below that floor would be silently dropped from the
+    file entirely, not just overwritten.
+
+    allow_missing defaults to False for seasonal/condition specifically so a
+    key that's ABSENT from a complete, canonical result (e.g. a shadow
+    condition type deliberately excluded by calibrate_condition_weights'
+    own query, or any other on-disk key that no longer belongs) never gets
+    silently resurrected — those callers' result dicts are meant to be the
+    full canonical key set, so a key missing from them is a deliberate
+    exclusion, not an under-sampled placeholder. Mutates `fresh` in place.
+    """
+    if not disk_path.exists():
+        return
+    try:
+        existing = json.loads(disk_path.read_text())
+    except Exception as exc:
+        _log.warning(
+            "calibrate_and_save: failed to preserve %s weights: %s "
+            "— freshly-calibrated values will overwrite hand-tuned weights",
+            label,
+            exc,
+        )
+        return
+    for key, entry in existing.items():
+        if not isinstance(entry, dict) or entry.get("_uncalibrated"):
+            continue
+        fresh_entry = fresh.get(key)
+        if key not in fresh:
+            if allow_missing:
+                fresh[key] = entry
+            continue
+        if isinstance(fresh_entry, dict) and fresh_entry.get("_uncalibrated"):
+            fresh[key] = entry
+
+
 def calibrate_and_save(
     db_path: str | Path | None = None,
     data_dir: str | Path | None = None,
@@ -407,27 +489,17 @@ def calibrate_and_save(
     city = calibrate_city_weights(_db)
     condition = calibrate_condition_weights(_db)
 
-    # Preserve any manually-set condition weights that auto-calibration left as
-    # neutral (insufficient samples).  Without this, a weekly retrain on N<20
-    # above/below trades would overwrite hand-tuned weights with equal 1/3.
-    _cond_path = _dir / "condition_weights.json"
-    if _cond_path.exists():
-        try:
-            _existing = json.loads(_cond_path.read_text())
-            for _ctype, _entry in _existing.items():
-                if (
-                    _ctype in condition
-                    and condition[_ctype].get("_uncalibrated")
-                    and isinstance(_entry, dict)
-                    and not _entry.get("_uncalibrated")
-                ):
-                    condition[_ctype] = _entry
-        except Exception as exc:
-            _log.warning(
-                "calibrate_and_save: failed to preserve condition weights: %s "
-                "— freshly-calibrated values will overwrite hand-tuned weights",
-                exc,
-            )
+    # M-13b: preserve any manually-set weights auto-calibration left as
+    # neutral/uncalibrated (insufficient samples) or dropped outright
+    # (city). Without this, a weekly retrain on thin data would overwrite
+    # (or, for city, silently drop) hand-tuned weights.
+    _preserve_hand_tuned_weights(seasonal, _dir / "seasonal_weights.json", "seasonal")
+    _preserve_hand_tuned_weights(
+        city, _dir / "city_weights.json", "city", allow_missing=True
+    )
+    _preserve_hand_tuned_weights(
+        condition, _dir / "condition_weights.json", "condition"
+    )
 
     from safe_io import atomic_write_json_with_history
 
@@ -478,3 +550,17 @@ def validate_weight_files(
             )
         elif abs(sum(v for k, v in w.items() if not k.startswith("_")) - 1.0) > 0.005:
             _log.error("Condition weights for %s don't sum to 1.0: %s", ctype, w)
+        # L-9: reject negative individual weights — they produce probabilities outside [0,1]
+        elif any(v < 0 for k, v in w.items() if not k.startswith("_")):
+            _log.error("Condition weights for %s contain negative values: %s", ctype, w)
+
+    # M-13: city weights were never validated at all — unlike season/condition,
+    # there's no fixed expected-key list to check for absence (cities vary), so
+    # this only validates whatever entries ARE present.
+    for city_name, w in city.items():
+        if not isinstance(w, dict):
+            continue
+        if abs(sum(v for k, v in w.items() if not k.startswith("_")) - 1.0) > 0.005:
+            _log.error("City weights for %s don't sum to 1.0: %s", city_name, w)
+        elif any(v < 0 for k, v in w.items() if not k.startswith("_")):
+            _log.error("City weights for %s contain negative values: %s", city_name, w)

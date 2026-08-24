@@ -908,10 +908,25 @@ def check_overfitting(in_sample_brier: float, out_of_sample_brier: float) -> dic
 # ── Walk-Forward Backtesting ──────────────────────────────────────────────────
 
 
+def _is_win(trade: dict) -> bool:
+    """A win is outcome == side (paper.py:2491's own win convention) -- NOT
+    settled_yes alone, which is the YES-settlement rate and is INVERTED for
+    every NO-side trade (a NO bet that correctly predicted a non-YES outcome
+    settles settled_yes=False, i.e. a real win scored as a loss). Falls back
+    to settled_yes when a trade carries no "side" key (callers/fixtures that
+    predate side-tracking), so this stays backward compatible.
+    """
+    side = trade.get("side")
+    if side is not None:
+        outcome = "yes" if trade.get("settled_yes") else "no"
+        return outcome == side
+    return bool(trade.get("settled_yes"))
+
+
 def _find_optimal_min_edge(trades: list[dict]) -> float | None:
     """D4: Find the edge threshold that maximises win rate for trades above it.
     Returns the best threshold among [0.04..0.10] with >=10 qualifying trades,
-    or None if there is insufficient data.
+    or None if there is insufficient data. See _is_win for what "win" means.
     """
     THRESHOLDS = [0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10]
     best_threshold: float | None = None
@@ -920,7 +935,7 @@ def _find_optimal_min_edge(trades: list[dict]) -> float | None:
         subset = [t for t in trades if abs(t.get("edge", 0) or 0) >= thr]
         if len(subset) < 10:
             continue
-        wr = sum(1 for t in subset if t.get("settled_yes")) / len(subset)
+        wr = sum(1 for t in subset if _is_win(t)) / len(subset)
         if wr > best_wr:
             best_wr = wr
             best_threshold = thr
@@ -1114,6 +1129,10 @@ def run_paper_walk_forward() -> dict | None:
             "city": t.get("city", ""),
             "method": t.get("method", ""),
             "edge": t.get("net_edge", t.get("edge", 0)),
+            # D4/L-14: carried through so _find_optimal_min_edge can score
+            # outcome == side (a real win) instead of settled_yes alone
+            # (inverted for NO-side trades -- see _is_win).
+            "side": t.get("side"),
         }
         for t in trades_raw
         if t.get("outcome") in ("yes", "no")

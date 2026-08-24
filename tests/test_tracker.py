@@ -5910,6 +5910,51 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
             ).fetchone()
         self.assertIsNone(row[0])
 
+    def test_audit_settlement_hourly_returns_false_when_no_matching_outcomes_row(
+        self,
+    ):
+        """batch-37 item 9 (L-6): the hourly branch never checked
+        cur.rowcount, unlike the rain/snow/daily branches (all of which
+        return False + warn when the UPDATE matches 0 rows) -- a fetch that
+        succeeds but has no matching outcomes row (log_outcome never
+        called) must NOT be reported as a successful settlement, since
+        nothing was actually written and a caller looping over many
+        tickers (e.g. a backfill) would otherwise silently over-count.
+
+        Mutation-tested: reverting to the plain `con.execute(...)` +
+        unconditional `return True` (dropping the rowcount check) makes
+        this fail -- confirmed via Edit revert.
+        """
+        from unittest.mock import patch
+
+        import weather_markets
+
+        ticker = "KXTEMPNYCH-26JUL2014-T75.99"
+        analysis = {
+            "condition": {"type": "above", "threshold": 75.99, "var": "max"},
+            "forecast_prob": 0.5,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "hourly_ensemble",
+        }
+        # log_prediction only -- no log_outcome, so no matching outcomes row
+        # exists for the UPDATE to hit.
+        tracker.log_prediction(ticker, "NYC", date(2026, 7, 20), analysis)
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KNYC"
+            ),
+            patch.object(tracker, "_fetch_asos_hour_temp", return_value=76.4),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertFalse(
+            result,
+            "must return False when the UPDATE matched no outcomes row, "
+            "even though the METAR fetch itself succeeded",
+        )
+
     def test_audit_settlement_daily_ticker_still_uses_daily_path(self):
         """Companion regression: an ordinary daily ticker must not be routed
         through the hourly branch -- confirms the prefix check is specific,

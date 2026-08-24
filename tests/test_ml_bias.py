@@ -1419,7 +1419,49 @@ class TestEmos:
         from ml_bias import get_emos_status
 
         monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", tmp_path / "emos_params.json")
-        assert get_emos_status() == {"active": False}
+        # batch-37 item 4: t_pinned is now computed even in the inactive
+        # case -- isolate _TEMP_PATH so this doesn't read the real machine's
+        # data/temperature_scale.json.
+        monkeypatch.setattr(
+            ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale_dne.json"
+        )
+        assert get_emos_status() == {"active": False, "t_pinned": False}
+
+    def test_get_emos_status_surfaces_t_pinned_when_inactive_after_failed_restore(
+        self, tmp_path, monkeypatch
+    ):
+        """batch-37 item 4: the exact post-deactivate-with-failed-restore
+        state -- emos_params.json is gone (active correctly False) but
+        temperature_scale.json's reset_for_emos placeholders were never
+        restored (t_pinned still True). A prior version's early return for
+        the inactive case never computed t_pinned at all, hiding this from
+        any caller checking status right after deactivation.
+
+        Mutation-tested: reverting to the early `return {"active": False}`
+        (before t_pinned is computed) makes this fail with a KeyError on
+        status["t_pinned"] -- confirmed via Edit revert.
+        """
+        import json
+
+        import ml_bias
+        from ml_bias import get_emos_status
+
+        monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", tmp_path / "emos_params.json")
+        temp_path = tmp_path / "temperature_scale.json"
+        monkeypatch.setattr(ml_bias, "_TEMP_PATH", temp_path)
+        temp_path.write_text(
+            json.dumps(
+                {
+                    key: {"T": 1.0, "n": 10, "reset_for_emos": True}
+                    for key in ml_bias.EMOS_COVERED_CONDITION_KEYS
+                }
+            )
+        )
+
+        status = get_emos_status()
+
+        assert status["active"] is False
+        assert status["t_pinned"] is True
 
     def test_get_emos_status_active_returns_all_fields(self, tmp_path, monkeypatch):
         import ml_bias
@@ -1467,7 +1509,7 @@ class TestEmos:
         assert status["error"]
 
     def test_get_emos_status_toctou_delete_race_is_not_reported_as_corrupt(
-        self, monkeypatch
+        self, tmp_path, monkeypatch
     ):
         """AUD-0073: a concurrent deactivate_emos() unlinking the file
         between this function's exists() check and its read() must report
@@ -1493,9 +1535,15 @@ class TestEmos:
                 )
 
         monkeypatch.setattr(ml_bias, "_EMOS_PARAMS_PATH", _RacyPath())
+        # batch-37 item 4: t_pinned is now computed unconditionally (before
+        # the exists() check even runs) -- isolate _TEMP_PATH so this
+        # doesn't read the real machine's data/temperature_scale.json.
+        monkeypatch.setattr(
+            ml_bias, "_TEMP_PATH", tmp_path / "temperature_scale_dne.json"
+        )
 
         status = get_emos_status()
-        assert status == {"active": False}
+        assert status == {"active": False, "t_pinned": False}
         assert "corrupt" not in status
 
     def test_get_emos_status_other_read_errors_still_report_corrupt(self, monkeypatch):
@@ -1839,7 +1887,7 @@ class TestEmos:
 
         save_emos_params(1.0, 1.0, 1.0, 0.1, n=50)
 
-        was_active = deactivate_emos()
+        was_active, _restored = deactivate_emos()
 
         assert was_active is True
         assert not (isolated_temp_paths / "emos_params.json").exists()
@@ -1847,9 +1895,10 @@ class TestEmos:
     def test_deactivate_emos_noop_when_already_inactive(self, isolated_temp_paths):
         from ml_bias import deactivate_emos
 
-        was_active = deactivate_emos()
+        was_active, restored = deactivate_emos()
 
         assert was_active is False
+        assert restored is False  # no snapshot to restore -- benign no-op
 
     def test_deactivate_emos_archives_to_history_before_unlink(
         self, isolated_temp_paths
@@ -1870,6 +1919,38 @@ class TestEmos:
         import json
 
         assert json.loads(archived[0].read_text())["a"] == pytest.approx(1.23)
+
+    def test_deactivate_emos_propagates_successful_restore(self, isolated_temp_paths):
+        """batch-37 item 4: deactivate_emos() must propagate the restore
+        result, not just was_active -- positive control (restored=True) for
+        the noop test above's restored=False. A prior version discarded
+        restore_temperature_scale_from_emos_snapshot()'s return entirely,
+        so cmd_emos_deactivate's CLI print always claimed success even when
+        the restore silently failed.
+
+        Mutation-tested: reverting deactivate_emos() to `return was_active`
+        (dropping the restored element) makes this fail with a TypeError on
+        unpack -- confirmed via Edit revert.
+        """
+        import json
+
+        from ml_bias import (
+            deactivate_emos,
+            reset_temperature_scale_for_emos,
+            save_emos_params,
+        )
+
+        temp_path = isolated_temp_paths / "temperature_scale.json"
+        temp_path.write_text(json.dumps({"global": {"T": 5.2, "n": 40}}))
+        save_emos_params(1.0, 1.0, 1.0, 0.1, n=50)
+        reset_temperature_scale_for_emos()
+        assert json.loads(temp_path.read_text())["global"]["T"] == 1.0
+
+        was_active, restored = deactivate_emos()
+
+        assert was_active is True
+        assert restored is True
+        assert json.loads(temp_path.read_text())["global"] == {"T": 5.2, "n": 40}
 
     def test_load_emos_params_picks_up_change_without_process_restart(
         self, isolated_temp_paths

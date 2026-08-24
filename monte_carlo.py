@@ -224,6 +224,21 @@ def simulate_portfolio(
         "current_balance": float,
         "n_simulations": int,
       }
+
+    KNOWN LIMITATION (M-30): correlated draws are side-blind. The Cholesky
+    step below applies each city-pair's correlation directly to the WIN
+    indicator z[i] <= thresholds[i], regardless of each position's side.
+    Two same-city, opposite-side positions (a YES-above and a NO-above on
+    correlated weather) get modeled as POSITIVELY correlated wins/losses,
+    when the true relationship is anti-correlated (a shared weather draw
+    that helps one side hurts the other). This is the conservative
+    direction for that pairing (it overstates the portfolio's downside
+    co-movement, not the reverse), so the VaR gate this feeds
+    (portfolio_var, order_executor.py's MAX_VAR_DOLLARS check) errs toward
+    being too cautious rather than too permissive -- but it's still a real
+    modeling gap, not a deliberate design choice. A correct side-aware fix
+    is out of scope here; see run_stress_test's own KNOWN LIMITATION note
+    for the analogous side-blind gap in that function.
     """
     from paper import get_balance
 
@@ -235,19 +250,32 @@ def simulate_portfolio(
             "p5_pnl": 0.0,
             "p10_pnl": 0.0,
             "p90_pnl": 0.0,
-            "prob_positive": 0.5,
+            # L-9: was 0.5 here vs 0.0 on the all-trades-past-date early
+            # return below -- both are "zero simulated forward risk" (every
+            # sim's P&L is exactly 0.0), and the real simulation loop's own
+            # convention (`p > 0`) treats a flat 0.0 P&L as NOT positive, so
+            # 0.0 is the consistent value for both.
+            "prob_positive": 0.0,
             "prob_ruin": 0.0,
             "current_balance": current_balance,
             "n_simulations": n_simulations,
         }
 
-    # Refresh city-pair correlations from recent settled data
+    # Refresh city-pair correlations from recent settled data. L-9: build a
+    # fresh LOCAL copy each call rather than mutating the module-level
+    # _DEFAULT_CORRELATIONS in place -- that dict is meant to be this
+    # function's static SEED, not an ever-growing cache that permanently
+    # absorbs whatever the most recent call's dynamic estimate happened to
+    # be (a stale sample never ages back out even once real conditions
+    # change, and one test's fake correlation data could leak into the next
+    # call in the same process).
+    active_correlations = dict(_DEFAULT_CORRELATIONS)
     from tracker import get_recent_city_correlations as _get_recent_corr
 
     _dynamic = _get_recent_corr(days=60)
     if len(_dynamic) >= 3:
         for (c1, c2), corr in _dynamic.items():
-            _prior = _DEFAULT_CORRELATIONS.get((c1, c2))
+            _prior = active_correlations.get((c1, c2))
             # Make drift observable: this can silently overwrite a hand-tuned
             # seed with a small-sample (>=5 dates, per tracker.py's own
             # min_pairs gate) live estimate -- log it rather than let a
@@ -262,8 +290,8 @@ def simulate_portfolio(
                     corr,
                     _prior,
                 )
-            _DEFAULT_CORRELATIONS[(c1, c2)] = corr
-            _DEFAULT_CORRELATIONS[(c2, c1)] = corr
+            active_correlations[(c1, c2)] = corr
+            active_correlations[(c2, c1)] = corr
 
     # Maker fee (not taker): live/paper entries are always resting midpoint GTC
     # limit orders, which pay $0 on this bot's markets (see KALSHI_MAKER_FEE_RATE).
@@ -424,8 +452,8 @@ def simulate_portfolio(
     # dimension matches n_trades = len(trade_params).
     corr_mat = position_correlation_matrix(active_trades)
 
-    # Apply dynamic city-pair correlation overrides from _DEFAULT_CORRELATIONS
-    if _DEFAULT_CORRELATIONS:
+    # Apply dynamic city-pair correlation overrides from active_correlations
+    if active_correlations:
         for _ii, _ti in enumerate(active_trades):
             for _jj, _tj in enumerate(active_trades):
                 if _ii >= _jj:
@@ -434,13 +462,13 @@ def simulate_portfolio(
                 _cj = _tj.get("city") or ""
                 if not _ci or not _cj:
                     continue
-                _rho = _DEFAULT_CORRELATIONS.get((_ci, _cj))
+                _rho = active_correlations.get((_ci, _cj))
                 if _rho is None:
                     # `or` here would treat a legitimate 0.0 correlation as
                     # falsy and skip straight to this fallback, silently
                     # dropping the override — static seeds are only stored
                     # in one direction, so this reverse lookup is still needed.
-                    _rho = _DEFAULT_CORRELATIONS.get((_cj, _ci))
+                    _rho = active_correlations.get((_cj, _ci))
                 if _rho is not None:
                     corr_mat[_ii][_jj] = _rho
                     corr_mat[_jj][_ii] = _rho
@@ -495,6 +523,24 @@ def simulate_portfolio(
             )
         sim_pnls.append(total_pnl)
 
+    if not sim_pnls:
+        # L-9: n_simulations<=0 -- no draws to summarize. Same "zero
+        # simulated forward risk" shape as the no-open-trades/all-past-date
+        # early returns above (median/percentiles at 0, prob_positive 0.0
+        # to match those same returns' convention).
+        return {
+            "median_pnl": 0.0,
+            "p5_pnl": 0.0,
+            "p10_pnl": 0.0,
+            "p90_pnl": 0.0,
+            "prob_positive": 0.0,
+            "prob_ruin": 0.0,
+            "current_balance": round(current_balance, 2),
+            "n_simulations": n_simulations,
+            "correlation_applied": False,
+            "n_clamped": n_clamped,
+        }
+
     sim_pnls.sort()
     n = len(sim_pnls)
     median_pnl = (sim_pnls[(n - 1) // 2] + sim_pnls[n // 2]) / 2
@@ -534,6 +580,10 @@ def portfolio_var(
     confidence=0.05 → 5th-percentile outcome (95% VaR).
     A negative return means a loss; e.g. -42.10 means there's a 5% chance
     of losing more than $42.10.
+
+    Feeds this directly from simulate_portfolio's correlated draws -- see
+    that function's own KNOWN LIMITATION note (M-30: side-blind city-pair
+    correlation) for the caveat this VaR figure inherits.
     """
     result = simulate_portfolio(
         open_trades, n_simulations=n_simulations, include_distribution=True

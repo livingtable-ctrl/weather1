@@ -570,4 +570,77 @@ def test_calibrate_condition_weights_returns_per_type_dict():
     assert "below" in weights
     for w in weights.values():
         assert "ensemble" in w
-        assert abs(sum(w.values()) - 1.0) < 0.01, "weights must sum to 1"
+        # M-13(a): random/uncorrelated ep/cp/np vs y means this data never
+        # clears the brier-improvement gate, so these come back _uncalibrated
+        # (equal weights) -- exclude the "_"-prefixed flag from the sum,
+        # same convention validate_weight_files already uses.
+        _weight_sum = sum(v for k, v in w.items() if not k.startswith("_"))
+        assert abs(_weight_sum - 1.0) < 0.01, "weights must sum to 1"
+
+
+def test_calibrate_condition_weights_excludes_shadow_condition_types():
+    """M-13(c): calibrate_condition_weights must exclude the same shadow
+    condition-type families (_load_rows' exclusion list, e.g.
+    hurricane_count) as calibrate_seasonal_weights/calibrate_city_weights
+    already do via _load_rows -- a shadow family reaching min_samples rows
+    must NOT silently gain a live blend-weight entry.
+
+    Mutation-tested: removing the shadow-type filter from
+    calibrate_condition_weights' SQL query makes this fail (hurricane_count
+    appears in the result) -- confirmed via Edit revert.
+    """
+    import os
+    import random
+    import sqlite3
+    import tempfile
+
+    from calibration import calibrate_condition_weights
+
+    random.seed(2)
+    with tempfile.TemporaryDirectory() as d:
+        db = os.path.join(d, "predictions.db")
+        con = sqlite3.connect(db)
+        con.executescript(
+            """
+            CREATE TABLE predictions (
+                ticker TEXT, condition_type TEXT, market_date TEXT,
+                ensemble_prob REAL, clim_prob REAL, nws_prob REAL,
+                days_out INTEGER
+            );
+            CREATE TABLE outcomes (
+                ticker TEXT, settled_yes INTEGER, disputed INTEGER DEFAULT 0
+            );
+            CREATE VIEW outcomes_valid AS
+                SELECT * FROM outcomes WHERE disputed IS NULL OR disputed = 0;
+        """
+        )
+        # "hurricane_count" is a shadow family, not a real above/below/between
+        # condition -- 80 rows comfortably clears the default min_samples=60.
+        for i in range(80):
+            t = f"hurricane_count-{i}"
+            month = (i % 12) + 1
+            date_str = f"2025-{month:02d}-{(i % 28) + 1:02d}"
+            con.execute(
+                "INSERT INTO predictions VALUES (?,?,?,?,?,?,?)",
+                (
+                    t,
+                    "hurricane_count",
+                    date_str,
+                    random.uniform(0.3, 0.8),
+                    random.uniform(0.3, 0.7),
+                    random.uniform(0.3, 0.7),
+                    1,
+                ),
+            )
+            con.execute(
+                "INSERT INTO outcomes (ticker, settled_yes) VALUES (?,?)",
+                (t, random.randint(0, 1)),
+            )
+        con.commit()
+        con.close()
+
+        weights = calibrate_condition_weights(db)
+
+    assert "hurricane_count" not in weights, (
+        "shadow condition-type family must never gain a live blend-weight entry"
+    )
