@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, kalshiMarketUrl } from '../shared.jsx';
+import { normCity, kalshiMarketUrl, summarizeBulkResults, effectiveSelection } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
 // WeatherAlertBanner — NWS active alerts for cities with open positions
@@ -133,8 +133,8 @@ export default function PositionsTab() {
   // with no operator confirmation at all, exactly the bug this whole fix
   // exists to close off.
   function handleBulkClose() {
-    if (selectedIds.size === 0) return;
-    const candidates = filtered.filter(p => selectedIds.has(rowKey(p)));
+    if (effSelectedIds.size === 0) return;
+    const candidates = filtered.filter(p => effSelectedIds.has(rowKey(p)));
     // rowKey falls back to ticker for a position with no real id yet (mock
     // data, or a real trade whose id came back null) so it's still
     // selectable in the UI -- but /api/close-position needs the real id,
@@ -149,22 +149,42 @@ export default function PositionsTab() {
     }
     setBulkActionMsg(`Closing ${positionsToClose.length} positions...`);
 
-    Promise.all(positionsToClose.map(p =>
+    Promise.allSettled(positionsToClose.map(p =>
       fetch('/api/close-position', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader() },
         body: JSON.stringify({ trade_id: p.id, exit_price: p.mark || 0, manual: false }),
       }).then(r => r.json())
-    )).then(() => {
-      setBulkActionMsg(
-        skipped > 0
-          ? `✓ Closed ${positionsToClose.length} — skipped ${skipped} with no live quote`
-          : `✓ Closed ${positionsToClose.length} positions`
-      );
-      setSelectedIds(new Set());
+    )).then(results => {
+      // C-2 fix: count what the responses actually said, not an
+      // unconditional "all N succeeded" -- a rejected fetch (network
+      // failure) or a fulfilled response carrying {error} both count as
+      // failed, so the toast can never claim a close that didn't happen.
+      const { succeeded, failed } = summarizeBulkResults(results);
+      const parts = [];
+      if (succeeded > 0) parts.push(`✓ Closed ${succeeded}`);
+      if (failed > 0) parts.push(`✗ ${failed} failed`);
+      if (skipped > 0) parts.push(`skipped ${skipped} with no live quote`);
+      setBulkActionMsg(parts.length ? parts.join(' — ') : '✗ Bulk close failed');
+      // opus review LOW-10: only drop the keys this action actually
+      // touched (candidates), not the whole selection -- a filter-hidden
+      // selection made earlier must survive a bulk close the same way it
+      // survives everywhere else in the non-destructive C-3 model (the
+      // Clear button, the header checkbox, SignalsTab's bulk actions).
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        candidates.forEach(p => next.delete(rowKey(p)));
+        return next;
+      });
       M.refresh();
       setTimeout(() => setBulkActionMsg(''), 4000);
     }).catch(() => {
+      // opus review LOW-B: Promise.allSettled itself never rejects, but a
+      // throw inside the .then body above (realistically M.refresh()) was
+      // previously caught by Promise.all's .catch() -- allSettled dropped
+      // that safety net. Without this, an uncaught rejection here would
+      // leave the "Closing N positions..." toast pinned with no error
+      // shown and no timeout ever clearing it.
       setBulkActionMsg('✗ Bulk close failed');
       setTimeout(() => setBulkActionMsg(''), 3000);
     });
@@ -262,6 +282,17 @@ export default function PositionsTab() {
     );
   }, [filter, sortKey, M.positions]);
 
+  // C-3 fix: selectedIds itself is never pruned by the filter -- a selection
+  // made before typing into the filter box survives and reappears intact if
+  // the filter is cleared. Everywhere a count/checkbox/action-target is
+  // displayed or acted on, use this filtered-visible intersection instead,
+  // so "N selected" and what "Close All" actually touches always agree with
+  // what's currently on screen.
+  const effSelectedIds = useMemo(
+    () => effectiveSelection(selectedIds, filtered.map(rowKey)),
+    [selectedIds, filtered]
+  );
+
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 18 }}>
@@ -290,20 +321,24 @@ export default function PositionsTab() {
       </div>
 
       {/* Bulk action bar */}
-      {selectedIds.size > 0 && (
+      {effSelectedIds.size > 0 && (
         <div style={{
           position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
           background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
           padding: '12px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
           display: 'flex', gap: 16, alignItems: 'center', zIndex: 100,
         }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{selectedIds.size} selected</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{effSelectedIds.size} selected</span>
           <button onClick={handleBulkClose} style={{
             padding: '6px 14px', borderRadius: 6, border: '1px solid #ef4444',
             background: 'rgba(239,68,68,0.08)', color: '#ef4444',
             fontSize: 12, fontWeight: 600, cursor: 'pointer',
           }}>Close All</button>
-          <button onClick={() => setSelectedIds(new Set())} style={{
+          <button onClick={() => setSelectedIds(prev => {
+            const next = new Set(prev);
+            effSelectedIds.forEach(id => next.delete(id));
+            return next;
+          })} style={{
             padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border)',
             background: 'transparent', color: 'var(--text-muted)',
             fontSize: 12, fontWeight: 600, cursor: 'pointer',
@@ -332,13 +367,18 @@ export default function PositionsTab() {
               <th style={{ padding: '12px 16px', width: 40 }}>
                 <input
                   type="checkbox"
-                  checked={selectedIds.size > 0 && selectedIds.size === filtered.length}
+                  checked={effSelectedIds.size > 0 && effSelectedIds.size === filtered.length}
                   onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedIds(new Set(filtered.map(rowKey)));
-                    } else {
-                      setSelectedIds(new Set());
-                    }
+                    // Only ever add/remove the currently-visible rows -- a
+                    // selection made under a different filter is left alone
+                    // (see effSelectedIds), matching the "select all" the
+                    // operator can actually see, not a global reset.
+                    setSelectedIds(prev => {
+                      const next = new Set(prev);
+                      if (e.target.checked) filtered.forEach(p => next.add(rowKey(p)));
+                      else filtered.forEach(p => next.delete(rowKey(p)));
+                      return next;
+                    });
                   }}
                   style={{ cursor: 'pointer' }}
                 />

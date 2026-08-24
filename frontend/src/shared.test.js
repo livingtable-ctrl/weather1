@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPaperOrderBody, sideAwareEntryPrice } from './shared.jsx';
+import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus } from './shared.jsx';
 
 // batch-26 item 1: the signals cache (and this opp object) stores
 // yes_bid/yes_ask/forecast_prob/market_prob in YES-space regardless of the
@@ -166,5 +166,176 @@ describe('sideAwareEntryPrice', () => {
     const price = sideAwareEntryPrice(opp);
     expect(price).toBeCloseTo(1 - 0.60, 10);
     expect(price).not.toBeCloseTo(opp.market_prob / 100, 5);
+  });
+});
+
+// -----------------------------------------------------------------------
+// summarizeBulkResults — batch-41 C-1/C-2: bulk-approve and bulk-close both
+// used to print an unconditional "✓ Placed N" / "✓ Closed N" toast without
+// inspecting what the N responses actually said. These tests prove the
+// counting logic itself distinguishes real successes from failures -- the
+// exact guard the original bug never had.
+// -----------------------------------------------------------------------
+describe('summarizeBulkResults', () => {
+  it('all fulfilled with no error field: every response counts as succeeded', () => {
+    const results = [
+      { status: 'fulfilled', value: { ok: true } },
+      { status: 'fulfilled', value: { ok: true } },
+      { status: 'fulfilled', value: { ok: true } },
+    ];
+    expect(summarizeBulkResults(results)).toEqual({ succeeded: 3, failed: 0, total: 3 });
+  });
+
+  it('a fulfilled response carrying {error} is NOT counted as a success', () => {
+    // This is the positive control for the original bug: prove the counter
+    // actually inspects response bodies rather than trusting Promise
+    // settlement alone (a resolved fetch that the server rejected still
+    // "fulfills" the promise).
+    const results = [
+      { status: 'fulfilled', value: { ok: true } },
+      { status: 'fulfilled', value: { error: 'insufficient balance' } },
+      { status: 'fulfilled', value: { ok: true } },
+    ];
+    expect(summarizeBulkResults(results)).toEqual({ succeeded: 2, failed: 1, total: 3 });
+  });
+
+  it('a rejected settlement (network failure) counts as failed, not silently dropped', () => {
+    const results = [
+      { status: 'fulfilled', value: { ok: true } },
+      { status: 'rejected', reason: new TypeError('Failed to fetch') },
+    ];
+    expect(summarizeBulkResults(results)).toEqual({ succeeded: 1, failed: 1, total: 2 });
+  });
+
+  it('all responses carry {error}: succeeded is 0, never the unconditional total', () => {
+    const results = [
+      { status: 'fulfilled', value: { error: 'kill switch active' } },
+      { status: 'fulfilled', value: { error: 'kill switch active' } },
+    ];
+    const { succeeded, failed, total } = summarizeBulkResults(results);
+    expect(succeeded).toBe(0);
+    expect(failed).toBe(2);
+    // Positive control that total (the old, buggy count) and succeeded
+    // (the new, correct count) actually diverge here -- proves the fix
+    // isn't a no-op that happens to equal the old behavior in this case.
+    expect(succeeded).not.toBe(total);
+  });
+
+  it('custom getError extracts a nested error field (SignalsTab wraps {opp, d})', () => {
+    const results = [
+      { status: 'fulfilled', value: { opp: { ticker: 'A' }, d: { ok: true } } },
+      { status: 'fulfilled', value: { opp: { ticker: 'B' }, d: { error: 'no edge' } } },
+    ];
+    expect(summarizeBulkResults(results, (v) => v.d?.error)).toEqual({
+      succeeded: 1, failed: 1, total: 2,
+    });
+  });
+
+  it('empty results: zero everything, not a crash or NaN', () => {
+    expect(summarizeBulkResults([])).toEqual({ succeeded: 0, failed: 0, total: 0 });
+  });
+});
+
+// -----------------------------------------------------------------------
+// effectiveSelection — batch-41 C-3: a bulk-selection count/checkbox/action
+// must always agree with what's currently visible under a filter, without
+// permanently losing a selection made before the filter was applied.
+// -----------------------------------------------------------------------
+describe('effectiveSelection', () => {
+  it('selection entirely within the visible set is returned unchanged', () => {
+    const selected = new Set(['a', 'b']);
+    const eff = effectiveSelection(selected, ['a', 'b', 'c']);
+    expect([...eff].sort()).toEqual(['a', 'b']);
+  });
+
+  it('a selected id no longer visible is excluded from the effective set', () => {
+    // This is the exact C-3 bug: 10 selected, a filter narrows the table to
+    // 2 visible rows -- the effective (actionable/displayed) selection must
+    // be 2, not 10.
+    const selected = new Set(['a', 'b', 'c', 'd']);
+    const eff = effectiveSelection(selected, ['a', 'c']);
+    expect([...eff].sort()).toEqual(['a', 'c']);
+    expect(eff.size).toBe(2);
+    expect(eff.size).not.toBe(selected.size);
+  });
+
+  it('does not mutate the original selectedIds set', () => {
+    const selected = new Set(['a', 'b', 'c']);
+    effectiveSelection(selected, ['a']);
+    expect(selected.size).toBe(3);
+    expect([...selected].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('non-destructive: a selection excluded by a narrow filter reappears once the filter widens again', () => {
+    // Chosen design (AskUserQuestion, batch-41 C-3): selectedIds itself is
+    // never pruned by filtering. Calling effectiveSelection again against a
+    // wider visible set, with the SAME original selectedIds untouched,
+    // must restore what a narrower filter had hidden -- proving nothing was
+    // silently and permanently dropped.
+    const selected = new Set(['a', 'b']);
+    const narrowed = effectiveSelection(selected, ['a']);
+    expect([...narrowed]).toEqual(['a']);
+    const widened = effectiveSelection(selected, ['a', 'b', 'c']);
+    expect([...widened].sort()).toEqual(['a', 'b']);
+  });
+
+  it('accepts visible keys as a Set or a plain array with identical results', () => {
+    const selected = new Set(['x', 'y', 'z']);
+    const viaArray = effectiveSelection(selected, ['x', 'y']);
+    const viaSet = effectiveSelection(selected, new Set(['x', 'y']));
+    expect([...viaArray].sort()).toEqual([...viaSet].sort());
+  });
+
+  it('empty selection or empty visible set both yield an empty result', () => {
+    expect(effectiveSelection(new Set(), ['a', 'b']).size).toBe(0);
+    expect(effectiveSelection(new Set(['a', 'b']), []).size).toBe(0);
+  });
+});
+
+// -----------------------------------------------------------------------
+// gradGateStatus — batch-41 audit-M-11 (opus review MEDIUM-6): a real
+// null brier (mapStats no longer falls back to MOCK's baked-in 0.151)
+// must render as "insufficient data" / not-complete, never coerce through
+// `null <= target` (which JS evaluates as `0 <= target` = true).
+// -----------------------------------------------------------------------
+describe('gradGateStatus', () => {
+  it('null current (inverted gate, e.g. Brier): noData=true, complete=false, pct=0', () => {
+    const { noData, complete, pct } = gradGateStatus(null, 0.20, true);
+    expect(noData).toBe(true);
+    expect(complete).toBe(false);
+    expect(pct).toBe(0);
+  });
+
+  it('positive control: null current does NOT paint the gate green via `null <= target` coercion', () => {
+    // This is the exact bug: null <= 0.20 evaluates true in JS. Confirms
+    // gradGateStatus doesn't fall into that trap.
+    expect(null <= 0.20).toBe(true); // sanity-check the JS coercion itself
+    expect(gradGateStatus(null, 0.20, true).complete).toBe(false);
+  });
+
+  it('a real brier at/below target (inverted): complete=true', () => {
+    const { noData, complete } = gradGateStatus(0.18, 0.20, true);
+    expect(noData).toBe(false);
+    expect(complete).toBe(true);
+  });
+
+  it('a real brier above target (inverted): complete=false, not insufficient-data', () => {
+    const { noData, complete } = gradGateStatus(0.25, 0.20, true);
+    expect(noData).toBe(false);
+    expect(complete).toBe(false);
+  });
+
+  it('non-inverted gate (e.g. Trades done >= target): complete when current >= target', () => {
+    expect(gradGateStatus(30, 30, false).complete).toBe(true);
+    expect(gradGateStatus(29, 30, false).complete).toBe(false);
+  });
+
+  it('inverted pct scale runs from 0.25 baseline down to target, clamped to [0, 100]', () => {
+    // At current == target, pct must be exactly 100 (gate just cleared).
+    expect(gradGateStatus(0.20, 0.20, true).pct).toBeCloseTo(100, 10);
+    // At current == 0.25 baseline, pct must be 0.
+    expect(gradGateStatus(0.25, 0.20, true).pct).toBeCloseTo(0, 10);
+    // Beyond the baseline (worse than 0.25), still clamped to 0, not negative.
+    expect(gradGateStatus(0.30, 0.20, true).pct).toBe(0);
   });
 });

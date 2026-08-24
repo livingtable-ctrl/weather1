@@ -2023,6 +2023,442 @@ class TestPaperOrderWebSweepL17:
         mock_place.assert_not_called()
 
 
+class TestPaperOrderPriceParseFailsClosedM10:
+    """audit-M-10 (server half of C-1): parse_market_price used to share a
+    try block with city/date derivation, with the price parse last -- a
+    parse_market_price failure left city/target_date already bound (they're
+    derived first), so the identity check below passed on their strength
+    alone and the ±0.15 price deviation check was silently skipped instead
+    of failing closed the same way the identity check already does."""
+
+    def test_price_parse_failure_rejects_the_order(self, client, tmp_path, monkeypatch):
+        """Mutation check: merging the price-parse try back into the
+        city/date try (the pre-fix shape) makes this test fail -- the order
+        would be accepted (201) instead of rejected (503), because city/
+        target_date are already bound by the time parse_market_price raises
+        so the `if not (city and target_date)` guard never fires."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch(
+                "weather_markets.enrich_with_forecast",
+                return_value={"_city": "NYC", "_date": date(2099, 1, 1)},
+            ),
+            patch(
+                "weather_markets.parse_market_price",
+                side_effect=Exception("malformed market payload"),
+            ),
+            patch("paper.check_position_limits") as mock_cpl,
+            patch("paper.place_paper_order") as mock_place,
+        ):
+            mock_kc_cls.return_value.get_market.return_value = {
+                "close_time": "2099-01-01T00:00:00Z"
+            }
+            resp = client.post(
+                "/api/paper-order",
+                json={
+                    "ticker": "KXHIGH-99JAN01-T70",
+                    "side": "yes",
+                    "quantity": 1,
+                    "entry_price": 0.50,
+                },
+            )
+
+        assert resp.status_code == 503
+        assert "price" in resp.get_json()["error"].lower()
+        mock_place.assert_not_called()
+        mock_cpl.assert_not_called()
+
+    def test_price_parse_success_still_places_normally(
+        self, client, tmp_path, monkeypatch
+    ):
+        """Positive control: proves splitting the try block into two didn't
+        break the ordinary successful path -- when parse_market_price
+        succeeds, the order still proceeds exactly as before."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch(
+                "weather_markets.enrich_with_forecast",
+                return_value={"_city": "NYC", "_date": date(2099, 1, 1)},
+            ),
+            patch("paper.check_position_limits", return_value={"ok": True}),
+            patch("paper.place_paper_order") as mock_place,
+        ):
+            mock_kc_cls.return_value.get_market.return_value = {
+                "yes_bid": 48,
+                "yes_ask": 52,
+                "close_time": "2099-01-01T00:00:00Z",
+            }
+            mock_place.return_value = {"id": 1}
+            resp = client.post(
+                "/api/paper-order",
+                json={
+                    "ticker": "KXHIGH-99JAN01-T70",
+                    "side": "yes",
+                    "quantity": 1,
+                    "entry_price": 0.52,
+                },
+            )
+
+        assert resp.status_code == 201
+        mock_place.assert_called_once()
+
+    def test_enrich_failure_still_rejects_via_identity_check_unchanged(
+        self, client, tmp_path, monkeypatch
+    ):
+        """Regression guard: a failure in the FIRST try block (city/date
+        derivation itself) must still be caught by the existing identity
+        check, unchanged by splitting the price parse into its own block."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch(
+                "weather_markets.enrich_with_forecast",
+                side_effect=Exception("market lookup failed"),
+            ),
+            patch("paper.place_paper_order") as mock_place,
+        ):
+            mock_kc_cls.return_value.get_market.return_value = {
+                "close_time": "2099-01-01T00:00:00Z"
+            }
+            resp = client.post(
+                "/api/paper-order",
+                json={
+                    "ticker": "KXHIGH-99JAN01-T70",
+                    "side": "yes",
+                    "quantity": 1,
+                    "entry_price": 0.50,
+                },
+            )
+
+        assert resp.status_code == 503
+        assert "market data" in resp.get_json()["error"].lower()
+        mock_place.assert_not_called()
+
+
+class TestClosePositionGatesM9:
+    """audit-M-9 (server half of C-2): /api/close-position lacked the
+    kill-switch/TRADING_PAUSED gates its sibling /api/paper-order has.
+    ee22c44c widened its reachability with an operator-typed manual exit
+    price that feeds straight into proceeds/pnl/balance -> drawdown tier,
+    peak_balance, and graduation total_pnl, all without checking either
+    gate -- and the missing gates were not separately tracked anywhere."""
+
+    def test_kill_switch_blocks_close(self, client, tmp_path, monkeypatch):
+        """Mutation check: removing the kill-switch check makes this test
+        fail -- close_paper_early would run (200) instead of the request
+        being rejected (503)."""
+        import web_app
+
+        ks_path = tmp_path / ".kill_switch"
+        ks_path.write_text('{"reason": "engaged"}')
+        monkeypatch.setattr(web_app, "_KS_PATH", ks_path)
+
+        with patch("paper.close_paper_early") as mock_close:
+            resp = client.post(
+                "/api/close-position",
+                json={"trade_id": 1, "exit_price": 0.50, "manual": True},
+            )
+
+        assert resp.status_code == 503
+        assert "kill switch" in resp.get_json()["error"].lower()
+        mock_close.assert_not_called()
+
+    def test_trading_paused_blocks_close(self, client, tmp_path, monkeypatch):
+        """Mutation check: removing the TRADING_PAUSED check makes this
+        test fail the same way as the kill-switch test above."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=True),
+            patch("paper.close_paper_early") as mock_close,
+        ):
+            resp = client.post(
+                "/api/close-position",
+                json={"trade_id": 1, "exit_price": 0.50, "manual": True},
+            )
+
+        assert resp.status_code == 503
+        assert "paused" in resp.get_json()["error"].lower()
+        mock_close.assert_not_called()
+
+    def test_close_proceeds_normally_when_neither_gate_engaged(
+        self, client, tmp_path, monkeypatch
+    ):
+        """Positive control: proves the new gates don't block the ordinary
+        successful path when neither the kill switch nor TRADING_PAUSED is
+        active -- without this, the two tests above could pass vacuously if
+        the route rejected every close unconditionally."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch("paper.get_open_trades", return_value=[]),
+            patch("paper.close_paper_early", return_value={"pnl": 2.5}) as mock_close,
+        ):
+            resp = client.post(
+                "/api/close-position",
+                json={"trade_id": 1, "exit_price": 0.50, "manual": True},
+            )
+
+        assert resp.status_code == 200
+        assert resp.get_json()["pnl"] == 2.5
+        mock_close.assert_called_once()
+
+
+class TestClosePositionPriceCrossCheckM9:
+    """audit-M-9 continued: exit_price cross-check against a live quote
+    when one exists for the position's side. The check is deliberately
+    priced with the EXIT-side (realizable-on-close) convention, not
+    /api/paper-order's entry-side (buy) convention -- opus review caught
+    the first draft of this copying paper-order's check verbatim (yes_ask
+    for YES, 1-yes_bid for NO), which is the wrong side for a close: a YES
+    holder can only realize yes_bid on close, a NO holder only 1-yes_ask
+    (positions.liquidation_price()'s documented convention, matching
+    useData.js's computeMark). Every fixture below uses a WIDE bid/ask
+    spread specifically so the correct and the buggy (entry-side) formula
+    disagree -- a narrow spread can't distinguish them, which is exactly
+    how the entry-side bug shipped undetected the first time. The
+    manual-entry path is legitimately for the no-quote (or one-sided-book)
+    case and must stay open."""
+
+    def test_correct_exit_side_price_accepted_entry_side_would_reject(
+        self, client, tmp_path, monkeypatch
+    ):
+        """YES position, wide book (bid=0.20, ask=0.60). The realizable
+        exit price is yes_bid=0.20 -- exactly what computeMark would send
+        as `pos.mark`. Mutation check: reverting to the entry-side formula
+        (yes_ask=0.60 as "expected") makes this test fail -- a real,
+        correctly-priced close (0.20) would be rejected as deviating from
+        0.60 by 0.40, way outside the ±0.15 tolerance."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch(
+                "paper.get_open_trades",
+                return_value=[{"id": 1, "ticker": "KXHIGH-99JAN01-T70", "side": "yes"}],
+            ),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch("paper.close_paper_early", return_value={"pnl": 1.0}) as mock_close,
+        ):
+            mock_kc_cls.return_value.get_market.return_value = {
+                "yes_bid": 20,
+                "yes_ask": 60,
+            }
+            resp = client.post(
+                "/api/close-position",
+                json={"trade_id": 1, "exit_price": 0.20, "manual": False},
+            )
+
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+        mock_close.assert_called_once()
+
+    def test_no_side_correct_exit_price_accepted(self, client, tmp_path, monkeypatch):
+        """NO position, same wide book (bid=0.20, ask=0.60). The
+        realizable NO exit price is 1-yes_ask=0.40. Mutation check:
+        reverting to the entry-side formula (1-yes_bid=0.80 as "expected")
+        makes this test fail -- 0.40 deviates from 0.80 by 0.40, way
+        outside tolerance, so a correct close would be wrongly rejected."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch(
+                "paper.get_open_trades",
+                return_value=[{"id": 1, "ticker": "KXHIGH-99JAN01-T70", "side": "no"}],
+            ),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch("paper.close_paper_early", return_value={"pnl": 1.0}) as mock_close,
+        ):
+            mock_kc_cls.return_value.get_market.return_value = {
+                "yes_bid": 20,
+                "yes_ask": 60,
+            }
+            resp = client.post(
+                "/api/close-position",
+                json={"trade_id": 1, "exit_price": 0.40, "manual": False},
+            )
+
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+        mock_close.assert_called_once()
+
+    def test_stale_price_rejected_against_the_correct_exit_side_band(
+        self, client, tmp_path, monkeypatch
+    ):
+        """YES position, live bid=0.20 (realizable exit ~0.20, tolerance
+        band [0.05, 0.35]). A manually-typed 0.80 is genuinely stale/wrong
+        under the CORRECT convention, not just under the buggy one.
+        Mutation check: removing the cross-check entirely makes this test
+        fail (200 instead of 400)."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch(
+                "paper.get_open_trades",
+                return_value=[{"id": 1, "ticker": "KXHIGH-99JAN01-T70", "side": "yes"}],
+            ),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch("paper.close_paper_early") as mock_close,
+        ):
+            mock_kc_cls.return_value.get_market.return_value = {
+                "yes_bid": 20,
+                "yes_ask": 60,
+            }
+            resp = client.post(
+                "/api/close-position",
+                json={"trade_id": 1, "exit_price": 0.80, "manual": True},
+            )
+
+        assert resp.status_code == 400
+        assert "deviates" in resp.get_json()["error"].lower()
+        mock_close.assert_not_called()
+
+    def test_no_live_quote_manual_price_still_allowed(
+        self, client, tmp_path, monkeypatch
+    ):
+        """The manual-entry path is legitimately for the no-quote case --
+        when the market has no real quote at all (has_quote=False, both
+        sides 0), the manual price must still be accepted regardless of
+        its value."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch(
+                "paper.get_open_trades",
+                return_value=[{"id": 1, "ticker": "KXHIGH-99JAN01-T70", "side": "yes"}],
+            ),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch("paper.close_paper_early", return_value={"pnl": 1.0}) as mock_close,
+        ):
+            mock_kc_cls.return_value.get_market.return_value = {
+                "yes_bid": 0,
+                "yes_ask": 0,
+            }
+            resp = client.post(
+                "/api/close-position",
+                json={"trade_id": 1, "exit_price": 0.03, "manual": True},
+            )
+
+        assert resp.status_code == 200
+        mock_close.assert_called_once()
+
+    def test_one_sided_book_this_side_zero_skips_the_check_not_has_quote_alone(
+        self, client, tmp_path, monkeypatch
+    ):
+        """opus review HIGH-2: has_quote is a PAIR-level flag (mid > 0
+        across both sides) -- a one-sided/thin overnight book can have
+        has_quote=True while the position's OWN side is still coalesced to
+        0.0 by parse_market_price(). YES position, yes_bid=0 (no resting
+        bids) / yes_ask=0.70 (real ask, so has_quote=True via mid=0.35).
+        The realizable YES exit price doesn't exist here (bid=0) so the
+        check must be skipped, not compare against 0.0 or 0.70.
+
+        Mutation check: gating only on has_quote (not also checking
+        yes_bid > 0 for the YES side) makes this test fail -- exit_price
+        0.45 would be compared against an "expected" of either 0.0
+        (wrongly rejected, deviates by 0.45) or misread as some other
+        value, depending on which stale formula regressed in."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch(
+                "paper.get_open_trades",
+                return_value=[{"id": 1, "ticker": "KXHIGH-99JAN01-T70", "side": "yes"}],
+            ),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch("paper.close_paper_early", return_value={"pnl": 1.0}) as mock_close,
+        ):
+            mock_kc_cls.return_value.get_market.return_value = {
+                "yes_bid": 0,
+                "yes_ask": 70,
+            }
+            resp = client.post(
+                "/api/close-position",
+                json={"trade_id": 1, "exit_price": 0.45, "manual": True},
+            )
+
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+        mock_close.assert_called_once()
+
+    def test_bulk_close_shape_manual_false_with_matching_live_price(
+        self, client, tmp_path, monkeypatch
+    ):
+        """PositionsTab.jsx's bulk-close path always sends manual: false
+        with exit_price=p.mark (the live-bid-derived value, matching
+        computeMark's YES convention) -- distinct from every test above,
+        which used manual: true (the single-close typed-price shape).
+        Confirms the cross-check's exit-side convention agrees with what
+        the real bulk-close caller actually sends."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch(
+                "paper.get_open_trades",
+                return_value=[{"id": 1, "ticker": "KXHIGH-99JAN01-T70", "side": "yes"}],
+            ),
+            patch("kalshi_client.KalshiClient") as mock_kc_cls,
+            patch("paper.close_paper_early", return_value={"pnl": 1.0}) as mock_close,
+        ):
+            mock_kc_cls.return_value.get_market.return_value = {
+                "yes_bid": 33,
+                "yes_ask": 71,
+            }
+            resp = client.post(
+                "/api/close-position",
+                json={"trade_id": 1, "exit_price": 0.33, "manual": False},
+            )
+
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+        mock_close.assert_called_once()
+
+    def test_quote_lookup_failure_still_does_not_block_the_close(
+        self, client, tmp_path, monkeypatch
+    ):
+        """A lookup/API failure during the cross-check attempt must not
+        block a close the operator explicitly confirmed -- fails open for
+        the cross-check specifically (the kill-switch/TRADING_PAUSED gates
+        tested separately still fail closed on their own, independent
+        checks)."""
+        import web_app
+
+        monkeypatch.setattr(web_app, "_KS_PATH", tmp_path / ".kill_switch")
+        with (
+            patch("utils.is_trading_paused", return_value=False),
+            patch("paper.get_open_trades", side_effect=RuntimeError("db locked")),
+            patch("paper.close_paper_early", return_value={"pnl": 1.0}) as mock_close,
+        ):
+            resp = client.post(
+                "/api/close-position",
+                json={"trade_id": 1, "exit_price": 0.50, "manual": True},
+            )
+
+        assert resp.status_code == 200
+        mock_close.assert_called_once()
+
+
 class TestAnomalyStatusMatchesRealCheck:
     """Deep-review followup: /api/anomaly-status used to independently
     rebuild the win-rate window with a stale algorithm (sorted by

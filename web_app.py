@@ -2957,7 +2957,6 @@ setInterval(() => {{
         try:
             from kalshi_client import KalshiClient as _KC
             from weather_markets import enrich_with_forecast as _ewf_dash
-            from weather_markets import parse_market_price as _pmp_dash
 
             _kc = _KC(
                 key_id=os.getenv("KALSHI_KEY_ID"),
@@ -2969,7 +2968,6 @@ setInterval(() => {{
             city = _enriched_dash.get("_city")
             _tdate_dash = _enriched_dash.get("_date")
             target_date = _tdate_dash.isoformat() if _tdate_dash else None
-            _mkt_prices_dash = _pmp_dash(_market_for_order)
         except Exception as _enrich_exc:
             _log.warning(
                 "api/paper-order: could not derive city/date for %s: %s",
@@ -2994,6 +2992,44 @@ setInterval(() => {{
                     "error": (
                         f"could not verify market data for {ticker} — "
                         "refusing to place order without exposure-cap checks"
+                    )
+                }
+            ), 503
+
+        # city/target_date are only ever set (in the try block above) after
+        # _market_for_order was successfully assigned, so this guard passing
+        # guarantees _market_for_order is not None -- assert it explicitly
+        # since mypy can't infer that cross-variable invariant on its own
+        # (the two try blocks are now separate scopes, so its narrowing from
+        # the assignment above doesn't carry across the except/return join).
+        assert _market_for_order is not None
+
+        # audit-M-10: price parsing used to share the try block above with
+        # city/date derivation, with the price parse last. A parse_market_price
+        # failure there left city/target_date already bound (they're derived
+        # first), so the identity check above passed on the strength of the
+        # city/date alone -- _mkt_prices_dash silently stayed None, and the
+        # ±0.15 deviation check below (both ee22c44c's and batch-26's fix
+        # depend on it) was skipped with no distinct signal that the PRICE
+        # check specifically was the one that didn't run. Split into its own
+        # try block and fail closed the same way the identity check does,
+        # rather than silently placing an unchecked-price order.
+        try:
+            from weather_markets import parse_market_price as _pmp_dash
+
+            _mkt_prices_dash = _pmp_dash(_market_for_order)
+        except Exception as _price_exc:
+            _log.warning(
+                "api/paper-order: could not parse market price for %s, "
+                "refusing to place without a price cross-check: %s",
+                ticker,
+                _price_exc,
+            )
+            return jsonify(
+                {
+                    "error": (
+                        f"could not verify current market price for {ticker} — "
+                        "refusing to place order without a price cross-check"
                     )
                 }
             ), 503
@@ -3206,6 +3242,19 @@ setInterval(() => {{
                               as reason="manual_close" for audit, distinct
                               from an unset reason (quote-derived close).
         """
+        # audit-M-9: sibling /api/paper-order has kill-switch + TRADING_PAUSED
+        # gates and a live-quote price cross-check; this route had none of the
+        # three. ee22c44c widened its reachability with an operator-typed
+        # manual exit price that feeds straight into proceeds/pnl/balance ->
+        # drawdown tier, peak_balance, and graduation total_pnl -- unguarded.
+        # Mirror paper-order's kill-switch/TRADING_PAUSED gates exactly.
+        if _KS_PATH.exists():
+            return jsonify({"error": "kill switch active — trading paused"}), 503
+        from utils import is_trading_paused as _is_trading_paused_close
+
+        if _is_trading_paused_close():
+            return jsonify({"error": "TRADING_PAUSED is set — trading disabled"}), 503
+
         from paper import close_paper_early
 
         body = _flask_request.get_json(force=True, silent=True) or {}
@@ -3225,6 +3274,97 @@ setInterval(() => {{
         # same (0, 1] contract this route's own docstring already promises.
         if not (0.0 < exit_price <= 1.0):
             return jsonify({"error": "exit_price must be in (0, 1]"}), 400
+
+        # audit-M-9: cross-check exit_price against a live quote when one
+        # exists for this position's side, mirroring /api/paper-order's
+        # ±0.15 deviation check -- but using the EXIT-side convention below,
+        # not paper-order's entry-side one (see the comment further down;
+        # opus review caught the first draft of this copying paper-order's
+        # convention verbatim, which is wrong for a close). The correct
+        # exit convention is already documented and tracked as RESOLVED in
+        # backlog.txt's "REACT DASHBOARD'S CLOSE BUTTON IS A FOURTH
+        # PAPER-CLOSE SITE..." entry; the missing kill-switch/TRADING_PAUSED
+        # gates above were not separately tracked anywhere.
+        # The manual-entry path is legitimately for the no-quote case (the
+        # frontend only prompts for a typed price when markIsLive is
+        # false), so a failure to REACH a live quote -- lookup failure, no
+        # quote available, API blip, missing env keys -- leaves the check
+        # skipped rather than blocking the close. Only the lookup/network
+        # calls are inside the try below; a bug in the price-selection or
+        # comparison logic itself must raise loudly (500) rather than be
+        # misreported as "no quote available" alongside a legitimate miss.
+        _trade_for_close: dict | None = None
+        _mkt_prices_close: dict | None = None
+        try:
+            from paper import get_open_trades as _got_close
+
+            _trade_for_close = next(
+                (t for t in _got_close() if t.get("id") == trade_id), None
+            )
+            if _trade_for_close is not None and _trade_for_close.get("ticker"):
+                from kalshi_client import KalshiClient as _KC_close
+                from weather_markets import parse_market_price as _pmp_close
+
+                _kc_close = _KC_close(
+                    key_id=os.getenv("KALSHI_KEY_ID"),
+                    private_key_path=os.getenv("KALSHI_PRIVATE_KEY_PATH"),
+                    env=os.getenv("KALSHI_ENV", "demo"),
+                )
+                _market_close = _kc_close.get_market(_trade_for_close["ticker"])
+                _mkt_prices_close = _pmp_close(_market_close)
+        except Exception as _quote_exc:
+            _log.warning(
+                "api/close-position: no live quote cross-check for trade %s "
+                "-- closing without a price cross-check: %s",
+                trade_id,
+                _quote_exc,
+            )
+            _mkt_prices_close = None
+
+        if (
+            _trade_for_close is not None
+            and _mkt_prices_close
+            and _mkt_prices_close.get("has_quote")
+        ):
+            _side_close = (_trade_for_close.get("side") or "yes").lower()
+            # opus review (HIGH-1/HIGH-2): this is the exit-side realizable
+            # price -- a YES holder can only realize yes_bid on close (what
+            # a buyer will pay); a NO holder only 1 - yes_ask. Using
+            # yes_ask for YES or 1 - yes_bid for NO instead (paper-order's
+            # BUY convention) prices a close at what a buyer would pay to
+            # open more, overvaluing it by the bid-ask spread -- see
+            # positions.liquidation_price()'s docstring and useData.js's
+            # computeMark, which both already document/fix this exact
+            # distinction for other close paths.
+            # has_quote is a PAIR-level flag (mid > 0 across both sides) and
+            # parse_market_price() coalesces a missing side to 0.0, never
+            # None -- a one-sided/thin overnight book can have
+            # has_quote=True while THIS side is still 0, so guard the
+            # specific side's own price too, not just has_quote
+            # (liquidation_price() guards the identical way).
+            if _side_close == "yes":
+                _yb = _mkt_prices_close.get("yes_bid")
+                _expected_close_price = _yb if _yb is not None and _yb > 0 else None
+            else:
+                _ya = _mkt_prices_close.get("yes_ask")
+                _expected_close_price = (
+                    round(1.0 - _ya, 4) if _ya is not None and _ya > 0 else None
+                )
+            if (
+                _expected_close_price is not None
+                and abs(exit_price - _expected_close_price) > 0.15
+            ):
+                return jsonify(
+                    {
+                        "error": (
+                            f"exit_price {exit_price:.2f} deviates from the "
+                            f"current {_side_close}-side realizable price "
+                            f"{_expected_close_price:.2f} by more than 0.15 "
+                            "— refusing to close (stale price?)"
+                        )
+                    }
+                ), 400
+
         # Reason is server-decided from a bool, never taken as a free-form
         # client string — a raw client-supplied reason would let a buggy or
         # malicious client stuff arbitrary text into the trade ledger.

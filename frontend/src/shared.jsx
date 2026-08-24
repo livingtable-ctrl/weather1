@@ -508,3 +508,64 @@ export function buildPaperOrderBody(opp, qty) {
     days_out:    opp.days_out ?? null,
   };
 }
+
+// ---------------------------------------------------------------------------
+// summarizeBulkResults — count real successes/failures from a
+// Promise.allSettled array, for any bulk action that fires N independent
+// requests (bulk-approve, bulk-close). A request that rejected outright
+// (network failure) and one that resolved but the response body carries an
+// {error} field both count as failed -- neither should be folded into an
+// unconditional "done" toast. getError extracts the error indicator from a
+// fulfilled result's value; defaults to the response body's own .error
+// field, override it when the settled value wraps the response (e.g.
+// {opp, d} pairs that need context for placedSet bookkeeping).
+// ---------------------------------------------------------------------------
+export function summarizeBulkResults(settledResults, getError = (v) => v?.error) {
+  let succeeded = 0;
+  let failed = 0;
+  for (const r of settledResults) {
+    if (r.status === 'fulfilled' && !getError(r.value)) succeeded++;
+    else failed++;
+  }
+  return { succeeded, failed, total: settledResults.length };
+}
+
+// ---------------------------------------------------------------------------
+// effectiveSelection — intersect a selection Set against the keys currently
+// visible under a filter, WITHOUT mutating the selection itself. Used
+// everywhere a bulk-selection count/checkbox/action-target is displayed or
+// acted on, so a filter that narrows the table can't make the "N selected"
+// count or a bulk action's target set claim more than what's actually
+// visible -- while a selection made before filtering survives and reappears
+// if the filter widens again, instead of being silently dropped forever.
+// ---------------------------------------------------------------------------
+export function effectiveSelection(selectedIds, visibleKeys) {
+  const visible = visibleKeys instanceof Set ? visibleKeys : new Set(visibleKeys);
+  const next = new Set();
+  for (const id of selectedIds) if (visible.has(id)) next.add(id);
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// gradGateStatus — audit-M-11 (opus review MEDIUM-6): OverviewTab's
+// graduation-gate progress bars used `grad.current.toFixed(3)` and
+// `complete: grad.brier <= grad.brier_target` directly in JSX, untestable
+// without component-render infra. Extracted so the null-brier fix (a real
+// "not enough trades yet" answer, now that mapStats no longer falls back to
+// MOCK's baked-in 0.151) is independently mutation-testable: `null <= 0.2`
+// coerces null to 0 and evaluates true in JS, which would silently paint
+// the gate green on missing data if `noData`/`complete` weren't guarded
+// explicitly.
+// ---------------------------------------------------------------------------
+export function gradGateStatus(current, target, invert) {
+  const noData = current == null;
+  const complete = !noData && (invert ? current <= target : current >= target);
+  // For an inverted (lower-is-better) gate the scale runs from a 0.25
+  // "baseline" down to the target (e.g. 0.20), so the bar hits 100% exactly
+  // when the gate clears, rather than only at impossible perfect
+  // prediction (Brier=0).
+  const pct = noData ? 0 : invert
+    ? Math.min(100, Math.max(0, (0.25 - current) / (0.25 - target) * 100))
+    : Math.min(100, Math.max(0, (current / target) * 100));
+  return { noData, complete, pct };
+}

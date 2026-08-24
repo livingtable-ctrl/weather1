@@ -128,7 +128,14 @@ export function mapStats(status, grad, config, prevStats) {
       trades_target: grad.trades_target ?? base.graduation?.trades_target ?? 30,
       total_pnl:     grad.total_pnl     ?? base.graduation?.total_pnl     ?? 0,
       pnl_target:    grad.pnl_target    ?? base.graduation?.pnl_target    ?? 50,
-      brier:         grad.brier         ?? base.graduation?.brier         ?? null,
+      // audit-M-11: was `grad.brier ?? base.graduation?.brier ?? null` -- once
+      // a real /api/graduation response succeeds (the `if (grad && !grad.error)`
+      // gate above), an explicit null brier IS the real answer ("not enough
+      // trades to compute yet"), not a fetch miss. Falling back to the prior
+      // state here meant the very first successful-but-null response baked
+      // MOCK's graduation.brier (0.151) into state permanently, since every
+      // later poll's fallback read from that same now-tainted prevStats.
+      brier:         grad.brier         ?? null,
       brier_target:  grad.brier_target  ?? base.graduation?.brier_target  ?? 0.20,
       ready:         grad.ready         ?? false,
     };
@@ -250,7 +257,7 @@ function mapTrades(raw) {
  *
  * Normalizes side to lowercase so SignalsTab doesn't need to care.
  */
-function mapSignals(raw) {
+export function mapSignals(raw) {
   if (!raw) return null;
   const sigs = raw.signals || [];
   return {
@@ -259,6 +266,29 @@ function mapSignals(raw) {
     stale: raw.stale || false,
     staleMessage: raw.message || null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// audit-M-11 (opus review MEDIUM-6): extracted so the reducer's exact fix is
+// independently mutation-testable, not just its mapSignals()/Array.isArray
+// preconditions. Both return `undefined` (never touch `next.*`) when the
+// source fetch itself didn't produce real data -- distinct from a real
+// response that's genuinely empty, which must be assigned so stale/MOCK
+// data actually clears.
+// ---------------------------------------------------------------------------
+
+// mapSignals() always returns `.signals` as an array (possibly empty), never
+// null/undefined, whenever sigsResult itself is non-null -- so this can
+// safely be unconditional once sigsResult exists.
+export function resolveOpportunities(sigsResult) {
+  return sigsResult ? sigsResult.signals : undefined;
+}
+
+// Array.isArray alone, NOT `&& raw.length` -- a real empty array (0 alerts,
+// 0 brier-history points) is real data and must replace MOCK's fabricated
+// seed, not be treated the same as "the fetch failed".
+export function resolveIfArray(raw) {
+  return Array.isArray(raw) ? raw : undefined;
 }
 
 /**
@@ -474,9 +504,17 @@ export default function useData(setConnected) {
         if (forecasts) Object.assign(next, forecasts);
 
         // Signals / opportunities
+        // audit-M-11: was `if (sigsResult.signals.length)` -- mapSignals
+        // always returns signals as an array (never null) whenever sigsResult
+        // itself is non-null, so a real empty scan (`raw.signals: []`) kept
+        // MOCK's 7 fabricated opportunities on screen under a genuine "Last
+        // scan: Nm ago" header, live Approve buttons included. resolveOpportunities
+        // (exported, unit-tested) makes this exact fix independently
+        // mutation-testable rather than only testing mapSignals' precondition.
         const sigsResult = mapSignals(signalsR);
+        const resolvedOpportunities = resolveOpportunities(sigsResult);
+        if (resolvedOpportunities !== undefined) next.opportunities = resolvedOpportunities;
         if (sigsResult) {
-          if (sigsResult.signals.length) next.opportunities = sigsResult.signals;
           next.signalsMeta = {
             generatedAt: sigsResult.generatedAt,
             stale: sigsResult.stale,
@@ -500,13 +538,21 @@ export default function useData(setConnected) {
         }
 
         // System events feed (OverviewTab alerts)
-        if (Array.isArray(systemEventsR) && systemEventsR.length) next.alerts = systemEventsR;
+        // audit-M-11: same truthy-length bug as opportunities above -- a
+        // real empty events feed kept MOCK's alerts on screen forever.
+        // resolveIfArray (exported, unit-tested) makes this fix independently
+        // mutation-testable.
+        const resolvedAlerts = resolveIfArray(systemEventsR);
+        if (resolvedAlerts !== undefined) next.alerts = resolvedAlerts;
 
         // Backup status (Settings / future footer)
         if (backupStatusR && !backupStatusR.error) next.backupStatus = backupStatusR;
 
         // Brier history trend (AnalyticsTab chart)
-        if (Array.isArray(brierHistoryR) && brierHistoryR.length) next.brierHistory = brierHistoryR;
+        // audit-M-11: same truthy-length bug -- a real empty history kept
+        // MOCK's weekly Brier trend on screen forever.
+        const resolvedBrierHistory = resolveIfArray(brierHistoryR);
+        if (resolvedBrierHistory !== undefined) next.brierHistory = resolvedBrierHistory;
 
         // City calibration Brier scores — replace mock data with real values.
         // API returns {CityName: {brier, bias, n}}; extract .brier float.

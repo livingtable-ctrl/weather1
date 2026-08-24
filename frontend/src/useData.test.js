@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { computeMark, fetchAllSafe, authHeader, mapStats } from './useData.js';
+import { computeMark, fetchAllSafe, authHeader, mapStats, mapSignals, resolveOpportunities, resolveIfArray } from './useData.js';
 
 // Hand-computed fixtures mirroring positions.liquidation_price()'s convention:
 // YES realizes at yes_bid, NO realizes at 1 - yes_ask. See backlog.txt for the
@@ -107,6 +107,131 @@ describe('computeMark', () => {
     const { mark, markIsLive } = computeMark(t);
     expect(markIsLive).toBe(false);
     expect(mark).toBe(0.40);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mapStats — audit-M-11: a real, successful /api/graduation response with
+// brier: null (genuinely "not enough trades yet", not a fetch failure) used
+// to fall back to `base.graduation?.brier`, which on the very first poll
+// reads MOCK's baked-in 0.151 -- and every later poll's fallback source is
+// that same now-tainted prevStats, so the mock value became permanent.
+// ---------------------------------------------------------------------------
+const MOCK_GRADUATION = {
+  trades_done: 567, trades_target: 30, total_pnl: 247.83, pnl_target: 50,
+  brier: 0.151, brier_target: 0.20, ready: true,
+};
+
+describe('mapStats — graduation.brier null handling', () => {
+  it('a real grad response with brier: null produces brier: null, NOT the prior/mock value', () => {
+    const prevStats = { graduation: MOCK_GRADUATION };
+    const grad = { trades_done: 2, trades_target: 30, total_pnl: 5, pnl_target: 50, brier: null, ready: false };
+    const result = mapStats(null, grad, null, prevStats);
+    expect(result.graduation.brier).toBeNull();
+    // Positive control: prove the fallback source (prevStats) really did
+    // carry the mock value, so a fallback-to-prevStats bug would have been
+    // caught here rather than this test vacuously passing either way.
+    expect(prevStats.graduation.brier).toBe(0.151);
+  });
+
+  it('a real grad response with a genuine numeric brier is used as-is', () => {
+    const prevStats = { graduation: MOCK_GRADUATION };
+    const grad = { trades_done: 40, trades_target: 30, total_pnl: 60, pnl_target: 50, brier: 0.183, ready: false };
+    const result = mapStats(null, grad, null, prevStats);
+    expect(result.graduation.brier).toBe(0.183);
+  });
+
+  it('grad fetch itself failed (grad is null): graduation is left untouched, still the prior value', () => {
+    // This is the case the fallback logic legitimately exists for -- a
+    // failed poll must not wipe the last known-good graduation state. The
+    // fix only removes the fallback for a genuinely SUCCESSFUL response
+    // with an explicit null, not for this case.
+    const prevStats = { graduation: { ...MOCK_GRADUATION, brier: 0.171 } };
+    const result = mapStats(null, null, null, prevStats);
+    expect(result.graduation.brier).toBe(0.171);
+  });
+
+  it('grad fetch returned an error body: graduation is left untouched', () => {
+    const prevStats = { graduation: { ...MOCK_GRADUATION, brier: 0.171 } };
+    const result = mapStats(null, { error: 'db locked' }, null, prevStats);
+    expect(result.graduation.brier).toBe(0.171);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mapSignals — audit-M-11: a real, empty scan response (raw.signals: [])
+// must map to signals: [] (an array, never null/undefined) whenever the
+// fetch itself succeeded -- this is the invariant the useData.js reducer's
+// fix (`next.opportunities = sigsResult.signals`, unconditional once
+// sigsResult is truthy) depends on. If mapSignals ever started returning
+// signals: null/undefined for a real empty response, the unconditional
+// assignment would wipe M.opportunities to a falsy value instead of an
+// empty list -- this test guards the precondition the fix relies on.
+// ---------------------------------------------------------------------------
+describe('mapSignals — empty-scan invariant', () => {
+  it('a real response with an empty signals array returns signals: [], not null/undefined', () => {
+    const result = mapSignals({ signals: [], generated_at: '2026-08-24T00:00:00Z' });
+    expect(result.signals).toEqual([]);
+    expect(result.signals).not.toBeNull();
+    expect(result.signals).not.toBeUndefined();
+  });
+
+  it('a fetch failure (raw is null/falsy) returns null overall, distinct from a real empty scan', () => {
+    // This is the ONE case useData.js's reducer must still preserve prior
+    // state for -- `if (sigsResult)` gates on this returning null.
+    expect(mapSignals(null)).toBeNull();
+  });
+
+  it('a real response with signals present maps them through, lowercasing side', () => {
+    const result = mapSignals({ signals: [{ ticker: 'A', side: 'YES' }] });
+    expect(result.signals).toHaveLength(1);
+    expect(result.signals[0].side).toBe('yes');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveOpportunities / resolveIfArray — opus review MEDIUM-6: the actual
+// reducer lines audit-M-11 changed (useData.js's setData callback) aren't
+// directly testable (fetchAll isn't exported, no component-test infra in
+// this repo), so the fix was extracted into these two pure functions. These
+// tests exercise exactly the "real empty response must clear MOCK data"
+// claim the mapSignals/mapStats tests above only test the precondition of.
+// ---------------------------------------------------------------------------
+describe('resolveOpportunities', () => {
+  it('a real empty scan (mapSignals result with signals: []) resolves to [], not undefined', () => {
+    const sigsResult = mapSignals({ signals: [] });
+    expect(resolveOpportunities(sigsResult)).toEqual([]);
+  });
+
+  it('a fetch failure (sigsResult is null) resolves to undefined -- the reducer must not touch next.opportunities', () => {
+    expect(resolveOpportunities(null)).toBeUndefined();
+  });
+
+  it('a real non-empty scan passes signals through unchanged', () => {
+    const sigsResult = mapSignals({ signals: [{ ticker: 'A', side: 'yes' }] });
+    const resolved = resolveOpportunities(sigsResult);
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0].ticker).toBe('A');
+  });
+});
+
+describe('resolveIfArray', () => {
+  it('a real empty array resolves to itself (used for alerts/brierHistory), not undefined', () => {
+    expect(resolveIfArray([])).toEqual([]);
+  });
+
+  it('null/undefined (fetch failure) resolves to undefined', () => {
+    expect(resolveIfArray(null)).toBeUndefined();
+    expect(resolveIfArray(undefined)).toBeUndefined();
+  });
+
+  it('a non-array value (e.g. an error-shaped object) resolves to undefined', () => {
+    expect(resolveIfArray({ error: 'db locked' })).toBeUndefined();
+  });
+
+  it('a real non-empty array passes through unchanged', () => {
+    const arr = [{ week: '2026-W01', brier: 0.2 }];
+    expect(resolveIfArray(arr)).toBe(arr);
   });
 });
 

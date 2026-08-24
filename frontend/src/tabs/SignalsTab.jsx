@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, kalshiMarketUrl, sideAwareEntryPrice, buildPaperOrderBody } from '../shared.jsx';
+import { normCity, kalshiMarketUrl, sideAwareEntryPrice, buildPaperOrderBody, summarizeBulkResults, effectiveSelection } from '../shared.jsx';
 
 export default function SignalsTab() {
   const M = useContext(DataContext);
@@ -20,6 +20,10 @@ export default function SignalsTab() {
   const [expandedId, setExpandedId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkActionMsg, setBulkActionMsg] = useState('');
+  // {rows: [{opp, qty}], excludedCount} snapshotted at click time, or null.
+  // NOT a boolean -- see handleBulkApprove's comment on why a re-derived
+  // live list at confirm time is unsafe.
+  const [bulkConfirmPending, setBulkConfirmPending] = useState(null);
 
   // Show every candidate the bot evaluated — no edge filter.
   // passes_threshold comes from the backend (cron.py gate logic).
@@ -28,8 +32,18 @@ export default function SignalsTab() {
   const sameDayOpps  = useMemo(() => filtered.filter(o => (o.days_out ?? 1) === 0), [filtered]);
   const multiDayOpps = useMemo(() => filtered.filter(o => (o.days_out ?? 1) > 0),  [filtered]);
 
+  // C-3 fix: selectedIds itself is never pruned when M.opportunities changes
+  // (e.g. a poll drops a ticker that's no longer a candidate) -- intersect
+  // against what's currently on screen (both same-day and multi-day tables
+  // combined, which together equal `filtered`) everywhere a count/checkbox/
+  // action-target is displayed or acted on, same fix as PositionsTab.jsx.
+  const effSelectedIds = useMemo(
+    () => effectiveSelection(selectedIds, filtered.map(o => o.ticker)),
+    [selectedIds, filtered]
+  );
+
   useEffect(() => {
-    const handler = () => { setSelectedOpp(null); setConfirmPending(null); };
+    const handler = () => { setSelectedOpp(null); setConfirmPending(null); setBulkConfirmPending(null); };
     document.addEventListener('kalshi:escape', handler);
     return () => document.removeEventListener('kalshi:escape', handler);
   }, []);
@@ -40,13 +54,10 @@ export default function SignalsTab() {
       setTimeout(() => setActionMsg(''), 2500);
       return;
     }
-    // approve → show confirmation dialog first
-    // batch-26: divide kelly_dollars by the side-aware entry price, not the
-    // raw YES-space mid — for a NO signal the mid overstates the price paid,
-    // undersizing the default quantity.
-    const sp = sideAwareEntryPrice(opp);
-    const qty = parseInt(qtyMap[opp.ticker] ?? (opp.kelly_qty || (opp.kelly_dollars > 0 && sp > 0 ? Math.max(1, Math.floor(opp.kelly_dollars / sp)) : 1)) ?? 1, 10) || 1;
-    setConfirmPending({ opp, qty });
+    // approve → show confirmation dialog first, sized via bulkOrderQty
+    // (opus review LOW-12: this and the bulk-approve path used to hand-
+    // duplicate the same sizing expression as two separate copies).
+    setConfirmPending({ opp, qty: bulkOrderQty(opp) });
   }
 
   function handleConfirm() {
@@ -78,35 +89,120 @@ export default function SignalsTab() {
       });
   }
 
-  // Bulk approve: place a paper order for each selected signal
-  function handleBulkApprove() {
-    if (selectedIds.size === 0) return;
-    const oppsToApprove = filtered.filter(o => selectedIds.has(o.ticker));
-    setBulkActionMsg(`Placing ${oppsToApprove.length} orders...`);
+  // C-1 fix: the eligible set for bulk-approve mirrors the single-approve
+  // path's own guard exactly -- same edge_pct > 0 filter as the row-level
+  // Approve button's `disabled` condition, resolved against effSelectedIds
+  // (currently-visible selections) not the raw, possibly-stale selection.
+  // opus review MEDIUM-4: also excludes anything already in placedSet --
+  // without this, ticking a row's checkbox, single-approving it via the
+  // row button, then clicking "Approve All" while the (still-ticked, still
+  // in M.opportunities) row is included would place a SECOND order on the
+  // same ticker; check_position_limits has no already-open-on-this-ticker
+  // guard of its own.
+  function bulkEligibleOpps() {
+    return filtered.filter(o =>
+      effSelectedIds.has(o.ticker) &&
+      (o.edge_pct || 0) > 0 &&
+      !placedSet.has(`${o.ticker}|${o.target_date || o.expiry || ''}`)
+    );
+  }
 
-    Promise.all(oppsToApprove.map(opp => {
-      const sp = sideAwareEntryPrice(opp);
-      const qty = parseInt(qtyMap[opp.ticker] ?? (opp.kelly_qty || (opp.kelly_dollars > 0 && sp > 0 ? Math.max(1, Math.floor(opp.kelly_dollars / sp)) : 1)) ?? 1, 10) || 1;
-      return fetch('/api/paper-order', {
+  // batch-26: divide kelly_dollars by the side-aware entry price, not the
+  // raw YES-space mid — for a NO signal the mid overstates the price paid,
+  // undersizing the default quantity. Shared by handleAction and bulk
+  // approve (opus review LOW-12: these were two hand-duplicated copies).
+  function bulkOrderQty(opp) {
+    const sp = sideAwareEntryPrice(opp);
+    return parseInt(qtyMap[opp.ticker] ?? (opp.kelly_qty || (opp.kelly_dollars > 0 && sp > 0 ? Math.max(1, Math.floor(opp.kelly_dollars / sp)) : 1)) ?? 1, 10) || 1;
+  }
+
+  // Bulk approve: open one confirmation modal (listing every eligible order
+  // and the combined total cost) before anything is submitted -- gives bulk
+  // approve real parity with the single-approve path's own confirm step,
+  // instead of firing orders straight off a checkbox click.
+  function handleBulkApprove() {
+    const eligible = bulkEligibleOpps();
+    if (eligible.length === 0) {
+      // opus review LOW-A: since bulkEligibleOpps() also excludes
+      // already-placed tickers (MEDIUM-4), this path is now reachable for
+      // a selection that DOES have positive edge but was already placed --
+      // the old "no positive edge" wording would be factually wrong there.
+      setBulkActionMsg('✗ No selected signals are eligible (no positive edge, or already placed)');
+      setTimeout(() => setBulkActionMsg(''), 3000);
+      return;
+    }
+    // opus review MEDIUM-3: snapshot the exact rows the modal displays and
+    // will submit, instead of a boolean flag that re-derives
+    // bulkEligibleOpps() again at confirm time. Without this, a 60s poll
+    // (useData.js) landing while the modal is open could change what
+    // "eligible" resolves to -- e.g. resurrect a ticker via the
+    // non-destructive C-3 selection model, or shift a qty/price -- so the
+    // operator's click could submit orders the modal never actually showed
+    // them. The single-approve path's confirmPending already avoids this
+    // exact class of bug by snapshotting {opp, qty} the same way.
+    setBulkConfirmPending({
+      rows: eligible.map(opp => ({ opp, qty: bulkOrderQty(opp) })),
+      excludedCount: effSelectedIds.size - eligible.length,
+    });
+  }
+
+  function handleBulkConfirm() {
+    if (!bulkConfirmPending) return;
+    const { rows } = bulkConfirmPending;
+    setBulkConfirmPending(null);
+    setBulkActionMsg(`Placing ${rows.length} orders...`);
+
+    Promise.allSettled(rows.map(({ opp, qty }) =>
+      fetch('/api/paper-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader() },
         body: JSON.stringify(buildPaperOrderBody(opp, qty)),
-      }).then(r => r.json());
-    })).then(() => {
-      setBulkActionMsg(`✓ Placed ${oppsToApprove.length} orders`);
-      setSelectedIds(new Set());
+      }).then(r => r.json()).then(d => ({ opp, d }))
+    )).then(results => {
+      // C-1 fix: inspect what each response actually said, not an
+      // unconditional "all placed" toast -- a rejected fetch (network
+      // failure) or a fulfilled response carrying {error} both count as
+      // failed, and only a genuine success writes to placedSet (so a
+      // second click can't re-submit an order that already went through).
+      const { succeeded, failed } = summarizeBulkResults(results, v => v.d?.error);
+      const successKeys = results
+        .filter(r => r.status === 'fulfilled' && !r.value.d?.error)
+        .map(r => `${r.value.opp.ticker}|${r.value.opp.target_date || r.value.opp.expiry || ''}`);
+      if (successKeys.length) {
+        setPlacedSet(prev => {
+          const next = new Set([...prev, ...successKeys]);
+          try { sessionStorage.setItem(PLACED_KEY, JSON.stringify([...next])); } catch {}
+          return next;
+        });
+      }
+      setBulkActionMsg(failed > 0 ? `✓ ${succeeded} placed / ✗ ${failed} failed` : `✓ ${succeeded} placed`);
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        rows.forEach(({ opp }) => next.delete(opp.ticker));
+        return next;
+      });
       M.refresh();
-      setTimeout(() => setBulkActionMsg(''), 3000);
+      setTimeout(() => setBulkActionMsg(''), 4000);
     }).catch(() => {
+      // opus review LOW-B: Promise.allSettled itself never rejects, but a
+      // throw inside the .then body above (realistically M.refresh()) was
+      // previously caught by Promise.all's .catch() -- allSettled dropped
+      // that safety net. Without this, an uncaught rejection here would
+      // leave the "Placing N orders..." toast pinned with no error shown
+      // and no timeout ever clearing it.
       setBulkActionMsg('✗ Bulk approve failed');
       setTimeout(() => setBulkActionMsg(''), 3000);
     });
   }
 
-  // Bulk reject: just clear the selection and show a message
+  // Bulk reject: just clear the (visible) selection and show a message
   function handleBulkReject() {
-    const count = selectedIds.size;
-    setSelectedIds(new Set());
+    const count = effSelectedIds.size;
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      effSelectedIds.forEach(id => next.delete(id));
+      return next;
+    });
     setBulkActionMsg(`✗ Rejected ${count} signal${count !== 1 ? 's' : ''}`);
     setTimeout(() => setBulkActionMsg(''), 2500);
   }
@@ -336,14 +432,14 @@ export default function SignalsTab() {
       </div>
 
       {/* Bulk action bar */}
-      {selectedIds.size > 0 && (
+      {effSelectedIds.size > 0 && (
         <div style={{
           position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
           background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
           padding: '12px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
           display: 'flex', gap: 16, alignItems: 'center', zIndex: 100,
         }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{selectedIds.size} selected</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{effSelectedIds.size} selected</span>
           <button onClick={handleBulkApprove} style={{
             padding: '6px 14px', borderRadius: 6, border: '1px solid #16a34a',
             background: 'rgba(34,197,94,0.08)', color: '#16a34a',
@@ -354,7 +450,11 @@ export default function SignalsTab() {
             background: 'rgba(239,68,68,0.08)', color: '#ef4444',
             fontSize: 12, fontWeight: 600, cursor: 'pointer',
           }}>✗ Reject All</button>
-          <button onClick={() => setSelectedIds(new Set())} style={{
+          <button onClick={() => setSelectedIds(prev => {
+            const next = new Set(prev);
+            effSelectedIds.forEach(id => next.delete(id));
+            return next;
+          })} style={{
             padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border)',
             background: 'transparent', color: 'var(--text-muted)',
             fontSize: 12, fontWeight: 600, cursor: 'pointer',
@@ -571,6 +671,69 @@ export default function SignalsTab() {
           </div>
         </div>
       )}
+
+      {/* Bulk confirmation modal — C-1: lists every eligible order and the
+          combined total cost before any request fires, same as single-approve.
+          opus review MEDIUM-3: renders ONLY from the bulkConfirmPending
+          snapshot taken at click time (handleBulkApprove) -- never
+          re-derives bulkEligibleOpps() here, so a poll landing while the
+          modal is open can't change what gets submitted out from under
+          what the operator is looking at. */}
+      {bulkConfirmPending && bulkConfirmPending.rows.length > 0 && (() => {
+        const { rows: snapshotRows, excludedCount } = bulkConfirmPending;
+        const rows = snapshotRows.map(({ opp, qty }) => {
+          const price = sideAwareEntryPrice(opp);
+          return { opp, price, qty, cost: price * qty };
+        });
+        const totalCost = rows.reduce((a, r) => a + r.cost, 0);
+        const remaining = (M.stats.balance || 0) - M.positions.reduce((a, p) => a + p.cost, 0) - totalCost;
+        return (
+          <div
+            onKeyDown={e => { if (e.key === 'Enter') handleBulkConfirm(); }}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+            }} onClick={() => setBulkConfirmPending(null)}>
+            <div onClick={e => e.stopPropagation()} style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: 14, padding: '24px 28px', minWidth: 380, maxWidth: 480,
+            }}>
+              <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Confirm {rows.length} trade{rows.length !== 1 ? 's' : ''}</h3>
+              <div style={{ maxHeight: 220, overflowY: 'auto', margin: '10px 0 14px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                {rows.map(({ opp, price, qty, cost }) => (
+                  <div key={opp.ticker} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '8px 12px', fontSize: 12, borderBottom: '1px solid var(--bg-muted)',
+                  }}>
+                    <span style={{ fontFamily: 'ui-monospace, monospace' }}>
+                      {opp.ticker} <span style={{ color: opp.side === 'yes' ? '#16a34a' : '#ef4444' }}>{(opp.side || 'yes').toUpperCase()}</span>
+                    </span>
+                    <span style={{ color: 'var(--text-muted)' }}>{qty}× @ {(price * 100).toFixed(1)}¢ = ${cost.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+              <p style={{ margin: '0 0 18px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>
+                Total cost: <strong>${totalCost.toFixed(2)}</strong>.
+                {excludedCount > 0 && <> {excludedCount} selected signal{excludedCount !== 1 ? 's' : ''} excluded (no positive edge, or already placed).</>}
+                <br />
+                <span style={{ fontSize: 12, color: remaining < 10 ? '#ef4444' : 'var(--text-faint)' }}>
+                  Balance after: <strong>${remaining.toFixed(2)}</strong>
+                </span>
+              </p>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button onClick={() => setBulkConfirmPending(null)} style={{
+                  padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)',
+                  background: 'var(--bg-card)', color: 'var(--text-muted)', fontWeight: 500, fontSize: 13, cursor: 'pointer',
+                }}>Cancel</button>
+                <button onClick={handleBulkConfirm} style={{
+                  padding: '9px 20px', borderRadius: 8, border: 'none',
+                  background: '#16a34a', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                }}>Place {rows.length} order{rows.length !== 1 ? 's' : ''}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </main>
   );
 }

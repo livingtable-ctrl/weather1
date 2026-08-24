@@ -214,6 +214,8 @@ python main.py kill
 
 `python main.py kill` writes `data/.kill_switch`, which is checked at the start of every cycle (`cron.py`, `order_executor.py`). The bot will log `KILL SWITCH ACTIVE` and exit without placing orders. Re-enable with `python main.py resume` (this also clears black-swan halt state, which manually deleting the file would not).
 
+**Batch-41 note:** as of the dashboard's `/api/close-position` route gaining the same kill-switch/`TRADING_PAUSED` gates its order-placement siblings already had (audit-M-9), engaging the kill switch or `TRADING_PAUSED` also blocks closing a position from the dashboard — not just placing new ones. `cron.py` (the automated exit path — settlement-lag closes, model-reversal exits) also aborts its whole run under either gate, and `main.py` has no standalone CLI command to manually close an arbitrary open paper position (`undo` only reverses a just-placed trade within a short window, not a general close). **There is currently no operator-facing way to close an open position at all while the kill switch or `TRADING_PAUSED` is engaged.** If this ever needs to be actionable during a real halt, it needs its own fix (e.g. a `main.py close <trade_id>` command, or carving the close path out from under the gate with its own justification) — flagged here rather than fixed as part of batch-41, which only mirrored the existing sibling-route pattern per its own directive.
+
 ### Canceling open orders
 
 ```bash

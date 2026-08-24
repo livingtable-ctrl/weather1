@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, StatCard, BalanceSparkline, SystemEventsCard } from '../shared.jsx';
+import { normCity, StatCard, BalanceSparkline, SystemEventsCard, gradGateStatus } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
 // LastSettlementBatch — compact inline summary of the most recently settled
@@ -257,26 +257,28 @@ export default function OverviewTab() {
         </p>
         <div style={{ display: 'grid', gap: 14 }}>
           {[
-            { label: 'Trades',  current: grad.trades_done, target: grad.trades_target, unit: '',  invert: false, complete: grad.trades_done >= grad.trades_target },
-            { label: 'P&L',    current: grad.total_pnl,   target: grad.pnl_target,    unit: '$', invert: false, complete: grad.total_pnl >= grad.pnl_target },
-            { label: 'Brier',  current: grad.brier,       target: grad.brier_target,  unit: '',  invert: true,  complete: grad.brier <= grad.brier_target },
+            { label: 'Trades', current: grad.trades_done, target: grad.trades_target, unit: '',  invert: false },
+            { label: 'P&L',    current: grad.total_pnl,   target: grad.pnl_target,    unit: '$', invert: false },
+            // audit-M-11: brier can now genuinely be null (real "not enough
+            // trades yet" answer, now that mapStats no longer falls back to
+            // MOCK's baked-in 0.151) -- gradGateStatus (shared.jsx, unit-
+            // tested) guards `null <= 0.2` explicitly, which JS would
+            // otherwise coerce to `0 <= 0.2` = true and paint the gate green.
+            { label: 'Brier',  current: grad.brier,       target: grad.brier_target,  unit: '',  invert: true },
           ].map((g) => {
-            // For the Brier bar the scale runs from a 0.25 "baseline" down to the target
-            // (e.g. 0.20). This way the bar hits 100% exactly when the gate is cleared,
-            // rather than hitting 100% only at impossible perfect prediction (Brier=0).
-            const pct = g.invert
-              ? Math.min(100, Math.max(0, (0.25 - g.current) / (0.25 - g.target) * 100))
-              : Math.min(100, Math.max(0, (g.current / g.target) * 100));
+            const { noData, complete, pct } = gradGateStatus(g.current, g.target, g.invert);
             return (
               <div key={g.label}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
                   <span style={{ fontWeight: 600 }}>{g.label}</span>
-                  <span style={{ fontFamily: 'ui-monospace, monospace', color: g.complete ? '#16a34a' : 'var(--text-muted)' }}>
-                    {g.unit}{g.invert ? g.current.toFixed(3) : (g.unit === '$' ? g.current.toFixed(2) : Math.round(g.current))}/{g.unit}{g.target}
+                  <span style={{ fontFamily: 'ui-monospace, monospace', color: complete ? '#16a34a' : 'var(--text-muted)' }}>
+                    {noData
+                      ? 'insufficient data'
+                      : `${g.unit}${g.invert ? g.current.toFixed(3) : (g.unit === '$' ? g.current.toFixed(2) : Math.round(g.current))}/${g.unit}${g.target}`}
                   </span>
                 </div>
                 <div style={{ height: 8, background: 'var(--bg-muted)', borderRadius: 4, overflow: 'hidden' }}>
-                  <div style={{ width: pct + '%', height: '100%', background: g.complete ? '#16a34a' : '#3b82f6', transition: 'width 0.4s' }} />
+                  <div style={{ width: pct + '%', height: '100%', background: complete ? '#16a34a' : '#3b82f6', transition: 'width 0.4s' }} />
                 </div>
               </div>
             );
