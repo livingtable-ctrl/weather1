@@ -70,13 +70,16 @@ async function safe(path) {
  * grad    → {trades_done, win_rate, total_pnl, brier, ready,
  *             fear_greed_score, fear_greed_label}
  */
-function mapStats(status, grad, config, prevStats) {
+export function mapStats(status, grad, config, prevStats) {
   const base = { ...prevStats };
 
   if (status && !status.error) {
     if (status.balance          != null) base.balance          = status.balance;
     if (status.open_count       != null) base.open_count       = status.open_count;
-    if (status.brier            != null) base.brier            = status.brier;
+    // brier is always present on a successful response but can be a real null
+    // (not enough settled predictions yet) -- a `!= null` gate would drop that
+    // null and leave base.brier stuck on a stale/mock value forever.
+    if ('brier' in status) base.brier = status.brier;
     if (status.kill_switch_active != null) base.kill_switch    = status.kill_switch_active;
     if (status.today_pnl        != null) base.today_pnl        = status.today_pnl;
     if (status.starting_balance != null) base.starting_balance = status.starting_balance;

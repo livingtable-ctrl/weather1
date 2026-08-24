@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { computeMark, fetchAllSafe, authHeader } from './useData.js';
+import { computeMark, fetchAllSafe, authHeader, mapStats } from './useData.js';
 
 // Hand-computed fixtures mirroring positions.liquidation_price()'s convention:
 // YES realizes at yes_bid, NO realizes at 1 - yes_ask. See backlog.txt for the
@@ -303,5 +303,34 @@ describe('fetchAllSafe', () => {
     expect(results[1].status).toBe('rejected');
     expect(results[1].reason.isAuth).toBe(true);
     expect(sessionStorage.getItem('kalshi-pwd')).toBeNull();
+  });
+});
+
+describe('mapStats — top-level stats.brier null handling', () => {
+  it('a real successful /api/status response with brier: null overwrites a stale mock value with null, not preserving it', () => {
+    const status = { balance: 100, open_count: 0, brier: null };
+    const prevStats = { brier: 0.271 }; // MOCK.stats.brier seed value
+    const result = mapStats(status, null, null, prevStats);
+    expect(result.brier).toBeNull();
+  });
+
+  it('a numeric brier from a successful response is still applied normally', () => {
+    const status = { balance: 100, open_count: 0, brier: 0.183 };
+    const prevStats = { brier: 0.271 };
+    const result = mapStats(status, null, null, prevStats);
+    expect(result.brier).toBe(0.183);
+  });
+
+  it('a failed /api/status fetch (status.error set) leaves prevStats.brier untouched', () => {
+    const status = { error: 'HTTP 500' };
+    const prevStats = { brier: 0.271 };
+    const result = mapStats(status, null, null, prevStats);
+    expect(result.brier).toBe(0.271);
+  });
+
+  it('status === null (fetch threw) leaves prevStats.brier untouched', () => {
+    const prevStats = { brier: 0.271 };
+    const result = mapStats(null, null, null, prevStats);
+    expect(result.brier).toBe(0.271);
   });
 });
