@@ -2069,6 +2069,173 @@ def test_analyze_trade_captures_gem_ukmo_forecast_means(monkeypatch):
     assert means["gfs_seamless"] == pytest.approx(74.5)
 
 
+def _hrrr_wiring_test_enriched(target_date):
+    """Shared enriched-dict builder for the HRRR same-day-wiring tests below
+    -- mirrors test_analyze_trade_captures_gem_ukmo_forecast_means's fixture
+    shape, parameterized on target_date so both the same-day and multi-day
+    cases share one builder."""
+    return {
+        "_forecast": {"high_f": 75.0, "low_f": 55.0, "precip_in": 0.0, "wind_mph": 5.0},
+        "_date": target_date,
+        "_city": "NYC",
+        "_hour": None,
+        "ticker": "KXHIGHNY-26APR09-T72",
+        "title": "Will NYC high temperature be above 72°F?",
+        "series_ticker": "KXHIGH-23-NYC",
+        "yes_ask": 0.72,
+        "yes_bid": 0.62,
+        "volume": 500,
+        "open_interest": 200,
+        "close_time": (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            + __import__("datetime").timedelta(hours=2)
+        ).isoformat(),
+    }
+
+
+def _mock_hrrr_wiring_common(monkeypatch, wm, mos):
+    monkeypatch.setattr(
+        wm, "get_ensemble_temps", lambda *a, **kw: [70.0, 71.0, 72.0, 73.0, 74.0] * 4
+    )
+    monkeypatch.setattr(wm, "get_ensemble_members", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        wm,
+        "_get_consensus_probs",
+        lambda *a, **kw: (0.73, 0.75, 74.0, 74.5, 76.25),
+    )
+    monkeypatch.setattr(wm, "_get_gem_ukmo_means", lambda *a, **kw: (None, None))
+    monkeypatch.setattr(wm, "fetch_temperature_nbm", lambda *a, **kw: 74.0)
+    monkeypatch.setattr(wm, "fetch_temperature_ecmwf", lambda *a, **kw: 79.5)
+    monkeypatch.setattr(wm, "_metar_lock_in", lambda *a, **kw: (False, 0.0, {}))
+    monkeypatch.setattr("nws.get_live_observation", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "nws_prob", lambda *a, **kw: None)
+    monkeypatch.setattr(mos, "fetch_nbm_quantiles", lambda *a, **kw: None)
+    monkeypatch.setattr(wm, "temperature_adjustment", lambda *a, **kw: 0.0)
+    monkeypatch.setattr(wm, "_SEASONAL_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CONDITION_WEIGHTS", {})
+    monkeypatch.setattr(wm, "_CITY_WEIGHTS", {})
+    monkeypatch.setattr(
+        wm,
+        "get_weather_forecast",
+        lambda *a, **kw: {
+            "high_f": 75.0,
+            "low_f": 55.0,
+            "precip_in": 0.0,
+            "wind_mph": 5.0,
+        },
+    )
+
+
+def test_analyze_trade_captures_hrrr_forecast_mean_same_day(monkeypatch):
+    """batch-50: analyze_trade must surface _fetch_hrrr_temp's own value in
+    model_forecast_means (key "ncep_hrrr_conus") for a same-day (days_out==0)
+    market -- same wiring pattern as GEM/UKMO/ecmwf_aifs_prob, gated
+    additionally on days_out==0 since HRRR has a hard ~2-day model horizon."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import mos
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    _mock_hrrr_wiring_common(monkeypatch, wm, mos)
+    # Distinct from every other mocked model mean so a mix-up would fail.
+    hrrr_calls = []
+
+    def _fake_hrrr(city, target_date, var="max"):
+        hrrr_calls.append((city, target_date, var))
+        return 91.75
+
+    monkeypatch.setattr(wm, "_fetch_hrrr_temp", _fake_hrrr)
+
+    # NYC-local "today" -- matches this fixture's "_city": "NYC", same
+    # anchoring rationale as test_metar_locked_trade_has_ecmwf_forecast_mean_
+    # keys above (days_out is computed off the market's CITY-LOCAL today).
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    result = analyze_trade(_hrrr_wiring_test_enriched(today))
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    means = result["model_forecast_means"]
+    assert means["ncep_hrrr_conus"] == pytest.approx(91.75), (
+        f"expected ncep_hrrr_conus=91.75 from the mocked _fetch_hrrr_temp, "
+        f"got {means.get('ncep_hrrr_conus')!r}"
+    )
+    assert len(hrrr_calls) == 1, (
+        f"_fetch_hrrr_temp should be called exactly once, got {hrrr_calls}"
+    )
+    # icon/gfs must be unaffected by HRRR's addition.
+    assert means["icon_seamless"] == pytest.approx(74.0)
+    assert means["gfs_seamless"] == pytest.approx(74.5)
+
+
+def test_analyze_trade_skips_hrrr_fetch_for_multi_day_market(monkeypatch):
+    """HRRR has a hard ~2-day model horizon -- analyze_trade must NOT call
+    _fetch_hrrr_temp at all for a days_out > 0 market (not just discard the
+    result), and model_forecast_means['ncep_hrrr_conus'] must stay None.
+
+    Asserts icon/gfs means too (not just HRRR's own None) -- without that,
+    this test would pass identically if analyze_trade skipped the entire
+    enclosing `if ens_prob is not None and len(temps) >= 2:` block for some
+    unrelated reason, proving nothing about the days_out==0 gate
+    specifically."""
+    from datetime import datetime, timedelta
+
+    import mos
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    _mock_hrrr_wiring_common(monkeypatch, wm, mos)
+    hrrr_calls = []
+
+    def _fake_hrrr(*a, **kw):
+        hrrr_calls.append((a, kw))
+        return 91.75
+
+    monkeypatch.setattr(wm, "_fetch_hrrr_temp", _fake_hrrr)
+
+    # UTC-anchored tomorrow -- same days_out==1 pattern/rationale as
+    # test_analyze_trade_captures_gem_ukmo_forecast_means above.
+    tomorrow = datetime.now(UTC).date() + timedelta(days=1)
+    result = analyze_trade(_hrrr_wiring_test_enriched(tomorrow))
+    assert result is not None, "analyze_trade returned None — fix the enriched dict"
+    means = result["model_forecast_means"]
+    assert means["ncep_hrrr_conus"] is None
+    assert hrrr_calls == [], (
+        f"_fetch_hrrr_temp must not be called for a multi-day market, got {hrrr_calls}"
+    )
+    # Positive control: the enclosing ens_prob/temps-gated block DID run
+    # (icon/gfs got their real mocked means) -- proves the gate that skipped
+    # HRRR is days_out==0 specifically, not the whole block being skipped.
+    assert means["icon_seamless"] == pytest.approx(74.0)
+    assert means["gfs_seamless"] == pytest.approx(74.5)
+
+
+def test_analyze_trade_survives_hrrr_fetch_exception(monkeypatch):
+    """_fetch_hrrr_temp failing must not abort the trade -- mirrors the
+    existing _get_gem_ukmo_means/_get_ecmwf_aifs_prob exception-tolerance
+    behavior, and must not regress icon/gfs's own means."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import mos
+    import weather_markets as wm
+    from weather_markets import analyze_trade
+
+    _mock_hrrr_wiring_common(monkeypatch, wm, mos)
+
+    def _raise_hrrr(*a, **kw):
+        raise RuntimeError("simulated HRRR fetch failure")
+
+    monkeypatch.setattr(wm, "_fetch_hrrr_temp", _raise_hrrr)
+
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    result = analyze_trade(_hrrr_wiring_test_enriched(today))
+    assert result is not None, "a HRRR fetch exception must not abort the trade"
+    means = result["model_forecast_means"]
+    assert means["ncep_hrrr_conus"] is None
+    assert means["icon_seamless"] == pytest.approx(74.0)
+    assert means["gfs_seamless"] == pytest.approx(74.5)
+
+
 def test_analyze_trade_survives_gem_ukmo_fetch_exception(monkeypatch):
     """_get_gem_ukmo_means failing must not abort the trade -- mirrors the
     existing _get_consensus_probs exception-tolerance behavior, and must not
@@ -4269,6 +4436,15 @@ class TestValidateForecastModelKeys:
             {"gem_global": 73.0, "ukmo_global_ensemble_20km": None}
         )  # must not raise
 
+    def test_hrrr_key_passes(self):
+        """batch-50: ncep_hrrr_conus added as a track-only source, same
+        mechanism as GEM/UKMO."""
+        import weather_markets as wm
+
+        wm._validate_forecast_model_keys({"ncep_hrrr_conus": 91.75})  # must not raise
+        assert "ncep_hrrr_conus" in wm.KNOWN_FORECAST_MODEL_NAMES
+        assert "ncep_hrrr_conus" in wm.TRACKING_ONLY_MODEL_NAMES
+
     def test_empty_dict_passes(self):
         import weather_markets as wm
 
@@ -5221,6 +5397,15 @@ class TestBatchPrewarmEnsembleRateLimitTiering:
         after = {e[2] for e in events[sleep_idx + 1 :] if e[0] == "request"}
 
         tracking_only = set(wm.TRACKING_ONLY_MODEL_NAMES)
+        # batch-50: "ncep_hrrr_conus" is TRACKING_ONLY_MODEL_NAMES for blend-
+        # weight exclusion purposes, but the ensemble-api endpoint has no real
+        # member data for it (verified live: HTTP 200, all-null/member-less
+        # series -- HRRR is a deterministic single run, not an ensemble
+        # product). It's fetched separately from FORECAST_BASE via
+        # _fetch_hrrr_temp, same-day-only — this tier-2 ENSEMBLE_BASE prewarm
+        # loop excludes it deliberately, see batch_prewarm_ensemble's own
+        # comment.
+        ensemble_tracking_only = tracking_only - {"ncep_hrrr_conus"}
         assert before & tracking_only == set(), (
             f"tracking-only model fetched before the tier sleep: {before}"
         )
@@ -5228,8 +5413,9 @@ class TestBatchPrewarmEnsembleRateLimitTiering:
             f"blend-critical temp models missing from tier 1: {before}"
         )
         assert "ecmwf_ifs025" in before, "precip fetch did not run in tier 1"
-        assert after == tracking_only, (
-            f"tier 2 should be exactly the tracking-only models, got {after}"
+        assert after == ensemble_tracking_only, (
+            f"tier 2 should be exactly the ensemble-api tracking-only models "
+            f"(excluding ncep_hrrr_conus, fetched separately), got {after}"
         )
 
         wm._ensemble_cache.clear()

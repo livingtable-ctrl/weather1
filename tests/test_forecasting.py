@@ -3,6 +3,20 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import weather_markets as _wm_module
+
+# batch-50: conftest.py's autouse default_hrrr_forecast_mean_none fixture
+# stubs weather_markets._fetch_hrrr_temp to a no-op for every test (so
+# analyze_trade tests don't fire real network calls) -- same "same opt-in
+# pattern as isolate_dynamic_sigma / _REAL_LOAD_DYNAMIC_SIGMA above" idiom
+# already used by test_gaussian_prob.py's _REAL_LOAD_DYNAMIC_SIGMA. Captured
+# at module import time, before any per-test fixture runs, so TestHRRR's
+# direct tests of the real implementation below can restore it via
+# monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP) BEFORE
+# their own `from weather_markets import _fetch_hrrr_temp` local import --
+# otherwise that import would silently bind to the autouse stub instead.
+_REAL_FETCH_HRRR_TEMP = _wm_module._fetch_hrrr_temp
+
 
 class TestDynamicModelWeights:
     def test_returns_none_when_no_tracker_rows(self):
@@ -1284,7 +1298,15 @@ class TestHRRR:
 
         import requests
 
-        from weather_markets import _HRRR_CACHE, _fetch_hrrr_temp
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        # Restore the real implementation -- conftest's autouse
+        # default_hrrr_forecast_mean_none fixture stubs it to a no-op by
+        # default; must run BEFORE the local `from ... import _fetch_hrrr_temp`
+        # below or that import silently binds to the stub instead.
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
 
         _HRRR_CACHE.clear()  # avoid stale cache from other tests
 
@@ -1311,7 +1333,11 @@ class TestHRRR:
 
         import requests
 
-        from weather_markets import _HRRR_CACHE, _fetch_hrrr_temp
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
 
         # Clear cache so the mock response is always used.
         _HRRR_CACHE.clear()
@@ -1342,6 +1368,9 @@ class TestHRRR:
     def test_fetch_hrrr_temp_returns_none_for_unknown_city(self, monkeypatch):
         from datetime import date
 
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
         from weather_markets import _fetch_hrrr_temp
 
         result = _fetch_hrrr_temp("UNKNOWN_CITY_XYZ", date(2026, 7, 1), var="max")
@@ -1356,7 +1385,11 @@ class TestHRRR:
 
         import requests
 
-        from weather_markets import _HRRR_CACHE, _fetch_hrrr_temp
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
 
         _HRRR_CACHE.clear()
 
@@ -1374,6 +1407,180 @@ class TestHRRR:
         second = _fetch_hrrr_temp("NYC", date(2026, 7, 1), var="max")
         assert second is None
         assert call_count["n"] == 1, "negative-cached hit must not re-call requests.get"
+
+    def test_fetch_hrrr_temp_pins_ncep_hrrr_conus_not_best_match(self, monkeypatch):
+        """batch-50: models param must be the pinned 'ncep_hrrr_conus', not
+        the old opaque 'best_match' auto-selection -- go/no-go validation
+        (2026-08-24) found the two resolve identically today, but the pin
+        guards against best_match silently drifting to a non-HRRR source
+        later; a regression back to best_match would defeat that."""
+        from datetime import date
+
+        import requests
+
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()
+        captured_params = {}
+
+        class MockResp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "hourly": {
+                        "time": ["2026-07-01T18:00"],
+                        "temperature_2m": [88.5],
+                    }
+                }
+
+        def _fake_get(url, params=None, timeout=None):
+            captured_params.update(params or {})
+            return MockResp()
+
+        monkeypatch.setattr(requests, "get", _fake_get)
+        _fetch_hrrr_temp("NYC", date(2026, 7, 1), var="max")
+        assert captured_params.get("models") == "ncep_hrrr_conus", (
+            f"expected pinned models=ncep_hrrr_conus, got {captured_params.get('models')!r}"
+        )
+
+    def test_fetch_hrrr_temp_skips_fetch_when_circuit_open(self, monkeypatch):
+        """The dedicated _hrrr_om_cb breaker must short-circuit the fetch
+        (fail toward last-known-good / cache, never hammer a known-down
+        endpoint) instead of always attempting requests.get."""
+        from datetime import date
+
+        import requests
+
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()
+        call_count = {"n": 0}
+
+        def _fake_get(*a, **k):
+            call_count["n"] += 1
+            raise AssertionError(
+                "requests.get must not be called while circuit is open"
+            )
+
+        monkeypatch.setattr(requests, "get", _fake_get)
+        monkeypatch.setattr(wm._hrrr_om_cb, "is_open", lambda: True)
+
+        result = _fetch_hrrr_temp("NYC", date(2026, 7, 2), var="max")
+        assert result is None
+        assert call_count["n"] == 0
+
+    def test_fetch_hrrr_temp_records_failure_on_exception(self, monkeypatch):
+        """A real fetch failure must record on _hrrr_om_cb (not silently
+        swallowed) so repeated HRRR outages eventually open the breaker,
+        same as every other Open-Meteo source's CB in this file."""
+        from datetime import date
+
+        import requests
+
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()
+        wm._hrrr_om_cb.record_success()  # start from a clean failure_count
+
+        def _raise(*a, **k):
+            raise requests.RequestException("timeout")
+
+        monkeypatch.setattr(requests, "get", _raise)
+        before = wm._hrrr_om_cb.failure_count
+        _fetch_hrrr_temp("NYC", date(2026, 7, 3), var="max")
+        assert wm._hrrr_om_cb.failure_count == before + 1
+
+    def test_fetch_hrrr_temp_records_success_on_valid_response(self, monkeypatch):
+        """A genuinely valid response must record_success() -- clears any
+        prior failure_count/opened_at, same as every other Open-Meteo
+        source's CB in this file. Untested before this: only the exception
+        and is_open()-short-circuit paths had coverage."""
+        from datetime import date
+
+        import requests
+
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()
+        # Start from a nonzero failure_count so record_success()'s reset is
+        # actually observable, not just "stayed at 0".
+        wm._hrrr_om_cb.record_failure()
+        assert wm._hrrr_om_cb.failure_count > 0
+
+        class MockResp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "hourly": {
+                        "time": ["2026-07-04T18:00"],
+                        "temperature_2m": [90.0],
+                    }
+                }
+
+        monkeypatch.setattr(requests, "get", lambda *a, **k: MockResp())
+        result = _fetch_hrrr_temp("NYC", date(2026, 7, 4), var="max")
+        assert result == pytest.approx(90.0)
+        assert wm._hrrr_om_cb.failure_count == 0
+
+    def test_fetch_hrrr_temp_records_failure_on_all_null_response(self, monkeypatch):
+        """An all-null hourly series (a 'successful' HTTP call with no usable
+        data -- the shape ensemble-api.open-meteo.com actually returns for
+        models=ncep_hrrr_conus, per this batch's own prewarm-exclusion
+        finding) must record_failure(), not record_success(). Untested
+        before this: only the exception path recorded a failure."""
+        from datetime import date
+
+        import requests
+
+        import weather_markets as wm
+        from weather_markets import _HRRR_CACHE
+
+        monkeypatch.setattr(wm, "_fetch_hrrr_temp", _REAL_FETCH_HRRR_TEMP)
+        from weather_markets import _fetch_hrrr_temp
+
+        _HRRR_CACHE.clear()
+        wm._hrrr_om_cb.record_success()  # start from a clean failure_count
+
+        class MockResp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "hourly": {"time": ["2026-07-05T18:00"], "temperature_2m": [None]}
+                }
+
+        monkeypatch.setattr(requests, "get", lambda *a, **k: MockResp())
+        before = wm._hrrr_om_cb.failure_count
+        result = _fetch_hrrr_temp("NYC", date(2026, 7, 5), var="max")
+        assert result is None
+        assert wm._hrrr_om_cb.failure_count == before + 1
 
 
 class TestModelBrierScores:
@@ -1824,7 +2031,7 @@ class TestSignalGraduationRegistry:
         with pytest.raises(ValueError, match="KNOWN_FORECAST_MODEL_NAMES"):
             wm._count_model_obs("gem_glbal")  # typo, not gem_global
 
-    def test_registry_has_11_entries_matching_the_10_shipped_signal_topics(self):
+    def test_registry_has_12_entries_matching_the_11_shipped_signal_topics(self):
         import weather_markets as wm
 
         # Locks in the retrofit scope agreed on when this was built: all
@@ -1839,12 +2046,16 @@ class TestSignalGraduationRegistry:
         # "RAIN'S MARKET-IMPLIED DISTRIBUTION ... HAS NO GRADUATION/SAMPLE-
         # FLOOR TRACKING OF ITS OWN" -- its own distinct backlog_ref, unlike
         # GEM/UKMO's shared one, since it's a standalone entry not a second
-        # row off an existing one. Renamed (not just bumped) per this
-        # project's own established convention of keeping a count-encoding
-        # test name truthful when the count changes.
-        assert len(wm.SIGNAL_REGISTRY) == 11
+        # row off an existing one. A 12th row / 11th topic ("hrrr_graduation")
+        # was added batch-50 (2026-08-24) for backlog.txt "GRADUATE HRRR
+        # (ncep_hrrr_conus) FROM TRACK-ONLY INTO THE LIVE BLEND" -- also its
+        # own distinct backlog_ref, same shape as market_implied_rain's.
+        # Renamed (not just bumped) per this project's own established
+        # convention of keeping a count-encoding test name truthful when the
+        # count changes.
+        assert len(wm.SIGNAL_REGISTRY) == 12
         backlog_refs = {e.backlog_ref for e in wm.SIGNAL_REGISTRY}
-        assert len(backlog_refs) == 10
+        assert len(backlog_refs) == 11
 
     def test_report_includes_every_registered_signal(self, monkeypatch, tmp_path):
         import weather_markets as wm
@@ -1982,7 +2193,7 @@ class TestSignalGraduationRegistry:
     def test_real_registry_entries_all_resolve_against_a_real_empty_db(
         self, monkeypatch, tmp_path
     ):
-        """End-to-end smoke test of the actual 11-entry registry (not a
+        """End-to-end smoke test of the actual 12-entry registry (not a
         mocked stand-in) against a real, empty, isolated DB -- proves every
         real count_fn closure calls a real tracker function with valid
         arguments and doesn't crash, and that an empty DB reads as
@@ -1997,7 +2208,7 @@ class TestSignalGraduationRegistry:
         )
 
         report = wm.get_signal_graduation_report()
-        assert len(report) == 11
+        assert len(report) == 12
         for row in report:
             if row["sample_floor"] is not None:
                 assert row["count"] == 0, row["key"]

@@ -228,12 +228,6 @@ _DEAD_CODE_ALLOWLIST: dict[tuple[str, str], str] = {
         "explicitly says 'Build that sweep before wiring this into anything "
         "real' (a ~2,000-extra-Kalshi-API-call settlement sweep, not built)"
     ),
-    ("weather_markets.py", "_fetch_hrrr_temp"): (
-        "TESTED, NO PROD CALL SITE -- own comment says 'This is a standalone "
-        "utility; it is NOT wired into analyze_trade yet -- that happens "
-        "once HRRR data has been validated against settled same-day trades' "
-        "(that validation hasn't happened)"
-    ),
     ("weather_markets.py", "censoring_correction"): (
         "TESTED, NO PROD CALL SITE -- correctly implemented per its #23 spec "
         "(shrink toward 0.5 when >1% of ensemble members are exactly 0/1), "

@@ -1121,9 +1121,19 @@ def _run_batch_prewarm(ctx: CronContext, markets: list[dict]) -> None:
     # extraction nested it inside the "if city_dates" branch by mistake,
     # silently un-suppressing probing on any cycle with zero parseable
     # city/date pairs.
-    from weather_markets import _ecmwf_om_cb, _ensemble_cb, _forecast_cb, _nbm_om_cb
+    # batch-50: _hrrr_om_cb added -- _fetch_hrrr_temp now runs inside this
+    # same analysis phase (same-day markets only), so an open HRRR circuit
+    # needs the same probe suppression as the other sources here, not just
+    # during prewarm.
+    from weather_markets import (
+        _ecmwf_om_cb,
+        _ensemble_cb,
+        _forecast_cb,
+        _hrrr_om_cb,
+        _nbm_om_cb,
+    )
 
-    for cb in (_nbm_om_cb, _ensemble_cb, _forecast_cb, _ecmwf_om_cb):
+    for cb in (_nbm_om_cb, _ensemble_cb, _forecast_cb, _ecmwf_om_cb, _hrrr_om_cb):
         if cb.seconds_open() > 0:
             cb.suppress_probe()
             _log.warning(

@@ -293,9 +293,12 @@ def reset_open_meteo_circuit_breaker():
     """Reset all weather_markets, acis_precip, acis_snow, climatology,
     kalshi_client, AND nws circuit breakers before every test.
 
-    There are seven weather_markets CBs (_forecast_cb, _ensemble_cb,
-    _ensemble_precip_multiday_cb, _ecmwf_om_cb, _nbm_om_cb, _weatherapi_cb,
-    _pirate_cb), acis_precip's
+    There are eight weather_markets CBs (_forecast_cb, _ensemble_cb,
+    _ensemble_precip_multiday_cb, _ecmwf_om_cb, _nbm_om_cb, _hrrr_om_cb,
+    _weatherapi_cb, _pirate_cb) -- _hrrr_om_cb added batch-50 when
+    _fetch_hrrr_temp was activated as a real network call (previously
+    dormant/uncalled, so this gap didn't exist yet), same missed-until-added
+    pattern as every other CB in this loop's own history below. acis_precip's
     two (_acis_cb, _om_seasonal_cb), acis_snow's two
     (_acis_snow_cb, _om_seasonal_snow_cb), climatology's one (_clim_cb),
     kalshi_client's two (_kalshi_cb_read, _kalshi_cb_write), and nws's one
@@ -335,6 +338,7 @@ def reset_open_meteo_circuit_breaker():
         weather_markets._ensemble_precip_multiday_cb,
         weather_markets._ecmwf_om_cb,
         weather_markets._nbm_om_cb,
+        weather_markets._hrrr_om_cb,
         weather_markets._weatherapi_cb,
         weather_markets._pirate_cb,
         acis_precip._acis_cb,
@@ -508,6 +512,24 @@ def default_ecmwf_aifs_prob_none(monkeypatch):
     import weather_markets
 
     monkeypatch.setattr(weather_markets, "_get_ecmwf_aifs_prob", lambda *a, **kw: None)
+
+
+@pytest.fixture(autouse=True)
+def default_hrrr_forecast_mean_none(monkeypatch):
+    """Default weather_markets._fetch_hrrr_temp to None for every test.
+
+    batch-50: analyze_trade now calls this (track-only, same-day/days_out==0
+    only) under the same ens_prob/temps gate as _get_consensus_probs, same
+    reasoning as default_gem_ukmo_means_none/default_ecmwf_aifs_prob_none
+    above -- without this default, any existing analyze_trade test using a
+    same-day target_date would fire a REAL network call to Open-Meteo
+    instead of hitting a mock. Tests that want to exercise the real
+    _fetch_hrrr_temp implementation import it directly (see TestHRRR in
+    test_forecasting.py) rather than going through analyze_trade.
+    """
+    import weather_markets
+
+    monkeypatch.setattr(weather_markets, "_fetch_hrrr_temp", lambda *a, **kw: None)
 
 
 @pytest.fixture(autouse=True)

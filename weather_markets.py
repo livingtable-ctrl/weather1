@@ -156,6 +156,21 @@ _ecmwf_om_cb = CircuitBreaker(
     burst_window=2.0,
 )
 
+# Separate circuit breaker for _fetch_hrrr_temp (FORECAST_BASE,
+# models="ncep_hrrr_conus", batch-50) — same rationale as _ecmwf_om_cb: this
+# hits the same host as _forecast_cb's primary 3-model fetch but is a
+# logically independent, track-only same-day signal. A run of HRRR-only
+# failures (e.g. ncep_hrrr_conus briefly unavailable) must not trip the
+# breaker gating the live-blend forecast fetches, and vice versa — fail
+# toward last-known-good (the 4h _HRRR_CACHE) rather than fail-open into
+# any blend, since HRRR is tracked-only and never selected as a blend member.
+_hrrr_om_cb = CircuitBreaker(
+    name="hrrr_openmeteo",
+    failure_threshold=3,
+    recovery_timeout=300,
+    burst_window=2.0,
+)
+
 # ── Trading filters ───────────────────────────────────────────────────────────
 # Only analyse markets expiring within this many days. Days 3-4 carry higher
 # uncertainty but the horizon discount in edge_confidence() and Kelly sizing
@@ -469,6 +484,7 @@ KNOWN_FORECAST_MODEL_NAMES = frozenset(
         "ecmwf_ifs025",
         "gem_global",
         "ukmo_global_ensemble_20km",
+        "ncep_hrrr_conus",  # batch-50 (dossier B4): same-day-only, track-only
     }
 )
 
@@ -487,7 +503,19 @@ KNOWN_FORECAST_MODEL_NAMES = frozenset(
 # weight value was never directly selected. That's a real leak into live
 # trade decisions the batch_prewarm_ensemble blend-exclusion alone doesn't
 # stop).
-TRACKING_ONLY_MODEL_NAMES = frozenset({"gem_global", "ukmo_global_ensemble_20km"})
+#
+# "Single source of truth" above is specifically about BLEND-WEIGHT
+# exclusion (the three sites named). batch-50 added one unrelated,
+# non-weight carve-out on top of it: batch_prewarm_ensemble()'s own tier-2
+# FETCH list explicitly subtracts "ncep_hrrr_conus" from this constant
+# (TRACKING_ONLY_MODEL_NAMES - {"ncep_hrrr_conus"}, see that function's own
+# comment) because HRRR can't be fetched via that tier's ENSEMBLE_BASE
+# endpoint at all -- a fetch-eligibility concern, not a second weight-
+# exclusion mechanism. The three blend-weight sites above still read this
+# constant unmodified; only the prewarm fetch list carves an exception.
+TRACKING_ONLY_MODEL_NAMES = frozenset(
+    {"gem_global", "ukmo_global_ensemble_20km", "ncep_hrrr_conus"}
+)
 
 
 def _validate_forecast_model_keys(
@@ -2025,7 +2053,22 @@ def batch_prewarm_ensemble(
     # TRACKING_ONLY_MODEL_NAMES constant (not a second hardcoded list) so
     # this stays in sync with _weights_from_mae()'s/get_model_weights()'s
     # own exclusion of the same models from weight normalization.
-    tracking_only_models = sorted(TRACKING_ONLY_MODEL_NAMES)
+    #
+    # batch-50: "ncep_hrrr_conus" is excluded from THIS prewarm specifically
+    # (but stays in TRACKING_ONLY_MODEL_NAMES for the blend-weight exclusion
+    # above) — unlike gem_global/ukmo_global_ensemble_20km, HRRR isn't a
+    # usable ensemble-api.open-meteo.com model: verified live, the endpoint
+    # returns HTTP 200 for models=ncep_hrrr_conus (it doesn't reject the
+    # name), but the response is a member-less, all-null series — HRRR is a
+    # single deterministic run, not an ensemble product, so there's nothing
+    # for this endpoint to serve. It's fetched from the separate FORECAST_BASE
+    # deterministic-forecast endpoint instead (via _fetch_hrrr_temp), which
+    # also has a hard ~2-day horizon, so the forecast_days=16 params below
+    # would be wrong for it even on an endpoint that did serve real data.
+    # It's same-day-only and analyze_trade already fetches+caches it directly
+    # (_HRRR_CACHE, 4h TTL) — no 16-day/multi-city prewarm burden to amortize
+    # the way GEM/UKMO's real 16-day ensemble fetch has.
+    tracking_only_models = sorted(TRACKING_ONLY_MODEL_NAMES - {"ncep_hrrr_conus"})
     fetch_models = [*_real_blend_models, *tracking_only_models]
     vars_to_fetch = [("max", "temperature_2m_max"), ("min", "temperature_2m_min")]
     total_calls = len(fetch_models) * len(vars_to_fetch)
@@ -2494,23 +2537,45 @@ def fetch_temperature_nbm(
 # ── HRRR (High-Resolution Rapid Refresh) — same-day only ────────────────────
 # HRRR runs every hour at 3 km resolution and is the best available model for
 # same-day (days_out == 0) CONUS markets after ~10 AM local time.
-# Open-Meteo exposes HRRR implicitly via model=best_match for CONUS locations.
-# This is a standalone utility; it is NOT wired into analyze_trade yet — that
-# happens once HRRR data has been validated against settled same-day trades.
-
+#
+# batch-50 (dossier B4): pinned to models=ncep_hrrr_conus (was models=
+# best_match, an opaque auto-selection that could silently serve a GFS-blend
+# value instead of real HRRR). Go/no-go validation (2026-08-24, 2 fully
+# settled days x 20 cities, ~24h-lead archived forecast vs real METAR
+# settlement): the pinned and best_match series were BIT-IDENTICAL for every
+# city on both days (0/40 city-days differed) — best_match already resolves
+# to ncep_hrrr_conus for these CONUS points at this lead time, so the pin is
+# an attribution-only correctness fix (guards against best_match silently
+# drifting to a different source later), not an accuracy change. MAE was
+# therefore identical too (~2.56°F). See backlog.txt "HRRR PIN GRADUATION".
+#
+# Activated as a logged/tracked signal only (KNOWN_FORECAST_MODEL_NAMES +
+# TRACKING_ONLY_MODEL_NAMES, same as gem_global/ukmo_global_ensemble_20km) —
+# analyze_trade logs it for same-day (days_out == 0) max/min markets so its
+# accuracy accrues in tracker.ensemble_member_scores. It is NOT a blend
+# member: graduating it into forecast_temp/model_consensus is a separate,
+# later decision gated on real settled-accuracy data, same as GEM/UKMO's own
+# graduation checks.
 _HRRR_CACHE: ForecastCache[float | None] = ForecastCache(ttl_secs=_MODEL_CACHE_TTL)
 
 
 def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | None:
-    """Fetch HRRR-derived hourly temperature and return the daily max or min.
+    """Fetch HRRR (models=ncep_hrrr_conus) hourly temperature; return the daily max/min.
 
-    Uses Open-Meteo's hourly forecast endpoint with model=best_match, which
-    selects HRRR for CONUS cities.  Returns daily max when var='max', daily min
-    when var='min'.  Returns None if HRRR data is unavailable or the city is not
-    mapped in CITY_COORDS.
+    batch-50: pinned to models=ncep_hrrr_conus (was models=best_match, an
+    opaque auto-selection — see the module comment above this function for
+    the go/no-go validation numbers). ncep_hrrr_conus has a hard ~2-day
+    horizon (open-meteo/open-data README); callers MUST NOT pass a
+    target_date beyond days_out == 0 — this function does not itself enforce
+    that (mirrors _model_prob_and_mean's own caller-enforced scoping).
+    Returns daily max when var='max', daily min when var='min'.  Returns
+    None if HRRR data is unavailable, the circuit is open, or the city is
+    not mapped in CITY_COORDS.
 
-    Intended for same-day markets (days_out == 0) only.  Uses a 4-hour in-process
-    cache matching the TTL of the other model caches (_MODEL_CACHE_TTL).
+    Uses a 4-hour in-process cache matching the TTL of the other model
+    caches (_MODEL_CACHE_TTL). Guarded by its own circuit breaker
+    (_hrrr_om_cb) — see that breaker's own comment for why it's separate
+    from _forecast_cb/_ecmwf_om_cb despite sharing FORECAST_BASE.
     """
     import requests as _req
 
@@ -2521,6 +2586,10 @@ def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | 
 
     city_info = CITY_COORDS.get(city)
     if not city_info:
+        return None
+
+    if _hrrr_om_cb.is_open():
+        _log.debug("[CircuitBreaker] hrrr_openmeteo circuit open — skipping HRRR fetch")
         return None
 
     # CITY_COORDS stores (lat, lon, timezone) tuples — unpack directly.
@@ -2538,7 +2607,7 @@ def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | 
                 "timezone": tz,
                 "start_date": date_str,
                 "end_date": date_str,
-                "models": "best_match",
+                "models": "ncep_hrrr_conus",
                 "forecast_days": 1,
             },
             timeout=10,
@@ -2548,12 +2617,15 @@ def _fetch_hrrr_temp(city: str, target_date: date, var: str = "max") -> float | 
         temps = data.get("hourly", {}).get("temperature_2m", [])
         valid = [t for t in temps if t is not None]
         if not valid:
+            _hrrr_om_cb.record_failure()
             _HRRR_CACHE.set(cache_key, None)
             return None
         result = float(max(valid) if var == "max" else min(valid))
+        _hrrr_om_cb.record_success()
         _HRRR_CACHE.set(cache_key, result)
         return result
     except Exception as exc:
+        _hrrr_om_cb.record_failure()
         _log.debug("_fetch_hrrr_temp: %s %s failed: %s", city, date_str, exc)
         _HRRR_CACHE.set(cache_key, None)
         return None
@@ -4223,16 +4295,26 @@ def _model_weights(city: str, month: int | None = None) -> dict[str, float]:
     fix, just one step later.
 
     ensemble_candidate_models (below) treats "in TRACKING_ONLY_MODEL_NAMES"
-    as synonymous with "candidate for THIS blend" — true today (its only two
-    members, gem_global/ukmo_global_ensemble_20km, are both real ensemble
-    products), but not a structural guarantee: if a future track-only model
-    destined for a DIFFERENT blend (e.g. another _forecast_model_weights()-
-    only deterministic product, the ecmwf_ifs025 shape) were ever added to
-    TRACKING_ONLY_MODEL_NAMES instead of its own dedicated set, this union
-    would wrongly treat it as an ensemble candidate too. Not a current bug —
-    just don't assume this coupling stays valid without re-checking it if
-    TRACKING_ONLY_MODEL_NAMES's membership ever changes for a non-ensemble
-    reason.
+    as synonymous with "candidate for THIS blend" — true of gem_global/
+    ukmo_global_ensemble_20km (both real ensemble products), but not a
+    structural guarantee: batch-50 added "ncep_hrrr_conus" to
+    TRACKING_ONLY_MODEL_NAMES too, and it's exactly the non-ensemble case
+    this note originally warned about (a FORECAST_BASE deterministic
+    single-value product, the ecmwf_ifs025 shape, destined for no blend at
+    all right now). Re-checked at that point, per this note's own
+    instruction: still not a live bug, for a reason stronger than "this
+    union happens not to matter" — _weights_from_mae() (above) `continue`s
+    on EVERY TRACKING_ONLY_MODEL_NAMES member before it can ever reach
+    mae_weights, unconditionally, regardless of whether that member is
+    ensemble-shaped. Since `admissible`/`extra_learned` below only ever
+    intersect ensemble_candidate_models against mae_weights/
+    learned_weights.json (both derived from _weights_from_mae's output), a
+    non-ensemble TRACKING_ONLY_MODEL_NAMES member can never actually reach
+    this function's output via that union no matter how it's shaped — the
+    union being "wrong" in principle doesn't translate into a reachable
+    leak. Still worth re-checking again the next time TRACKING_ONLY_MODEL_
+    NAMES's membership changes, since this reasoning depends on
+    _weights_from_mae's own unconditional skip staying in place.
 
     A model outside the baseline dict gets a neutral 1.0 prior (no seasonal/
     climatological reasoning is coded for it) instead of a KeyError.
@@ -7916,6 +7998,24 @@ SIGNAL_REGISTRY: tuple[_SignalRegistryEntry, ...] = (
             "that's a legitimate outcome, not a bug."
         ),
         backlog_ref="GRADUATE GEM/UKMO",
+    ),
+    _SignalRegistryEntry(
+        key="hrrr_graduation",
+        name="HRRR (ncep_hrrr_conus) graduation from track-only",
+        sample_floor=20,
+        count_fn=_count_model_obs("ncep_hrrr_conus"),
+        correlation_note=(
+            "Same per-city worst-baseline-MAE pre-check as GEM/UKMO. HRRR is "
+            "same-day-only (days_out == 0, ~2-day hard model horizon) so "
+            "observations accrue far slower than GEM/UKMO's 16-day-horizon "
+            "signal — expect this floor to clear much later. batch-50's "
+            "go/no-go (2026-08-24) found the pinned ncep_hrrr_conus series "
+            "bit-identical to best_match for 20 cities x 2 days, so this "
+            "gate is really testing whether HRRR's short-lead accuracy edge "
+            "over the existing baseline models is real, not an attribution "
+            "question."
+        ),
+        backlog_ref="GRADUATE HRRR",
     ),
     _SignalRegistryEntry(
         key="cross_city_pooling",
@@ -12887,6 +12987,12 @@ def analyze_trade(
         # or the forecast_temp blend.
         gem_forecast_mean: float | None = None
         ukmo_forecast_mean: float | None = None
+        # hrrr_forecast_mean (batch-50, dossier B4): track-only, same-day
+        # (days_out == 0) only — ncep_hrrr_conus has a hard ~2-day horizon
+        # and same-day is the only regime the go/no-go validation covered.
+        # Like gem/ukmo, does NOT participate in model_consensus or the
+        # forecast_temp blend — see _fetch_hrrr_temp's own module comment.
+        hrrr_forecast_mean: float | None = None
         if ens_prob is not None and len(temps) >= 2:
             try:
                 (
@@ -12917,6 +13023,15 @@ def analyze_trade(
                     enriched.get("ticker", "?"),
                     _e,
                 )
+            if days_out == 0:
+                try:
+                    hrrr_forecast_mean = _fetch_hrrr_temp(city, target_date, var=var)
+                except Exception as _e:
+                    _log.warning(
+                        "analyze_trade: _fetch_hrrr_temp failed for %s — leaving None: %s",
+                        enriched.get("ticker", "?"),
+                        _e,
+                    )
             try:
                 ecmwf_aifs_prob = _get_ecmwf_aifs_prob(
                     city, target_date, condition, hour=hour, var=var
@@ -12959,6 +13074,7 @@ def analyze_trade(
             "ecmwf_ifs025": ecmwf_ifs_forecast_mean,
             "gem_global": gem_forecast_mean,
             "ukmo_global_ensemble_20km": ukmo_forecast_mean,
+            "ncep_hrrr_conus": hrrr_forecast_mean,
         }
         _validate_forecast_model_keys(model_forecast_means)
 

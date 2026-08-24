@@ -29700,3 +29700,155 @@ Recommendation:
   queue position at placement/poll meaningfully predicts fill outcome, and if so design the actual decision
   rule as its own scoped batch. Do not build this speculatively without real data -- exactly the trap this
   batch's own dossier warned against ("keep it small... may never fire").
+
+[RESOLVED 2026-08-24 -- go/no-go FAILED, google_weathernext2_ensemble NOT onboarded, zero code changed] GOOGLE WEATHERNEXT 2 TRACK-ONLY ONBOARDING -- GATE FAILED
+Priority: Low -- batch-50 Item 1 (dossier B5, score 7.5 rank 4). Not the same
+  thread as the older "WeatherNext (GraphCast/GenCast)" note above (~L11054-
+  11058) -- that one is the gatekept GCP/zarr product; WeatherNext 2 is a
+  free, no-auth Open-Meteo ensemble endpoint
+  (ensemble-api.open-meteo.com/...&models=google_weathernext2_ensemble, 64
+  members) that sidesteps that barrier entirely. This entry is about the
+  Open-Meteo one.
+  Per the batch's own "go/no-go validation experiments FIRST ... a failed
+  gate = file numbers to backlog and stop that item" instruction: ran the
+  gate before touching any code, it failed, so KNOWN_FORECAST_MODEL_NAMES/
+  TRACKING_ONLY_MODEL_NAMES/analyze_trade were never touched for WN2.
+  Methodology: fetched google_weathernext2_ensemble and icon_seamless hourly
+  member series (ENSEMBLE_BASE, temperature_2m) for target_date =
+  2026-08-25 (tomorrow, well within WN2's 15-day horizon) for all 21 cities
+  in CITY_COORDS's hardcoded fallback (the batch spec says "20 cities" --
+  the live fallback dict actually has 21; StPetersburg is the extra one
+  added post-dossier for KXRAINSTPM). Per city: took the per-member implied
+  daily TMAX (max of that member's hourly series) for both models, then the
+  MEDIAN TMAX across each model's members; city-level clipping bias =
+  icon_median - wn2_median. Gate metric = median of the 21 per-city biases.
+  Result: median clipping bias = +1.10F (gate requires <1.0F) -- FAILED,
+  narrowly, on a single-day/single-run sample. Individual city biases ranged
+  from -11.3F (LA, WN2 running HOTTER than ICON -- raw model disagreement,
+  not clipping) to +4.2F (Miami); most cities clustered +0.1 to +3.5F. Fetch
+  latency: mean 0.55s, max 0.65s per city -- comfortably under the <10s/city
+  gate (that half of the gate passed easily). Failure rate: 0/21 (0%).
+  Caveat on methodology: a single day's cross-model comparison conflates
+  WN2's genuine 6-hourly-native interpolation-clipping effect (the thing the
+  gate is meant to measure) with ordinary day-to-day model disagreement
+  (LA's -11.3F outlier is almost certainly the latter, not the former) --
+  the gate as specified in the batch spec ("fetch WN2 for all 20 cities
+  once") is explicitly a single-run check, not a multi-day study, so this
+  result is taken as authoritative per the spec's own letter rather than
+  re-run or averaged across days. The literal number (1.10F) is very close
+  to the 1.0F threshold; if this is revisited, re-run across several days
+  and/or exclude outlier cities where model disagreement (not clipping)
+  plainly dominates before concluding the source is unusable outright --
+  the current failure could plausibly flip on a less noisy sample.
+  Known caveats the batch spec asked to be encoded if onboarded (recorded
+  here since onboarding didn't happen, for whoever revisits this): 12-hourly
+  update cadence (stale vs hourly HRRR at short leads); 6-hourly native
+  resolution (interpolation cannot recover a mid-afternoon spike -- this IS
+  the clipping effect the gate measures); free tier is non-commercial-use
+  only, same flag as the bot's other Open-Meteo usage.
+  Raw per-city results (wn2_tmax_median, icon_tmax_median, bias) saved to
+  the implementing session's scratchpad as wn2_gate_results.json (not
+  committed -- ephemeral validation artifact, numbers summarized above are
+  the durable record).
+  Re-check trigger: none scheduled -- optional future work, not a deadline.
+  If revisited, re-run the same script with >=3-5 days sampled and consider
+  a trimmed/city-filtered median before deciding again.
+  Source: audit/handoff_prompts/batches/batch-50.md (Item 1).
+
+[RESOLVED 2026-08-24 -- go/no-go PASSED (attribution-only variant), pinned and activated as track-only] HRRR _fetch_hrrr_temp PIN TO ncep_hrrr_conus + TRACK-ONLY ACTIVATION
+Priority: Low -- batch-50 Item 2 (dossier B4, score 7.6 rank 3).
+  Go/no-go validation (run before any code change, per the batch's own
+  "validation FIRST" instruction): compared models=ncep_hrrr_conus vs
+  models=best_match (the previously-dormant function's existing param)
+  against real METAR-observed daily max/min, for all 20 cities
+  (MARKET_STATION_MAP) x 2 fully-settled past days (2026-08-22,
+  2026-08-23). Methodology deviation from the spec's literal ask, documented
+  here and in the implementing script: the spec asks for a live ~15Z
+  same-day forecast fetch compared to end-of-day settlement; Open-Meteo's
+  previous-runs-api (the only way to reconstruct a past forecast
+  retroactively without waiting live through a trading day) only exposes
+  whole-day forecast-run offsets (temperature_2m_previous_dayN), not
+  intraday run selection -- temperature_2m_previous_day0 is silently
+  ignored (not a real field). Used temperature_2m_previous_day1 (~24h-lead
+  archived forecast) instead; this tests the same underlying question (does
+  best_match silently diverge from a pinned HRRR selection, and is the pin
+  at least as accurate) at a materially similar but not identical lead time.
+  Ground truth: real METAR obs via aviationweather.gov (tmpf preferred, temp
+  C fallback -- mirrors metar.py's own _extract_temp_f parsing), 72h window
+  filtered to each local calendar date.
+  Result: the pinned and best_match hourly series were BIT-IDENTICAL for
+  every one of the 20 cities on both days (0/40 city-days differed, for
+  both max and min) -- best_match already resolves to ncep_hrrr_conus for
+  every one of this bot's CONUS points at this lead time. MAE against METAR
+  was therefore identical for both: 2.56F (n=84 obs, max+min pooled). Gate:
+  "pinned MAE <= best_match MAE" -- PASSED (trivially, identical). "differ
+  on >=3 cities" -- FAILED (0 differed). Per the batch spec's own explicit
+  fallback clause ("If they're bit-identical everywhere, the pin is still
+  correct (attribution) but note it") this counts as an overall PASS in the
+  attribution-only sense: the pin is a correctness/robustness fix (removes
+  best_match's opaque auto-selection, which could silently drift to a
+  non-HRRR source later, e.g. if HRRR data is briefly missing for a point)
+  with zero accuracy change measured today.
+  Shipped: weather_markets.py -- _fetch_hrrr_temp's models param changed
+  best_match -> ncep_hrrr_conus; added a dedicated _hrrr_om_cb
+  CircuitBreaker (FORECAST_BASE, same pattern as _ecmwf_om_cb -- previously
+  the function had no circuit breaker at all despite being a live network
+  call); registered "ncep_hrrr_conus" in KNOWN_FORECAST_MODEL_NAMES and
+  TRACKING_ONLY_MODEL_NAMES (same mechanism as gem_global/
+  ukmo_global_ensemble_20km -- verified all 3 blend-weight exclusion sites
+  --_weights_from_mae()'s skip, the ensemble_candidate_models union used by
+  _model_weights()'s MAE/learned-weight tiers, and tracker.py's generic
+  TRACKING_ONLY_MODEL_NAMES import -- correctly exclude it automatically via
+  that single membership, no 4th mechanism added); wired a same-day-only
+  (days_out == 0) call into analyze_trade's model_forecast_means dict,
+  logged as "ncep_hrrr_conus" so accuracy accrues in
+  tracker.ensemble_member_scores; explicitly excluded "ncep_hrrr_conus" from
+  batch_prewarm_ensemble's tracking_only_models prewarm list -- unlike GEM/
+  UKMO, ensemble-api.open-meteo.com has no real member data for HRRR
+  (verified live during the opus review pass below: models=ncep_hrrr_conus
+  returns HTTP 200, not a rejection, but an all-null member-less series --
+  HRRR is a single deterministic run, not an ensemble product). It's fetched
+  from the separate FORECAST_BASE deterministic-forecast endpoint instead,
+  which also has a hard ~2-day horizon, so that function's forecast_days=16
+  ENSEMBLE_BASE fetch would have been wrong for it even on an endpoint that
+  did serve real data; HRRR's own
+  4h _HRRR_CACHE + same-day-only analyze_trade call already covers it
+  without a 16-day prewarm. NOT wired into forecast_temp, model_consensus,
+  or any blend weight -- track-only, per the batch's explicit "logged/
+  tracked signal only, NOT a blend member" scope. Added a "hrrr_graduation"
+  entry to the signal registry (weather_markets.py, near gem_graduation/
+  ukmo_graduation) so its accumulation is visible on the same dashboard
+  gem/ukmo use, floor=20 obs via _count_model_obs("ncep_hrrr_conus").
+  Graduating HRRR into any live probability is separate future work -- see
+  new "GRADUATE HRRR" entry below (its own gate criteria, distinct from
+  GEM/UKMO's above -- HRRR is same-day-only so its own worst-baseline-MAE
+  pre-check is scoped to days_out==0 markets specifically).
+  Raw per-city/per-day results saved to the implementing session's
+  scratchpad as hrrr_gate_results.json (not committed -- ephemeral
+  validation artifact).
+  Source: audit/handoff_prompts/batches/batch-50.md (Item 2).
+
+[GRADUATE HRRR (ncep_hrrr_conus) FROM TRACK-ONLY INTO THE LIVE BLEND]
+Priority: Low -- follow-up to the entry immediately above. Mirrors "GRADUATE
+  GEM/UKMO" (~L11060) in shape, but HRRR's own gate is separately scoped:
+  same-day-only (days_out == 0, ~2-day hard model horizon per
+  open-meteo/open-data's own README), so observations accrue far slower
+  than GEM/UKMO's 16-day-horizon signal -- do not borrow GEM/UKMO's
+  accumulated sample count or timeline expectations for this one.
+  Pre-check before considering graduation: per-city MAE must not exceed the
+  WORST currently-blended baseline model's MAE for the same city, computed
+  ONLY over days_out==0 markets (not GEM/UKMO's all-horizon comparison --
+  HRRR has no multi-day data to compare on, and comparing its same-day-only
+  MAE against baseline models' all-horizon MAE would be an apples-to-oranges
+  advantage for HRRR that doesn't reflect a real edge). batch-50's own
+  go/no-go (2026-08-24) found the pinned series bit-identical to best_match
+  for every sampled city -- so whatever edge HRRR has over the existing
+  same-day blend, if any, is a genuine short-lead HRRR-vs-baseline accuracy
+  question, not an artifact of the pin itself.
+  Sample floor: 20 settled ncep_hrrr_conus observations (matches GEM/UKMO's
+  floor convention) -- tracked via the "hrrr_graduation" signal registry
+  entry (weather_markets.py, count_fn=_count_model_obs("ncep_hrrr_conus")).
+  Not scheduled -- gated on real accumulated data, no deadline.
+  Source: audit/handoff_prompts/batches/batch-50.md (Item 2, "graduating it
+  into any live probability is a separate future decision with its own
+  gate").

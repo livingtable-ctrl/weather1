@@ -2315,6 +2315,7 @@ setInterval(() => {{
                 _ecmwf_om_cb,
                 _ensemble_cb,
                 _forecast_cb,
+                _hrrr_om_cb,
                 _nbm_om_cb,
                 _pirate_cb,
                 _weatherapi_cb,
@@ -2335,6 +2336,7 @@ setInterval(() => {{
                     "open_meteo_ensemble": _cb_dict(_ensemble_cb),
                     "ecmwf_openmeteo": _cb_dict(_ecmwf_om_cb),
                     "nbm_openmeteo": _cb_dict(_nbm_om_cb),
+                    "hrrr_openmeteo": _cb_dict(_hrrr_om_cb),
                     "weatherapi": _cb_dict(_weatherapi_cb),
                     "pirate_weather": _cb_dict(_pirate_cb),
                 }
