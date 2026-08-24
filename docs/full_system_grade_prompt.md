@@ -78,8 +78,8 @@ Read every file before grading. Do not skip any.
 **Frontend:**
 - `web_app.py` — all Flask routes, especially `/api/status`, `/api/calibration-status`,
   `/api/opportunities`, `/api/anomaly-status`
-- `weather app site V_3 (3)/src/tabs/` — all 9 tab files
-- `weather app site V_3 (3)/src/useData.js` — data fetching and `mapStats()`
+- `frontend/src/tabs/` — all 9 tab files
+- `frontend/src/useData.js` — data fetching and `mapStats()`
 
 **Tests (skim for coverage):**
 - All `test_phase2_batch_*.py` files — what is and isn't covered

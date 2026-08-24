@@ -85,6 +85,26 @@ function mapStats(status, grad, config, prevStats) {
       base.fear_greed       = status.fear_greed_score;
       base.fear_greed_label = status.fear_greed_label;
     }
+    // Drawdown risk row fields — new as of 2026-06-08 dashboard update
+    if (status.peak_balance  != null) base.peak_balance  = status.peak_balance;
+    if (status.halt_floor    != null) base.halt_floor    = status.halt_floor;
+    if (status.kelly_factor  != null) base.kelly_factor  = status.kelly_factor;
+    if (status.drawdown_pct  != null) base.drawdown_pct  = status.drawdown_pct;
+    if (status.drawdown_tier != null) base.drawdown_tier = status.drawdown_tier;
+    if (status.var_95      != null) base.var_95      = status.var_95;
+    if (status.var_99      != null) base.var_99      = status.var_99;
+    if (status.kalshi_env         != null) base.kalshi_env         = status.kalshi_env;
+    if (status.is_live            != null) base.is_live            = status.is_live;
+    if (status.portfolio_ev       != null) base.portfolio_ev       = status.portfolio_ev;
+    if (status.portfolio_ev_roi_pct != null) base.portfolio_ev_roi_pct = status.portfolio_ev_roi_pct;
+    if (status.portfolio_cost     != null) base.portfolio_cost     = status.portfolio_cost;
+    // Backend omits EV fields when get_portfolio_expected_value() raises — clear
+    // stale values so the card hides instead of showing old deployed capital.
+    if (status.portfolio_ev == null && status.portfolio_cost == null) {
+      delete base.portfolio_ev;
+      delete base.portfolio_ev_roi_pct;
+      delete base.portfolio_cost;
+    }
   }
 
   // max_daily_spend lives in /api/config, not /api/status
@@ -93,8 +113,9 @@ function mapStats(status, grad, config, prevStats) {
   }
 
   if (grad && !grad.error) {
-    if (grad.win_rate  != null) base.win_rate  = grad.win_rate;
-    if (grad.total_pnl != null) base.month_pnl = grad.total_pnl;
+    if (grad.win_rate      != null) base.win_rate      = grad.win_rate;
+    if (grad.profit_factor != null) base.profit_factor = grad.profit_factor;
+    if (grad.total_pnl     != null) base.month_pnl     = grad.total_pnl;
     if (grad.fear_greed_score != null && base.fear_greed == null) {
       base.fear_greed       = grad.fear_greed_score;
       base.fear_greed_label = grad.fear_greed_label;
@@ -205,7 +226,11 @@ function mapTrades(raw) {
       markIsLive,
       fcst:       t.entry_prob,
       edge:       t.net_edge,
-      expiry:     t.target_date,
+      // Use the date portion of close_time (when Kalshi closes the market)
+      // rather than target_date (the observation day), which is one day early
+      // for same-day trades that close overnight UTC.
+      expiry:     t.close_time ? t.close_time.slice(0, 10) : t.target_date,
+      close_time: t.close_time ?? null,
       model:      null,
       age_h:      t.entered_at
         ? Math.round((Date.now() - new Date(t.entered_at)) / 3_600_000)
@@ -282,6 +307,16 @@ function mapAnalytics(raw) {
 }
 
 /**
+ * /api/sameday-calibration
+ * → {n, gate, gate_met, brier, t_sameday, calibration_buckets, by_time_of_day}
+ * Passed through as-is — the dashboard card reads the raw shape directly.
+ */
+function mapSamedayCalib(raw) {
+  if (!raw || raw.error) return null;
+  return raw;
+}
+
+/**
  * /api/price-improvement
  * → {avg_improvement_cents, total_trades, median_improvement_cents, positive_pct}
  *
@@ -296,23 +331,28 @@ function mapPriceImprovement(raw) {
 }
 
 const ENDPOINTS = [
-  '/api/status',            // 0
-  '/api/graduation',        // 1
-  '/api/trades',            // 2
-  '/api/risk',              // 3
-  '/api/circuit-status',    // 4
-  '/api/balance_history',   // 5
-  '/api/analytics',         // 6
-  '/api/price-improvement', // 7
-  '/api/today_forecasts',   // 8
-  '/api/live_signals',      // 9
-  '/api/config',            // 10
-  '/api/ab-tests',          // 11
-  '/api/override',          // 12
-  '/api/system-events',     // 13
-  '/api/backup-status',     // 14
-  '/api/brier_history',     // 15
-  '/api/forecast_quality',  // 16
+  '/api/status',               // 0
+  '/api/graduation',           // 1
+  '/api/trades',               // 2
+  '/api/risk',                 // 3
+  '/api/circuit-status',       // 4
+  '/api/balance_history',      // 5
+  '/api/analytics',            // 6
+  '/api/price-improvement',    // 7
+  '/api/today_forecasts',      // 8
+  '/api/live_signals',         // 9
+  '/api/config',               // 10
+  '/api/ab-tests',             // 11
+  '/api/override',             // 12
+  '/api/system-events',        // 13
+  '/api/backup-status',        // 14
+  '/api/brier_history',        // 15
+  '/api/forecast_quality',     // 16
+  '/api/sameday-calibration',  // 17
+  '/api/anomaly-status',       // 18
+  '/api/calibration-status',   // 19
+  '/api/scan-stats',           // 20
+  '/api/emos-status',          // 21
 ];
 
 /**
@@ -386,6 +426,9 @@ export default function useData(setConnected) {
         configR, abTestsR, overrideR,
         systemEventsR, backupStatusR,
         brierHistoryR, forecastQualityR,
+        samedayCalibR,
+        anomalyStatusR, calibStatusR, scanStatsR,
+        emosStatusR,
       ] = results.map(r => r.status === 'fulfilled' ? r.value : null);
 
       setData(prev => {
@@ -474,6 +517,22 @@ export default function useData(setConnected) {
           next.cityBrier = normalized;
         }
 
+        // Same-day METAR calibration — separate from multi-day, own card in Analytics tab.
+        const sd = mapSamedayCalib(samedayCalibR);
+        if (sd) next.samedayCalibration = sd;
+
+        // Anomaly window — win-rate collapse detection state
+        if (anomalyStatusR && !anomalyStatusR.error) next.anomalyStatus = anomalyStatusR;
+
+        // Multi-day temperature-scaling calibration gate
+        if (calibStatusR && !calibStatusR.error) next.calibrationStatus = calibStatusR;
+
+        // Scan filter rejection counts from last cron run
+        if (scanStatsR && !scanStatsR.error) next.scanStats = scanStatsR;
+
+        // EMOS calibration status
+        if (emosStatusR) next.emosStatus = emosStatusR;
+
         return next;
       });
     } catch {
@@ -533,11 +592,21 @@ export default function useData(setConnected) {
     } catch { /* ignore parse errors */ }
   }
 
+  // ── Weather alerts — separate 15-minute poll (NWS API is slow) ─────────
+  async function fetchWeatherAlerts() {
+    try {
+      const result = await safe('/api/weather-alerts');
+      if (result) setData(prev => ({ ...prev, weatherAlerts: result }));
+    } catch { /* ignore */ }
+  }
+
   // ── Lifecycle ───────────────────────────────────────────────────────────
   useEffect(() => {
     fetchAll();
+    fetchWeatherAlerts();
     startSSE();
     timerRef.current = setInterval(fetchAll, 60_000); // refresh every 60 s
+    const alertsPollRef = setInterval(fetchWeatherAlerts, 900_000); // 15 minutes
 
     // Fast scan-version poll: detect cron completion without waiting 60 s.
     // Checks signals_cache.json mtime every 5 s; triggers fetchAll() the
@@ -557,6 +626,7 @@ export default function useData(setConnected) {
     return () => {
       clearInterval(timerRef.current);
       clearInterval(scanPollRef);
+      clearInterval(alertsPollRef);
       sseRef.current?.close();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

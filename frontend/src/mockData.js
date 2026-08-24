@@ -162,6 +162,11 @@ const stats = {
   override_until: null,
   strategy: 'kelly',
   env: 'demo',
+  peak_balance: 1247.83,
+  halt_floor: 998.26,
+  kelly_factor: 1.0,
+  drawdown_pct: 0.0,
+  drawdown_tier: 'TIER_1',
 };
 
 const mlModels = [
@@ -244,6 +249,26 @@ const expiryCluster      = [
 
 const cities = [...new Set(positions.map(p => p.city))];
 
+// Mock same-day calibration — realistic shape showing morning underconfidence
+// and evening overconfidence, plus the bimodal (near 0/1) prob distribution
+// typical of METAR-locked predictions.
+const samedayCalibration = {
+  n: 8,
+  gate: 20,
+  gate_met: false,
+  brier: 0.271,
+  t_sameday: null,
+  calibration_buckets: [
+    { bucket_low: 0.0, bucket_high: 0.2, predicted_mean: 0.09, actual_rate: 0.11, n: 4 },
+    { bucket_low: 0.8, bucket_high: 1.0, predicted_mean: 0.88, actual_rate: 0.75, n: 4 },
+  ],
+  by_time_of_day: {
+    morning:   { n: 2, brier: 0.24, mean_prob: 0.28, mean_actual: 0.50, bias: -0.22 },
+    afternoon: { n: 3, brier: 0.19, mean_prob: 0.71, mean_actual: 0.67, bias:  0.04 },
+    evening:   { n: 3, brier: 0.31, mean_prob: 0.82, mean_actual: 0.67, bias:  0.15 },
+  },
+};
+
 const MOCK = {
   stats, positions, opportunities, balanceHist,
   circuitBreakers, recentTrades, modelAccuracy,
@@ -253,6 +278,7 @@ const MOCK = {
   rocCurve, auc, brierByDays, priceImprovement,
   cityCalibration, closedTrades,
   agedPositions, correlatedEvents, directionalBias, expiryCluster,
+  samedayCalibration,
   signalsMeta: { generatedAt: null, stale: false, staleMessage: null },
   brierHistory: [
     { week: '2026-W01', brier: 0.231 }, { week: '2026-W02', brier: 0.218 },
@@ -261,6 +287,32 @@ const MOCK = {
     { week: '2026-W07', brier: 0.183 }, { week: '2026-W08', brier: 0.176 },
   ],
   backupStatus: null,
+  anomalyStatus: {
+    window_trades: [],
+    n: 0,
+    wins: 0,
+    losses: 0,
+    win_rate: null,
+    halt_threshold: 0.25,
+    min_samples: 5,
+    anomaly_detected: false,
+    should_halt: false,
+    anomaly_messages: [],
+    active: false,
+  },
+  calibrationStatus: {
+    last_calibration_n: null,
+    current_n: 0,
+    next_eligible_n: 50,
+    eligible: false,
+    T_global: null,
+    T_between: null,
+  },
+  scanStats: {
+    filters: {},
+    gate_counts: {},
+    total_scanned: 0,
+  },
 };
 
 export default MOCK;

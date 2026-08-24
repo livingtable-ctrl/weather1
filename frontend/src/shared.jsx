@@ -444,3 +444,61 @@ export function BrierTrendChart({ hist }) {
     </section>
   );
 }
+
+// ---------------------------------------------------------------------------
+// sideAwareEntryPrice — the ask-side price to PAY for opp's recommended
+// side. opp (a signals-cache entry) stores yes_bid/yes_ask/market_prob in
+// YES-space regardless of the recommended side -- web_app.py's own display
+// code proves this by flipping when rendering a NO signal. Returns
+// side-space (NO pays 1 - yes_bid, the no_ask; YES pays yes_ask), matching
+// web_app.py's WA-inversion comment's documented contract: "entry_price is
+// the price PAID for the requested SIDE" -- the same convention
+// order_executor.py's fill logic and web_app.py's own SignalsTab Kelly-qty
+// display already use. Falls back to the market_prob mid (flipped for NO)
+// when a live yes_bid/yes_ask quote isn't present. Exported (pure, no
+// React) so it's unit-testable directly; shared by buildPaperOrderBody and
+// every SignalsTab surface that estimates a default quantity or cost, so
+// they all price a NO signal the same way.
+// ---------------------------------------------------------------------------
+export function sideAwareEntryPrice(opp) {
+  const isNo = (opp.side || 'yes').toLowerCase() === 'no';
+  const yesBid = opp.yes_bid != null ? Number(opp.yes_bid) : null;
+  const yesAsk = opp.yes_ask != null ? Number(opp.yes_ask) : null;
+  const askSidePrice = isNo
+    ? (yesBid > 0 ? 1 - yesBid : null)
+    : (yesAsk > 0 ? yesAsk : null);
+  const midFallback = opp.market_prob != null
+    ? (isNo ? 1 - opp.market_prob / 100 : opp.market_prob / 100)
+    : 0.5;
+  return askSidePrice != null && askSidePrice > 0 ? askSidePrice : midFallback;
+}
+
+// ---------------------------------------------------------------------------
+// buildPaperOrderBody — /api/paper-order request body for a signals-tab
+// Approve action. Exported (pure, no React) so it's unit-testable directly.
+//
+// entry_price uses sideAwareEntryPrice (see above).
+//
+// entry_prob is deliberately left in YES-space, UNFLIPPED -- unlike
+// entry_price, every server-side consumer of the stored field (tracker's
+// Brier/calibration scoring, order_executor's model-reversal exit shift,
+// paper.py's pnl_attribution win_prob) treats entry_prob as YES-space, same
+// as the bot's own order_executor.py call sites (entry_prob=a["forecast_prob"]).
+// The /api/paper-order route converts it to side-space internally for its
+// own Kelly-cap check only -- see web_app.py's api_paper_order.
+// ---------------------------------------------------------------------------
+export function buildPaperOrderBody(opp, qty) {
+  const entryPrice = sideAwareEntryPrice(opp);
+  const entryProb = opp.forecast_prob != null ? opp.forecast_prob / 100 : null;
+  return {
+    ticker:      opp.ticker,
+    side:        (opp.side || 'yes').toLowerCase(),
+    quantity:    qty,
+    entry_price: entryPrice,
+    entry_prob:  entryProb,
+    net_edge:    opp.edge_pct != null ? opp.edge_pct / 100 : null,
+    city:        opp.city || null,
+    target_date: opp.target_date || opp.expiry || null,
+    days_out:    opp.days_out ?? null,
+  };
+}

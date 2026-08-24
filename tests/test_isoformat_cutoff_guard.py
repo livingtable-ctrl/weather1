@@ -82,7 +82,11 @@ _EXCLUDED_DIR_NAMES = {
     "templates",
     "frontend",
     "updated frontend",
-    "weather app site V_3 (3)",
+    # Environment/dependency dirs, not production code. joblib ships a
+    # deliberately non-UTF8 test .py that crashes the scan's read_text.
+    ".venv",
+    "venv",
+    "node_modules",
 }
 
 

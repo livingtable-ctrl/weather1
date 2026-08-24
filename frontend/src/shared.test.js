@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPaperOrderBody, sideAwareEntryPrice } from './App.jsx';
+import { buildPaperOrderBody, sideAwareEntryPrice } from './shared.jsx';
 
 // batch-26 item 1: the signals cache (and this opp object) stores
 // yes_bid/yes_ask/forecast_prob/market_prob in YES-space regardless of the

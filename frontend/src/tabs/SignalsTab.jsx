@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, kalshiMarketUrl } from '../shared.jsx';
+import { normCity, kalshiMarketUrl, sideAwareEntryPrice, buildPaperOrderBody } from '../shared.jsx';
 
 export default function SignalsTab() {
   const M = useContext(DataContext);
@@ -41,8 +41,11 @@ export default function SignalsTab() {
       return;
     }
     // approve → show confirmation dialog first
-    const mp = (opp.market_prob || 0) / 100;
-    const qty = parseInt(qtyMap[opp.ticker] ?? (opp.kelly_qty || (opp.kelly_dollars > 0 && mp > 0 ? Math.max(1, Math.floor(opp.kelly_dollars / mp)) : 1)) ?? 1, 10) || 1;
+    // batch-26: divide kelly_dollars by the side-aware entry price, not the
+    // raw YES-space mid — for a NO signal the mid overstates the price paid,
+    // undersizing the default quantity.
+    const sp = sideAwareEntryPrice(opp);
+    const qty = parseInt(qtyMap[opp.ticker] ?? (opp.kelly_qty || (opp.kelly_dollars > 0 && sp > 0 ? Math.max(1, Math.floor(opp.kelly_dollars / sp)) : 1)) ?? 1, 10) || 1;
     setConfirmPending({ opp, qty });
   }
 
@@ -53,17 +56,7 @@ export default function SignalsTab() {
     fetch('/api/paper-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
-      body: JSON.stringify({
-        ticker:      opp.ticker,
-        side:        (opp.side || 'yes').toLowerCase(),
-        quantity:    qty,
-        entry_price: opp.market_prob != null ? opp.market_prob / 100 : 0.5,
-        entry_prob:  opp.forecast_prob != null ? opp.forecast_prob / 100 : null,
-        net_edge:    opp.edge_pct != null ? opp.edge_pct / 100 : null,
-        city:        opp.city || null,
-        target_date: opp.target_date || opp.expiry || null,
-        days_out:    opp.days_out ?? null,
-      }),
+      body: JSON.stringify(buildPaperOrderBody(opp, qty)),
     })
       .then(r => r.json())
       .then(d => {
@@ -92,22 +85,12 @@ export default function SignalsTab() {
     setBulkActionMsg(`Placing ${oppsToApprove.length} orders...`);
 
     Promise.all(oppsToApprove.map(opp => {
-      const mp = (opp.market_prob || 0) / 100;
-      const qty = parseInt(qtyMap[opp.ticker] ?? (opp.kelly_qty || (opp.kelly_dollars > 0 && mp > 0 ? Math.max(1, Math.floor(opp.kelly_dollars / mp)) : 1)) ?? 1, 10) || 1;
+      const sp = sideAwareEntryPrice(opp);
+      const qty = parseInt(qtyMap[opp.ticker] ?? (opp.kelly_qty || (opp.kelly_dollars > 0 && sp > 0 ? Math.max(1, Math.floor(opp.kelly_dollars / sp)) : 1)) ?? 1, 10) || 1;
       return fetch('/api/paper-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader() },
-        body: JSON.stringify({
-          ticker:      opp.ticker,
-          side:        (opp.side || 'yes').toLowerCase(),
-          quantity:    qty,
-          entry_price: opp.market_prob != null ? opp.market_prob / 100 : 0.5,
-          entry_prob:  opp.forecast_prob != null ? opp.forecast_prob / 100 : null,
-          net_edge:    opp.edge_pct != null ? opp.edge_pct / 100 : null,
-          city:        opp.city || null,
-          target_date: opp.target_date || opp.expiry || null,
-          days_out:    opp.days_out ?? null,
-        }),
+        body: JSON.stringify(buildPaperOrderBody(opp, qty)),
       }).then(r => r.json());
     })).then(() => {
       setBulkActionMsg(`✓ Placed ${oppsToApprove.length} orders`);
@@ -210,8 +193,8 @@ export default function SignalsTab() {
             <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 {(() => {
-                  const mp = (o.market_prob || 0) / 100;
-                  const kellyQty = o.kelly_qty || (o.kelly_dollars > 0 && mp > 0 ? Math.max(1, Math.floor(o.kelly_dollars / mp)) : 1);
+                  const sp = sideAwareEntryPrice(o);
+                  const kellyQty = o.kelly_qty || (o.kelly_dollars > 0 && sp > 0 ? Math.max(1, Math.floor(o.kelly_dollars / sp)) : 1);
                   return (<>
                     <input type="number" min="1" step="1" value={qtyMap[o.ticker] ?? kellyQty}
                       onChange={e => setQtyMap(prev => ({ ...prev, [o.ticker]: e.target.value }))}
@@ -526,7 +509,7 @@ export default function SignalsTab() {
               { label: 'Forecast p',      value: selectedOpp.forecast_prob.toFixed(1) + '%' },
               { label: 'Market p',        value: selectedOpp.market_prob.toFixed(1) + '%' },
               { label: 'Kelly $',         value: selectedOpp.kelly_dollars > 0 ? '$' + selectedOpp.kelly_dollars.toFixed(2) : '—' },
-              { label: 'Kelly contracts', value: (() => { const mp2 = (selectedOpp.market_prob || 0) / 100; const kq = selectedOpp.kelly_qty || (selectedOpp.kelly_dollars > 0 && mp2 > 0 ? Math.max(1, Math.floor(selectedOpp.kelly_dollars / mp2)) : 0); return kq > 0 ? kq + ' cts' : '—'; })() },
+              { label: 'Kelly contracts', value: (() => { const sp2 = sideAwareEntryPrice(selectedOpp); const kq = selectedOpp.kelly_qty || (selectedOpp.kelly_dollars > 0 && sp2 > 0 ? Math.max(1, Math.floor(selectedOpp.kelly_dollars / sp2)) : 0); return kq > 0 ? kq + ' cts' : '—'; })() },
             ].map(item => (
               <div key={item.label}>
                 <div style={{ color: 'var(--text-faint)', fontSize: 11, marginBottom: 4 }}>{item.label}</div>
@@ -554,7 +537,10 @@ export default function SignalsTab() {
           }}>
             <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Confirm trade</h3>
             {(() => {
-              const cost = confirmPending.qty * (confirmPending.opp.market_prob || 0) / 100;
+              // batch-26: cost/price shown must match what handleConfirm will
+              // actually submit (the side-aware ask price), not the YES mid.
+              const entryPrice = sideAwareEntryPrice(confirmPending.opp);
+              const cost = confirmPending.qty * entryPrice;
               const remaining = (M.stats.balance || 0) - M.positions.reduce((a, p) => a + p.cost, 0) - cost;
               return (
                 <p style={{ margin: '0 0 18px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>
@@ -563,7 +549,7 @@ export default function SignalsTab() {
                   <strong style={{ color: confirmPending.opp.side === 'yes' ? '#16a34a' : '#ef4444' }}>
                     {(confirmPending.opp.side || 'YES').toUpperCase()}
                   </strong>{' '}
-                  at <strong>{confirmPending.opp.market_prob?.toFixed(1)}¢</strong>?
+                  at <strong>{(entryPrice * 100).toFixed(1)}¢</strong>?
                   {' '}Cost: <strong>${cost.toFixed(2)}</strong>.
                   <br />
                   <span style={{ fontSize: 12, color: remaining < 10 ? '#ef4444' : 'var(--text-faint)' }}>

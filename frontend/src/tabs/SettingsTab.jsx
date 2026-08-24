@@ -132,7 +132,11 @@ export default function SettingsTab() {
 
         {s.override_until && (
           <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)', color: '#92400e', fontSize: 12, marginBottom: 14 }}>
-            ⚠ Override active until {new Date(s.override_until).toLocaleTimeString()}
+            {/* override_until is a Unix epoch-seconds float (the backend's
+                canonical expires_at format); Date() takes milliseconds, so
+                numbers need *1000. String branch kept for backward compat
+                with any older ISO-string override file still on disk. */}
+            ⚠ Override active until {new Date(typeof s.override_until === 'number' ? s.override_until * 1000 : s.override_until).toLocaleTimeString()}
           </div>
         )}
 
