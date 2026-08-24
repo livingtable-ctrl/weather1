@@ -16,7 +16,7 @@
  *   polling still keeps data reasonably fresh.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import MOCK from './mockData.js';
 
 // ---------------------------------------------------------------------------
@@ -447,7 +447,11 @@ export default function useData(setConnected) {
   const timerRef = useRef(null);
 
   // ── Fetch all endpoints in parallel ────────────────────────────────────
-  async function fetchAll() {
+  // useCallback with an empty dep array: this only closes over refs and
+  // setState, both stable across renders, so a stable `fetchAll` identity
+  // lets consumers (e.g. App's context-value useMemo) actually memoize
+  // instead of recomputing on every render.
+  const fetchAll = useCallback(async () => {
     try {
       const results = await fetchAllSafe(ENDPOINTS);
 
@@ -471,6 +475,10 @@ export default function useData(setConnected) {
         // Stats (status + graduation + config for max_daily_spend)
         const statsPatch = mapStats(statusR, gradR, configR, prev.stats);
         next.stats = { ...MOCK.stats, ...statsPatch };
+        // Real "last successful fetch" marker so consumers (e.g. App's
+        // refresh countdown) can resync to an actual poll instead of
+        // free-running on their own timer.
+        next.stats.timestamp = Date.now();
 
         // Circuit breakers
         const cbs = mapCircuitBreakers(cbsR);
@@ -593,7 +601,7 @@ export default function useData(setConnected) {
       // what it does catch so it doesn't kill the polling loop; the next
       // scheduled fetchAll() retries regardless.
     }
-  }
+  }, []);
 
   // ── SSE live patch ──────────────────────────────────────────────────────
   // SSE can't carry auth headers. Works when DASHBOARD_PASSWORD is unset
@@ -680,5 +688,10 @@ export default function useData(setConnected) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { ...data, refresh: fetchAll };
+  // Memoize the returned object itself, not just `refresh` — an inline
+  // `{ ...data, refresh: fetchAll }` literal is a new object on every call
+  // to this hook (i.e. every render) regardless of whether `data` or
+  // `fetchAll` actually changed, which would defeat a stable `fetchAll`
+  // for any caller trying to use this return value as a memo dependency.
+  return useMemo(() => ({ ...data, refresh: fetchAll }), [data, fetchAll]);
 }

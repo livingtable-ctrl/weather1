@@ -1,5 +1,5 @@
 import React, {
-  useState, useMemo, useEffect, useRef, useContext, Component,
+  useState, useMemo, useEffect, useRef, useContext, useCallback, Component,
 } from 'react';
 import useData, { authHeader } from './useData.js';
 
@@ -396,13 +396,63 @@ export default function App() {
     localStorage.setItem('kalshi-theme', theme);
   }, [theme]);
 
-  function addToast(message, type = 'success', duration = 4000) {
+  const addToast = useCallback((message, type = 'success', duration = 4000) => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration);
-  }
+  }, []);
 
   const data = useData(setConnected);
+
+  const startCronPoll = useCallback(() => {
+    if (cronPollRef.current) clearInterval(cronPollRef.current);
+    cronPollRef.current = setInterval(() => {
+      fetch('/api/cron-status', { headers: authHeader() })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d) return;
+          const status = d.running ? 'running' : (d.exit_code === 0 ? 'done' : 'error');
+          setCronState({ status, log: d.log || [], exitCode: d.exit_code });
+          if (!d.running) {
+            clearInterval(cronPollRef.current);
+            cronPollRef.current = null;
+            data.refresh();
+            const msg = d.exit_code === 0 ? 'Cron scan complete — signals updated.' : 'Cron scan finished with errors.';
+            addToast(msg, d.exit_code === 0 ? 'success' : 'error');
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification('Kalshi scan complete', { body: msg, icon: '/favicon.ico' });
+            }
+          }
+        })
+        .catch(() => {});
+    }, 3000);
+  }, [data.refresh, addToast]);
+
+  const handleRunCron = useCallback(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+    setCronState({ status: 'running', log: ['Starting scan…'], exitCode: null });
+    fetch('/api/run_cron', { method: 'POST', headers: authHeader() })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) {
+          setCronState({ status: 'error', log: [d.error], exitCode: 1 });
+        } else {
+          startCronPoll();
+        }
+      })
+      .catch(() => setCronState({ status: 'error', log: ['Request failed — is the server running?'], exitCode: 1 }));
+  }, [startCronPoll]);
+
+  const handleCancelCron = useCallback(() => {
+    fetch('/api/cancel-cron', { method: 'POST', headers: authHeader() })
+      .then(() => {
+        if (cronPollRef.current) { clearInterval(cronPollRef.current); cronPollRef.current = null; }
+        setCronState(prev => ({ ...prev, status: 'cancelled', log: [...prev.log, '— cancelled by user —'] }));
+      })
+      .catch(() => {});
+  }, []);
 
   // Check if a cron is already running on mount (e.g. started before page load)
   useEffect(() => {
@@ -415,7 +465,7 @@ export default function App() {
         }
       })
       .catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [startCronPoll]);
 
   useEffect(() => () => {
     if (cronPollRef.current) clearInterval(cronPollRef.current);
@@ -468,67 +518,17 @@ export default function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  function startCronPoll() {
-    if (cronPollRef.current) clearInterval(cronPollRef.current);
-    cronPollRef.current = setInterval(() => {
-      fetch('/api/cron-status', { headers: authHeader() })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (!d) return;
-          const status = d.running ? 'running' : (d.exit_code === 0 ? 'done' : 'error');
-          setCronState({ status, log: d.log || [], exitCode: d.exit_code });
-          if (!d.running) {
-            clearInterval(cronPollRef.current);
-            cronPollRef.current = null;
-            data.refresh();
-            const msg = d.exit_code === 0 ? 'Cron scan complete — signals updated.' : 'Cron scan finished with errors.';
-            addToast(msg, d.exit_code === 0 ? 'success' : 'error');
-            if ('Notification' in window && Notification.permission === 'granted') {
-              new Notification('Kalshi scan complete', { body: msg, icon: '/favicon.ico' });
-            }
-          }
-        })
-        .catch(() => {});
-    }, 3000);
-  }
-
-  function handleRunCron() {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-    setCronState({ status: 'running', log: ['Starting scan…'], exitCode: null });
-    fetch('/api/run_cron', { method: 'POST', headers: authHeader() })
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) {
-          setCronState({ status: 'error', log: [d.error], exitCode: 1 });
-        } else {
-          startCronPoll();
-        }
-      })
-      .catch(() => setCronState({ status: 'error', log: ['Request failed — is the server running?'], exitCode: 1 }));
-  }
-
-  function handleCancelCron() {
-    fetch('/api/cancel-cron', { method: 'POST', headers: authHeader() })
-      .then(() => {
-        if (cronPollRef.current) { clearInterval(cronPollRef.current); cronPollRef.current = null; }
-        setCronState(prev => ({ ...prev, status: 'cancelled', log: [...prev.log, '— cancelled by user —'] }));
-      })
-      .catch(() => {});
-  }
-
   const TabComponent = TABS[activeTab] || OverviewTab;
 
   // Memoized so a re-render that doesn't touch data/cronState/the handlers
   // (e.g. a theme or tab change) hands consumers back the same value
   // reference instead of a brand-new object literal every time (batch-43
-  // H-2, part 2 of 2). Note this only kicks in once `data`'s own reference
-  // is stable across such renders — see the useData.js `refresh` finding
-  // flagged separately.
+  // H-2, part 2 of 2). `data` and the handlers are now stable references
+  // themselves (useData.js memoizes its return value; the handlers above
+  // are useCallback-wrapped), so this actually holds across such renders.
   const contextValue = useMemo(
     () => ({ ...data, cronState, handleRunCron, handleCancelCron }),
-    [data, cronState, handleRunCron, handleCancelCron],
+    [data, cronState, handleRunCron, handleCancelCron]
   );
 
   return (
