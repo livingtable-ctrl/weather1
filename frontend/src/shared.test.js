@@ -115,6 +115,28 @@ describe('buildPaperOrderBody', () => {
     expect(body.side).toBe('yes');
     expect(body.entry_price).toBeCloseTo(0.37, 10);
   });
+
+  it('net_edge prefers the raw 6dp cache ratio over re-dividing the 1dp edge_pct', () => {
+    // signals_cache_entries serves net_edge rounded to 6dp and edge_pct to
+    // 1dp; deriving from edge_pct would collapse 0.123456 to 0.123.
+    const opp = {
+      ticker: 'KXHIGH-26AUG22-T75', side: 'yes', edge_pct: 12.3,
+      net_edge: 0.123456, yes_bid: 0.28, yes_ask: 0.32,
+      market_prob: 30, forecast_prob: 42,
+    };
+    const body = buildPaperOrderBody(opp, 1);
+    expect(body.net_edge).toBe(0.123456);
+    expect(body.net_edge).not.toBeCloseTo(0.123, 10);
+  });
+
+  it('net_edge falls back to edge_pct/100 when the raw field is absent (mock data)', () => {
+    const opp = {
+      ticker: 'KXHIGH-26AUG22-T75', side: 'yes', edge_pct: 12.5,
+      yes_bid: 0.28, yes_ask: 0.32, market_prob: 30, forecast_prob: 42,
+    };
+    expect(buildPaperOrderBody(opp, 1).net_edge).toBeCloseTo(0.125, 10);
+    expect(buildPaperOrderBody({ ...opp, edge_pct: null }, 1).net_edge).toBeNull();
+  });
 });
 
 // opus review (batch-26): sideAwareEntryPrice is now a standalone exported

@@ -496,7 +496,13 @@ export function buildPaperOrderBody(opp, qty) {
     quantity:    qty,
     entry_price: entryPrice,
     entry_prob:  entryProb,
-    net_edge:    opp.edge_pct != null ? opp.edge_pct / 100 : null,
+    // Prefer the raw ratio the signals cache already serves (net_edge,
+    // 6dp — trade_cycle.py's signals_cache_entries) over re-dividing the
+    // 1dp-rounded edge_pct display field, which loses precision on the
+    // stored edge (opus review, 2026-08-09). edge_pct/100 kept as fallback
+    // for entries without the raw field (e.g. mock data).
+    net_edge:    opp.net_edge != null ? opp.net_edge
+                 : (opp.edge_pct != null ? opp.edge_pct / 100 : null),
     city:        opp.city || null,
     target_date: opp.target_date || opp.expiry || null,
     days_out:    opp.days_out ?? null,
