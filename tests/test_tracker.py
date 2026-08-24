@@ -6184,6 +6184,442 @@ class TestDisputedOutcomeTracking(unittest.TestCase):
             "even though the METAR fetch itself succeeded",
         )
 
+    # ── Miami index cross-check (batch-52 item 4) ────────────────────────
+
+    def _log_miami_hourly(self, ticker, threshold, var, target_date=date(2026, 8, 24)):
+        analysis = {
+            "condition": {"type": "above", "threshold": threshold, "var": var},
+            "forecast_prob": 0.5,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "hourly_ensemble",
+        }
+        tracker.log_prediction(ticker, "Miami", target_date, analysis)
+
+    def test_audit_settlement_miami_index_agrees_no_dispute(self):
+        """Index reading confirms Kalshi's real settlement -- no dispute,
+        no alert, but the METAR-sourced settled_value write is unaffected
+        (batch-52: settled_value stays METAR-sourced for schema
+        consistency with the other 5 cities; the index only backs this
+        cross-check, log-only unless it disagrees)."""
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+        import weather_markets
+
+        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
+        self._log_miami_hourly(ticker, 85.0, "max")
+        tracker.log_outcome(ticker, True)  # Kalshi settled YES (>85F)
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KMIA"
+            ),
+            patch.object(tracker, "_fetch_asos_hour_temp", return_value=86.0),
+            patch.object(
+                tracker, "_get_settlement_kalshi_client", return_value=object()
+            ),
+            patch.object(
+                kalshi_weather_index,
+                "get_miami_index_reading_near",
+                return_value={"temp_f": 86.5, "status": "normal"},
+            ),
+            patch("notify.send_system_alert") as _alert,
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        _alert.assert_not_called()
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT disputed, settled_value FROM outcomes WHERE ticker = ?",
+                (ticker,),
+            ).fetchone()
+        self.assertEqual(row[0], 0)
+        self.assertAlmostEqual(row[1], 86.0, msg="settled_value stays METAR-sourced")
+
+    def test_audit_settlement_miami_index_mismatch_marks_disputed_and_alerts(self):
+        """Index reading (the market's REAL settlement source) disagrees
+        with Kalshi's declared YES/NO -- must dispute and alert loudly."""
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+        import weather_markets
+
+        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
+        self._log_miami_hourly(ticker, 85.0, "max")
+        tracker.log_outcome(ticker, False)  # Kalshi settled NO (<=85F)
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KMIA"
+            ),
+            patch.object(tracker, "_fetch_asos_hour_temp", return_value=80.0),
+            patch.object(
+                tracker, "_get_settlement_kalshi_client", return_value=object()
+            ),
+            patch.object(
+                kalshi_weather_index,
+                "get_miami_index_reading_near",
+                # index says 90F (>85 => implied YES) but Kalshi settled NO
+                return_value={"temp_f": 90.0, "status": "normal"},
+            ),
+            patch("notify.send_system_alert") as _alert,
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=False)
+
+        self.assertTrue(result, "the METAR write itself must still succeed")
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT disputed FROM outcomes WHERE ticker = ?", (ticker,)
+            ).fetchone()
+        self.assertEqual(row[0], 1, "must be marked disputed on an index mismatch")
+        _alert.assert_called_once()
+        _, kwargs = _alert.call_args
+        self.assertEqual(kwargs.get("cooldown_key"), "miami_index_settlement_mismatch")
+
+    def test_audit_settlement_miami_degraded_status_mismatch_does_not_dispute(self):
+        """A 'degraded'-status index point disagreeing with Kalshi is NOT
+        alert-worthy -- batch-52's explicit fail-toward-no-lock-in mandate
+        means an unreliable reading must not be trusted as evidence of
+        anything, in either direction."""
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+        import weather_markets
+
+        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
+        self._log_miami_hourly(ticker, 85.0, "max")
+        tracker.log_outcome(ticker, False)
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KMIA"
+            ),
+            patch.object(tracker, "_fetch_asos_hour_temp", return_value=80.0),
+            patch.object(
+                tracker, "_get_settlement_kalshi_client", return_value=object()
+            ),
+            patch.object(
+                kalshi_weather_index,
+                "get_miami_index_reading_near",
+                return_value={"temp_f": 90.0, "status": "degraded"},
+            ),
+            patch("notify.send_system_alert") as _alert,
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=False)
+
+        self.assertTrue(result)
+        _alert.assert_not_called()
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT disputed FROM outcomes WHERE ticker = ?", (ticker,)
+            ).fetchone()
+        self.assertEqual(row[0], 0, "a degraded-status disagreement must not dispute")
+
+    def test_audit_settlement_miami_no_index_reading_does_not_block_metar_write(self):
+        """Index unavailable (circuit open, endpoint down, etc.) -- the
+        METAR-sourced settled_value write must still succeed; the cross-
+        check is best-effort only, never a hard dependency."""
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+        import weather_markets
+
+        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
+        self._log_miami_hourly(ticker, 85.0, "max")
+        tracker.log_outcome(ticker, True)
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KMIA"
+            ),
+            patch.object(tracker, "_fetch_asos_hour_temp", return_value=86.0),
+            patch.object(
+                tracker, "_get_settlement_kalshi_client", return_value=object()
+            ),
+            patch.object(
+                kalshi_weather_index, "get_miami_index_reading_near", return_value=None
+            ),
+            patch("notify.send_system_alert") as _alert,
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        _alert.assert_not_called()
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT settled_value FROM outcomes WHERE ticker = ?", (ticker,)
+            ).fetchone()
+        self.assertAlmostEqual(row[0], 86.0)
+
+    def test_audit_settlement_miami_index_lookup_exception_does_not_block_metar_write(
+        self,
+    ):
+        """A raised exception anywhere in the Miami cross-check (network
+        error, bad data shape, etc.) must be swallowed -- the METAR write
+        already committed above it must not be undone or reported as a
+        failure."""
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+        import weather_markets
+
+        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
+        self._log_miami_hourly(ticker, 85.0, "max")
+        tracker.log_outcome(ticker, True)
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KMIA"
+            ),
+            patch.object(tracker, "_fetch_asos_hour_temp", return_value=86.0),
+            patch.object(
+                tracker,
+                "_get_settlement_kalshi_client",
+                side_effect=RuntimeError("client build failed"),
+            ),
+            patch.object(kalshi_weather_index, "get_miami_index_reading_near") as _near,
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        _near.assert_not_called()
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT settled_value FROM outcomes WHERE ticker = ?", (ticker,)
+            ).fetchone()
+        self.assertAlmostEqual(row[0], 86.0)
+
+    def test_audit_settlement_non_miami_hourly_never_calls_index(self):
+        """Regression guard: the other 5 hourly cities must never touch
+        kalshi_weather_index at all -- the observation-source seam is
+        Miami-only, without restructuring anything for the rest."""
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+        import weather_markets
+
+        ticker = "KXTEMPNYCH-26AUG2414-T85.0"
+        analysis = {
+            "condition": {"type": "above", "threshold": 85.0, "var": "max"},
+            "forecast_prob": 0.5,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "hourly_ensemble",
+        }
+        tracker.log_prediction(ticker, "NYC", date(2026, 8, 24), analysis)
+        tracker.log_outcome(ticker, True)
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KNYC"
+            ),
+            patch.object(tracker, "_fetch_asos_hour_temp", return_value=86.0),
+            patch.object(kalshi_weather_index, "get_miami_index_reading_near") as _near,
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        _near.assert_not_called()
+
+    def test_audit_settlement_miami_metar_wrong_index_right_does_not_dispute(self):
+        """opus review M-5: THE scenario that justifies this whole batch
+        existing -- METAR alone would have implied the wrong side, but the
+        index (Miami's REAL settlement source) agrees with Kalshi's actual
+        result. Must NOT dispute; the cross-check exists to catch
+        disagreement with the index, not with METAR."""
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+        import weather_markets
+
+        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
+        self._log_miami_hourly(ticker, 85.0, "max")
+        tracker.log_outcome(ticker, True)  # Kalshi settled YES (>85F)
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KMIA"
+            ),
+            # METAR reads 80F -- implies NO (<=85), the WRONG side.
+            patch.object(tracker, "_fetch_asos_hour_temp", return_value=80.0),
+            patch.object(
+                tracker, "_get_settlement_kalshi_client", return_value=object()
+            ),
+            patch.object(
+                kalshi_weather_index,
+                "get_miami_index_reading_near",
+                # index reads 90F -- implies YES, matching Kalshi's real result.
+                return_value={"temp_f": 90.0, "status": "normal"},
+            ),
+            patch("notify.send_system_alert") as _alert,
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        _alert.assert_not_called()
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT disputed, settled_value FROM outcomes WHERE ticker = ?",
+                (ticker,),
+            ).fetchone()
+        self.assertEqual(
+            row[0], 0, "index (real settlement source) agrees with Kalshi -- no dispute"
+        )
+        self.assertAlmostEqual(
+            row[1],
+            80.0,
+            msg="settled_value column still records METAR's (wrong) reading",
+        )
+
+    def test_audit_settlement_miami_agreement_clears_prior_dispute(self):
+        """opus review M-3: mirrors the daily branch's mark_outcome_
+        undisputed precedent -- a ticker previously disputed (e.g. off a
+        stale/edge-case index point) must be un-disputed on a later
+        confirmed agreement, not stay permanently excluded from
+        outcomes_valid/Brier/calibration scoring."""
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+        import weather_markets
+
+        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
+        self._log_miami_hourly(ticker, 85.0, "max")
+        tracker.log_outcome(ticker, True)
+        tracker.mark_outcome_disputed(ticker)
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            pre = con.execute(
+                "SELECT disputed FROM outcomes WHERE ticker=?", (ticker,)
+            ).fetchone()
+        self.assertEqual(pre[0], 1, "test setup must actually start disputed")
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KMIA"
+            ),
+            patch.object(tracker, "_fetch_asos_hour_temp", return_value=86.0),
+            patch.object(
+                tracker, "_get_settlement_kalshi_client", return_value=object()
+            ),
+            patch.object(
+                kalshi_weather_index,
+                "get_miami_index_reading_near",
+                return_value={"temp_f": 90.0, "status": "normal"},  # agrees w/ YES
+            ),
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=True)
+
+        self.assertTrue(result)
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT disputed FROM outcomes WHERE ticker=?", (ticker,)
+            ).fetchone()
+        self.assertEqual(row[0], 0, "confirmed agreement must clear the prior dispute")
+
+    def test_audit_settlement_miami_missing_threshold_does_not_dispute(self):
+        """A prediction row with no usable threshold (condition_type/
+        threshold_lo never resolved from the DB) must fail closed -- no
+        implied YES/NO can be computed, so no dispute/alert should ever
+        fire, regardless of what settled_yes says."""
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+        import weather_markets
+
+        ticker = "KXTEMPMIAH-26AUG2414-T85.0"
+        # log_prediction with a condition missing "threshold" entirely --
+        # condition_type/threshold_lo end up NULL in the predictions row.
+        analysis = {
+            "condition": {"type": "above"},
+            "forecast_prob": 0.5,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "hourly_ensemble",
+        }
+        tracker.log_prediction(ticker, "Miami", date(2026, 8, 24), analysis)
+        tracker.log_outcome(ticker, False)
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KMIA"
+            ),
+            patch.object(tracker, "_fetch_asos_hour_temp", return_value=80.0),
+            patch.object(
+                tracker, "_get_settlement_kalshi_client", return_value=object()
+            ),
+            patch.object(
+                kalshi_weather_index,
+                "get_miami_index_reading_near",
+                return_value={"temp_f": 90.0, "status": "normal"},
+            ),
+            patch("notify.send_system_alert") as _alert,
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=False)
+
+        self.assertTrue(result)
+        _alert.assert_not_called()
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT disputed FROM outcomes WHERE ticker = ?", (ticker,)
+            ).fetchone()
+        self.assertEqual(
+            row[0], 0, "no threshold means no implied YES/NO -- must not dispute"
+        )
+
+    def test_audit_settlement_miami_between_condition_mismatch_disputes(self):
+        """The between condition_type branch of _implied_yes must also be
+        exercised -- not just above/below."""
+        from unittest.mock import patch
+
+        import kalshi_weather_index
+        import weather_markets
+
+        ticker = "KXTEMPMIAH-26AUG2414-TB80-85"
+        analysis = {
+            "condition": {
+                "type": "between",
+                "lower": 80.0,
+                "upper": 85.0,
+                "var": "max",
+            },
+            "forecast_prob": 0.5,
+            "market_prob": 0.5,
+            "edge": 0.1,
+            "method": "hourly_ensemble",
+        }
+        tracker.log_prediction(ticker, "Miami", date(2026, 8, 24), analysis)
+        tracker.log_outcome(ticker, False)  # Kalshi settled NO (outside 80-85)
+
+        with (
+            patch.object(
+                weather_markets, "_metar_station_for_city", return_value="KMIA"
+            ),
+            patch.object(tracker, "_fetch_asos_hour_temp", return_value=82.0),
+            patch.object(
+                tracker, "_get_settlement_kalshi_client", return_value=object()
+            ),
+            patch.object(
+                kalshi_weather_index,
+                "get_miami_index_reading_near",
+                # index reads 82F -- inside [80, 85), implies YES, but
+                # Kalshi settled NO -- a real mismatch.
+                return_value={"temp_f": 82.0, "status": "normal"},
+            ),
+            patch("notify.send_system_alert") as _alert,
+        ):
+            result = tracker.audit_settlement(ticker, settled_yes=False)
+
+        self.assertTrue(result)
+        with sqlite3.connect(str(tracker.DB_PATH)) as con:
+            row = con.execute(
+                "SELECT disputed FROM outcomes WHERE ticker = ?", (ticker,)
+            ).fetchone()
+        self.assertEqual(
+            row[0], 1, "between-condition mismatch must dispute same as above/below"
+        )
+        _alert.assert_called_once()
+
     def test_audit_settlement_daily_ticker_still_uses_daily_path(self):
         """Companion regression: an ordinary daily ticker must not be routed
         through the hourly branch -- confirms the prefix check is specific,

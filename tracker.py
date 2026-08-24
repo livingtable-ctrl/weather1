@@ -4955,13 +4955,40 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
             if hour is None:
                 return False
             hourly_var: str | None = None
+            # batch-52: also pull condition_type/threshold_lo/threshold_hi
+            # here (mirrors the daily branch's own predictions-table read
+            # below) -- needed for the Miami index cross-check further down;
+            # unused for the other 5 cities but harmless to fetch always
+            # rather than duplicating this SELECT a second time.
+            #
+            # opus review L-7: this DOES widen the failure surface of code
+            # shared by all 6 cities, not just Miami -- the broad `except
+            # Exception: pass` below now covers a 4-column query where it
+            # previously covered a 1-column one. If condition_type/
+            # threshold_lo/threshold_hi were ever unavailable for a row,
+            # hourly_var would silently go None too and settled_var would
+            # be written NULL for EVERY hourly city, not just Miami. Judged
+            # acceptable rather than splitting into two separate queries:
+            # all 4 columns are in the base predictions schema (this file's
+            # own CREATE TABLE), so this is a real but practically
+            # unreachable coupling, not a live risk -- documented explicitly
+            # here rather than left as an implicit "harmless" assumption.
+            hourly_cond_type: str | None = None
+            hourly_threshold_lo: float | None = None
+            hourly_threshold_hi: float | None = None
             try:
                 with _conn() as _con:
                     _hv_row = _con.execute(
-                        "SELECT var FROM predictions WHERE ticker = ?", (ticker,)
+                        "SELECT var, condition_type, threshold_lo, threshold_hi"
+                        " FROM predictions WHERE ticker = ?",
+                        (ticker,),
                     ).fetchone()
-                if _hv_row and _hv_row[0]:
-                    hourly_var = _hv_row[0]
+                if _hv_row:
+                    if _hv_row[0]:
+                        hourly_var = _hv_row[0]
+                    hourly_cond_type = _hv_row[1]
+                    hourly_threshold_lo = _hv_row[2]
+                    hourly_threshold_hi = _hv_row[3]
             except Exception:
                 pass
             station = _station_for_city(city)
@@ -4982,6 +5009,170 @@ def audit_settlement(ticker: str, settled_yes: bool) -> bool:
                     ticker,
                 )
                 return False
+
+            # ── Miami index cross-check (batch-52 item 4) ───────────────────
+            # KXTEMPMIAH settles on the Kalshi Weather Index, not KMIA METAR
+            # -- settled_value above is still METAR-sourced (unchanged, kept
+            # consistent with the other 5 cities' write shape -- opus review
+            # I-1: no production code actually reads outcomes.settled_value
+            # for hourly today, so this is a schema-consistency choice, not
+            # an active "existing use" being preserved), but for Miami
+            # specifically we ALSO compare Kalshi's real settled_yes against
+            # what the index would have said, since that's the market's
+            # actual settlement source. Deliberately best-effort/log+alert
+            # only (no new DB column) -- "record both index and METAR and
+            # alert on disagreement" per batch-52's own item 4 wording, kept
+            # proportionate to a rank-6 city (batch-52 "Key risks").
+            # Never lets a failure here affect the return value below --
+            # settled_value was already durably written above regardless.
+            #
+            # opus review M-4: neither this batch nor Kalshi's public docs
+            # establish the EXACT settlement instant/aggregation KXTEMPMIAH
+            # uses (index value at the top of the hour? a windowed
+            # aggregate?) -- the 5-minute tolerance_min below and the
+            # "near the target hour" framing in the alert text are a
+            # reasonable approximation, not a confirmed match to Kalshi's
+            # real methodology. A MISMATCH alert on this path should be
+            # read as "the index disagrees with Kalshi near this hour,
+            # investigate" -- not an automatic proof of a real settlement
+            # error. Filed as its own backlog entry (search "Miami hourly
+            # settlement-instant") pending either Kalshi documenting this
+            # or empirical correlation once enough real settlements exist.
+            if city == "Miami":
+                try:
+                    import zoneinfo as _zi_miami
+
+                    from kalshi_weather_index import (
+                        get_miami_index_reading_near as _index_near,
+                    )
+
+                    _target_local = datetime(
+                        target_date.year,
+                        target_date.month,
+                        target_date.day,
+                        hour,
+                        tzinfo=_zi_miami.ZoneInfo(tz),
+                    )
+                    _target_epoch = _target_local.timestamp()
+                    _client = _get_settlement_kalshi_client()
+                    _index_reading = _index_near(
+                        _client, _target_epoch, tolerance_min=5.0
+                    )
+                    if _index_reading is not None:
+
+                        def _implied_yes(temp_f: float) -> bool | None:
+                            if (
+                                hourly_cond_type == "above"
+                                and hourly_threshold_lo is not None
+                            ):
+                                return temp_f > hourly_threshold_lo
+                            if (
+                                hourly_cond_type == "below"
+                                and hourly_threshold_lo is not None
+                            ):
+                                return temp_f < hourly_threshold_lo
+                            if (
+                                hourly_cond_type == "between"
+                                and hourly_threshold_lo is not None
+                                and hourly_threshold_hi is not None
+                            ):
+                                return (
+                                    hourly_threshold_lo < temp_f < hourly_threshold_hi
+                                )
+                            return None
+
+                        _index_yes = _implied_yes(_index_reading["temp_f"])
+                        _metar_yes = _implied_yes(actual_value)
+                        _log.info(
+                            "audit_settlement[%s]: Miami index cross-check -- "
+                            "Kalshi=%s index=%.1fF(status=%s,implied=%s) "
+                            "metar=%.1fF(implied=%s)",
+                            ticker,
+                            "YES" if settled_yes else "NO",
+                            _index_reading["temp_f"],
+                            _index_reading.get("status"),
+                            _index_yes,
+                            actual_value,
+                            _metar_yes,
+                        )
+                        # Only a "normal"-status index point disagreeing with
+                        # Kalshi's real settlement is alert-worthy -- a
+                        # "degraded" point disagreeing isn't strong evidence
+                        # of anything (batch-52's explicit fail-toward-no-
+                        # lock-in mandate: don't trust a degraded reading).
+                        if (
+                            _index_yes is not None
+                            and _index_yes != settled_yes
+                            and _index_reading.get("status") == "normal"
+                        ):
+                            _log.warning(
+                                "settlement_audit MISMATCH (Miami index) %s — "
+                                "Kalshi=%s index=%.1fF implied=%s",
+                                ticker,
+                                "YES" if settled_yes else "NO",
+                                _index_reading["temp_f"],
+                                _index_yes,
+                            )
+                            mark_outcome_disputed(ticker)
+                            try:
+                                import notify as _notify_miami
+
+                                _notify_miami.send_system_alert(
+                                    "⚠ Miami hourly settlement disagrees with index",
+                                    f"{ticker}: Kalshi settled "
+                                    f"{'YES' if settled_yes else 'NO'}, but the "
+                                    f"Kalshi Weather Index read "
+                                    f"{_index_reading['temp_f']:.1f}F "
+                                    f"(implied {_index_yes}) near the target "
+                                    "hour. NOTE: the exact settlement "
+                                    "instant/aggregation Kalshi uses isn't "
+                                    "confirmed -- this could be a real "
+                                    "threshold/index-parsing bug, or just "
+                                    "this tolerance window sampling a "
+                                    "different instant than Kalshi's real "
+                                    "settlement. Re-verify before assuming "
+                                    "either.",
+                                    cooldown_key="miami_index_settlement_mismatch",
+                                    discord_color=0xF85149,
+                                )
+                            except Exception as _n_exc:
+                                _log.warning(
+                                    "audit_settlement[%s]: Miami mismatch "
+                                    "notification failed: %s",
+                                    ticker,
+                                    _n_exc,
+                                )
+                        elif (
+                            _index_yes is not None
+                            and _index_yes == settled_yes
+                            and _index_reading.get("status") == "normal"
+                        ):
+                            # opus review M-3: mirror the daily branch's own
+                            # mark_outcome_undisputed precedent -- without
+                            # this, a ticker that mismatched once (e.g. off
+                            # a stale/edge-case index point) stays
+                            # permanently excluded from outcomes_valid/
+                            # Brier/calibration scoring even after a later
+                            # confirmed agreement, silently shrinking both
+                            # the calibration pool and the hourly gate's own
+                            # settled-sample count for no ongoing reason.
+                            # Idempotent no-op if this ticker was never
+                            # disputed in the first place.
+                            mark_outcome_undisputed(ticker)
+                    else:
+                        _log.debug(
+                            "audit_settlement[%s]: no Miami index reading "
+                            "near target hour -- skipping index cross-check",
+                            ticker,
+                        )
+                except Exception as _idx_exc:
+                    _log.debug(
+                        "audit_settlement[%s]: Miami index cross-check "
+                        "failed (non-fatal): %s",
+                        ticker,
+                        _idx_exc,
+                    )
+
             return True
 
         # Prefer condition stored in predictions DB — it was recorded with the real

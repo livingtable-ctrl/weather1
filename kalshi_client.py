@@ -766,6 +766,52 @@ class KalshiClient:
     def get_series_list(self, **params) -> list[dict]:
         return self._paginate_get("/series", "series", params, default_limit=None)
 
+    def get_live_weather_index(self, city: str) -> dict | None:
+        """GET /live_data/weather/{city} -- the Kalshi Weather Index live
+        feed (Synoptic Data, 5-contributor QC'd multi-station index; docs:
+        API changelog only, live-verified 2026-08-23/24, unauthenticated).
+        This is KXTEMPMIAH's real settlement source, NOT KMIA METAR --
+        batch-52's own decision experiment measured mean|diff| ~1.6-2.0F
+        (max 4.68F) between the two over one trailing day, well past the
+        1F go/no-go bar (see backlog.txt).
+
+        Returns the raw response dict ({"city", "config_version",
+        "timeseries": [{"t" (ms epoch), "v" (F), "contributors", "status"},
+        ...]}) or None if the response is missing the documented
+        "timeseries" key -- same fail-soft shape-drift convention as
+        get_order_queue_position above. Does NOT swallow a network/API
+        error -- callers (kalshi_weather_index.py) wrap this in their own
+        dedicated circuit breaker, same convention as every other method in
+        this file. `auth=False`: confirmed live this really is public (no
+        signed headers sent or required), unlike _paginate_get's endpoints
+        which send auth headers unconditionally regardless of whether the
+        underlying endpoint needs them.
+
+        `city` is lowercased per the endpoint's own convention (its error
+        message on an unsupported city documents "miami" as the only one
+        currently live). Batch-52 item 3: read-only, feeds
+        kalshi_weather_index.py's polling/caching/circuit-breaker layer --
+        never call this directly from a trading decision path.
+
+        opus review L-1: validated the same way _validate_ticker_format
+        guards every other path-interpolated method in this file (defense
+        in depth against a path-segment manipulation, AUD-0076) -- the
+        only caller today passes the literal "miami", but this is the one
+        path-interpolating method in the file that had no equivalent guard.
+        """
+        if not isinstance(city, str) or not re.fullmatch(r"[a-zA-Z]{1,32}", city):
+            raise ValueError(f"get_live_weather_index: invalid city {city!r}")
+        data = self._get(f"/live_data/weather/{city.lower()}", auth=False)
+        if not isinstance(data, dict) or "timeseries" not in data:
+            _log.warning(
+                "get_live_weather_index(%s): response missing 'timeseries'. "
+                "Actual keys: %s. The API may have changed.",
+                city,
+                list(data.keys()) if isinstance(data, dict) else type(data).__name__,
+            )
+            return None
+        return data
+
     def get_fills(self, **params) -> list[dict]:
         """GET /portfolio/fills -- every fill (partial or full match) on this
         account, cursor-paginated same as get_trades/get_positions/etc.

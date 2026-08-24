@@ -1304,6 +1304,25 @@ class TestKxtempHourlyCityRegistryTie:
             f"KNOWN_WEATHER_SERIES at all"
         )
 
+    def test_kxtempmiah_registered_as_miami(self):
+        """batch-52: KXTEMPMIAH is the 6th hourly city, mapped to Miami --
+        a concrete regression check beyond the generic symmetric-diff tests
+        above, since this batch's whole point is onboarding this specific
+        ticker."""
+        import weather_markets as wm
+
+        assert wm._KXTEMP_HOURLY_CITY.get("KXTEMPMIAH") == "Miami"
+        assert "KXTEMPMIAH" in wm.KNOWN_WEATHER_SERIES
+
+    def test_kxtempbosh_still_not_registered(self):
+        """batch-52: KXTEMPBOSH stays out -- re-verified 2026-08-24 still 0
+        open/0 settled, genuinely dead (unlike KXTEMPMIAH). A future batch
+        onboarding Boston should update this test, not silently break it."""
+        import weather_markets as wm
+
+        assert "KXTEMPBOSH" not in wm._KXTEMP_HOURLY_CITY
+        assert "KXTEMPBOSH" not in wm.KNOWN_WEATHER_SERIES
+
 
 class TestGatedRegimeConfidenceBoost:
     """M-31(b): heat_dome/cold_snap's Kelly-sizing confidence_boost must be

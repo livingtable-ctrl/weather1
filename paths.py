@@ -72,6 +72,15 @@ CATALOG_DRIFT_PATH = _DATA / "catalog_settlement_drift_check.json"
 CITY_REGISTRY_REPORT_PATH = _DATA / "city_registry_report.json"
 RETIREMENT_PROBATION_PATH = _DATA / "retirement_probation_check.json"
 HOURLY_TARGET_HOURS_PATH = _DATA / "hourly_target_hours.json"
+# batch-52: last-seen config_version for the Kalshi Weather Index live-data
+# feed (KXTEMPMIAH's real settlement source, GET .../live_data/weather/miami)
+# -- persisted across process restarts so a version change is still caught
+# even if it happens between runs, not just within one long-lived process's
+# in-memory cache. Deliberately its own file (not folded into
+# CATALOG_DRIFT_PATH's weekly settlement_sources snapshot): that watcher's
+# cadence is far too slow for a methodology version that can churn within
+# days (confirmed live 2026-08-24 -- see kalshi_weather_index.py).
+MIAMI_INDEX_STATE_PATH = _DATA / "miami_index_state.json"
 HURRICANE_COUNT_TO_DATE_PATH = _DATA / "hurricane_count_to_date.json"
 NOTIFY_COOLDOWN_STATE_PATH = _DATA / ".notify_cooldowns.json"
 RAIN_ARB_SHADOW_PATH = _DATA / "rain_arb_shadow_observations.json"

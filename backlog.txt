@@ -30393,6 +30393,11 @@ When to revisit:
   - KXTEMPMIAH (hourly Miami): launched with real volume (10 open, 2230
     settled) -- onboarding into the existing hourly model needs its own
     _KXTEMP_HOURLY_CITY/dispatch change, out of this batch's scope.
+    [DONE 2026-08-24 -- batch-52 shipped this: registration + a dedicated
+    kalshi_weather_index.py module (Miami settles on the Kalshi Weather
+    Index, not METAR) + a settlement cross-check + an H-2 fix keeping
+    Miami excluded from live-order eligibility even once the pooled
+    hourly gate opens. See backlog.txt's own batch-52 entries above.]
   - HOLIDAY_TEMP_TRADING_ENABLED stays unset (shadow-only) until >=20
     settled holiday-temp predictions accumulate -- given the episodic
     ~2x/year listing cadence, expect this floor to clear far slower than
@@ -30561,3 +30566,120 @@ When to revisit:
   - Lower priority than most open entries: this is a monitoring
     nice-to-have, not a correctness or safety-gate defect -- the underlying
     kill-switch/halt logic itself is unaffected either way.
+
+[RESOLVED 2026-08-24 -- batch-52 item 1] Miami hourly (KXTEMPMIAH) index-vs-METAR decision experiment result
+Priority: Info (gates batch-52 items 2-4 scope AND batch-56)
+Files: none (measurement only, code changes are batch-52 items 2-4 in weather_markets.py/
+  kalshi_client.py/kalshi_weather_index.py/tracker.py/cron.py)
+
+Problem/context:
+  Batch-52 item 1's go/no-go: poll GET /trade-api/v2/live_data/weather/miami (Kalshi Weather
+  Index, config_version miami-temperature-v1.0-cal-20260824 at measurement time -- already
+  drifted from the batch spec's miami-temperature-v1.0-qc-20260818, 6 days earlier, confirming
+  the spec's own "days old, churn is expected" risk note) alongside KMIA METAR (aviationweather.gov,
+  25h history) for one trailing day (2026-08-23 18:20 ET -- 2026-08-24 18:13 ET, live-fetched
+  2026-08-24), measuring divergence at settle-hour-adjacent timestamps.
+
+Result:
+  Same-timestamp comparison (index value at each real METAR ob's exact minute, n=33): mean|diff|
+  1.58F, max 4.68F, 16/33 points >=1.0F. Afternoon window 12:00-20:00 ET (n=16, closest to real
+  market target hours): mean|diff| 1.96F, max 4.68F, 9/16 points >=1.0F. Top-of-hour comparison
+  (index at HH:00 vs nearest METAR ob, n=24): mean|diff| 1.28F, max 4.32F, 12/24 points >=1.0F.
+
+Verdict:
+  Divergence clears the spec's >=1F-at-any-settle-hour bar decisively and repeatedly, not a
+  single-point outlier -- consistent with 9-16 of 16-33 sampled points across the day, not a
+  borderline call needing the user's input per the spec's own protocol. Per batch-52 item 1:
+  MANDATORY to build the full index-aware path -- items 2 (registration), 3 (kalshi_weather_index.py
+  module + per-city observation-source seam), and 4 (settlement monitor) all shipped in full, not
+  the lighter registration+cross-check-only alternative.
+
+Batch-56 gate verdict:
+  Divergence >=1F confirmed -- batch-56 (Synoptic nearby-station observations) is GO per
+  INDEX-ROADMAP.md's trigger condition ("ONLY if batch-52's index-vs-METAR divergence test shows
+  >=1F divergence"). Next session picking up batch-56 can proceed without re-running this
+  experiment, though re-verifying against a fresh sample before that batch starts is still
+  reasonable given config_version's observed churn rate.
+
+Caveat:
+  Single trailing-day sample (both endpoints' own history retention), not a live multi-day poll --
+  the spec's "poll... for one afternoon" was satisfied by both endpoints already carrying ~24-34h
+  of retained history rather than a dedicated real-time poll loop. Given the divergence margin is
+  4-9x the 1F bar across most sampled points, a larger sample seems unlikely to overturn the
+  verdict, but this hasn't been re-confirmed on a second day.
+
+[OPEN -- filed 2026-08-24 by batch-52's opus review, item M-1] Miami hourly pools into the shared T_hourly calibration + hourly gate sample count despite a mis-referenced model
+Priority: Medium
+Files: ml_bias.py (train_all_temperature_scaling, _hourly_prefixes), tracker.py
+  (count_settled_hourly_predictions) -- no code changed by this entry, design/data question only
+
+Problem:
+  ml_bias.py fits ONE single T_hourly temperature-scaling coefficient across all 6 hourly cities
+  (_hourly_prefixes built from _KXTEMP_HOURLY_CITY, no per-city split), and
+  tracker.count_settled_hourly_predictions() likewise pools all 6 for the
+  HOURLY_TRADING_ENABLED settled-sample gate. KXTEMPMIAH is already ~2230 settled markets at
+  ~6-7K contracts/day -- high enough volume to dominate that pool by count once it starts
+  settling in bulk. Miami's own _analyze_hourly_trade probability is systematically mis-
+  referenced relative to its real settlement source (batch-52's decision experiment: mean
+  1.6-2.0F, max 4.68F divergence between the Kalshi Weather Index and the KMIA METAR/CLI-report
+  bias correction _get_combined_station_bias actually uses) -- large enough that a city whose
+  model is mis-referenced by this much could drive the calibration temperature applied to the
+  5 correctly-referenced cities too, not just distort its own.
+  NOT a live-trading risk today (see the paired H-2 fix below, already shipped this batch) --
+  this is specifically about calibration QUALITY contamination, a separate axis from live-order
+  eligibility.
+
+Note: outcomes.settled_temp_f-based dynamic station bias (get_dynamic_station_bias) is NOT
+  affected by this -- hourly writes settled_value, not settled_temp_f, so that specific pathway
+  stays clean. Only the shared T_hourly fit and the pooled gate COUNT are affected.
+
+Why not fixed now:
+  A real per-city T-scaling split (or excluding Miami from the pooled fit until it has its own
+  validated calibration) is genuine modeling work needing its own validation pass -- batch-52's
+  explicit constraint was "no new model design in this batch." A mechanical fix attempted without
+  that validation risks introducing a NEW, unreviewed modeling bug in the exact same breath as
+  fixing this one.
+
+What it would look like:
+  Either (a) split ml_bias.train_all_temperature_scaling's hourly pool into a Miami-specific T
+  and an others-pooled T (mirrors the existing sameday/above/below/global split shape already in
+  that function), or (b) exclude Miami from BOTH the T_hourly fit's training data AND
+  count_settled_hourly_predictions()'s gate count until Miami has enough of its OWN settled
+  samples post-index-cross-check to validate a Miami-specific T independently. Either needs a
+  real go/no-go-style validation once enough Miami-specific settled data exists, same discipline
+  as batch-52 item 1's own decision experiment.
+
+[OPEN -- filed 2026-08-24 by batch-52's opus review, item M-4] Miami hourly settlement-instant/aggregation methodology unconfirmed
+Priority: Medium
+Files: tracker.py (audit_settlement's Miami index cross-check), kalshi_weather_index.py
+  (get_miami_index_reading_near's tolerance_min=5.0 default) -- documentation/investigation only
+
+Problem:
+  Neither batch-52 nor Kalshi's public docs establish the EXACT instant/aggregation KXTEMPMIAH
+  settles on -- the index value at the literal top of the hour? A windowed aggregate over some
+  interval? tracker.audit_settlement's Miami cross-check assumes "nearest index point within 5
+  minutes of HH:00 local" as a reasonable approximation, not a confirmed match. If Kalshi's real
+  methodology differs (e.g. an average over the preceding N minutes, or a different anchor
+  instant), the cross-check's MISMATCH alert path could fire on a systematic basis unrelated to
+  any real bug -- alert fatigue that would erode trust in the one mechanism this batch built
+  specifically to catch a genuine settlement-source problem. (The alert text itself was already
+  softened this session to note this uncertainty explicitly, so a false-positive mismatch doesn't
+  read as a confirmed bug report to whoever sees it.)
+  Related, smaller note: _fetch_asos_hour_temp (the METAR half of the comparison) picks the
+  observation nearest HH:00, but routine METAR reports land at :51-:56 past the hour -- so the
+  "metar=..." and "index=..." values logged side-by-side in the same audit_settlement log line
+  can be sampled ~7 minutes apart while being presented as directly comparable.
+
+Why not fixed now:
+  There's no way to determine Kalshi's real methodology without either (a) Kalshi documenting it
+  explicitly, or (b) enough real KXTEMPMIAH settlements accumulating to empirically correlate the
+  index's own minute-resolution history against Kalshi's actual declared outcomes and back out
+  the aggregation window statistically -- neither is available yet this session.
+
+What it would look like:
+  Once enough real Miami hourly settlements exist (the same 20-settled-sample scale this
+  project's other gates already use as a floor), run a correlation pass: for each settled
+  KXTEMPMIAH ticker, pull the index's full minute-resolution history around the target hour and
+  test which candidate aggregation (instant-at-HH:00, N-minute trailing average, etc.) best
+  predicts Kalshi's actual declared result. Revisit tolerance_min and the cross-check's framing
+  based on the result.

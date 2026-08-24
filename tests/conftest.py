@@ -323,12 +323,17 @@ def reset_open_meteo_circuit_breaker():
     saw from the main clone (previously a worktree-local, usually-absent
     file), so a real nonzero trip_count/current_timeout on disk for any of
     these four would now carry into worktree test runs too.
+
+    batch-52: kalshi_weather_index._index_cb is the newest such singleton
+    (Miami Weather Index live-data feed) -- added here proactively rather
+    than waiting for the same missed-until-added pattern to recur again.
     """
     import acis_precip
     import acis_snow
     import climatology
     import hurricane_climatology
     import kalshi_client
+    import kalshi_weather_index
     import nws
     import weather_markets
 
@@ -349,6 +354,7 @@ def reset_open_meteo_circuit_breaker():
         kalshi_client._kalshi_cb_read,
         kalshi_client._kalshi_cb_write,
         nws._nws_cb,
+        kalshi_weather_index._index_cb,
         # M-18/L-8 (batch-36): hurricane_climatology's two hurdat2_cb
         # breakers (ATL/PAC) are new module-level singletons -- same
         # missed-until-added gap as every other module in this loop's own
@@ -373,6 +379,25 @@ def reset_open_meteo_circuit_breaker():
         # churned out for a purely cosmetic cleanup).
         cb._last_failure_at = None
     yield
+
+
+@pytest.fixture(autouse=True)
+def reset_miami_index_cache():
+    """opus review L-11: kalshi_weather_index._INDEX_CACHE is module-level
+    in-memory state (a 300s-TTL ForecastCache), the same "missed until it
+    bites" shape reset_open_meteo_circuit_breaker's own docstring already
+    describes for circuit breakers -- a cached reading (or negative-cached
+    None) left over from one test can silently satisfy a later test's
+    fetch as a cache hit instead of the real code path that test meant to
+    exercise. Every test in test_kalshi_weather_index.py currently clears
+    it manually; this is the structural backstop for tests that don't
+    (added proactively, before it recurs as a real flaky-test incident).
+    """
+    import kalshi_weather_index
+
+    kalshi_weather_index._INDEX_CACHE.clear()
+    yield
+    kalshi_weather_index._INDEX_CACHE.clear()
 
 
 @pytest.fixture(autouse=True)

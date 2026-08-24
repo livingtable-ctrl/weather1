@@ -3954,7 +3954,7 @@ def check_position_limits(
         _KXTEMP_HOURLY_CITY,
         _between_metar_gates_active,
         _holiday_temp_gates_active,
-        _hourly_gates_active,
+        _hourly_live_ok,
         _hurricane_count_gates_active,
         _hurricane_next_event_gates_active,
         _rain_gates_active,
@@ -3979,9 +3979,11 @@ def check_position_limits(
     # _hourly_gates_active() -- the automatic path
     # (order_executor._auto_place_trades) already enforced this; this was
     # the one gap. Same shape as the rain/snow/hurricane blocks below.
-    if (
-        ticker.upper().startswith(tuple(_KXTEMP_HOURLY_CITY))
-        and not _hourly_gates_active()
+    # batch-52 H-2 (opus review): _hourly_live_ok also excludes Miami
+    # specifically, even once the family-wide (all-6-cities-pooled) gate
+    # opens -- see its own docstring in weather_markets.py.
+    if ticker.upper().startswith(tuple(_KXTEMP_HOURLY_CITY)) and not _hourly_live_ok(
+        ticker
     ):
         return {
             "ok": False,

@@ -270,6 +270,35 @@ def test_hourly_ticker_places_normally_when_gate_active(monkeypatch):
     assert rows[0]["is_shadow"] == 0
 
 
+def test_hourly_miami_stays_shadow_even_when_gate_active(monkeypatch):
+    """batch-52 H-2 (opus review): unlike the other 5 hourly cities, Miami
+    must stay shadow-only even once the family-wide (all-6-cities-pooled)
+    gate opens -- the pooled 20-settled-sample floor doesn't validate
+    Miami's specifically mis-referenced model (KMIA METAR/CLI-report bias
+    correction vs. the Kalshi Weather Index's own real settlement source).
+    Same setup as test_hourly_ticker_places_normally_when_gate_active
+    above, but for a KXTEMPMIAH ticker -- must NOT place."""
+    _place_everything_setup(monkeypatch)
+    monkeypatch.setattr("order_executor._hourly_gates_active", lambda: True)
+    placed_calls = []
+    monkeypatch.setattr(
+        "order_executor.place_paper_order",
+        lambda *a, **k: placed_calls.append((a, k))
+        or {"id": 1, "status": "open", "cost": 1.0},
+    )
+    opp = _make_flat_opp("KXTEMPMIAH-26JUL2014-T85.0")
+
+    result = order_executor._auto_place_trades([opp], client=None)
+
+    assert result == 0
+    assert placed_calls == [], (
+        "Miami must never place live even with the family gate active"
+    )
+    rows = _fetch("KXTEMPMIAH-26JUL2014-T85.0")
+    assert len(rows) == 1
+    assert rows[0]["is_shadow"] == 1
+
+
 def test_mixed_batch_hourly_shadow_daily_places_normally(monkeypatch):
     """The core routing guarantee: in one batch, an hourly opp (gate
     inactive) is shadow-logged while a daily opp in the SAME batch places

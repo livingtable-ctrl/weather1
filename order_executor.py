@@ -4089,9 +4089,18 @@ def _auto_place_trades(
         # / hurricane time-to-next-event (2026-08-07). Per-ticker-family, not
         # per-batch: other opportunities in the same batch continue through
         # the normal placement path below.
-        if (
-            any(ticker.upper().startswith(p) for p in _KXTEMP_HOURLY_CITY)
-            and not _hourly_gate_active
+        # batch-52 H-2 (opus review): _hourly_gate_active above is hoisted
+        # once per batch (a DB-count query, not per-item) and reflects the
+        # family-wide 20-settled-sample floor pooling all 6 hourly cities
+        # together -- it says nothing about whether Miami's SPECIFICALLY
+        # mis-referenced model (see weather_markets._hourly_live_ok's own
+        # docstring) is safe to trade live. Checking the Miami prefix
+        # directly here (rather than calling _hourly_live_ok(ticker),
+        # which would re-run the DB-count query per item) keeps the
+        # hoisted-bool performance property while still excluding Miami
+        # even once the pooled gate opens.
+        if any(ticker.upper().startswith(p) for p in _KXTEMP_HOURLY_CITY) and (
+            not _hourly_gate_active or ticker.upper().startswith("KXTEMPMIAH")
         ):
             _shadow_batch.append(item)
             _shadow_batch_labels.append((ticker, "hourly_shadow_only"))

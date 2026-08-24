@@ -136,7 +136,7 @@ from weather_markets import (
     _between_metar_gates_active,
     _feels_like,
     _holiday_temp_gates_active,
-    _hourly_gates_active,
+    _hourly_live_ok,
     _hurricane_count_gates_active,
     _hurricane_next_event_gates_active,
     _rain_gates_active,
@@ -2844,10 +2844,11 @@ def _quick_paper_buy(client: KalshiClient) -> None:
                 )
             )
             return
-        if (
-            ticker.upper().startswith(tuple(_KXTEMP_HOURLY_CITY))
-            and not _hourly_gates_active()
-        ):
+        # batch-52 H-2 (opus review): _hourly_live_ok also excludes Miami
+        # specifically -- see its own docstring in weather_markets.py.
+        if ticker.upper().startswith(
+            tuple(_KXTEMP_HOURLY_CITY)
+        ) and not _hourly_live_ok(ticker):
             print(
                 red(
                     f"  {ticker}: hourly-directional temperature markets are shadow-only "
@@ -3735,10 +3736,11 @@ def cmd_today(client: KalshiClient) -> None:
                     "and >=20 settled snow predictions exist — refusing to place this order."
                 )
             )
-        elif (
-            _ticker1.upper().startswith(tuple(_KXTEMP_HOURLY_CITY))
-            and not _hourly_gates_active()
-        ):
+        # batch-52 H-2 (opus review): _hourly_live_ok also excludes Miami
+        # specifically -- see its own docstring in weather_markets.py.
+        elif _ticker1.upper().startswith(
+            tuple(_KXTEMP_HOURLY_CITY)
+        ) and not _hourly_live_ok(_ticker1):
             print(
                 red(
                     f"  {_ticker1}: hourly-directional temperature markets are shadow-only "
@@ -5484,9 +5486,10 @@ def cmd_order(client: KalshiClient, action: str, args: list):
     # placement path) -- unlike rain/snow/hurricane, a KXTEMP*H order could
     # place for real regardless of _hourly_gates_active(). Same fail-closed
     # shape as the hurricane/snow guards just above.
-    if (
-        ticker.upper().startswith(tuple(_KXTEMP_HOURLY_CITY))
-        and not _hourly_gates_active()
+    # batch-52 H-2 (opus review): _hourly_live_ok also excludes Miami
+    # specifically -- see its own docstring in weather_markets.py.
+    if ticker.upper().startswith(tuple(_KXTEMP_HOURLY_CITY)) and not _hourly_live_ok(
+        ticker
     ):
         print(
             red(
@@ -10068,10 +10071,11 @@ def cmd_paper(args: list, client: KalshiClient | None = None):
                 )
             )
             return
-        if (
-            ticker.upper().startswith(tuple(_KXTEMP_HOURLY_CITY))
-            and not _hourly_gates_active()
-        ):
+        # batch-52 H-2 (opus review): _hourly_live_ok also excludes Miami
+        # specifically -- see its own docstring in weather_markets.py.
+        if ticker.upper().startswith(
+            tuple(_KXTEMP_HOURLY_CITY)
+        ) and not _hourly_live_ok(ticker):
             print(
                 red(
                     f"  {ticker}: hourly-directional temperature markets are shadow-only "

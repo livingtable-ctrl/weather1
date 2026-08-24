@@ -1060,6 +1060,39 @@ def _hourly_gates_active() -> bool:
         return False
 
 
+def _hourly_live_ok(ticker: str) -> bool:
+    """True only when the family-wide _hourly_gates_active() gate is open
+    AND `ticker` is not a KXTEMPMIAH (Miami) ticker (batch-52 H-2, opus
+    review).
+
+    _hourly_gates_active()'s 20-settled-sample floor pools ALL 6 hourly
+    cities together (count_settled_hourly_predictions() has no per-city
+    split) -- so the gate opening says nothing about whether Miami's
+    SPECIFIC model is safe to trade live. Miami's own _analyze_hourly_
+    trade probability is unchanged by batch-52 (no new model design) and
+    its only observation-side bias correction (_get_combined_station_bias)
+    is still derived from outcomes.settled_temp_f -- i.e. KMIA METAR/
+    CLI-report daily settlements, exactly the reference batch-52's own
+    decision experiment measured as systematically 1.6-2.0F (max 4.68F)
+    off from KXTEMPMIAH's REAL settlement source (the Kalshi Weather
+    Index, see kalshi_weather_index.py). That offset is comparable to or
+    larger than an hourly bracket's width. Until Miami has its own
+    validated calibration/gate, it must stay shadow-only even once the
+    other 5 cities' pooled sample count opens the family-wide gate.
+
+    Callers must already have confirmed `ticker` is a real KXTEMP*H hourly
+    ticker (mirrors _hourly_gates_active() itself, which has no
+    ticker-family check of its own either) -- this is the single choke
+    point for the Miami exclusion, meant to replace every hourly live-
+    order guard's own `not _hourly_gates_active()` half so the exclusion
+    lives in exactly one place instead of being repeated at each of
+    order_executor.py/paper.py/main.py's several call sites.
+    """
+    if ticker.upper().startswith("KXTEMPMIAH"):
+        return False
+    return _hourly_gates_active()
+
+
 # backlog.txt "RAIN / SNOW / HURRICANE MARKETS" Step 2 handoff item 7,
 # shadow-only rollout. Expect this floor to take roughly 2 months to clear
 # (~10 cities x 1 settlement/city/month =~ 10/month) -- much slower than
@@ -4928,26 +4961,37 @@ KNOWN_WEATHER_SERIES = [
     # component to group by).
     "KXDENSNOWM",
     # KXTEMPxxxH — hourly-directional temperature markets (backlog.txt
-    # "HOURLY-DIRECTIONAL TEMPERATURE MARKETS"). Only the 5 cities confirmed
-    # live/liquid for ~60 days as of 2026-07-20 are listed. batch-51 item 4
-    # re-verified 2026-08-24: KXTEMPMIAH has since LAUNCHED (10 open / 2230
-    # settled) -- the "genuinely unlaunched" note below was correct when
-    # written but is now stale for Miami specifically; KXTEMPBOSH is still
-    # genuinely dead (0 open, 0 settled), so that half still holds. Not
-    # onboarded this batch (out of batch-51's explicit item scope -- would
-    # need its own _KXTEMP_HOURLY_CITY/dispatch wiring, not just a registry
-    # entry); filed as its own backlog follow-up. analyze_trade() returns
-    # None for all of these today (Step 1
-    # of the backlog item — discovery/schema only, no probability model
-    # yet); they are also excluded from compute_market_implied_distributions
+    # "HOURLY-DIRECTIONAL TEMPERATURE MARKETS"). Step 2's real per-hour model
+    # (_analyze_hourly_trade, dispatched from analyze_trade() via _is_hourly)
+    # has existed since backlog.txt Step 2 landed -- the older "analyze_trade
+    # returns None for all of these" note has been stale since then; each
+    # entry here now gets a real ensemble+persistence probability, shadow-
+    # only (order_executor blocks live orders for every _KXTEMP_HOURLY_CITY
+    # prefix). Also excluded from compute_market_implied_distributions
     # (cron.py) since that groups by (city, target_date) independently of
-    # analyze_trade() and would otherwise silently pool hourly brackets
-    # into a daily market's distribution fit.
+    # analyze_trade() and would otherwise silently pool hourly brackets into
+    # a daily market's distribution fit.
+    #
+    # KXTEMPMIAH (Miami) onboarded batch-52 -- re-verified 2026-08-24 (10
+    # open / 2230 settled, ~6-7K contracts/day). Unlike the other 5, it
+    # settles on "Synoptic Data ... Kalshi Weather Index Methodology" (a
+    # 5-contributor QC'd multi-station index), NOT KMIA METAR -- batch-52's
+    # go/no-go decision experiment measured mean|diff| ~1.6-2.0F (max
+    # 4.68F) between the index and METAR over one trailing day, well past
+    # the 1F bar, so Miami gets its own observation source
+    # (kalshi_weather_index.py) for settlement cross-checking
+    # (tracker.audit_settlement) rather than reusing metar.py. Its
+    # _analyze_hourly_trade probability model is UNCHANGED by this batch
+    # (no new model design) -- the index feed only backs the config_version
+    # drift alert and the settlement audit, not the trade signal itself.
+    # KXTEMPBOSH stays out -- still 0 open/0 settled as of 2026-08-24
+    # (re-verified this batch), genuinely dead.
     "KXTEMPNYCH",
     "KXTEMPAUSH",
     "KXTEMPCHIH",
     "KXTEMPLAXH",
     "KXTEMPDCH",
+    "KXTEMPMIAH",
     # backlog.txt "HURRICANE MARKETS" -- season-count model (2026-08-03): the
     # 5 season-total hurricane/tropical-storm-count series now have a real
     # model (_analyze_hurricane_count_trade, dispatched from analyze_trade()
@@ -5590,10 +5634,12 @@ def refresh_hourly_target_hours(client: KalshiClient) -> None:
             # None}. Caching that as "done for today" would permanently lock
             # in the failure until tomorrow (the once-per-day gate above),
             # wasting a full day of otherwise-real hourly coverage on a blip
-            # -- every city in _KXTEMP_HOURLY_CITY is confirmed active
-            # (Step 1), so None/None here is never a legitimate steady state
-            # worth caching. Skip writing (and thus skip the "done today"
-            # gate) so the next cron cycle retries instead.
+            # -- every city in _KXTEMP_HOURLY_CITY is confirmed active (Step
+            # 1 for the original 5; batch-52 re-verified Miami live 2026-08-
+            # 24, 10 open / 2230 settled, before onboarding it here -- see
+            # opus review I-6), so None/None here is never a legitimate
+            # steady state worth caching. Skip writing (and thus skip the
+            # "done today" gate) so the next cron cycle retries instead.
             if result["max_hour"] is None or result["min_hour"] is None:
                 _log.warning(
                     "refresh_hourly_target_hours: %s (%s) returned no usable "
@@ -5672,6 +5718,14 @@ _KXTEMP_HOURLY_CITY = {
     "KXTEMPCHIH": "Chicago",
     "KXTEMPLAXH": "LA",
     "KXTEMPDCH": "Washington",
+    # batch-52: Miami settles on the Kalshi Weather Index, not KMIA METAR --
+    # see kalshi_weather_index.py and this dict's own KNOWN_WEATHER_SERIES
+    # sibling comment above for why. City-name mapping here is unaffected
+    # by that (still just used for _CITY_TZ/coords/ensemble lookups, which
+    # are the same regardless of settlement source); the observation-source
+    # split lives entirely in kalshi_weather_index.py + tracker.py's
+    # settlement audit, not in this dict.
+    "KXTEMPMIAH": "Miami",
 }
 
 

@@ -1367,6 +1367,79 @@ class TestQueuePosition:
         assert client.get_bulk_queue_positions(market_tickers="MKT-1") == entries
 
 
+class TestGetLiveWeatherIndex:
+    """Batch-52 item 3: get_live_weather_index() -- the Kalshi Weather
+    Index live-data feed, KXTEMPMIAH's real settlement source. Public
+    (auth=False), unlike every _paginate_get-based endpoint above which
+    sends auth headers unconditionally."""
+
+    def _make_client(self):
+        with patch("kalshi_client.KalshiClient.__init__", return_value=None):
+            import kalshi_client
+
+            client = kalshi_client.KalshiClient.__new__(kalshi_client.KalshiClient)
+        return client
+
+    def test_returns_raw_response_and_lowercases_city_and_uses_no_auth(self):
+        client = self._make_client()
+        raw = {
+            "city": "miami",
+            "config_version": "miami-temperature-v1.0-cal-20260824",
+            "timeseries": [{"t": 1, "v": 86.0, "contributors": 5, "status": "normal"}],
+        }
+        client._get = MagicMock(return_value=raw)
+
+        result = client.get_live_weather_index("Miami")
+
+        assert result == raw
+        assert client._get.call_args[0][0] == "/live_data/weather/miami"
+        assert client._get.call_args[1]["auth"] is False
+
+    def test_missing_timeseries_key_returns_none(self):
+        """Response-shape drift must warn, not crash -- same fail-soft
+        convention as get_order_queue_position."""
+        client = self._make_client()
+        client._get = MagicMock(return_value={"city": "miami", "unexpected": "shape"})
+
+        assert client.get_live_weather_index("miami") is None
+
+    def test_non_dict_response_returns_none(self):
+        client = self._make_client()
+        client._get = MagicMock(return_value=["unexpected", "shape"])
+
+        assert client.get_live_weather_index("miami") is None
+
+    def test_rejects_invalid_city_path_segment(self):
+        """opus review L-1: defense in depth against path-segment
+        manipulation, mirroring _validate_ticker_format's role for every
+        other path-interpolated method in this file -- this was the one
+        method with no equivalent guard."""
+        client = self._make_client()
+        client._get = MagicMock()
+
+        with pytest.raises(ValueError, match="invalid city"):
+            client.get_live_weather_index("../etc/passwd")
+
+        client._get.assert_not_called()
+
+    def test_rejects_non_string_city(self):
+        client = self._make_client()
+        client._get = MagicMock()
+
+        with pytest.raises(ValueError, match="invalid city"):
+            client.get_live_weather_index(None)
+
+        client._get.assert_not_called()
+
+    def test_accepts_plain_lowercase_city(self):
+        client = self._make_client()
+        client._get = MagicMock(return_value={"timeseries": []})
+
+        client.get_live_weather_index("miami")
+
+        client._get.assert_called_once()
+
+
 class TestEnvFilePermissions:
     """AUD batch-23 #5: .env can carry KALSHI_PRIVATE_KEY_PEM -- the entire
     private key in plaintext -- when the WebSocket feed is enabled, but was

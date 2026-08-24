@@ -483,6 +483,44 @@ class TestHourlyGatesActive:
         assert wm._hourly_gates_active() is False
 
 
+class TestHourlyLiveOk:
+    """batch-52 H-2 (opus review): _hourly_live_ok() must exclude Miami
+    from live eligibility even when the family-wide (all-6-cities-pooled)
+    _hourly_gates_active() gate is open -- the pooled 20-settled-sample
+    floor says nothing about whether Miami's specifically mis-referenced
+    model is safe to trade live (see the function's own docstring)."""
+
+    def test_miami_never_ok_even_when_family_gate_open(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_hourly_gates_active", lambda: True)
+        assert wm._hourly_live_ok("KXTEMPMIAH-26AUG2414-T85.0") is False
+
+    def test_miami_never_ok_when_family_gate_closed_either(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_hourly_gates_active", lambda: False)
+        assert wm._hourly_live_ok("KXTEMPMIAH-26AUG2414-T85.0") is False
+
+    def test_other_city_follows_the_family_gate_when_open(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_hourly_gates_active", lambda: True)
+        assert wm._hourly_live_ok("KXTEMPNYCH-26AUG2414-T85.0") is True
+
+    def test_other_city_follows_the_family_gate_when_closed(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_hourly_gates_active", lambda: False)
+        assert wm._hourly_live_ok("KXTEMPNYCH-26AUG2414-T85.0") is False
+
+    def test_case_insensitive_miami_prefix_match(self, monkeypatch):
+        import weather_markets as wm
+
+        monkeypatch.setattr(wm, "_hourly_gates_active", lambda: True)
+        assert wm._hourly_live_ok("kxtempmiah-26aug2414-t85.0") is False
+
+
 class TestComputeMarketImpliedExcludesHourly:
     """compute_market_implied_distributions() groups by (city, target_date)
     independently of and before analyze_trade() -- the analyze_trade guard
@@ -701,6 +739,35 @@ class TestCheckPositionLimitsHourlyGuard:
                     )
         assert result["ok"] is True
 
+    def test_miami_still_blocks_when_gate_active(self, monkeypatch, tmp_path):
+        """batch-52 H-2 (opus review): unlike the other 5 cities, Miami
+        must STAY blocked even once the family-wide gate opens -- the
+        pooled 20-settled-sample floor doesn't validate Miami's
+        specifically mis-referenced model."""
+        from unittest.mock import patch
+
+        import paper
+
+        with patch("paper.DATA_PATH", tmp_path / "p.json"):
+            paper._save(
+                {
+                    "_version": paper._SCHEMA_VERSION,
+                    "balance": paper.STARTING_BALANCE,
+                    "peak_balance": paper.STARTING_BALANCE,
+                    "trades": [],
+                }
+            )
+            with patch("paper.get_open_trades", return_value=[]):
+                with patch("paper.get_total_exposure", return_value=0.0):
+                    monkeypatch.setattr(
+                        "weather_markets._hourly_gates_active", lambda: True
+                    )
+                    result = paper.check_position_limits(
+                        "KXTEMPMIAH-26AUG08-T85.0", qty=1, price=0.10
+                    )
+        assert result["ok"] is False
+        assert "hourly" in result["reason"].lower()
+
     def test_daily_ticker_unaffected(self, tmp_path):
         from unittest.mock import patch
 
@@ -748,7 +815,7 @@ class TestManualPlacementPathsHourlyGuard:
         import main
 
         monkeypatch.setattr("main.is_trading_paused", lambda: False)
-        monkeypatch.setattr("main._hourly_gates_active", lambda: True)
+        monkeypatch.setattr("main._hourly_live_ok", lambda ticker: True)
         printed = []
         monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))
         try:
@@ -758,6 +825,23 @@ class TestManualPlacementPathsHourlyGuard:
         except Exception:
             pass  # downstream failure (no live market) is expected/irrelevant here
         assert not any("shadow-only" in p for p in printed)
+
+    def test_cmd_order_still_refuses_miami_when_family_gate_active(
+        self, monkeypatch, capsys
+    ):
+        """batch-52 H-2 (opus review): Miami must stay refused even once
+        the family-wide (all-6-cities-pooled) gate opens for the other 5
+        cities -- patches the real _hourly_gates_active() (not
+        _hourly_live_ok) so this test proves the Miami exclusion itself,
+        not just that _hourly_live_ok was called."""
+        import main
+
+        monkeypatch.setattr("main.is_trading_paused", lambda: False)
+        monkeypatch.setattr("weather_markets._hourly_gates_active", lambda: True)
+        main.cmd_order(None, "buy", ["KXTEMPMIAH-26AUG08-T85.0", "yes", "1", "0.10"])
+        out = capsys.readouterr().out
+        assert "refusing to place this order" in out
+        assert "hourly" in out.lower()
 
     def test_quick_paper_buy_refuses_when_gate_inactive(self, monkeypatch, capsys):
         from unittest.mock import MagicMock
@@ -797,7 +881,7 @@ class TestManualPlacementPathsHourlyGuard:
         import main
 
         monkeypatch.setattr("main.is_trading_paused", lambda: False)
-        monkeypatch.setattr("main._hourly_gates_active", lambda: True)
+        monkeypatch.setattr("main._hourly_live_ok", lambda ticker: True)
 
         printed = []
         monkeypatch.setattr("builtins.print", lambda *a, **k: printed.append(str(a)))

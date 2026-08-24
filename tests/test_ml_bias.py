@@ -1101,7 +1101,12 @@ class TestTrainAllTemperatureScalingHourlyPool:
 
         from weather_markets import _KXTEMP_HOURLY_CITY
 
-        last_prefix = list(_KXTEMP_HOURLY_CITY)[-1]  # "KXTEMPDCH"
+        # batch-52: KXTEMPMIAH (Miami) is now the last-inserted entry, not
+        # KXTEMPDCH (Washington) -- derive both dynamically rather than
+        # hardcoding either, so this test doesn't silently mismatch ticker
+        # prefix vs. city again the next time a 7th hourly city is added.
+        last_prefix = list(_KXTEMP_HOURLY_CITY)[-1]
+        last_city = _KXTEMP_HOURLY_CITY[last_prefix]
 
         probs = [0.9] * 10 + [0.1] * 10
         labels = [1] * 7 + [0] * 3 + [0] * 7 + [1] * 3
@@ -1125,9 +1130,7 @@ class TestTrainAllTemperatureScalingHourlyPool:
             "edge": 0.1,
             "method": "ensemble",
         }
-        tracker.log_prediction(
-            multiday_ticker, "Washington", date(2026, 7, 21), analysis
-        )
+        tracker.log_prediction(multiday_ticker, last_city, date(2026, 7, 21), analysis)
         tracker.log_outcome(multiday_ticker, True)
         with tracker._conn() as con:
             con.execute(

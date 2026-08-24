@@ -3572,6 +3572,40 @@ def _cmd_cron_body(
     except Exception as _probation_exc:
         _log.warning("check_retirement_probation call failed: %s", _probation_exc)
 
+    # batch-52 item 3: Miami Weather Index config_version drift watch --
+    # same placement/isolation rationale as check_series_drift above, but
+    # deliberately called EVERY cron cycle rather than gated to once/day or
+    # once/week: the underlying HTTP call is rate-limited by kalshi_weather_
+    # index.py's own 5-minute TTL cache WHILE that cache survives across
+    # cycles (opus review L-9: true for main.py's `loop`/`watch --auto`
+    # long-lived process modes; a one-shot `python main.py cron` invocation
+    # re-fetches every time since the cache is in-memory only -- one extra
+    # unauthenticated GET per invocation, negligible impact either way). A
+    # methodology version change (KXTEMPMIAH's real settlement source)
+    # needs to surface loudly on a timescale much tighter than this batch's
+    # other daily/weekly maintenance checks -- it must not depend on a
+    # Miami hourly market happening to settle (tracker.audit_settlement's
+    # cross-check is the OTHER consumer of this feed, but hourly markets
+    # alone don't settle often enough to guarantee timely drift detection).
+    #
+    # opus review L-8: like every other check in this block, this sits
+    # after the kill-switch's own return path -- while the kill switch is
+    # engaged (potentially for days), this drift watch is silent too, same
+    # as check_series_drift/check_catalog_and_settlement_drift above.
+    # Consistent with its siblings' existing behavior; accepted as a
+    # documented trade-off rather than special-cased, since re-architecting
+    # kill-switch/maintenance-check ordering is out of this batch's scope.
+    try:
+        from kalshi_weather_index import (
+            check_miami_index_config_version as _check_miami_index_version,
+        )
+
+        _check_miami_index_version(client)
+    except Exception as _miami_index_exc:
+        _log.warning(
+            "check_miami_index_config_version call failed: %s", _miami_index_exc
+        )
+
     print(
         cyan(
             f"  [cron] scan complete \u2014 {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC"
