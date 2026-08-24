@@ -1,7 +1,6 @@
 import React, { useContext } from 'react';
 import { DataContext } from '../DataContext.js';
-import { authHeader } from '../useData.js';
-import { StatCard } from '../shared.jsx';
+import { StatCard, brierAlertTier, haltOrResume } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
 // BrierAlertCard — P10.3 Brier degradation alert. Fires when weekly Brier
@@ -15,16 +14,14 @@ function BrierAlertCard() {
 
   if (recent.length < 2) return null;
 
-  let consecutiveAbove = 0;
-  for (let i = recent.length - 1; i >= 0; i--) {
-    if (recent[i].brier > THRESHOLD) consecutiveAbove++;
-    else break;
-  }
-
+  // batch-45 M-4: severity now comes from the shared brierAlertTier helper
+  // (same one OverviewTab's banner uses) so this card can't disagree with
+  // the banner about the label for the same underlying state.
+  const { weeks: consecutiveAbove, tier, label } = brierAlertTier(M.brierHistory, THRESHOLD);
   const latest = recent[recent.length - 1];
-  const statusColor = consecutiveAbove >= 2 ? '#ef4444' : consecutiveAbove === 1 ? '#ca8a04' : '#16a34a';
-  const statusLabel = consecutiveAbove >= 2 ? 'DEGRADING' : consecutiveAbove === 1 ? 'ALERT' : 'CLEAR';
-  const borderColor = consecutiveAbove >= 2 ? 'rgba(239,68,68,0.4)' : consecutiveAbove === 1 ? 'rgba(202,138,4,0.4)' : 'var(--border)';
+  const statusColor = tier === 'alert' ? '#ef4444' : tier === 'warning' ? '#ca8a04' : '#16a34a';
+  const statusLabel = label.toUpperCase();
+  const borderColor = tier === 'alert' ? 'rgba(239,68,68,0.4)' : tier === 'warning' ? 'rgba(202,138,4,0.4)' : 'var(--border)';
 
   const W = 400, H = 70, PAD = { top: 8, right: 16, bottom: 20, left: 8 };
   const iW = W - PAD.left - PAD.right;
@@ -426,7 +423,10 @@ export default function RiskTab() {
             </p>
           </div>
           <button
-            onClick={() => { if (window.confirm('Engage kill switch?')) fetch('/api/halt', { method: 'POST', headers: authHeader() }); }}
+            onClick={() => {
+              if (!window.confirm('Engage kill switch?')) return;
+              haltOrResume('halt', { refresh: M.refresh, addToast: M.addToast });
+            }}
             style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: '#ef4444', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
             Engage kill switch
           </button>

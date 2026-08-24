@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, StatCard, BalanceSparkline, SystemEventsCard, gradGateStatus } from '../shared.jsx';
+import { normCity, StatCard, BalanceSparkline, SystemEventsCard, gradGateStatus, brierAlertTier } from '../shared.jsx';
 
 // ---------------------------------------------------------------------------
 // LastSettlementBatch — compact inline summary of the most recently settled
@@ -73,17 +73,12 @@ export default function OverviewTab() {
   // Compute alert states here so we can render a top-of-page banner — both
   // conditions are operationally critical and easy to miss if only in RiskTab.
   const killSwitchActive = s.kill_switch;
-  const BRIER_THRESHOLD = 0.22;
-  const recentBrier = (M.brierHistory || []).slice(-6);
-  let consecutiveBrierAbove = 0;
-  for (let i = recentBrier.length - 1; i >= 0; i--) {
-    if (recentBrier[i].brier > BRIER_THRESHOLD) consecutiveBrierAbove++;
-    else break;
-  }
-  // P10.3 is formally defined as TWO consecutive weeks above threshold.
-  // Fire a softer "warning" at one week so the user can see it coming.
-  const brierAlertFiring   = consecutiveBrierAbove >= 2; // true P10.3: 2+ weeks
-  const brierWarningFiring = consecutiveBrierAbove === 1; // early warning: 1 week
+  // batch-45 M-4: severity now comes from the shared brierAlertTier helper so
+  // this banner and RiskTab's BrierAlertCard can't disagree on the label for
+  // the same underlying state.
+  const { weeks: consecutiveBrierAbove, tier: brierTier } = brierAlertTier(M.brierHistory);
+  const brierAlertFiring   = brierTier === 'alert';   // true P10.3: 2+ weeks
+  const brierWarningFiring = brierTier === 'warning'; // early warning: 1 week
 
   return (
     <main style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 28px 40px' }}>

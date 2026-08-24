@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
-import { normCity, kalshiMarketUrl, sideAwareEntryPrice, buildPaperOrderBody, summarizeBulkResults, effectiveSelection, fmtSigned } from '../shared.jsx';
+import { normCity, kalshiMarketUrl, sideAwareEntryPrice, buildPaperOrderBody, summarizeBulkResults, effectiveSelection, fmtSigned, oppKey, pruneExpired, filterRejected } from '../shared.jsx';
 
 export default function SignalsTab() {
   const M = useContext(DataContext);
@@ -16,6 +16,43 @@ export default function SignalsTab() {
     catch { return new Set(); }
   });
 
+  // batch-45 M-7: Reject previously just showed a toast and returned -- no
+  // request sent, nothing persisted, so the row reappeared identically on
+  // the next scan while the "✗ Rejected" toast implied a recorded decision.
+  // Uses localStorage (unlike placedSet's sessionStorage) *deliberately*: a
+  // dismissal is a soft, reversible preference that should survive a browser
+  // restart so it actually stops reappearing (the whole point of this fix);
+  // placedSet instead records a real, already-durably-tracked-server-side
+  // order, where sessionStorage only needs to prevent a same-session double-
+  // submit. TTL expiry keeps a dismissal from hiding a ticker+date forever.
+  const REJECTED_KEY = 'kalshi-rejected-signals';
+  const REJECT_TTL_MS = 24 * 3600 * 1000;
+  const [rejectedMap, setRejectedMap] = useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(REJECTED_KEY) || '{}');
+      const pruned = pruneExpired(raw);
+      if (Object.keys(pruned).length !== Object.keys(raw).length) {
+        localStorage.setItem(REJECTED_KEY, JSON.stringify(pruned));
+      }
+      return pruned;
+    } catch { return {}; }
+  });
+
+  // opus review MEDIUM (batch-45): pruning only ran once at mount, so on a
+  // long-open tab (this dashboard polls every 60s and is meant to be left
+  // open) the TTL never actually fired -- filterRejected's own now-vs-expiry
+  // check (below) already makes an expired entry stop suppressing its row,
+  // but the map itself still needs to shrink periodically or it grows
+  // unbounded across a long session. Re-prune every time a fresh poll lands.
+  useEffect(() => {
+    setRejectedMap(prev => {
+      const pruned = pruneExpired(prev);
+      if (Object.keys(pruned).length === Object.keys(prev).length) return prev;
+      try { localStorage.setItem(REJECTED_KEY, JSON.stringify(pruned)); } catch {}
+      return pruned;
+    });
+  }, [M.opportunities]);
+
   // Missing state that was referenced but never declared in the original file
   const [expandedId, setExpandedId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -28,7 +65,19 @@ export default function SignalsTab() {
   // Show every candidate the bot evaluated — no edge filter.
   // passes_threshold comes from the backend (cron.py gate logic).
   // The slider is a secondary visual highlight for manual exploration.
-  const filtered = useMemo(() => M.opportunities, [M.opportunities]);
+  // batch-45 M-7: a dismissed (rejected), not-yet-expired signal is excluded
+  // here so Reject actually removes it from view instead of leaving the row
+  // unchanged. filterRejected checks expiry at call time, not just presence
+  // in rejectedMap (opus review MEDIUM) -- correct even between the periodic
+  // re-prunes above.
+  const filtered = useMemo(
+    () => filterRejected(M.opportunities, rejectedMap),
+    [M.opportunities, rejectedMap]
+  );
+  // opus review LOW (batch-45): no indicator previously told the operator
+  // signals were being hidden at all -- see the "N dismissed" chip + Clear
+  // affordance in the header below.
+  const rejectedCount = M.opportunities.length - filtered.length;
   const sameDayOpps  = useMemo(() => filtered.filter(o => (o.days_out ?? 1) === 0), [filtered]);
   const multiDayOpps = useMemo(() => filtered.filter(o => (o.days_out ?? 1) > 0),  [filtered]);
 
@@ -50,6 +99,12 @@ export default function SignalsTab() {
 
   function handleAction(opp, action) {
     if (action === 'reject') {
+      const key = oppKey(opp);
+      setRejectedMap(prev => {
+        const next = { ...prev, [key]: Date.now() + REJECT_TTL_MS };
+        try { localStorage.setItem(REJECTED_KEY, JSON.stringify(next)); } catch {}
+        return next;
+      });
       setActionMsg(`✗ ${opp.ticker} rejected`);
       setTimeout(() => setActionMsg(''), 2500);
       return;
@@ -74,7 +129,7 @@ export default function SignalsTab() {
         setActionMsg(d.error ? `✗ ${d.error}` : `✓ ${opp.ticker} placed`);
         setTimeout(() => setActionMsg(''), 3000);
         if (!d.error) {
-          const key = `${opp.ticker}|${opp.target_date || opp.expiry || ''}`;
+          const key = oppKey(opp);
           setPlacedSet(prev => {
             const next = new Set([...prev, key]);
             try { sessionStorage.setItem(PLACED_KEY, JSON.stringify([...next])); } catch {}
@@ -103,7 +158,7 @@ export default function SignalsTab() {
     return filtered.filter(o =>
       effSelectedIds.has(o.ticker) &&
       (o.edge_pct || 0) > 0 &&
-      !placedSet.has(`${o.ticker}|${o.target_date || o.expiry || ''}`)
+      !placedSet.has(oppKey(o))
     );
   }
 
@@ -167,7 +222,7 @@ export default function SignalsTab() {
       const { succeeded, failed } = summarizeBulkResults(results, v => v.d?.error);
       const successKeys = results
         .filter(r => r.status === 'fulfilled' && !r.value.d?.error)
-        .map(r => `${r.value.opp.ticker}|${r.value.opp.target_date || r.value.opp.expiry || ''}`);
+        .map(r => oppKey(r.value.opp));
       if (successKeys.length) {
         setPlacedSet(prev => {
           const next = new Set([...prev, ...successKeys]);
@@ -195,9 +250,19 @@ export default function SignalsTab() {
     });
   }
 
-  // Bulk reject: just clear the (visible) selection and show a message
+  // Bulk reject: persist a dismissal for every selected (visible) signal —
+  // same rejectedMap mechanism as the single-row Reject button — then clear
+  // the selection.
   function handleBulkReject() {
     const count = effSelectedIds.size;
+    const toReject = filtered.filter(o => effSelectedIds.has(o.ticker));
+    setRejectedMap(prev => {
+      const next = { ...prev };
+      const exp = Date.now() + REJECT_TTL_MS;
+      toReject.forEach(o => { next[oppKey(o)] = exp; });
+      try { localStorage.setItem(REJECTED_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
     setSelectedIds(prev => {
       const next = new Set(prev);
       effSelectedIds.forEach(id => next.delete(id));
@@ -205,6 +270,15 @@ export default function SignalsTab() {
     });
     setBulkActionMsg(`✗ Rejected ${count} signal${count !== 1 ? 's' : ''}`);
     setTimeout(() => setBulkActionMsg(''), 2500);
+  }
+
+  // opus review LOW (batch-45): Reject had no undo and no way to see what
+  // was hidden -- clears every dismissal at once so a misclick (the ✗ button
+  // sits 6px from ✓ Approve, no confirmation) or a "let me see everything
+  // again" moment isn't stuck waiting out the 24h TTL.
+  function handleClearRejections() {
+    setRejectedMap({});
+    try { localStorage.removeItem(REJECTED_KEY); } catch {}
   }
 
   // Shared row renderer — used by both Same-Day and Multi-Day sections.
@@ -216,7 +290,7 @@ export default function SignalsTab() {
       const stars = o.stars || '★';
       const starColor = stars.length >= 2 ? '#16a34a' : stars.length === 1 ? '#ca8a04' : 'var(--text-faint)';
       const kelly = o.kelly_dollars > 0 ? '$' + o.kelly_dollars.toFixed(2) : '—';
-      const placed = placedSet.has(`${o.ticker}|${o.target_date || o.expiry || ''}`);
+      const placed = placedSet.has(oppKey(o));
       const isExpanded = expandedId === o.ticker;
       const belowThreshold = o.passes_threshold === false || (o.passes_threshold === undefined && o.edge_pct < minEdge);
       const edgeFmt = fmtSigned(o.edge_pct, 1);
@@ -401,6 +475,15 @@ export default function SignalsTab() {
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em' }}>Signals</h1>
           <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: 13 }}>
             {filtered.length} candidate{filtered.length !== 1 ? 's' : ''} · {filtered.filter(o => o.passes_threshold !== false).length} above bot threshold
+            {rejectedCount > 0 && (
+              <span style={{ marginLeft: 10 }}>
+                · {rejectedCount} dismissed{' '}
+                <button onClick={handleClearRejections} style={{
+                  background: 'none', border: 'none', padding: 0, color: '#3b82f6',
+                  fontSize: 13, cursor: 'pointer', textDecoration: 'underline',
+                }}>Clear</button>
+              </span>
+            )}
             {M.signalsMeta?.generatedAt && (() => {
               // Append 'Z' if the timestamp has no timezone info so browsers
               // treat it as UTC rather than local time (which would make
@@ -495,7 +578,30 @@ export default function SignalsTab() {
         ))}
       </section>
 
-      {filtered.length === 0 && (
+      {/* opus review MEDIUM (batch-45): filtered.length===0 now also happens
+          when every candidate was dismissed, not just when the scan produced
+          nothing -- distinguish the two so rejecting everything doesn't make
+          the page falsely claim there's no scan data (the exact "dashboard
+          tells the operator something untrue" class of bug this batch targets). */}
+      {filtered.length === 0 && rejectedCount > 0 && (
+        <section style={{
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: 14, padding: '40px 24px', marginBottom: 18,
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>✗</div>
+          <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 600 }}>All signals dismissed</h3>
+          <p style={{ margin: '0 0 20px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5, maxWidth: 400, marginLeft: 'auto', marginRight: 'auto' }}>
+            All {rejectedCount} candidate{rejectedCount !== 1 ? 's' : ''} from the last scan {rejectedCount !== 1 ? 'were' : 'was'} rejected. They'll reappear after 24h, or clear now to see them again.
+          </p>
+          <button onClick={handleClearRejections} style={{
+            padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)',
+            background: 'var(--bg-subtle)', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer',
+          }}>Clear dismissed signals</button>
+        </section>
+      )}
+
+      {filtered.length === 0 && rejectedCount === 0 && (
         <section style={{
           background: 'var(--bg-card)', border: '1px solid var(--border)',
           borderRadius: 14, padding: '40px 24px', marginBottom: 18,

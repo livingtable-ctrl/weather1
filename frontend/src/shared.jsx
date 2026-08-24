@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { authHeader } from './useData.js';
 
 // ---------------------------------------------------------------------------
 // City display-name normalization  (backend uses CamelCase keys)
@@ -581,4 +582,152 @@ export function gradGateStatus(current, target, invert) {
     ? Math.min(100, Math.max(0, (0.25 - current) / (0.25 - target) * 100))
     : Math.min(100, Math.max(0, (current / target) * 100));
   return { noData, complete, pct };
+}
+
+// ---------------------------------------------------------------------------
+// brierAlertTier — batch-45 M-4: OverviewTab's alert banner and RiskTab's
+// BrierAlertCard each independently computed "consecutive weeks above 0.22"
+// over the same brierHistory and then labeled the identical state with
+// different severity words (e.g. one week read "warning" on one tab and
+// "ALERT" on the other) -- an operator switching tabs saw the label change
+// with no change in the underlying state. Single source of truth for both:
+// P10.3 is formally 2+ consecutive weeks above threshold ('alert'); 1 week
+// is a softer early heads-up ('warning').
+// ---------------------------------------------------------------------------
+export function brierAlertTier(brierHistory, threshold = 0.22) {
+  const recent = (brierHistory || []).slice(-6);
+  let weeks = 0;
+  for (let i = recent.length - 1; i >= 0; i--) {
+    if (recent[i].brier > threshold) weeks++;
+    else break;
+  }
+  const tier = weeks >= 2 ? 'alert' : weeks === 1 ? 'warning' : 'clear';
+  const label = tier === 'alert' ? 'Alert' : tier === 'warning' ? 'Warning' : 'Clear';
+  return { weeks, tier, label };
+}
+
+// ---------------------------------------------------------------------------
+// haltOrResume — batch-45 audit-M-8: five near-identical inline handlers
+// (App.jsx's Nav kill switch, RiskTab's kill switch, and SettingsTab's inline
+// resume + bottom Halt/Resume pair) each fired `fetch('/api/halt'|'/api/resume', ...)`
+// with no `.then`/`.catch` at all -- a real server-side failure (the routes
+// have a genuine 500 path) was silent, and the halt-status badge just never
+// flipped, with nothing telling the operator to fall back to the documented
+// `py main.py kill` / `py main.py resume`. One shared implementation so the
+// five call sites can't drift back out of sync with each other the way the
+// inline-resume-vs-bottom-pair split already had (bottom pair also omitted
+// the M.refresh() the inline button made -- see M-8 frontend-doc item).
+// `refresh`/`addToast` are passed in rather than imported so this stays a
+// pure, directly-testable function -- DataContext is a live React context,
+// not something a plain unit test can construct.
+// ---------------------------------------------------------------------------
+export function haltOrResume(action, { refresh, addToast }) {
+  // opus review MEDIUM (batch-45): an unrecognized `action` must never
+  // silently fall through to the 'resume' branch -- that would POST
+  // /api/resume (un-halting live trading) behind a dialog that told the
+  // operator they were engaging the kill switch. Explicit allowlist, not a
+  // binary ternary, so a future third action/typo fails loud instead of
+  // resolving to the unsafe direction.
+  if (action !== 'halt' && action !== 'resume') {
+    throw new Error(`haltOrResume: unknown action "${action}" (expected 'halt' or 'resume')`);
+  }
+  // opus review LOW (batch-45): if addToast/refresh are ever missing (a
+  // future call site regression), fail visibly via console.error instead of
+  // throwing inside .then -- an uncaught throw there would hit .catch, which
+  // calls addToast again, throws again, and produces an unhandled rejection
+  // with the halt/resume outcome never surfaced to the operator at all --
+  // silently recreating the exact bug this helper exists to fix.
+  if (typeof refresh !== 'function' || typeof addToast !== 'function') {
+    console.error('haltOrResume: refresh/addToast not wired up', { refresh, addToast });
+    return Promise.resolve();
+  }
+  const endpoint = action === 'halt' ? '/api/halt' : '/api/resume';
+  const failMsg = action === 'halt'
+    ? 'Halt FAILED — use py main.py kill'
+    : 'Resume FAILED — use py main.py resume';
+  return fetch(endpoint, { method: 'POST', headers: authHeader() })
+    .then(r => r.ok ? refresh() : addToast(failMsg, 'error'))
+    .catch(() => addToast(failMsg, 'error'));
+}
+
+// ---------------------------------------------------------------------------
+// Signal dismissal (batch-45 M-7) — SignalsTab's Reject/Reject All used to
+// just show a toast and return with nothing persisted, so the row reappeared
+// identically on the next scan. oppKey is the composite ticker+target_date
+// key SignalsTab uses to identify an opp across both placedSet (has this
+// order already been submitted?) and rejectedMap (has this signal been
+// dismissed?) -- originally hand-duplicated as five near-identical inline
+// template strings in SignalsTab.jsx before this extraction. pruneExpired
+// drops rejectedMap entries whose TTL (set at dismiss time) has passed, so a
+// dismissal survives a same-day re-scan without hiding a signal forever.
+// Both extracted as pure functions so the key shape and expiry logic are
+// unit-testable without React/localStorage render infra.
+// ---------------------------------------------------------------------------
+export function oppKey(opp) {
+  return `${opp.ticker}|${opp.target_date || opp.expiry || ''}`;
+}
+
+export function pruneExpired(map, now = Date.now()) {
+  return Object.fromEntries(Object.entries(map).filter(([, exp]) => exp > now));
+}
+
+// ---------------------------------------------------------------------------
+// filterRejected — opus review MEDIUM (batch-45): the original SignalsTab
+// implementation excluded an opp by checking `rejectedMap[key] == null`
+// (presence), not validity. Since pruneExpired only ran once in a useState
+// lazy initializer, an entry never actually left rejectedMap during a long-
+// open session (this is a kiosk-style dashboard with a 60s poll) -- the 24h
+// TTL was dead code and a dismissal hid a ticker+date forever, not for 24h.
+// This checks the SAME expiry value against `now` at call time instead of
+// presence, so a stale entry stops suppressing its row the moment it expires
+// -- correct even if the state itself never gets pruned. Extracted (rather
+// than left inline in the component's `filtered` useMemo) so this exact
+// exclusion logic is unit-testable without React render infra.
+// ---------------------------------------------------------------------------
+export function filterRejected(opportunities, rejectedMap, now = Date.now()) {
+  return opportunities.filter(o => {
+    const exp = rejectedMap[oppKey(o)];
+    return exp == null || exp <= now;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// validateOverrideDuration — batch-45 M-8: the duration input's `min="5"`
+// (and `max="480"`) only constrain the spinner UI, not what a cleared/typed/
+// pasted value submits (unary `+` coerces an empty string to 0). Extracted
+// so the actual floor/ceiling check is unit-testable -- an opus review
+// mutation-tested the inline version of this check (reverted to `if
+// (false)`) and the full `npm test` suite still passed, proving nothing
+// exercised it. Mirrors the server's own bounds (web_app.py api_override_set:
+// rejects non-positive, clamps to 1440) so the operator sees a rejection
+// client-side instead of a silently-clamped/differently-worded server value.
+// ---------------------------------------------------------------------------
+export function validateOverrideDuration(raw, { min = 5, max = 480 } = {}) {
+  const duration = Number(raw);
+  if (!Number.isFinite(duration)) {
+    return { valid: false, duration: null, error: `Duration must be at least ${min} minutes.` };
+  }
+  if (duration < min) {
+    return { valid: false, duration: null, error: `Duration must be at least ${min} minutes.` };
+  }
+  if (duration > max) {
+    return { valid: false, duration: null, error: `Duration must be at most ${max} minutes.` };
+  }
+  return { valid: true, duration, error: null };
+}
+
+// ---------------------------------------------------------------------------
+// summarizeTradeOutcomes — batch-45 M-6: TradesTab's header read
+// `{filtered.length} settled · {wins} wins · {losses} losses`, but wins/
+// losses were computed from the full unfiltered M.closedTrades while the
+// leading count respected the active filter -- filtering to one city made
+// the three numbers stop adding up (an `other = filtered.length - wins -
+// losses` derived from that mismatch could even go negative). Must be
+// called with the SAME rows as the count it's paired with.
+// ---------------------------------------------------------------------------
+export function summarizeTradeOutcomes(rows) {
+  const wins = rows.filter(t => t.pnl > 0).length;
+  const losses = rows.filter(t => t.pnl != null && t.pnl < 0).length;
+  const other = rows.length - wins - losses;
+  return { wins, losses, other };
 }

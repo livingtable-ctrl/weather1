@@ -19,8 +19,9 @@ import RiskTab      from './tabs/RiskTab.jsx';
 import TradesTab    from './tabs/TradesTab.jsx';
 import SettingsTab  from './tabs/SettingsTab.jsx';
 
-// Shared helpers used directly in App (Nav uses normCity / authHeader)
-import { normCity } from './shared.jsx';
+// Shared helpers used directly in App (CommandPalette uses normCity; Nav's
+// kill switch and its DataContext-provided addToast/refresh use haltOrResume)
+import { normCity, haltOrResume } from './shared.jsx';
 
 // ---------------------------------------------------------------------------
 // Error boundary — catches render crashes and shows the error instead of
@@ -237,7 +238,10 @@ function Nav({ active, onNavigate, theme, onToggleTheme, connected }) {
 
         {/* Kill switch */}
         <button
-          onClick={() => { if (window.confirm('Engage kill switch? This halts all trading.')) fetch('/api/halt', { method: 'POST', headers: authHeader() }); }}
+          onClick={() => {
+            if (!window.confirm('Engage kill switch? This halts all trading.')) return;
+            haltOrResume('halt', { refresh: M.refresh, addToast: M.addToast });
+          }}
           style={{
             padding: '7px 13px', borderRadius: 7,
             border: ks ? '1px solid #ef4444' : '1px solid var(--border)',
@@ -527,8 +531,8 @@ export default function App() {
   // themselves (useData.js memoizes its return value; the handlers above
   // are useCallback-wrapped), so this actually holds across such renders.
   const contextValue = useMemo(
-    () => ({ ...data, cronState, handleRunCron, handleCancelCron }),
-    [data, cronState, handleRunCron, handleCancelCron]
+    () => ({ ...data, cronState, handleRunCron, handleCancelCron, addToast }),
+    [data, cronState, handleRunCron, handleCancelCron, addToast]
   );
 
   return (

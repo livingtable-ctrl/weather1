@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned } from './shared.jsx';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { buildPaperOrderBody, sideAwareEntryPrice, summarizeBulkResults, effectiveSelection, gradGateStatus, fmtSigned, brierAlertTier, haltOrResume, oppKey, pruneExpired, filterRejected, validateOverrideDuration, summarizeTradeOutcomes } from './shared.jsx';
 
 // batch-26 item 1: the signals cache (and this opp object) stores
 // yes_bid/yes_ask/forecast_prob/market_prob in YES-space regardless of the
@@ -377,5 +377,325 @@ describe('gradGateStatus', () => {
     expect(gradGateStatus(0.25, 0.20, true).pct).toBeCloseTo(0, 10);
     // Beyond the baseline (worse than 0.25), still clamped to 0, not negative.
     expect(gradGateStatus(0.30, 0.20, true).pct).toBe(0);
+  });
+});
+
+// -----------------------------------------------------------------------
+// brierAlertTier — batch-45 M-4: OverviewTab's banner and RiskTab's
+// BrierAlertCard used to compute "consecutive weeks above 0.22" independently
+// and label the identical state differently (e.g. one week read "warning" on
+// one tab and "ALERT" on the other). These tests pin the single shared
+// severity scheme both now render from.
+// -----------------------------------------------------------------------
+describe('brierAlertTier', () => {
+  it('0 consecutive weeks above threshold: clear tier', () => {
+    const hist = [{ week: 'w1', brier: 0.10 }, { week: 'w2', brier: 0.15 }];
+    expect(brierAlertTier(hist)).toEqual({ weeks: 0, tier: 'clear', label: 'Clear' });
+  });
+
+  it('exactly 1 consecutive week above threshold: warning tier, not alert', () => {
+    const hist = [{ week: 'w1', brier: 0.10 }, { week: 'w2', brier: 0.30 }];
+    expect(brierAlertTier(hist)).toEqual({ weeks: 1, tier: 'warning', label: 'Warning' });
+  });
+
+  it('2+ consecutive weeks above threshold: alert tier (true P10.3)', () => {
+    const hist = [{ week: 'w1', brier: 0.10 }, { week: 'w2', brier: 0.30 }, { week: 'w3', brier: 0.25 }];
+    expect(brierAlertTier(hist)).toEqual({ weeks: 2, tier: 'alert', label: 'Alert' });
+  });
+
+  it('a below-threshold week resets the streak even after several above', () => {
+    const hist = [{ week: 'w1', brier: 0.30 }, { week: 'w2', brier: 0.30 }, { week: 'w3', brier: 0.10 }];
+    expect(brierAlertTier(hist).weeks).toBe(0);
+  });
+
+  it('only looks at the most recent 6 weeks', () => {
+    // First 4 weeks are above threshold but fall outside slice(-6); last 6 are all below.
+    const hist = Array.from({ length: 10 }, (_, i) => ({ week: `w${i}`, brier: i < 4 ? 0.30 : 0.10 }));
+    expect(brierAlertTier(hist).weeks).toBe(0);
+  });
+
+  it('boundary is strictly greater-than, not >=: exactly at threshold does not count', () => {
+    expect(brierAlertTier([{ week: 'w1', brier: 0.22 }]).weeks).toBe(0);
+  });
+
+  it('respects a custom threshold argument', () => {
+    expect(brierAlertTier([{ week: 'w1', brier: 0.15 }], 0.10).weeks).toBe(1);
+  });
+
+  it('empty or missing history: clear tier, no crash', () => {
+    expect(brierAlertTier([])).toEqual({ weeks: 0, tier: 'clear', label: 'Clear' });
+    expect(brierAlertTier(undefined)).toEqual({ weeks: 0, tier: 'clear', label: 'Clear' });
+  });
+});
+
+// -----------------------------------------------------------------------
+// haltOrResume — batch-45 audit-M-8: the halt/resume/kill buttons used to
+// fire-and-forget with no .then/.catch at all, so a real server-side failure
+// (the routes have a genuine 500 path) was silent. These are the positive/
+// negative controls for that fix: a non-ok response and a network failure
+// must BOTH call addToast (not refresh); only a genuine ok response calls
+// refresh (not addToast).
+// -----------------------------------------------------------------------
+describe('haltOrResume', () => {
+  beforeEach(() => {
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null, setItem: () => {}, removeItem: () => {}, clear: () => {},
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('halt: ok response calls refresh, never addToast', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (path) => {
+      expect(path).toBe('/api/halt');
+      return { ok: true };
+    }));
+    const refresh = vi.fn();
+    const addToast = vi.fn();
+    await haltOrResume('halt', { refresh, addToast });
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(addToast).not.toHaveBeenCalled();
+  });
+
+  it('halt: non-ok response calls addToast with the kill-switch fallback message, never refresh', () => {
+    // Positive control for the original bug: a real server-side failure must
+    // not be silent -- this is the exact scenario the missing .then() dropped.
+    return (async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })));
+      const refresh = vi.fn();
+      const addToast = vi.fn();
+      await haltOrResume('halt', { refresh, addToast });
+      expect(refresh).not.toHaveBeenCalled();
+      expect(addToast).toHaveBeenCalledWith('Halt FAILED — use py main.py kill', 'error');
+    })();
+  });
+
+  it('halt: a rejected fetch (network failure) also calls addToast, not refresh', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    const refresh = vi.fn();
+    const addToast = vi.fn();
+    await haltOrResume('halt', { refresh, addToast });
+    expect(refresh).not.toHaveBeenCalled();
+    expect(addToast).toHaveBeenCalledWith('Halt FAILED — use py main.py kill', 'error');
+  });
+
+  it('resume: ok response hits the resume endpoint and calls refresh', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (path) => {
+      expect(path).toBe('/api/resume');
+      return { ok: true };
+    }));
+    const refresh = vi.fn();
+    await haltOrResume('resume', { refresh, addToast: vi.fn() });
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("resume: failure message names the resume CLI fallback, distinct from halt's", async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })));
+    const addToast = vi.fn();
+    await haltOrResume('resume', { refresh: vi.fn(), addToast });
+    expect(addToast).toHaveBeenCalledWith('Resume FAILED — use py main.py resume', 'error');
+  });
+
+  it('an unrecognized action throws rather than silently defaulting to resume', () => {
+    // opus review MEDIUM: a ternary (`action === 'halt' ? halt : resume`)
+    // would resolve any typo/third-action to the UNSAFE direction -- un-
+    // halting live trading behind a dialog that told the operator they were
+    // engaging the kill switch. Must fail loud instead.
+    vi.stubGlobal('fetch', vi.fn());
+    expect(() => haltOrResume('kill', { refresh: vi.fn(), addToast: vi.fn() })).toThrow(/unknown action/i);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('missing addToast/refresh logs an error and does not throw an unhandled rejection', async () => {
+    // opus review LOW: a call site that regresses (omits refresh/addToast)
+    // must not silently recreate the original bug via a throw-inside-.then
+    // that then throws again inside .catch.
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn());
+    await expect(haltOrResume('halt', { refresh: vi.fn() })).resolves.toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+});
+
+// -----------------------------------------------------------------------
+// oppKey / pruneExpired — batch-45 M-7: SignalsTab's Reject used to be a
+// pure no-op (toast + return, nothing persisted). oppKey is the composite
+// ticker+target_date key shared by placedSet AND rejectedMap (previously
+// five hand-duplicated inline copies across the file); pruneExpired is the
+// TTL-expiry logic that keeps a dismissal from hiding a signal forever.
+// -----------------------------------------------------------------------
+describe('oppKey', () => {
+  it('combines ticker and target_date', () => {
+    expect(oppKey({ ticker: 'KXHIGH-26AUG22-T70', target_date: '2026-08-22' }))
+      .toBe('KXHIGH-26AUG22-T70|2026-08-22');
+  });
+
+  it('falls back to expiry when target_date is absent', () => {
+    expect(oppKey({ ticker: 'ABC', expiry: '2026-09-01' })).toBe('ABC|2026-09-01');
+  });
+
+  it('falls back to empty string when neither is present', () => {
+    expect(oppKey({ ticker: 'ABC' })).toBe('ABC|');
+  });
+
+  it('two opps on the same ticker but different target_date get distinct keys', () => {
+    const a = oppKey({ ticker: 'ABC', target_date: '2026-08-22' });
+    const b = oppKey({ ticker: 'ABC', target_date: '2026-08-23' });
+    expect(a).not.toBe(b);
+  });
+});
+
+describe('pruneExpired', () => {
+  it('drops entries whose expiry is in the past', () => {
+    const now = 1_000_000;
+    const map = { a: now - 1, b: now + 1 };
+    expect(pruneExpired(map, now)).toEqual({ b: now + 1 });
+  });
+
+  it('an entry expiring at exactly `now` is dropped (exp > now, not >=)', () => {
+    const now = 1_000_000;
+    expect(pruneExpired({ a: now }, now)).toEqual({});
+  });
+
+  it('empty map: returns an empty object, no crash', () => {
+    expect(pruneExpired({}, Date.now())).toEqual({});
+  });
+
+  it('defaults `now` to Date.now() when omitted', () => {
+    const future = Date.now() + 60_000;
+    const past = Date.now() - 60_000;
+    expect(pruneExpired({ keep: future, drop: past })).toEqual({ keep: future });
+  });
+});
+
+// -----------------------------------------------------------------------
+// filterRejected — opus review MEDIUM (batch-45): the original inline
+// exclusion checked rejectedMap[key] for PRESENCE only. Since pruning ran
+// once at mount, an entry never actually left the map on a long-open tab,
+// so the 24h TTL never fired. filterRejected instead checks the SAME
+// expiry against `now` at call time -- an expired entry stops suppressing
+// its row even if the map itself hasn't been pruned yet. This is the
+// positive/negative control that specific defect.
+// -----------------------------------------------------------------------
+describe('filterRejected', () => {
+  it('excludes an opp with a not-yet-expired rejection', () => {
+    const opps = [{ ticker: 'A', target_date: '2026-08-22' }, { ticker: 'B', target_date: '2026-08-22' }];
+    const now = 1_000_000;
+    const rejected = { 'A|2026-08-22': now + 1000 };
+    expect(filterRejected(opps, rejected, now).map(o => o.ticker)).toEqual(['B']);
+  });
+
+  it('positive control: an EXPIRED entry no longer suppresses its row, even though it is still present in the map', () => {
+    // This is the exact bug: presence-only checking would keep 'A' hidden
+    // forever since pruning never actually removes it from state in time.
+    const opps = [{ ticker: 'A', target_date: '2026-08-22' }];
+    const now = 1_000_000;
+    const staleRejection = { 'A|2026-08-22': now - 1 }; // expired, but still IN the map
+    expect(filterRejected(opps, staleRejection, now).map(o => o.ticker)).toEqual(['A']);
+  });
+
+  it('an opp never rejected is unaffected', () => {
+    const opps = [{ ticker: 'A', target_date: '2026-08-22' }];
+    expect(filterRejected(opps, {}, Date.now()).map(o => o.ticker)).toEqual(['A']);
+  });
+
+  it('empty opportunities: returns an empty array, no crash', () => {
+    expect(filterRejected([], { 'A|': 999999999999 }, Date.now())).toEqual([]);
+  });
+
+  it('defaults `now` to Date.now() when omitted', () => {
+    const opps = [{ ticker: 'A', target_date: '' }];
+    const rejected = { 'A|': Date.now() - 1000 }; // already expired
+    expect(filterRejected(opps, rejected).map(o => o.ticker)).toEqual(['A']);
+  });
+});
+
+// -----------------------------------------------------------------------
+// validateOverrideDuration — batch-45 M-8: the duration input's min="5"/
+// max="480" only constrain the spinner UI. An opus review mutation-tested
+// the ORIGINAL inline version of this check (reverted to `if (false)`) and
+// the full suite still passed -- proving nothing exercised it. These tests
+// pin the extracted, now-covered version directly.
+// -----------------------------------------------------------------------
+describe('validateOverrideDuration', () => {
+  it('a value within [5, 480] is valid and returned as a number', () => {
+    expect(validateOverrideDuration(60)).toEqual({ valid: true, duration: 60, error: null });
+    expect(validateOverrideDuration('120')).toEqual({ valid: true, duration: 120, error: null });
+  });
+
+  it('exactly the floor (5) and ceiling (480) are both valid — inclusive boundaries', () => {
+    expect(validateOverrideDuration(5).valid).toBe(true);
+    expect(validateOverrideDuration(480).valid).toBe(true);
+  });
+
+  it('below the floor is rejected, including the empty-string-coerced-to-0 case', () => {
+    // Positive control for the exact M-8 bug: clearing the input coerces via
+    // unary `+` to 0 at the call site before this even runs.
+    expect(validateOverrideDuration(0).valid).toBe(false);
+    expect(validateOverrideDuration('').valid).toBe(false);
+    expect(validateOverrideDuration(4.9).valid).toBe(false);
+  });
+
+  it('above the ceiling is rejected (the max="480" bypass the same input has)', () => {
+    const result = validateOverrideDuration(5000);
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/at most 480/);
+  });
+
+  it('negative and non-finite values are rejected, not just below-floor positives', () => {
+    expect(validateOverrideDuration(-10).valid).toBe(false);
+    expect(validateOverrideDuration(NaN).valid).toBe(false);
+    expect(validateOverrideDuration(Infinity).valid).toBe(false);
+    expect(validateOverrideDuration('not a number').valid).toBe(false);
+  });
+
+  it('respects custom min/max bounds', () => {
+    expect(validateOverrideDuration(3, { min: 1, max: 10 }).valid).toBe(true);
+    expect(validateOverrideDuration(15, { min: 1, max: 10 }).valid).toBe(false);
+  });
+
+  it('an invalid result never carries a numeric duration (callers must not use it)', () => {
+    expect(validateOverrideDuration(0).duration).toBeNull();
+  });
+});
+
+// -----------------------------------------------------------------------
+// summarizeTradeOutcomes — batch-45 M-6: TradesTab's header count (filtered)
+// and its wins/losses (previously M.closedTrades, unfiltered) could disagree
+// as soon as a filter was active. Calling this with the SAME rows as the
+// paired count is the fix; these are the positive controls for the boundary
+// cases (breakeven, null pnl) that made `other` go negative before.
+// -----------------------------------------------------------------------
+describe('summarizeTradeOutcomes', () => {
+  it('counts wins (pnl > 0) and losses (pnl < 0) separately', () => {
+    const rows = [{ pnl: 5 }, { pnl: -3 }, { pnl: 10 }, { pnl: -1 }];
+    expect(summarizeTradeOutcomes(rows)).toEqual({ wins: 2, losses: 2, other: 0 });
+  });
+
+  it('pnl exactly 0 counts as neither a win nor a loss (breakeven, folds into other)', () => {
+    const rows = [{ pnl: 0 }, { pnl: 5 }];
+    expect(summarizeTradeOutcomes(rows)).toEqual({ wins: 1, losses: 0, other: 1 });
+  });
+
+  it('null pnl (unsettled/unknown) also falls into other, not counted as a loss', () => {
+    const rows = [{ pnl: null }, { pnl: 5 }];
+    expect(summarizeTradeOutcomes(rows)).toEqual({ wins: 1, losses: 0, other: 1 });
+  });
+
+  it('other never goes negative when called on the SAME rows as the length it is paired with', () => {
+    // Positive control for the exact M-6 bug: deriving wins/losses from a
+    // different (larger) row set than the displayed length could drive this
+    // negative. Calling with matching rows can't.
+    const rows = [{ pnl: 5 }, { pnl: -2 }, { pnl: 3 }];
+    const { wins, losses, other } = summarizeTradeOutcomes(rows);
+    expect(rows.length - wins - losses).toBe(other);
+    expect(other).toBeGreaterThanOrEqual(0);
+  });
+
+  it('empty rows: zero everything, no crash', () => {
+    expect(summarizeTradeOutcomes([])).toEqual({ wins: 0, losses: 0, other: 0 });
   });
 });

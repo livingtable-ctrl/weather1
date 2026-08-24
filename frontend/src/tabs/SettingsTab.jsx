@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { DataContext } from '../DataContext.js';
 import { authHeader } from '../useData.js';
+import { haltOrResume, validateOverrideDuration } from '../shared.jsx';
 
 export default function SettingsTab() {
   const M = useContext(DataContext);
@@ -49,15 +50,37 @@ export default function SettingsTab() {
 
   function handleSetOverride() {
     if (!overrideReason.trim()) { setOverrideMsg('Reason required.'); return; }
+    // batch-45 M-8: the input's min="5"/max="480" only constrain the spinner
+    // UI, not what gets submitted -- clearing the field and firing coerces
+    // via unary `+e.target.value` to NaN/0, silently posting
+    // duration_minutes below the documented floor. validateOverrideDuration
+    // is extracted to shared.jsx so this check is directly unit-tested
+    // (opus review MEDIUM: the inline version of this check mutation-tested
+    // as unreachable by the existing suite).
+    const { valid, duration, error } = validateOverrideDuration(overrideDuration);
+    if (!valid) { setOverrideMsg(error); return; }
+    // batch-45 M-8: this is the one destructive action on the page with no
+    // confirmation -- Halt, Resume, and Close Position all confirm first.
+    if (!window.confirm(`Force-allow trading through an active drawdown halt for ${duration} minutes?`)) return;
     fetch('/api/override', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
-      body: JSON.stringify({ reason: overrideReason.trim(), duration_minutes: overrideDuration }),
+      body: JSON.stringify({ reason: overrideReason.trim(), duration_minutes: duration }),
     })
       .then(r => r.json())
       .then(d => {
-        setOverrideMsg(d.error ? `✗ ${d.error}` : `✓ Override set for ${overrideDuration} min`);
+        // opus review MEDIUM (batch-45): web_app.py's api_override_set caps
+        // duration_minutes at 1440 server-side and echoes the ACTUAL applied
+        // value back in the response -- show that, not the locally-typed
+        // `duration`, so a clamped request doesn't leave the operator
+        // believing a much longer override is active than really is.
+        setOverrideMsg(d.error ? `✗ ${d.error}` : `✓ Override set for ${d.duration_minutes ?? duration} min`);
         setOverrideReason('');
+        // batch-45 M-8 (LOW, opus review): the ⚠ "Override active until…"
+        // banner (driven by s.override_until) previously lagged up to the
+        // next 60s poll after Set/Clear -- same gap the bottom Halt/Resume
+        // pair had before this batch's M.refresh() fix, now closed here too.
+        if (!d.error) M.refresh();
         setTimeout(() => setOverrideMsg(''), 4000);
       })
       .catch(() => { setOverrideMsg('✗ Request failed'); setTimeout(() => setOverrideMsg(''), 3000); });
@@ -76,6 +99,7 @@ export default function SettingsTab() {
       .then(r => r.json())
       .then(d => {
         setOverrideMsg(d.error ? `✗ ${d.error}` : '✓ Override cleared');
+        if (!d.error) M.refresh();
         setTimeout(() => setOverrideMsg(''), 3000);
       })
       .catch(() => { setOverrideMsg('✗ Request failed'); setTimeout(() => setOverrideMsg(''), 3000); });
@@ -157,7 +181,14 @@ export default function SettingsTab() {
             <button onClick={handleClearOverride} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', fontWeight: 500, fontSize: 13, cursor: 'pointer' }}>Clear</button>
           </div>
         </div>
-        {overrideMsg && <div style={{ marginTop: 10, fontSize: 12, color: '#16a34a' }}>{overrideMsg}</div>}
+        {/* batch-45 M-8: was hardcoded green even for "✗ Request failed" --
+            conditional on the leading glyph, same convention as reportMsg
+            above. opus review MEDIUM: the validation-message fallback color
+            must be legible directly on --bg-card (unlike #92400e above,
+            which sits on a tinted amber background) -- #ca8a04 matches the
+            amber already used elsewhere in this file for that exact
+            surface (backupStale text, line ~230). */}
+        {overrideMsg && <div style={{ marginTop: 10, fontSize: 12, color: overrideMsg.startsWith('✓') ? '#16a34a' : overrideMsg.startsWith('✗') ? '#ef4444' : '#ca8a04' }}>{overrideMsg}</div>}
       </section>
 
       {/* A/B tests */}
@@ -250,7 +281,10 @@ export default function SettingsTab() {
               </span>
             </div>
             <button
-              onClick={() => { if (window.confirm('Resume trading?')) fetch('/api/resume', { method: 'POST', headers: authHeader() }).then(() => M.refresh()); }}
+              onClick={() => {
+                if (!window.confirm('Resume trading?')) return;
+                haltOrResume('resume', { refresh: M.refresh, addToast: M.addToast });
+              }}
               style={{
                 padding: '7px 16px', borderRadius: 7, border: '1px solid #16a34a',
                 background: 'rgba(34,197,94,0.08)', color: '#16a34a',
@@ -337,11 +371,23 @@ export default function SettingsTab() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => { if (window.confirm('Engage kill switch?')) fetch('/api/halt', { method: 'POST', headers: authHeader() }); }}
+            {/* batch-45 audit-M-8: this pair used to omit BOTH the M.refresh()
+                the inline resume button above makes AND any error handling --
+                a failed halt was silent and the UI never reflected a
+                successful one either. Now shares haltOrResume with every
+                other halt/resume call site (App.jsx Nav, RiskTab, the inline
+                resume button above) so they can't drift back out of sync. */}
+            <button onClick={() => {
+                if (!window.confirm('Engage kill switch?')) return;
+                haltOrResume('halt', { refresh: M.refresh, addToast: M.addToast });
+              }}
               style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: '#ef4444', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
               Halt
             </button>
-            <button onClick={() => { if (window.confirm('Resume trading?')) fetch('/api/resume', { method: 'POST', headers: authHeader() }); }}
+            <button onClick={() => {
+                if (!window.confirm('Resume trading?')) return;
+                haltOrResume('resume', { refresh: M.refresh, addToast: M.addToast });
+              }}
               style={{ padding: '10px 20px', borderRadius: 8, border: '1px solid #16a34a', background: 'transparent', color: '#16a34a', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
               Resume
             </button>

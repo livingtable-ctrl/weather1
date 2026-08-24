@@ -1,6 +1,6 @@
 import React, { useState, useContext, useMemo } from 'react';
 import { DataContext } from '../DataContext.js';
-import { normCity, fmtEdge, outcomeBadge } from '../shared.jsx';
+import { normCity, fmtEdge, outcomeBadge, summarizeTradeOutcomes } from '../shared.jsx';
 
 export default function TradesTab() {
   const M = useContext(DataContext);
@@ -33,13 +33,18 @@ export default function TradesTab() {
 
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const wins = M.closedTrades.filter(t => t.pnl > 0).length;
-  const losses = M.closedTrades.filter(t => t.pnl != null && t.pnl < 0).length;
-  const other = filtered.length - wins - losses;
+  // batch-45 M-6: wins/losses must come from `filtered`, not the unfiltered
+  // M.closedTrades — the header's leading count already respects the active
+  // filter, so mixing an unfiltered wins/losses in made the three numbers
+  // disagree (and could drive `other` negative) as soon as any filter was set.
+  const { wins, losses, other } = summarizeTradeOutcomes(filtered);
 
   function handleExportCSV() {
     const headers = ['Ticker', 'City', 'Side', 'Entry ¢', 'Quantity', 'Cost', 'Net Edge', 'Outcome', 'P&L', 'Entered At', 'Settled At', 'Hold Days'];
-    const rows = M.closedTrades.map(t => {
+    // batch-45 M-6: export what's currently filtered/visible, matching the
+    // button's placement inside the filter row — was M.closedTrades
+    // (everything, ignoring the active filter).
+    const rows = filtered.map(t => {
       const holdDays = (t.entered_at && t.settled_at)
         ? ((new Date(t.settled_at) - new Date(t.entered_at)) / 86400000).toFixed(1)
         : '';
