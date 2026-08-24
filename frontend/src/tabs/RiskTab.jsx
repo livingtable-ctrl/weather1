@@ -297,7 +297,7 @@ export default function RiskTab() {
             <div>
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Anomaly detection window</h3>
               <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.4 }}>
-                Last {M.anomalyStatus.n} multi-day settlements. Halts at &lt;{(M.anomalyStatus.halt_threshold * 100).toFixed(0)}% win rate (min {M.anomalyStatus.min_samples} settled).
+                Last {M.anomalyStatus.n} multi-day settlements. Halts at &lt;{M.anomalyStatus.halt_threshold != null ? (M.anomalyStatus.halt_threshold * 100).toFixed(0) + '%' : '—'} win rate (min {M.anomalyStatus.min_samples ?? '—'} settled).
               </p>
             </div>
             {M.anomalyStatus.should_halt
@@ -319,7 +319,7 @@ export default function RiskTab() {
                   &nbsp;({M.anomalyStatus.wins}W / {M.anomalyStatus.losses}L)
                 </span>
                 <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-muted)' }}>
-                  halt threshold: {(M.anomalyStatus.halt_threshold * 100).toFixed(0)}%
+                  halt threshold: {M.anomalyStatus.halt_threshold != null ? (M.anomalyStatus.halt_threshold * 100).toFixed(0) + '%' : '—'}
                 </span>
               </div>
               <div style={{ height: 8, background: 'var(--bg-muted)', borderRadius: 4, overflow: 'hidden' }}>
@@ -334,7 +334,7 @@ export default function RiskTab() {
           )}
           {!M.anomalyStatus.active && (
             <p style={{ fontSize: 12, color: 'var(--text-faint)', fontStyle: 'italic', marginBottom: 14 }}>
-              Needs {M.anomalyStatus.min_samples} settled multi-day trades in the window to activate.
+              Needs {M.anomalyStatus.min_samples ?? '—'} settled multi-day trades in the window to activate.
             </p>
           )}
 
@@ -391,7 +391,7 @@ export default function RiskTab() {
                 {allEntries.map(([key, val]) => (
                   <div key={key}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
-                      <span style={{ fontWeight: 500, color: key === 'passed' ? '#16a34a' : 'var(--text-default)' }}>
+                      <span style={{ fontWeight: 500, color: key === 'passed' ? '#16a34a' : 'var(--text)' }}>
                         {FILTER_LABELS[key] ?? key}
                       </span>
                       <span style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--text-muted)' }}>{val}</span>

@@ -30519,3 +30519,45 @@ When to revisit:
     toward market consensus), treat it as its own scoped design task with
     its own go/no-go-style validation, not a quick tweak to the existing
     climatology formula.
+
+[OPEN 2026-08-24 -- filed by batch-44's opus review (F8), out of scope for
+  that batch's normalization fix] RISKTAB ANOMALY-DETECTION CARD CANNOT
+  DISTINGUISH "HEALTHY AND QUIET" FROM "/api/anomaly-status IS DOWN"
+Priority: Low -- not a crash, not a data-integrity issue; a monitoring
+  blind spot on a safety-relevant card.
+Files: frontend/src/tabs/RiskTab.jsx (anomaly detection window section,
+  ~line 289-365), frontend/src/useData.js (mapAnomalyStatus, fetchAll)
+
+Problem:
+  RiskTab's "Anomaly detection window" card renders a grey INACTIVE badge
+  whenever `M.anomalyStatus.active` is falsy. Two very different real
+  situations produce that exact same falsy value and therefore the exact
+  same badge: (a) the anomaly monitor is genuinely healthy and hasn't
+  accumulated enough settled multi-day trades yet to activate (the normal,
+  intended INACTIVE state), and (b) the /api/anomaly-status endpoint itself
+  is down/erroring, in which case useData.js's fetchAll() simply preserves
+  whatever `M.anomalyStatus` already held (MOCK's seed data on first load,
+  which also has `active: false`) -- see the `if (anomalyStatus) next.
+  anomalyStatus = anomalyStatus` line, a deliberate "keep last known good
+  state on fetch failure" pattern used consistently across this file's
+  mappers. An operator watching the dashboard cannot tell these apart from
+  the UI alone; the card would need its own staleness/fetchedAt marker
+  (e.g. compare the endpoint's last-successful-fetch timestamp against now,
+  or surface a distinct "data unavailable" visual state) to close the gap.
+
+  Found during batch-44's independent opus review while auditing the same
+  anomaly-status normalization the batch was already touching (mapAnomalyStatus
+  M-3 fix) -- explicitly NOT caused or worsened by that fix (the ambiguity
+  predates it), and explicitly scoped OUT of that batch since closing it
+  needs a genuinely separate mechanism (a staleness/fetchedAt concept,
+  likely wanted on other cards too) rather than a per-field normalization
+  tweak.
+
+When to revisit:
+  - If a general per-endpoint staleness/fetchedAt indicator is ever added
+    to useData.js (worth considering for ALL cards reading endpoint state,
+    not just this one), wire this card to it as part of that same change
+    rather than building a one-off marker just for anomaly-status.
+  - Lower priority than most open entries: this is a monitoring
+    nice-to-have, not a correctness or safety-gate defect -- the underlying
+    kill-switch/halt logic itself is unaffected either way.

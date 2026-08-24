@@ -303,9 +303,10 @@ export function SystemEventsCard({ alerts }) {
 
   function badgeStyle(level) {
     const styles = {
-      error:   { background: '#fee2e2', color: '#dc2626' },
-      warning: { background: '#fef9c3', color: '#ca8a04' },
-      info:    { background: '#dbeafe', color: '#2563eb' },
+      error: { background: '#fee2e2', color: '#dc2626' },
+      warn:  { background: '#fef9c3', color: '#ca8a04' },
+      info:  { background: '#dbeafe', color: '#2563eb' },
+      good:  { background: '#dcfce7', color: '#16a34a' },
     };
     return styles[level] || styles.info;
   }
@@ -332,9 +333,9 @@ export function SystemEventsCard({ alerts }) {
               }}>
                 {evt.level || 'info'}
               </span>
-              <span style={{ fontSize: 13, flex: 1, lineHeight: 1.5 }}>{evt.message || evt.msg || evt.text || JSON.stringify(evt)}</span>
+              <span style={{ fontSize: 13, flex: 1, lineHeight: 1.5 }}>{evt.text}</span>
               <span style={{ fontSize: 11, color: 'var(--text-faint)', whiteSpace: 'nowrap', marginTop: 2 }}>
-                {relTime(evt.ts || evt.timestamp)}
+                {relTime(evt.ts)}
               </span>
             </div>
           ))}

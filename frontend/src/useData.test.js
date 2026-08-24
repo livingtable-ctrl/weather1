@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { computeMark, fetchAllSafe, authHeader, mapStats, mapSignals, resolveOpportunities, resolveIfArray } from './useData.js';
+import {
+  computeMark, fetchAllSafe, authHeader, mapStats, mapSignals, resolveOpportunities, resolveIfArray,
+  mapForecasts, normalizeForecastEntry, mapScanStats, mapAnomalyStatus, mapAlerts,
+} from './useData.js';
 
 // Hand-computed fixtures mirroring positions.liquidation_price()'s convention:
 // YES realizes at yes_bid, NO realizes at 1 - yes_ask. See backlog.txt for the
@@ -457,5 +460,347 @@ describe('mapStats — top-level stats.brier null handling', () => {
     const prevStats = { brier: 0.271 };
     const result = mapStats(null, null, null, prevStats);
     expect(result.brier).toBe(0.271);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch-44 M-3: RiskTab's own scan-filter presence guard
+// (`M.scanStats.total_scanned > 0 || Object.keys(M.scanStats.filters).length
+// > 0`) throws when `filters` is undefined -- the guard written to prevent a
+// crash on malformed /api/scan-stats data was itself the crashing line.
+// mapScanStats normalizes `filters`/`gate_counts` to always be plain objects
+// so that guard (and the unguarded `Object.entries(M.scanStats.gate_counts)`
+// a few lines below it) can never throw again.
+// ---------------------------------------------------------------------------
+describe('mapScanStats — malformed /api/scan-stats payloads', () => {
+  it('a response missing `filters` entirely does not crash Object.keys() on it', () => {
+    const result = mapScanStats({ total_scanned: 40, gate_counts: { passed: 3 } });
+    // Positive control: prove this is really the malformed-input path, not a
+    // coincidence -- filters must be present-but-empty, not merely non-throwing.
+    expect(() => Object.keys(result.filters).length).not.toThrow();
+    expect(result.filters).toEqual({});
+    expect(result.gate_counts).toEqual({ passed: 3 });
+  });
+
+  it('a response missing `gate_counts` entirely coerces it to an empty object', () => {
+    const result = mapScanStats({ total_scanned: 12, filters: { no_analysis: 5 } });
+    expect(() => Object.entries(result.gate_counts)).not.toThrow();
+    expect(result.gate_counts).toEqual({});
+  });
+
+  it('total_scanned defaults to 0 when missing/non-numeric, not undefined', () => {
+    expect(mapScanStats({ filters: {}, gate_counts: {} }).total_scanned).toBe(0);
+    expect(mapScanStats({ total_scanned: 'oops', filters: {}, gate_counts: {} }).total_scanned).toBe(0);
+  });
+
+  // opus review F10: RiskTab's bar chart does
+  // `Math.max(1, ...allEntries.map(([, v]) => v))` over every filters/
+  // gate_counts value -- one non-numeric value poisons that into NaN, and
+  // every bar's width (NaN%) vanishes while the counts still render.
+  it('a non-numeric filter/gate_count value is coerced to 0 rather than poisoning the bar-chart Math.max into NaN', () => {
+    const result = mapScanStats({
+      total_scanned: 10,
+      filters: { no_analysis: 'oops', mkt_prob: 3 },
+      gate_counts: { passed: null },
+    });
+    expect(() => Math.max(1, ...Object.values(result.filters), ...Object.values(result.gate_counts))).not.toThrow();
+    expect(Number.isNaN(Math.max(1, ...Object.values(result.filters)))).toBe(false);
+    expect(result.filters.no_analysis).toBe(0);
+    expect(result.filters.mkt_prob).toBe(3);
+    expect(result.gate_counts.passed).toBe(0);
+  });
+
+  it('a numeric-string filter value is coerced to a real number, not left as a string', () => {
+    const result = mapScanStats({ total_scanned: 5, filters: { no_analysis: '7' }, gate_counts: {} });
+    expect(result.filters.no_analysis).toBe(7);
+    expect(typeof result.filters.no_analysis).toBe('number');
+  });
+
+  it('a well-formed response passes filters/gate_counts through unchanged', () => {
+    const raw = { total_scanned: 23, filters: { no_analysis: 4, mkt_prob: 2 }, gate_counts: { passed: 3 } };
+    expect(mapScanStats(raw)).toEqual(raw);
+  });
+
+  it('a fetch failure (raw is null) or an error-shaped response returns null', () => {
+    expect(mapScanStats(null)).toBeNull();
+    expect(mapScanStats({ error: 'db locked' })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch-44 M-3: RiskTab's anomaly-detection card reads
+// `M.anomalyStatus.window_trades.length` and `.anomaly_messages.length`
+// unguarded (throws on a missing array) plus `halt_threshold`/`min_samples`
+// unguarded in arithmetic/template contexts (renders NaN/undefined on a
+// missing number). mapAnomalyStatus normalizes exactly those fields.
+// ---------------------------------------------------------------------------
+describe('mapAnomalyStatus — malformed /api/anomaly-status payloads', () => {
+  it('missing window_trades/anomaly_messages coerce to empty arrays, not undefined', () => {
+    const result = mapAnomalyStatus({ active: true, win_rate: 0.5 });
+    expect(() => result.window_trades.length).not.toThrow();
+    expect(() => result.anomaly_messages.length).not.toThrow();
+    expect(result.window_trades).toEqual([]);
+    expect(result.anomaly_messages).toEqual([]);
+  });
+
+  // opus review F6: 0 is a plausible REAL threshold/sample-count, so
+  // defaulting missing halt_threshold/min_samples to 0 would make a broken
+  // endpoint read as "halt threshold is 0%, safety gate effectively
+  // disabled" -- null (rendered as "—" in RiskTab) is the honest signal.
+  it('missing halt_threshold/min_samples normalize to null, NOT 0 (0 is a plausible real threshold and would misreport the safety gate as disabled)', () => {
+    const result = mapAnomalyStatus({ active: true });
+    expect(result.halt_threshold).toBeNull();
+    expect(result.min_samples).toBeNull();
+    // Positive control: a genuine 0 threshold must still pass through as 0, not null.
+    expect(mapAnomalyStatus({ active: true, halt_threshold: 0, min_samples: 0 }).halt_threshold).toBe(0);
+  });
+
+  // opus review F4: window_trades is normalized to an array, but each
+  // element was still read unguarded downstream (`t.ticker.split(...)`,
+  // `t.won`) -- the exact crash class M-3 exists to eliminate, on the same
+  // endpoint, one level deeper.
+  describe('window_trades element normalization (opus review F4)', () => {
+    it('an element missing `ticker` does not crash `.split()` on it downstream', () => {
+      const result = mapAnomalyStatus({ active: true, window_trades: [{ won: true, pnl: 1 }] });
+      expect(() => result.window_trades[0].ticker.split('-')).not.toThrow();
+      expect(result.window_trades[0].ticker).toBe('');
+    });
+
+    it('a malformed (null) element does not crash — coerced to a safe default row', () => {
+      const result = mapAnomalyStatus({ active: true, window_trades: [null, { ticker: 'A-1', won: true, pnl: 2 }] });
+      expect(() => result.window_trades[0].ticker.split('-')).not.toThrow();
+      expect(result.window_trades[0]).toEqual({ ticker: '', won: false, pnl: null });
+    });
+
+    it('a well-formed element passes its real values through', () => {
+      const result = mapAnomalyStatus({ active: true, window_trades: [{ ticker: 'KXHIGHATL-26MAY09', won: true, pnl: 3.2 }] });
+      expect(result.window_trades[0]).toEqual({ ticker: 'KXHIGHATL-26MAY09', won: true, pnl: 3.2 });
+    });
+
+    it('a non-numeric pnl normalizes to null rather than a bogus number', () => {
+      const result = mapAnomalyStatus({ active: true, window_trades: [{ ticker: 'A-1', won: false, pnl: 'n/a' }] });
+      expect(result.window_trades[0].pnl).toBeNull();
+    });
+  });
+
+  // opus review F5: a non-string anomaly_messages element rendered directly
+  // as a React child throws "Objects are not valid as a React child".
+  it('a non-string anomaly_messages element is coerced to a string, not left as an object (opus review F5)', () => {
+    const result = mapAnomalyStatus({ active: true, anomaly_messages: [{ weird: 'object' }, 'a real message'] });
+    expect(result.anomaly_messages).toEqual(['[object Object]', 'a real message']);
+    expect(result.anomaly_messages.every(m => typeof m === 'string')).toBe(true);
+  });
+
+  it('a well-formed response passes every field through unchanged', () => {
+    const raw = {
+      active: true, anomaly_detected: false, should_halt: false, win_rate: 0.62,
+      wins: 8, losses: 5, n: 13, halt_threshold: 0.35, min_samples: 10,
+      window_trades: [{ ticker: 'A-1', won: true, pnl: 3.2 }],
+      anomaly_messages: [],
+    };
+    expect(mapAnomalyStatus(raw)).toEqual(raw);
+  });
+
+  it('a fetch failure (raw is null) or an error-shaped response returns null', () => {
+    expect(mapAnomalyStatus(null)).toBeNull();
+    expect(mapAnomalyStatus({ error: 'db locked' })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch-44 M-3: ForecastTab computes `f.high_range[1] - f.high_range[0]` and
+// `f.high_f.toFixed(1)` with no defaults -- one city missing `high_range` in
+// a real /api/today_forecasts response used to take the whole tab into the
+// ErrorBoundary. mapForecasts/normalizeForecastEntry coerce per-city fields
+// to safe defaults instead.
+// ---------------------------------------------------------------------------
+describe('mapForecasts / normalizeForecastEntry — malformed per-city entries', () => {
+  it('a city entry missing high_range gets a [high_f, high_f] fallback, not undefined', () => {
+    const result = normalizeForecastEntry({ high_f: 72.3, precip_in: 0, models_used: 4 });
+    expect(result.high_range).toEqual([72.3, 72.3]);
+    // Positive control: prove the fallback is actually derived from high_f,
+    // not a fixed [0, 0] stub -- the spread computed downstream must be 0.
+    expect(result.high_range[1] - result.high_range[0]).toBe(0);
+  });
+
+  it('a city entry with a malformed (non-2-element or non-numeric) high_range also falls back safely', () => {
+    expect(normalizeForecastEntry({ high_f: 60, high_range: [60] }).high_range).toEqual([60, 60]);
+    expect(normalizeForecastEntry({ high_f: 60, high_range: ['a', 'b'] }).high_range).toEqual([60, 60]);
+  });
+
+  it('missing precip_in/models_used (with high_f present) default to 0, not undefined', () => {
+    const result = normalizeForecastEntry({ high_f: 70 });
+    expect(result.precip_in).toBe(0);
+    expect(result.models_used).toBe(0);
+  });
+
+  it('a non-object city entry (null) is dropped rather than crashing downstream', () => {
+    expect(normalizeForecastEntry(null)).toBeNull();
+    expect(normalizeForecastEntry(undefined)).toBeNull();
+  });
+
+  // opus review F1: high_f is deliberately NOT defaulted, unlike the other
+  // fields -- a fabricated 0.0°F is a fully plausible, wrong reading (renders
+  // as a real temperature with a tight 0° range colored green), which is
+  // worse on a weather-trading dashboard than the crash it would replace.
+  // An entry missing high_f has nothing meaningful to render, so it's
+  // dropped entirely, same as a non-object entry.
+  it('a city entry missing high_f is dropped, not defaulted to a fabricated 0.0°F (opus review F1)', () => {
+    expect(normalizeForecastEntry({ precip_in: 0.1, models_used: 3 })).toBeNull();
+    expect(normalizeForecastEntry({})).toBeNull();
+    // Positive control: a genuine 0-degree reading (rare but real, e.g.
+    // freezing) must still pass through as 0, not be treated as "missing".
+    expect(normalizeForecastEntry({ high_f: 0 }).high_f).toBe(0);
+  });
+
+  it('a well-formed city entry passes through with its real values, unmutated', () => {
+    const raw = { high_f: 81.4, low_f: 63.2, precip_in: 0.12, models_used: 4, high_range: [79, 84] };
+    expect(normalizeForecastEntry(raw)).toEqual(raw);
+  });
+
+  it('mapForecasts drops a malformed city (null) but keeps the rest of the map rendering', () => {
+    const raw = {
+      today: {
+        Atlanta: { high_f: 88, high_range: [86, 90], precip_in: 0, models_used: 3 },
+        Denver: null, // malformed -- e.g. backend returned a bare error string for this city
+      },
+    };
+    const result = mapForecasts(raw);
+    expect(Object.keys(result.todayForecasts)).toEqual(['Atlanta']);
+    expect(result.todayForecasts.Denver).toBeUndefined();
+  });
+
+  it('mapForecasts drops a city missing high_f (opus review F1) but keeps the rest of the map rendering', () => {
+    const raw = {
+      today: {
+        Atlanta: { high_f: 88, high_range: [86, 90], precip_in: 0, models_used: 3 },
+        Denver: { precip_in: 0.2, models_used: 2 }, // missing high_f
+      },
+    };
+    const result = mapForecasts(raw);
+    expect(Object.keys(result.todayForecasts)).toEqual(['Atlanta']);
+  });
+
+  it('a city entry missing high_range but present in the map still renders with the fallback (no crash, no drop)', () => {
+    const raw = { today: { Miami: { high_f: 90, precip_in: 0.4, models_used: 2 } } };
+    const result = mapForecasts(raw);
+    expect(result.todayForecasts.Miami.high_range).toEqual([90, 90]);
+  });
+
+  it('a fetch failure (raw is null) or an error-shaped response returns null', () => {
+    expect(mapForecasts(null)).toBeNull();
+    expect(mapForecasts({ error: 'db locked' })).toBeNull();
+  });
+
+  // opus review F7: a genuinely empty {} (every city filtered out by a
+  // downstream provider outage) is real data and must clear stale MOCK/prior
+  // forecasts -- the same audit-M-11 "truthy-length bug" this file already
+  // fixed for opportunities/alerts/brierHistory. Only omitting the key
+  // entirely (a legacy/different response shape) should preserve prior state.
+  it('a today/tomorrow key present but genuinely empty ({}) is assigned as {}, clearing stale data (opus review F7)', () => {
+    const result = mapForecasts({ today: {}, tomorrow: {} });
+    expect(result).not.toBeNull();
+    expect(result.todayForecasts).toEqual({});
+    expect(result.tomorrowForecasts).toEqual({});
+  });
+
+  it('a today/tomorrow key omitted entirely (missing from the response) is left out of the result, preserving prior state', () => {
+    expect(mapForecasts({ unrelated_field: 1 })).toBeNull();
+  });
+
+  it('every city in today filtered out for missing high_f still assigns an empty {} (real signal, not a fetch failure)', () => {
+    const result = mapForecasts({ today: { Denver: { precip_in: 0.1 } } });
+    expect(result.todayForecasts).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch-44 M-5: ActivityTab reads `e.text` (levels error/warn/info/good);
+// shared.jsx's SystemEventsCard used to read `evt.message || evt.msg ||
+// evt.text` (levels error/warning/info) -- two schemas for the same
+// /api/system-events array. The real backend (web_app.py's
+// api_system_events) only ever sends `text` and `level: "info"|"warn"`.
+// mapAlerts normalizes both fields once so every consumer reads one shape.
+// ---------------------------------------------------------------------------
+describe('mapAlerts — M-5 schema normalization', () => {
+  it('an item using `message` instead of `text` (the SystemEventsCard-assumed field) is normalized to `text`', () => {
+    const result = mapAlerts([{ ts: '2026-08-24T00:00:00Z', level: 'info', message: 'hello' }]);
+    expect(result[0].text).toBe('hello');
+  });
+
+  it('an item using `msg` instead of `text` is also normalized to `text`', () => {
+    const result = mapAlerts([{ ts: '2026-08-24T00:00:00Z', level: 'info', msg: 'hi there' }]);
+    expect(result[0].text).toBe('hi there');
+  });
+
+  it('level "warning" (SystemEventsCard\'s assumed vocabulary) is normalized to "warn" (ActivityTab\'s / the real backend\'s vocabulary)', () => {
+    const result = mapAlerts([{ ts: '', level: 'warning', text: 'circuit open' }]);
+    expect(result[0].level).toBe('warn');
+    // Positive control: prove this isn't a blanket default -- a correctly-
+    // spelled level must pass through unchanged.
+    const passthrough = mapAlerts([{ ts: '', level: 'error', text: 'x' }]);
+    expect(passthrough[0].level).toBe('error');
+  });
+
+  // opus review F3: this is a safety/monitoring feed -- an unrecognized
+  // future level must fail LOUD (visible in ActivityTab's warn count/filter)
+  // rather than be downgraded to the blandest label and silently excluded
+  // from error/warn counts. Also case-insensitive now ("WARN" must not fall
+  // through to the default just because of casing).
+  it('an unrecognized/missing level defaults to "warn" (fail loud), not "info" (opus review F3)', () => {
+    expect(mapAlerts([{ ts: '', text: 'x' }])[0].level).toBe('warn');
+    expect(mapAlerts([{ ts: '', level: 'critical', text: 'x' }])[0].level).toBe('warn');
+  });
+
+  it('level matching is case-insensitive ("WARN"/"Warning" still normalize correctly)', () => {
+    expect(mapAlerts([{ ts: '', level: 'WARN', text: 'x' }])[0].level).toBe('warn');
+    expect(mapAlerts([{ ts: '', level: 'Warning', text: 'x' }])[0].level).toBe('warn');
+    expect(mapAlerts([{ ts: '', level: 'ERROR', text: 'x' }])[0].level).toBe('error');
+  });
+
+  it('a real, well-formed backend item (text + warn/info) passes through unchanged', () => {
+    const result = mapAlerts([
+      { ts: '2026-08-24T00:00:00Z', level: 'warn', text: 'Pirate Weather circuit OPEN', source: 'circuit' },
+    ]);
+    expect(result[0]).toEqual({ ts: '2026-08-24T00:00:00Z', level: 'warn', text: 'Pirate Weather circuit OPEN', source: 'circuit' });
+  });
+
+  // opus review F9: the other three mappers (mapAnomalyStatus,
+  // normalizeForecastEntry, mapScanStats) spread the raw object so an
+  // unknown future field passes through -- mapAlerts should too, for
+  // consistency and so a future backend field isn't silently dropped.
+  it('an unrecognized extra field on the raw event passes through (opus review F9 — spread for symmetry)', () => {
+    const result = mapAlerts([{ ts: '', level: 'info', text: 'x', ticker: 'KXHIGHATL-26MAY09' }]);
+    expect(result[0].ticker).toBe('KXHIGHATL-26MAY09');
+  });
+
+  it('a non-object array entry does not crash the mapper — normalized to an empty-text warn row', () => {
+    expect(() => mapAlerts([null, 'oops', 42])).not.toThrow();
+    expect(mapAlerts([null])[0]).toEqual({ ts: '', level: 'warn', text: '', source: null });
+  });
+
+  // opus review F2: mapAlerts guarantees `text` is a string, not a
+  // NON-EMPTY one -- deleting SystemEventsCard's `|| JSON.stringify(evt)`
+  // removed the only schema-drift tripwire in the app. Restore it here: a
+  // real (non-empty) object matching none of text/message/msg is exactly
+  // the "backend renamed the field" case this mapper exists to catch.
+  it('an object with none of text/message/msg falls back to JSON.stringify(evt), not a silent blank row (opus review F2)', () => {
+    const result = mapAlerts([{ ts: '2026-08-24T00:00:00Z', level: 'info', body: 'renamed field' }]);
+    expect(result[0].text).toBe(JSON.stringify({ ts: '2026-08-24T00:00:00Z', level: 'info', body: 'renamed field' }));
+    expect(result[0].text).not.toBe('');
+  });
+
+  it('a genuinely empty text ("") is preserved as-is, not treated as missing (deliberate no-message case)', () => {
+    const result = mapAlerts([{ ts: '', level: 'info', text: '' }]);
+    expect(result[0].text).toBe('');
+  });
+
+  it('a real empty array resolves to [], not undefined (preserves the resolveIfArray invariant)', () => {
+    expect(mapAlerts([])).toEqual([]);
+  });
+
+  it('a fetch failure (raw is null, or a non-array error-shaped body) resolves to undefined', () => {
+    expect(mapAlerts(null)).toBeUndefined();
+    expect(mapAlerts({ error: 'db locked' })).toBeUndefined();
   });
 });

@@ -292,14 +292,61 @@ export function resolveIfArray(raw) {
 }
 
 /**
+ * A single city's forecast entry, coerced to safe defaults. ForecastTab computes
+ * `f.high_range[1] - f.high_range[0]` and `f.high_f.toFixed(1)` with no guards --
+ * one city missing `high_range` in a real response used to take the whole tab
+ * down into the ErrorBoundary. Non-object entries are dropped entirely (nothing
+ * safe to render); entries missing individual fields get defaults instead, so a
+ * partially-known city still renders.
+ *
+ * high_f itself is NOT defaulted (unlike the other fields) -- a fabricated
+ * 0.0°F reads as a real, high-confidence reading (0° range, colored green for
+ * "tight ensemble agreement", "Dry"), which is worse than the crash it would
+ * replace on a weather-trading dashboard. An entry with no high_f has nothing
+ * meaningful to show, so it's dropped entirely, same as a non-object entry.
+ */
+export function normalizeForecastEntry(f) {
+  if (!f || typeof f !== 'object') return null;
+  if (typeof f.high_f !== 'number') return null;
+  const highF = f.high_f;
+  const highRange = Array.isArray(f.high_range) && f.high_range.length === 2
+    && typeof f.high_range[0] === 'number' && typeof f.high_range[1] === 'number'
+    ? f.high_range
+    : [highF, highF];
+  return {
+    ...f,
+    high_f: highF,
+    high_range: highRange,
+    precip_in: typeof f.precip_in === 'number' ? f.precip_in : 0,
+    models_used: typeof f.models_used === 'number' ? f.models_used : 0,
+  };
+}
+
+function normalizeForecastMap(raw) {
+  const result = {};
+  for (const [city, f] of Object.entries(raw || {})) {
+    const normalized = normalizeForecastEntry(f);
+    if (normalized) result[city] = normalized;
+  }
+  return result;
+}
+
+/**
  * /api/today_forecasts
  * → {today: {city: {high_f, low_f, precip_in, models_used, high_range}}, tomorrow: {...}}
+ *
+ * Assigns todayForecasts/tomorrowForecasts whenever the raw response actually
+ * included that key -- even an empty {} (e.g. every city filtered out by a
+ * downstream provider outage) is real data that must clear stale MOCK/prior
+ * forecasts, same audit-M-11 principle already applied to opportunities/
+ * alerts/brierHistory elsewhere in this file. Only a response that omits the
+ * key entirely (or fails outright, caught above) preserves prior state.
  */
-function mapForecasts(raw) {
+export function mapForecasts(raw) {
   if (!raw || raw.error) return null;
   const result = {};
-  if (raw.today    && Object.keys(raw.today).length)    result.todayForecasts    = raw.today;
-  if (raw.tomorrow && Object.keys(raw.tomorrow).length) result.tomorrowForecasts = raw.tomorrow;
+  if (raw.today    !== undefined) result.todayForecasts    = normalizeForecastMap(raw.today);
+  if (raw.tomorrow !== undefined) result.tomorrowForecasts = normalizeForecastMap(raw.tomorrow);
   return Object.keys(result).length ? result : null;
 }
 
@@ -361,6 +408,127 @@ function mapPriceImprovement(raw) {
   if (!raw || raw.error) return null;
   if (raw.avg_improvement_cents == null) return null; // insufficient real data
   return raw;
+}
+
+// Coerces every value in a {key: count} map to a finite number -- RiskTab's
+// bar-width calc does `Math.max(1, ...allEntries.map(([, v]) => v))`; one
+// non-numeric value poisons that Math.max into NaN, and every bar's width
+// (NaN%) vanishes while the counts still render.
+function coerceCountMap(obj) {
+  const result = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const n = Number(v);
+    result[k] = Number.isFinite(n) ? n : 0;
+  }
+  return result;
+}
+
+/**
+ * /api/scan-stats
+ * → {total_scanned, filters: {...}, gate_counts: {...}}
+ *
+ * RiskTab's own presence guard (`M.scanStats.total_scanned > 0 ||
+ * Object.keys(M.scanStats.filters).length > 0`) crashes on exactly the
+ * malformed shape it was meant to guard against when `filters` is missing --
+ * Object.keys(undefined) throws. Normalize both `filters` and `gate_counts`
+ * to always be plain objects (and their values to numbers, so a malformed
+ * count can't poison the bar-chart's Math.max into NaN) so a partial
+ * response renders an empty/partial breakdown instead of taking the tab down.
+ */
+export function mapScanStats(raw) {
+  if (!raw || raw.error) return null;
+  const filters     = raw.filters     && typeof raw.filters     === 'object' ? raw.filters     : {};
+  const gate_counts = raw.gate_counts && typeof raw.gate_counts === 'object' ? raw.gate_counts : {};
+  return {
+    ...raw,
+    total_scanned: typeof raw.total_scanned === 'number' ? raw.total_scanned : 0,
+    filters:     coerceCountMap(filters),
+    gate_counts: coerceCountMap(gate_counts),
+  };
+}
+
+/**
+ * /api/anomaly-status
+ * → {active, anomaly_detected, should_halt, win_rate, wins, losses, n,
+ *    halt_threshold, min_samples, window_trades: [...], anomaly_messages: [...]}
+ *
+ * RiskTab reads `.window_trades.length` / `.anomaly_messages.length`
+ * unguarded (throws on a missing array), each trade's `.ticker.split(...)`
+ * / `.won` unguarded (throws on a malformed element even once the array
+ * itself is present), and `halt_threshold` / `min_samples` unguarded in
+ * arithmetic/template contexts (renders NaN/undefined on a missing number)
+ * -- normalize exactly those fields so a malformed response degrades
+ * gracefully instead.
+ *
+ * halt_threshold/min_samples are normalized to `null` (not 0) when missing
+ * -- 0 is a plausible real threshold/sample-count, so defaulting to it would
+ * make a broken /api/anomaly-status response read as "halt threshold is 0%,
+ * safety gate effectively disabled" on the card whose entire purpose is
+ * showing that gate. RiskTab renders `null` as "—" at each of the three
+ * sites that read these fields.
+ */
+export function mapAnomalyStatus(raw) {
+  if (!raw || raw.error) return null;
+  return {
+    ...raw,
+    window_trades: Array.isArray(raw.window_trades)
+      ? raw.window_trades.map(t => ({
+          ticker: typeof t?.ticker === 'string' ? t.ticker : '',
+          won:    !!t?.won,
+          pnl:    typeof t?.pnl === 'number' ? t.pnl : null,
+        }))
+      : [],
+    anomaly_messages: Array.isArray(raw.anomaly_messages) ? raw.anomaly_messages.map(String) : [],
+    halt_threshold:   typeof raw.halt_threshold === 'number' ? raw.halt_threshold : null,
+    min_samples:      typeof raw.min_samples    === 'number' ? raw.min_samples    : null,
+  };
+}
+
+// Backend (/api/system-events) only ever sends `level: "info"|"warn"` today.
+// Unrecognized levels normalize to 'warn', not 'info' -- this is a safety/
+// monitoring feed, so an unexpected future level (or a malformed one) should
+// fail loud (visible in ActivityTab's warn count and filter) rather than be
+// downgraded to the blandest label and silently excluded from error/warn
+// counts. Case-insensitive so e.g. "WARN"/"Warning" still normalize.
+const ALERT_LEVELS = new Set(['error', 'warn', 'info', 'good']);
+function normalizeAlertLevel(level) {
+  const lvl = typeof level === 'string' ? level.toLowerCase() : level;
+  if (lvl === 'warning') return 'warn';
+  return ALERT_LEVELS.has(lvl) ? lvl : 'warn';
+}
+
+/**
+ * /api/system-events (aka M.alerts)
+ * → [{ts, level, text, source}, ...]
+ *
+ * M-5: ActivityTab reads `e.text` with levels error/warn/info/good; shared.jsx's
+ * SystemEventsCard reads `evt.message || evt.msg || evt.text` with levels
+ * error/warning/info -- two schemas for the same array from the same endpoint.
+ * The real backend (web_app.py's api_system_events) sends `text` and only ever
+ * `level: "info"|"warn"`. Normalize both fields here, once, so every consumer
+ * -- current and future -- reads one guaranteed shape instead of guessing.
+ *
+ * Falls back to JSON.stringify(evt) only when the event object is non-empty
+ * but has none of text/message/msg -- an empty string is still a valid,
+ * deliberate "no message" outcome (e.g. a non-object array entry), but a
+ * real object that matches none of the three known field names is exactly
+ * the schema-drift case this mapper exists to catch, and silently rendering
+ * a blank row would erase the only tripwire for it.
+ */
+export function mapAlerts(raw) {
+  const arr = resolveIfArray(raw);
+  if (arr === undefined) return undefined;
+  return arr.map(e => {
+    const evt = e && typeof e === 'object' ? e : {};
+    const text = evt.text ?? evt.message ?? evt.msg;
+    return {
+      ...evt,
+      ts:     evt.ts ?? '',
+      level:  normalizeAlertLevel(evt.level),
+      text:   text != null ? String(text) : (Object.keys(evt).length ? JSON.stringify(evt) : ''),
+      source: evt.source ?? null,
+    };
+  });
 }
 
 const ENDPOINTS = [
@@ -548,9 +716,10 @@ export default function useData(setConnected) {
         // System events feed (OverviewTab alerts)
         // audit-M-11: same truthy-length bug as opportunities above -- a
         // real empty events feed kept MOCK's alerts on screen forever.
-        // resolveIfArray (exported, unit-tested) makes this fix independently
-        // mutation-testable.
-        const resolvedAlerts = resolveIfArray(systemEventsR);
+        // mapAlerts (exported, unit-tested) makes this fix independently
+        // mutation-testable, and also normalizes the M-5 schema mismatch
+        // between ActivityTab and SystemEventsCard.
+        const resolvedAlerts = mapAlerts(systemEventsR);
         if (resolvedAlerts !== undefined) next.alerts = resolvedAlerts;
 
         // Backup status (Settings / future footer)
@@ -579,13 +748,15 @@ export default function useData(setConnected) {
         if (sd) next.samedayCalibration = sd;
 
         // Anomaly window — win-rate collapse detection state
-        if (anomalyStatusR && !anomalyStatusR.error) next.anomalyStatus = anomalyStatusR;
+        const anomalyStatus = mapAnomalyStatus(anomalyStatusR);
+        if (anomalyStatus) next.anomalyStatus = anomalyStatus;
 
         // Multi-day temperature-scaling calibration gate
         if (calibStatusR && !calibStatusR.error) next.calibrationStatus = calibStatusR;
 
         // Scan filter rejection counts from last cron run
-        if (scanStatsR && !scanStatsR.error) next.scanStats = scanStatsR;
+        const scanStats = mapScanStats(scanStatsR);
+        if (scanStats) next.scanStats = scanStats;
 
         // EMOS calibration status
         if (emosStatusR) next.emosStatus = emosStatusR;
